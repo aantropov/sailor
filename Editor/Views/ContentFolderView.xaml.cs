@@ -1136,6 +1136,7 @@ namespace SailorEditor.Views
             MaterialFile => "color_swatch_24.png",
             FrameGraphFile => "application_sidebar_list_24.png",
             LandscapeVegetationFile => "document_24.png",
+            GIProbesFile => "light_bulb_24.png",
             _ => "document_24.png"
         };
 

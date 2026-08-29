@@ -102,8 +102,12 @@ add_executable(AudioContractTests
     AudioContractTests.cpp
 )
 
-add_executable(GraphicsSettingsTests
-    GraphicsSettingsTests.cpp
+add_executable(GpuFrameTimeQueryTests
+    GpuFrameTimeQueryTests.cpp
+)
+
+add_executable(GlobalIlluminationContractTests
+    GlobalIlluminationContractTests.cpp
 )
 
 add_library(WorkspaceModuleFixture SHARED
@@ -241,7 +245,11 @@ target_compile_features(EditorViewportControllerContractTests PRIVATE cxx_std_20
 target_compile_features(SkyComponentContractTests PRIVATE cxx_std_20)
 target_compile_features(PhysicsRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(AudioContractTests PRIVATE cxx_std_20)
-target_compile_features(GraphicsSettingsTests PRIVATE cxx_std_20)
+target_compile_features(GpuFrameTimeQueryTests PRIVATE cxx_std_20)
+target_compile_features(GlobalIlluminationContractTests PRIVATE cxx_std_20)
+target_compile_definitions(GlobalIlluminationContractTests PRIVATE
+    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 target_compile_features(WorkspaceModuleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleIncompatibleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleMissingEntryFixture PRIVATE cxx_std_20)
@@ -296,7 +304,8 @@ target_link_libraries(EditorViewportControllerContractTests PRIVATE Sailor::Runt
 target_link_libraries(SkyComponentContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(PhysicsRuntimeTests PRIVATE Sailor::Runtime)
 target_link_libraries(AudioContractTests PRIVATE Sailor::Runtime)
-target_link_libraries(GraphicsSettingsTests PRIVATE Sailor::Runtime)
+target_link_libraries(GpuFrameTimeQueryTests PRIVATE Sailor::Runtime)
+target_link_libraries(GlobalIlluminationContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(AssetMountDiscoveryTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
@@ -346,7 +355,8 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(SkyComponentContractTests)
     sailor_stage_workspace_test_runtime(PhysicsRuntimeTests)
     sailor_stage_workspace_test_runtime(AudioContractTests)
-    sailor_stage_workspace_test_runtime(GraphicsSettingsTests)
+    sailor_stage_workspace_test_runtime(GpuFrameTimeQueryTests)
+    sailor_stage_workspace_test_runtime(GlobalIlluminationContractTests)
     sailor_stage_workspace_test_runtime(RemoteViewportRuntimeTests)
     sailor_stage_workspace_test_runtime(EditorEngineProtocolTests)
     sailor_stage_workspace_test_runtime(EditorEngineWebSocketServerTests)
@@ -424,7 +434,10 @@ target_include_directories(PhysicsRuntimeTests PRIVATE
 target_include_directories(AudioContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
-target_include_directories(GraphicsSettingsTests PRIVATE
+target_include_directories(GpuFrameTimeQueryTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(GlobalIlluminationContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(WorkspaceModuleFixture PRIVATE
@@ -595,8 +608,13 @@ add_test(
 )
 
 add_test(
-    NAME GraphicsSettingsTests
-    COMMAND GraphicsSettingsTests
+    NAME GpuFrameTimeQueryTests
+    COMMAND GpuFrameTimeQueryTests
+)
+
+add_test(
+    NAME GlobalIlluminationContractTests
+    COMMAND GlobalIlluminationContractTests
 )
 
 add_test(
@@ -674,7 +692,7 @@ set_tests_properties(
     SkyComponentContractTests
     PhysicsRuntimeTests
     AudioContractTests
-    GraphicsSettingsTests
+    GpuFrameTimeQueryTests
     EditorEngineProtocolTests
     EditorEngineWebSocketServerTests
     EditorEngineWebSocketLateStopTests
@@ -687,7 +705,7 @@ if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR 
         WorkspaceCacheContractTests
         AssetCacheContractTests
         ShaderCacheArtifactTests
-        GraphicsSettingsTests
+        GpuFrameTimeQueryTests
         WorkspaceModuleContractTests
         WorkspaceModuleRuntimeTests
         PROPERTIES ENVIRONMENT_MODIFICATION

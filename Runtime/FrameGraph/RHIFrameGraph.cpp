@@ -2,6 +2,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/GraphicsDriver.h"
+#include "RHI/GlobalIllumination.h"
 #include "RHI/Shader.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/RenderTarget.h"
@@ -12,6 +13,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Settings/GraphicsSettings.h"
 #include "Tasks/Tasks.h"
+#include "Core/LogMacros.h"
 
 #include <atomic>
 #include <limits>
@@ -46,6 +48,30 @@ namespace
 		RHISemaphorePtr m_lastSuccessfulSemaphore{};
 	};
 
+	struct GlobalIlluminationRenderStatsStorage final
+	{
+		SpinLock m_lock;
+		const RHIFrameGraph* m_owner = nullptr;
+		RHIGlobalIlluminationRenderStats m_stats{};
+	};
+
+	GlobalIlluminationRenderStatsStorage& GetGlobalIlluminationRenderStatsStorage()
+	{
+		static GlobalIlluminationRenderStatsStorage storage;
+		return storage;
+	}
+
+	void PublishGlobalIlluminationRenderStats(
+		const RHIFrameGraph* owner,
+		const RHIGlobalIlluminationRenderStats& stats)
+	{
+		auto& storage = GetGlobalIlluminationRenderStatsStorage();
+		storage.m_lock.Lock();
+		storage.m_owner = owner;
+		storage.m_stats = stats;
+		storage.m_lock.Unlock();
+	}
+
 	class RHIViewSubmissionResources final : public RHIFrameGraphSubmissionResource
 	{
 	public:
@@ -60,6 +86,7 @@ namespace
 		RHIShaderBindingSetPtr m_lightsBindings{};
 		RHIShaderBindingSetPtr m_lightsTemplate{};
 		RHIShaderBindingSetPtr m_sharedLightsStorage{};
+		RHIShaderBindingSetPtr m_sharedGlobalIlluminationStorage{};
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHIShaderBindingSetPtr m_lightCullingBindings{};
 		RHITexturePtr m_lightCullingDepth{};
@@ -82,18 +109,32 @@ namespace
 		{
 			m_uploadedLightingRevision = InvalidContentHash;
 			m_uploadedAnimationRevision = InvalidContentHash;
+			m_uploadedGlobalIlluminationLayout = InvalidContentHash;
+			m_uploadedGlobalIlluminationCoefficients = InvalidContentHash;
+			m_uploadedGlobalIlluminationStates = InvalidContentHash;
+			m_uploadedGlobalIlluminationHeader = InvalidContentHash;
 			m_lightsSource.Clear();
 			m_bonesSource.Clear();
 		}
 
 		RHIShaderBindingSetPtr m_lightsStorage{};
 		RHIShaderBindingSetPtr m_boneBindings{};
+		RHIShaderBindingSetPtr m_globalIlluminationStorage{};
 		TSharedPtr<TVector<RHILightShaderData>> m_lightsSource{};
 		TSharedPtr<TVector<glm::mat4>> m_bonesSource{};
 		size_t m_lightCapacity = 0u;
 		size_t m_boneCapacity = 0u;
+		size_t m_globalIlluminationNodeCapacity = 0u;
+		size_t m_globalIlluminationBrickCapacity = 0u;
+		size_t m_globalIlluminationProbeCapacity = 0u;
+		size_t m_globalIlluminationCoefficientCapacity = 0u;
+		size_t m_globalIlluminationStateCapacity = 0u;
 		uint64_t m_uploadedLightingRevision = InvalidContentHash;
 		uint64_t m_uploadedAnimationRevision = InvalidContentHash;
+		uint64_t m_uploadedGlobalIlluminationLayout = InvalidContentHash;
+		uint64_t m_uploadedGlobalIlluminationCoefficients = InvalidContentHash;
+		uint64_t m_uploadedGlobalIlluminationStates = InvalidContentHash;
+		uint64_t m_uploadedGlobalIlluminationHeader = InvalidContentHash;
 	};
 
 	size_t GrowSubmissionCapacity(size_t currentCapacity, size_t requiredCapacity)
@@ -125,6 +166,45 @@ namespace
 		result ^= values.Num();
 		result *= 1099511628211ull;
 		return result;
+	}
+
+	template<typename T>
+	uint64_t HashSubmissionValue(const T& value)
+	{
+		uint64_t result = 1469598103934665603ull;
+		const auto* bytes = reinterpret_cast<const uint8_t*>(&value);
+		for (size_t index = 0u; index < sizeof(T); ++index)
+		{
+			result ^= bytes[index];
+			result *= 1099511628211ull;
+		}
+		return result;
+	}
+
+	EGlobalIlluminationDebugVisualization ResolveGlobalIlluminationDebug(
+		ESceneViewRenderMode renderMode) noexcept
+	{
+		switch (renderMode)
+		{
+		case ESceneViewRenderMode::GlobalIlluminationOnly:
+			return EGlobalIlluminationDebugVisualization::IndirectOnly;
+		case ESceneViewRenderMode::GlobalIlluminationProbes:
+			return EGlobalIlluminationDebugVisualization::Probes;
+		case ESceneViewRenderMode::GlobalIlluminationBricks:
+			return EGlobalIlluminationDebugVisualization::Bricks;
+		case ESceneViewRenderMode::GlobalIlluminationValidity:
+			return EGlobalIlluminationDebugVisualization::Validity;
+		case ESceneViewRenderMode::GlobalIlluminationVisibility:
+			return EGlobalIlluminationDebugVisualization::Visibility;
+		case ESceneViewRenderMode::GlobalIlluminationResidency:
+			return EGlobalIlluminationDebugVisualization::Residency;
+		case ESceneViewRenderMode::GlobalIlluminationAssetIdentity:
+			return EGlobalIlluminationDebugVisualization::AssetIdentity;
+		case ESceneViewRenderMode::GlobalIlluminationFallback:
+			return EGlobalIlluminationDebugVisualization::Fallback;
+		default:
+			return EGlobalIlluminationDebugVisualization::Lit;
+		}
 	}
 
 	void CloneTextureBindings(
@@ -165,7 +245,8 @@ namespace
 		RHIFrameGraph* owner,
 		RHICommandListPtr transferCommandList,
 		RHISceneViewSnapshot& snapshot,
-		bool bUploadSharedPayload)
+		bool bUploadSharedPayload,
+		RHIGlobalIlluminationRenderStats* globalIlluminationStats)
 	{
 		if (!snapshot.m_submissionContext)
 		{
@@ -287,6 +368,344 @@ namespace
 			sharedResources->m_uploadedLightingRevision = snapshot.m_lightingRevision;
 		}
 
+		const RHIGlobalIlluminationSnapshotPtr globalIllumination =
+			snapshot.m_globalIllumination;
+		if (globalIlluminationStats)
+		{
+			*globalIlluminationStats = BuildGlobalIlluminationRenderStats(
+				globalIllumination.GetRawPtr());
+			globalIlluminationStats->m_mode =
+				snapshot.m_globalIlluminationMode;
+			globalIlluminationStats->m_bEnabled =
+				snapshot.m_bGlobalIlluminationEnabled;
+			globalIlluminationStats->m_flightSlot =
+				snapshot.m_submissionContext->GetFlightSlot();
+			if (!globalIllumination)
+			{
+				globalIlluminationStats->m_qualityBudget =
+					App::GetActiveGraphicsSettings()
+						.m_maxGiProbeStatesPerSnapshot;
+			}
+		}
+		bool bHasGlobalIllumination = globalIllumination &&
+			globalIllumination->m_layout &&
+			!globalIllumination->m_states.IsEmpty();
+		size_t numGlobalIlluminationNodes = 0u;
+		size_t numGlobalIlluminationBricks = 0u;
+		size_t numGlobalIlluminationProbes = 0u;
+		size_t numGlobalIlluminationCoefficients = 0u;
+		size_t numGlobalIlluminationStates = 0u;
+		if (bHasGlobalIllumination)
+		{
+			numGlobalIlluminationBricks =
+				globalIllumination->m_layout->m_bricks.Num();
+			numGlobalIlluminationProbes =
+				globalIllumination->m_layout->m_probes.Num();
+			numGlobalIlluminationStates =
+				globalIllumination->m_states.Num();
+			bHasGlobalIllumination = numGlobalIlluminationBricks > 0u &&
+				numGlobalIlluminationProbes > 0u &&
+				numGlobalIlluminationStates > 0u &&
+				numGlobalIlluminationStates <=
+					globalIllumination->m_qualityBudget &&
+				numGlobalIlluminationProbes <=
+					(std::numeric_limits<size_t>::max)() /
+						numGlobalIlluminationStates;
+			if (bHasGlobalIllumination)
+			{
+				numGlobalIlluminationNodes =
+					numGlobalIlluminationBricks * 2u - 1u;
+				numGlobalIlluminationCoefficients =
+					numGlobalIlluminationProbes *
+					numGlobalIlluminationStates;
+			}
+		}
+
+		const bool bRecreateGlobalIlluminationStorage =
+			!sharedResources->m_globalIlluminationStorage ||
+			sharedResources->m_globalIlluminationNodeCapacity <
+				numGlobalIlluminationNodes ||
+			sharedResources->m_globalIlluminationBrickCapacity <
+				numGlobalIlluminationBricks ||
+			sharedResources->m_globalIlluminationProbeCapacity <
+				numGlobalIlluminationProbes ||
+			sharedResources->m_globalIlluminationCoefficientCapacity <
+				numGlobalIlluminationCoefficients ||
+			sharedResources->m_globalIlluminationStateCapacity <
+				numGlobalIlluminationStates;
+		if (bRecreateGlobalIlluminationStorage)
+		{
+			sharedResources->m_globalIlluminationNodeCapacity =
+				GrowSubmissionCapacity(
+					sharedResources->m_globalIlluminationNodeCapacity,
+					numGlobalIlluminationNodes);
+			sharedResources->m_globalIlluminationBrickCapacity =
+				GrowSubmissionCapacity(
+					sharedResources->m_globalIlluminationBrickCapacity,
+					numGlobalIlluminationBricks);
+			sharedResources->m_globalIlluminationProbeCapacity =
+				GrowSubmissionCapacity(
+					sharedResources->m_globalIlluminationProbeCapacity,
+					numGlobalIlluminationProbes);
+			sharedResources->m_globalIlluminationCoefficientCapacity =
+				GrowSubmissionCapacity(
+					sharedResources->m_globalIlluminationCoefficientCapacity,
+					numGlobalIlluminationCoefficients);
+			sharedResources->m_globalIlluminationStateCapacity =
+				GrowSubmissionCapacity(
+					sharedResources->m_globalIlluminationStateCapacity,
+					numGlobalIlluminationStates);
+			sharedResources->m_globalIlluminationStorage =
+				driver->CreateShaderBindings();
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationHeader",
+				sizeof(RHIGlobalIlluminationGpuHeader),
+				1u,
+				0u,
+				true);
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationBvh",
+				sizeof(RHIGlobalIlluminationGpuBvhNode),
+				sharedResources->m_globalIlluminationNodeCapacity,
+				1u,
+				true);
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationBricks",
+				sizeof(RHIGlobalIlluminationGpuBrick),
+				sharedResources->m_globalIlluminationBrickCapacity,
+				2u,
+				true);
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationProbes",
+				sizeof(RHIGlobalIlluminationGpuProbe),
+				sharedResources->m_globalIlluminationProbeCapacity,
+				3u,
+				true);
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationCoefficients",
+				sizeof(RHIGlobalIlluminationGpuCoefficients),
+				sharedResources->m_globalIlluminationCoefficientCapacity,
+				4u,
+				true);
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationStates",
+				sizeof(RHIGlobalIlluminationGpuState),
+				sharedResources->m_globalIlluminationStateCapacity,
+				5u,
+				true);
+			sharedResources->m_globalIlluminationStorage
+				->RecalculateCompatibility();
+			sharedResources->m_uploadedGlobalIlluminationLayout =
+				InvalidContentHash;
+			sharedResources->m_uploadedGlobalIlluminationCoefficients =
+				InvalidContentHash;
+			sharedResources->m_uploadedGlobalIlluminationStates =
+				InvalidContentHash;
+			sharedResources->m_uploadedGlobalIlluminationHeader =
+				InvalidContentHash;
+		}
+		if (globalIlluminationStats &&
+			sharedResources->m_globalIlluminationStorage)
+		{
+			globalIlluminationStats->m_gpuAllocatedBytes =
+				sizeof(RHIGlobalIlluminationGpuHeader) +
+				sharedResources->m_globalIlluminationNodeCapacity *
+					sizeof(RHIGlobalIlluminationGpuBvhNode) +
+				sharedResources->m_globalIlluminationBrickCapacity *
+					sizeof(RHIGlobalIlluminationGpuBrick) +
+				sharedResources->m_globalIlluminationProbeCapacity *
+					sizeof(RHIGlobalIlluminationGpuProbe) +
+				sharedResources->m_globalIlluminationCoefficientCapacity *
+					sizeof(RHIGlobalIlluminationGpuCoefficients) +
+				sharedResources->m_globalIlluminationStateCapacity *
+					sizeof(RHIGlobalIlluminationGpuState);
+		}
+
+		if (bUploadSharedPayload)
+		{
+			bool bGlobalIlluminationPayloadReady = bHasGlobalIllumination;
+			std::string globalIlluminationDiagnostic;
+			if (bHasGlobalIllumination)
+			{
+				const uint64_t layoutSignature =
+					ComputeGlobalIlluminationLayoutSignature(*globalIllumination);
+				if (sharedResources->m_uploadedGlobalIlluminationLayout !=
+					layoutSignature)
+				{
+					RHIGlobalIlluminationGpuLayout gpuLayout;
+					bGlobalIlluminationPayloadReady =
+						BuildGlobalIlluminationGpuLayout(
+							*globalIllumination->m_layout,
+							gpuLayout,
+							globalIlluminationDiagnostic);
+					if (bGlobalIlluminationPayloadReady)
+					{
+						const uint64_t layoutBytes =
+							static_cast<uint64_t>(gpuLayout.m_nodes.Num()) *
+								sizeof(RHIGlobalIlluminationGpuBvhNode) +
+							static_cast<uint64_t>(gpuLayout.m_bricks.Num()) *
+								sizeof(RHIGlobalIlluminationGpuBrick) +
+							static_cast<uint64_t>(gpuLayout.m_probes.Num()) *
+								sizeof(RHIGlobalIlluminationGpuProbe);
+						commands->UpdateShaderBinding(
+							transferCommandList,
+							sharedResources->m_globalIlluminationStorage
+								->GetOrAddShaderBinding("globalIlluminationBvh"),
+							gpuLayout.m_nodes.GetData(),
+							gpuLayout.m_nodes.Num() *
+								sizeof(RHIGlobalIlluminationGpuBvhNode),
+							0u);
+						commands->UpdateShaderBinding(
+							transferCommandList,
+							sharedResources->m_globalIlluminationStorage
+								->GetOrAddShaderBinding("globalIlluminationBricks"),
+							gpuLayout.m_bricks.GetData(),
+							gpuLayout.m_bricks.Num() *
+								sizeof(RHIGlobalIlluminationGpuBrick),
+							0u);
+						commands->UpdateShaderBinding(
+							transferCommandList,
+							sharedResources->m_globalIlluminationStorage
+								->GetOrAddShaderBinding("globalIlluminationProbes"),
+							gpuLayout.m_probes.GetData(),
+							gpuLayout.m_probes.Num() *
+								sizeof(RHIGlobalIlluminationGpuProbe),
+							0u);
+						sharedResources->m_uploadedGlobalIlluminationLayout =
+							layoutSignature;
+						if (globalIlluminationStats)
+						{
+							globalIlluminationStats->m_copiedCpuBytes += layoutBytes;
+							globalIlluminationStats->m_uploadedGpuBytes += layoutBytes;
+						}
+					}
+				}
+
+				const uint64_t coefficientSignature =
+					ComputeGlobalIlluminationCoefficientSignature(
+						*globalIllumination);
+				if (bGlobalIlluminationPayloadReady &&
+					sharedResources->m_uploadedGlobalIlluminationCoefficients !=
+						coefficientSignature)
+				{
+					TVector<RHIGlobalIlluminationGpuCoefficients> coefficients;
+					bGlobalIlluminationPayloadReady =
+						BuildGlobalIlluminationGpuCoefficients(
+							*globalIllumination,
+							coefficients,
+							globalIlluminationDiagnostic);
+					if (bGlobalIlluminationPayloadReady)
+					{
+						const uint64_t coefficientBytes =
+							static_cast<uint64_t>(coefficients.Num()) *
+								sizeof(RHIGlobalIlluminationGpuCoefficients);
+						commands->UpdateShaderBinding(
+							transferCommandList,
+							sharedResources->m_globalIlluminationStorage
+								->GetOrAddShaderBinding(
+									"globalIlluminationCoefficients"),
+							coefficients.GetData(),
+							coefficients.Num() *
+								sizeof(RHIGlobalIlluminationGpuCoefficients),
+							0u);
+						sharedResources
+							->m_uploadedGlobalIlluminationCoefficients =
+							coefficientSignature;
+						if (globalIlluminationStats)
+						{
+							globalIlluminationStats->m_copiedCpuBytes += coefficientBytes;
+							globalIlluminationStats->m_uploadedGpuBytes += coefficientBytes;
+						}
+					}
+				}
+
+				const uint64_t stateSignature =
+					ComputeGlobalIlluminationStateSignature(*globalIllumination);
+				if (bGlobalIlluminationPayloadReady &&
+					sharedResources->m_uploadedGlobalIlluminationStates !=
+						stateSignature)
+				{
+					TVector<RHIGlobalIlluminationGpuState> states;
+					bGlobalIlluminationPayloadReady =
+						BuildGlobalIlluminationGpuStates(
+							*globalIllumination,
+							states,
+							globalIlluminationDiagnostic);
+					if (bGlobalIlluminationPayloadReady)
+					{
+						const uint64_t stateBytes =
+							static_cast<uint64_t>(states.Num()) *
+								sizeof(RHIGlobalIlluminationGpuState);
+						commands->UpdateShaderBinding(
+							transferCommandList,
+							sharedResources->m_globalIlluminationStorage
+								->GetOrAddShaderBinding("globalIlluminationStates"),
+							states.GetData(),
+							states.Num() *
+								sizeof(RHIGlobalIlluminationGpuState),
+							0u);
+						sharedResources->m_uploadedGlobalIlluminationStates =
+							stateSignature;
+						if (globalIlluminationStats)
+						{
+							globalIlluminationStats->m_copiedCpuBytes += stateBytes;
+							globalIlluminationStats->m_uploadedGpuBytes += stateBytes;
+						}
+					}
+				}
+			}
+
+			if (bHasGlobalIllumination && !bGlobalIlluminationPayloadReady)
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot publish Global Illumination ECS GPU snapshot: %s.",
+					globalIlluminationDiagnostic.c_str());
+			}
+			const RHIGlobalIlluminationGpuHeader header =
+				BuildGlobalIlluminationGpuHeader(
+					bGlobalIlluminationPayloadReady
+						? globalIllumination.GetRawPtr()
+						: nullptr,
+					ResolveGlobalIlluminationDebug(snapshot.m_renderMode),
+					snapshot.m_globalIlluminationMode,
+					snapshot.m_bGlobalIlluminationEnabled);
+			const uint64_t headerHash = HashSubmissionValue(header);
+			if (sharedResources->m_uploadedGlobalIlluminationHeader !=
+				headerHash)
+			{
+				commands->UpdateShaderBinding(
+					transferCommandList,
+					sharedResources->m_globalIlluminationStorage
+						->GetOrAddShaderBinding("globalIlluminationHeader"),
+					&header,
+					sizeof(header),
+					0u);
+				sharedResources->m_uploadedGlobalIlluminationHeader =
+					headerHash;
+				if (globalIlluminationStats)
+				{
+					globalIlluminationStats->m_copiedCpuBytes += sizeof(header);
+					globalIlluminationStats->m_uploadedGpuBytes += sizeof(header);
+				}
+			}
+			if (globalIlluminationStats)
+			{
+				globalIlluminationStats->m_bActive =
+					bGlobalIlluminationPayloadReady &&
+					globalIlluminationStats->m_bEnabled;
+				globalIlluminationStats->m_loadedBricks =
+					bGlobalIlluminationPayloadReady
+						? globalIlluminationStats->m_totalBricks
+						: 0u;
+			}
+		}
+
 		size_t frameGraphSamplerHash = 0u;
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_irradianceCubemap")));
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_brdfSampler")));
@@ -296,6 +715,8 @@ namespace
 			bRecreateLightCulling ||
 			resources->m_lightsTemplate != lightsTemplate ||
 			resources->m_sharedLightsStorage != sharedResources->m_lightsStorage ||
+			resources->m_sharedGlobalIlluminationStorage !=
+				sharedResources->m_globalIlluminationStorage ||
 			resources->m_lightsTemplateRevision != lightsTemplateRevision ||
 			resources->m_frameGraphSamplerHash != frameGraphSamplerHash ||
 			resources->m_shadowMatrixCapacity < numShadowMatrices ||
@@ -347,6 +768,42 @@ namespace
 				resources->m_shadowAtlasTileCapacity,
 				11u,
 				true);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationHeader"),
+				"globalIlluminationHeader",
+				12u);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationBvh"),
+				"globalIlluminationBvh",
+				13u);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationBricks"),
+				"globalIlluminationBricks",
+				14u);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationProbes"),
+				"globalIlluminationProbes",
+				15u);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationCoefficients"),
+				"globalIlluminationCoefficients",
+				16u);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationStates"),
+				"globalIlluminationStates",
+				17u);
 			CloneTextureBindings(lightsTemplate, resources->m_lightsBindings);
 			if (auto texture = owner->GetSampler("g_irradianceCubemap"))
 			{
@@ -387,10 +844,17 @@ namespace
 					"g_transmissionFramebufferSampler",
 					texture,
 					10u);
+				driver->AddSamplerToShaderBindings(
+					resources->m_lightsBindings,
+					"g_globalIlluminationProbeCellIndicesSampler",
+					texture,
+					18u);
 			}
 			resources->m_lightsBindings->RecalculateCompatibility();
 			resources->m_lightsTemplate = lightsTemplate;
 			resources->m_sharedLightsStorage = sharedResources->m_lightsStorage;
+			resources->m_sharedGlobalIlluminationStorage =
+				sharedResources->m_globalIlluminationStorage;
 			resources->m_lightsTemplateRevision = lightsTemplateRevision;
 			resources->m_frameGraphSamplerHash = frameGraphSamplerHash;
 			resources->m_shadowMatricesHash = InvalidContentHash;
@@ -487,6 +951,19 @@ namespace
 		}
 		snapshot.m_boneMatrices = sharedResources->m_boneBindings;
 	}
+}
+
+RHIGlobalIlluminationRenderStats
+RHIFrameGraph::GetGlobalIlluminationRenderStats() const
+{
+	auto& storage = GetGlobalIlluminationRenderStatsStorage();
+	storage.m_lock.Lock();
+	const RHIGlobalIlluminationRenderStats result =
+		storage.m_owner == this
+			? storage.m_stats
+			: RHIGlobalIlluminationRenderStats{};
+	storage.m_lock.Unlock();
+	return result;
 }
 
 void RHIFrameGraph::Clear()
@@ -625,6 +1102,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_drawCallStats = {};
+	RHIGlobalIlluminationRenderStats globalIlluminationRenderStats;
 
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
 	auto& driver = RHI::Renderer::GetDriver();
@@ -646,7 +1124,8 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 			this,
 			resourceUploadCommandList,
 			rhiSceneView->m_snapshots[0],
-			true);
+			true,
+			&globalIlluminationRenderStats);
 		const bool bHasSharedResourceUploads =
 			resourceUploadCommandList->GetNumRecordedCommands() > 0u;
 		driverCommands->EndCommandList(resourceUploadCommandList);
@@ -705,11 +1184,20 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		driver->SetDebugName(transferCmdList, "FrameGraph:Transfer");
 
 		driverCommands->BeginCommandList(cmdList, true);
+		uint32_t graphicsGpuFrameTimeRange =
+			driver->BeginGpuFrameTimeRange(cmdList);
 		driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
 		driverCommands->BeginCommandList(transferCmdList, true);
+		uint32_t transferGpuFrameTimeRange =
+			driver->BeginGpuFrameTimeRange(transferCmdList);
 		driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 
-		PrepareViewSubmissionResources(this, transferCmdList, snapshot, false);
+		PrepareViewSubmissionResources(
+			this,
+			transferCmdList,
+			snapshot,
+			false,
+			nullptr);
 
 		driverCommands->BeginDebugRegion(transferCmdList, "Fill Frame Data", DebugContext::Color_CmdTransfer);
 		{
@@ -773,12 +1261,49 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 			m_lastFrameGpuStats.m_barriers.Clear();
 		}
 
-		driver->StartGpuTracking();
+		const bool bExecuteQueries = driver->StartGpuTracking();
 
+		uint32_t nodeIndex = 0u;
 		for (auto& node : m_graph)
 		{
+			uint32_t graphicsTimestamp = RHI::InvalidGpuTimestampQuery;
+			uint32_t computeTimestamp = RHI::InvalidGpuTimestampQuery;
+			if (bExecuteQueries)
+			{
+				std::string timingName =
+					std::format("{:02d} {}", nodeIndex, node->GetTag());
+				std::string renderQueueTag;
+				if (node->TryGetString("Tag", renderQueueTag) &&
+					!renderQueueTag.empty())
+				{
+					timingName += "/" + renderQueueTag;
+				}
+				std::string shader;
+				if (node->TryGetString("shader", shader) && !shader.empty())
+				{
+					timingName += "/" + shader;
+				}
+
+				graphicsTimestamp = driverCommands->BeginGpuTimestamp(
+					cmdList,
+					timingName);
+				computeTimestamp = driverCommands->BeginGpuTimestamp(
+					transferCmdList,
+					timingName);
+			}
+
 			node->Process(frameRefPtr, transferCmdList, cmdList, snapshot);
+			if (bExecuteQueries)
+			{
+				driverCommands->EndGpuTimestamp(
+					transferCmdList,
+					computeTimestamp);
+				driverCommands->EndGpuTimestamp(
+					cmdList,
+					graphicsTimestamp);
+			}
 			m_drawCallStats += node->GetDrawCallStats();
+			++nodeIndex;
 
 			const uint32_t numRecordedCommands = transferCmdList->GetNumRecordedCommands() + cmdList->GetNumRecordedCommands();
 			const uint32_t gpuCost = transferCmdList->GetGPUCost() + cmdList->GetGPUCost();
@@ -787,9 +1312,15 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 				SAILOR_PROFILE_SCOPE("Chaining command lists");
 
 				driverCommands->EndDebugRegion(cmdList);
+				driver->EndGpuFrameTimeRange(
+					cmdList,
+					graphicsGpuFrameTimeRange);
 				driverCommands->EndCommandList(cmdList);
 
 				driverCommands->EndDebugRegion(transferCmdList);
+				driver->EndGpuFrameTimeRange(
+					transferCmdList,
+					transferGpuFrameTimeRange);
 				driverCommands->EndCommandList(transferCmdList);
 
 				// Create tasks
@@ -869,9 +1400,13 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					driver->SetDebugName(transferCmdList, "FrameGraph:Transfer");
 
 					driverCommands->BeginCommandList(cmdList, true);
+					graphicsGpuFrameTimeRange =
+						driver->BeginGpuFrameTimeRange(cmdList);
 					driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
 
 					driverCommands->BeginCommandList(transferCmdList, true);
+					transferGpuFrameTimeRange =
+						driver->BeginGpuFrameTimeRange(transferCmdList);
 					driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 				}
 			}
@@ -879,9 +1414,15 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		}
 
 		driverCommands->EndDebugRegion(cmdList);
+		driver->EndGpuFrameTimeRange(
+			cmdList,
+			graphicsGpuFrameTimeRange);
 		driverCommands->EndCommandList(cmdList);
 
 		driverCommands->EndDebugRegion(transferCmdList);
+		driver->EndGpuFrameTimeRange(
+			transferCmdList,
+			transferGpuFrameTimeRange);
 		driverCommands->EndCommandList(transferCmdList);
 
 		{
@@ -907,6 +1448,9 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	}
 
 	outWaitSemaphore = frameGraphChainSemaphore;
+	PublishGlobalIlluminationRenderStats(
+		this,
+		globalIlluminationRenderStats);
 	return true;
 }
 

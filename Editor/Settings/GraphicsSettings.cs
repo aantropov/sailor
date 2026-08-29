@@ -51,6 +51,8 @@ public sealed record GraphicsQualityPresetSettings
     public int SkyResolution { get; init; }
     public int VegetationInstanceBudget { get; init; }
     public int LodBias { get; init; }
+    public bool EnableGlobalIllumination { get; init; } = true;
+    public int MaxGiProbeStatesPerSnapshot { get; init; }
 }
 
 public sealed record GraphicsQualityPresets
@@ -124,14 +126,15 @@ public static class GraphicsSettingsDefaults
             FpsCap = 120,
             MsaaSamples = 8,
             ShadowQuality = GraphicsShadowQuality.High,
-            ShadowBias = 0.0,
+            ShadowBias = 1.25,
             ShadowCascadeCount = 4,
             ShadowCascadeResolutions = [4096, 2048, 2048, 1024],
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 1.0,
             SkyResolution = 512,
-            VegetationInstanceBudget = 65536,
-            LodBias = -1
+            VegetationInstanceBudget = 16384,
+            LodBias = -1,
+            MaxGiProbeStatesPerSnapshot = 4
         },
         High = new GraphicsQualityPresetSettings
         {
@@ -139,14 +142,15 @@ public static class GraphicsSettingsDefaults
             FpsCap = 120,
             MsaaSamples = 4,
             ShadowQuality = GraphicsShadowQuality.High,
-            ShadowBias = 0.0,
+            ShadowBias = 1.25,
             ShadowCascadeCount = 4,
             ShadowCascadeResolutions = [2048, 2048, 1024, 1024],
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 0.75,
             SkyResolution = 256,
-            VegetationInstanceBudget = 32768,
-            LodBias = 0
+            VegetationInstanceBudget = 8192,
+            LodBias = 0,
+            MaxGiProbeStatesPerSnapshot = 3
         },
         Medium = new GraphicsQualityPresetSettings
         {
@@ -154,14 +158,15 @@ public static class GraphicsSettingsDefaults
             FpsCap = 120,
             MsaaSamples = 2,
             ShadowQuality = GraphicsShadowQuality.Medium,
-            ShadowBias = 0.0,
+            ShadowBias = 1.25,
             ShadowCascadeCount = 3,
             ShadowCascadeResolutions = [2048, 1024, 512],
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 0.5,
             SkyResolution = 256,
-            VegetationInstanceBudget = 16384,
-            LodBias = 0
+            VegetationInstanceBudget = 4096,
+            LodBias = 0,
+            MaxGiProbeStatesPerSnapshot = 2
         },
         Low = new GraphicsQualityPresetSettings
         {
@@ -169,14 +174,15 @@ public static class GraphicsSettingsDefaults
             FpsCap = 120,
             MsaaSamples = 1,
             ShadowQuality = GraphicsShadowQuality.Low,
-            ShadowBias = 0.0,
+            ShadowBias = 1.25,
             ShadowCascadeCount = 2,
             ShadowCascadeResolutions = [1024, 512],
             SupportSoftShadows = false,
             CloudsResolutionMultiplier = 0.25,
             SkyResolution = 128,
-            VegetationInstanceBudget = 8192,
-            LodBias = 1
+            VegetationInstanceBudget = 2048,
+            LodBias = 1,
+            MaxGiProbeStatesPerSnapshot = 2
         },
         VeryLow = new GraphicsQualityPresetSettings
         {
@@ -184,14 +190,15 @@ public static class GraphicsSettingsDefaults
             FpsCap = 120,
             MsaaSamples = 1,
             ShadowQuality = GraphicsShadowQuality.VeryLow,
-            ShadowBias = 0.0,
+            ShadowBias = 1.25,
             ShadowCascadeCount = 1,
             ShadowCascadeResolutions = [512],
             SupportSoftShadows = false,
             CloudsResolutionMultiplier = 0.125,
             SkyResolution = 64,
-            VegetationInstanceBudget = 2048,
-            LodBias = 2
+            VegetationInstanceBudget = 512,
+            LodBias = 2,
+            MaxGiProbeStatesPerSnapshot = 1
         }
     };
 
@@ -401,6 +408,15 @@ public static class GraphicsSettingsValidator
         if (preset.LodBias is < -8 or > 8)
         {
             AddRangeIssue(issues, $"{path}.lodBias", "LOD bias", "-8 and 8");
+        }
+
+        if (preset.MaxGiProbeStatesPerSnapshot is < 0 or > 16)
+        {
+            AddRangeIssue(
+                issues,
+                $"{path}.maxGiProbeStatesPerSnapshot",
+                "Maximum GI probe states per snapshot",
+                "0 and 16");
         }
     }
 
@@ -705,7 +721,17 @@ public static class GraphicsSettingsYamlCodec
                 $"{path}.vegetationInstanceBudget",
                 defaults.VegetationInstanceBudget,
                 issues),
-            LodBias = ReadInt(preset, "lodBias", $"{path}.lodBias", issues)
+            LodBias = ReadInt(preset, "lodBias", $"{path}.lodBias", issues),
+            EnableGlobalIllumination = ReadBool(
+                preset,
+                "enableGlobalIllumination",
+                $"{path}.enableGlobalIllumination",
+                issues),
+            MaxGiProbeStatesPerSnapshot = ReadInt(
+                preset,
+                "maxGiProbeStatesPerSnapshot",
+                $"{path}.maxGiProbeStatesPerSnapshot",
+                issues)
         };
     }
 
@@ -729,6 +755,14 @@ public static class GraphicsSettingsYamlCodec
         SetScalar(preset, "skyResolution", settings.SkyResolution);
         SetScalar(preset, "vegetationInstanceBudget", settings.VegetationInstanceBudget);
         SetScalar(preset, "lodBias", settings.LodBias);
+        SetScalar(
+            preset,
+            "enableGlobalIllumination",
+            settings.EnableGlobalIllumination);
+        SetScalar(
+            preset,
+            "maxGiProbeStatesPerSnapshot",
+            settings.MaxGiProbeStatesPerSnapshot);
     }
 
     static YamlMappingNode ReadMapping(
@@ -792,23 +826,11 @@ public static class GraphicsSettingsYamlCodec
         ICollection<GraphicsSettingsValidationIssue> issues)
     {
         if (parent is null ||
-            !parent.Children.TryGetValue(new YamlScalarNode(key), out var node))
+            !parent.Children.ContainsKey(new YamlScalarNode(key)))
         {
             return defaultValue;
         }
-        if (node is YamlScalarNode scalar &&
-            scalar.Value is not null &&
-            int.TryParse(
-                scalar.Value,
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var parsed))
-        {
-            return parsed;
-        }
-
-        issues.Add(new GraphicsSettingsValidationIssue(path, "An integer value is required."));
-        return 0;
+        return ReadInt(parent, key, path, issues);
     }
 
     static double ReadDouble(

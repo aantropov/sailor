@@ -1,0 +1,419 @@
+name: GlobalIlluminationLandscapeEveningBounce
+globalIllumination:
+  mode: RealtimeAndBaked
+  probes:
+    Evening Landscape Bounce:
+      asset:
+        fileId: 15500000-0000-4000-8000-000000000005
+      mode: Blend
+      initialWeight: 1
+      preload: true
+prefabs:
+  - gameObjects:
+      - name: GlobalIlluminationLandscapeEveningBounce
+        mobilityType: Stationary
+        position:
+          - 0
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 15515515515515515511
+        components:
+          - 0
+    components:
+      - typename: Sailor::GlobalIlluminationLandscapeVisualTestComponent
+        overrideProperties:
+          screenshotName: GlobalIlluminationLandscapeEveningBounce_GIOnly
+          captureAfterFrames: 220
+          quitAfterFinish: true
+          minRunTimeSeconds: 2
+          rayBiasBase: 0.0500000007
+          fileId: ""
+          enablePathTracer: false
+          enablePathTracerNode: true
+          samplesPerFrame: 1
+          testName: GlobalIlluminationLandscapeEveningBounce
+          maxBounces: 1
+          blend: 1
+          rayBiasScale: 1
+          instanceId: 15500000000040008000000000000011_15515515515515515511
+  - gameObjects:
+      - name: Evening Landscape
+        mobilityType: Stationary
+        position:
+          - 0
+          - -4
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 15515515515515515512
+        components:
+          - 0
+    components:
+      - typename: Sailor::LandscapeComponent
+        overrideProperties:
+          chunksX: 2
+          chunkResolution: 16
+          instanceId: 15500000000040008000000000000101_15515515515515515512
+          chunksZ: 2
+          paintStamps: ~
+          vegetationMaxScale: ~
+          vegetationColliderOffsetY: ~
+          chunkSize: 32
+          heightScale: 0
+          vegetationMeshIndex: ~
+          noiseScale: 0.0350000001
+          vegetationColliderHeight: ~
+          seed: 155
+          vegetationMinLod: ~
+          material:
+            fileId: 15500000-0000-4000-8000-000000000101
+            instanceId: ""
+          sculptStamps:
+            - -23
+            - -7
+            - 20
+            - 9
+            - 0
+            - 23
+            - -9
+            - 21
+            - 8
+            - 0
+            - -5
+            - 26
+            - 27
+            - 6
+            - 0
+            - 4
+            - -28
+            - 22
+            - 5
+            - 0
+          vegetationLod2ScreenCoverage: ~
+          layerTextures:
+            - B4320C76-1CCD-4B31-A1F3-8BDBC69126F8
+            - 3BED67FC-52C7-4960-9BF0-3ED4C77C7F5B
+            - 5707252A-D797-4525-B1AB-208835A97169
+            - B8771893-0C2D-4327-9067-9DACF3AC6169
+          textureTiling: 0.0900000036
+          vegetationInstancesPerChunk: ~
+          regenerate: false
+          heightmapTexture: ""
+          vegetationMaterials: ~
+          vegetationMaxLod: ~
+          materialMasks: ~
+          vegetationGroundOffset: ~
+          vegetationLod1ScreenCoverage: ~
+          vegetationColliderRadius: ~
+          fileId: ""
+          vegetationModels: ~
+          vegetationMinScale: ~
+          vegetationShadowMode: ~
+          vegetationShadowDistance: ~
+          vegetationCullDistance: ~
+          flatten: false
+  - gameObjects:
+      - name: Evening Shadow Ridge
+        mobilityType: Stationary
+        position:
+          - 1.5
+          - 1
+          - -7
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 11
+          - 5
+          - 1.25
+          - 1
+        parentIndex: 4294967295
+        instanceId: 15515515515515515513
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - 15500000-0000-4000-8000-000000000102
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: 15500000000040008000000000000102_15515515515515515513
+          fileId: ""
+  - gameObjects:
+      - name: Sunlit Bounce Cliff
+        mobilityType: Stationary
+        position:
+          - 14
+          - 4
+          - -2
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1.25
+          - 8
+          - 11
+          - 1
+        parentIndex: 4294967295
+        instanceId: 15515515515515515514
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - 15500000-0000-4000-8000-000000000103
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: 15500000000040008000000000000103_15515515515515515514
+          fileId: ""
+  - gameObjects:
+      - name: Shadow Valley Receiver
+        mobilityType: Stationary
+        position:
+          - 3.5
+          - -1.5
+          - 1
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 2.5
+          - 2.5
+          - 3.5
+          - 1
+        parentIndex: 4294967295
+        instanceId: 15515515515515515515
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - 15500000-0000-4000-8000-000000000104
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: 15500000000040008000000000000104_15515515515515515515
+          fileId: ""
+  - gameObjects:
+      - name: Shadow Valley Lintel
+        mobilityType: Stationary
+        position:
+          - 3.5
+          - 3.5
+          - 1
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 4.5
+          - 0.600000024
+          - 4.19999981
+          - 1
+        parentIndex: 4294967295
+        instanceId: 15515515515515515516
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - 15500000-0000-4000-8000-000000000104
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: 15500000000040008000000000000105_15515515515515515516
+          fileId: ""
+  - gameObjects:
+      - name: Evening Sun
+        mobilityType: Stationary
+        position:
+          - -40
+          - 35
+          - 5
+          - 1
+        rotation:
+          - -0.112188913
+          - -0.726870656
+          - -0.122367822
+          - 0.666407406
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 15515515515515515517
+        components:
+          - 0
+    components:
+      - typename: Sailor::LightComponent
+        overrideProperties:
+          intensity:
+            - 24
+            - 12
+            - 5
+          shadowQuality: Medium
+          indirectLightingIntensity: 1
+          attenuation:
+            - 1
+            - 0
+            - 0
+          radius: 100
+          instanceId: 15500000000040008000000000000106_15515515515515515517
+          cutOff:
+            - 30
+            - 45
+          lightType: Directional
+          shadowType: PCF
+          shadowFilter: Soft
+          fileId: ""
+  - gameObjects:
+      - name: Evening Sky
+        mobilityType: Stationary
+        position:
+          - 0
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 15515515515515515518
+        components:
+          - 0
+    components:
+      - typename: Sailor::SkyComponent
+        overrideProperties:
+          sunAngle: 8
+          scatteringSteps: 5
+          m_directionalLight:
+            fileId: ""
+            instanceId: 15500000000040008000000000000106_15515515515515515517
+          cloudsDensity: 0.300000012
+          cloudsAttenuation1: 0.300000012
+          cloudsPhaseEccentricity2: 0.50999999
+          cloudsCoverage: 0
+          cloudsAttenuation2: 0.0599999987
+          cloudsPhaseInfluence1: 0.0250000004
+          cloudsPhaseEccentricity1: 0.949999988
+          cloudsPhaseInfluence2: 0.899999976
+          cloudsHorizonBlend: 10
+          scatteringDensity: 0.5
+          instanceId: 15500000000040008000000000000107_15515515515515515518
+          sunIntensity: 0
+          scatteringPhase: 0.5
+          sunShaftsIntensity: 0.00100000005
+          ambient: 0
+          scatteringIntensity: 0.5
+          directionalLightIntensity:
+            - 24
+            - 12
+            - 5
+          fileId: ""
+          sunShaftsDistance: 60
+  - gameObjects:
+      - name: Evening GI Camera
+        mobilityType: Stationary
+        position:
+          - 3
+          - 13
+          - 39
+          - 1
+        rotation:
+          - -0.138088554
+          - 0
+          - 0
+          - 0.990419865
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 15515515515515515519
+        components:
+          - 0
+          - 1
+    components:
+      - typename: Sailor::CameraComponent
+        overrideProperties:
+          fov: 58
+          zNear: 0.100000001
+          zFar: 300
+          instanceId: 15500000000040008000000000000108_15515515515515515519
+          fileId: ""
+      - typename: Sailor::EditorComponent
+        overrideProperties:
+          fileId: ""
+          instanceId: 80A5BCE52A082F83_15515515515515515519

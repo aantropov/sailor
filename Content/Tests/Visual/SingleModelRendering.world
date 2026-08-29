@@ -2,6 +2,7 @@ name: SingleModelRendering
 prefabs:
   - gameObjects:
       - name: SingleModelRendering
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -32,6 +33,7 @@ prefabs:
           instanceId: 3D5C42D92E7A4F1BA17A582A2AEF2D10_10010010010010010000
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 0
           - 130
@@ -61,6 +63,7 @@ prefabs:
           instanceId: 9A6AC30A438F49F69E4B73D72A53EF01_10010010010010010001
   - gameObjects:
       - name: Duck
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -90,6 +93,7 @@ prefabs:
           instanceId: C6D7369D31E44A56B5D8C1CA0B94A7F1_10010010010010010002
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 300

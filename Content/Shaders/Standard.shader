@@ -3,6 +3,7 @@ includes:
 - Shaders/Constants.glsl
 - Shaders/Math.glsl
 - Shaders/Lighting.glsl
+- Shaders/GlobalIllumination.glsl
 
 defines:
 - ALPHA_CUTOUT
@@ -340,13 +341,19 @@ glslFragment: |
       return 1.0f;
     }
 
+    const uint cascadeShadowType = GetDirectionalCascadeShadowType(
+      light.shadowType,
+      cascadeLayer);
     const vec3 shadowReceiverPosition = OffsetDirectionalShadowReceiver(
       worldPosition,
       surfaceNormal,
-      surfaceToLightDirection);
+      surfaceToLightDirection,
+      GetDirectionalShadowReceiverBiasScale(
+        cascadeShadowType,
+        light.shadowBias));
     const mat4 cascadeLightMatrix = lightsMatrices.instance[cascadeLayer];
     float shadow = CalculateDirectionalShadow(
-      GetDirectionalCascadeShadowType(light.shadowType, cascadeLayer),
+      cascadeShadowType,
       shadowMaps[cascadeLayer],
       cascadeLightMatrix * vec4(shadowReceiverPosition, 1.0f),
       cascadeLayer);
@@ -360,11 +367,21 @@ glslFragment: |
     if(cascadeBlend > 0.0f)
     {
       const int nextCascadeLayer = cascadeLayer + 1;
+      const uint nextCascadeShadowType = GetDirectionalCascadeShadowType(
+        light.shadowType,
+        nextCascadeLayer);
+      const vec3 nextShadowReceiverPosition = OffsetDirectionalShadowReceiver(
+        worldPosition,
+        surfaceNormal,
+        surfaceToLightDirection,
+        GetDirectionalShadowReceiverBiasScale(
+          nextCascadeShadowType,
+          light.shadowBias));
       const mat4 nextCascadeLightMatrix = lightsMatrices.instance[nextCascadeLayer];
       const float nextShadow = CalculateDirectionalShadow(
-        GetDirectionalCascadeShadowType(light.shadowType, nextCascadeLayer),
+        nextCascadeShadowType,
         shadowMaps[nextCascadeLayer],
-        nextCascadeLightMatrix * vec4(shadowReceiverPosition, 1.0f),
+        nextCascadeLightMatrix * vec4(nextShadowReceiverPosition, 1.0f),
         nextCascadeLayer);
       shadow = mix(shadow, nextShadow, cascadeBlend);
     }
@@ -419,7 +436,8 @@ glslFragment: |
       surfaceNormal,
       surfaceToLightDirection,
       length(light.worldPosition - worldPosition),
-      (packedShadowIndex & SOFT_SHADOW_MAP_BIT) != 0u);
+      (packedShadowIndex & SOFT_SHADOW_MAP_BIT) != 0u,
+      light.shadowBias);
   }
   
   const float Epsilon = 0.00001;
@@ -502,10 +520,39 @@ glslFragment: |
     return shadow * ((diffuseBRDF + specularBRDF) * Lradiance * cosLi) * falloff;    
   }
   
-  vec3 AmbientLighting(MaterialData material, vec3 F0, vec3 Lr, vec3 normal, float cosLo)
+  vec3 AmbientLighting(
+    MaterialData material,
+    vec3 F0,
+    vec3 Lr,
+    vec3 normal,
+    vec3 geometricNormal,
+    vec3 worldPosition,
+    vec3 surfaceToCamera,
+    float cosLo,
+    vec2 screenUv)
   {
-    // Sample diffuse irradiance at normal direction.
-    vec3 irradiance = texture(g_irradianceCubemap, normal).rgb;
+    // Baked probes replace diffuse environment irradiance only. Specular IBL
+    // remains sourced from the pre-filtered environment cubemap.
+    GlobalIlluminationSampleDebug globalIlluminationDebug;
+    float environmentVisibility = 1.0;
+    vec3 irradiance = vec3(0.0);
+    if(!TryResolveGlobalIlluminationDiffuseIrradiance(
+      screenUv,
+      worldPosition,
+      normal,
+      geometricNormal,
+      surfaceToCamera,
+      Lr,
+      irradiance,
+      environmentVisibility,
+      globalIlluminationDebug))
+    {
+      irradiance = texture(g_irradianceCubemap, normal).rgb;
+    }
+    if(GlobalIlluminationDebugUsesProbeData())
+    {
+      return irradiance;
+    }
     
     // Calculate Fresnel term for ambient lighting.
     // Since we use pre-filtered cubemap(s) and irradiance is coming from many directions
@@ -518,6 +565,13 @@ glslFragment: |
     
     // Irradiance map contains exitant radiance assuming Lambertian BRDF, no need to scale by 1/PI here either.
     vec3 diffuseIBL = kd * material.albedo.xyz * irradiance;
+
+    float ambientOcclusion = clamp(material.ao, 0.0, 1.0);
+    if(globalIlluminationHeader.stateAndDebug.z ==
+      GLOBAL_ILLUMINATION_DEBUG_INDIRECT_ONLY)
+    {
+      return diffuseIBL * ambientOcclusion;
+    }
     
     // Sample pre-filtered specular reflection environment at correct mipmap level.
     int specularTextureLevels = textureQueryLevels(g_envCubemap);
@@ -532,12 +586,15 @@ glslFragment: |
     // Ambient occlusion applies to all indirect lighting. Use a view- and
     // roughness-dependent approximation for specular IBL so smooth surfaces
     // retain plausible reflections without leaking them into occluded areas.
-    float ambientOcclusion = clamp(material.ao, 0.0, 1.0);
     float specularOcclusion = CalculateSpecularOcclusion(
-      ambientOcclusion,
+      min(ambientOcclusion, environmentVisibility),
       cosLo,
       material.roughness);
-    return diffuseIBL * ambientOcclusion + specularIBL * specularOcclusion;
+    vec3 indirectLighting = diffuseIBL * ambientOcclusion +
+      specularIBL * specularOcclusion;
+    return ApplyGlobalIlluminationDebug(
+      indirectLighting,
+      globalIlluminationDebug);
   }
   
   // Constant normal incidence Fresnel factor for all dielectrics.
@@ -546,17 +603,43 @@ glslFragment: |
   void main() 
   {
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
+    // gl_FragCoord is expressed in the full scene render extent. AO and the
+    // resolved GI target are lower-resolution resources, so their texture size
+    // must not be used to normalize the screen coordinate.
     const vec2 viewportUv = gl_FragCoord.xy *
-      rcp(vec2(textureSize(g_aoSampler, 0)));
+      rcp(vec2(frame.viewportSize));
     
     MaterialData material = GetMaterialData();
-    material.albedo = material.albedo * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.albedoSampler))], vin.texcoord) * vin.color;
-    material.metallic = material.metallic * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.metalnessSampler))], vin.texcoord).r;
-    material.roughness = material.roughness * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.roughnessSampler))], vin.texcoord).r;
+    if(material.albedoSampler != 0u)
+    {
+      material.albedo *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.albedoSampler))], vin.texcoord);
+    }
+    material.albedo *= vin.color;
+
+  #ifdef ALPHA_CUTOUT
+    if(material.albedo.a < 0.5)
+    {
+      discard;
+    }
+  #endif
+
+    if(material.metalnessSampler != 0u)
+    {
+      material.metallic *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.metalnessSampler))], vin.texcoord).r;
+    }
+    if(material.roughnessSampler != 0u)
+    {
+      material.roughness *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.roughnessSampler))], vin.texcoord).r;
+    }
     material.ao = texture(g_aoSampler, viewportUv).r;
     
-    vec3 normal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0);
-    normal = normalize(vin.tangentBasis * normal);
+    const vec3 geometricNormal = normalize(vin.normal);
+    vec3 normal = geometricNormal;
+    if(material.normalSampler != 0u)
+    {
+      const vec3 tangentNormal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0);
+      normal = normalize(vin.tangentBasis * tangentNormal);
+    }
     
     //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);
     outColor.xyz = vec3(0);
@@ -570,37 +653,56 @@ glslFragment: |
     // Fresnel reflectance at normal incidence (for metals use albedo color).
     vec3 F0 = mix(Fdielectric, material.albedo.xyz, material.metallic);
     
-  #ifdef ALPHA_CUTOUT
-    if(material.albedo.a < 0.5)
-    {
-      discard;
-    }
-  #endif
-  
     //outColor.xyz += vec3(texture(g_envCubemap, R).xyz);
     //outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), vin.normal.xyz)) * 0.5;
   
-    const uint tileIndex = GetLightTileIndex(gl_FragCoord.xy, frame.viewportSize);
-    const uint gridLength = uint(lightsGrid.instance.length());
-    const bool hasLightTile = tileIndex < gridLength;
-    const uint offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0;
-    const uint listLength = uint(culledLights.indices.length());
-    const uint availableLights = offset < listLength ? listLength - offset : 0;
-    const uint packedNumLights = hasLightTile ? lightsGrid.instance[tileIndex].num : 0u;
-    const bool lightsOverflow = (packedNumLights & LIGHT_TILE_OVERFLOW_BIT) != 0u;
-    const uint numLights = !hasLightTile ? 0u :
+    const bool bEvaluateDirectLighting =
+      !GlobalIlluminationDebugSuppressesDirectLighting();
+    uint offset = 0u;
+    bool lightsOverflow = false;
+    uint numLights = 0u;
+    if(bEvaluateDirectLighting)
+    {
+      const uint tileIndex = GetLightTileIndex(
+        gl_FragCoord.xy,
+        frame.viewportSize);
+      const uint gridLength = uint(lightsGrid.instance.length());
+      const bool hasLightTile = tileIndex < gridLength;
+      offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0u;
+      const uint listLength = uint(culledLights.indices.length());
+      const uint availableLights = offset < listLength
+        ? listLength - offset
+        : 0u;
+      const uint packedNumLights = hasLightTile
+        ? lightsGrid.instance[tileIndex].num
+        : 0u;
+      lightsOverflow =
+        (packedNumLights & LIGHT_TILE_OVERFLOW_BIT) != 0u;
+      numLights = !hasLightTile ? 0u :
     #ifdef SUPPORT_LIGHTS_OVERFLOW
         (lightsOverflow ? min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(light.instance.length())) :
             min(packedNumLights & LIGHT_TILE_COUNT_MASK, availableLights));
     #else
         min(min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(LIGHTS_PER_TILE)), availableLights);
     #endif
+    }
     
-    const vec3 indirectLighting = AmbientLighting(material, F0, Lr, normal, cosLo);
+    const vec3 indirectLighting = AmbientLighting(
+      material,
+      F0,
+      Lr,
+      normal,
+      geometricNormal,
+      vin.worldPosition,
+      -viewDirection,
+      cosLo,
+      viewportUv);
     outColor.xyz = indirectLighting;
     
-    for(int i = 0; i < numLights; i++)
+    if(bEvaluateDirectLighting)
     {
+      for(int i = 0; i < numLights; i++)
+      {
     #ifdef SUPPORT_LIGHTS_OVERFLOW
         uint index = lightsOverflow ? uint(i) : culledLights.indices[offset + i];
     #else
@@ -614,11 +716,11 @@ glslFragment: |
         }
 
         outColor.xyz += CalculateLighting(light.instance[index], index, material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
+      }
+      outColor.xyz = indirectLighting +
+        (outColor.xyz - indirectLighting) *
+        CalculateDirectLightingOcclusion(material.ao);
     }
-
-    outColor.xyz = indirectLighting +
-      (outColor.xyz - indirectLighting) *
-      CalculateDirectLightingOcclusion(material.ao);
 
     outColor.a = material.albedo.a;
   }

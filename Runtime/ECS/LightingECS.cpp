@@ -6,6 +6,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/DebugContext.h"
 #include "Engine/GameObject.h"
+#include "GlobalIllumination/GISettings.h"
 #include "FrameGraph/ShadowPrepassNode.h"
 #include "Settings/GraphicsSettings.h"
 
@@ -234,7 +235,8 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 	for (size_t index = 0; index < numGpuLightSlots; ++index)
 	{
 		auto& data = m_components[index];
-		if (data.m_bIsActive && data.m_owner)
+		if (data.m_bIsActive && data.m_owner &&
+			ContributesToRealtimeLighting(data.m_globalIlluminationMode))
 		{
 			numLights = static_cast<uint32_t>(index) + 1u;
 		}
@@ -250,7 +252,8 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 		auto& data = m_components[index];
 		GameObject* owner = data.m_owner ?
 			static_cast<GameObject*>(data.m_owner.GetRawPtr()) : nullptr;
-		const bool bIsUsable = data.m_bIsActive && owner;
+		const bool bIsUsable = data.m_bIsActive && owner &&
+			ContributesToRealtimeLighting(data.m_globalIlluminationMode);
 		bool bShouldWrite = false;
 		LightShaderData shaderData{};
 
@@ -270,6 +273,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 					graphicsProfile.m_shadowCascadeCount,
 					1u,
 					NumCascades);
+				shaderData.m_shadowBias = graphicsProfile.m_shadowBias;
 				shaderData.m_attenuation = data.m_attenuation;
 				shaderData.m_bounds = glm::vec3(data.m_radius);
 				shaderData.m_intensity = data.m_intensity;
@@ -352,7 +356,9 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 	for (size_t index = 0; index < numGpuLightSlots; index++)
 	{
 		auto& light = m_components[index];
-		if (light.m_shadowType != RHI::EShadowType::None && light.m_bIsActive)
+		if (light.m_shadowType != RHI::EShadowType::None &&
+			light.m_bIsActive &&
+			ContributesToRealtimeLighting(light.m_globalIlluminationMode))
 		{
 			GameObject* owner = light.m_owner ?
 				static_cast<GameObject*>(light.m_owner.GetRawPtr()) : nullptr;
@@ -1228,6 +1234,8 @@ void LightingECS::ReleaseUnusedLocalShadowAllocations(uint64_t frame)
 		const bool bComponentCannotCastShadows =
 			componentIndex >= m_components.Num() ||
 			!m_components[componentIndex].m_bIsActive ||
+			!ContributesToRealtimeLighting(
+				m_components[componentIndex].m_globalIlluminationMode) ||
 			m_components[componentIndex].m_shadowType == RHI::EShadowType::None;
 		const bool bExpired = frame > allocation.m_lastUsedFrame &&
 			frame - allocation.m_lastUsedFrame > LocalShadowCacheRetentionFrames;
@@ -1676,6 +1684,19 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 
 void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) const
 {
+	CollectLightProxies(outLights, false);
+}
+
+void LightingECS::GetGlobalIlluminationBakeLightProxies(
+	TVector<Raytracing::LightProxy>& outLights) const
+{
+	CollectLightProxies(outLights, true);
+}
+
+void LightingECS::CollectLightProxies(
+	TVector<Raytracing::LightProxy>& outLights,
+	bool bGlobalIlluminationBakeContributorsOnly) const
+{
 	outLights.Clear();
 	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
 	outLights.Reserve(numGpuLightSlots);
@@ -1687,10 +1708,23 @@ void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) co
 		{
 			continue;
 		}
+		const bool bContributes = bGlobalIlluminationBakeContributorsOnly ?
+			ContributesToBakedGlobalIllumination(
+				light.m_globalIlluminationMode) :
+			ContributesToRealtimeLighting(light.m_globalIlluminationMode);
+		if (!bContributes)
+		{
+			continue;
+		}
 
 		GameObject* pOwner = light.m_owner ?
 			static_cast<GameObject*>(light.m_owner.GetRawPtr()) : nullptr;
 		if (!pOwner)
+		{
+			continue;
+		}
+		if (bGlobalIlluminationBakeContributorsOnly &&
+			!IsGlobalIlluminationBakeContributor(pOwner->GetMobilityType()))
 		{
 			continue;
 		}
@@ -1702,6 +1736,8 @@ void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) co
 		lightProxy.m_worldPosition = transform.GetWorldPosition();
 		lightProxy.m_direction = glm::normalize(transform.GetForwardVector());
 		lightProxy.m_intensity = light.m_intensity;
+		lightProxy.m_indirectLightingIntensity =
+			light.m_indirectLightingIntensity;
 		lightProxy.m_attenuation = light.m_attenuation;
 		lightProxy.m_bounds = glm::vec3(light.m_radius);
 		lightProxy.m_cutOff = vec2(glm::cos(glm::radians(light.m_cutOff.x)), glm::cos(glm::radians(light.m_cutOff.y)));

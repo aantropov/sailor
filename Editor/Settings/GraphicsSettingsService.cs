@@ -870,5 +870,8 @@ static class GraphicsSettingsEquality
                 right.CloudsResolutionMultiplier) &&
             left.SkyResolution == right.SkyResolution &&
             left.VegetationInstanceBudget == right.VegetationInstanceBudget &&
-            left.LodBias == right.LodBias;
+            left.LodBias == right.LodBias &&
+            left.EnableGlobalIllumination == right.EnableGlobalIllumination &&
+            left.MaxGiProbeStatesPerSnapshot ==
+                right.MaxGiProbeStatesPerSnapshot;
 }

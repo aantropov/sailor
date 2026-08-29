@@ -26,6 +26,7 @@ struct LightData
   uint type;
   uint shadowType;
   uint activeCascadeCount;
+  float shadowBias;
   vec3 worldPosition;
   vec3 direction;
   vec3 intensity;
@@ -339,7 +340,8 @@ float CalculateLocalPcfShadow(
   vec3 surfaceNormal,
   vec3 surfaceToLightDirection,
   float surfaceToLightDistance,
-  bool softShadow)
+  bool softShadow,
+  float receiverBiasScale)
 {
   const vec3 normal = normalize(surfaceNormal);
   const vec3 toLight = normalize(surfaceToLightDirection);
@@ -350,9 +352,11 @@ float CalculateLocalPcfShadow(
   const float receiverTexelWorldSize = max(
     2.0f * surfaceToLightDistance / tileResolution,
     0.001f);
-  const vec3 receiverPosition = worldPosition +
+  const vec3 receiverOffset =
     normal * receiverTexelWorldSize * (1.0f + slope) +
     toLight * receiverTexelWorldSize * 0.25f;
+  const vec3 receiverPosition = worldPosition +
+    receiverOffset * receiverBiasScale;
 
   const vec4 fragPosLightSpace = lightMatrix * vec4(receiverPosition, 1.0f);
   vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
@@ -575,13 +579,25 @@ float CalculateDirectionalShadow(
 vec3 OffsetDirectionalShadowReceiver(
   vec3 worldPosition,
   vec3 surfaceNormal,
-  vec3 surfaceToLightDirection)
+  vec3 surfaceToLightDirection,
+  float receiverBiasScale)
 {
   const vec3 normal = normalize(surfaceNormal);
   const vec3 toLight = normalize(surfaceToLightDirection);
   const float cosTheta = clamp(dot(normal, toLight), 0.0f, 1.0f);
   const float sinTheta = sqrt(max(1.0f - cosTheta * cosTheta, 0.0f));
   return worldPosition +
-    toLight * SHADOW_RECEIVER_LIGHT_OFFSET +
-    normal * (SHADOW_RECEIVER_NORMAL_OFFSET * sinTheta);
+    receiverBiasScale * (
+      toLight * SHADOW_RECEIVER_LIGHT_OFFSET +
+      normal * (SHADOW_RECEIVER_NORMAL_OFFSET * sinTheta));
+}
+
+float GetDirectionalShadowReceiverBiasScale(
+  uint shadowType,
+  float configuredBias)
+{
+  // The quality setting is explicitly a PCF bias. Preserve the established
+  // receiver offset for the EVSM near cascade while making PCF receivers,
+  // including Landscape, follow the active profile.
+  return shadowType == SHADOW_TYPE_PCF ? configuredBias : 1.0f;
 }

@@ -4,17 +4,20 @@ namespace SailorEditor.Layout;
 
 public static class LayoutOperations
 {
+    public const int CurrentLayoutVersion = 1;
+
     public static EditorLayout CreateDefaultLayout()
     {
         var contentPanel = new PanelReference(PanelId.New(), new PanelTypeId("Content"));
         var hierarchyPanel = new PanelReference(PanelId.New(), new PanelTypeId("Hierarchy"));
         var inspectorPanel = new PanelReference(PanelId.New(), new PanelTypeId("Inspector"));
+        var lightingPanel = new PanelReference(PanelId.New(), new PanelTypeId("Lighting"));
         var scenePanel = new PanelReference(PanelId.New(), new PanelTypeId("Scene"));
         var consolePanel = new PanelReference(PanelId.New(), new PanelTypeId("Console"));
         var aiPanel = new PanelReference(PanelId.New(), new PanelTypeId("AI"));
 
         return new EditorLayout(
-            1,
+            CurrentLayoutVersion,
             new LayoutRoot(
                 new SplitNode(
                     SplitOrientation.Horizontal,
@@ -35,7 +38,7 @@ public static class LayoutOperations
                             ],
                             [0.72, 0.28],
                             MinSizes: [280, 140]),
-                        new TabGroupNode(PanelRole.Tool, [inspectorPanel, aiPanel], inspectorPanel.PanelId, "right-inspector")
+                        new TabGroupNode(PanelRole.Tool, [inspectorPanel, lightingPanel, aiPanel], inspectorPanel.PanelId, "right-inspector")
                     ],
                     [0.22, 0.56, 0.22],
                     MinSizes: [220, 320, 220])),

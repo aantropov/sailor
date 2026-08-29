@@ -130,6 +130,21 @@ namespace
 		}
 	}
 
+	void TestPcfRasterShadowBiasContract()
+	{
+		constexpr float configuredBias = 1.25f;
+		Require(
+			std::abs(ShadowPrepassNode::GetRasterShadowBias(
+				RHI::EShadowType::PCF,
+				configuredBias) - configuredBias) < 0.0001f,
+			"the configured raster bias must apply to PCF shadow maps");
+		Require(
+			ShadowPrepassNode::GetRasterShadowBias(
+				RHI::EShadowType::EVSM,
+				configuredBias) == 0.0f,
+			"EVSM shadow maps must retain their unbiased rasterization path");
+	}
+
 
 
 	RHI::RHITexturePtr MakeMipTexture(uint32_t width, uint32_t height, uint32_t baseMipLevel)
@@ -867,6 +882,7 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "RendererGpuCullingPassContract", TestRendererGpuCullingPassContract },
+		{ "PcfRasterShadowBiasContract", TestPcfRasterShadowBiasContract },
 		{ "MipExtentUsesVulkanFloorAndClamp", TestMipExtentUsesVulkanFloorAndClamp },
 		{ "PackedDrawMobilityPayloadVirtualization", TestPackedDrawMobilityPayloadVirtualization },
 		{ "MaterialVersionPublicationContract", TestMaterialVersionPublicationContract },

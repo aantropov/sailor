@@ -129,6 +129,12 @@ YAML::Node WorldPrefab::Serialize() const
 
 	YAML::Node outData;
 	::Serialize(outData, "name", m_name);
+	if (!m_globalIllumination.m_probes.IsEmpty() ||
+		m_globalIllumination.m_mode !=
+			EGlobalIlluminationMode::RealtimeAndBaked)
+	{
+		outData["globalIllumination"] = m_globalIllumination.Serialize();
+	}
 
 	TVector<YAML::Node> nodes;
 	for (const auto& prefab : m_gameObjects)
@@ -162,8 +168,15 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 	m_bIsReady.store(false, std::memory_order_release);
 	m_loadDiagnostic.clear();
 	m_name.clear();
+	m_globalIllumination = {};
 	m_gameObjects.Clear();
 	::Deserialize(inData, "name", m_name);
+	if (!m_globalIllumination.Deserialize(inData, m_loadDiagnostic))
+	{
+		m_loadDiagnostic = "invalid world global illumination settings: " +
+			m_loadDiagnostic;
+		return;
+	}
 
 	if (!inData["prefabs"] || !inData["prefabs"].IsSequence())
 	{
@@ -649,6 +662,14 @@ bool WorldPrefab::BuildLinkedOverrides(
 			gameObjectOverride["name"] = expandedGameObject->m_name;
 		}
 
+		if (expandedGameObject->m_mobilityType !=
+			sourceGameObject.m_mobilityType)
+		{
+			gameObjectOverride["mobilityType"] =
+				SerializeEnum<EMobilityType>(
+					expandedGameObject->m_mobilityType);
+		}
+
 		if (!Utils::AreYamlNodesEqual(
 				YAML::Node(expandedGameObject->m_position),
 				YAML::Node(sourceGameObject.m_position)))
@@ -888,6 +909,27 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 			{
 				gameObjectOverride["name"] =
 					YAML::Clone(priorGameObjectOverride["name"]);
+			}
+
+			const bool bMobilityChangedFromBaseline =
+				baselineGameObject &&
+				expandedGameObject->m_mobilityType !=
+					baselineGameObject->m_mobilityType;
+			if (bMobilityChangedFromBaseline)
+			{
+				if (expandedGameObject->m_mobilityType !=
+					sourceGameObject.m_mobilityType)
+				{
+					gameObjectOverride["mobilityType"] =
+						SerializeEnum<EMobilityType>(
+							expandedGameObject->m_mobilityType);
+				}
+			}
+			else if (priorGameObjectOverride["mobilityType"])
+			{
+				gameObjectOverride["mobilityType"] =
+					YAML::Clone(
+						priorGameObjectOverride["mobilityType"]);
 			}
 
 			auto mergeTransformOverride = [
@@ -1284,6 +1326,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 {
 	auto res = App::GetSubmodule<WorldPrefabImporter>()->Create();
 	res->m_name = world->GetName();
+	res->m_globalIllumination = world->GetGISettings();
 
 	TVector<PendingPrefabLinkUpdate> pendingLinkUpdates;
 
@@ -1501,6 +1544,8 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 				nextEffectiveBaseline->m_gameObjects[
 					sourceGameObjectIndex];
 			baselineGameObject.m_name = liveGameObject->m_name;
+			baselineGameObject.m_mobilityType =
+				liveGameObject->m_mobilityType;
 			baselineGameObject.m_position =
 				liveGameObject->m_position;
 			baselineGameObject.m_rotation =

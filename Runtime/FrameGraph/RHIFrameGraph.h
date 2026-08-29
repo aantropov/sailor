@@ -9,6 +9,8 @@ using namespace Sailor::Framegraph;
 
 namespace Sailor::RHI
 {
+	struct RHIGlobalIlluminationRenderStats;
+
 	class RHIFrameGraph : public RHI::RHIResource
 	{
 	public:
@@ -35,6 +37,9 @@ namespace Sailor::RHI
 
 		SAILOR_API RHI::RHIMeshPtr GetFullscreenNdcQuad() { return m_postEffectPlane; }
 		SAILOR_API RHI::DrawCallStats GetDrawCallStats() const { return m_drawCallStats; }
+		SAILOR_API const TVector<RHI::GpuTiming>& GetGpuTimings() const { return m_lastFrameGpuStats.m_timings; }
+		SAILOR_API RHIGlobalIlluminationRenderStats
+			GetGlobalIlluminationRenderStats() const;
 
 		template<typename T>
 		void SetValue(const std::string& name, T value)

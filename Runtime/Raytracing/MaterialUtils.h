@@ -9,6 +9,7 @@
 #include <stb_image.h>
 
 #include <filesystem>
+#include <type_traits>
 
 using namespace Sailor;
 
@@ -40,7 +41,7 @@ namespace Sailor::Raytracing
 		}
 
 		template<typename TOutputData, typename TInputData>
-		void Initialize(TInputData* data, bool bConvertToLinear, bool bNormalMap = false)
+		void Initialize(const TInputData* data, bool bConvertToLinear, bool bNormalMap = false)
 		{
 			SAILOR_PROFILE_FUNCTION();
 
@@ -49,17 +50,21 @@ namespace Sailor::Raytracing
 			for (uint32_t i = 0; i < (uint32_t)m_width * m_height; i++)
 			{
 				TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * i);
-				TInputData* src = data + i;
+				const TInputData* src = data + i;
+				const TOutputData normalized =
+					std::is_floating_point_v<typename TInputData::value_type> ?
+						TOutputData(*src) :
+						TOutputData(*src) * (1.0f / 255.0f);
 
 				if (bNormalMap)
 				{
-					*dst = (TOutputData(*src) * (1.0f / 127.5f)) - 1.0f;
+					*dst = normalized * 2.0f - 1.0f;
 				}
 				else
 				{
 					*dst = bConvertToLinear ?
-						(TOutputData)Utils::SRGBToLinear(TOutputData(*src) * (1.0f / 255.0f)) :
-						(TOutputData(*src) * (1.0f / 255.0f));
+						(TOutputData)Utils::SRGBToLinear(normalized) :
+						normalized;
 				}
 			}
 		}
@@ -138,6 +143,7 @@ namespace Sailor::Raytracing
 	struct Material
 	{
 		glm::mat3 m_uvTransform = mat3(1);
+		glm::vec4 m_layerUvScale = vec4(1);
 
 		glm::vec4 m_baseColorFactor = vec4(1, 1, 1, 1);
 		glm::vec3 m_emissiveFactor = vec3(0, 0, 0);
@@ -165,6 +171,17 @@ namespace Sailor::Raytracing
 		bool HasOcclusionTexture() const { return m_occlusionIndex != u8(-1); }
 		bool HasTransmissionTexture() const { return m_transmissionIndex != u8(-1); }
 		bool HasThicknessTexture() const { return m_thicknessIndex != u8(-1); }
+		bool HasLayerColorTexture(size_t layer) const
+		{
+			return layer < 4u && m_layerColorIndices[layer] != u8(-1);
+		}
+		bool HasLayerColorTextures() const
+		{
+			return HasLayerColorTexture(0u) ||
+				HasLayerColorTexture(1u) ||
+				HasLayerColorTexture(2u) ||
+				HasLayerColorTexture(3u);
+		}
 
 		u8 m_baseColorIndex = u8(-1);
 		u8 m_ambientIndex = u8(-1);
@@ -178,6 +195,9 @@ namespace Sailor::Raytracing
 		u8 m_transmissionIndex = u8(-1);
 		u8 m_thicknessIndex = u8(-1);
 		u8 m_specularColorIndex = u8(-1);
+		u8 m_layerColorIndices[4] = {
+			u8(-1), u8(-1), u8(-1), u8(-1)
+		};
 
 		BlendMode m_blendMode = BlendMode::Opaque;
 	};

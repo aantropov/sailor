@@ -3,7 +3,10 @@
 #include "ECS/ECS.h"
 #include "ECS/LandscapeStreaming.h"
 #include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
+#include "Math/Bounds.h"
 #include "RHI/SceneView.h"
+
+#include <string>
 
 namespace Sailor
 {
@@ -21,6 +24,14 @@ namespace Sailor
 		Persistent = 0u,
 		Grass
 	};
+
+	constexpr EMobilityType ResolveLandscapeProxyMobility(
+		EMobilityType ownerMobility,
+		ELandscapeVegetationResidency residency) noexcept
+	{
+		return residency == ELandscapeVegetationResidency::Grass ?
+			EMobilityType::Dynamic : ownerMobility;
+	}
 
 	struct LandscapeVegetationProfile final
 	{
@@ -59,8 +70,16 @@ namespace Sailor
 		uint32_t m_instanceCount = 0u;
 		uint64_t m_revision = 0u;
 		uint64_t m_viewRevision = 0u;
+		ELandscapeVegetationResidency m_residency =
+			ELandscapeVegetationResidency::Persistent;
 		EMobilityType m_mobility = EMobilityType::Static;
 	};
+
+	constexpr bool IsLandscapeGrassProxy(
+		const LandscapeVegetationRenderProxy& proxy) noexcept
+	{
+		return proxy.m_residency == ELandscapeVegetationResidency::Grass;
+	}
 
 	struct LandscapeVegetationRenderInstances final
 	{
@@ -68,6 +87,12 @@ namespace Sailor
 		TVector<int32_t> m_lodBiases{};
 		TVector<float> m_cullDistanceScales{};
 		TVector<float> m_shadowDistanceScales{};
+	};
+
+	struct LandscapeBakeVegetationInstance final
+	{
+		size_t m_profileIndex = 0u;
+		glm::mat4 m_localMatrix{ 1.0f };
 	};
 
 	struct LandscapeChunk final
@@ -81,7 +106,22 @@ namespace Sailor
 		uint32_t m_chunkX = 0u;
 		uint32_t m_chunkZ = 0u;
 		TVector<uint32_t> m_physicsBodies{};
+		TSharedPtr<TVector<Math::Triangle>> m_bakeTriangles{};
+		TVector<LandscapeBakeVegetationInstance> m_bakeVegetation{};
+		Math::AABB m_localBounds{};
 		uint64_t m_buildRevision = 0u;
+	};
+
+	struct LandscapeBakeGeometrySnapshot final
+	{
+		std::string m_sourceId{};
+		ModelPtr m_model{};
+		int32_t m_meshIndex = -1;
+		TSharedPtr<TVector<Math::Triangle>> m_triangles{};
+		glm::mat4 m_worldMatrix{ 1.0f };
+		Math::AABB m_worldBounds{};
+		TVector<MaterialPtr> m_materials{};
+		uint64_t m_sourceRevision = 0u;
 	};
 
 	class LandscapeData final : public ECS::TComponent
@@ -173,7 +213,11 @@ namespace Sailor
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;
+		SAILOR_API void MarkDirty(GameObjectPtr owner);
 		SAILOR_API void AppendSceneView(RHI::RHISceneViewPtr& sceneView) const;
+		SAILOR_API bool CollectBakeGeometrySnapshots(
+			TVector<LandscapeBakeGeometrySnapshot>& outSnapshots,
+			std::string& outDiagnostic) const;
 		virtual uint32_t GetOrder() const override { return 990u; }
 
 	protected:
@@ -200,6 +244,7 @@ namespace Sailor
 		uint64_t m_sceneVersionRevision = 0u;
 		uint64_t m_spatialRevision = 0u;
 		size_t m_staticSpatialHash = 0u;
+		size_t m_stationarySpatialHash = 0u;
 		size_t m_dynamicSpatialHash = 0u;
 		RHI::RHISpatialSceneVersionPtr m_publishedSceneVersion{};
 		RHI::RHIScenePtr m_rhiScene{};

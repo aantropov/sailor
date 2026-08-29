@@ -1,4 +1,5 @@
 #include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
+#include "ECS/LandscapeECS.h"
 #include "ECS/LandscapeStreaming.h"
 
 #include <chrono>
@@ -160,6 +161,39 @@ namespace
 		SelectLandscapeGrassResidency(candidates, 0u, empty);
 		Require(empty.IsEmpty(),
 			"a zero instance budget must produce an empty active set");
+	}
+
+	void TestLandscapeProxiesFollowOwnerMobility()
+	{
+		for (const EMobilityType mobility : {
+			EMobilityType::Static,
+			EMobilityType::Stationary,
+			EMobilityType::Dynamic })
+		{
+			Require(
+				ResolveLandscapeProxyMobility(
+					mobility,
+					ELandscapeVegetationResidency::Persistent) == mobility,
+				"terrain and persistent vegetation must inherit their owner GameObject mobility");
+			Require(
+				ResolveLandscapeProxyMobility(
+					mobility,
+					ELandscapeVegetationResidency::Grass) ==
+					EMobilityType::Dynamic,
+				"streamed grass must remain dynamic and therefore never less movable than its owner");
+		}
+
+		LandscapeVegetationRenderProxy persistentDynamic;
+		persistentDynamic.m_mobility = EMobilityType::Dynamic;
+		persistentDynamic.m_residency =
+			ELandscapeVegetationResidency::Persistent;
+		LandscapeVegetationRenderProxy streamedGrass;
+		streamedGrass.m_mobility = EMobilityType::Dynamic;
+		streamedGrass.m_residency = ELandscapeVegetationResidency::Grass;
+		Require(
+			!IsLandscapeGrassProxy(persistentDynamic) &&
+			IsLandscapeGrassProxy(streamedGrass),
+			"grass residency must stay independent from owner-derived render mobility");
 	}
 
 	void TestGrassResidencyStabilityNeverOverridesANearerRing()
@@ -324,6 +358,7 @@ int main()
 		{ "LodCoordinatesPreserveChunkBoundaries", TestLodCoordinatesPreserveChunkBoundaries },
 		{ "LodIndicesStayWithinPackedTerrainAndSkirtVertices", TestLodIndicesStayWithinPackedTerrainAndSkirtVertices },
 		{ "GrassSelectionFillsStableChunkRingsWithinGlobalBudget", TestGrassSelectionFillsStableChunkRingsWithinGlobalBudget },
+		{ "LandscapeProxiesFollowOwnerMobility", TestLandscapeProxiesFollowOwnerMobility },
 		{ "GrassResidencyStabilityNeverOverridesANearerRing", TestGrassResidencyStabilityNeverOverridesANearerRing },
 		{ "GrassSelectionUsesOneBudgetAcrossLandscapeComponents", TestGrassSelectionUsesOneBudgetAcrossLandscapeComponents },
 		{ "GrassChunksMustOverlapTheCameraFrustum", TestGrassChunksMustOverlapTheCameraFrustum },

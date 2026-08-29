@@ -54,6 +54,7 @@ glslFragment: |
     float occlusionAttenuation;
     float occlusionBias;
     float noiseScale;
+    float normalBias;
   } data;
   
   layout(set=1, binding=1) uniform sampler2D depthSampler;
@@ -64,7 +65,6 @@ glslFragment: |
  
   const uint NumDirections = 8;
   const uint NumSamples = 8;
-  const float OcclusionOffset = 0.002f;
   
   const vec2 Directions[8] = 
   {
@@ -222,7 +222,7 @@ glslFragment: |
     
     vec3 viewSpaceNormal = normalize(GetViewSpaceNormal(fragTexcoord, depthTextureSize));
     
-    viewSpacePosition += viewSpaceNormal * OcclusionOffset;
+    viewSpacePosition += viewSpaceNormal * data.normalBias;
     
     vec2 noiseUv = fragTexcoord * depthTextureSize / max(noiseTextureSize, vec2(1.0f));
     vec3 noise = texture(noiseSampler, noiseUv).xyz;

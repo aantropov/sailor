@@ -65,6 +65,14 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 			if (r.First() == "target")
 			{
 				dst = frameGraph->GetRenderTarget(*r.Second());
+				if (!dst)
+				{
+					SAILOR_LOG_ERROR(
+						"ClearNode '%s' cannot resolve render target '%s'.",
+						GetTag().c_str(),
+						r.Second()->c_str());
+					return;
+				}
 
 				// Hack: MSAA render targets are resolved inside the VulkanDriver
 				// We need to clear internal msaa depth target
@@ -87,6 +95,14 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 				break;
 			}
 		}
+	}
+
+	if (!dst)
+	{
+		SAILOR_LOG_ERROR(
+			"ClearNode '%s' cannot resolve its target render texture.",
+			GetTag().c_str());
+		return;
 	}
 
 	commands->ImageMemoryBarrier(commandList, dst, EImageLayout::TransferDstOptimal);

@@ -11,6 +11,16 @@ public sealed class SceneViewportInteractionTests
     [InlineData("AO", SceneViewRenderMode.AmbientOcclusion)]
     [InlineData("csm", SceneViewRenderMode.Cascades)]
     [InlineData("light-tiles", SceneViewRenderMode.LightTiles)]
+    [InlineData("GI only", SceneViewRenderMode.GlobalIlluminationOnly)]
+    [InlineData("probes", SceneViewRenderMode.GlobalIlluminationProbes)]
+    [InlineData("GI bricks", SceneViewRenderMode.GlobalIlluminationBricks)]
+    [InlineData("gi_validity", SceneViewRenderMode.GlobalIlluminationValidity)]
+    [InlineData("GI visibility", SceneViewRenderMode.GlobalIlluminationVisibility)]
+    [InlineData("gi_residency", SceneViewRenderMode.GlobalIlluminationResidency)]
+    [InlineData(
+        "GI asset identity",
+        SceneViewRenderMode.GlobalIlluminationAssetIdentity)]
+    [InlineData("gi-fallback", SceneViewRenderMode.GlobalIlluminationFallback)]
     public void RenderModeName_ParsesMcpValues(
         string value,
         SceneViewRenderMode expected)

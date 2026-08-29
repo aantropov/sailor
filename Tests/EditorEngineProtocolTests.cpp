@@ -1161,6 +1161,22 @@ namespace
 			sailor::editor::v1::EDITOR_RENDER_MODE_CASCADES == 3);
 		static_assert(
 			sailor::editor::v1::EDITOR_RENDER_MODE_LIGHT_TILES == 4);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ONLY == 5);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_PROBES == 6);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_BRICKS == 7);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VALIDITY == 8);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY == 9);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_RESIDENCY == 10);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY == 11);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK == 12);
 
 		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
 		std::string admissionError;
@@ -1171,18 +1187,18 @@ namespace
 		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
 		dependencies.m_lifecycleGate = &gate;
 
-		std::string lightTilesRequest;
+		std::string visibilityRequest;
 		AppendVarintField(
-			lightTilesRequest,
+			visibilityRequest,
 			1u,
-			sailor::editor::v1::EDITOR_RENDER_MODE_LIGHT_TILES);
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY);
 		TProtocolBuffer setBuffer;
 		const auto setResponse = RequireProtocolResponse(
 			MakeRequest(
 				EditorEngineProtocolVersion,
 				129,
 				c_setEditorRenderModeCommandField,
-				lightTilesRequest),
+				visibilityRequest),
 			setBuffer,
 			dependencies);
 		Require(
@@ -1208,7 +1224,8 @@ namespace
 					getResponse.m_resultPayload.data()),
 				getResponse.m_resultPayload.size(),
 				currentMode) &&
-			currentMode == sailor::editor::v1::EDITOR_RENDER_MODE_LIGHT_TILES,
+			currentMode ==
+				sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY,
 			"the typed render-mode query must return Engine truth");
 
 		std::string invalidModeRequest;

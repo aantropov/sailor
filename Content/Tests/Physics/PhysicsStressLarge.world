@@ -2,6 +2,7 @@ name: PhysicsStressLarge
 prefabs:
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 300
           - 280
@@ -31,6 +32,7 @@ prefabs:
           instanceId: A1530000000000000000000000000001_A1530000000000000001
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 250
@@ -63,6 +65,7 @@ prefabs:
           instanceId: A1530000000000000000000000000002_A1530000000000000002
   - gameObjects:
       - name: StaticGround
+        mobilityType: Stationary
         position:
           - 0
           - -10
@@ -112,6 +115,7 @@ prefabs:
           instanceId: A1530000000000000000000000000005_A1530000000000000003
   - gameObjects:
       - name: WallNorth
+        mobilityType: Stationary
         position:
           - 0
           - 50
@@ -161,6 +165,7 @@ prefabs:
           instanceId: A1530000000000000000000000000008_A1530000000000000004
   - gameObjects:
       - name: WallSouth
+        mobilityType: Stationary
         position:
           - 0
           - 50
@@ -210,6 +215,7 @@ prefabs:
           instanceId: A153000000000000000000000000000B_A1530000000000000005
   - gameObjects:
       - name: WallWest
+        mobilityType: Stationary
         position:
           - -200
           - 50
@@ -259,6 +265,7 @@ prefabs:
           instanceId: A153000000000000000000000000000E_A1530000000000000006
   - gameObjects:
       - name: WallEast
+        mobilityType: Stationary
         position:
           - 200
           - 50
@@ -308,6 +315,7 @@ prefabs:
           instanceId: A1530000000000000000000000000011_A1530000000000000007
   - gameObjects:
       - name: Stress_00_00_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 12
@@ -355,6 +363,7 @@ prefabs:
           instanceId: A1530000000000000000000000000014_A1530000000000000008
   - gameObjects:
       - name: Stress_00_00_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 12
@@ -405,6 +414,7 @@ prefabs:
           instanceId: A1530000000000000000000000000017_A1530000000000000009
   - gameObjects:
       - name: Stress_00_00_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 12
@@ -452,6 +462,7 @@ prefabs:
           instanceId: A153000000000000000000000000001A_A153000000000000000A
   - gameObjects:
       - name: Stress_00_00_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 12
@@ -502,6 +513,7 @@ prefabs:
           instanceId: A153000000000000000000000000001D_A153000000000000000B
   - gameObjects:
       - name: Stress_00_00_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 12
@@ -549,6 +561,7 @@ prefabs:
           instanceId: A1530000000000000000000000000020_A153000000000000000C
   - gameObjects:
       - name: Stress_00_00_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 12
@@ -599,6 +612,7 @@ prefabs:
           instanceId: A1530000000000000000000000000023_A153000000000000000D
   - gameObjects:
       - name: Stress_00_00_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 12
@@ -646,6 +660,7 @@ prefabs:
           instanceId: A1530000000000000000000000000026_A153000000000000000E
   - gameObjects:
       - name: Stress_00_00_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 12
@@ -696,6 +711,7 @@ prefabs:
           instanceId: A1530000000000000000000000000029_A153000000000000000F
   - gameObjects:
       - name: Stress_00_01_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 12
@@ -746,6 +762,7 @@ prefabs:
           instanceId: A153000000000000000000000000002C_A1530000000000000010
   - gameObjects:
       - name: Stress_00_01_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 12
@@ -793,6 +810,7 @@ prefabs:
           instanceId: A153000000000000000000000000002F_A1530000000000000011
   - gameObjects:
       - name: Stress_00_01_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 12
@@ -843,6 +861,7 @@ prefabs:
           instanceId: A1530000000000000000000000000032_A1530000000000000012
   - gameObjects:
       - name: Stress_00_01_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 12
@@ -890,6 +909,7 @@ prefabs:
           instanceId: A1530000000000000000000000000035_A1530000000000000013
   - gameObjects:
       - name: Stress_00_01_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 12
@@ -940,6 +960,7 @@ prefabs:
           instanceId: A1530000000000000000000000000038_A1530000000000000014
   - gameObjects:
       - name: Stress_00_01_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 12
@@ -987,6 +1008,7 @@ prefabs:
           instanceId: A153000000000000000000000000003B_A1530000000000000015
   - gameObjects:
       - name: Stress_00_01_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 12
@@ -1037,6 +1059,7 @@ prefabs:
           instanceId: A153000000000000000000000000003E_A1530000000000000016
   - gameObjects:
       - name: Stress_00_01_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 12
@@ -1084,6 +1107,7 @@ prefabs:
           instanceId: A1530000000000000000000000000041_A1530000000000000017
   - gameObjects:
       - name: Stress_00_02_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 12
@@ -1131,6 +1155,7 @@ prefabs:
           instanceId: A1530000000000000000000000000044_A1530000000000000018
   - gameObjects:
       - name: Stress_00_02_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 12
@@ -1181,6 +1206,7 @@ prefabs:
           instanceId: A1530000000000000000000000000047_A1530000000000000019
   - gameObjects:
       - name: Stress_00_02_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 12
@@ -1228,6 +1254,7 @@ prefabs:
           instanceId: A153000000000000000000000000004A_A153000000000000001A
   - gameObjects:
       - name: Stress_00_02_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 12
@@ -1278,6 +1305,7 @@ prefabs:
           instanceId: A153000000000000000000000000004D_A153000000000000001B
   - gameObjects:
       - name: Stress_00_02_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 12
@@ -1325,6 +1353,7 @@ prefabs:
           instanceId: A1530000000000000000000000000050_A153000000000000001C
   - gameObjects:
       - name: Stress_00_02_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 12
@@ -1375,6 +1404,7 @@ prefabs:
           instanceId: A1530000000000000000000000000053_A153000000000000001D
   - gameObjects:
       - name: Stress_00_02_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 12
@@ -1422,6 +1452,7 @@ prefabs:
           instanceId: A1530000000000000000000000000056_A153000000000000001E
   - gameObjects:
       - name: Stress_00_02_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 12
@@ -1472,6 +1503,7 @@ prefabs:
           instanceId: A1530000000000000000000000000059_A153000000000000001F
   - gameObjects:
       - name: Stress_00_03_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 12
@@ -1522,6 +1554,7 @@ prefabs:
           instanceId: A153000000000000000000000000005C_A1530000000000000020
   - gameObjects:
       - name: Stress_00_03_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 12
@@ -1569,6 +1602,7 @@ prefabs:
           instanceId: A153000000000000000000000000005F_A1530000000000000021
   - gameObjects:
       - name: Stress_00_03_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 12
@@ -1619,6 +1653,7 @@ prefabs:
           instanceId: A1530000000000000000000000000062_A1530000000000000022
   - gameObjects:
       - name: Stress_00_03_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 12
@@ -1666,6 +1701,7 @@ prefabs:
           instanceId: A1530000000000000000000000000065_A1530000000000000023
   - gameObjects:
       - name: Stress_00_03_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 12
@@ -1716,6 +1752,7 @@ prefabs:
           instanceId: A1530000000000000000000000000068_A1530000000000000024
   - gameObjects:
       - name: Stress_00_03_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 12
@@ -1763,6 +1800,7 @@ prefabs:
           instanceId: A153000000000000000000000000006B_A1530000000000000025
   - gameObjects:
       - name: Stress_00_03_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 12
@@ -1813,6 +1851,7 @@ prefabs:
           instanceId: A153000000000000000000000000006E_A1530000000000000026
   - gameObjects:
       - name: Stress_00_03_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 12
@@ -1860,6 +1899,7 @@ prefabs:
           instanceId: A1530000000000000000000000000071_A1530000000000000027
   - gameObjects:
       - name: Stress_00_04_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 12
@@ -1907,6 +1947,7 @@ prefabs:
           instanceId: A1530000000000000000000000000074_A1530000000000000028
   - gameObjects:
       - name: Stress_00_04_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 12
@@ -1957,6 +1998,7 @@ prefabs:
           instanceId: A1530000000000000000000000000077_A1530000000000000029
   - gameObjects:
       - name: Stress_00_04_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 12
@@ -2004,6 +2046,7 @@ prefabs:
           instanceId: A153000000000000000000000000007A_A153000000000000002A
   - gameObjects:
       - name: Stress_00_04_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 12
@@ -2054,6 +2097,7 @@ prefabs:
           instanceId: A153000000000000000000000000007D_A153000000000000002B
   - gameObjects:
       - name: Stress_00_04_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 12
@@ -2101,6 +2145,7 @@ prefabs:
           instanceId: A1530000000000000000000000000080_A153000000000000002C
   - gameObjects:
       - name: Stress_00_04_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 12
@@ -2151,6 +2196,7 @@ prefabs:
           instanceId: A1530000000000000000000000000083_A153000000000000002D
   - gameObjects:
       - name: Stress_00_04_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 12
@@ -2198,6 +2244,7 @@ prefabs:
           instanceId: A1530000000000000000000000000086_A153000000000000002E
   - gameObjects:
       - name: Stress_00_04_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 12
@@ -2248,6 +2295,7 @@ prefabs:
           instanceId: A1530000000000000000000000000089_A153000000000000002F
   - gameObjects:
       - name: Stress_00_05_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 12
@@ -2298,6 +2346,7 @@ prefabs:
           instanceId: A153000000000000000000000000008C_A1530000000000000030
   - gameObjects:
       - name: Stress_00_05_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 12
@@ -2345,6 +2394,7 @@ prefabs:
           instanceId: A153000000000000000000000000008F_A1530000000000000031
   - gameObjects:
       - name: Stress_00_05_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 12
@@ -2395,6 +2445,7 @@ prefabs:
           instanceId: A1530000000000000000000000000092_A1530000000000000032
   - gameObjects:
       - name: Stress_00_05_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 12
@@ -2442,6 +2493,7 @@ prefabs:
           instanceId: A1530000000000000000000000000095_A1530000000000000033
   - gameObjects:
       - name: Stress_00_05_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 12
@@ -2492,6 +2544,7 @@ prefabs:
           instanceId: A1530000000000000000000000000098_A1530000000000000034
   - gameObjects:
       - name: Stress_00_05_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 12
@@ -2539,6 +2592,7 @@ prefabs:
           instanceId: A153000000000000000000000000009B_A1530000000000000035
   - gameObjects:
       - name: Stress_00_05_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 12
@@ -2589,6 +2643,7 @@ prefabs:
           instanceId: A153000000000000000000000000009E_A1530000000000000036
   - gameObjects:
       - name: Stress_00_05_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 12
@@ -2636,6 +2691,7 @@ prefabs:
           instanceId: A15300000000000000000000000000A1_A1530000000000000037
   - gameObjects:
       - name: Stress_00_06_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 12
@@ -2683,6 +2739,7 @@ prefabs:
           instanceId: A15300000000000000000000000000A4_A1530000000000000038
   - gameObjects:
       - name: Stress_00_06_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 12
@@ -2733,6 +2790,7 @@ prefabs:
           instanceId: A15300000000000000000000000000A7_A1530000000000000039
   - gameObjects:
       - name: Stress_00_06_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 12
@@ -2780,6 +2838,7 @@ prefabs:
           instanceId: A15300000000000000000000000000AA_A153000000000000003A
   - gameObjects:
       - name: Stress_00_06_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 12
@@ -2830,6 +2889,7 @@ prefabs:
           instanceId: A15300000000000000000000000000AD_A153000000000000003B
   - gameObjects:
       - name: Stress_00_06_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 12
@@ -2877,6 +2937,7 @@ prefabs:
           instanceId: A15300000000000000000000000000B0_A153000000000000003C
   - gameObjects:
       - name: Stress_00_06_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 12
@@ -2927,6 +2988,7 @@ prefabs:
           instanceId: A15300000000000000000000000000B3_A153000000000000003D
   - gameObjects:
       - name: Stress_00_06_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 12
@@ -2974,6 +3036,7 @@ prefabs:
           instanceId: A15300000000000000000000000000B6_A153000000000000003E
   - gameObjects:
       - name: Stress_00_06_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 12
@@ -3024,6 +3087,7 @@ prefabs:
           instanceId: A15300000000000000000000000000B9_A153000000000000003F
   - gameObjects:
       - name: Stress_00_07_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 12
@@ -3074,6 +3138,7 @@ prefabs:
           instanceId: A15300000000000000000000000000BC_A1530000000000000040
   - gameObjects:
       - name: Stress_00_07_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 12
@@ -3121,6 +3186,7 @@ prefabs:
           instanceId: A15300000000000000000000000000BF_A1530000000000000041
   - gameObjects:
       - name: Stress_00_07_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 12
@@ -3171,6 +3237,7 @@ prefabs:
           instanceId: A15300000000000000000000000000C2_A1530000000000000042
   - gameObjects:
       - name: Stress_00_07_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 12
@@ -3218,6 +3285,7 @@ prefabs:
           instanceId: A15300000000000000000000000000C5_A1530000000000000043
   - gameObjects:
       - name: Stress_00_07_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 12
@@ -3268,6 +3336,7 @@ prefabs:
           instanceId: A15300000000000000000000000000C8_A1530000000000000044
   - gameObjects:
       - name: Stress_00_07_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 12
@@ -3315,6 +3384,7 @@ prefabs:
           instanceId: A15300000000000000000000000000CB_A1530000000000000045
   - gameObjects:
       - name: Stress_00_07_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 12
@@ -3365,6 +3435,7 @@ prefabs:
           instanceId: A15300000000000000000000000000CE_A1530000000000000046
   - gameObjects:
       - name: Stress_00_07_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 12
@@ -3412,6 +3483,7 @@ prefabs:
           instanceId: A15300000000000000000000000000D1_A1530000000000000047
   - gameObjects:
       - name: Stress_01_00_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 33.5
@@ -3462,6 +3534,7 @@ prefabs:
           instanceId: A15300000000000000000000000000D4_A1530000000000000048
   - gameObjects:
       - name: Stress_01_00_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 33.5
@@ -3509,6 +3582,7 @@ prefabs:
           instanceId: A15300000000000000000000000000D7_A1530000000000000049
   - gameObjects:
       - name: Stress_01_00_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 33.5
@@ -3559,6 +3633,7 @@ prefabs:
           instanceId: A15300000000000000000000000000DA_A153000000000000004A
   - gameObjects:
       - name: Stress_01_00_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 33.5
@@ -3606,6 +3681,7 @@ prefabs:
           instanceId: A15300000000000000000000000000DD_A153000000000000004B
   - gameObjects:
       - name: Stress_01_00_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 33.5
@@ -3656,6 +3732,7 @@ prefabs:
           instanceId: A15300000000000000000000000000E0_A153000000000000004C
   - gameObjects:
       - name: Stress_01_00_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 33.5
@@ -3703,6 +3780,7 @@ prefabs:
           instanceId: A15300000000000000000000000000E3_A153000000000000004D
   - gameObjects:
       - name: Stress_01_00_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 33.5
@@ -3753,6 +3831,7 @@ prefabs:
           instanceId: A15300000000000000000000000000E6_A153000000000000004E
   - gameObjects:
       - name: Stress_01_00_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 33.5
@@ -3800,6 +3879,7 @@ prefabs:
           instanceId: A15300000000000000000000000000E9_A153000000000000004F
   - gameObjects:
       - name: Stress_01_01_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 33.5
@@ -3847,6 +3927,7 @@ prefabs:
           instanceId: A15300000000000000000000000000EC_A1530000000000000050
   - gameObjects:
       - name: Stress_01_01_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 33.5
@@ -3897,6 +3978,7 @@ prefabs:
           instanceId: A15300000000000000000000000000EF_A1530000000000000051
   - gameObjects:
       - name: Stress_01_01_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 33.5
@@ -3944,6 +4026,7 @@ prefabs:
           instanceId: A15300000000000000000000000000F2_A1530000000000000052
   - gameObjects:
       - name: Stress_01_01_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 33.5
@@ -3994,6 +4077,7 @@ prefabs:
           instanceId: A15300000000000000000000000000F5_A1530000000000000053
   - gameObjects:
       - name: Stress_01_01_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 33.5
@@ -4041,6 +4125,7 @@ prefabs:
           instanceId: A15300000000000000000000000000F8_A1530000000000000054
   - gameObjects:
       - name: Stress_01_01_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 33.5
@@ -4091,6 +4176,7 @@ prefabs:
           instanceId: A15300000000000000000000000000FB_A1530000000000000055
   - gameObjects:
       - name: Stress_01_01_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 33.5
@@ -4138,6 +4224,7 @@ prefabs:
           instanceId: A15300000000000000000000000000FE_A1530000000000000056
   - gameObjects:
       - name: Stress_01_01_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 33.5
@@ -4188,6 +4275,7 @@ prefabs:
           instanceId: A1530000000000000000000000000101_A1530000000000000057
   - gameObjects:
       - name: Stress_01_02_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 33.5
@@ -4238,6 +4326,7 @@ prefabs:
           instanceId: A1530000000000000000000000000104_A1530000000000000058
   - gameObjects:
       - name: Stress_01_02_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 33.5
@@ -4285,6 +4374,7 @@ prefabs:
           instanceId: A1530000000000000000000000000107_A1530000000000000059
   - gameObjects:
       - name: Stress_01_02_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 33.5
@@ -4335,6 +4425,7 @@ prefabs:
           instanceId: A153000000000000000000000000010A_A153000000000000005A
   - gameObjects:
       - name: Stress_01_02_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 33.5
@@ -4382,6 +4473,7 @@ prefabs:
           instanceId: A153000000000000000000000000010D_A153000000000000005B
   - gameObjects:
       - name: Stress_01_02_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 33.5
@@ -4432,6 +4524,7 @@ prefabs:
           instanceId: A1530000000000000000000000000110_A153000000000000005C
   - gameObjects:
       - name: Stress_01_02_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 33.5
@@ -4479,6 +4572,7 @@ prefabs:
           instanceId: A1530000000000000000000000000113_A153000000000000005D
   - gameObjects:
       - name: Stress_01_02_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 33.5
@@ -4529,6 +4623,7 @@ prefabs:
           instanceId: A1530000000000000000000000000116_A153000000000000005E
   - gameObjects:
       - name: Stress_01_02_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 33.5
@@ -4576,6 +4671,7 @@ prefabs:
           instanceId: A1530000000000000000000000000119_A153000000000000005F
   - gameObjects:
       - name: Stress_01_03_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 33.5
@@ -4623,6 +4719,7 @@ prefabs:
           instanceId: A153000000000000000000000000011C_A1530000000000000060
   - gameObjects:
       - name: Stress_01_03_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 33.5
@@ -4673,6 +4770,7 @@ prefabs:
           instanceId: A153000000000000000000000000011F_A1530000000000000061
   - gameObjects:
       - name: Stress_01_03_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 33.5
@@ -4720,6 +4818,7 @@ prefabs:
           instanceId: A1530000000000000000000000000122_A1530000000000000062
   - gameObjects:
       - name: Stress_01_03_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 33.5
@@ -4770,6 +4869,7 @@ prefabs:
           instanceId: A1530000000000000000000000000125_A1530000000000000063
   - gameObjects:
       - name: Stress_01_03_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 33.5
@@ -4817,6 +4917,7 @@ prefabs:
           instanceId: A1530000000000000000000000000128_A1530000000000000064
   - gameObjects:
       - name: Stress_01_03_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 33.5
@@ -4867,6 +4968,7 @@ prefabs:
           instanceId: A153000000000000000000000000012B_A1530000000000000065
   - gameObjects:
       - name: Stress_01_03_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 33.5
@@ -4914,6 +5016,7 @@ prefabs:
           instanceId: A153000000000000000000000000012E_A1530000000000000066
   - gameObjects:
       - name: Stress_01_03_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 33.5
@@ -4964,6 +5067,7 @@ prefabs:
           instanceId: A1530000000000000000000000000131_A1530000000000000067
   - gameObjects:
       - name: Stress_01_04_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 33.5
@@ -5014,6 +5118,7 @@ prefabs:
           instanceId: A1530000000000000000000000000134_A1530000000000000068
   - gameObjects:
       - name: Stress_01_04_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 33.5
@@ -5061,6 +5166,7 @@ prefabs:
           instanceId: A1530000000000000000000000000137_A1530000000000000069
   - gameObjects:
       - name: Stress_01_04_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 33.5
@@ -5111,6 +5217,7 @@ prefabs:
           instanceId: A153000000000000000000000000013A_A153000000000000006A
   - gameObjects:
       - name: Stress_01_04_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 33.5
@@ -5158,6 +5265,7 @@ prefabs:
           instanceId: A153000000000000000000000000013D_A153000000000000006B
   - gameObjects:
       - name: Stress_01_04_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 33.5
@@ -5208,6 +5316,7 @@ prefabs:
           instanceId: A1530000000000000000000000000140_A153000000000000006C
   - gameObjects:
       - name: Stress_01_04_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 33.5
@@ -5255,6 +5364,7 @@ prefabs:
           instanceId: A1530000000000000000000000000143_A153000000000000006D
   - gameObjects:
       - name: Stress_01_04_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 33.5
@@ -5305,6 +5415,7 @@ prefabs:
           instanceId: A1530000000000000000000000000146_A153000000000000006E
   - gameObjects:
       - name: Stress_01_04_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 33.5
@@ -5352,6 +5463,7 @@ prefabs:
           instanceId: A1530000000000000000000000000149_A153000000000000006F
   - gameObjects:
       - name: Stress_01_05_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 33.5
@@ -5399,6 +5511,7 @@ prefabs:
           instanceId: A153000000000000000000000000014C_A1530000000000000070
   - gameObjects:
       - name: Stress_01_05_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 33.5
@@ -5449,6 +5562,7 @@ prefabs:
           instanceId: A153000000000000000000000000014F_A1530000000000000071
   - gameObjects:
       - name: Stress_01_05_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 33.5
@@ -5496,6 +5610,7 @@ prefabs:
           instanceId: A1530000000000000000000000000152_A1530000000000000072
   - gameObjects:
       - name: Stress_01_05_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 33.5
@@ -5546,6 +5661,7 @@ prefabs:
           instanceId: A1530000000000000000000000000155_A1530000000000000073
   - gameObjects:
       - name: Stress_01_05_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 33.5
@@ -5593,6 +5709,7 @@ prefabs:
           instanceId: A1530000000000000000000000000158_A1530000000000000074
   - gameObjects:
       - name: Stress_01_05_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 33.5
@@ -5643,6 +5760,7 @@ prefabs:
           instanceId: A153000000000000000000000000015B_A1530000000000000075
   - gameObjects:
       - name: Stress_01_05_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 33.5
@@ -5690,6 +5808,7 @@ prefabs:
           instanceId: A153000000000000000000000000015E_A1530000000000000076
   - gameObjects:
       - name: Stress_01_05_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 33.5
@@ -5740,6 +5859,7 @@ prefabs:
           instanceId: A1530000000000000000000000000161_A1530000000000000077
   - gameObjects:
       - name: Stress_01_06_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 33.5
@@ -5790,6 +5910,7 @@ prefabs:
           instanceId: A1530000000000000000000000000164_A1530000000000000078
   - gameObjects:
       - name: Stress_01_06_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 33.5
@@ -5837,6 +5958,7 @@ prefabs:
           instanceId: A1530000000000000000000000000167_A1530000000000000079
   - gameObjects:
       - name: Stress_01_06_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 33.5
@@ -5887,6 +6009,7 @@ prefabs:
           instanceId: A153000000000000000000000000016A_A153000000000000007A
   - gameObjects:
       - name: Stress_01_06_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 33.5
@@ -5934,6 +6057,7 @@ prefabs:
           instanceId: A153000000000000000000000000016D_A153000000000000007B
   - gameObjects:
       - name: Stress_01_06_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 33.5
@@ -5984,6 +6108,7 @@ prefabs:
           instanceId: A1530000000000000000000000000170_A153000000000000007C
   - gameObjects:
       - name: Stress_01_06_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 33.5
@@ -6031,6 +6156,7 @@ prefabs:
           instanceId: A1530000000000000000000000000173_A153000000000000007D
   - gameObjects:
       - name: Stress_01_06_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 33.5
@@ -6081,6 +6207,7 @@ prefabs:
           instanceId: A1530000000000000000000000000176_A153000000000000007E
   - gameObjects:
       - name: Stress_01_06_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 33.5
@@ -6128,6 +6255,7 @@ prefabs:
           instanceId: A1530000000000000000000000000179_A153000000000000007F
   - gameObjects:
       - name: Stress_01_07_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 33.5
@@ -6175,6 +6303,7 @@ prefabs:
           instanceId: A153000000000000000000000000017C_A1530000000000000080
   - gameObjects:
       - name: Stress_01_07_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 33.5
@@ -6225,6 +6354,7 @@ prefabs:
           instanceId: A153000000000000000000000000017F_A1530000000000000081
   - gameObjects:
       - name: Stress_01_07_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 33.5
@@ -6272,6 +6402,7 @@ prefabs:
           instanceId: A1530000000000000000000000000182_A1530000000000000082
   - gameObjects:
       - name: Stress_01_07_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 33.5
@@ -6322,6 +6453,7 @@ prefabs:
           instanceId: A1530000000000000000000000000185_A1530000000000000083
   - gameObjects:
       - name: Stress_01_07_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 33.5
@@ -6369,6 +6501,7 @@ prefabs:
           instanceId: A1530000000000000000000000000188_A1530000000000000084
   - gameObjects:
       - name: Stress_01_07_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 33.5
@@ -6419,6 +6552,7 @@ prefabs:
           instanceId: A153000000000000000000000000018B_A1530000000000000085
   - gameObjects:
       - name: Stress_01_07_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 33.5
@@ -6466,6 +6600,7 @@ prefabs:
           instanceId: A153000000000000000000000000018E_A1530000000000000086
   - gameObjects:
       - name: Stress_01_07_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 33.5
@@ -6516,6 +6651,7 @@ prefabs:
           instanceId: A1530000000000000000000000000191_A1530000000000000087
   - gameObjects:
       - name: Stress_02_00_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 55
@@ -6563,6 +6699,7 @@ prefabs:
           instanceId: A1530000000000000000000000000194_A1530000000000000088
   - gameObjects:
       - name: Stress_02_00_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 55
@@ -6613,6 +6750,7 @@ prefabs:
           instanceId: A1530000000000000000000000000197_A1530000000000000089
   - gameObjects:
       - name: Stress_02_00_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 55
@@ -6660,6 +6798,7 @@ prefabs:
           instanceId: A153000000000000000000000000019A_A153000000000000008A
   - gameObjects:
       - name: Stress_02_00_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 55
@@ -6710,6 +6849,7 @@ prefabs:
           instanceId: A153000000000000000000000000019D_A153000000000000008B
   - gameObjects:
       - name: Stress_02_00_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 55
@@ -6757,6 +6897,7 @@ prefabs:
           instanceId: A15300000000000000000000000001A0_A153000000000000008C
   - gameObjects:
       - name: Stress_02_00_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 55
@@ -6807,6 +6948,7 @@ prefabs:
           instanceId: A15300000000000000000000000001A3_A153000000000000008D
   - gameObjects:
       - name: Stress_02_00_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 55
@@ -6854,6 +6996,7 @@ prefabs:
           instanceId: A15300000000000000000000000001A6_A153000000000000008E
   - gameObjects:
       - name: Stress_02_00_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 55
@@ -6904,6 +7047,7 @@ prefabs:
           instanceId: A15300000000000000000000000001A9_A153000000000000008F
   - gameObjects:
       - name: Stress_02_01_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 55
@@ -6954,6 +7098,7 @@ prefabs:
           instanceId: A15300000000000000000000000001AC_A1530000000000000090
   - gameObjects:
       - name: Stress_02_01_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 55
@@ -7001,6 +7146,7 @@ prefabs:
           instanceId: A15300000000000000000000000001AF_A1530000000000000091
   - gameObjects:
       - name: Stress_02_01_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 55
@@ -7051,6 +7197,7 @@ prefabs:
           instanceId: A15300000000000000000000000001B2_A1530000000000000092
   - gameObjects:
       - name: Stress_02_01_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 55
@@ -7098,6 +7245,7 @@ prefabs:
           instanceId: A15300000000000000000000000001B5_A1530000000000000093
   - gameObjects:
       - name: Stress_02_01_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 55
@@ -7148,6 +7296,7 @@ prefabs:
           instanceId: A15300000000000000000000000001B8_A1530000000000000094
   - gameObjects:
       - name: Stress_02_01_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 55
@@ -7195,6 +7344,7 @@ prefabs:
           instanceId: A15300000000000000000000000001BB_A1530000000000000095
   - gameObjects:
       - name: Stress_02_01_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 55
@@ -7245,6 +7395,7 @@ prefabs:
           instanceId: A15300000000000000000000000001BE_A1530000000000000096
   - gameObjects:
       - name: Stress_02_01_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 55
@@ -7292,6 +7443,7 @@ prefabs:
           instanceId: A15300000000000000000000000001C1_A1530000000000000097
   - gameObjects:
       - name: Stress_02_02_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 55
@@ -7339,6 +7491,7 @@ prefabs:
           instanceId: A15300000000000000000000000001C4_A1530000000000000098
   - gameObjects:
       - name: Stress_02_02_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 55
@@ -7389,6 +7542,7 @@ prefabs:
           instanceId: A15300000000000000000000000001C7_A1530000000000000099
   - gameObjects:
       - name: Stress_02_02_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 55
@@ -7436,6 +7590,7 @@ prefabs:
           instanceId: A15300000000000000000000000001CA_A153000000000000009A
   - gameObjects:
       - name: Stress_02_02_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 55
@@ -7486,6 +7641,7 @@ prefabs:
           instanceId: A15300000000000000000000000001CD_A153000000000000009B
   - gameObjects:
       - name: Stress_02_02_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 55
@@ -7533,6 +7689,7 @@ prefabs:
           instanceId: A15300000000000000000000000001D0_A153000000000000009C
   - gameObjects:
       - name: Stress_02_02_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 55
@@ -7583,6 +7740,7 @@ prefabs:
           instanceId: A15300000000000000000000000001D3_A153000000000000009D
   - gameObjects:
       - name: Stress_02_02_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 55
@@ -7630,6 +7788,7 @@ prefabs:
           instanceId: A15300000000000000000000000001D6_A153000000000000009E
   - gameObjects:
       - name: Stress_02_02_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 55
@@ -7680,6 +7839,7 @@ prefabs:
           instanceId: A15300000000000000000000000001D9_A153000000000000009F
   - gameObjects:
       - name: Stress_02_03_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 55
@@ -7730,6 +7890,7 @@ prefabs:
           instanceId: A15300000000000000000000000001DC_A15300000000000000A0
   - gameObjects:
       - name: Stress_02_03_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 55
@@ -7777,6 +7938,7 @@ prefabs:
           instanceId: A15300000000000000000000000001DF_A15300000000000000A1
   - gameObjects:
       - name: Stress_02_03_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 55
@@ -7827,6 +7989,7 @@ prefabs:
           instanceId: A15300000000000000000000000001E2_A15300000000000000A2
   - gameObjects:
       - name: Stress_02_03_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 55
@@ -7874,6 +8037,7 @@ prefabs:
           instanceId: A15300000000000000000000000001E5_A15300000000000000A3
   - gameObjects:
       - name: Stress_02_03_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 55
@@ -7924,6 +8088,7 @@ prefabs:
           instanceId: A15300000000000000000000000001E8_A15300000000000000A4
   - gameObjects:
       - name: Stress_02_03_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 55
@@ -7971,6 +8136,7 @@ prefabs:
           instanceId: A15300000000000000000000000001EB_A15300000000000000A5
   - gameObjects:
       - name: Stress_02_03_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 55
@@ -8021,6 +8187,7 @@ prefabs:
           instanceId: A15300000000000000000000000001EE_A15300000000000000A6
   - gameObjects:
       - name: Stress_02_03_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 55
@@ -8068,6 +8235,7 @@ prefabs:
           instanceId: A15300000000000000000000000001F1_A15300000000000000A7
   - gameObjects:
       - name: Stress_02_04_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 55
@@ -8115,6 +8283,7 @@ prefabs:
           instanceId: A15300000000000000000000000001F4_A15300000000000000A8
   - gameObjects:
       - name: Stress_02_04_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 55
@@ -8165,6 +8334,7 @@ prefabs:
           instanceId: A15300000000000000000000000001F7_A15300000000000000A9
   - gameObjects:
       - name: Stress_02_04_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 55
@@ -8212,6 +8382,7 @@ prefabs:
           instanceId: A15300000000000000000000000001FA_A15300000000000000AA
   - gameObjects:
       - name: Stress_02_04_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 55
@@ -8262,6 +8433,7 @@ prefabs:
           instanceId: A15300000000000000000000000001FD_A15300000000000000AB
   - gameObjects:
       - name: Stress_02_04_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 55
@@ -8309,6 +8481,7 @@ prefabs:
           instanceId: A1530000000000000000000000000200_A15300000000000000AC
   - gameObjects:
       - name: Stress_02_04_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 55
@@ -8359,6 +8532,7 @@ prefabs:
           instanceId: A1530000000000000000000000000203_A15300000000000000AD
   - gameObjects:
       - name: Stress_02_04_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 55
@@ -8406,6 +8580,7 @@ prefabs:
           instanceId: A1530000000000000000000000000206_A15300000000000000AE
   - gameObjects:
       - name: Stress_02_04_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 55
@@ -8456,6 +8631,7 @@ prefabs:
           instanceId: A1530000000000000000000000000209_A15300000000000000AF
   - gameObjects:
       - name: Stress_02_05_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 55
@@ -8506,6 +8682,7 @@ prefabs:
           instanceId: A153000000000000000000000000020C_A15300000000000000B0
   - gameObjects:
       - name: Stress_02_05_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 55
@@ -8553,6 +8730,7 @@ prefabs:
           instanceId: A153000000000000000000000000020F_A15300000000000000B1
   - gameObjects:
       - name: Stress_02_05_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 55
@@ -8603,6 +8781,7 @@ prefabs:
           instanceId: A1530000000000000000000000000212_A15300000000000000B2
   - gameObjects:
       - name: Stress_02_05_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 55
@@ -8650,6 +8829,7 @@ prefabs:
           instanceId: A1530000000000000000000000000215_A15300000000000000B3
   - gameObjects:
       - name: Stress_02_05_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 55
@@ -8700,6 +8880,7 @@ prefabs:
           instanceId: A1530000000000000000000000000218_A15300000000000000B4
   - gameObjects:
       - name: Stress_02_05_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 55
@@ -8747,6 +8928,7 @@ prefabs:
           instanceId: A153000000000000000000000000021B_A15300000000000000B5
   - gameObjects:
       - name: Stress_02_05_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 55
@@ -8797,6 +8979,7 @@ prefabs:
           instanceId: A153000000000000000000000000021E_A15300000000000000B6
   - gameObjects:
       - name: Stress_02_05_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 55
@@ -8844,6 +9027,7 @@ prefabs:
           instanceId: A1530000000000000000000000000221_A15300000000000000B7
   - gameObjects:
       - name: Stress_02_06_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 55
@@ -8891,6 +9075,7 @@ prefabs:
           instanceId: A1530000000000000000000000000224_A15300000000000000B8
   - gameObjects:
       - name: Stress_02_06_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 55
@@ -8941,6 +9126,7 @@ prefabs:
           instanceId: A1530000000000000000000000000227_A15300000000000000B9
   - gameObjects:
       - name: Stress_02_06_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 55
@@ -8988,6 +9174,7 @@ prefabs:
           instanceId: A153000000000000000000000000022A_A15300000000000000BA
   - gameObjects:
       - name: Stress_02_06_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 55
@@ -9038,6 +9225,7 @@ prefabs:
           instanceId: A153000000000000000000000000022D_A15300000000000000BB
   - gameObjects:
       - name: Stress_02_06_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 55
@@ -9085,6 +9273,7 @@ prefabs:
           instanceId: A1530000000000000000000000000230_A15300000000000000BC
   - gameObjects:
       - name: Stress_02_06_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 55
@@ -9135,6 +9324,7 @@ prefabs:
           instanceId: A1530000000000000000000000000233_A15300000000000000BD
   - gameObjects:
       - name: Stress_02_06_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 55
@@ -9182,6 +9372,7 @@ prefabs:
           instanceId: A1530000000000000000000000000236_A15300000000000000BE
   - gameObjects:
       - name: Stress_02_06_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 55
@@ -9232,6 +9423,7 @@ prefabs:
           instanceId: A1530000000000000000000000000239_A15300000000000000BF
   - gameObjects:
       - name: Stress_02_07_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 55
@@ -9282,6 +9474,7 @@ prefabs:
           instanceId: A153000000000000000000000000023C_A15300000000000000C0
   - gameObjects:
       - name: Stress_02_07_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 55
@@ -9329,6 +9522,7 @@ prefabs:
           instanceId: A153000000000000000000000000023F_A15300000000000000C1
   - gameObjects:
       - name: Stress_02_07_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 55
@@ -9379,6 +9573,7 @@ prefabs:
           instanceId: A1530000000000000000000000000242_A15300000000000000C2
   - gameObjects:
       - name: Stress_02_07_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 55
@@ -9426,6 +9621,7 @@ prefabs:
           instanceId: A1530000000000000000000000000245_A15300000000000000C3
   - gameObjects:
       - name: Stress_02_07_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 55
@@ -9476,6 +9672,7 @@ prefabs:
           instanceId: A1530000000000000000000000000248_A15300000000000000C4
   - gameObjects:
       - name: Stress_02_07_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 55
@@ -9523,6 +9720,7 @@ prefabs:
           instanceId: A153000000000000000000000000024B_A15300000000000000C5
   - gameObjects:
       - name: Stress_02_07_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 55
@@ -9573,6 +9771,7 @@ prefabs:
           instanceId: A153000000000000000000000000024E_A15300000000000000C6
   - gameObjects:
       - name: Stress_02_07_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 55
@@ -9620,6 +9819,7 @@ prefabs:
           instanceId: A1530000000000000000000000000251_A15300000000000000C7
   - gameObjects:
       - name: Stress_03_00_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 76.5
@@ -9670,6 +9870,7 @@ prefabs:
           instanceId: A1530000000000000000000000000254_A15300000000000000C8
   - gameObjects:
       - name: Stress_03_00_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 76.5
@@ -9717,6 +9918,7 @@ prefabs:
           instanceId: A1530000000000000000000000000257_A15300000000000000C9
   - gameObjects:
       - name: Stress_03_00_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 76.5
@@ -9767,6 +9969,7 @@ prefabs:
           instanceId: A153000000000000000000000000025A_A15300000000000000CA
   - gameObjects:
       - name: Stress_03_00_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 76.5
@@ -9814,6 +10017,7 @@ prefabs:
           instanceId: A153000000000000000000000000025D_A15300000000000000CB
   - gameObjects:
       - name: Stress_03_00_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 76.5
@@ -9864,6 +10068,7 @@ prefabs:
           instanceId: A1530000000000000000000000000260_A15300000000000000CC
   - gameObjects:
       - name: Stress_03_00_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 76.5
@@ -9911,6 +10116,7 @@ prefabs:
           instanceId: A1530000000000000000000000000263_A15300000000000000CD
   - gameObjects:
       - name: Stress_03_00_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 76.5
@@ -9961,6 +10167,7 @@ prefabs:
           instanceId: A1530000000000000000000000000266_A15300000000000000CE
   - gameObjects:
       - name: Stress_03_00_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 76.5
@@ -10008,6 +10215,7 @@ prefabs:
           instanceId: A1530000000000000000000000000269_A15300000000000000CF
   - gameObjects:
       - name: Stress_03_01_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 76.5
@@ -10055,6 +10263,7 @@ prefabs:
           instanceId: A153000000000000000000000000026C_A15300000000000000D0
   - gameObjects:
       - name: Stress_03_01_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 76.5
@@ -10105,6 +10314,7 @@ prefabs:
           instanceId: A153000000000000000000000000026F_A15300000000000000D1
   - gameObjects:
       - name: Stress_03_01_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 76.5
@@ -10152,6 +10362,7 @@ prefabs:
           instanceId: A1530000000000000000000000000272_A15300000000000000D2
   - gameObjects:
       - name: Stress_03_01_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 76.5
@@ -10202,6 +10413,7 @@ prefabs:
           instanceId: A1530000000000000000000000000275_A15300000000000000D3
   - gameObjects:
       - name: Stress_03_01_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 76.5
@@ -10249,6 +10461,7 @@ prefabs:
           instanceId: A1530000000000000000000000000278_A15300000000000000D4
   - gameObjects:
       - name: Stress_03_01_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 76.5
@@ -10299,6 +10512,7 @@ prefabs:
           instanceId: A153000000000000000000000000027B_A15300000000000000D5
   - gameObjects:
       - name: Stress_03_01_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 76.5
@@ -10346,6 +10560,7 @@ prefabs:
           instanceId: A153000000000000000000000000027E_A15300000000000000D6
   - gameObjects:
       - name: Stress_03_01_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 76.5
@@ -10396,6 +10611,7 @@ prefabs:
           instanceId: A1530000000000000000000000000281_A15300000000000000D7
   - gameObjects:
       - name: Stress_03_02_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 76.5
@@ -10446,6 +10662,7 @@ prefabs:
           instanceId: A1530000000000000000000000000284_A15300000000000000D8
   - gameObjects:
       - name: Stress_03_02_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 76.5
@@ -10493,6 +10710,7 @@ prefabs:
           instanceId: A1530000000000000000000000000287_A15300000000000000D9
   - gameObjects:
       - name: Stress_03_02_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 76.5
@@ -10543,6 +10761,7 @@ prefabs:
           instanceId: A153000000000000000000000000028A_A15300000000000000DA
   - gameObjects:
       - name: Stress_03_02_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 76.5
@@ -10590,6 +10809,7 @@ prefabs:
           instanceId: A153000000000000000000000000028D_A15300000000000000DB
   - gameObjects:
       - name: Stress_03_02_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 76.5
@@ -10640,6 +10860,7 @@ prefabs:
           instanceId: A1530000000000000000000000000290_A15300000000000000DC
   - gameObjects:
       - name: Stress_03_02_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 76.5
@@ -10687,6 +10908,7 @@ prefabs:
           instanceId: A1530000000000000000000000000293_A15300000000000000DD
   - gameObjects:
       - name: Stress_03_02_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 76.5
@@ -10737,6 +10959,7 @@ prefabs:
           instanceId: A1530000000000000000000000000296_A15300000000000000DE
   - gameObjects:
       - name: Stress_03_02_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 76.5
@@ -10784,6 +11007,7 @@ prefabs:
           instanceId: A1530000000000000000000000000299_A15300000000000000DF
   - gameObjects:
       - name: Stress_03_03_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 76.5
@@ -10831,6 +11055,7 @@ prefabs:
           instanceId: A153000000000000000000000000029C_A15300000000000000E0
   - gameObjects:
       - name: Stress_03_03_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 76.5
@@ -10881,6 +11106,7 @@ prefabs:
           instanceId: A153000000000000000000000000029F_A15300000000000000E1
   - gameObjects:
       - name: Stress_03_03_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 76.5
@@ -10928,6 +11154,7 @@ prefabs:
           instanceId: A15300000000000000000000000002A2_A15300000000000000E2
   - gameObjects:
       - name: Stress_03_03_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 76.5
@@ -10978,6 +11205,7 @@ prefabs:
           instanceId: A15300000000000000000000000002A5_A15300000000000000E3
   - gameObjects:
       - name: Stress_03_03_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 76.5
@@ -11025,6 +11253,7 @@ prefabs:
           instanceId: A15300000000000000000000000002A8_A15300000000000000E4
   - gameObjects:
       - name: Stress_03_03_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 76.5
@@ -11075,6 +11304,7 @@ prefabs:
           instanceId: A15300000000000000000000000002AB_A15300000000000000E5
   - gameObjects:
       - name: Stress_03_03_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 76.5
@@ -11122,6 +11352,7 @@ prefabs:
           instanceId: A15300000000000000000000000002AE_A15300000000000000E6
   - gameObjects:
       - name: Stress_03_03_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 76.5
@@ -11172,6 +11403,7 @@ prefabs:
           instanceId: A15300000000000000000000000002B1_A15300000000000000E7
   - gameObjects:
       - name: Stress_03_04_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 76.5
@@ -11222,6 +11454,7 @@ prefabs:
           instanceId: A15300000000000000000000000002B4_A15300000000000000E8
   - gameObjects:
       - name: Stress_03_04_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 76.5
@@ -11269,6 +11502,7 @@ prefabs:
           instanceId: A15300000000000000000000000002B7_A15300000000000000E9
   - gameObjects:
       - name: Stress_03_04_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 76.5
@@ -11319,6 +11553,7 @@ prefabs:
           instanceId: A15300000000000000000000000002BA_A15300000000000000EA
   - gameObjects:
       - name: Stress_03_04_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 76.5
@@ -11366,6 +11601,7 @@ prefabs:
           instanceId: A15300000000000000000000000002BD_A15300000000000000EB
   - gameObjects:
       - name: Stress_03_04_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 76.5
@@ -11416,6 +11652,7 @@ prefabs:
           instanceId: A15300000000000000000000000002C0_A15300000000000000EC
   - gameObjects:
       - name: Stress_03_04_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 76.5
@@ -11463,6 +11700,7 @@ prefabs:
           instanceId: A15300000000000000000000000002C3_A15300000000000000ED
   - gameObjects:
       - name: Stress_03_04_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 76.5
@@ -11513,6 +11751,7 @@ prefabs:
           instanceId: A15300000000000000000000000002C6_A15300000000000000EE
   - gameObjects:
       - name: Stress_03_04_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 76.5
@@ -11560,6 +11799,7 @@ prefabs:
           instanceId: A15300000000000000000000000002C9_A15300000000000000EF
   - gameObjects:
       - name: Stress_03_05_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 76.5
@@ -11607,6 +11847,7 @@ prefabs:
           instanceId: A15300000000000000000000000002CC_A15300000000000000F0
   - gameObjects:
       - name: Stress_03_05_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 76.5
@@ -11657,6 +11898,7 @@ prefabs:
           instanceId: A15300000000000000000000000002CF_A15300000000000000F1
   - gameObjects:
       - name: Stress_03_05_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 76.5
@@ -11704,6 +11946,7 @@ prefabs:
           instanceId: A15300000000000000000000000002D2_A15300000000000000F2
   - gameObjects:
       - name: Stress_03_05_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 76.5
@@ -11754,6 +11997,7 @@ prefabs:
           instanceId: A15300000000000000000000000002D5_A15300000000000000F3
   - gameObjects:
       - name: Stress_03_05_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 76.5
@@ -11801,6 +12045,7 @@ prefabs:
           instanceId: A15300000000000000000000000002D8_A15300000000000000F4
   - gameObjects:
       - name: Stress_03_05_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 76.5
@@ -11851,6 +12096,7 @@ prefabs:
           instanceId: A15300000000000000000000000002DB_A15300000000000000F5
   - gameObjects:
       - name: Stress_03_05_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 76.5
@@ -11898,6 +12144,7 @@ prefabs:
           instanceId: A15300000000000000000000000002DE_A15300000000000000F6
   - gameObjects:
       - name: Stress_03_05_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 76.5
@@ -11948,6 +12195,7 @@ prefabs:
           instanceId: A15300000000000000000000000002E1_A15300000000000000F7
   - gameObjects:
       - name: Stress_03_06_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 76.5
@@ -11998,6 +12246,7 @@ prefabs:
           instanceId: A15300000000000000000000000002E4_A15300000000000000F8
   - gameObjects:
       - name: Stress_03_06_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 76.5
@@ -12045,6 +12294,7 @@ prefabs:
           instanceId: A15300000000000000000000000002E7_A15300000000000000F9
   - gameObjects:
       - name: Stress_03_06_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 76.5
@@ -12095,6 +12345,7 @@ prefabs:
           instanceId: A15300000000000000000000000002EA_A15300000000000000FA
   - gameObjects:
       - name: Stress_03_06_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 76.5
@@ -12142,6 +12393,7 @@ prefabs:
           instanceId: A15300000000000000000000000002ED_A15300000000000000FB
   - gameObjects:
       - name: Stress_03_06_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 76.5
@@ -12192,6 +12444,7 @@ prefabs:
           instanceId: A15300000000000000000000000002F0_A15300000000000000FC
   - gameObjects:
       - name: Stress_03_06_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 76.5
@@ -12239,6 +12492,7 @@ prefabs:
           instanceId: A15300000000000000000000000002F3_A15300000000000000FD
   - gameObjects:
       - name: Stress_03_06_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 76.5
@@ -12289,6 +12543,7 @@ prefabs:
           instanceId: A15300000000000000000000000002F6_A15300000000000000FE
   - gameObjects:
       - name: Stress_03_06_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 76.5
@@ -12336,6 +12591,7 @@ prefabs:
           instanceId: A15300000000000000000000000002F9_A15300000000000000FF
   - gameObjects:
       - name: Stress_03_07_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 76.5
@@ -12383,6 +12639,7 @@ prefabs:
           instanceId: A15300000000000000000000000002FC_A1530000000000000100
   - gameObjects:
       - name: Stress_03_07_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 76.5
@@ -12433,6 +12690,7 @@ prefabs:
           instanceId: A15300000000000000000000000002FF_A1530000000000000101
   - gameObjects:
       - name: Stress_03_07_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 76.5
@@ -12480,6 +12738,7 @@ prefabs:
           instanceId: A1530000000000000000000000000302_A1530000000000000102
   - gameObjects:
       - name: Stress_03_07_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 76.5
@@ -12530,6 +12789,7 @@ prefabs:
           instanceId: A1530000000000000000000000000305_A1530000000000000103
   - gameObjects:
       - name: Stress_03_07_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 76.5
@@ -12577,6 +12837,7 @@ prefabs:
           instanceId: A1530000000000000000000000000308_A1530000000000000104
   - gameObjects:
       - name: Stress_03_07_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 76.5
@@ -12627,6 +12888,7 @@ prefabs:
           instanceId: A153000000000000000000000000030B_A1530000000000000105
   - gameObjects:
       - name: Stress_03_07_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 76.5
@@ -12674,6 +12936,7 @@ prefabs:
           instanceId: A153000000000000000000000000030E_A1530000000000000106
   - gameObjects:
       - name: Stress_03_07_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 76.5
@@ -12724,6 +12987,7 @@ prefabs:
           instanceId: A1530000000000000000000000000311_A1530000000000000107
   - gameObjects:
       - name: Stress_04_00_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 98
@@ -12771,6 +13035,7 @@ prefabs:
           instanceId: A1530000000000000000000000000314_A1530000000000000108
   - gameObjects:
       - name: Stress_04_00_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 98
@@ -12821,6 +13086,7 @@ prefabs:
           instanceId: A1530000000000000000000000000317_A1530000000000000109
   - gameObjects:
       - name: Stress_04_00_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 98
@@ -12868,6 +13134,7 @@ prefabs:
           instanceId: A153000000000000000000000000031A_A153000000000000010A
   - gameObjects:
       - name: Stress_04_00_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 98
@@ -12918,6 +13185,7 @@ prefabs:
           instanceId: A153000000000000000000000000031D_A153000000000000010B
   - gameObjects:
       - name: Stress_04_00_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 98
@@ -12965,6 +13233,7 @@ prefabs:
           instanceId: A1530000000000000000000000000320_A153000000000000010C
   - gameObjects:
       - name: Stress_04_00_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 98
@@ -13015,6 +13284,7 @@ prefabs:
           instanceId: A1530000000000000000000000000323_A153000000000000010D
   - gameObjects:
       - name: Stress_04_00_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 98
@@ -13062,6 +13332,7 @@ prefabs:
           instanceId: A1530000000000000000000000000326_A153000000000000010E
   - gameObjects:
       - name: Stress_04_00_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 98
@@ -13112,6 +13383,7 @@ prefabs:
           instanceId: A1530000000000000000000000000329_A153000000000000010F
   - gameObjects:
       - name: Stress_04_01_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 98
@@ -13162,6 +13434,7 @@ prefabs:
           instanceId: A153000000000000000000000000032C_A1530000000000000110
   - gameObjects:
       - name: Stress_04_01_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 98
@@ -13209,6 +13482,7 @@ prefabs:
           instanceId: A153000000000000000000000000032F_A1530000000000000111
   - gameObjects:
       - name: Stress_04_01_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 98
@@ -13259,6 +13533,7 @@ prefabs:
           instanceId: A1530000000000000000000000000332_A1530000000000000112
   - gameObjects:
       - name: Stress_04_01_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 98
@@ -13306,6 +13581,7 @@ prefabs:
           instanceId: A1530000000000000000000000000335_A1530000000000000113
   - gameObjects:
       - name: Stress_04_01_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 98
@@ -13356,6 +13632,7 @@ prefabs:
           instanceId: A1530000000000000000000000000338_A1530000000000000114
   - gameObjects:
       - name: Stress_04_01_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 98
@@ -13403,6 +13680,7 @@ prefabs:
           instanceId: A153000000000000000000000000033B_A1530000000000000115
   - gameObjects:
       - name: Stress_04_01_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 98
@@ -13453,6 +13731,7 @@ prefabs:
           instanceId: A153000000000000000000000000033E_A1530000000000000116
   - gameObjects:
       - name: Stress_04_01_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 98
@@ -13500,6 +13779,7 @@ prefabs:
           instanceId: A1530000000000000000000000000341_A1530000000000000117
   - gameObjects:
       - name: Stress_04_02_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 98
@@ -13547,6 +13827,7 @@ prefabs:
           instanceId: A1530000000000000000000000000344_A1530000000000000118
   - gameObjects:
       - name: Stress_04_02_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 98
@@ -13597,6 +13878,7 @@ prefabs:
           instanceId: A1530000000000000000000000000347_A1530000000000000119
   - gameObjects:
       - name: Stress_04_02_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 98
@@ -13644,6 +13926,7 @@ prefabs:
           instanceId: A153000000000000000000000000034A_A153000000000000011A
   - gameObjects:
       - name: Stress_04_02_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 98
@@ -13694,6 +13977,7 @@ prefabs:
           instanceId: A153000000000000000000000000034D_A153000000000000011B
   - gameObjects:
       - name: Stress_04_02_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 98
@@ -13741,6 +14025,7 @@ prefabs:
           instanceId: A1530000000000000000000000000350_A153000000000000011C
   - gameObjects:
       - name: Stress_04_02_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 98
@@ -13791,6 +14076,7 @@ prefabs:
           instanceId: A1530000000000000000000000000353_A153000000000000011D
   - gameObjects:
       - name: Stress_04_02_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 98
@@ -13838,6 +14124,7 @@ prefabs:
           instanceId: A1530000000000000000000000000356_A153000000000000011E
   - gameObjects:
       - name: Stress_04_02_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 98
@@ -13888,6 +14175,7 @@ prefabs:
           instanceId: A1530000000000000000000000000359_A153000000000000011F
   - gameObjects:
       - name: Stress_04_03_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 98
@@ -13938,6 +14226,7 @@ prefabs:
           instanceId: A153000000000000000000000000035C_A1530000000000000120
   - gameObjects:
       - name: Stress_04_03_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 98
@@ -13985,6 +14274,7 @@ prefabs:
           instanceId: A153000000000000000000000000035F_A1530000000000000121
   - gameObjects:
       - name: Stress_04_03_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 98
@@ -14035,6 +14325,7 @@ prefabs:
           instanceId: A1530000000000000000000000000362_A1530000000000000122
   - gameObjects:
       - name: Stress_04_03_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 98
@@ -14082,6 +14373,7 @@ prefabs:
           instanceId: A1530000000000000000000000000365_A1530000000000000123
   - gameObjects:
       - name: Stress_04_03_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 98
@@ -14132,6 +14424,7 @@ prefabs:
           instanceId: A1530000000000000000000000000368_A1530000000000000124
   - gameObjects:
       - name: Stress_04_03_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 98
@@ -14179,6 +14472,7 @@ prefabs:
           instanceId: A153000000000000000000000000036B_A1530000000000000125
   - gameObjects:
       - name: Stress_04_03_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 98
@@ -14229,6 +14523,7 @@ prefabs:
           instanceId: A153000000000000000000000000036E_A1530000000000000126
   - gameObjects:
       - name: Stress_04_03_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 98
@@ -14276,6 +14571,7 @@ prefabs:
           instanceId: A1530000000000000000000000000371_A1530000000000000127
   - gameObjects:
       - name: Stress_04_04_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 98
@@ -14323,6 +14619,7 @@ prefabs:
           instanceId: A1530000000000000000000000000374_A1530000000000000128
   - gameObjects:
       - name: Stress_04_04_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 98
@@ -14373,6 +14670,7 @@ prefabs:
           instanceId: A1530000000000000000000000000377_A1530000000000000129
   - gameObjects:
       - name: Stress_04_04_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 98
@@ -14420,6 +14718,7 @@ prefabs:
           instanceId: A153000000000000000000000000037A_A153000000000000012A
   - gameObjects:
       - name: Stress_04_04_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 98
@@ -14470,6 +14769,7 @@ prefabs:
           instanceId: A153000000000000000000000000037D_A153000000000000012B
   - gameObjects:
       - name: Stress_04_04_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 98
@@ -14517,6 +14817,7 @@ prefabs:
           instanceId: A1530000000000000000000000000380_A153000000000000012C
   - gameObjects:
       - name: Stress_04_04_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 98
@@ -14567,6 +14868,7 @@ prefabs:
           instanceId: A1530000000000000000000000000383_A153000000000000012D
   - gameObjects:
       - name: Stress_04_04_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 98
@@ -14614,6 +14916,7 @@ prefabs:
           instanceId: A1530000000000000000000000000386_A153000000000000012E
   - gameObjects:
       - name: Stress_04_04_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 98
@@ -14664,6 +14967,7 @@ prefabs:
           instanceId: A1530000000000000000000000000389_A153000000000000012F
   - gameObjects:
       - name: Stress_04_05_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 98
@@ -14714,6 +15018,7 @@ prefabs:
           instanceId: A153000000000000000000000000038C_A1530000000000000130
   - gameObjects:
       - name: Stress_04_05_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 98
@@ -14761,6 +15066,7 @@ prefabs:
           instanceId: A153000000000000000000000000038F_A1530000000000000131
   - gameObjects:
       - name: Stress_04_05_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 98
@@ -14811,6 +15117,7 @@ prefabs:
           instanceId: A1530000000000000000000000000392_A1530000000000000132
   - gameObjects:
       - name: Stress_04_05_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 98
@@ -14858,6 +15165,7 @@ prefabs:
           instanceId: A1530000000000000000000000000395_A1530000000000000133
   - gameObjects:
       - name: Stress_04_05_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 98
@@ -14908,6 +15216,7 @@ prefabs:
           instanceId: A1530000000000000000000000000398_A1530000000000000134
   - gameObjects:
       - name: Stress_04_05_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 98
@@ -14955,6 +15264,7 @@ prefabs:
           instanceId: A153000000000000000000000000039B_A1530000000000000135
   - gameObjects:
       - name: Stress_04_05_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 98
@@ -15005,6 +15315,7 @@ prefabs:
           instanceId: A153000000000000000000000000039E_A1530000000000000136
   - gameObjects:
       - name: Stress_04_05_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 98
@@ -15052,6 +15363,7 @@ prefabs:
           instanceId: A15300000000000000000000000003A1_A1530000000000000137
   - gameObjects:
       - name: Stress_04_06_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 98
@@ -15099,6 +15411,7 @@ prefabs:
           instanceId: A15300000000000000000000000003A4_A1530000000000000138
   - gameObjects:
       - name: Stress_04_06_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 98
@@ -15149,6 +15462,7 @@ prefabs:
           instanceId: A15300000000000000000000000003A7_A1530000000000000139
   - gameObjects:
       - name: Stress_04_06_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 98
@@ -15196,6 +15510,7 @@ prefabs:
           instanceId: A15300000000000000000000000003AA_A153000000000000013A
   - gameObjects:
       - name: Stress_04_06_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 98
@@ -15246,6 +15561,7 @@ prefabs:
           instanceId: A15300000000000000000000000003AD_A153000000000000013B
   - gameObjects:
       - name: Stress_04_06_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 98
@@ -15293,6 +15609,7 @@ prefabs:
           instanceId: A15300000000000000000000000003B0_A153000000000000013C
   - gameObjects:
       - name: Stress_04_06_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 98
@@ -15343,6 +15660,7 @@ prefabs:
           instanceId: A15300000000000000000000000003B3_A153000000000000013D
   - gameObjects:
       - name: Stress_04_06_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 98
@@ -15390,6 +15708,7 @@ prefabs:
           instanceId: A15300000000000000000000000003B6_A153000000000000013E
   - gameObjects:
       - name: Stress_04_06_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 98
@@ -15440,6 +15759,7 @@ prefabs:
           instanceId: A15300000000000000000000000003B9_A153000000000000013F
   - gameObjects:
       - name: Stress_04_07_00
+        mobilityType: Stationary
         position:
           - -75.25
           - 98
@@ -15490,6 +15810,7 @@ prefabs:
           instanceId: A15300000000000000000000000003BC_A1530000000000000140
   - gameObjects:
       - name: Stress_04_07_01
+        mobilityType: Stationary
         position:
           - -53.75
           - 98
@@ -15537,6 +15858,7 @@ prefabs:
           instanceId: A15300000000000000000000000003BF_A1530000000000000141
   - gameObjects:
       - name: Stress_04_07_02
+        mobilityType: Stationary
         position:
           - -32.25
           - 98
@@ -15587,6 +15909,7 @@ prefabs:
           instanceId: A15300000000000000000000000003C2_A1530000000000000142
   - gameObjects:
       - name: Stress_04_07_03
+        mobilityType: Stationary
         position:
           - -10.75
           - 98
@@ -15634,6 +15957,7 @@ prefabs:
           instanceId: A15300000000000000000000000003C5_A1530000000000000143
   - gameObjects:
       - name: Stress_04_07_04
+        mobilityType: Stationary
         position:
           - 10.75
           - 98
@@ -15684,6 +16008,7 @@ prefabs:
           instanceId: A15300000000000000000000000003C8_A1530000000000000144
   - gameObjects:
       - name: Stress_04_07_05
+        mobilityType: Stationary
         position:
           - 32.25
           - 98
@@ -15731,6 +16056,7 @@ prefabs:
           instanceId: A15300000000000000000000000003CB_A1530000000000000145
   - gameObjects:
       - name: Stress_04_07_06
+        mobilityType: Stationary
         position:
           - 53.75
           - 98
@@ -15781,6 +16107,7 @@ prefabs:
           instanceId: A15300000000000000000000000003CE_A1530000000000000146
   - gameObjects:
       - name: Stress_04_07_07
+        mobilityType: Stationary
         position:
           - 75.25
           - 98

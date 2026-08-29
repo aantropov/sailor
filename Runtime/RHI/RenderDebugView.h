@@ -9,15 +9,21 @@ namespace Sailor::RHI
 		Lit = 0,
 		AmbientOcclusion,
 		Cascades,
-		LightTiles
+		LightTiles,
+		GlobalIlluminationOnly,
+		GlobalIlluminationProbes,
+		GlobalIlluminationBricks,
+		GlobalIlluminationValidity,
+		GlobalIlluminationVisibility,
+		GlobalIlluminationResidency,
+		GlobalIlluminationAssetIdentity,
+		GlobalIlluminationFallback
 	};
 
-	constexpr bool IsValidSceneViewRenderMode(ESceneViewRenderMode mode) noexcept
+	constexpr bool IsSceneViewDebugVisualization(
+		ESceneViewRenderMode mode) noexcept
 	{
-		return mode == ESceneViewRenderMode::Lit ||
-			mode == ESceneViewRenderMode::AmbientOcclusion ||
-			mode == ESceneViewRenderMode::Cascades ||
-			mode == ESceneViewRenderMode::LightTiles;
+		return mode != ESceneViewRenderMode::Lit;
 	}
 
 	constexpr const char* GetSceneViewRenderModeShaderDefine(

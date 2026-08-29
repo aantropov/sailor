@@ -64,6 +64,14 @@ renderTargets:
   format: D32_SFLOAT_S8_UINT
   width: RenderWidth/2
   height: RenderHeight/2
+
+- name: GlobalIlluminationProbeCellIndices
+  format: R32G32B32A32_SFLOAT
+  filtration: Nearest
+  clamping: Clamp
+  width: RenderWidth/2
+  height: RenderHeight/2
+  bIsCompatibleWithComputeShaders: true
   
 - name: DepthHighZ
   format: R32_SFLOAT
@@ -236,6 +244,13 @@ frame:
   renderTargets:
   - src: HalfDepth
   - dst: DepthHighZ
+
+############################
+- name: GlobalIlluminationResolve
+############################
+  renderTargets:
+  - depthSampler: DepthBuffer
+  - probeCellIndices: GlobalIlluminationProbeCellIndices
   
 ############################
 - name: PostProcess
@@ -247,8 +262,9 @@ frame:
   - data.occlusionRadius: 1.5
   - data.occlusionPower: 1.5
   - data.occlusionAttenuation: 1
-  - data.occlusionBias: 0.05
+  - data.occlusionBias: 0.25
   - data.noiseScale: 25
+  - data.normalBias: 0.15
   renderTargets:
   - color: AO
   - depthSampler: HalfDepth
@@ -290,11 +306,13 @@ frame:
   string:
   - Tag: Opaque
   - GPUCulling: true
+  - OcclusionCulling: true
   - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
+  - globalIlluminationProbeCellIndicesSampler: GlobalIlluminationProbeCellIndices
 
 ############################
 - name: CPUPathTracerNode
@@ -314,11 +332,13 @@ frame:
   string:
   - Tag: Masked
   - GPUCulling: true
+  - OcclusionCulling: true
   - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
+  - globalIlluminationProbeCellIndicesSampler: GlobalIlluminationProbeCellIndices
 
 ############################
 - name: Blit
@@ -393,7 +413,7 @@ frame:
 #############################
   string:
   - toneMappingShader: Shaders/Tonemapping.shader
-  - toneMappingDefines: UNCHARTED2 LUMINANCE
+  - toneMappingDefines: ACES
   vec4:
   - data.exposure: [1.0, 0, 0, 0]
   - data.whitePoint: [1.4, 1.5, 1.4, 0]

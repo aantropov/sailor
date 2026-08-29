@@ -1,4 +1,5 @@
 #include "Engine/World.h"
+#include "FrameGraph/BlitFormatConversion.h"
 #include "RHI/Material.h"
 #include "RHI/RenderSubmission.h"
 #include "RHI/Scene.h"
@@ -9,6 +10,7 @@
 #include <string>
 
 using namespace Sailor;
+using namespace Sailor::Framegraph;
 using namespace Sailor::RHI;
 
 namespace
@@ -302,16 +304,38 @@ namespace
 		context->BeginSubmission(11ull, 1u);
 		view.SetSubmissionContext(context);
 		view.m_renderMode = ESceneViewRenderMode::Cascades;
+		auto firstGlobalIllumination =
+			RHIGlobalIlluminationSnapshotPtr::Make();
+		firstGlobalIllumination->m_generation = 41u;
+		view.m_globalIlluminationMode = EGlobalIlluminationMode::BakedOnly;
+		view.m_bGlobalIlluminationEnabled = false;
+		view.m_globalIllumination = firstGlobalIllumination;
 		view.PrepareSnapshots();
 
 		Require(view.m_snapshots.Num() == 1u &&
 			view.m_snapshots[0].m_submissionContext == context &&
-			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades,
+			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades &&
+			view.m_snapshots[0].m_globalIlluminationMode ==
+				EGlobalIlluminationMode::BakedOnly &&
+			!view.m_snapshots[0].m_bGlobalIlluminationEnabled,
 			"preparing a camera snapshot must retain the acquired flight submission context");
 		view.m_renderMode = ESceneViewRenderMode::AmbientOcclusion;
+		view.m_globalIlluminationMode = EGlobalIlluminationMode::Realtime;
+		view.m_bGlobalIlluminationEnabled = true;
 		Require(
-			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades,
-			"a prepared frame snapshot must keep its render mode when the next frame changes");
+			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades &&
+			view.m_snapshots[0].m_globalIlluminationMode ==
+				EGlobalIlluminationMode::BakedOnly &&
+			!view.m_snapshots[0].m_bGlobalIlluminationEnabled,
+			"a prepared frame snapshot must keep its render and GI modes when the next frame changes");
+		auto secondGlobalIllumination =
+			RHIGlobalIlluminationSnapshotPtr::Make();
+		secondGlobalIllumination->m_generation = 42u;
+		view.m_globalIllumination = secondGlobalIllumination;
+		Require(
+			view.m_snapshots[0].m_globalIllumination == firstGlobalIllumination &&
+			view.m_snapshots[0].m_globalIllumination->m_generation == 41u,
+			"an in-flight camera snapshot must retain its exact immutable GI revision");
 
 		Require(
 			std::string(GetSceneViewRenderModeShaderDefine(
@@ -321,8 +345,41 @@ namespace
 			std::string(GetSceneViewRenderModeShaderDefine(
 				ESceneViewRenderMode::LightTiles)) == "LIGHT_TILES" &&
 			std::string(GetSceneViewRenderModeShaderDefine(
-				ESceneViewRenderMode::Lit)).empty(),
-			"each Scene View render mode must resolve to its immutable shader variant");
+				ESceneViewRenderMode::Lit)).empty() &&
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::GlobalIlluminationVisibility)).empty(),
+			"Scene View modes must resolve to immutable variants or GI runtime metadata");
+		Require(
+			!IsSceneViewDebugVisualization(ESceneViewRenderMode::Lit) &&
+			IsSceneViewDebugVisualization(
+				ESceneViewRenderMode::AmbientOcclusion) &&
+			IsSceneViewDebugVisualization(
+				ESceneViewRenderMode::GlobalIlluminationOnly) &&
+			IsSceneViewDebugVisualization(
+				ESceneViewRenderMode::GlobalIlluminationFallback),
+			"CPU path-traced Lit composition must yield to every Scene View debug visualization");
+	}
+
+	void TestBlitFormatConversionPath()
+	{
+		Require(
+			RequiresShaderColorBlitForFormatConversion(
+				ETextureFormat::R16G16B16A16_SFLOAT,
+				ETextureFormat::B8G8R8A8_UNORM) &&
+			RequiresShaderColorBlitForFormatConversion(
+				ETextureFormat::R16G16B16A16_SFLOAT,
+				ETextureFormat::B8G8R8A8_SRGB),
+			"floating-point Scene View output must use the shader blit when targeting normalized editor output");
+		Require(
+			!RequiresShaderColorBlitForFormatConversion(
+				ETextureFormat::R16G16B16A16_UNORM,
+				ETextureFormat::B8G8R8A8_UNORM),
+			"formats from the same normalized numeric class may use the native blit path");
+		Require(
+			!RequiresShaderColorBlitForFormatConversion(
+				ETextureFormat::D32_SFLOAT,
+				ETextureFormat::D32_SFLOAT),
+			"matching depth formats must remain on the dedicated native depth path");
 	}
 }
 
@@ -338,6 +395,7 @@ int main()
 		TestLocalizedShadowVersionDiff();
 		TestSubmissionCompletionToken();
 		TestSubmissionContextSurvivesSnapshotPreparation();
+		TestBlitFormatConversionPath();
 	}
 	catch (const std::exception& exception)
 	{

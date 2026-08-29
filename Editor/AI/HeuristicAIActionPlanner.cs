@@ -72,6 +72,8 @@ public sealed class HeuristicAIActionPlanner : IAIActionPlanner
     [
         ("open ai", KnownPanelTypes.AI, "AI"),
         ("open console", KnownPanelTypes.Console, "Console"),
+        ("open lighting", KnownPanelTypes.Lighting, "Lighting"),
+        ("global illumination", KnownPanelTypes.Lighting, "Lighting"),
         ("open inspector", KnownPanelTypes.Inspector, "Inspector"),
         ("open hierarchy", KnownPanelTypes.Hierarchy, "Hierarchy"),
         ("open content", KnownPanelTypes.Content, "Content"),

@@ -104,8 +104,10 @@
             <Button Text="Clear" Command="{Binding ClearSamplersCommand}"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="13" Grid.ColumnSpan="2" ItemsSource="{Binding Samplers}">
-            <CollectionView.ItemTemplate>
+        <VerticalStackLayout Grid.Row="13"
+                             Grid.ColumnSpan="2"
+                             BindableLayout.ItemsSource="{Binding Samplers}">
+            <BindableLayout.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformFileId">
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
@@ -128,8 +130,8 @@
                         </Label>
                     </HorizontalStackLayout>
                 </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
 
         <Label Text="Uniforms Vec4" FontAttributes="Bold" Grid.Row="14" Grid.ColumnSpan="2" />
 
@@ -138,8 +140,10 @@
             <Button Text="Clear" Command="{Binding ClearUniformsVec4Command}"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="16" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsVec4}">
-            <CollectionView.ItemTemplate>
+        <VerticalStackLayout Grid.Row="16"
+                             Grid.ColumnSpan="2"
+                             BindableLayout.ItemsSource="{Binding UniformsVec4}">
+            <BindableLayout.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformVec4">
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveUniformVec4Command, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
@@ -151,8 +155,8 @@
 
                     </HorizontalStackLayout>
                 </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
 
         <Label Text="Uniforms Float" FontAttributes="Bold" Grid.Row="17" Grid.ColumnSpan="2" />
 
@@ -161,8 +165,10 @@
             <Button Text="Clear" Command="{Binding ClearUniformsFloatCommand}"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="19" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsFloat}">
-            <CollectionView.ItemTemplate>
+        <VerticalStackLayout Grid.Row="19"
+                             Grid.ColumnSpan="2"
+                             BindableLayout.ItemsSource="{Binding UniformsFloat}">
+            <BindableLayout.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformFloat">
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveUniformFloatCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
@@ -170,8 +176,8 @@
                         <Editor Text="{Binding Value, Converter={StaticResource FloatValueConverter}}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
                     </HorizontalStackLayout>
                 </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
 
         <Label Text="Shader Defines" FontAttributes="Bold" Grid.Row="20" Grid.ColumnSpan="2" />
 
@@ -180,15 +186,17 @@
             <Button Text="Clear" Command="{Binding ClearShaderDefinesCommand}"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="22" Grid.ColumnSpan="2" ItemsSource="{Binding ShaderDefines}">
-            <CollectionView.ItemTemplate>
+        <VerticalStackLayout Grid.Row="22"
+                             Grid.ColumnSpan="2"
+                             BindableLayout.ItemsSource="{Binding ShaderDefines}">
+            <BindableLayout.ItemTemplate>
                 <DataTemplate>
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveShaderDefineCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
                         <Editor Text="{Binding Value}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
                     </HorizontalStackLayout>
                 </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
     </Grid>
 </DataTemplate>

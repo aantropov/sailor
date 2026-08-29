@@ -57,7 +57,9 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 			check(pShader->IsReady());
 
 			const ECullMode cullMode = bMasked ? ECullMode::None : ECullMode::Back;
-			const float shadowBias = App::GetActiveGraphicsSettings().m_shadowBias;
+			const float shadowBias = GetRasterShadowBias(
+				shadowType,
+				App::GetActiveGraphicsSettings().m_shadowBias);
 			RenderState renderState = RHI::RenderState(
 				true,
 				true,
@@ -134,7 +136,9 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddCustomShadowMaterial(
 	}
 
 	const auto& sourceState = sourceMaterial->GetRenderState();
-	const float shadowBias = App::GetActiveGraphicsSettings().m_shadowBias;
+	const float shadowBias = GetRasterShadowBias(
+		shadowType,
+		App::GetActiveGraphicsSettings().m_shadowBias);
 	RenderState shadowState(true,
 		true,
 		sourceState.GetDepthBias() + shadowBias,

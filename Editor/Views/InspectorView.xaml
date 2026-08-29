@@ -24,6 +24,7 @@
             <local:MaterialFileTemplate x:Key="MaterialFileTemplate" />
             <local:ModelFileTemplate x:Key="ModelFileTemplate" />
             <local:FrameGraphFileTemplate x:Key="FrameGraphFileTemplate" />
+            <local:WorldFileTemplate x:Key="WorldFileTemplate" />
             <local:AnimationControllerFileTemplate x:Key="AnimationControllerFileTemplate" />
             <local:AnimationSetFileTemplate x:Key="AnimationSetFileTemplate" />
             <local:GameObjectTemplate x:Key="GameObjectTemplate" />
@@ -35,6 +36,7 @@
                                           MaterialFileTemplate ="{StaticResource MaterialFileTemplate}"
                                           ModelFileTemplate ="{StaticResource ModelFileTemplate}"
                                           FrameGraphFileTemplate="{StaticResource FrameGraphFileTemplate}"
+                                          WorldFileTemplate="{StaticResource WorldFileTemplate}"
                                           AnimationControllerFileTemplate="{StaticResource AnimationControllerFileTemplate}"
                                           AnimationSetFileTemplate="{StaticResource AnimationSetFileTemplate}"
                                           ShaderLibraryFileTemplate="{StaticResource ShaderLibraryFileTemplate}"

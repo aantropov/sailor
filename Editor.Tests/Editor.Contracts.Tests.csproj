@@ -63,7 +63,11 @@
     <Compile Include="LandscapeVegetationBinaryTests.cs" />
     <Compile Include="SettingsContractsTests.cs" />
     <Compile Include="UnifiedSettingsStoreTests.cs" />
-    <Compile Include="GraphicsSettingsTests.cs" />
+    <Compile Include="GlobalIlluminationBindingInputPolicyTests.cs" />
+    <Compile Include="GIProbesBinaryMetadataTests.cs" />
+    <Compile Include="GIProbesBakeOutputPolicyTests.cs" />
+    <Compile Include="GIProbesBakeBindingPolicyTests.cs" />
+    <Compile Include="GIProbesBakeStatusGateTests.cs" />
     <Compile Include="WorkflowProjectionTests.cs" />
     <Compile Include="SceneViewportLifecycleTests.cs" />
     <Compile Include="SceneViewportInteractionTests.cs" />
@@ -72,6 +76,10 @@
     <Compile Include="EditorViewportEventContractTests.cs" />
     <Compile Include="AlreadyAppliedTransformCommandTests.cs" />
     <Compile Include="InspectorPendingEditCoordinatorTests.cs" />
+    <Compile Include="InspectorSaveCommitGateTests.cs" />
+    <Compile Include="InspectorEditableTestStub.cs" />
+    <Compile Include="InspectorPropertyPresentationTests.cs" />
+    <Compile Include="GameObjectMobilityPolicyTests.cs" />
     <Compile Include="SceneTestServiceStubs.cs" />
     <Compile Include="ShellHostTestStubs.cs" />
     <Compile Include="ShellStateConsistencyTests.cs" />
@@ -107,6 +115,10 @@
     <Compile Include="..\Editor\Settings\GraphicsSettings.cs" Link="Settings\GraphicsSettings.cs" />
     <Compile Include="..\Editor\Settings\GraphicsSettingsDraft.cs" Link="Settings\GraphicsSettingsDraft.cs" />
     <Compile Include="..\Editor\Settings\GraphicsSettingsService.cs" Link="Settings\GraphicsSettingsService.cs" />
+    <Compile Include="..\Editor\Services\GlobalIlluminationContracts.cs" Link="Services\GlobalIlluminationContracts.cs" />
+    <Compile Include="..\Editor\Services\GIProbesBakeOutputPolicy.cs" Link="Services\GIProbesBakeOutputPolicy.cs" />
+    <Compile Include="..\Editor\Services\GIProbesBakeStatusGate.cs" Link="Services\GIProbesBakeStatusGate.cs" />
+    <Compile Include="..\Editor\ViewModels\GIProbesBinaryMetadata.cs" Link="ViewModels\GIProbesBinaryMetadata.cs" />
     <Compile Include="..\Editor\Content\ProjectContentAssetResolutionPolicy.cs" Link="Content\ProjectContentAssetResolutionPolicy.cs" />
     <Compile Include="..\Editor\Content\ProjectContentModels.cs" Link="Content\ProjectContentModels.cs" />
     <Compile Include="..\Editor\Content\ProjectContentFolderIds.cs" Link="Content\ProjectContentFolderIds.cs" />
@@ -129,6 +141,8 @@
     <Compile Include="..\Editor\Utility\EditorComponentScalarCodec.cs" Link="Utility\EditorComponentScalarCodec.cs" />
     <Compile Include="..\Editor\Utility\EditorComponentPropertyContract.cs" Link="Utility\EditorComponentPropertyContract.cs" />
     <Compile Include="..\Editor\Utility\EditorComponentYamlContract.cs" Link="Utility\EditorComponentYamlContract.cs" />
+    <Compile Include="..\Editor\Utility\InspectorPropertyPresentation.cs" Link="Utility\InspectorPropertyPresentation.cs" />
+    <Compile Include="..\Editor\Utility\GameObjectMobilityPolicy.cs" Link="Utility\GameObjectMobilityPolicy.cs" />
     <Compile Include="..\Editor\Controls\FloatValueConverter.cs" Link="Controls\FloatValueConverter.cs" />
     <Compile Include="..\Editor\Controls\IntValueConverter.cs" Link="Controls\IntValueConverter.cs" />
     <Compile Include="..\Editor\Controls\UIntValueConverter.cs" Link="Controls\UIntValueConverter.cs" />
@@ -158,6 +172,7 @@
     <Compile Include="..\Editor\Workflow\WorkflowProjections.cs" Link="Workflow\WorkflowProjections.cs" />
     <Compile Include="..\Editor\Workflow\InspectorAutoCommitController.cs" Link="Workflow\InspectorAutoCommitController.cs" />
     <Compile Include="..\Editor\Workflow\InspectorPendingEditCoordinator.cs" Link="Workflow\InspectorPendingEditCoordinator.cs" />
+    <Compile Include="..\Editor\Workflow\InspectorSaveCommitGate.cs" Link="Workflow\InspectorSaveCommitGate.cs" />
     <Compile Include="..\Editor\Workflow\FrameGraphDiagramLayout.cs" Link="Workflow\FrameGraphDiagramLayout.cs" />
     <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
     <Compile Include="..\Editor\Utility\EditorPerf.cs" Link="Utility\EditorPerf.cs" />

@@ -7,7 +7,7 @@ graphics:
       fpsCap: 120
       msaaSamples: 8
       shadowQuality: High
-      shadowBias: 0
+      shadowBias: 1.25
       shadowCascadeCount: 4
       shadowCascadeResolutions:
       - 4096
@@ -17,14 +17,16 @@ graphics:
       supportSoftShadows: true
       cloudsResolutionMultiplier: 1
       skyResolution: 512
-      vegetationInstanceBudget: 65536
+      vegetationInstanceBudget: 16384
       lodBias: -1
+      enableGlobalIllumination: true
+      maxGiProbeStatesPerSnapshot: 4
     High:
       resolutionFactor: 1
       fpsCap: 120
       msaaSamples: 4
       shadowQuality: High
-      shadowBias: 0
+      shadowBias: 1.25
       shadowCascadeCount: 4
       shadowCascadeResolutions:
       - 2048
@@ -34,14 +36,16 @@ graphics:
       supportSoftShadows: true
       cloudsResolutionMultiplier: 0.75
       skyResolution: 256
-      vegetationInstanceBudget: 32768
+      vegetationInstanceBudget: 8192
       lodBias: 0
+      enableGlobalIllumination: true
+      maxGiProbeStatesPerSnapshot: 3
     Medium:
       resolutionFactor: 0.85
       fpsCap: 120
       msaaSamples: 2
       shadowQuality: Medium
-      shadowBias: 0
+      shadowBias: 1.25
       shadowCascadeCount: 3
       shadowCascadeResolutions:
       - 2048
@@ -50,14 +54,16 @@ graphics:
       supportSoftShadows: true
       cloudsResolutionMultiplier: 0.5
       skyResolution: 256
-      vegetationInstanceBudget: 16384
+      vegetationInstanceBudget: 4096
       lodBias: 0
+      enableGlobalIllumination: true
+      maxGiProbeStatesPerSnapshot: 2
     Low:
       resolutionFactor: 0.7
       fpsCap: 120
       msaaSamples: 1
       shadowQuality: Low
-      shadowBias: 0
+      shadowBias: 1.25
       shadowCascadeCount: 2
       shadowCascadeResolutions:
       - 1024
@@ -65,20 +71,24 @@ graphics:
       supportSoftShadows: false
       cloudsResolutionMultiplier: 0.5
       skyResolution: 128
-      vegetationInstanceBudget: 8192
+      vegetationInstanceBudget: 2048
       lodBias: 1
+      enableGlobalIllumination: true
+      maxGiProbeStatesPerSnapshot: 2
     VeryLow:
       resolutionFactor: 0.5
       fpsCap: 120
       msaaSamples: 1
       shadowQuality: VeryLow
-      shadowBias: 0
+      shadowBias: 1.25
       shadowCascadeCount: 1
       shadowCascadeResolutions:
       - 512
       supportSoftShadows: false
       cloudsResolutionMultiplier: 0.125
       skyResolution: 64
-      vegetationInstanceBudget: 2048
+      vegetationInstanceBudget: 512
       lodBias: 2
+      enableGlobalIllumination: true
+      maxGiProbeStatesPerSnapshot: 1
 ...

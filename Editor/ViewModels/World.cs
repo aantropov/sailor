@@ -20,6 +20,9 @@ public partial class World : AssetFile
     [ObservableProperty]
     ObservableList<Prefab> prefabs = [];
 
+    [ObservableProperty]
+    GISettings globalIllumination = new();
+
     public override Task Save() => Save(new WorldYamlConverter());
 
     public override Task Revert()
@@ -39,6 +42,8 @@ public partial class World : AssetFile
 
                 FileId = intermediateObject.FileId ?? new FileId();
                 Filename = intermediateObject.Filename ?? new FileId();
+                Name = intermediateObject.Name;
+                GlobalIllumination = intermediateObject.GlobalIllumination ?? new();
 
                 DisplayName = Asset.Name;
 
@@ -104,6 +109,23 @@ public class WorldYamlConverter : IYamlTypeConverter
 
         emitter.Emit(new Scalar(null, "name"));
         emitter.Emit(new Scalar(null, world.Name));
+
+        if (world.GlobalIllumination is { } globalIllumination &&
+            (globalIllumination.Probes.Count > 0 ||
+                globalIllumination.Mode !=
+                    GlobalIlluminationMode.RealtimeAndBaked))
+        {
+            emitter.Emit(new Scalar(null, "globalIllumination"));
+            string globalIlluminationYaml = serializer.Serialize(world.GlobalIllumination);
+            var globalIlluminationDocument = new YamlStream();
+            using (var reader = new StringReader(globalIlluminationYaml))
+            {
+                globalIlluminationDocument.Load(reader);
+            }
+            YamlHelper.EmitNode(
+                emitter,
+                globalIlluminationDocument.Documents[0].RootNode);
+        }
 
         emitter.Emit(new Scalar(null, "prefabs"));
         emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));

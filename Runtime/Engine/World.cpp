@@ -9,6 +9,7 @@
 #include "YamlExceptionBoundary.h"
 #include <Components/TestComponent.h>
 #include <ECS/TransformECS.h>
+#include <ECS/GlobalIlluminationECS.h>
 #include <Submodules/Editor.h>
 
 using namespace Sailor;
@@ -100,6 +101,45 @@ World::World(
 	}
 
 	m_pDebugContext = TUniquePtr<RHI::DebugContext>::Make();
+}
+
+const GISettings&
+World::GetGISettings() const
+{
+	static const GISettings emptySettings{};
+	const ECS::TBaseSystemPtr* system = nullptr;
+	if (!m_ecs.Find(GlobalIlluminationECS::GetComponentStaticType(), system) ||
+		!system || !system->GetRawPtr())
+	{
+		return emptySettings;
+	}
+	return static_cast<const GlobalIlluminationECS*>(
+		system->GetRawPtr())->GetWorldSettings();
+}
+
+bool World::SetGISettings(
+	GISettings settings,
+	std::string& outDiagnostic)
+{
+	if (!settings.Validate(outDiagnostic))
+	{
+		return false;
+	}
+	ECS::TBaseSystemPtr* system = nullptr;
+	if (!m_ecs.Find(GlobalIlluminationECS::GetComponentStaticType(), system) ||
+		!system || !system->GetRawPtr())
+	{
+		outDiagnostic = "Global Illumination ECS is unavailable";
+		return false;
+	}
+	auto* globalIllumination = static_cast<GlobalIlluminationECS*>(
+		system->GetRawPtr());
+	if (!globalIllumination->ApplyWorldSettings(settings, outDiagnostic))
+	{
+		return false;
+	}
+	outDiagnostic = "updated world Global Illumination ECS settings";
+	return true;
 }
 
 ObjectPtr World::GetObjectByInstanceId(const InstanceId& instanceId) const
@@ -334,6 +374,8 @@ bool World::RegisterPrefabInstance(
 			}
 
 			baselineGameObject.m_name = liveGameObject->GetName();
+			baselineGameObject.m_mobilityType =
+				liveGameObject->GetMobilityType();
 			baselineGameObject.m_position =
 				liveGameObject->GetTransformComponent().GetPosition();
 			baselineGameObject.m_rotation =
@@ -1186,6 +1228,8 @@ GameObjectPtr World::Instantiate(
 
 		GameObjectPtr gameObject = NewGameObject(prefab->m_gameObjects[j].m_name, gameObjectId);
 		gameObjects.Add(gameObject);
+		gameObject->SetMobilityType(
+			prefab->m_gameObjects[j].m_mobilityType);
 
 		auto& transform = gameObject->GetTransformComponent();
 		transform.SetPosition(prefab->m_gameObjects[j].m_position);

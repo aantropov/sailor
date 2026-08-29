@@ -12,6 +12,9 @@
 #include "Engine/InstanceId.h"
 #include "Components/AnimatorComponent.h"
 #include "Editor/EditorViewportController.h"
+#include "Editor/GlobalIlluminationBakeController.h"
+#include "Editor/GlobalIlluminationEditorState.h"
+#include "ECS/GlobalIlluminationECS.h"
 #include "Submodules/Editor.h"
 #include "Workspace/WorkspaceModuleManager.h"
 #include "Workspace/WorkspaceCacheContract.h"
@@ -566,6 +569,100 @@ bool App::PreviewEditorAudioAsset(const char* strFileId)
 			FileId fileId;
 			fileId.Deserialize(YAML::Node(fileIdValue));
 			return fileId && editor->PreviewAudioAsset(fileId);
+		});
+}
+
+bool App::StartEditorGIProbesBake(
+	const EditorGIProbesBakeRequest& request,
+	std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[request, &outDiagnostic]()
+		{
+			auto* editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				outDiagnostic = "the Editor submodule is unavailable";
+				return false;
+			}
+			return editor->StartGIProbesBake(request, outDiagnostic);
+		});
+}
+
+bool App::CancelEditorGIProbesBake(std::string& outDiagnostic)
+{
+	auto* editor = GetSubmodule<Editor>();
+	if (!editor)
+	{
+		outDiagnostic = "the Editor submodule is unavailable";
+		return false;
+	}
+	return editor->CancelGIProbesBake(outDiagnostic);
+}
+
+bool App::GetEditorGIProbesBakeStatus(
+	EditorGIProbesBakeStatus& outStatus)
+{
+	const auto* editor = GetSubmodule<Editor>();
+	if (!editor)
+	{
+		outStatus = {};
+		return false;
+	}
+	outStatus = editor->GetGIProbesBakeStatus();
+	return true;
+}
+
+bool App::SetEditorGISettings(
+	GISettings settings,
+	std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[settings = std::move(settings), &outDiagnostic]() mutable
+		{
+			auto* editor = GetSubmodule<Editor>();
+			auto* world = editor ? editor->GetWorld() : nullptr;
+			if (!world)
+			{
+				outDiagnostic = "the current Editor world is unavailable";
+				return false;
+			}
+			return world->SetGISettings(
+				std::move(settings),
+				outDiagnostic);
+		});
+}
+
+bool App::GetEditorGlobalIlluminationState(
+	EditorGlobalIlluminationState& outState)
+{
+	outState = {};
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[&outState]()
+		{
+			const auto* editor = GetSubmodule<Editor>();
+			auto* world = editor ? editor->GetWorld() : nullptr;
+			auto* globalIllumination = world
+				? world->GetECS<GlobalIlluminationECS>()
+				: nullptr;
+			if (!globalIllumination)
+			{
+				return false;
+			}
+			outState.m_maxProbeStatesPerSnapshot =
+				globalIllumination->GetMaxProbeStatesPerSnapshot();
+			outState.m_mode = globalIllumination->GetWorldSettings().m_mode;
+			outState.m_bEnabled = globalIllumination->IsEnabled();
+			outState.m_probes = globalIllumination->GetProbeStates();
+			outState.m_diagnostic = globalIllumination->GetDiagnostic();
+			outState.m_compositionCount =
+				globalIllumination->GetCompositionCount();
+			outState.m_rejectedCompositionCount =
+				globalIllumination->GetRejectedCompositionCount();
+			return true;
 		});
 }
 

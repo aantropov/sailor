@@ -9,68 +9,6 @@ using namespace Sailor;
 
 namespace
 {
-	const char* ToString(EAnimationParameterType type)
-	{
-		switch (type)
-		{
-		case EAnimationParameterType::Float: return "Float";
-		case EAnimationParameterType::Int: return "Int";
-		case EAnimationParameterType::Bool: return "Bool";
-		case EAnimationParameterType::Trigger: return "Trigger";
-		case EAnimationParameterType::Invalid: return "Invalid";
-		}
-		return "Invalid";
-	}
-
-	const char* ToString(EAnimationConditionOperation operation)
-	{
-		switch (operation)
-		{
-		case EAnimationConditionOperation::Equal: return "Equal";
-		case EAnimationConditionOperation::NotEqual: return "NotEqual";
-		case EAnimationConditionOperation::Less: return "Less";
-		case EAnimationConditionOperation::LessOrEqual: return "LessOrEqual";
-		case EAnimationConditionOperation::Greater: return "Greater";
-		case EAnimationConditionOperation::GreaterOrEqual: return "GreaterOrEqual";
-		case EAnimationConditionOperation::IsSet: return "IsSet";
-		case EAnimationConditionOperation::Invalid: return "Invalid";
-		}
-		return "Invalid";
-	}
-
-	EAnimationParameterType ParseParameterType(const YAML::Node& node)
-	{
-		if (!node || node.IsNull())
-		{
-			return EAnimationParameterType::Float;
-		}
-
-		const std::string value = node.as<std::string>();
-		if (value == "Float") return EAnimationParameterType::Float;
-		if (value == "Int") return EAnimationParameterType::Int;
-		if (value == "Bool") return EAnimationParameterType::Bool;
-		if (value == "Trigger") return EAnimationParameterType::Trigger;
-		return EAnimationParameterType::Invalid;
-	}
-
-	EAnimationConditionOperation ParseConditionOperation(const YAML::Node& node)
-	{
-		if (!node || node.IsNull())
-		{
-			return EAnimationConditionOperation::Equal;
-		}
-
-		const std::string value = node.as<std::string>();
-		if (value == "Equal") return EAnimationConditionOperation::Equal;
-		if (value == "NotEqual") return EAnimationConditionOperation::NotEqual;
-		if (value == "Less") return EAnimationConditionOperation::Less;
-		if (value == "LessOrEqual") return EAnimationConditionOperation::LessOrEqual;
-		if (value == "Greater") return EAnimationConditionOperation::Greater;
-		if (value == "GreaterOrEqual") return EAnimationConditionOperation::GreaterOrEqual;
-		if (value == "IsSet") return EAnimationConditionOperation::IsSet;
-		return EAnimationConditionOperation::Invalid;
-	}
-
 	void AddError(TVector<std::string>* errors, const std::string& error)
 	{
 		if (errors)
@@ -112,7 +50,7 @@ YAML::Node AnimationControllerAsset::Serialize() const
 		YAML::Node serialized;
 		serialized["id"] = parameter.m_id;
 		serialized["name"] = parameter.m_name;
-		serialized["type"] = ToString(parameter.m_type);
+		serialized["type"] = std::string(magic_enum::enum_name(parameter.m_type));
 		switch (parameter.m_type)
 		{
 		case EAnimationParameterType::Float:
@@ -159,7 +97,8 @@ YAML::Node AnimationControllerAsset::Serialize() const
 		{
 			YAML::Node serializedCondition;
 			serializedCondition["parameter"] = condition.m_parameterId;
-			serializedCondition["operation"] = ToString(condition.m_operation);
+			serializedCondition["operation"] =
+				std::string(magic_enum::enum_name(condition.m_operation));
 			serializedCondition["floatValue"] = condition.m_floatValue;
 			serializedCondition["intValue"] = condition.m_intValue;
 			serializedCondition["boolValue"] = condition.m_boolValue;
@@ -190,7 +129,12 @@ void AnimationControllerAsset::Deserialize(const YAML::Node& inData)
 			parameter.m_id = serialized["id"].as<AnimationControllerNodeId>(
 				InvalidAnimationControllerNodeId);
 			parameter.m_name = serialized["name"].as<std::string>("");
-			parameter.m_type = ParseParameterType(serialized["type"]);
+			const YAML::Node parameterType = serialized["type"];
+			parameter.m_type = parameterType && !parameterType.IsNull()
+				? magic_enum::enum_cast<EAnimationParameterType>(
+					parameterType.as<std::string>()).value_or(
+						EAnimationParameterType::Invalid)
+				: EAnimationParameterType::Float;
 			switch (parameter.m_type)
 			{
 			case EAnimationParameterType::Float:
@@ -265,7 +209,14 @@ void AnimationControllerAsset::Deserialize(const YAML::Node& inData)
 					AnimationTransitionCondition condition;
 					condition.m_parameterId = serializedCondition["parameter"].as<AnimationControllerNodeId>(
 						InvalidAnimationControllerNodeId);
-					condition.m_operation = ParseConditionOperation(serializedCondition["operation"]);
+					const YAML::Node conditionOperation =
+						serializedCondition["operation"];
+					condition.m_operation = conditionOperation &&
+						!conditionOperation.IsNull()
+						? magic_enum::enum_cast<EAnimationConditionOperation>(
+							conditionOperation.as<std::string>()).value_or(
+								EAnimationConditionOperation::Invalid)
+						: EAnimationConditionOperation::Equal;
 					condition.m_floatValue = serializedCondition["floatValue"].as<float>(0.0f);
 					condition.m_intValue = serializedCondition["intValue"].as<int32_t>(0);
 					condition.m_boolValue = serializedCondition["boolValue"].as<bool>(false);

@@ -1,11 +1,59 @@
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
 
 namespace Sailor::RHI
 {
+	template<uint32_t WindowSize>
+	class TGpuTimingAverage final
+	{
+		static_assert(WindowSize > 0u);
+
+	public:
+		bool AddSample(float milliseconds)
+		{
+			if (!std::isfinite(milliseconds) || milliseconds < 0.0f)
+			{
+				return false;
+			}
+
+			if (m_sampleCount == WindowSize)
+			{
+				m_sum -= m_samples[m_nextSample];
+			}
+			else
+			{
+				++m_sampleCount;
+			}
+
+			m_samples[m_nextSample] = milliseconds;
+			m_sum += milliseconds;
+			m_nextSample = (m_nextSample + 1u) % WindowSize;
+			return true;
+		}
+
+		float GetAverage() const
+		{
+			return m_sampleCount > 0u ?
+				static_cast<float>(m_sum / static_cast<double>(m_sampleCount)) :
+				0.0f;
+		}
+
+		uint32_t GetSampleCount() const
+		{
+			return m_sampleCount;
+		}
+
+	private:
+		std::array<float, WindowSize> m_samples{};
+		double m_sum = 0.0;
+		uint32_t m_sampleCount = 0u;
+		uint32_t m_nextSample = 0u;
+	};
+
 	inline bool TryResolveGpuFrameTimeMilliseconds(
 		uint64_t beginTimestamp,
 		uint64_t endTimestamp,
@@ -38,6 +86,27 @@ namespace Sailor::RHI
 
 		outMilliseconds = static_cast<float>(milliseconds);
 		return true;
+	}
+
+	inline uint32_t CalculateGpuFramesPerSecond(float frameTimeMilliseconds)
+	{
+		if (!std::isfinite(frameTimeMilliseconds) ||
+			frameTimeMilliseconds <= 0.0f)
+		{
+			return 0u;
+		}
+
+		const double framesPerSecond = 1000.0 /
+			static_cast<double>(frameTimeMilliseconds);
+		if (framesPerSecond >=
+			static_cast<double>((std::numeric_limits<uint32_t>::max)()))
+		{
+			return (std::numeric_limits<uint32_t>::max)();
+		}
+
+		const uint32_t rounded =
+			static_cast<uint32_t>(framesPerSecond + 0.5);
+		return rounded > 0u ? rounded : 1u;
 	}
 
 	enum class EGpuFrameTimeQuerySlotState : uint8_t

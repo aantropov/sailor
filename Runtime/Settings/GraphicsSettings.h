@@ -25,7 +25,8 @@ namespace Sailor::Settings
 #pragma warning(disable: 4251)
 #endif
 
-	inline constexpr uint32_t GraphicsSettingsVersion = 1u;
+	inline constexpr uint32_t ProjectGraphicsSettingsVersion = 1u;
+	inline constexpr uint32_t EditorGraphicsSettingsVersion = 1u;
 	inline constexpr uint32_t NumGraphicsQualityPresets = 5u;
 	inline constexpr uint32_t MaxShadowCascades = 4u;
 
@@ -77,7 +78,7 @@ namespace Sailor::Settings
 		uint32_t m_fpsCap = 120u;
 		uint32_t m_msaaSamples = 1u;
 		ELightShadowQuality m_shadowQuality = ELightShadowQuality::Medium;
-		float m_shadowBias = 0.0f;
+		float m_shadowBias = 1.25f;
 		uint32_t m_shadowCascadeCount = 1u;
 		std::array<uint32_t, MaxShadowCascades> m_shadowCascadeResolutions
 		{
@@ -89,8 +90,10 @@ namespace Sailor::Settings
 		bool m_bSupportSoftShadows = false;
 		float m_cloudsResolutionMultiplier = 0.5f;
 		uint32_t m_skyResolution = 256u;
-		uint32_t m_vegetationInstanceBudget = 32768u;
+		uint32_t m_vegetationInstanceBudget = 8192u;
 		int32_t m_lodBias = 0;
+		bool m_bEnableGlobalIllumination = true;
+		uint32_t m_maxGiProbeStatesPerSnapshot = 3u;
 
 		bool IsShadowCascadeActive(uint32_t cascadeIndex) const noexcept;
 		uint32_t GetShadowCascadeResolution(uint32_t cascadeIndex) const noexcept;
@@ -100,7 +103,7 @@ namespace Sailor::Settings
 	{
 		GraphicsSettings();
 
-		uint32_t m_version = GraphicsSettingsVersion;
+		uint32_t m_version = ProjectGraphicsSettingsVersion;
 		EGraphicsQuality m_defaultQuality = EGraphicsQuality::High;
 		std::array<GraphicsQualityProfile, NumGraphicsQualityPresets> m_presets{};
 
@@ -109,7 +112,7 @@ namespace Sailor::Settings
 
 	struct SAILOR_SHARED_API EditorGraphicsSettings final
 	{
-		uint32_t m_version = GraphicsSettingsVersion;
+		uint32_t m_version = EditorGraphicsSettingsVersion;
 		EGraphicsQualitySelection m_selectedQuality = EGraphicsQualitySelection::ProjectDefault;
 		ERenderStatsMode m_statsMode = ERenderStatsMode::None;
 	};
@@ -146,10 +149,6 @@ namespace Sailor::Settings
 		const GraphicsQualityProfile& GetActiveProfile() const noexcept;
 	};
 
-	SAILOR_SHARED_API const char* ToString(EGraphicsQuality quality) noexcept;
-	SAILOR_SHARED_API const char* ToString(EGraphicsQualitySelection selection) noexcept;
-	SAILOR_SHARED_API const char* ToString(ERenderStatsMode mode) noexcept;
-	SAILOR_SHARED_API bool IsValidRenderStatsMode(ERenderStatsMode mode) noexcept;
 	SAILOR_SHARED_API EGraphicsQuality ResolveQualitySelection(
 		EGraphicsQualitySelection selection,
 		EGraphicsQuality projectDefault) noexcept;

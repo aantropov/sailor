@@ -4,6 +4,8 @@
 #include "ECS/LightingECS.h"
 #include "Math/Math.h"
 
+#include <cmath>
+
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
@@ -69,6 +71,30 @@ void LightComponent::SetIntensity(const glm::vec3& value)
 	if (value != lightData.m_intensity)
 	{
 		lightData.m_intensity = value;
+		lightData.MarkDirty();
+	}
+}
+
+void LightComponent::SetIndirectLightingIntensity(float value)
+{
+	LightData& lightData = GetData();
+	value = std::isfinite(value) ? (std::max)(value, 0.0f) : 0.0f;
+
+	if (value != lightData.m_indirectLightingIntensity)
+	{
+		lightData.m_indirectLightingIntensity = value;
+		lightData.MarkDirty();
+	}
+}
+
+void LightComponent::SetGlobalIlluminationMode(
+	ELightGlobalIlluminationMode value)
+{
+	LightData& lightData = GetData();
+
+	if (value != lightData.m_globalIlluminationMode)
+	{
+		lightData.m_globalIlluminationMode = value;
 		lightData.MarkDirty();
 	}
 }

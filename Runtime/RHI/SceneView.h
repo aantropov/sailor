@@ -9,6 +9,7 @@
 #include "RHI/RenderSubmission.h"
 #include "RHI/Scene.h"
 #include "RHI/Lighting.h"
+#include "RHI/GlobalIllumination.h"
 #include "ECS/CameraECS.h"
 #include "Math/Math.h"
 #include "Raytracing/LightingModel.h"
@@ -411,6 +412,10 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr m_boneMatrices{};
 		TSharedPtr<TVector<glm::mat4>> m_cpuBoneMatrices{};
 		uint64_t m_animationRevision = 0ull;
+		EGlobalIlluminationMode m_globalIlluminationMode =
+			EGlobalIlluminationMode::RealtimeAndBaked;
+		bool m_bGlobalIlluminationEnabled = true;
+		RHIGlobalIlluminationSnapshotPtr m_globalIllumination{};
 
 		Tasks::TaskPtr<RHICommandListPtr> m_debugDrawSecondaryCmdList{};
 		Tasks::TaskPtr<RHICommandListPtr, void> m_drawImGui{};
@@ -456,6 +461,10 @@ namespace Sailor::RHI
 		RHI::RHIShaderBindingSetPtr m_boneMatrices{};
 		TSharedPtr<TVector<glm::mat4>> m_cpuBoneMatrices{};
 		uint64_t m_animationRevision = 0ull;
+		EGlobalIlluminationMode m_globalIlluminationMode =
+			EGlobalIlluminationMode::RealtimeAndBaked;
+		bool m_bGlobalIlluminationEnabled = true;
+		RHIGlobalIlluminationSnapshotPtr m_globalIllumination{};
 
 		// For each camera
 		TVector<TVector<RHIUpdateShadowMapCommand>> m_shadowMapsToUpdate;

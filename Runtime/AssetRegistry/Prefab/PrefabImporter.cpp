@@ -63,6 +63,7 @@ YAML::Node Prefab::ReflectedGameObject::Serialize() const
 	YAML::Node outData;
 
 	SERIALIZE_PROPERTY(outData, m_name);
+	SERIALIZE_PROPERTY(outData, m_mobilityType);
 	SERIALIZE_PROPERTY(outData, m_position);
 	SERIALIZE_PROPERTY(outData, m_rotation);
 	SERIALIZE_PROPERTY(outData, m_scale);
@@ -76,6 +77,10 @@ YAML::Node Prefab::ReflectedGameObject::Serialize() const
 void Prefab::ReflectedGameObject::Deserialize(const YAML::Node& inData)
 {
 	DESERIALIZE_PROPERTY(inData, m_name);
+	m_bHasMobilityType = Sailor::Deserialize(
+		inData,
+		"mobilityType",
+		m_mobilityType);
 	DESERIALIZE_PROPERTY(inData, m_position);
 	DESERIALIZE_PROPERTY(inData, m_rotation);
 	DESERIALIZE_PROPERTY(inData, m_scale);
@@ -287,6 +292,12 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 				" has no parentIndex";
 			return false;
 		}
+		if (!gameObject.m_bHasMobilityType)
+		{
+			outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
+				" has no mobilityType";
+			return false;
+		}
 
 		if (!gameObject.m_instanceId.IsGameObjectId())
 		{
@@ -310,6 +321,14 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 		{
 			outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
 				" has invalid parent index " + std::to_string(gameObject.m_parentIndex);
+			return false;
+		}
+		else if (!IsMobilityHierarchyValid(
+			m_gameObjects[gameObject.m_parentIndex].m_mobilityType,
+			gameObject.m_mobilityType))
+		{
+			outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
+				" cannot be less movable than its parent";
 			return false;
 		}
 
@@ -476,6 +495,7 @@ void Prefab::SerializeGameObject(
 	rootData.m_scale = transform.GetScale();
 
 	rootData.m_name = root->GetName();
+	rootData.m_mobilityType = root->GetMobilityType();
 	rootData.m_parentIndex = parentIndex;
 	rootData.m_instanceId = root->GetInstanceId();
 
@@ -605,7 +625,7 @@ bool Prefab::ConfigureLinkedInstance(
 		for (const auto& property : properties)
 		{
 			const std::string name = property.first.as<std::string>();
-			if (name != "name" && name != "position" && name != "rotation" && name != "scale")
+			if (name != "name" && name != "mobilityType" && name != "position" && name != "rotation" && name != "scale")
 			{
 				outDiagnostic = "unsupported linked game object override property '" + name + "'";
 				return false;
@@ -616,6 +636,7 @@ bool Prefab::ConfigureLinkedInstance(
 				[&properties, target]()
 				{
 					::Deserialize(properties, "name", target->m_name);
+					::Deserialize(properties, "mobilityType", target->m_mobilityType);
 					::Deserialize(properties, "position", target->m_position);
 					::Deserialize(properties, "rotation", target->m_rotation);
 					::Deserialize(properties, "scale", target->m_scale);

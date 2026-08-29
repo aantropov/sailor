@@ -2,6 +2,7 @@ name: PhysicsFallingBodies
 prefabs:
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 0
           - 70
@@ -31,6 +32,7 @@ prefabs:
           instanceId: 14100000000000000000000000000001_14100000000000000001
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 100
@@ -63,6 +65,7 @@ prefabs:
           instanceId: 14100000000000000000000000000002_14100000000000000002
   - gameObjects:
       - name: StaticGround
+        mobilityType: Stationary
         position:
           - 0
           - -5
@@ -109,6 +112,7 @@ prefabs:
           instanceId: 14100000000000000000000000000005_14100000000000000003
   - gameObjects:
       - name: DynamicBox
+        mobilityType: Stationary
         position:
           - -20
           - 50
@@ -157,6 +161,7 @@ prefabs:
           instanceId: 14100000000000000000000000000008_14100000000000000004
   - gameObjects:
       - name: DynamicSphere
+        mobilityType: Stationary
         position:
           - 0
           - 80
@@ -202,6 +207,7 @@ prefabs:
           instanceId: 1410000000000000000000000000000B_14100000000000000005
   - gameObjects:
       - name: DynamicCapsule
+        mobilityType: Stationary
         position:
           - 20
           - 110
@@ -247,6 +253,7 @@ prefabs:
           instanceId: 1410000000000000000000000000000E_14100000000000000006
   - gameObjects:
       - name: SensorPlatform
+        mobilityType: Stationary
         position:
           - 50
           - 30
@@ -293,6 +300,7 @@ prefabs:
           instanceId: 14100000000000000000000000000011_14100000000000000007
   - gameObjects:
       - name: SensorProbe
+        mobilityType: Stationary
         position:
           - 50
           - 80

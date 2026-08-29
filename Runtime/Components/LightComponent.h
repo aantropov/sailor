@@ -24,6 +24,12 @@ namespace Sailor
 		SAILOR_API __forceinline const LightData& GetData() const;
 
 		SAILOR_API __forceinline const glm::vec3& GetIntensity() const { return GetData().m_intensity; }
+		SAILOR_API __forceinline float GetIndirectLightingIntensity() const { return GetData().m_indirectLightingIntensity; }
+		SAILOR_API __forceinline ELightGlobalIlluminationMode
+			GetGlobalIlluminationMode() const
+		{
+			return GetData().m_globalIlluminationMode;
+		}
 		SAILOR_API __forceinline const glm::vec3& GetAttenuation() const { return GetData().m_attenuation; }
 		SAILOR_API __forceinline float GetRadius() const { return GetData().m_radius; }
 		SAILOR_API __forceinline const glm::vec2& GetCutOff() const { return GetData().m_cutOff; }
@@ -34,6 +40,9 @@ namespace Sailor
 
 		SAILOR_API void SetCutOff(const glm::vec2& innerOuterDegrees);
 		SAILOR_API void SetIntensity(const glm::vec3& value);
+		SAILOR_API void SetIndirectLightingIntensity(float value);
+		SAILOR_API void SetGlobalIlluminationMode(
+			ELightGlobalIlluminationMode value);
 		SAILOR_API void SetAttenuation(const glm::vec3& value);
 		SAILOR_API void SetRadius(float value);
 		SAILOR_API void SetLightType(ELightType value);
@@ -56,6 +65,10 @@ REFL_AUTO(
 
 	func(GetIntensity, property("intensity"), SkipCDO()),
 	func(SetIntensity, property("intensity"), SkipCDO()),
+	func(GetIndirectLightingIntensity, property("indirectLightingIntensity"), SkipCDO(), Range(0.0, 16.0)),
+	func(SetIndirectLightingIntensity, property("indirectLightingIntensity"), SkipCDO()),
+	func(GetGlobalIlluminationMode, property("globalIlluminationMode"), SkipCDO()),
+	func(SetGlobalIlluminationMode, property("globalIlluminationMode"), SkipCDO()),
 
 	func(GetAttenuation, property("attenuation"), SkipCDO()),
 	func(SetAttenuation, property("attenuation"), SkipCDO()),

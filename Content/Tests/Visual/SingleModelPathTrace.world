@@ -2,6 +2,7 @@ name: SingleModelPathTrace
 prefabs:
   - gameObjects:
       - name: SingleModelPathTrace
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -41,6 +42,7 @@ prefabs:
           instanceId: 28952896BB65BB571928FB4E85A57E62_10010010010010010000
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 0
           - 130
@@ -70,6 +72,7 @@ prefabs:
           instanceId: 9A6AC30A438F49F69E4B73D72A53EF01_10010010010010010001
   - gameObjects:
       - name: Duck
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -106,6 +109,7 @@ prefabs:
           instanceId: C0D693FB97B24735A1EA0A6C35E9C80E_10010010010010010002
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 300

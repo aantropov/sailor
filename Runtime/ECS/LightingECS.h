@@ -25,6 +25,9 @@ namespace Sailor
 	public:
 
 		glm::vec3 m_intensity{ 100.0f, 100.0f, 100.0f };
+		float m_indirectLightingIntensity = 1.0f;
+		ELightGlobalIlluminationMode m_globalIlluminationMode =
+			ELightGlobalIlluminationMode::RealtimeAndBaked;
 		glm::vec3 m_attenuation{ 1.0f, 0.022f, 0.0019f };
 		float m_radius = 100.0f;
 		glm::vec2 m_cutOff{ 30.0f, 45.0f };
@@ -166,6 +169,8 @@ namespace Sailor
 		SAILOR_API virtual uint32_t GetOrder() const override { return 150; }
 
 		SAILOR_API void GetLightProxies(TVector<Raytracing::LightProxy>& outLights) const;
+		SAILOR_API void GetGlobalIlluminationBakeLightProxies(
+			TVector<Raytracing::LightProxy>& outLights) const;
 		void FillLightingData(RHI::RHISceneViewPtr& sceneView);
 
 		float GetShadowsOccupiedMemoryMb() const { return m_shadowMapsMb; }
@@ -181,6 +186,9 @@ namespace Sailor
 		}
 
 	protected:
+		void CollectLightProxies(
+			TVector<Raytracing::LightProxy>& outLights,
+			bool bGlobalIlluminationBakeContributorsOnly) const;
 
 		SAILOR_API void PrepareCSMPasses(
 			const RHI::RHISceneViewPtr& sceneView,

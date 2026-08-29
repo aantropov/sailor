@@ -921,6 +921,8 @@ public sealed class SettingsPanelView : ContentView
         readonly Entry _skyResolution;
         readonly Entry _vegetationInstanceBudget;
         readonly Entry _lodBias;
+        readonly Switch _enableGlobalIllumination;
+        readonly Entry _maxGiProbeStatesPerSnapshot;
 
         public GraphicsPresetEditor(
             GraphicsQualityLevel quality,
@@ -957,6 +959,16 @@ public sealed class SettingsPanelView : ContentView
             _vegetationInstanceBudget = CreateEntry(
                 draft.VegetationInstanceBudget);
             _lodBias = CreateEntry(draft.LodBias);
+            _enableGlobalIllumination = new Switch
+            {
+                IsToggled = draft.EnableGlobalIllumination,
+                Scale = 0.8,
+                HeightRequest = 30,
+                HorizontalOptions = LayoutOptions.End
+            };
+            _enableGlobalIllumination.Toggled += (_, _) => _changed();
+            _maxGiProbeStatesPerSnapshot = CreateEntry(
+                draft.MaxGiProbeStatesPerSnapshot);
         }
 
         public GraphicsQualityLevel Quality { get; }
@@ -976,7 +988,9 @@ public sealed class SettingsPanelView : ContentView
                 _cloudsResolutionMultiplier.Text ?? string.Empty,
                 _skyResolution.Text ?? string.Empty,
                 _vegetationInstanceBudget.Text ?? string.Empty,
-                _lodBias.Text ?? string.Empty);
+                _lodBias.Text ?? string.Empty,
+                _enableGlobalIllumination.IsToggled,
+                _maxGiProbeStatesPerSnapshot.Text ?? string.Empty);
 
         public View CreateView(bool initiallyExpanded, bool isActive)
         {
@@ -989,14 +1003,22 @@ public sealed class SettingsPanelView : ContentView
                     CreatePresetField("FPS Cap", "Maximum CPU frames per second, 1–1000", _fpsCap),
                     CreatePresetField("MSAA", "Supported sample count", _msaaSamples),
                     CreatePresetField("Shadow Quality Cap", "Global cap over authored light quality", _shadowQuality),
-                    CreatePresetField("Shadow Bias", "Vulkan constant depth bias, -16–16", _shadowBias),
+                    CreatePresetField("PCF Shadow Bias", "PCF caster and receiver bias, -16–16", _shadowBias),
                     CreatePresetField("Shadow Cascade Count", "Active directional cascades, 1–4", _shadowCascadeCount),
                     CreatePresetField("Cascade Resolutions", "Comma-separated powers of two, one per active cascade", _shadowCascadeResolutions),
                     CreatePresetField("Soft Shadows", "Enable soft shadow filtering", _supportSoftShadows),
                     CreatePresetField("Clouds Resolution Multiplier", "0.0625–2.0", _cloudsResolutionMultiplier),
                     CreatePresetField("Sky Resolution", "Power of two, 32–8192", _skyResolution),
                     CreatePresetField("Vegetation Instance Budget", "Global active grass instances, 0–1048576", _vegetationInstanceBudget),
-                    CreatePresetField("LOD Bias", "Signed index shift, -8 (finer) to +8 (coarser)", _lodBias)
+                    CreatePresetField("LOD Bias", "Signed index shift, -8 (finer) to +8 (coarser)", _lodBias),
+                    CreatePresetField(
+                        "Global Illumination",
+                        "Enable diffuse environment and baked probe GI",
+                        _enableGlobalIllumination),
+                    CreatePresetField(
+                        "GI Probe States / Snapshot",
+                        "Maximum simultaneous Blend + Additive baked states, 0 disables probe GI",
+                        _maxGiProbeStatesPerSnapshot)
                 }
             };
 
@@ -1110,6 +1132,12 @@ public sealed class SettingsPanelView : ContentView
                 "LOD bias",
                 issues,
                 out var lodBias);
+            valid &= TryParseInt(
+                _maxGiProbeStatesPerSnapshot.Text,
+                $"{path}.maxGiProbeStatesPerSnapshot",
+                "Maximum GI probe states per snapshot",
+                issues,
+                out var maxGiProbeStatesPerSnapshot);
 
             var msaaSamples = _msaaSamples.SelectedItem is int msaa
                 ? msaa
@@ -1135,7 +1163,9 @@ public sealed class SettingsPanelView : ContentView
                 CloudsResolutionMultiplier = cloudsResolutionMultiplier,
                 SkyResolution = skyResolution,
                 VegetationInstanceBudget = vegetationInstanceBudget,
-                LodBias = lodBias
+                LodBias = lodBias,
+                EnableGlobalIllumination = _enableGlobalIllumination.IsToggled,
+                MaxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot
             };
             return valid;
         }

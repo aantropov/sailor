@@ -19,7 +19,7 @@ namespace SailorEditor.ViewModels;
 public partial class Component : ObservableObject, ICloneable, IInspectorEditable
 {
     readonly InspectorAutoCommitController _autoCommit = new(
-        propertyName => propertyName == nameof(IsDirty),
+        propertyName => propertyName is nameof(IsDirty) or nameof(DisplayName),
         propertyName => propertyName == nameof(OverrideProperties));
     readonly SemaphoreSlim _commitGate = new(1, 1);
     int pendingInspectorCommits;
@@ -142,6 +142,10 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
     [YamlIgnore]
     public bool HasPendingInspectorChanges =>
         IsDirty || Volatile.Read(ref pendingInspectorCommits) != 0;
+
+    [YamlIgnore]
+    public bool HasInFlightInspectorCommit =>
+        Volatile.Read(ref pendingInspectorCommits) != 0;
 
     public void Initialize()
     {

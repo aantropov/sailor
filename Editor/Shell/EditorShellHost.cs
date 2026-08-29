@@ -227,6 +227,7 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
         "Scene" => "center-docs",
         "Console" => "bottom-console",
         "Inspector" => "right-inspector",
+        "Lighting" => "right-inspector",
         "Hierarchy" => "left-bottom",
         "Content" => "left-top",
         "EditorPerformance" => "bottom-console",

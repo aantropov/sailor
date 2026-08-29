@@ -14,7 +14,9 @@ public sealed record GraphicsQualityPresetDraft(
     string CloudsResolutionMultiplier,
     string SkyResolution,
     string VegetationInstanceBudget,
-    string LodBias)
+    string LodBias,
+    bool EnableGlobalIllumination,
+    string MaxGiProbeStatesPerSnapshot)
 {
     public static GraphicsQualityPresetDraft FromSettings(
         GraphicsQualityPresetSettings settings)
@@ -30,7 +32,10 @@ public sealed record GraphicsQualityPresetDraft(
             FormatDouble(settings.CloudsResolutionMultiplier),
             settings.SkyResolution.ToString(CultureInfo.InvariantCulture),
             settings.VegetationInstanceBudget.ToString(CultureInfo.InvariantCulture),
-            settings.LodBias.ToString(CultureInfo.InvariantCulture));
+            settings.LodBias.ToString(CultureInfo.InvariantCulture),
+            settings.EnableGlobalIllumination,
+            settings.MaxGiProbeStatesPerSnapshot.ToString(
+                CultureInfo.InvariantCulture));
 
     internal bool TryBuild(
         GraphicsQualityLevel quality,
@@ -86,6 +91,12 @@ public sealed record GraphicsQualityPresetDraft(
             "LOD bias",
             issues,
             out var lodBias);
+        valid &= TryParseInt(
+            MaxGiProbeStatesPerSnapshot,
+            $"{path}.maxGiProbeStatesPerSnapshot",
+            "Maximum GI probe states per snapshot",
+            issues,
+            out var maxGiProbeStatesPerSnapshot);
 
         settings = new GraphicsQualityPresetSettings
         {
@@ -100,7 +111,9 @@ public sealed record GraphicsQualityPresetDraft(
             CloudsResolutionMultiplier = cloudsResolutionMultiplier,
             SkyResolution = skyResolution,
             VegetationInstanceBudget = vegetationInstanceBudget,
-            LodBias = lodBias
+            LodBias = lodBias,
+            EnableGlobalIllumination = EnableGlobalIllumination,
+            MaxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot
         };
         return valid;
     }

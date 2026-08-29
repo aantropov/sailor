@@ -189,7 +189,12 @@ public partial class ComponentTemplate : DataTemplate
                         if (engineTypes.Enums.TryGetValue(enumProp.Typename, out var enumValues))
                         {
                             propertyEditor = Templates.EnumPicker(enumValues,
-                                (Component vm) => observableString.Value, (vm, value) => observableString.Value = value);
+                                (Component vm) => observableString.Value,
+                                (vm, value) => observableString.Value = value,
+                                value => InspectorPropertyPresentation.FormatEnumValue(
+                                    component.Typename.Name,
+                                    property.Key,
+                                    value));
                         }
                         else
                         {
@@ -264,7 +269,13 @@ public partial class ComponentTemplate : DataTemplate
                             };
                     }
 
-                    Templates.AddGridRowWithLabel(props, property.Key, propertyEditor, GridLength.Auto);
+                    Templates.AddGridRowWithLabel(
+                        props,
+                        InspectorPropertyPresentation.FormatPropertyName(
+                            component.Typename.Name,
+                            property.Key),
+                        propertyEditor,
+                        GridLength.Auto);
                 }
 
                 if (component.Typename.Name == "Sailor::LandscapeComponent")

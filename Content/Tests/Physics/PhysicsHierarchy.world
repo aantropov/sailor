@@ -2,6 +2,7 @@ name: PhysicsHierarchy
 prefabs:
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 0
           - 80
@@ -31,6 +32,7 @@ prefabs:
           instanceId: 14110000000000000000000000000001_14110000000000000001
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 100
@@ -63,6 +65,7 @@ prefabs:
           instanceId: 14110000000000000000000000000002_14110000000000000002
   - gameObjects:
       - name: StaticGround
+        mobilityType: Stationary
         position:
           - 0
           - -5
@@ -109,6 +112,7 @@ prefabs:
           instanceId: 14110000000000000000000000000005_14110000000000000003
   - gameObjects:
       - name: TransformedParent
+        mobilityType: Stationary
         position:
           - 30
           - 10
@@ -128,6 +132,7 @@ prefabs:
         instanceId: 14110000000000000004
         components: []
       - name: DynamicChild
+        mobilityType: Stationary
         position:
           - 0
           - 60
@@ -175,6 +180,7 @@ prefabs:
           instanceId: 14110000000000000000000000000008_14110000000000000005
   - gameObjects:
       - name: KinematicBody_MoveWhileSimulating
+        mobilityType: Stationary
         position:
           - -40
           - 20

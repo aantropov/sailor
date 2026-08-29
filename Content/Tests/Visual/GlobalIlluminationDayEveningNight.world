@@ -1,0 +1,48 @@
+name: GlobalIlluminationDayEveningNight
+globalIllumination:
+  mode: RealtimeAndBaked
+  probes:
+    Day:
+      asset:
+        fileId: "{15500000-0000-4000-8000-000000000001}"
+      mode: Blend
+      initialWeight: 1
+      preload: true
+    Evening:
+      asset:
+        fileId: "{15500000-0000-4000-8000-000000000002}"
+      mode: Blend
+      initialWeight: 0
+      preload: true
+    Night:
+      asset:
+        fileId: "{15500000-0000-4000-8000-000000000003}"
+      mode: Blend
+      initialWeight: 0
+      preload: true
+    Lamps:
+      asset:
+        fileId: "{15500000-0000-4000-8000-000000000004}"
+      mode: Additive
+      initialWeight: 0.25
+      preload: true
+prefabs:
+  - gameObjects:
+      - name: GlobalIlluminationDayEveningNight
+        mobilityType: Stationary
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: 15515515515515515510
+        components: [0]
+    components:
+      - typename: Sailor::GlobalIlluminationVisualTestComponent
+        overrideProperties:
+          testName: GlobalIlluminationDayEveningNight
+          screenshotName: GlobalIlluminationDayEveningNight
+          captureAfterFrames: 240
+          minRunTimeSeconds: 2
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 15500000000040008000000000000010_15515515515515515510

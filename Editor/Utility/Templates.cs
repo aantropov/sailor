@@ -134,7 +134,11 @@ static class Templates
         return picker;
     }
 
-    public static Picker EnumPicker<TBinding>(List<string> enumValues, Expression<Func<TBinding, string>> getter, Action<TBinding, string> setter)
+    public static Picker EnumPicker<TBinding>(
+        List<string> enumValues,
+        Expression<Func<TBinding, string>> getter,
+        Action<TBinding, string> setter,
+        Func<string, string> displayName = null)
     {
         var picker = new Picker
         {
@@ -144,7 +148,7 @@ static class Templates
         var values = enumValues ?? [];
         foreach (var value in values)
         {
-            picker.Items.Add(value);
+            picker.Items.Add(displayName?.Invoke(value) ?? value);
         }
 
         var compiledGetter = getter.Compile();

@@ -250,6 +250,7 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 
 	if (m_lineVertices.Num() == 0)
 	{
+		m_numRenderedVertices = 0u;
 		return;
 	}
 

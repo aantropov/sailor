@@ -25,7 +25,7 @@ namespace SailorEditor.Protocol.Generated {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "ChNlZGl0b3JfZW5naW5lLnByb3RvEhBzYWlsb3IuZWRpdG9yLnYxIgcKBUVt",
-            "cHR5IvseCg9Qcm90b2NvbFJlcXVlc3QSGAoQcHJvdG9jb2xfdmVyc2lvbhgB",
+            "cHR5IsQhCg9Qcm90b2NvbFJlcXVlc3QSGAoQcHJvdG9jb2xfdmVyc2lvbhgB",
             "IAEoDRISCgpyZXF1ZXN0X2lkGAIgASgEEjkKCmluaXRpYWxpemUYCiABKAsy",
             "Iy5zYWlsb3IuZWRpdG9yLnYxLkluaXRpYWxpemVSZXF1ZXN0SAASKAoFc3Rh",
             "cnQYCyABKAsyFy5zYWlsb3IuZWRpdG9yLnYxLkVtcHR5SAASJwoEc3RvcBgM",
@@ -111,168 +111,253 @@ namespace SailorEditor.Protocol.Generated {
             "ZGVSZXF1ZXN0SAASSwoWc2V0X2VkaXRvcl9yZW5kZXJfbW9kZRhBIAEoCzIp",
             "LnNhaWxvci5lZGl0b3IudjEuRWRpdG9yUmVuZGVyTW9kZVJlcXVlc3RIABI5",
             "ChZnZXRfZWRpdG9yX3JlbmRlcl9tb2RlGEIgASgLMhcuc2FpbG9yLmVkaXRv",
-            "ci52MS5FbXB0eUgAQgkKB2NvbW1hbmRKBAgDEApKBAgyEDNKBAhDEGRSGGNy",
-            "ZWF0ZV9tb2RlbF9nYW1lX29iamVjdFIecmVzb2x2ZV92aWV3cG9ydF9kcm9w",
-            "X3Bvc2l0aW9uIq0IChBQcm90b2NvbFJlc3BvbnNlEhgKEHByb3RvY29sX3Zl",
-            "cnNpb24YASABKA0SEgoKcmVxdWVzdF9pZBgCIAEoBBIPCgdzdWNjZXNzGAMg",
-            "ASgIEg0KBWVycm9yGAQgASgJEiQKHHN1cHBvcnRzX3N0cmljdF9pbnN0YW5j",
-            "ZV9pZHMYBSABKAgSLwoMZW1wdHlfcmVzdWx0GAogASgLMhcuc2FpbG9yLmVk",
-            "aXRvci52MS5FbXB0eUgAEjMKC2Jvb2xfcmVzdWx0GAsgASgLMhwuc2FpbG9y",
-            "LmVkaXRvci52MS5Cb29sUmVzdWx0SAASNQoMaW50MzJfcmVzdWx0GAwgASgL",
-            "Mh0uc2FpbG9yLmVkaXRvci52MS5JbnQzMlJlc3VsdEgAEjcKDXVpbnQzMl9y",
-            "ZXN1bHQYDSABKAsyHi5zYWlsb3IuZWRpdG9yLnYxLlVJbnQzMlJlc3VsdEgA",
-            "EjcKDXVpbnQ2NF9yZXN1bHQYDiABKAsyHi5zYWlsb3IuZWRpdG9yLnYxLlVJ",
-            "bnQ2NFJlc3VsdEgAEjcKDXN0cmluZ19yZXN1bHQYDyABKAsyHi5zYWlsb3Iu",
-            "ZWRpdG9yLnYxLlN0cmluZ1Jlc3VsdEgAEkAKEnN0cmluZ19saXN0X3Jlc3Vs",
-            "dBgQIAEoCzIiLnNhaWxvci5lZGl0b3IudjEuU3RyaW5nTGlzdFJlc3VsdEgA",
-            "Ek0KGWFzc2V0X3JlbG9hZF9zdGF0ZV9yZXN1bHQYESABKAsyKC5zYWlsb3Iu",
-            "ZWRpdG9yLnYxLkFzc2V0UmVsb2FkU3RhdGVSZXN1bHRIABJAChJpbnN0YW5j",
-            "ZV9pZF9yZXN1bHQYEiABKAsyIi5zYWlsb3IuZWRpdG9yLnYxLkluc3RhbmNl",
-            "SWRSZXN1bHRIABJRCht2aWV3cG9ydF9ldmVudF9iYXRjaF9yZXN1bHQYEyAB",
-            "KAsyKi5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0RXZlbnRCYXRjaFJlc3Vs",
-            "dEgAEjkKDnZlY3RvcjRfcmVzdWx0GBQgASgLMh8uc2FpbG9yLmVkaXRvci52",
-            "MS5WZWN0b3I0UmVzdWx0SAASTwoadmlld3BvcnRfdG9vbF9zdGF0ZV9yZXN1",
-            "bHQYFSABKAsyKS5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0VG9vbFN0YXRl",
-            "UmVzdWx0SAASRgoVYW5pbWF0b3Jfc3RhdGVfcmVzdWx0GBYgASgLMiUuc2Fp",
-            "bG9yLmVkaXRvci52MS5BbmltYXRvclN0YXRlUmVzdWx0SAASTQoZZWRpdG9y",
-            "X3JlbmRlcl9tb2RlX3Jlc3VsdBgXIAEoCzIoLnNhaWxvci5lZGl0b3IudjEu",
-            "RWRpdG9yUmVuZGVyTW9kZVJlc3VsdEgAQggKBnJlc3VsdEoECAYQCkoECBgQ",
-            "ZCImChFJbml0aWFsaXplUmVxdWVzdBIRCglhcmd1bWVudHMYASADKAkiIQoM",
-            "Q291bnRSZXF1ZXN0EhEKCW1heF9jb3VudBgBIAEoDSIgCg1GaWxlSWRSZXF1",
-            "ZXN0Eg8KB2ZpbGVfaWQYASABKAki5wEKGkNyZWF0ZU1vZGVsSW5zdGFuY2VS",
-            "ZXF1ZXN0EhUKDW1vZGVsX2ZpbGVfaWQYASABKAkSDAoEbmFtZRgCIAEoCRIa",
-            "ChJwYXJlbnRfaW5zdGFuY2VfaWQYAyABKAkSGAoQY3JlYXRlX2hpZXJhcmNo",
-            "eRgEIAEoCBIcChRhcHBseV93b3JsZF9wb3NpdGlvbhgFIAEoCBIxCg53b3Js",
-            "ZF9wb3NpdGlvbhgGIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBId",
-            "ChVwcmVmZXJyZWRfaW5zdGFuY2VfaWQYByABKAkiKAoRSW5zdGFuY2VJZFJl",
-            "cXVlc3QSEwoLaW5zdGFuY2VfaWQYASABKAkiKAoRVmlld3BvcnRJZFJlcXVl",
-            "c3QSEwoLdmlld3BvcnRfaWQYASABKAQiYAoTVmlld3BvcnRSZWN0UmVxdWVz",
-            "dBIUCgx3aW5kb3dfcG9zX3gYASABKA0SFAoMd2luZG93X3Bvc195GAIgASgN",
-            "Eg0KBXdpZHRoGAMgASgNEg4KBmhlaWdodBgEIAEoDSIsCgtTaXplUmVxdWVz",
-            "dBINCgV3aWR0aBgBIAEoDRIOCgZoZWlnaHQYAiABKA0iKgoXRWRpdG9yU2lt",
-            "dWxhdGlvblJlcXVlc3QSDwoHZW5hYmxlZBgBIAEoCCJJChZFZGl0b3JTdGF0",
-            "c01vZGVSZXF1ZXN0Ei8KBG1vZGUYASABKA4yIS5zYWlsb3IuZWRpdG9yLnYx",
-            "LkVkaXRvclN0YXRzTW9kZSJLChdFZGl0b3JSZW5kZXJNb2RlUmVxdWVzdBIw",
-            "CgRtb2RlGAEgASgOMiIuc2FpbG9yLmVkaXRvci52MS5FZGl0b3JSZW5kZXJN",
-            "b2RlIkoKFkVkaXRvclJlbmRlck1vZGVSZXN1bHQSMAoEbW9kZRgBIAEoDjIi",
-            "LnNhaWxvci5lZGl0b3IudjEuRWRpdG9yUmVuZGVyTW9kZSKZAQoVUmVtb3Rl",
-            "Vmlld3BvcnRSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhQKDHdpbmRv",
-            "d19wb3NfeBgCIAEoDRIUCgx3aW5kb3dfcG9zX3kYAyABKA0SDQoFd2lkdGgY",
-            "BCABKA0SDgoGaGVpZ2h0GAUgASgNEg8KB3Zpc2libGUYBiABKAgSDwoHZm9j",
-            "dXNlZBgHIAEoCCJlChlSZW1vdGVWaWV3cG9ydEhvc3RSZXF1ZXN0EhMKC3Zp",
-            "ZXdwb3J0X2lkGAEgASgEEhgKEGhvc3RfaGFuZGxlX2tpbmQYAiABKA0SGQoR",
-            "aG9zdF9oYW5kbGVfdmFsdWUYAyABKAQi/AEKGlJlbW90ZVZpZXdwb3J0SW5w",
-            "dXRSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEgwKBGtpbmQYAiABKA0S",
-            "EQoJcG9pbnRlcl94GAMgASgCEhEKCXBvaW50ZXJfeRgEIAEoAhIVCg13aGVl",
-            "bF9kZWx0YV94GAUgASgCEhUKDXdoZWVsX2RlbHRhX3kYBiABKAISEAoIa2V5",
-            "X2NvZGUYByABKA0SDgoGYnV0dG9uGAggASgNEhEKCW1vZGlmaWVycxgJIAEo",
-            "DRIPCgdwcmVzc2VkGAogASgIEg8KB2ZvY3VzZWQYCyABKAgSEAoIY2FwdHVy",
-            "ZWQYDCABKAgiQwoeTWFuYWdlZE11dGF0aW9uUmV2aXNpb25SZXF1ZXN0EgwK",
-            "BGtpbmQYASABKA0SEwoLaW5zdGFuY2VfaWQYAiABKAkiQAoTVXBkYXRlT2Jq",
-            "ZWN0UmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIUCgx5YW1sX2NoYW5n",
-            "ZXMYAiABKAkiZgoVUmVwYXJlbnRPYmplY3RSZXF1ZXN0EhMKC2luc3RhbmNl",
-            "X2lkGAEgASgJEhoKEnBhcmVudF9pbnN0YW5jZV9pZBgCIAEoCRIcChRrZWVw",
-            "X3dvcmxkX3RyYW5zZm9ybRgDIAEoCCJUChdDcmVhdGVHYW1lT2JqZWN0UmVx",
-            "dWVzdBIaChJwYXJlbnRfaW5zdGFuY2VfaWQYASABKAkSHQoVcHJlZmVycmVk",
-            "X2luc3RhbmNlX2lkGAIgASgJImYKE0FkZENvbXBvbmVudFJlcXVlc3QSEwoL",
-            "aW5zdGFuY2VfaWQYASABKAkSGwoTY29tcG9uZW50X3R5cGVfbmFtZRgCIAEo",
-            "CRIdChVwcmVmZXJyZWRfaW5zdGFuY2VfaWQYAyABKAki5gEKGEFuaW1hdG9y",
-            "UGFyYW1ldGVyUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIMCgRuYW1l",
-            "GAIgASgJEhUKC2Zsb2F0X3ZhbHVlGAMgASgCSAASEwoJaW50X3ZhbHVlGAQg",
-            "ASgRSAASFAoKYm9vbF92YWx1ZRgFIAEoCEgAEioKB3RyaWdnZXIYBiABKAsy",
-            "Fy5zYWlsb3IuZWRpdG9yLnYxLkVtcHR5SAASMAoNcmVzZXRfdHJpZ2dlchgH",
-            "IAEoCzIXLnNhaWxvci5lZGl0b3IudjEuRW1wdHlIAEIHCgV2YWx1ZSJHChhJ",
-            "bnN0YW50aWF0ZVByZWZhYlJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCRIaChJw",
-            "YXJlbnRfaW5zdGFuY2VfaWQYAiABKAkicAogSW5zdGFudGlhdGVQcmVmYWJG",
-            "cm9tWWFtbFJlcXVlc3QSEwoLcHJlZmFiX3lhbWwYASABKAkSGgoScGFyZW50",
-            "X2luc3RhbmNlX2lkGAIgASgJEhsKE3N0cmljdF9pbnN0YW5jZV9pZHMYAyAB",
-            "KAgiVQoSVmlld3BvcnRSYXlSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgE",
-            "EhQKDG5vcm1hbGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kYAyABKAIi",
-            "oAEKIEluc3RhbnRpYXRlUHJlZmFiSW5zdGFuY2VSZXF1ZXN0Eg8KB2ZpbGVf",
-            "aWQYASABKAkSGgoScGFyZW50X2luc3RhbmNlX2lkGAIgASgJEhwKFGFwcGx5",
-            "X3dvcmxkX3Bvc2l0aW9uGAMgASgIEjEKDndvcmxkX3Bvc2l0aW9uGAQgASgL",
-            "Mhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0IkEKFVZpZXdwb3J0T2JqZWN0",
-            "UmVxdWVzdBITCgt2aWV3cG9ydF9pZBgBIAEoBBITCgtpbnN0YW5jZV9pZBgC",
-            "IAEoCSI5ChFQcmVmYWJMaW5rUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEo",
-            "CRIPCgdmaWxlX2lkGAIgASgJIqkBChhWaWV3cG9ydFRvb2xTdGF0ZVJlcXVl",
-            "c3QSEwoLdmlld3BvcnRfaWQYASABKAQSPwoJb3BlcmF0aW9uGAIgASgOMiwu",
-            "c2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRyYW5zZm9ybU9wZXJhdGlvbhI3",
-            "CgVzcGFjZRgDIAEoDjIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFu",
-            "c2Zvcm1TcGFjZSIoChBTZWxlY3Rpb25SZXF1ZXN0EhQKDGluc3RhbmNlX2lk",
-            "cxgBIAMoCSIlChVTaG93TWFpbldpbmRvd1JlcXVlc3QSDAoEc2hvdxgBIAEo",
-            "CCKIAQocUmVuZGVyUGF0aFRyYWNlZEltYWdlUmVxdWVzdBITCgtvdXRwdXRf",
-            "cGF0aBgBIAEoCRITCgtpbnN0YW5jZV9pZBgCIAEoCRIOCgZoZWlnaHQYAyAB",
-            "KA0SGQoRc2FtcGxlc19wZXJfcGl4ZWwYBCABKA0SEwoLbWF4X2JvdW5jZXMY",
-            "BSABKA0iGwoKQm9vbFJlc3VsdBINCgV2YWx1ZRgBIAEoCCIcCgtJbnQzMlJl",
-            "c3VsdBINCgV2YWx1ZRgBIAEoBSIdCgxVSW50MzJSZXN1bHQSDQoFdmFsdWUY",
-            "ASABKA0iHQoMVUludDY0UmVzdWx0Eg0KBXZhbHVlGAEgASgEIjAKDFN0cmlu",
-            "Z1Jlc3VsdBIRCgloYXNfdmFsdWUYASABKAgSDQoFdmFsdWUYAiABKAkiIgoQ",
-            "U3RyaW5nTGlzdFJlc3VsdBIOCgZ2YWx1ZXMYASADKAkihAEKFkFzc2V0UmVs",
-            "b2FkU3RhdGVSZXN1bHQSEQoJYXZhaWxhYmxlGAEgASgIEhoKEnJlcXVlc3Rf",
-            "Z2VuZXJhdGlvbhgCIAEoBBIcChRjb21wbGV0ZWRfZ2VuZXJhdGlvbhgDIAEo",
-            "BBIdChVzdWNjZXNzZnVsX2dlbmVyYXRpb24YBCABKAQiOgoQSW5zdGFuY2VJ",
-            "ZFJlc3VsdBIRCglzdWNjZWVkZWQYASABKAgSEwoLaW5zdGFuY2VfaWQYAiAB",
-            "KAkiOQoNVmVjdG9yNFJlc3VsdBIoCgV2YWx1ZRgBIAEoCzIZLnNhaWxvci5l",
-            "ZGl0b3IudjEuVmVjdG9yNCKTAQoXVmlld3BvcnRUb29sU3RhdGVSZXN1bHQS",
-            "PwoJb3BlcmF0aW9uGAEgASgOMiwuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9y",
-            "dFRyYW5zZm9ybU9wZXJhdGlvbhI3CgVzcGFjZRgCIAEoDjIoLnNhaWxvci5l",
-            "ZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1TcGFjZSKoAgoTQW5pbWF0b3JT",
-            "dGF0ZVJlc3VsdBIWCg5oYXNfY29udHJvbGxlchgBIAEoCBIbChNjb250cm9s",
-            "bGVyX3JldmlzaW9uGAIgASgEEhcKD2FjdGl2ZV9zdGF0ZV9pZBgDIAEoBBIZ",
-            "ChFhY3RpdmVfc3RhdGVfbmFtZRgEIAEoCRIZChFhY3RpdmVfc3RhdGVfdGlt",
-            "ZRgFIAEoAhIVCg10cmFuc2l0aW9uaW5nGAYgASgIEhwKFGRlc3RpbmF0aW9u",
-            "X3N0YXRlX2lkGAcgASgEEh4KFmRlc3RpbmF0aW9uX3N0YXRlX25hbWUYCCAB",
-            "KAkSHgoWZGVzdGluYXRpb25fc3RhdGVfdGltZRgJIAEoAhIYChB0cmFuc2l0",
-            "aW9uX2FscGhhGAogASgCIjUKB1ZlY3RvcjQSCQoBeBgBIAEoAhIJCgF5GAIg",
-            "ASgCEgkKAXoYAyABKAISCQoBdxgEIAEoAiI2ChZWaWV3cG9ydFNlbGVjdGlv",
-            "bkV2ZW50EhwKFHNlbGVjdGVkX2luc3RhbmNlX2lkGAEgASgJItYDChZWaWV3",
-            "cG9ydFRyYW5zZm9ybUV2ZW50EhMKC2luc3RhbmNlX2lkGAEgASgJEj8KCW9w",
-            "ZXJhdGlvbhgCIAEoDjIsLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFu",
-            "c2Zvcm1PcGVyYXRpb24SNwoFc3BhY2UYAyABKA4yKC5zYWlsb3IuZWRpdG9y",
-            "LnYxLlZpZXdwb3J0VHJhbnNmb3JtU3BhY2USMgoPYmVmb3JlX3Bvc2l0aW9u",
-            "GAQgASgLMhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EjIKD2JlZm9yZV9y",
-            "b3RhdGlvbhgFIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBIvCgxi",
-            "ZWZvcmVfc2NhbGUYBiABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQS",
-            "MQoOYWZ0ZXJfcG9zaXRpb24YByABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZl",
-            "Y3RvcjQSMQoOYWZ0ZXJfcm90YXRpb24YCCABKAsyGS5zYWlsb3IuZWRpdG9y",
-            "LnYxLlZlY3RvcjQSLgoLYWZ0ZXJfc2NhbGUYCSABKAsyGS5zYWlsb3IuZWRp",
-            "dG9yLnYxLlZlY3RvcjQiVQoWVmlld3BvcnRBc3NldERyb3BFdmVudBIPCgdm",
-            "aWxlX2lkGAEgASgJEhQKDG5vcm1hbGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxp",
-            "emVkX3kYAyABKAIiLQoZVmlld3BvcnRUb29sU2hvcnRjdXRFdmVudBIQCghr",
-            "ZXlfY29kZRgBIAEoDSLZAgoNVmlld3BvcnRFdmVudBIQCghyZXZpc2lvbhgB",
-            "IAEoBBIhChltYW5hZ2VkX211dGF0aW9uX3JldmlzaW9uGAIgASgEEj0KCXNl",
-            "bGVjdGlvbhgKIAEoCzIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRTZWxl",
-            "Y3Rpb25FdmVudEgAEj0KCXRyYW5zZm9ybRgLIAEoCzIoLnNhaWxvci5lZGl0",
-            "b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1FdmVudEgAEj4KCmFzc2V0X2Ryb3AY",
-            "DCABKAsyKC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0QXNzZXREcm9wRXZl",
-            "bnRIABJECg10b29sX3Nob3J0Y3V0GA0gASgLMisuc2FpbG9yLmVkaXRvci52",
-            "MS5WaWV3cG9ydFRvb2xTaG9ydGN1dEV2ZW50SABCCQoHcGF5bG9hZEoECAMQ",
-            "CiJLChhWaWV3cG9ydEV2ZW50QmF0Y2hSZXN1bHQSLwoGZXZlbnRzGAEgAygL",
-            "Mh8uc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydEV2ZW50KvABChpWaWV3cG9y",
-            "dFRyYW5zZm9ybU9wZXJhdGlvbhIsCihWSUVXUE9SVF9UUkFOU0ZPUk1fT1BF",
-            "UkFUSU9OX1VOU1BFQ0lGSUVEEAASJwojVklFV1BPUlRfVFJBTlNGT1JNX09Q",
-            "RVJBVElPTl9TRUxFQ1QQARIqCiZWSUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFU",
-            "SU9OX1RSQU5TTEFURRACEicKI1ZJRVdQT1JUX1RSQU5TRk9STV9PUEVSQVRJ",
-            "T05fUk9UQVRFEAMSJgoiVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElPTl9T",
-            "Q0FMRRAEKooBChZWaWV3cG9ydFRyYW5zZm9ybVNwYWNlEigKJFZJRVdQT1JU",
-            "X1RSQU5TRk9STV9TUEFDRV9VTlNQRUNJRklFRBAAEiIKHlZJRVdQT1JUX1RS",
-            "QU5TRk9STV9TUEFDRV9XT1JMRBABEiIKHlZJRVdQT1JUX1RSQU5TRk9STV9T",
-            "UEFDRV9MT0NBTBACKqQBCg9FZGl0b3JTdGF0c01vZGUSIQodRURJVE9SX1NU",
-            "QVRTX01PREVfVU5TUEVDSUZJRUQQABIaChZFRElUT1JfU1RBVFNfTU9ERV9O",
-            "T05FEAESIgoeRURJVE9SX1NUQVRTX01PREVfUkVOREVSX1NUQVRTEAISLgoq",
-            "RURJVE9SX1NUQVRTX01PREVfUkVOREVSX1NUQVRTX0FORF9RVUVSSUVTEAMq",
-            "wQEKEEVkaXRvclJlbmRlck1vZGUSIgoeRURJVE9SX1JFTkRFUl9NT0RFX1VO",
-            "U1BFQ0lGSUVEEAASGgoWRURJVE9SX1JFTkRFUl9NT0RFX0xJVBABEigKJEVE",
-            "SVRPUl9SRU5ERVJfTU9ERV9BTUJJRU5UX09DQ0xVU0lPThACEh8KG0VESVRP",
-            "Ul9SRU5ERVJfTU9ERV9DQVNDQURFUxADEiIKHkVESVRPUl9SRU5ERVJfTU9E",
-            "RV9MSUdIVF9USUxFUxAEQiKqAh9TYWlsb3JFZGl0b3IuUHJvdG9jb2wuR2Vu",
-            "ZXJhdGVkYgZwcm90bzM="));
+            "ci52MS5FbXB0eUgAEkoKFHN0YXJ0X2dpX3Byb2Jlc19iYWtlGEMgASgLMiou",
+            "c2FpbG9yLmVkaXRvci52MS5TdGFydEdJUHJvYmVzQmFrZVJlcXVlc3RIABI8",
+            "ChlnZXRfZ2lfcHJvYmVzX2Jha2Vfc3RhdHVzGEQgASgLMhcuc2FpbG9yLmVk",
+            "aXRvci52MS5FbXB0eUgAEjgKFWNhbmNlbF9naV9wcm9iZXNfYmFrZRhFIAEo",
+            "CzIXLnNhaWxvci5lZGl0b3IudjEuRW1wdHlIABJBCg9zZXRfZ2lfc2V0dGlu",
+            "Z3MYRiABKAsyJi5zYWlsb3IuZWRpdG9yLnYxLlNldEdJU2V0dGluZ3NSZXF1",
+            "ZXN0SAASQAodZ2V0X2dsb2JhbF9pbGx1bWluYXRpb25fc3RhdGUYRyABKAsy",
+            "Fy5zYWlsb3IuZWRpdG9yLnYxLkVtcHR5SABCCQoHY29tbWFuZEoECAMQCkoE",
+            "CDIQM0oECEgQZFIYY3JlYXRlX21vZGVsX2dhbWVfb2JqZWN0Uh5yZXNvbHZl",
+            "X3ZpZXdwb3J0X2Ryb3BfcG9zaXRpb24i3gkKEFByb3RvY29sUmVzcG9uc2US",
+            "GAoQcHJvdG9jb2xfdmVyc2lvbhgBIAEoDRISCgpyZXF1ZXN0X2lkGAIgASgE",
+            "Eg8KB3N1Y2Nlc3MYAyABKAgSDQoFZXJyb3IYBCABKAkSJAocc3VwcG9ydHNf",
+            "c3RyaWN0X2luc3RhbmNlX2lkcxgFIAEoCBIvCgxlbXB0eV9yZXN1bHQYCiAB",
+            "KAsyFy5zYWlsb3IuZWRpdG9yLnYxLkVtcHR5SAASMwoLYm9vbF9yZXN1bHQY",
+            "CyABKAsyHC5zYWlsb3IuZWRpdG9yLnYxLkJvb2xSZXN1bHRIABI1CgxpbnQz",
+            "Ml9yZXN1bHQYDCABKAsyHS5zYWlsb3IuZWRpdG9yLnYxLkludDMyUmVzdWx0",
+            "SAASNwoNdWludDMyX3Jlc3VsdBgNIAEoCzIeLnNhaWxvci5lZGl0b3IudjEu",
+            "VUludDMyUmVzdWx0SAASNwoNdWludDY0X3Jlc3VsdBgOIAEoCzIeLnNhaWxv",
+            "ci5lZGl0b3IudjEuVUludDY0UmVzdWx0SAASNwoNc3RyaW5nX3Jlc3VsdBgP",
+            "IAEoCzIeLnNhaWxvci5lZGl0b3IudjEuU3RyaW5nUmVzdWx0SAASQAoSc3Ry",
+            "aW5nX2xpc3RfcmVzdWx0GBAgASgLMiIuc2FpbG9yLmVkaXRvci52MS5TdHJp",
+            "bmdMaXN0UmVzdWx0SAASTQoZYXNzZXRfcmVsb2FkX3N0YXRlX3Jlc3VsdBgR",
+            "IAEoCzIoLnNhaWxvci5lZGl0b3IudjEuQXNzZXRSZWxvYWRTdGF0ZVJlc3Vs",
+            "dEgAEkAKEmluc3RhbmNlX2lkX3Jlc3VsdBgSIAEoCzIiLnNhaWxvci5lZGl0",
+            "b3IudjEuSW5zdGFuY2VJZFJlc3VsdEgAElEKG3ZpZXdwb3J0X2V2ZW50X2Jh",
+            "dGNoX3Jlc3VsdBgTIAEoCzIqLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRF",
+            "dmVudEJhdGNoUmVzdWx0SAASOQoOdmVjdG9yNF9yZXN1bHQYFCABKAsyHy5z",
+            "YWlsb3IuZWRpdG9yLnYxLlZlY3RvcjRSZXN1bHRIABJPChp2aWV3cG9ydF90",
+            "b29sX3N0YXRlX3Jlc3VsdBgVIAEoCzIpLnNhaWxvci5lZGl0b3IudjEuVmll",
+            "d3BvcnRUb29sU3RhdGVSZXN1bHRIABJGChVhbmltYXRvcl9zdGF0ZV9yZXN1",
+            "bHQYFiABKAsyJS5zYWlsb3IuZWRpdG9yLnYxLkFuaW1hdG9yU3RhdGVSZXN1",
+            "bHRIABJNChllZGl0b3JfcmVuZGVyX21vZGVfcmVzdWx0GBcgASgLMiguc2Fp",
+            "bG9yLmVkaXRvci52MS5FZGl0b3JSZW5kZXJNb2RlUmVzdWx0SAASUgocZ2lf",
+            "cHJvYmVzX2Jha2Vfc3RhdHVzX3Jlc3VsdBgYIAEoCzIqLnNhaWxvci5lZGl0",
+            "b3IudjEuR0lQcm9iZXNCYWtlU3RhdHVzUmVzdWx0SAASWwogZ2xvYmFsX2ls",
+            "bHVtaW5hdGlvbl9zdGF0ZV9yZXN1bHQYGSABKAsyLy5zYWlsb3IuZWRpdG9y",
+            "LnYxLkdsb2JhbElsbHVtaW5hdGlvblN0YXRlUmVzdWx0SABCCAoGcmVzdWx0",
+            "SgQIBhAKSgQIGhBkIiYKEUluaXRpYWxpemVSZXF1ZXN0EhEKCWFyZ3VtZW50",
+            "cxgBIAMoCSIhCgxDb3VudFJlcXVlc3QSEQoJbWF4X2NvdW50GAEgASgNIiAK",
+            "DUZpbGVJZFJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCSLnAQoaQ3JlYXRlTW9k",
+            "ZWxJbnN0YW5jZVJlcXVlc3QSFQoNbW9kZWxfZmlsZV9pZBgBIAEoCRIMCgRu",
+            "YW1lGAIgASgJEhoKEnBhcmVudF9pbnN0YW5jZV9pZBgDIAEoCRIYChBjcmVh",
+            "dGVfaGllcmFyY2h5GAQgASgIEhwKFGFwcGx5X3dvcmxkX3Bvc2l0aW9uGAUg",
+            "ASgIEjEKDndvcmxkX3Bvc2l0aW9uGAYgASgLMhkuc2FpbG9yLmVkaXRvci52",
+            "MS5WZWN0b3I0Eh0KFXByZWZlcnJlZF9pbnN0YW5jZV9pZBgHIAEoCSIoChFJ",
+            "bnN0YW5jZUlkUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCSIoChFWaWV3",
+            "cG9ydElkUmVxdWVzdBITCgt2aWV3cG9ydF9pZBgBIAEoBCJgChNWaWV3cG9y",
+            "dFJlY3RSZXF1ZXN0EhQKDHdpbmRvd19wb3NfeBgBIAEoDRIUCgx3aW5kb3df",
+            "cG9zX3kYAiABKA0SDQoFd2lkdGgYAyABKA0SDgoGaGVpZ2h0GAQgASgNIiwK",
+            "C1NpemVSZXF1ZXN0Eg0KBXdpZHRoGAEgASgNEg4KBmhlaWdodBgCIAEoDSIq",
+            "ChdFZGl0b3JTaW11bGF0aW9uUmVxdWVzdBIPCgdlbmFibGVkGAEgASgIIkkK",
+            "FkVkaXRvclN0YXRzTW9kZVJlcXVlc3QSLwoEbW9kZRgBIAEoDjIhLnNhaWxv",
+            "ci5lZGl0b3IudjEuRWRpdG9yU3RhdHNNb2RlIksKF0VkaXRvclJlbmRlck1v",
+            "ZGVSZXF1ZXN0EjAKBG1vZGUYASABKA4yIi5zYWlsb3IuZWRpdG9yLnYxLkVk",
+            "aXRvclJlbmRlck1vZGUiSgoWRWRpdG9yUmVuZGVyTW9kZVJlc3VsdBIwCgRt",
+            "b2RlGAEgASgOMiIuc2FpbG9yLmVkaXRvci52MS5FZGl0b3JSZW5kZXJNb2Rl",
+            "IqsCChRHSVByb2Jlc0Jha2VTZXR0aW5ncxIWCg5yYXlzX3Blcl9wcm9iZRgB",
+            "IAEoDRIUCgxib3VuY2VfY291bnQYAiABKA0SEwoLcmFuZG9tX3NlZWQYAyAB",
+            "KA0SHQoVbWF4X3N1YmRpdmlzaW9uX2xldmVsGAQgASgNEhkKEW1pbl9wcm9i",
+            "ZV9zcGFjaW5nGAUgASgCEhMKC25vcm1hbF9iaWFzGAYgASgCEhEKCXZpZXdf",
+            "YmlhcxgHIAEoAhIYChBtYXhfcmF5X2Rpc3RhbmNlGAggASgCEhMKC2luY2x1",
+            "ZGVfc2t5GAkgASgIEhgKEGluY2x1ZGVfZW1pc3NpdmUYCiABKAgSHwoXaW5j",
+            "bHVkZV9kaXJlY3RfbGlnaHRpbmcYCyABKAhKBAgMEA0ipgMKGFN0YXJ0R0lQ",
+            "cm9iZXNCYWtlUmVxdWVzdBIVCg13b3JsZF9maWxlX2lkGAEgASgJEhsKE291",
+            "dHB1dF92aXJ0dWFsX3BhdGgYAiABKAkSEgoKc3RhdGVfbmFtZRgDIAEoCRId",
+            "ChVsYXlvdXRfc291cmNlX2ZpbGVfaWQYBCABKAkSOAoIc2V0dGluZ3MYBSAB",
+            "KAsyJi5zYWlsb3IuZWRpdG9yLnYxLkdJUHJvYmVzQmFrZVNldHRpbmdzEhMK",
+            "C2F1dG9fYm91bmRzGAYgASgIEi0KCnZvbHVtZV9taW4YByABKAsyGS5zYWls",
+            "b3IuZWRpdG9yLnYxLlZlY3RvcjQSLQoKdm9sdW1lX21heBgIIAEoCzIZLnNh",
+            "aWxvci5lZGl0b3IudjEuVmVjdG9yNBI3ChRmYWxsYmFja19lbnZpcm9ubWVu",
+            "dBgJIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBIRCglvdmVyd3Jp",
+            "dGUYCiABKAgSGQoMdGhyZWFkX2NvdW50GAsgASgNSACIAQFCDwoNX3RocmVh",
+            "ZF9jb3VudCLXAgoYR0lQcm9iZXNCYWtlU3RhdHVzUmVzdWx0EjIKBXN0YXRl",
+            "GAEgASgOMiMuc2FpbG9yLmVkaXRvci52MS5HSVByb2Jlc0Jha2VTdGF0ZRIQ",
+            "Cghwcm9ncmVzcxgCIAEoAhIYChBjb21wbGV0ZWRfcHJvYmVzGAMgASgNEhQK",
+            "DHRvdGFsX3Byb2JlcxgEIAEoDRITCgticmlja19jb3VudBgFIAEoDRITCgtw",
+            "cm9iZV9jb3VudBgGIAEoDRIXCg9lbGFwc2VkX3NlY29uZHMYByABKAISEwoL",
+            "bGF5b3V0X2hhc2gYCCABKAQSFgoOdHJhbnNwb3J0X2hhc2gYCSABKAQSFQoN",
+            "bGlnaHRpbmdfaGFzaBgKIAEoBBINCgVzdGFnZRgLIAEoCRIbChNvdXRwdXRf",
+            "dmlydHVhbF9wYXRoGAwgASgJEhIKCmRpYWdub3N0aWMYDSABKAkiqwEKHkds",
+            "b2JhbElsbHVtaW5hdGlvblByb2JlQmluZGluZxIMCgRuYW1lGAEgASgJEhUK",
+            "DWFzc2V0X2ZpbGVfaWQYAiABKAkSOwoEbW9kZRgDIAEoDjItLnNhaWxvci5l",
+            "ZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVNb2RlEhYKDmluaXRp",
+            "YWxfd2VpZ2h0GAQgASgCEg8KB3ByZWxvYWQYBSABKAgingEKFFNldEdJU2V0",
+            "dGluZ3NSZXF1ZXN0EkAKBnByb2JlcxgBIAMoCzIwLnNhaWxvci5lZGl0b3Iu",
+            "djEuR2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVCaW5kaW5nEjsKBG1vZGUYAiAB",
+            "KA4yKC5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvbk1vZGVI",
+            "AIgBAUIHCgVfbW9kZSKDAgocR2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVTdGF0",
+            "ZRIMCgRuYW1lGAEgASgJEhUKDWFzc2V0X2ZpbGVfaWQYAiABKAkSOwoEbW9k",
+            "ZRgDIAEoDjItLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9u",
+            "UHJvYmVNb2RlEg4KBndlaWdodBgEIAEoAhJFCglyZXNpZGVuY3kYBSABKA4y",
+            "Mi5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvblByb2JlUmVz",
+            "aWRlbmN5EhYKDmFzc2V0X3JldmlzaW9uGAYgASgEEhIKCmRpYWdub3N0aWMY",
+            "ByABKAkiogIKHUdsb2JhbElsbHVtaW5hdGlvblN0YXRlUmVzdWx0EiUKHW1h",
+            "eF9wcm9iZV9zdGF0ZXNfcGVyX3NuYXBzaG90GAEgASgNEj4KBnByb2JlcxgC",
+            "IAMoCzIuLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9uUHJv",
+            "YmVTdGF0ZRISCgpkaWFnbm9zdGljGAMgASgJEhkKEWNvbXBvc2l0aW9uX2Nv",
+            "dW50GAQgASgEEiIKGnJlamVjdGVkX2NvbXBvc2l0aW9uX2NvdW50GAUgASgE",
+            "EjYKBG1vZGUYBiABKA4yKC5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVt",
+            "aW5hdGlvbk1vZGUSDwoHZW5hYmxlZBgHIAEoCCKZAQoVUmVtb3RlVmlld3Bv",
+            "cnRSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhQKDHdpbmRvd19wb3Nf",
+            "eBgCIAEoDRIUCgx3aW5kb3dfcG9zX3kYAyABKA0SDQoFd2lkdGgYBCABKA0S",
+            "DgoGaGVpZ2h0GAUgASgNEg8KB3Zpc2libGUYBiABKAgSDwoHZm9jdXNlZBgH",
+            "IAEoCCJlChlSZW1vdGVWaWV3cG9ydEhvc3RSZXF1ZXN0EhMKC3ZpZXdwb3J0",
+            "X2lkGAEgASgEEhgKEGhvc3RfaGFuZGxlX2tpbmQYAiABKA0SGQoRaG9zdF9o",
+            "YW5kbGVfdmFsdWUYAyABKAQi/AEKGlJlbW90ZVZpZXdwb3J0SW5wdXRSZXF1",
+            "ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEgwKBGtpbmQYAiABKA0SEQoJcG9p",
+            "bnRlcl94GAMgASgCEhEKCXBvaW50ZXJfeRgEIAEoAhIVCg13aGVlbF9kZWx0",
+            "YV94GAUgASgCEhUKDXdoZWVsX2RlbHRhX3kYBiABKAISEAoIa2V5X2NvZGUY",
+            "ByABKA0SDgoGYnV0dG9uGAggASgNEhEKCW1vZGlmaWVycxgJIAEoDRIPCgdw",
+            "cmVzc2VkGAogASgIEg8KB2ZvY3VzZWQYCyABKAgSEAoIY2FwdHVyZWQYDCAB",
+            "KAgiQwoeTWFuYWdlZE11dGF0aW9uUmV2aXNpb25SZXF1ZXN0EgwKBGtpbmQY",
+            "ASABKA0SEwoLaW5zdGFuY2VfaWQYAiABKAkiQAoTVXBkYXRlT2JqZWN0UmVx",
+            "dWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIUCgx5YW1sX2NoYW5nZXMYAiAB",
+            "KAkiZgoVUmVwYXJlbnRPYmplY3RSZXF1ZXN0EhMKC2luc3RhbmNlX2lkGAEg",
+            "ASgJEhoKEnBhcmVudF9pbnN0YW5jZV9pZBgCIAEoCRIcChRrZWVwX3dvcmxk",
+            "X3RyYW5zZm9ybRgDIAEoCCJUChdDcmVhdGVHYW1lT2JqZWN0UmVxdWVzdBIa",
+            "ChJwYXJlbnRfaW5zdGFuY2VfaWQYASABKAkSHQoVcHJlZmVycmVkX2luc3Rh",
+            "bmNlX2lkGAIgASgJImYKE0FkZENvbXBvbmVudFJlcXVlc3QSEwoLaW5zdGFu",
+            "Y2VfaWQYASABKAkSGwoTY29tcG9uZW50X3R5cGVfbmFtZRgCIAEoCRIdChVw",
+            "cmVmZXJyZWRfaW5zdGFuY2VfaWQYAyABKAki5gEKGEFuaW1hdG9yUGFyYW1l",
+            "dGVyUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJ",
+            "EhUKC2Zsb2F0X3ZhbHVlGAMgASgCSAASEwoJaW50X3ZhbHVlGAQgASgRSAAS",
+            "FAoKYm9vbF92YWx1ZRgFIAEoCEgAEioKB3RyaWdnZXIYBiABKAsyFy5zYWls",
+            "b3IuZWRpdG9yLnYxLkVtcHR5SAASMAoNcmVzZXRfdHJpZ2dlchgHIAEoCzIX",
+            "LnNhaWxvci5lZGl0b3IudjEuRW1wdHlIAEIHCgV2YWx1ZSJHChhJbnN0YW50",
+            "aWF0ZVByZWZhYlJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCRIaChJwYXJlbnRf",
+            "aW5zdGFuY2VfaWQYAiABKAkicAogSW5zdGFudGlhdGVQcmVmYWJGcm9tWWFt",
+            "bFJlcXVlc3QSEwoLcHJlZmFiX3lhbWwYASABKAkSGgoScGFyZW50X2luc3Rh",
+            "bmNlX2lkGAIgASgJEhsKE3N0cmljdF9pbnN0YW5jZV9pZHMYAyABKAgiVQoS",
+            "Vmlld3BvcnRSYXlSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhQKDG5v",
+            "cm1hbGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kYAyABKAIioAEKIElu",
+            "c3RhbnRpYXRlUHJlZmFiSW5zdGFuY2VSZXF1ZXN0Eg8KB2ZpbGVfaWQYASAB",
+            "KAkSGgoScGFyZW50X2luc3RhbmNlX2lkGAIgASgJEhwKFGFwcGx5X3dvcmxk",
+            "X3Bvc2l0aW9uGAMgASgIEjEKDndvcmxkX3Bvc2l0aW9uGAQgASgLMhkuc2Fp",
+            "bG9yLmVkaXRvci52MS5WZWN0b3I0IkEKFVZpZXdwb3J0T2JqZWN0UmVxdWVz",
+            "dBITCgt2aWV3cG9ydF9pZBgBIAEoBBITCgtpbnN0YW5jZV9pZBgCIAEoCSI5",
+            "ChFQcmVmYWJMaW5rUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIPCgdm",
+            "aWxlX2lkGAIgASgJIqkBChhWaWV3cG9ydFRvb2xTdGF0ZVJlcXVlc3QSEwoL",
+            "dmlld3BvcnRfaWQYASABKAQSPwoJb3BlcmF0aW9uGAIgASgOMiwuc2FpbG9y",
+            "LmVkaXRvci52MS5WaWV3cG9ydFRyYW5zZm9ybU9wZXJhdGlvbhI3CgVzcGFj",
+            "ZRgDIAEoDjIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1T",
+            "cGFjZSIoChBTZWxlY3Rpb25SZXF1ZXN0EhQKDGluc3RhbmNlX2lkcxgBIAMo",
+            "CSIlChVTaG93TWFpbldpbmRvd1JlcXVlc3QSDAoEc2hvdxgBIAEoCCKIAQoc",
+            "UmVuZGVyUGF0aFRyYWNlZEltYWdlUmVxdWVzdBITCgtvdXRwdXRfcGF0aBgB",
+            "IAEoCRITCgtpbnN0YW5jZV9pZBgCIAEoCRIOCgZoZWlnaHQYAyABKA0SGQoR",
+            "c2FtcGxlc19wZXJfcGl4ZWwYBCABKA0SEwoLbWF4X2JvdW5jZXMYBSABKA0i",
+            "GwoKQm9vbFJlc3VsdBINCgV2YWx1ZRgBIAEoCCIcCgtJbnQzMlJlc3VsdBIN",
+            "CgV2YWx1ZRgBIAEoBSIdCgxVSW50MzJSZXN1bHQSDQoFdmFsdWUYASABKA0i",
+            "HQoMVUludDY0UmVzdWx0Eg0KBXZhbHVlGAEgASgEIjAKDFN0cmluZ1Jlc3Vs",
+            "dBIRCgloYXNfdmFsdWUYASABKAgSDQoFdmFsdWUYAiABKAkiIgoQU3RyaW5n",
+            "TGlzdFJlc3VsdBIOCgZ2YWx1ZXMYASADKAkihAEKFkFzc2V0UmVsb2FkU3Rh",
+            "dGVSZXN1bHQSEQoJYXZhaWxhYmxlGAEgASgIEhoKEnJlcXVlc3RfZ2VuZXJh",
+            "dGlvbhgCIAEoBBIcChRjb21wbGV0ZWRfZ2VuZXJhdGlvbhgDIAEoBBIdChVz",
+            "dWNjZXNzZnVsX2dlbmVyYXRpb24YBCABKAQiOgoQSW5zdGFuY2VJZFJlc3Vs",
+            "dBIRCglzdWNjZWVkZWQYASABKAgSEwoLaW5zdGFuY2VfaWQYAiABKAkiOQoN",
+            "VmVjdG9yNFJlc3VsdBIoCgV2YWx1ZRgBIAEoCzIZLnNhaWxvci5lZGl0b3Iu",
+            "djEuVmVjdG9yNCKTAQoXVmlld3BvcnRUb29sU3RhdGVSZXN1bHQSPwoJb3Bl",
+            "cmF0aW9uGAEgASgOMiwuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRyYW5z",
+            "Zm9ybU9wZXJhdGlvbhI3CgVzcGFjZRgCIAEoDjIoLnNhaWxvci5lZGl0b3Iu",
+            "djEuVmlld3BvcnRUcmFuc2Zvcm1TcGFjZSKoAgoTQW5pbWF0b3JTdGF0ZVJl",
+            "c3VsdBIWCg5oYXNfY29udHJvbGxlchgBIAEoCBIbChNjb250cm9sbGVyX3Jl",
+            "dmlzaW9uGAIgASgEEhcKD2FjdGl2ZV9zdGF0ZV9pZBgDIAEoBBIZChFhY3Rp",
+            "dmVfc3RhdGVfbmFtZRgEIAEoCRIZChFhY3RpdmVfc3RhdGVfdGltZRgFIAEo",
+            "AhIVCg10cmFuc2l0aW9uaW5nGAYgASgIEhwKFGRlc3RpbmF0aW9uX3N0YXRl",
+            "X2lkGAcgASgEEh4KFmRlc3RpbmF0aW9uX3N0YXRlX25hbWUYCCABKAkSHgoW",
+            "ZGVzdGluYXRpb25fc3RhdGVfdGltZRgJIAEoAhIYChB0cmFuc2l0aW9uX2Fs",
+            "cGhhGAogASgCIjUKB1ZlY3RvcjQSCQoBeBgBIAEoAhIJCgF5GAIgASgCEgkK",
+            "AXoYAyABKAISCQoBdxgEIAEoAiI2ChZWaWV3cG9ydFNlbGVjdGlvbkV2ZW50",
+            "EhwKFHNlbGVjdGVkX2luc3RhbmNlX2lkGAEgASgJItYDChZWaWV3cG9ydFRy",
+            "YW5zZm9ybUV2ZW50EhMKC2luc3RhbmNlX2lkGAEgASgJEj8KCW9wZXJhdGlv",
+            "bhgCIAEoDjIsLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1P",
+            "cGVyYXRpb24SNwoFc3BhY2UYAyABKA4yKC5zYWlsb3IuZWRpdG9yLnYxLlZp",
+            "ZXdwb3J0VHJhbnNmb3JtU3BhY2USMgoPYmVmb3JlX3Bvc2l0aW9uGAQgASgL",
+            "Mhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EjIKD2JlZm9yZV9yb3RhdGlv",
+            "bhgFIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBIvCgxiZWZvcmVf",
+            "c2NhbGUYBiABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSMQoOYWZ0",
+            "ZXJfcG9zaXRpb24YByABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQS",
+            "MQoOYWZ0ZXJfcm90YXRpb24YCCABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZl",
+            "Y3RvcjQSLgoLYWZ0ZXJfc2NhbGUYCSABKAsyGS5zYWlsb3IuZWRpdG9yLnYx",
+            "LlZlY3RvcjQiVQoWVmlld3BvcnRBc3NldERyb3BFdmVudBIPCgdmaWxlX2lk",
+            "GAEgASgJEhQKDG5vcm1hbGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kY",
+            "AyABKAIiLQoZVmlld3BvcnRUb29sU2hvcnRjdXRFdmVudBIQCghrZXlfY29k",
+            "ZRgBIAEoDSLZAgoNVmlld3BvcnRFdmVudBIQCghyZXZpc2lvbhgBIAEoBBIh",
+            "ChltYW5hZ2VkX211dGF0aW9uX3JldmlzaW9uGAIgASgEEj0KCXNlbGVjdGlv",
+            "bhgKIAEoCzIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRTZWxlY3Rpb25F",
+            "dmVudEgAEj0KCXRyYW5zZm9ybRgLIAEoCzIoLnNhaWxvci5lZGl0b3IudjEu",
+            "Vmlld3BvcnRUcmFuc2Zvcm1FdmVudEgAEj4KCmFzc2V0X2Ryb3AYDCABKAsy",
+            "KC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0QXNzZXREcm9wRXZlbnRIABJE",
+            "Cg10b29sX3Nob3J0Y3V0GA0gASgLMisuc2FpbG9yLmVkaXRvci52MS5WaWV3",
+            "cG9ydFRvb2xTaG9ydGN1dEV2ZW50SABCCQoHcGF5bG9hZEoECAMQCiJLChhW",
+            "aWV3cG9ydEV2ZW50QmF0Y2hSZXN1bHQSLwoGZXZlbnRzGAEgAygLMh8uc2Fp",
+            "bG9yLmVkaXRvci52MS5WaWV3cG9ydEV2ZW50KvABChpWaWV3cG9ydFRyYW5z",
+            "Zm9ybU9wZXJhdGlvbhIsCihWSUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFUSU9O",
+            "X1VOU1BFQ0lGSUVEEAASJwojVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElP",
+            "Tl9TRUxFQ1QQARIqCiZWSUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFUSU9OX1RS",
+            "QU5TTEFURRACEicKI1ZJRVdQT1JUX1RSQU5TRk9STV9PUEVSQVRJT05fUk9U",
+            "QVRFEAMSJgoiVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElPTl9TQ0FMRRAE",
+            "KooBChZWaWV3cG9ydFRyYW5zZm9ybVNwYWNlEigKJFZJRVdQT1JUX1RSQU5T",
+            "Rk9STV9TUEFDRV9VTlNQRUNJRklFRBAAEiIKHlZJRVdQT1JUX1RSQU5TRk9S",
+            "TV9TUEFDRV9XT1JMRBABEiIKHlZJRVdQT1JUX1RSQU5TRk9STV9TUEFDRV9M",
+            "T0NBTBACKqQBCg9FZGl0b3JTdGF0c01vZGUSIQodRURJVE9SX1NUQVRTX01P",
+            "REVfVU5TUEVDSUZJRUQQABIaChZFRElUT1JfU1RBVFNfTU9ERV9OT05FEAES",
+            "IgoeRURJVE9SX1NUQVRTX01PREVfUkVOREVSX1NUQVRTEAISLgoqRURJVE9S",
+            "X1NUQVRTX01PREVfUkVOREVSX1NUQVRTX0FORF9RVUVSSUVTEAMq6gQKEEVk",
+            "aXRvclJlbmRlck1vZGUSIgoeRURJVE9SX1JFTkRFUl9NT0RFX1VOU1BFQ0lG",
+            "SUVEEAASGgoWRURJVE9SX1JFTkRFUl9NT0RFX0xJVBABEigKJEVESVRPUl9S",
+            "RU5ERVJfTU9ERV9BTUJJRU5UX09DQ0xVU0lPThACEh8KG0VESVRPUl9SRU5E",
+            "RVJfTU9ERV9DQVNDQURFUxADEiIKHkVESVRPUl9SRU5ERVJfTU9ERV9MSUdI",
+            "VF9USUxFUxAEEi8KK0VESVRPUl9SRU5ERVJfTU9ERV9HTE9CQUxfSUxMVU1J",
+            "TkFUSU9OX09OTFkQBRIxCi1FRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lM",
+            "TFVNSU5BVElPTl9QUk9CRVMQBhIxCi1FRElUT1JfUkVOREVSX01PREVfR0xP",
+            "QkFMX0lMTFVNSU5BVElPTl9CUklDS1MQBxIzCi9FRElUT1JfUkVOREVSX01P",
+            "REVfR0xPQkFMX0lMTFVNSU5BVElPTl9WQUxJRElUWRAIEjUKMUVESVRPUl9S",
+            "RU5ERVJfTU9ERV9HTE9CQUxfSUxMVU1JTkFUSU9OX1ZJU0lCSUxJVFkQCRI0",
+            "CjBFRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5BVElPTl9SRVNJ",
+            "REVOQ1kQChI5CjVFRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5B",
+            "VElPTl9BU1NFVF9JREVOVElUWRALEjMKL0VESVRPUl9SRU5ERVJfTU9ERV9H",
+            "TE9CQUxfSUxMVU1JTkFUSU9OX0ZBTExCQUNLEAwqpwIKEUdJUHJvYmVzQmFr",
+            "ZVN0YXRlEiQKIEdJX1BST0JFU19CQUtFX1NUQVRFX1VOU1BFQ0lGSUVEEAAS",
+            "HQoZR0lfUFJPQkVTX0JBS0VfU1RBVEVfSURMRRABEiIKHkdJX1BST0JFU19C",
+            "QUtFX1NUQVRFX1BSRVBBUklORxACEh8KG0dJX1BST0JFU19CQUtFX1NUQVRF",
+            "X0JBS0lORxADEh8KG0dJX1BST0JFU19CQUtFX1NUQVRFX1NBVklORxAEEiIK",
+            "HkdJX1BST0JFU19CQUtFX1NUQVRFX1NVQ0NFRURFRBAFEh8KG0dJX1BST0JF",
+            "U19CQUtFX1NUQVRFX0ZBSUxFRBAGEiIKHkdJX1BST0JFU19CQUtFX1NUQVRF",
+            "X0NBTkNFTExFRBAHKqQBChtHbG9iYWxJbGx1bWluYXRpb25Qcm9iZU1vZGUS",
+            "LgoqR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX1VOU1BFQ0lGSUVE",
+            "EAASKAokR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX0JMRU5EEAES",
+            "KwonR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX0FERElUSVZFEAIq",
+            "wwEKFkdsb2JhbElsbHVtaW5hdGlvbk1vZGUSKAokR0xPQkFMX0lMTFVNSU5B",
+            "VElPTl9NT0RFX1VOU1BFQ0lGSUVEEAASJQohR0xPQkFMX0lMTFVNSU5BVElP",
+            "Tl9NT0RFX1JFQUxUSU1FEAESLworR0xPQkFMX0lMTFVNSU5BVElPTl9NT0RF",
+            "X1JFQUxUSU1FX0FORF9CQUtFRBACEicKI0dMT0JBTF9JTExVTUlOQVRJT05f",
+            "TU9ERV9CQUtFRF9PTkxZEAMqnAIKIEdsb2JhbElsbHVtaW5hdGlvblByb2Jl",
+            "UmVzaWRlbmN5EjMKL0dMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVfUkVTSURF",
+            "TkNZX1VOU1BFQ0lGSUVEEAASMAosR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9C",
+            "RV9SRVNJREVOQ1lfVU5MT0FERUQQARIvCitHTE9CQUxfSUxMVU1JTkFUSU9O",
+            "X1BST0JFX1JFU0lERU5DWV9MT0FESU5HEAISMAosR0xPQkFMX0lMTFVNSU5B",
+            "VElPTl9QUk9CRV9SRVNJREVOQ1lfUkVTSURFTlQQAxIuCipHTE9CQUxfSUxM",
+            "VU1JTkFUSU9OX1BST0JFX1JFU0lERU5DWV9GQUlMRUQQBEIiqgIfU2FpbG9y",
+            "RWRpdG9yLlByb3RvY29sLkdlbmVyYXRlZGIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
-          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::SailorEditor.Protocol.Generated.ViewportTransformOperation), typeof(global::SailorEditor.Protocol.Generated.ViewportTransformSpace), typeof(global::SailorEditor.Protocol.Generated.EditorStatsMode), typeof(global::SailorEditor.Protocol.Generated.EditorRenderMode), }, null, new pbr::GeneratedClrTypeInfo[] {
+          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::SailorEditor.Protocol.Generated.ViewportTransformOperation), typeof(global::SailorEditor.Protocol.Generated.ViewportTransformSpace), typeof(global::SailorEditor.Protocol.Generated.EditorStatsMode), typeof(global::SailorEditor.Protocol.Generated.EditorRenderMode), typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeState), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.Empty), global::SailorEditor.Protocol.Generated.Empty.Parser, null, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolRequest), global::SailorEditor.Protocol.Generated.ProtocolRequest.Parser, new[]{ "ProtocolVersion", "RequestId", "Initialize", "Start", "Stop", "Shutdown", "RequestAssetReload", "GetAssetReloadState", "GetExitCode", "GetMessages", "SerializeCurrentWorld", "SerializeEditorTypes", "SerializeWorkspaceCacheIdentity", "LoadEditorWorld", "CreateEditorWorld", "SetViewport", "SetEditorRenderTargetSize", "UpsertRemoteViewport", "DestroyRemoteViewport", "GetRemoteViewportState", "GetRemoteViewportDiagnostics", "RetryRemoteViewport", "SetRemoteViewportMacHostHandle", "SendRemoteViewportInput", "PullEditorViewportEvents", "GetEditorManagedMutationRevision", "UpdateObject", "ReparentObject", "CreateGameObject", "DestroyObject", "ResetComponentToDefaults", "AddComponent", "RemoveComponent", "InstantiatePrefab", "InstantiatePrefabFromYaml", "SetEditorSelection", "ShowMainWindow", "RenderPathTracedImage", "SerializeEngineTypes", "IsEngineMainThreadReady", "IsEngineRunning", "TraceViewportRay", "InstantiatePrefabInstance", "FocusEditorCamera", "SetPrefabLink", "BreakPrefabLink", "SetViewportToolState", "GetViewportToolState", "UpdateAsset", "CreateModelInstance", "SetAnimatorParameter", "GetAnimatorState", "SetEditorSimulation", "GetEditorSimulationState", "PreviewAudioAsset", "SetEditorStatsMode", "SetEditorRenderMode", "GetEditorRenderMode" }, new[]{ "Command" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolResponse), global::SailorEditor.Protocol.Generated.ProtocolResponse.Parser, new[]{ "ProtocolVersion", "RequestId", "Success", "Error", "SupportsStrictInstanceIds", "EmptyResult", "BoolResult", "Int32Result", "Uint32Result", "Uint64Result", "StringResult", "StringListResult", "AssetReloadStateResult", "InstanceIdResult", "ViewportEventBatchResult", "Vector4Result", "ViewportToolStateResult", "AnimatorStateResult", "EditorRenderModeResult" }, new[]{ "Result" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolRequest), global::SailorEditor.Protocol.Generated.ProtocolRequest.Parser, new[]{ "ProtocolVersion", "RequestId", "Initialize", "Start", "Stop", "Shutdown", "RequestAssetReload", "GetAssetReloadState", "GetExitCode", "GetMessages", "SerializeCurrentWorld", "SerializeEditorTypes", "SerializeWorkspaceCacheIdentity", "LoadEditorWorld", "CreateEditorWorld", "SetViewport", "SetEditorRenderTargetSize", "UpsertRemoteViewport", "DestroyRemoteViewport", "GetRemoteViewportState", "GetRemoteViewportDiagnostics", "RetryRemoteViewport", "SetRemoteViewportMacHostHandle", "SendRemoteViewportInput", "PullEditorViewportEvents", "GetEditorManagedMutationRevision", "UpdateObject", "ReparentObject", "CreateGameObject", "DestroyObject", "ResetComponentToDefaults", "AddComponent", "RemoveComponent", "InstantiatePrefab", "InstantiatePrefabFromYaml", "SetEditorSelection", "ShowMainWindow", "RenderPathTracedImage", "SerializeEngineTypes", "IsEngineMainThreadReady", "IsEngineRunning", "TraceViewportRay", "InstantiatePrefabInstance", "FocusEditorCamera", "SetPrefabLink", "BreakPrefabLink", "SetViewportToolState", "GetViewportToolState", "UpdateAsset", "CreateModelInstance", "SetAnimatorParameter", "GetAnimatorState", "SetEditorSimulation", "GetEditorSimulationState", "PreviewAudioAsset", "SetEditorStatsMode", "SetEditorRenderMode", "GetEditorRenderMode", "StartGiProbesBake", "GetGiProbesBakeStatus", "CancelGiProbesBake", "SetGiSettings", "GetGlobalIlluminationState" }, new[]{ "Command" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolResponse), global::SailorEditor.Protocol.Generated.ProtocolResponse.Parser, new[]{ "ProtocolVersion", "RequestId", "Success", "Error", "SupportsStrictInstanceIds", "EmptyResult", "BoolResult", "Int32Result", "Uint32Result", "Uint64Result", "StringResult", "StringListResult", "AssetReloadStateResult", "InstanceIdResult", "ViewportEventBatchResult", "Vector4Result", "ViewportToolStateResult", "AnimatorStateResult", "EditorRenderModeResult", "GiProbesBakeStatusResult", "GlobalIlluminationStateResult" }, new[]{ "Result" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.InitializeRequest), global::SailorEditor.Protocol.Generated.InitializeRequest.Parser, new[]{ "Arguments" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.CountRequest), global::SailorEditor.Protocol.Generated.CountRequest.Parser, new[]{ "MaxCount" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.FileIdRequest), global::SailorEditor.Protocol.Generated.FileIdRequest.Parser, new[]{ "FileId" }, null, null, null, null),
@@ -285,6 +370,13 @@ namespace SailorEditor.Protocol.Generated {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.EditorStatsModeRequest), global::SailorEditor.Protocol.Generated.EditorStatsModeRequest.Parser, new[]{ "Mode" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.EditorRenderModeRequest), global::SailorEditor.Protocol.Generated.EditorRenderModeRequest.Parser, new[]{ "Mode" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.EditorRenderModeResult), global::SailorEditor.Protocol.Generated.EditorRenderModeResult.Parser, new[]{ "Mode" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeSettings), global::SailorEditor.Protocol.Generated.GIProbesBakeSettings.Parser, new[]{ "RaysPerProbe", "BounceCount", "RandomSeed", "MaxSubdivisionLevel", "MinProbeSpacing", "NormalBias", "ViewBias", "MaxRayDistance", "IncludeSky", "IncludeEmissive", "IncludeDirectLighting" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest), global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest.Parser, new[]{ "WorldFileId", "OutputVirtualPath", "StateName", "LayoutSourceFileId", "Settings", "AutoBounds", "VolumeMin", "VolumeMax", "FallbackEnvironment", "Overwrite", "ThreadCount" }, new[]{ "ThreadCount" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult), global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult.Parser, new[]{ "State", "Progress", "CompletedProbes", "TotalProbes", "BrickCount", "ProbeCount", "ElapsedSeconds", "LayoutHash", "TransportHash", "LightingHash", "Stage", "OutputVirtualPath", "Diagnostic" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding), global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding.Parser, new[]{ "Name", "AssetFileId", "Mode", "InitialWeight", "Preload" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.SetGISettingsRequest), global::SailorEditor.Protocol.Generated.SetGISettingsRequest.Parser, new[]{ "Probes", "Mode" }, new[]{ "Mode" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState), global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState.Parser, new[]{ "Name", "AssetFileId", "Mode", "Weight", "Residency", "AssetRevision", "Diagnostic" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult), global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult.Parser, new[]{ "MaxProbeStatesPerSnapshot", "Probes", "Diagnostic", "CompositionCount", "RejectedCompositionCount", "Mode", "Enabled" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RemoteViewportRequest), global::SailorEditor.Protocol.Generated.RemoteViewportRequest.Parser, new[]{ "ViewportId", "WindowPosX", "WindowPosY", "Width", "Height", "Visible", "Focused" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RemoteViewportHostRequest), global::SailorEditor.Protocol.Generated.RemoteViewportHostRequest.Parser, new[]{ "ViewportId", "HostHandleKind", "HostHandleValue" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RemoteViewportInputRequest), global::SailorEditor.Protocol.Generated.RemoteViewportInputRequest.Parser, new[]{ "ViewportId", "Kind", "PointerX", "PointerY", "WheelDeltaX", "WheelDeltaY", "KeyCode", "Button", "Modifiers", "Pressed", "Focused", "Captured" }, null, null, null, null),
@@ -355,6 +447,46 @@ namespace SailorEditor.Protocol.Generated {
     [pbr::OriginalName("EDITOR_RENDER_MODE_AMBIENT_OCCLUSION")] AmbientOcclusion = 2,
     [pbr::OriginalName("EDITOR_RENDER_MODE_CASCADES")] Cascades = 3,
     [pbr::OriginalName("EDITOR_RENDER_MODE_LIGHT_TILES")] LightTiles = 4,
+    [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ONLY")] GlobalIlluminationOnly = 5,
+    [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_PROBES")] GlobalIlluminationProbes = 6,
+    [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_BRICKS")] GlobalIlluminationBricks = 7,
+    [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VALIDITY")] GlobalIlluminationValidity = 8,
+    [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY")] GlobalIlluminationVisibility = 9,
+    [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_RESIDENCY")] GlobalIlluminationResidency = 10,
+    [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY")] GlobalIlluminationAssetIdentity = 11,
+    [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK")] GlobalIlluminationFallback = 12,
+  }
+
+  public enum GIProbesBakeState {
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_UNSPECIFIED")] Unspecified = 0,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_IDLE")] Idle = 1,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_PREPARING")] Preparing = 2,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_BAKING")] Baking = 3,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_SAVING")] Saving = 4,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_SUCCEEDED")] Succeeded = 5,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_FAILED")] Failed = 6,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_CANCELLED")] Cancelled = 7,
+  }
+
+  public enum GlobalIlluminationProbeMode {
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_MODE_UNSPECIFIED")] Unspecified = 0,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_MODE_BLEND")] Blend = 1,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_MODE_ADDITIVE")] Additive = 2,
+  }
+
+  public enum GlobalIlluminationMode {
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_UNSPECIFIED")] Unspecified = 0,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_REALTIME")] Realtime = 1,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED")] RealtimeAndBaked = 2,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_BAKED_ONLY")] BakedOnly = 3,
+  }
+
+  public enum GlobalIlluminationProbeResidency {
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_RESIDENCY_UNSPECIFIED")] Unspecified = 0,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_RESIDENCY_UNLOADED")] Unloaded = 1,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_RESIDENCY_LOADING")] Loading = 2,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_RESIDENCY_RESIDENT")] Resident = 3,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_RESIDENCY_FAILED")] Failed = 4,
   }
 
   #endregion
@@ -726,6 +858,21 @@ namespace SailorEditor.Protocol.Generated {
           break;
         case CommandOneofCase.GetEditorRenderMode:
           GetEditorRenderMode = other.GetEditorRenderMode.Clone();
+          break;
+        case CommandOneofCase.StartGiProbesBake:
+          StartGiProbesBake = other.StartGiProbesBake.Clone();
+          break;
+        case CommandOneofCase.GetGiProbesBakeStatus:
+          GetGiProbesBakeStatus = other.GetGiProbesBakeStatus.Clone();
+          break;
+        case CommandOneofCase.CancelGiProbesBake:
+          CancelGiProbesBake = other.CancelGiProbesBake.Clone();
+          break;
+        case CommandOneofCase.SetGiSettings:
+          SetGiSettings = other.SetGiSettings.Clone();
+          break;
+        case CommandOneofCase.GetGlobalIlluminationState:
+          GetGlobalIlluminationState = other.GetGlobalIlluminationState.Clone();
           break;
       }
 
@@ -1434,6 +1581,66 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
+    /// <summary>Field number for the "start_gi_probes_bake" field.</summary>
+    public const int StartGiProbesBakeFieldNumber = 67;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest StartGiProbesBake {
+      get { return commandCase_ == CommandOneofCase.StartGiProbesBake ? (global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.StartGiProbesBake;
+      }
+    }
+
+    /// <summary>Field number for the "get_gi_probes_bake_status" field.</summary>
+    public const int GetGiProbesBakeStatusFieldNumber = 68;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.Empty GetGiProbesBakeStatus {
+      get { return commandCase_ == CommandOneofCase.GetGiProbesBakeStatus ? (global::SailorEditor.Protocol.Generated.Empty) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.GetGiProbesBakeStatus;
+      }
+    }
+
+    /// <summary>Field number for the "cancel_gi_probes_bake" field.</summary>
+    public const int CancelGiProbesBakeFieldNumber = 69;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.Empty CancelGiProbesBake {
+      get { return commandCase_ == CommandOneofCase.CancelGiProbesBake ? (global::SailorEditor.Protocol.Generated.Empty) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.CancelGiProbesBake;
+      }
+    }
+
+    /// <summary>Field number for the "set_gi_settings" field.</summary>
+    public const int SetGiSettingsFieldNumber = 70;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.SetGISettingsRequest SetGiSettings {
+      get { return commandCase_ == CommandOneofCase.SetGiSettings ? (global::SailorEditor.Protocol.Generated.SetGISettingsRequest) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.SetGiSettings;
+      }
+    }
+
+    /// <summary>Field number for the "get_global_illumination_state" field.</summary>
+    public const int GetGlobalIlluminationStateFieldNumber = 71;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.Empty GetGlobalIlluminationState {
+      get { return commandCase_ == CommandOneofCase.GetGlobalIlluminationState ? (global::SailorEditor.Protocol.Generated.Empty) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.GetGlobalIlluminationState;
+      }
+    }
+
     private object command_;
     /// <summary>Enum of possible cases for the "command" oneof.</summary>
     public enum CommandOneofCase {
@@ -1494,6 +1701,11 @@ namespace SailorEditor.Protocol.Generated {
       SetEditorStatsMode = 64,
       SetEditorRenderMode = 65,
       GetEditorRenderMode = 66,
+      StartGiProbesBake = 67,
+      GetGiProbesBakeStatus = 68,
+      CancelGiProbesBake = 69,
+      SetGiSettings = 70,
+      GetGlobalIlluminationState = 71,
     }
     private CommandOneofCase commandCase_ = CommandOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1582,6 +1794,11 @@ namespace SailorEditor.Protocol.Generated {
       if (!object.Equals(SetEditorStatsMode, other.SetEditorStatsMode)) return false;
       if (!object.Equals(SetEditorRenderMode, other.SetEditorRenderMode)) return false;
       if (!object.Equals(GetEditorRenderMode, other.GetEditorRenderMode)) return false;
+      if (!object.Equals(StartGiProbesBake, other.StartGiProbesBake)) return false;
+      if (!object.Equals(GetGiProbesBakeStatus, other.GetGiProbesBakeStatus)) return false;
+      if (!object.Equals(CancelGiProbesBake, other.CancelGiProbesBake)) return false;
+      if (!object.Equals(SetGiSettings, other.SetGiSettings)) return false;
+      if (!object.Equals(GetGlobalIlluminationState, other.GetGlobalIlluminationState)) return false;
       if (CommandCase != other.CommandCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -1648,6 +1865,11 @@ namespace SailorEditor.Protocol.Generated {
       if (commandCase_ == CommandOneofCase.SetEditorStatsMode) hash ^= SetEditorStatsMode.GetHashCode();
       if (commandCase_ == CommandOneofCase.SetEditorRenderMode) hash ^= SetEditorRenderMode.GetHashCode();
       if (commandCase_ == CommandOneofCase.GetEditorRenderMode) hash ^= GetEditorRenderMode.GetHashCode();
+      if (commandCase_ == CommandOneofCase.StartGiProbesBake) hash ^= StartGiProbesBake.GetHashCode();
+      if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) hash ^= GetGiProbesBakeStatus.GetHashCode();
+      if (commandCase_ == CommandOneofCase.CancelGiProbesBake) hash ^= CancelGiProbesBake.GetHashCode();
+      if (commandCase_ == CommandOneofCase.SetGiSettings) hash ^= SetGiSettings.GetHashCode();
+      if (commandCase_ == CommandOneofCase.GetGlobalIlluminationState) hash ^= GetGlobalIlluminationState.GetHashCode();
       hash ^= (int) commandCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -1899,6 +2121,26 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(146, 4);
         output.WriteMessage(GetEditorRenderMode);
       }
+      if (commandCase_ == CommandOneofCase.StartGiProbesBake) {
+        output.WriteRawTag(154, 4);
+        output.WriteMessage(StartGiProbesBake);
+      }
+      if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) {
+        output.WriteRawTag(162, 4);
+        output.WriteMessage(GetGiProbesBakeStatus);
+      }
+      if (commandCase_ == CommandOneofCase.CancelGiProbesBake) {
+        output.WriteRawTag(170, 4);
+        output.WriteMessage(CancelGiProbesBake);
+      }
+      if (commandCase_ == CommandOneofCase.SetGiSettings) {
+        output.WriteRawTag(178, 4);
+        output.WriteMessage(SetGiSettings);
+      }
+      if (commandCase_ == CommandOneofCase.GetGlobalIlluminationState) {
+        output.WriteRawTag(186, 4);
+        output.WriteMessage(GetGlobalIlluminationState);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -2141,6 +2383,26 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(146, 4);
         output.WriteMessage(GetEditorRenderMode);
       }
+      if (commandCase_ == CommandOneofCase.StartGiProbesBake) {
+        output.WriteRawTag(154, 4);
+        output.WriteMessage(StartGiProbesBake);
+      }
+      if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) {
+        output.WriteRawTag(162, 4);
+        output.WriteMessage(GetGiProbesBakeStatus);
+      }
+      if (commandCase_ == CommandOneofCase.CancelGiProbesBake) {
+        output.WriteRawTag(170, 4);
+        output.WriteMessage(CancelGiProbesBake);
+      }
+      if (commandCase_ == CommandOneofCase.SetGiSettings) {
+        output.WriteRawTag(178, 4);
+        output.WriteMessage(SetGiSettings);
+      }
+      if (commandCase_ == CommandOneofCase.GetGlobalIlluminationState) {
+        output.WriteRawTag(186, 4);
+        output.WriteMessage(GetGlobalIlluminationState);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -2324,6 +2586,21 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (commandCase_ == CommandOneofCase.GetEditorRenderMode) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(GetEditorRenderMode);
+      }
+      if (commandCase_ == CommandOneofCase.StartGiProbesBake) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(StartGiProbesBake);
+      }
+      if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(GetGiProbesBakeStatus);
+      }
+      if (commandCase_ == CommandOneofCase.CancelGiProbesBake) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(CancelGiProbesBake);
+      }
+      if (commandCase_ == CommandOneofCase.SetGiSettings) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(SetGiSettings);
+      }
+      if (commandCase_ == CommandOneofCase.GetGlobalIlluminationState) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(GetGlobalIlluminationState);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -2680,6 +2957,36 @@ namespace SailorEditor.Protocol.Generated {
           }
           GetEditorRenderMode.MergeFrom(other.GetEditorRenderMode);
           break;
+        case CommandOneofCase.StartGiProbesBake:
+          if (StartGiProbesBake == null) {
+            StartGiProbesBake = new global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest();
+          }
+          StartGiProbesBake.MergeFrom(other.StartGiProbesBake);
+          break;
+        case CommandOneofCase.GetGiProbesBakeStatus:
+          if (GetGiProbesBakeStatus == null) {
+            GetGiProbesBakeStatus = new global::SailorEditor.Protocol.Generated.Empty();
+          }
+          GetGiProbesBakeStatus.MergeFrom(other.GetGiProbesBakeStatus);
+          break;
+        case CommandOneofCase.CancelGiProbesBake:
+          if (CancelGiProbesBake == null) {
+            CancelGiProbesBake = new global::SailorEditor.Protocol.Generated.Empty();
+          }
+          CancelGiProbesBake.MergeFrom(other.CancelGiProbesBake);
+          break;
+        case CommandOneofCase.SetGiSettings:
+          if (SetGiSettings == null) {
+            SetGiSettings = new global::SailorEditor.Protocol.Generated.SetGISettingsRequest();
+          }
+          SetGiSettings.MergeFrom(other.SetGiSettings);
+          break;
+        case CommandOneofCase.GetGlobalIlluminationState:
+          if (GetGlobalIlluminationState == null) {
+            GetGlobalIlluminationState = new global::SailorEditor.Protocol.Generated.Empty();
+          }
+          GetGlobalIlluminationState.MergeFrom(other.GetGlobalIlluminationState);
+          break;
       }
 
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
@@ -3213,6 +3520,51 @@ namespace SailorEditor.Protocol.Generated {
             GetEditorRenderMode = subBuilder;
             break;
           }
+          case 538: {
+            global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest subBuilder = new global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest();
+            if (commandCase_ == CommandOneofCase.StartGiProbesBake) {
+              subBuilder.MergeFrom(StartGiProbesBake);
+            }
+            input.ReadMessage(subBuilder);
+            StartGiProbesBake = subBuilder;
+            break;
+          }
+          case 546: {
+            global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
+            if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) {
+              subBuilder.MergeFrom(GetGiProbesBakeStatus);
+            }
+            input.ReadMessage(subBuilder);
+            GetGiProbesBakeStatus = subBuilder;
+            break;
+          }
+          case 554: {
+            global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
+            if (commandCase_ == CommandOneofCase.CancelGiProbesBake) {
+              subBuilder.MergeFrom(CancelGiProbesBake);
+            }
+            input.ReadMessage(subBuilder);
+            CancelGiProbesBake = subBuilder;
+            break;
+          }
+          case 562: {
+            global::SailorEditor.Protocol.Generated.SetGISettingsRequest subBuilder = new global::SailorEditor.Protocol.Generated.SetGISettingsRequest();
+            if (commandCase_ == CommandOneofCase.SetGiSettings) {
+              subBuilder.MergeFrom(SetGiSettings);
+            }
+            input.ReadMessage(subBuilder);
+            SetGiSettings = subBuilder;
+            break;
+          }
+          case 570: {
+            global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
+            if (commandCase_ == CommandOneofCase.GetGlobalIlluminationState) {
+              subBuilder.MergeFrom(GetGlobalIlluminationState);
+            }
+            input.ReadMessage(subBuilder);
+            GetGlobalIlluminationState = subBuilder;
+            break;
+          }
         }
       }
     #endif
@@ -3744,6 +4096,51 @@ namespace SailorEditor.Protocol.Generated {
             GetEditorRenderMode = subBuilder;
             break;
           }
+          case 538: {
+            global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest subBuilder = new global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest();
+            if (commandCase_ == CommandOneofCase.StartGiProbesBake) {
+              subBuilder.MergeFrom(StartGiProbesBake);
+            }
+            input.ReadMessage(subBuilder);
+            StartGiProbesBake = subBuilder;
+            break;
+          }
+          case 546: {
+            global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
+            if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) {
+              subBuilder.MergeFrom(GetGiProbesBakeStatus);
+            }
+            input.ReadMessage(subBuilder);
+            GetGiProbesBakeStatus = subBuilder;
+            break;
+          }
+          case 554: {
+            global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
+            if (commandCase_ == CommandOneofCase.CancelGiProbesBake) {
+              subBuilder.MergeFrom(CancelGiProbesBake);
+            }
+            input.ReadMessage(subBuilder);
+            CancelGiProbesBake = subBuilder;
+            break;
+          }
+          case 562: {
+            global::SailorEditor.Protocol.Generated.SetGISettingsRequest subBuilder = new global::SailorEditor.Protocol.Generated.SetGISettingsRequest();
+            if (commandCase_ == CommandOneofCase.SetGiSettings) {
+              subBuilder.MergeFrom(SetGiSettings);
+            }
+            input.ReadMessage(subBuilder);
+            SetGiSettings = subBuilder;
+            break;
+          }
+          case 570: {
+            global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
+            if (commandCase_ == CommandOneofCase.GetGlobalIlluminationState) {
+              subBuilder.MergeFrom(GetGlobalIlluminationState);
+            }
+            input.ReadMessage(subBuilder);
+            GetGlobalIlluminationState = subBuilder;
+            break;
+          }
         }
       }
     }
@@ -3833,6 +4230,12 @@ namespace SailorEditor.Protocol.Generated {
           break;
         case ResultOneofCase.EditorRenderModeResult:
           EditorRenderModeResult = other.EditorRenderModeResult.Clone();
+          break;
+        case ResultOneofCase.GiProbesBakeStatusResult:
+          GiProbesBakeStatusResult = other.GiProbesBakeStatusResult.Clone();
+          break;
+        case ResultOneofCase.GlobalIlluminationStateResult:
+          GlobalIlluminationStateResult = other.GlobalIlluminationStateResult.Clone();
           break;
       }
 
@@ -4073,6 +4476,30 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
+    /// <summary>Field number for the "gi_probes_bake_status_result" field.</summary>
+    public const int GiProbesBakeStatusResultFieldNumber = 24;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult GiProbesBakeStatusResult {
+      get { return resultCase_ == ResultOneofCase.GiProbesBakeStatusResult ? (global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult) result_ : null; }
+      set {
+        result_ = value;
+        resultCase_ = value == null ? ResultOneofCase.None : ResultOneofCase.GiProbesBakeStatusResult;
+      }
+    }
+
+    /// <summary>Field number for the "global_illumination_state_result" field.</summary>
+    public const int GlobalIlluminationStateResultFieldNumber = 25;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult GlobalIlluminationStateResult {
+      get { return resultCase_ == ResultOneofCase.GlobalIlluminationStateResult ? (global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult) result_ : null; }
+      set {
+        result_ = value;
+        resultCase_ = value == null ? ResultOneofCase.None : ResultOneofCase.GlobalIlluminationStateResult;
+      }
+    }
+
     private object result_;
     /// <summary>Enum of possible cases for the "result" oneof.</summary>
     public enum ResultOneofCase {
@@ -4091,6 +4518,8 @@ namespace SailorEditor.Protocol.Generated {
       ViewportToolStateResult = 21,
       AnimatorStateResult = 22,
       EditorRenderModeResult = 23,
+      GiProbesBakeStatusResult = 24,
+      GlobalIlluminationStateResult = 25,
     }
     private ResultOneofCase resultCase_ = ResultOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4140,6 +4569,8 @@ namespace SailorEditor.Protocol.Generated {
       if (!object.Equals(ViewportToolStateResult, other.ViewportToolStateResult)) return false;
       if (!object.Equals(AnimatorStateResult, other.AnimatorStateResult)) return false;
       if (!object.Equals(EditorRenderModeResult, other.EditorRenderModeResult)) return false;
+      if (!object.Equals(GiProbesBakeStatusResult, other.GiProbesBakeStatusResult)) return false;
+      if (!object.Equals(GlobalIlluminationStateResult, other.GlobalIlluminationStateResult)) return false;
       if (ResultCase != other.ResultCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -4167,6 +4598,8 @@ namespace SailorEditor.Protocol.Generated {
       if (resultCase_ == ResultOneofCase.ViewportToolStateResult) hash ^= ViewportToolStateResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.AnimatorStateResult) hash ^= AnimatorStateResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.EditorRenderModeResult) hash ^= EditorRenderModeResult.GetHashCode();
+      if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) hash ^= GiProbesBakeStatusResult.GetHashCode();
+      if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) hash ^= GlobalIlluminationStateResult.GetHashCode();
       hash ^= (int) resultCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -4262,6 +4695,14 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(186, 1);
         output.WriteMessage(EditorRenderModeResult);
       }
+      if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) {
+        output.WriteRawTag(194, 1);
+        output.WriteMessage(GiProbesBakeStatusResult);
+      }
+      if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) {
+        output.WriteRawTag(202, 1);
+        output.WriteMessage(GlobalIlluminationStateResult);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -4348,6 +4789,14 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(186, 1);
         output.WriteMessage(EditorRenderModeResult);
       }
+      if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) {
+        output.WriteRawTag(194, 1);
+        output.WriteMessage(GiProbesBakeStatusResult);
+      }
+      if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) {
+        output.WriteRawTag(202, 1);
+        output.WriteMessage(GlobalIlluminationStateResult);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -4414,6 +4863,12 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (resultCase_ == ResultOneofCase.EditorRenderModeResult) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(EditorRenderModeResult);
+      }
+      if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(GiProbesBakeStatusResult);
+      }
+      if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(GlobalIlluminationStateResult);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -4526,6 +4981,18 @@ namespace SailorEditor.Protocol.Generated {
             EditorRenderModeResult = new global::SailorEditor.Protocol.Generated.EditorRenderModeResult();
           }
           EditorRenderModeResult.MergeFrom(other.EditorRenderModeResult);
+          break;
+        case ResultOneofCase.GiProbesBakeStatusResult:
+          if (GiProbesBakeStatusResult == null) {
+            GiProbesBakeStatusResult = new global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult();
+          }
+          GiProbesBakeStatusResult.MergeFrom(other.GiProbesBakeStatusResult);
+          break;
+        case ResultOneofCase.GlobalIlluminationStateResult:
+          if (GlobalIlluminationStateResult == null) {
+            GlobalIlluminationStateResult = new global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult();
+          }
+          GlobalIlluminationStateResult.MergeFrom(other.GlobalIlluminationStateResult);
           break;
       }
 
@@ -4694,6 +5161,24 @@ namespace SailorEditor.Protocol.Generated {
             EditorRenderModeResult = subBuilder;
             break;
           }
+          case 194: {
+            global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult subBuilder = new global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult();
+            if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) {
+              subBuilder.MergeFrom(GiProbesBakeStatusResult);
+            }
+            input.ReadMessage(subBuilder);
+            GiProbesBakeStatusResult = subBuilder;
+            break;
+          }
+          case 202: {
+            global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult subBuilder = new global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult();
+            if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) {
+              subBuilder.MergeFrom(GlobalIlluminationStateResult);
+            }
+            input.ReadMessage(subBuilder);
+            GlobalIlluminationStateResult = subBuilder;
+            break;
+          }
         }
       }
     #endif
@@ -4857,6 +5342,24 @@ namespace SailorEditor.Protocol.Generated {
             }
             input.ReadMessage(subBuilder);
             EditorRenderModeResult = subBuilder;
+            break;
+          }
+          case 194: {
+            global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult subBuilder = new global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult();
+            if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) {
+              subBuilder.MergeFrom(GiProbesBakeStatusResult);
+            }
+            input.ReadMessage(subBuilder);
+            GiProbesBakeStatusResult = subBuilder;
+            break;
+          }
+          case 202: {
+            global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult subBuilder = new global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult();
+            if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) {
+              subBuilder.MergeFrom(GlobalIlluminationStateResult);
+            }
+            input.ReadMessage(subBuilder);
+            GlobalIlluminationStateResult = subBuilder;
             break;
           }
         }
@@ -7611,6 +8114,3253 @@ namespace SailorEditor.Protocol.Generated {
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class GIProbesBakeSettings : pb::IMessage<GIProbesBakeSettings>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<GIProbesBakeSettings> _parser = new pb::MessageParser<GIProbesBakeSettings>(() => new GIProbesBakeSettings());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<GIProbesBakeSettings> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[15]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GIProbesBakeSettings() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GIProbesBakeSettings(GIProbesBakeSettings other) : this() {
+      raysPerProbe_ = other.raysPerProbe_;
+      bounceCount_ = other.bounceCount_;
+      randomSeed_ = other.randomSeed_;
+      maxSubdivisionLevel_ = other.maxSubdivisionLevel_;
+      minProbeSpacing_ = other.minProbeSpacing_;
+      normalBias_ = other.normalBias_;
+      viewBias_ = other.viewBias_;
+      maxRayDistance_ = other.maxRayDistance_;
+      includeSky_ = other.includeSky_;
+      includeEmissive_ = other.includeEmissive_;
+      includeDirectLighting_ = other.includeDirectLighting_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GIProbesBakeSettings Clone() {
+      return new GIProbesBakeSettings(this);
+    }
+
+    /// <summary>Field number for the "rays_per_probe" field.</summary>
+    public const int RaysPerProbeFieldNumber = 1;
+    private uint raysPerProbe_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint RaysPerProbe {
+      get { return raysPerProbe_; }
+      set {
+        raysPerProbe_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "bounce_count" field.</summary>
+    public const int BounceCountFieldNumber = 2;
+    private uint bounceCount_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint BounceCount {
+      get { return bounceCount_; }
+      set {
+        bounceCount_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "random_seed" field.</summary>
+    public const int RandomSeedFieldNumber = 3;
+    private uint randomSeed_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint RandomSeed {
+      get { return randomSeed_; }
+      set {
+        randomSeed_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "max_subdivision_level" field.</summary>
+    public const int MaxSubdivisionLevelFieldNumber = 4;
+    private uint maxSubdivisionLevel_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint MaxSubdivisionLevel {
+      get { return maxSubdivisionLevel_; }
+      set {
+        maxSubdivisionLevel_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "min_probe_spacing" field.</summary>
+    public const int MinProbeSpacingFieldNumber = 5;
+    private float minProbeSpacing_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float MinProbeSpacing {
+      get { return minProbeSpacing_; }
+      set {
+        minProbeSpacing_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "normal_bias" field.</summary>
+    public const int NormalBiasFieldNumber = 6;
+    private float normalBias_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float NormalBias {
+      get { return normalBias_; }
+      set {
+        normalBias_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "view_bias" field.</summary>
+    public const int ViewBiasFieldNumber = 7;
+    private float viewBias_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float ViewBias {
+      get { return viewBias_; }
+      set {
+        viewBias_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "max_ray_distance" field.</summary>
+    public const int MaxRayDistanceFieldNumber = 8;
+    private float maxRayDistance_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float MaxRayDistance {
+      get { return maxRayDistance_; }
+      set {
+        maxRayDistance_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "include_sky" field.</summary>
+    public const int IncludeSkyFieldNumber = 9;
+    private bool includeSky_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool IncludeSky {
+      get { return includeSky_; }
+      set {
+        includeSky_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "include_emissive" field.</summary>
+    public const int IncludeEmissiveFieldNumber = 10;
+    private bool includeEmissive_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool IncludeEmissive {
+      get { return includeEmissive_; }
+      set {
+        includeEmissive_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "include_direct_lighting" field.</summary>
+    public const int IncludeDirectLightingFieldNumber = 11;
+    private bool includeDirectLighting_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool IncludeDirectLighting {
+      get { return includeDirectLighting_; }
+      set {
+        includeDirectLighting_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as GIProbesBakeSettings);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(GIProbesBakeSettings other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (RaysPerProbe != other.RaysPerProbe) return false;
+      if (BounceCount != other.BounceCount) return false;
+      if (RandomSeed != other.RandomSeed) return false;
+      if (MaxSubdivisionLevel != other.MaxSubdivisionLevel) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(MinProbeSpacing, other.MinProbeSpacing)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(NormalBias, other.NormalBias)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(ViewBias, other.ViewBias)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(MaxRayDistance, other.MaxRayDistance)) return false;
+      if (IncludeSky != other.IncludeSky) return false;
+      if (IncludeEmissive != other.IncludeEmissive) return false;
+      if (IncludeDirectLighting != other.IncludeDirectLighting) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (RaysPerProbe != 0) hash ^= RaysPerProbe.GetHashCode();
+      if (BounceCount != 0) hash ^= BounceCount.GetHashCode();
+      if (RandomSeed != 0) hash ^= RandomSeed.GetHashCode();
+      if (MaxSubdivisionLevel != 0) hash ^= MaxSubdivisionLevel.GetHashCode();
+      if (MinProbeSpacing != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(MinProbeSpacing);
+      if (NormalBias != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(NormalBias);
+      if (ViewBias != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(ViewBias);
+      if (MaxRayDistance != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(MaxRayDistance);
+      if (IncludeSky != false) hash ^= IncludeSky.GetHashCode();
+      if (IncludeEmissive != false) hash ^= IncludeEmissive.GetHashCode();
+      if (IncludeDirectLighting != false) hash ^= IncludeDirectLighting.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (RaysPerProbe != 0) {
+        output.WriteRawTag(8);
+        output.WriteUInt32(RaysPerProbe);
+      }
+      if (BounceCount != 0) {
+        output.WriteRawTag(16);
+        output.WriteUInt32(BounceCount);
+      }
+      if (RandomSeed != 0) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(RandomSeed);
+      }
+      if (MaxSubdivisionLevel != 0) {
+        output.WriteRawTag(32);
+        output.WriteUInt32(MaxSubdivisionLevel);
+      }
+      if (MinProbeSpacing != 0F) {
+        output.WriteRawTag(45);
+        output.WriteFloat(MinProbeSpacing);
+      }
+      if (NormalBias != 0F) {
+        output.WriteRawTag(53);
+        output.WriteFloat(NormalBias);
+      }
+      if (ViewBias != 0F) {
+        output.WriteRawTag(61);
+        output.WriteFloat(ViewBias);
+      }
+      if (MaxRayDistance != 0F) {
+        output.WriteRawTag(69);
+        output.WriteFloat(MaxRayDistance);
+      }
+      if (IncludeSky != false) {
+        output.WriteRawTag(72);
+        output.WriteBool(IncludeSky);
+      }
+      if (IncludeEmissive != false) {
+        output.WriteRawTag(80);
+        output.WriteBool(IncludeEmissive);
+      }
+      if (IncludeDirectLighting != false) {
+        output.WriteRawTag(88);
+        output.WriteBool(IncludeDirectLighting);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (RaysPerProbe != 0) {
+        output.WriteRawTag(8);
+        output.WriteUInt32(RaysPerProbe);
+      }
+      if (BounceCount != 0) {
+        output.WriteRawTag(16);
+        output.WriteUInt32(BounceCount);
+      }
+      if (RandomSeed != 0) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(RandomSeed);
+      }
+      if (MaxSubdivisionLevel != 0) {
+        output.WriteRawTag(32);
+        output.WriteUInt32(MaxSubdivisionLevel);
+      }
+      if (MinProbeSpacing != 0F) {
+        output.WriteRawTag(45);
+        output.WriteFloat(MinProbeSpacing);
+      }
+      if (NormalBias != 0F) {
+        output.WriteRawTag(53);
+        output.WriteFloat(NormalBias);
+      }
+      if (ViewBias != 0F) {
+        output.WriteRawTag(61);
+        output.WriteFloat(ViewBias);
+      }
+      if (MaxRayDistance != 0F) {
+        output.WriteRawTag(69);
+        output.WriteFloat(MaxRayDistance);
+      }
+      if (IncludeSky != false) {
+        output.WriteRawTag(72);
+        output.WriteBool(IncludeSky);
+      }
+      if (IncludeEmissive != false) {
+        output.WriteRawTag(80);
+        output.WriteBool(IncludeEmissive);
+      }
+      if (IncludeDirectLighting != false) {
+        output.WriteRawTag(88);
+        output.WriteBool(IncludeDirectLighting);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (RaysPerProbe != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(RaysPerProbe);
+      }
+      if (BounceCount != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(BounceCount);
+      }
+      if (RandomSeed != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(RandomSeed);
+      }
+      if (MaxSubdivisionLevel != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(MaxSubdivisionLevel);
+      }
+      if (MinProbeSpacing != 0F) {
+        size += 1 + 4;
+      }
+      if (NormalBias != 0F) {
+        size += 1 + 4;
+      }
+      if (ViewBias != 0F) {
+        size += 1 + 4;
+      }
+      if (MaxRayDistance != 0F) {
+        size += 1 + 4;
+      }
+      if (IncludeSky != false) {
+        size += 1 + 1;
+      }
+      if (IncludeEmissive != false) {
+        size += 1 + 1;
+      }
+      if (IncludeDirectLighting != false) {
+        size += 1 + 1;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(GIProbesBakeSettings other) {
+      if (other == null) {
+        return;
+      }
+      if (other.RaysPerProbe != 0) {
+        RaysPerProbe = other.RaysPerProbe;
+      }
+      if (other.BounceCount != 0) {
+        BounceCount = other.BounceCount;
+      }
+      if (other.RandomSeed != 0) {
+        RandomSeed = other.RandomSeed;
+      }
+      if (other.MaxSubdivisionLevel != 0) {
+        MaxSubdivisionLevel = other.MaxSubdivisionLevel;
+      }
+      if (other.MinProbeSpacing != 0F) {
+        MinProbeSpacing = other.MinProbeSpacing;
+      }
+      if (other.NormalBias != 0F) {
+        NormalBias = other.NormalBias;
+      }
+      if (other.ViewBias != 0F) {
+        ViewBias = other.ViewBias;
+      }
+      if (other.MaxRayDistance != 0F) {
+        MaxRayDistance = other.MaxRayDistance;
+      }
+      if (other.IncludeSky != false) {
+        IncludeSky = other.IncludeSky;
+      }
+      if (other.IncludeEmissive != false) {
+        IncludeEmissive = other.IncludeEmissive;
+      }
+      if (other.IncludeDirectLighting != false) {
+        IncludeDirectLighting = other.IncludeDirectLighting;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            RaysPerProbe = input.ReadUInt32();
+            break;
+          }
+          case 16: {
+            BounceCount = input.ReadUInt32();
+            break;
+          }
+          case 24: {
+            RandomSeed = input.ReadUInt32();
+            break;
+          }
+          case 32: {
+            MaxSubdivisionLevel = input.ReadUInt32();
+            break;
+          }
+          case 45: {
+            MinProbeSpacing = input.ReadFloat();
+            break;
+          }
+          case 53: {
+            NormalBias = input.ReadFloat();
+            break;
+          }
+          case 61: {
+            ViewBias = input.ReadFloat();
+            break;
+          }
+          case 69: {
+            MaxRayDistance = input.ReadFloat();
+            break;
+          }
+          case 72: {
+            IncludeSky = input.ReadBool();
+            break;
+          }
+          case 80: {
+            IncludeEmissive = input.ReadBool();
+            break;
+          }
+          case 88: {
+            IncludeDirectLighting = input.ReadBool();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            RaysPerProbe = input.ReadUInt32();
+            break;
+          }
+          case 16: {
+            BounceCount = input.ReadUInt32();
+            break;
+          }
+          case 24: {
+            RandomSeed = input.ReadUInt32();
+            break;
+          }
+          case 32: {
+            MaxSubdivisionLevel = input.ReadUInt32();
+            break;
+          }
+          case 45: {
+            MinProbeSpacing = input.ReadFloat();
+            break;
+          }
+          case 53: {
+            NormalBias = input.ReadFloat();
+            break;
+          }
+          case 61: {
+            ViewBias = input.ReadFloat();
+            break;
+          }
+          case 69: {
+            MaxRayDistance = input.ReadFloat();
+            break;
+          }
+          case 72: {
+            IncludeSky = input.ReadBool();
+            break;
+          }
+          case 80: {
+            IncludeEmissive = input.ReadBool();
+            break;
+          }
+          case 88: {
+            IncludeDirectLighting = input.ReadBool();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class StartGIProbesBakeRequest : pb::IMessage<StartGIProbesBakeRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<StartGIProbesBakeRequest> _parser = new pb::MessageParser<StartGIProbesBakeRequest>(() => new StartGIProbesBakeRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<StartGIProbesBakeRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[16]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public StartGIProbesBakeRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public StartGIProbesBakeRequest(StartGIProbesBakeRequest other) : this() {
+      _hasBits0 = other._hasBits0;
+      worldFileId_ = other.worldFileId_;
+      outputVirtualPath_ = other.outputVirtualPath_;
+      stateName_ = other.stateName_;
+      layoutSourceFileId_ = other.layoutSourceFileId_;
+      settings_ = other.settings_ != null ? other.settings_.Clone() : null;
+      autoBounds_ = other.autoBounds_;
+      volumeMin_ = other.volumeMin_ != null ? other.volumeMin_.Clone() : null;
+      volumeMax_ = other.volumeMax_ != null ? other.volumeMax_.Clone() : null;
+      fallbackEnvironment_ = other.fallbackEnvironment_ != null ? other.fallbackEnvironment_.Clone() : null;
+      overwrite_ = other.overwrite_;
+      threadCount_ = other.threadCount_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public StartGIProbesBakeRequest Clone() {
+      return new StartGIProbesBakeRequest(this);
+    }
+
+    /// <summary>Field number for the "world_file_id" field.</summary>
+    public const int WorldFileIdFieldNumber = 1;
+    private string worldFileId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string WorldFileId {
+      get { return worldFileId_; }
+      set {
+        worldFileId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "output_virtual_path" field.</summary>
+    public const int OutputVirtualPathFieldNumber = 2;
+    private string outputVirtualPath_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string OutputVirtualPath {
+      get { return outputVirtualPath_; }
+      set {
+        outputVirtualPath_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "state_name" field.</summary>
+    public const int StateNameFieldNumber = 3;
+    private string stateName_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string StateName {
+      get { return stateName_; }
+      set {
+        stateName_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "layout_source_file_id" field.</summary>
+    public const int LayoutSourceFileIdFieldNumber = 4;
+    private string layoutSourceFileId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string LayoutSourceFileId {
+      get { return layoutSourceFileId_; }
+      set {
+        layoutSourceFileId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "settings" field.</summary>
+    public const int SettingsFieldNumber = 5;
+    private global::SailorEditor.Protocol.Generated.GIProbesBakeSettings settings_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.GIProbesBakeSettings Settings {
+      get { return settings_; }
+      set {
+        settings_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "auto_bounds" field.</summary>
+    public const int AutoBoundsFieldNumber = 6;
+    private bool autoBounds_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool AutoBounds {
+      get { return autoBounds_; }
+      set {
+        autoBounds_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "volume_min" field.</summary>
+    public const int VolumeMinFieldNumber = 7;
+    private global::SailorEditor.Protocol.Generated.Vector4 volumeMin_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.Vector4 VolumeMin {
+      get { return volumeMin_; }
+      set {
+        volumeMin_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "volume_max" field.</summary>
+    public const int VolumeMaxFieldNumber = 8;
+    private global::SailorEditor.Protocol.Generated.Vector4 volumeMax_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.Vector4 VolumeMax {
+      get { return volumeMax_; }
+      set {
+        volumeMax_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "fallback_environment" field.</summary>
+    public const int FallbackEnvironmentFieldNumber = 9;
+    private global::SailorEditor.Protocol.Generated.Vector4 fallbackEnvironment_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.Vector4 FallbackEnvironment {
+      get { return fallbackEnvironment_; }
+      set {
+        fallbackEnvironment_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "overwrite" field.</summary>
+    public const int OverwriteFieldNumber = 10;
+    private bool overwrite_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Overwrite {
+      get { return overwrite_; }
+      set {
+        overwrite_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "thread_count" field.</summary>
+    public const int ThreadCountFieldNumber = 11;
+    private readonly static uint ThreadCountDefaultValue = 0;
+
+    private uint threadCount_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint ThreadCount {
+      get { if ((_hasBits0 & 1) != 0) { return threadCount_; } else { return ThreadCountDefaultValue; } }
+      set {
+        _hasBits0 |= 1;
+        threadCount_ = value;
+      }
+    }
+    /// <summary>Gets whether the "thread_count" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasThreadCount {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "thread_count" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearThreadCount() {
+      _hasBits0 &= ~1;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as StartGIProbesBakeRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(StartGIProbesBakeRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (WorldFileId != other.WorldFileId) return false;
+      if (OutputVirtualPath != other.OutputVirtualPath) return false;
+      if (StateName != other.StateName) return false;
+      if (LayoutSourceFileId != other.LayoutSourceFileId) return false;
+      if (!object.Equals(Settings, other.Settings)) return false;
+      if (AutoBounds != other.AutoBounds) return false;
+      if (!object.Equals(VolumeMin, other.VolumeMin)) return false;
+      if (!object.Equals(VolumeMax, other.VolumeMax)) return false;
+      if (!object.Equals(FallbackEnvironment, other.FallbackEnvironment)) return false;
+      if (Overwrite != other.Overwrite) return false;
+      if (ThreadCount != other.ThreadCount) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (WorldFileId.Length != 0) hash ^= WorldFileId.GetHashCode();
+      if (OutputVirtualPath.Length != 0) hash ^= OutputVirtualPath.GetHashCode();
+      if (StateName.Length != 0) hash ^= StateName.GetHashCode();
+      if (LayoutSourceFileId.Length != 0) hash ^= LayoutSourceFileId.GetHashCode();
+      if (settings_ != null) hash ^= Settings.GetHashCode();
+      if (AutoBounds != false) hash ^= AutoBounds.GetHashCode();
+      if (volumeMin_ != null) hash ^= VolumeMin.GetHashCode();
+      if (volumeMax_ != null) hash ^= VolumeMax.GetHashCode();
+      if (fallbackEnvironment_ != null) hash ^= FallbackEnvironment.GetHashCode();
+      if (Overwrite != false) hash ^= Overwrite.GetHashCode();
+      if (HasThreadCount) hash ^= ThreadCount.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (WorldFileId.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(WorldFileId);
+      }
+      if (OutputVirtualPath.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(OutputVirtualPath);
+      }
+      if (StateName.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(StateName);
+      }
+      if (LayoutSourceFileId.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteString(LayoutSourceFileId);
+      }
+      if (settings_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(Settings);
+      }
+      if (AutoBounds != false) {
+        output.WriteRawTag(48);
+        output.WriteBool(AutoBounds);
+      }
+      if (volumeMin_ != null) {
+        output.WriteRawTag(58);
+        output.WriteMessage(VolumeMin);
+      }
+      if (volumeMax_ != null) {
+        output.WriteRawTag(66);
+        output.WriteMessage(VolumeMax);
+      }
+      if (fallbackEnvironment_ != null) {
+        output.WriteRawTag(74);
+        output.WriteMessage(FallbackEnvironment);
+      }
+      if (Overwrite != false) {
+        output.WriteRawTag(80);
+        output.WriteBool(Overwrite);
+      }
+      if (HasThreadCount) {
+        output.WriteRawTag(88);
+        output.WriteUInt32(ThreadCount);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (WorldFileId.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(WorldFileId);
+      }
+      if (OutputVirtualPath.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(OutputVirtualPath);
+      }
+      if (StateName.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(StateName);
+      }
+      if (LayoutSourceFileId.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteString(LayoutSourceFileId);
+      }
+      if (settings_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(Settings);
+      }
+      if (AutoBounds != false) {
+        output.WriteRawTag(48);
+        output.WriteBool(AutoBounds);
+      }
+      if (volumeMin_ != null) {
+        output.WriteRawTag(58);
+        output.WriteMessage(VolumeMin);
+      }
+      if (volumeMax_ != null) {
+        output.WriteRawTag(66);
+        output.WriteMessage(VolumeMax);
+      }
+      if (fallbackEnvironment_ != null) {
+        output.WriteRawTag(74);
+        output.WriteMessage(FallbackEnvironment);
+      }
+      if (Overwrite != false) {
+        output.WriteRawTag(80);
+        output.WriteBool(Overwrite);
+      }
+      if (HasThreadCount) {
+        output.WriteRawTag(88);
+        output.WriteUInt32(ThreadCount);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (WorldFileId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(WorldFileId);
+      }
+      if (OutputVirtualPath.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(OutputVirtualPath);
+      }
+      if (StateName.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(StateName);
+      }
+      if (LayoutSourceFileId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(LayoutSourceFileId);
+      }
+      if (settings_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Settings);
+      }
+      if (AutoBounds != false) {
+        size += 1 + 1;
+      }
+      if (volumeMin_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(VolumeMin);
+      }
+      if (volumeMax_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(VolumeMax);
+      }
+      if (fallbackEnvironment_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(FallbackEnvironment);
+      }
+      if (Overwrite != false) {
+        size += 1 + 1;
+      }
+      if (HasThreadCount) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ThreadCount);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(StartGIProbesBakeRequest other) {
+      if (other == null) {
+        return;
+      }
+      if (other.WorldFileId.Length != 0) {
+        WorldFileId = other.WorldFileId;
+      }
+      if (other.OutputVirtualPath.Length != 0) {
+        OutputVirtualPath = other.OutputVirtualPath;
+      }
+      if (other.StateName.Length != 0) {
+        StateName = other.StateName;
+      }
+      if (other.LayoutSourceFileId.Length != 0) {
+        LayoutSourceFileId = other.LayoutSourceFileId;
+      }
+      if (other.settings_ != null) {
+        if (settings_ == null) {
+          Settings = new global::SailorEditor.Protocol.Generated.GIProbesBakeSettings();
+        }
+        Settings.MergeFrom(other.Settings);
+      }
+      if (other.AutoBounds != false) {
+        AutoBounds = other.AutoBounds;
+      }
+      if (other.volumeMin_ != null) {
+        if (volumeMin_ == null) {
+          VolumeMin = new global::SailorEditor.Protocol.Generated.Vector4();
+        }
+        VolumeMin.MergeFrom(other.VolumeMin);
+      }
+      if (other.volumeMax_ != null) {
+        if (volumeMax_ == null) {
+          VolumeMax = new global::SailorEditor.Protocol.Generated.Vector4();
+        }
+        VolumeMax.MergeFrom(other.VolumeMax);
+      }
+      if (other.fallbackEnvironment_ != null) {
+        if (fallbackEnvironment_ == null) {
+          FallbackEnvironment = new global::SailorEditor.Protocol.Generated.Vector4();
+        }
+        FallbackEnvironment.MergeFrom(other.FallbackEnvironment);
+      }
+      if (other.Overwrite != false) {
+        Overwrite = other.Overwrite;
+      }
+      if (other.HasThreadCount) {
+        ThreadCount = other.ThreadCount;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            WorldFileId = input.ReadString();
+            break;
+          }
+          case 18: {
+            OutputVirtualPath = input.ReadString();
+            break;
+          }
+          case 26: {
+            StateName = input.ReadString();
+            break;
+          }
+          case 34: {
+            LayoutSourceFileId = input.ReadString();
+            break;
+          }
+          case 42: {
+            if (settings_ == null) {
+              Settings = new global::SailorEditor.Protocol.Generated.GIProbesBakeSettings();
+            }
+            input.ReadMessage(Settings);
+            break;
+          }
+          case 48: {
+            AutoBounds = input.ReadBool();
+            break;
+          }
+          case 58: {
+            if (volumeMin_ == null) {
+              VolumeMin = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(VolumeMin);
+            break;
+          }
+          case 66: {
+            if (volumeMax_ == null) {
+              VolumeMax = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(VolumeMax);
+            break;
+          }
+          case 74: {
+            if (fallbackEnvironment_ == null) {
+              FallbackEnvironment = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(FallbackEnvironment);
+            break;
+          }
+          case 80: {
+            Overwrite = input.ReadBool();
+            break;
+          }
+          case 88: {
+            ThreadCount = input.ReadUInt32();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            WorldFileId = input.ReadString();
+            break;
+          }
+          case 18: {
+            OutputVirtualPath = input.ReadString();
+            break;
+          }
+          case 26: {
+            StateName = input.ReadString();
+            break;
+          }
+          case 34: {
+            LayoutSourceFileId = input.ReadString();
+            break;
+          }
+          case 42: {
+            if (settings_ == null) {
+              Settings = new global::SailorEditor.Protocol.Generated.GIProbesBakeSettings();
+            }
+            input.ReadMessage(Settings);
+            break;
+          }
+          case 48: {
+            AutoBounds = input.ReadBool();
+            break;
+          }
+          case 58: {
+            if (volumeMin_ == null) {
+              VolumeMin = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(VolumeMin);
+            break;
+          }
+          case 66: {
+            if (volumeMax_ == null) {
+              VolumeMax = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(VolumeMax);
+            break;
+          }
+          case 74: {
+            if (fallbackEnvironment_ == null) {
+              FallbackEnvironment = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(FallbackEnvironment);
+            break;
+          }
+          case 80: {
+            Overwrite = input.ReadBool();
+            break;
+          }
+          case 88: {
+            ThreadCount = input.ReadUInt32();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class GIProbesBakeStatusResult : pb::IMessage<GIProbesBakeStatusResult>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<GIProbesBakeStatusResult> _parser = new pb::MessageParser<GIProbesBakeStatusResult>(() => new GIProbesBakeStatusResult());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<GIProbesBakeStatusResult> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[17]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GIProbesBakeStatusResult() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GIProbesBakeStatusResult(GIProbesBakeStatusResult other) : this() {
+      state_ = other.state_;
+      progress_ = other.progress_;
+      completedProbes_ = other.completedProbes_;
+      totalProbes_ = other.totalProbes_;
+      brickCount_ = other.brickCount_;
+      probeCount_ = other.probeCount_;
+      elapsedSeconds_ = other.elapsedSeconds_;
+      layoutHash_ = other.layoutHash_;
+      transportHash_ = other.transportHash_;
+      lightingHash_ = other.lightingHash_;
+      stage_ = other.stage_;
+      outputVirtualPath_ = other.outputVirtualPath_;
+      diagnostic_ = other.diagnostic_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GIProbesBakeStatusResult Clone() {
+      return new GIProbesBakeStatusResult(this);
+    }
+
+    /// <summary>Field number for the "state" field.</summary>
+    public const int StateFieldNumber = 1;
+    private global::SailorEditor.Protocol.Generated.GIProbesBakeState state_ = global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.GIProbesBakeState State {
+      get { return state_; }
+      set {
+        state_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "progress" field.</summary>
+    public const int ProgressFieldNumber = 2;
+    private float progress_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float Progress {
+      get { return progress_; }
+      set {
+        progress_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "completed_probes" field.</summary>
+    public const int CompletedProbesFieldNumber = 3;
+    private uint completedProbes_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CompletedProbes {
+      get { return completedProbes_; }
+      set {
+        completedProbes_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "total_probes" field.</summary>
+    public const int TotalProbesFieldNumber = 4;
+    private uint totalProbes_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint TotalProbes {
+      get { return totalProbes_; }
+      set {
+        totalProbes_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "brick_count" field.</summary>
+    public const int BrickCountFieldNumber = 5;
+    private uint brickCount_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint BrickCount {
+      get { return brickCount_; }
+      set {
+        brickCount_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "probe_count" field.</summary>
+    public const int ProbeCountFieldNumber = 6;
+    private uint probeCount_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint ProbeCount {
+      get { return probeCount_; }
+      set {
+        probeCount_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "elapsed_seconds" field.</summary>
+    public const int ElapsedSecondsFieldNumber = 7;
+    private float elapsedSeconds_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float ElapsedSeconds {
+      get { return elapsedSeconds_; }
+      set {
+        elapsedSeconds_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "layout_hash" field.</summary>
+    public const int LayoutHashFieldNumber = 8;
+    private ulong layoutHash_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong LayoutHash {
+      get { return layoutHash_; }
+      set {
+        layoutHash_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "transport_hash" field.</summary>
+    public const int TransportHashFieldNumber = 9;
+    private ulong transportHash_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong TransportHash {
+      get { return transportHash_; }
+      set {
+        transportHash_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "lighting_hash" field.</summary>
+    public const int LightingHashFieldNumber = 10;
+    private ulong lightingHash_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong LightingHash {
+      get { return lightingHash_; }
+      set {
+        lightingHash_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "stage" field.</summary>
+    public const int StageFieldNumber = 11;
+    private string stage_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Stage {
+      get { return stage_; }
+      set {
+        stage_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "output_virtual_path" field.</summary>
+    public const int OutputVirtualPathFieldNumber = 12;
+    private string outputVirtualPath_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string OutputVirtualPath {
+      get { return outputVirtualPath_; }
+      set {
+        outputVirtualPath_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "diagnostic" field.</summary>
+    public const int DiagnosticFieldNumber = 13;
+    private string diagnostic_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Diagnostic {
+      get { return diagnostic_; }
+      set {
+        diagnostic_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as GIProbesBakeStatusResult);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(GIProbesBakeStatusResult other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (State != other.State) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Progress, other.Progress)) return false;
+      if (CompletedProbes != other.CompletedProbes) return false;
+      if (TotalProbes != other.TotalProbes) return false;
+      if (BrickCount != other.BrickCount) return false;
+      if (ProbeCount != other.ProbeCount) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(ElapsedSeconds, other.ElapsedSeconds)) return false;
+      if (LayoutHash != other.LayoutHash) return false;
+      if (TransportHash != other.TransportHash) return false;
+      if (LightingHash != other.LightingHash) return false;
+      if (Stage != other.Stage) return false;
+      if (OutputVirtualPath != other.OutputVirtualPath) return false;
+      if (Diagnostic != other.Diagnostic) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (State != global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified) hash ^= State.GetHashCode();
+      if (Progress != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Progress);
+      if (CompletedProbes != 0) hash ^= CompletedProbes.GetHashCode();
+      if (TotalProbes != 0) hash ^= TotalProbes.GetHashCode();
+      if (BrickCount != 0) hash ^= BrickCount.GetHashCode();
+      if (ProbeCount != 0) hash ^= ProbeCount.GetHashCode();
+      if (ElapsedSeconds != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(ElapsedSeconds);
+      if (LayoutHash != 0UL) hash ^= LayoutHash.GetHashCode();
+      if (TransportHash != 0UL) hash ^= TransportHash.GetHashCode();
+      if (LightingHash != 0UL) hash ^= LightingHash.GetHashCode();
+      if (Stage.Length != 0) hash ^= Stage.GetHashCode();
+      if (OutputVirtualPath.Length != 0) hash ^= OutputVirtualPath.GetHashCode();
+      if (Diagnostic.Length != 0) hash ^= Diagnostic.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (State != global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified) {
+        output.WriteRawTag(8);
+        output.WriteEnum((int) State);
+      }
+      if (Progress != 0F) {
+        output.WriteRawTag(21);
+        output.WriteFloat(Progress);
+      }
+      if (CompletedProbes != 0) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(CompletedProbes);
+      }
+      if (TotalProbes != 0) {
+        output.WriteRawTag(32);
+        output.WriteUInt32(TotalProbes);
+      }
+      if (BrickCount != 0) {
+        output.WriteRawTag(40);
+        output.WriteUInt32(BrickCount);
+      }
+      if (ProbeCount != 0) {
+        output.WriteRawTag(48);
+        output.WriteUInt32(ProbeCount);
+      }
+      if (ElapsedSeconds != 0F) {
+        output.WriteRawTag(61);
+        output.WriteFloat(ElapsedSeconds);
+      }
+      if (LayoutHash != 0UL) {
+        output.WriteRawTag(64);
+        output.WriteUInt64(LayoutHash);
+      }
+      if (TransportHash != 0UL) {
+        output.WriteRawTag(72);
+        output.WriteUInt64(TransportHash);
+      }
+      if (LightingHash != 0UL) {
+        output.WriteRawTag(80);
+        output.WriteUInt64(LightingHash);
+      }
+      if (Stage.Length != 0) {
+        output.WriteRawTag(90);
+        output.WriteString(Stage);
+      }
+      if (OutputVirtualPath.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(OutputVirtualPath);
+      }
+      if (Diagnostic.Length != 0) {
+        output.WriteRawTag(106);
+        output.WriteString(Diagnostic);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (State != global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified) {
+        output.WriteRawTag(8);
+        output.WriteEnum((int) State);
+      }
+      if (Progress != 0F) {
+        output.WriteRawTag(21);
+        output.WriteFloat(Progress);
+      }
+      if (CompletedProbes != 0) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(CompletedProbes);
+      }
+      if (TotalProbes != 0) {
+        output.WriteRawTag(32);
+        output.WriteUInt32(TotalProbes);
+      }
+      if (BrickCount != 0) {
+        output.WriteRawTag(40);
+        output.WriteUInt32(BrickCount);
+      }
+      if (ProbeCount != 0) {
+        output.WriteRawTag(48);
+        output.WriteUInt32(ProbeCount);
+      }
+      if (ElapsedSeconds != 0F) {
+        output.WriteRawTag(61);
+        output.WriteFloat(ElapsedSeconds);
+      }
+      if (LayoutHash != 0UL) {
+        output.WriteRawTag(64);
+        output.WriteUInt64(LayoutHash);
+      }
+      if (TransportHash != 0UL) {
+        output.WriteRawTag(72);
+        output.WriteUInt64(TransportHash);
+      }
+      if (LightingHash != 0UL) {
+        output.WriteRawTag(80);
+        output.WriteUInt64(LightingHash);
+      }
+      if (Stage.Length != 0) {
+        output.WriteRawTag(90);
+        output.WriteString(Stage);
+      }
+      if (OutputVirtualPath.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(OutputVirtualPath);
+      }
+      if (Diagnostic.Length != 0) {
+        output.WriteRawTag(106);
+        output.WriteString(Diagnostic);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (State != global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) State);
+      }
+      if (Progress != 0F) {
+        size += 1 + 4;
+      }
+      if (CompletedProbes != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(CompletedProbes);
+      }
+      if (TotalProbes != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(TotalProbes);
+      }
+      if (BrickCount != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(BrickCount);
+      }
+      if (ProbeCount != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ProbeCount);
+      }
+      if (ElapsedSeconds != 0F) {
+        size += 1 + 4;
+      }
+      if (LayoutHash != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(LayoutHash);
+      }
+      if (TransportHash != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(TransportHash);
+      }
+      if (LightingHash != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(LightingHash);
+      }
+      if (Stage.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Stage);
+      }
+      if (OutputVirtualPath.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(OutputVirtualPath);
+      }
+      if (Diagnostic.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Diagnostic);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(GIProbesBakeStatusResult other) {
+      if (other == null) {
+        return;
+      }
+      if (other.State != global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified) {
+        State = other.State;
+      }
+      if (other.Progress != 0F) {
+        Progress = other.Progress;
+      }
+      if (other.CompletedProbes != 0) {
+        CompletedProbes = other.CompletedProbes;
+      }
+      if (other.TotalProbes != 0) {
+        TotalProbes = other.TotalProbes;
+      }
+      if (other.BrickCount != 0) {
+        BrickCount = other.BrickCount;
+      }
+      if (other.ProbeCount != 0) {
+        ProbeCount = other.ProbeCount;
+      }
+      if (other.ElapsedSeconds != 0F) {
+        ElapsedSeconds = other.ElapsedSeconds;
+      }
+      if (other.LayoutHash != 0UL) {
+        LayoutHash = other.LayoutHash;
+      }
+      if (other.TransportHash != 0UL) {
+        TransportHash = other.TransportHash;
+      }
+      if (other.LightingHash != 0UL) {
+        LightingHash = other.LightingHash;
+      }
+      if (other.Stage.Length != 0) {
+        Stage = other.Stage;
+      }
+      if (other.OutputVirtualPath.Length != 0) {
+        OutputVirtualPath = other.OutputVirtualPath;
+      }
+      if (other.Diagnostic.Length != 0) {
+        Diagnostic = other.Diagnostic;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            State = (global::SailorEditor.Protocol.Generated.GIProbesBakeState) input.ReadEnum();
+            break;
+          }
+          case 21: {
+            Progress = input.ReadFloat();
+            break;
+          }
+          case 24: {
+            CompletedProbes = input.ReadUInt32();
+            break;
+          }
+          case 32: {
+            TotalProbes = input.ReadUInt32();
+            break;
+          }
+          case 40: {
+            BrickCount = input.ReadUInt32();
+            break;
+          }
+          case 48: {
+            ProbeCount = input.ReadUInt32();
+            break;
+          }
+          case 61: {
+            ElapsedSeconds = input.ReadFloat();
+            break;
+          }
+          case 64: {
+            LayoutHash = input.ReadUInt64();
+            break;
+          }
+          case 72: {
+            TransportHash = input.ReadUInt64();
+            break;
+          }
+          case 80: {
+            LightingHash = input.ReadUInt64();
+            break;
+          }
+          case 90: {
+            Stage = input.ReadString();
+            break;
+          }
+          case 98: {
+            OutputVirtualPath = input.ReadString();
+            break;
+          }
+          case 106: {
+            Diagnostic = input.ReadString();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            State = (global::SailorEditor.Protocol.Generated.GIProbesBakeState) input.ReadEnum();
+            break;
+          }
+          case 21: {
+            Progress = input.ReadFloat();
+            break;
+          }
+          case 24: {
+            CompletedProbes = input.ReadUInt32();
+            break;
+          }
+          case 32: {
+            TotalProbes = input.ReadUInt32();
+            break;
+          }
+          case 40: {
+            BrickCount = input.ReadUInt32();
+            break;
+          }
+          case 48: {
+            ProbeCount = input.ReadUInt32();
+            break;
+          }
+          case 61: {
+            ElapsedSeconds = input.ReadFloat();
+            break;
+          }
+          case 64: {
+            LayoutHash = input.ReadUInt64();
+            break;
+          }
+          case 72: {
+            TransportHash = input.ReadUInt64();
+            break;
+          }
+          case 80: {
+            LightingHash = input.ReadUInt64();
+            break;
+          }
+          case 90: {
+            Stage = input.ReadString();
+            break;
+          }
+          case 98: {
+            OutputVirtualPath = input.ReadString();
+            break;
+          }
+          case 106: {
+            Diagnostic = input.ReadString();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class GlobalIlluminationProbeBinding : pb::IMessage<GlobalIlluminationProbeBinding>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<GlobalIlluminationProbeBinding> _parser = new pb::MessageParser<GlobalIlluminationProbeBinding>(() => new GlobalIlluminationProbeBinding());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<GlobalIlluminationProbeBinding> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[18]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GlobalIlluminationProbeBinding() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GlobalIlluminationProbeBinding(GlobalIlluminationProbeBinding other) : this() {
+      name_ = other.name_;
+      assetFileId_ = other.assetFileId_;
+      mode_ = other.mode_;
+      initialWeight_ = other.initialWeight_;
+      preload_ = other.preload_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GlobalIlluminationProbeBinding Clone() {
+      return new GlobalIlluminationProbeBinding(this);
+    }
+
+    /// <summary>Field number for the "name" field.</summary>
+    public const int NameFieldNumber = 1;
+    private string name_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Name {
+      get { return name_; }
+      set {
+        name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "asset_file_id" field.</summary>
+    public const int AssetFileIdFieldNumber = 2;
+    private string assetFileId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string AssetFileId {
+      get { return assetFileId_; }
+      set {
+        assetFileId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "mode" field.</summary>
+    public const int ModeFieldNumber = 3;
+    private global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode mode_ = global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode Mode {
+      get { return mode_; }
+      set {
+        mode_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "initial_weight" field.</summary>
+    public const int InitialWeightFieldNumber = 4;
+    private float initialWeight_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float InitialWeight {
+      get { return initialWeight_; }
+      set {
+        initialWeight_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "preload" field.</summary>
+    public const int PreloadFieldNumber = 5;
+    private bool preload_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Preload {
+      get { return preload_; }
+      set {
+        preload_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as GlobalIlluminationProbeBinding);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(GlobalIlluminationProbeBinding other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Name != other.Name) return false;
+      if (AssetFileId != other.AssetFileId) return false;
+      if (Mode != other.Mode) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(InitialWeight, other.InitialWeight)) return false;
+      if (Preload != other.Preload) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Name.Length != 0) hash ^= Name.GetHashCode();
+      if (AssetFileId.Length != 0) hash ^= AssetFileId.GetHashCode();
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified) hash ^= Mode.GetHashCode();
+      if (InitialWeight != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(InitialWeight);
+      if (Preload != false) hash ^= Preload.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      if (AssetFileId.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(AssetFileId);
+      }
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified) {
+        output.WriteRawTag(24);
+        output.WriteEnum((int) Mode);
+      }
+      if (InitialWeight != 0F) {
+        output.WriteRawTag(37);
+        output.WriteFloat(InitialWeight);
+      }
+      if (Preload != false) {
+        output.WriteRawTag(40);
+        output.WriteBool(Preload);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      if (AssetFileId.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(AssetFileId);
+      }
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified) {
+        output.WriteRawTag(24);
+        output.WriteEnum((int) Mode);
+      }
+      if (InitialWeight != 0F) {
+        output.WriteRawTag(37);
+        output.WriteFloat(InitialWeight);
+      }
+      if (Preload != false) {
+        output.WriteRawTag(40);
+        output.WriteBool(Preload);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Name.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Name);
+      }
+      if (AssetFileId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(AssetFileId);
+      }
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Mode);
+      }
+      if (InitialWeight != 0F) {
+        size += 1 + 4;
+      }
+      if (Preload != false) {
+        size += 1 + 1;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(GlobalIlluminationProbeBinding other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Name.Length != 0) {
+        Name = other.Name;
+      }
+      if (other.AssetFileId.Length != 0) {
+        AssetFileId = other.AssetFileId;
+      }
+      if (other.Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified) {
+        Mode = other.Mode;
+      }
+      if (other.InitialWeight != 0F) {
+        InitialWeight = other.InitialWeight;
+      }
+      if (other.Preload != false) {
+        Preload = other.Preload;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 18: {
+            AssetFileId = input.ReadString();
+            break;
+          }
+          case 24: {
+            Mode = (global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode) input.ReadEnum();
+            break;
+          }
+          case 37: {
+            InitialWeight = input.ReadFloat();
+            break;
+          }
+          case 40: {
+            Preload = input.ReadBool();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 18: {
+            AssetFileId = input.ReadString();
+            break;
+          }
+          case 24: {
+            Mode = (global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode) input.ReadEnum();
+            break;
+          }
+          case 37: {
+            InitialWeight = input.ReadFloat();
+            break;
+          }
+          case 40: {
+            Preload = input.ReadBool();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class SetGISettingsRequest : pb::IMessage<SetGISettingsRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<SetGISettingsRequest> _parser = new pb::MessageParser<SetGISettingsRequest>(() => new SetGISettingsRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<SetGISettingsRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[19]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public SetGISettingsRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public SetGISettingsRequest(SetGISettingsRequest other) : this() {
+      _hasBits0 = other._hasBits0;
+      probes_ = other.probes_.Clone();
+      mode_ = other.mode_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public SetGISettingsRequest Clone() {
+      return new SetGISettingsRequest(this);
+    }
+
+    /// <summary>Field number for the "probes" field.</summary>
+    public const int ProbesFieldNumber = 1;
+    private static readonly pb::FieldCodec<global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding> _repeated_probes_codec
+        = pb::FieldCodec.ForMessage(10, global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding.Parser);
+    private readonly pbc::RepeatedField<global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding> probes_ = new pbc::RepeatedField<global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding> Probes {
+      get { return probes_; }
+    }
+
+    /// <summary>Field number for the "mode" field.</summary>
+    public const int ModeFieldNumber = 2;
+    private readonly static global::SailorEditor.Protocol.Generated.GlobalIlluminationMode ModeDefaultValue = global::SailorEditor.Protocol.Generated.GlobalIlluminationMode.Unspecified;
+
+    private global::SailorEditor.Protocol.Generated.GlobalIlluminationMode mode_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.GlobalIlluminationMode Mode {
+      get { if ((_hasBits0 & 1) != 0) { return mode_; } else { return ModeDefaultValue; } }
+      set {
+        _hasBits0 |= 1;
+        mode_ = value;
+      }
+    }
+    /// <summary>Gets whether the "mode" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasMode {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "mode" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearMode() {
+      _hasBits0 &= ~1;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as SetGISettingsRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(SetGISettingsRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if(!probes_.Equals(other.probes_)) return false;
+      if (Mode != other.Mode) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      hash ^= probes_.GetHashCode();
+      if (HasMode) hash ^= Mode.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      probes_.WriteTo(output, _repeated_probes_codec);
+      if (HasMode) {
+        output.WriteRawTag(16);
+        output.WriteEnum((int) Mode);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      probes_.WriteTo(ref output, _repeated_probes_codec);
+      if (HasMode) {
+        output.WriteRawTag(16);
+        output.WriteEnum((int) Mode);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      size += probes_.CalculateSize(_repeated_probes_codec);
+      if (HasMode) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Mode);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(SetGISettingsRequest other) {
+      if (other == null) {
+        return;
+      }
+      probes_.Add(other.probes_);
+      if (other.HasMode) {
+        Mode = other.Mode;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            probes_.AddEntriesFrom(input, _repeated_probes_codec);
+            break;
+          }
+          case 16: {
+            Mode = (global::SailorEditor.Protocol.Generated.GlobalIlluminationMode) input.ReadEnum();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            probes_.AddEntriesFrom(ref input, _repeated_probes_codec);
+            break;
+          }
+          case 16: {
+            Mode = (global::SailorEditor.Protocol.Generated.GlobalIlluminationMode) input.ReadEnum();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class GlobalIlluminationProbeState : pb::IMessage<GlobalIlluminationProbeState>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<GlobalIlluminationProbeState> _parser = new pb::MessageParser<GlobalIlluminationProbeState>(() => new GlobalIlluminationProbeState());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<GlobalIlluminationProbeState> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[20]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GlobalIlluminationProbeState() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GlobalIlluminationProbeState(GlobalIlluminationProbeState other) : this() {
+      name_ = other.name_;
+      assetFileId_ = other.assetFileId_;
+      mode_ = other.mode_;
+      weight_ = other.weight_;
+      residency_ = other.residency_;
+      assetRevision_ = other.assetRevision_;
+      diagnostic_ = other.diagnostic_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GlobalIlluminationProbeState Clone() {
+      return new GlobalIlluminationProbeState(this);
+    }
+
+    /// <summary>Field number for the "name" field.</summary>
+    public const int NameFieldNumber = 1;
+    private string name_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Name {
+      get { return name_; }
+      set {
+        name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "asset_file_id" field.</summary>
+    public const int AssetFileIdFieldNumber = 2;
+    private string assetFileId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string AssetFileId {
+      get { return assetFileId_; }
+      set {
+        assetFileId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "mode" field.</summary>
+    public const int ModeFieldNumber = 3;
+    private global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode mode_ = global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode Mode {
+      get { return mode_; }
+      set {
+        mode_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "weight" field.</summary>
+    public const int WeightFieldNumber = 4;
+    private float weight_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float Weight {
+      get { return weight_; }
+      set {
+        weight_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "residency" field.</summary>
+    public const int ResidencyFieldNumber = 5;
+    private global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency residency_ = global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency Residency {
+      get { return residency_; }
+      set {
+        residency_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "asset_revision" field.</summary>
+    public const int AssetRevisionFieldNumber = 6;
+    private ulong assetRevision_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong AssetRevision {
+      get { return assetRevision_; }
+      set {
+        assetRevision_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "diagnostic" field.</summary>
+    public const int DiagnosticFieldNumber = 7;
+    private string diagnostic_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Diagnostic {
+      get { return diagnostic_; }
+      set {
+        diagnostic_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as GlobalIlluminationProbeState);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(GlobalIlluminationProbeState other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Name != other.Name) return false;
+      if (AssetFileId != other.AssetFileId) return false;
+      if (Mode != other.Mode) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Weight, other.Weight)) return false;
+      if (Residency != other.Residency) return false;
+      if (AssetRevision != other.AssetRevision) return false;
+      if (Diagnostic != other.Diagnostic) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Name.Length != 0) hash ^= Name.GetHashCode();
+      if (AssetFileId.Length != 0) hash ^= AssetFileId.GetHashCode();
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified) hash ^= Mode.GetHashCode();
+      if (Weight != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Weight);
+      if (Residency != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency.Unspecified) hash ^= Residency.GetHashCode();
+      if (AssetRevision != 0UL) hash ^= AssetRevision.GetHashCode();
+      if (Diagnostic.Length != 0) hash ^= Diagnostic.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      if (AssetFileId.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(AssetFileId);
+      }
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified) {
+        output.WriteRawTag(24);
+        output.WriteEnum((int) Mode);
+      }
+      if (Weight != 0F) {
+        output.WriteRawTag(37);
+        output.WriteFloat(Weight);
+      }
+      if (Residency != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency.Unspecified) {
+        output.WriteRawTag(40);
+        output.WriteEnum((int) Residency);
+      }
+      if (AssetRevision != 0UL) {
+        output.WriteRawTag(48);
+        output.WriteUInt64(AssetRevision);
+      }
+      if (Diagnostic.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(Diagnostic);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      if (AssetFileId.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(AssetFileId);
+      }
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified) {
+        output.WriteRawTag(24);
+        output.WriteEnum((int) Mode);
+      }
+      if (Weight != 0F) {
+        output.WriteRawTag(37);
+        output.WriteFloat(Weight);
+      }
+      if (Residency != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency.Unspecified) {
+        output.WriteRawTag(40);
+        output.WriteEnum((int) Residency);
+      }
+      if (AssetRevision != 0UL) {
+        output.WriteRawTag(48);
+        output.WriteUInt64(AssetRevision);
+      }
+      if (Diagnostic.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(Diagnostic);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Name.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Name);
+      }
+      if (AssetFileId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(AssetFileId);
+      }
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Mode);
+      }
+      if (Weight != 0F) {
+        size += 1 + 4;
+      }
+      if (Residency != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Residency);
+      }
+      if (AssetRevision != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(AssetRevision);
+      }
+      if (Diagnostic.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Diagnostic);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(GlobalIlluminationProbeState other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Name.Length != 0) {
+        Name = other.Name;
+      }
+      if (other.AssetFileId.Length != 0) {
+        AssetFileId = other.AssetFileId;
+      }
+      if (other.Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode.Unspecified) {
+        Mode = other.Mode;
+      }
+      if (other.Weight != 0F) {
+        Weight = other.Weight;
+      }
+      if (other.Residency != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency.Unspecified) {
+        Residency = other.Residency;
+      }
+      if (other.AssetRevision != 0UL) {
+        AssetRevision = other.AssetRevision;
+      }
+      if (other.Diagnostic.Length != 0) {
+        Diagnostic = other.Diagnostic;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 18: {
+            AssetFileId = input.ReadString();
+            break;
+          }
+          case 24: {
+            Mode = (global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode) input.ReadEnum();
+            break;
+          }
+          case 37: {
+            Weight = input.ReadFloat();
+            break;
+          }
+          case 40: {
+            Residency = (global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency) input.ReadEnum();
+            break;
+          }
+          case 48: {
+            AssetRevision = input.ReadUInt64();
+            break;
+          }
+          case 58: {
+            Diagnostic = input.ReadString();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 18: {
+            AssetFileId = input.ReadString();
+            break;
+          }
+          case 24: {
+            Mode = (global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode) input.ReadEnum();
+            break;
+          }
+          case 37: {
+            Weight = input.ReadFloat();
+            break;
+          }
+          case 40: {
+            Residency = (global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency) input.ReadEnum();
+            break;
+          }
+          case 48: {
+            AssetRevision = input.ReadUInt64();
+            break;
+          }
+          case 58: {
+            Diagnostic = input.ReadString();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class GlobalIlluminationStateResult : pb::IMessage<GlobalIlluminationStateResult>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<GlobalIlluminationStateResult> _parser = new pb::MessageParser<GlobalIlluminationStateResult>(() => new GlobalIlluminationStateResult());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<GlobalIlluminationStateResult> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[21]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GlobalIlluminationStateResult() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GlobalIlluminationStateResult(GlobalIlluminationStateResult other) : this() {
+      maxProbeStatesPerSnapshot_ = other.maxProbeStatesPerSnapshot_;
+      probes_ = other.probes_.Clone();
+      diagnostic_ = other.diagnostic_;
+      compositionCount_ = other.compositionCount_;
+      rejectedCompositionCount_ = other.rejectedCompositionCount_;
+      mode_ = other.mode_;
+      enabled_ = other.enabled_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GlobalIlluminationStateResult Clone() {
+      return new GlobalIlluminationStateResult(this);
+    }
+
+    /// <summary>Field number for the "max_probe_states_per_snapshot" field.</summary>
+    public const int MaxProbeStatesPerSnapshotFieldNumber = 1;
+    private uint maxProbeStatesPerSnapshot_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint MaxProbeStatesPerSnapshot {
+      get { return maxProbeStatesPerSnapshot_; }
+      set {
+        maxProbeStatesPerSnapshot_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "probes" field.</summary>
+    public const int ProbesFieldNumber = 2;
+    private static readonly pb::FieldCodec<global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState> _repeated_probes_codec
+        = pb::FieldCodec.ForMessage(18, global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState.Parser);
+    private readonly pbc::RepeatedField<global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState> probes_ = new pbc::RepeatedField<global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState> Probes {
+      get { return probes_; }
+    }
+
+    /// <summary>Field number for the "diagnostic" field.</summary>
+    public const int DiagnosticFieldNumber = 3;
+    private string diagnostic_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Diagnostic {
+      get { return diagnostic_; }
+      set {
+        diagnostic_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "composition_count" field.</summary>
+    public const int CompositionCountFieldNumber = 4;
+    private ulong compositionCount_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong CompositionCount {
+      get { return compositionCount_; }
+      set {
+        compositionCount_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "rejected_composition_count" field.</summary>
+    public const int RejectedCompositionCountFieldNumber = 5;
+    private ulong rejectedCompositionCount_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong RejectedCompositionCount {
+      get { return rejectedCompositionCount_; }
+      set {
+        rejectedCompositionCount_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "mode" field.</summary>
+    public const int ModeFieldNumber = 6;
+    private global::SailorEditor.Protocol.Generated.GlobalIlluminationMode mode_ = global::SailorEditor.Protocol.Generated.GlobalIlluminationMode.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.GlobalIlluminationMode Mode {
+      get { return mode_; }
+      set {
+        mode_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "enabled" field.</summary>
+    public const int EnabledFieldNumber = 7;
+    private bool enabled_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Enabled {
+      get { return enabled_; }
+      set {
+        enabled_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as GlobalIlluminationStateResult);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(GlobalIlluminationStateResult other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (MaxProbeStatesPerSnapshot != other.MaxProbeStatesPerSnapshot) return false;
+      if(!probes_.Equals(other.probes_)) return false;
+      if (Diagnostic != other.Diagnostic) return false;
+      if (CompositionCount != other.CompositionCount) return false;
+      if (RejectedCompositionCount != other.RejectedCompositionCount) return false;
+      if (Mode != other.Mode) return false;
+      if (Enabled != other.Enabled) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (MaxProbeStatesPerSnapshot != 0) hash ^= MaxProbeStatesPerSnapshot.GetHashCode();
+      hash ^= probes_.GetHashCode();
+      if (Diagnostic.Length != 0) hash ^= Diagnostic.GetHashCode();
+      if (CompositionCount != 0UL) hash ^= CompositionCount.GetHashCode();
+      if (RejectedCompositionCount != 0UL) hash ^= RejectedCompositionCount.GetHashCode();
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationMode.Unspecified) hash ^= Mode.GetHashCode();
+      if (Enabled != false) hash ^= Enabled.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (MaxProbeStatesPerSnapshot != 0) {
+        output.WriteRawTag(8);
+        output.WriteUInt32(MaxProbeStatesPerSnapshot);
+      }
+      probes_.WriteTo(output, _repeated_probes_codec);
+      if (Diagnostic.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(Diagnostic);
+      }
+      if (CompositionCount != 0UL) {
+        output.WriteRawTag(32);
+        output.WriteUInt64(CompositionCount);
+      }
+      if (RejectedCompositionCount != 0UL) {
+        output.WriteRawTag(40);
+        output.WriteUInt64(RejectedCompositionCount);
+      }
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationMode.Unspecified) {
+        output.WriteRawTag(48);
+        output.WriteEnum((int) Mode);
+      }
+      if (Enabled != false) {
+        output.WriteRawTag(56);
+        output.WriteBool(Enabled);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (MaxProbeStatesPerSnapshot != 0) {
+        output.WriteRawTag(8);
+        output.WriteUInt32(MaxProbeStatesPerSnapshot);
+      }
+      probes_.WriteTo(ref output, _repeated_probes_codec);
+      if (Diagnostic.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(Diagnostic);
+      }
+      if (CompositionCount != 0UL) {
+        output.WriteRawTag(32);
+        output.WriteUInt64(CompositionCount);
+      }
+      if (RejectedCompositionCount != 0UL) {
+        output.WriteRawTag(40);
+        output.WriteUInt64(RejectedCompositionCount);
+      }
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationMode.Unspecified) {
+        output.WriteRawTag(48);
+        output.WriteEnum((int) Mode);
+      }
+      if (Enabled != false) {
+        output.WriteRawTag(56);
+        output.WriteBool(Enabled);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (MaxProbeStatesPerSnapshot != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(MaxProbeStatesPerSnapshot);
+      }
+      size += probes_.CalculateSize(_repeated_probes_codec);
+      if (Diagnostic.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Diagnostic);
+      }
+      if (CompositionCount != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(CompositionCount);
+      }
+      if (RejectedCompositionCount != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(RejectedCompositionCount);
+      }
+      if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationMode.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Mode);
+      }
+      if (Enabled != false) {
+        size += 1 + 1;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(GlobalIlluminationStateResult other) {
+      if (other == null) {
+        return;
+      }
+      if (other.MaxProbeStatesPerSnapshot != 0) {
+        MaxProbeStatesPerSnapshot = other.MaxProbeStatesPerSnapshot;
+      }
+      probes_.Add(other.probes_);
+      if (other.Diagnostic.Length != 0) {
+        Diagnostic = other.Diagnostic;
+      }
+      if (other.CompositionCount != 0UL) {
+        CompositionCount = other.CompositionCount;
+      }
+      if (other.RejectedCompositionCount != 0UL) {
+        RejectedCompositionCount = other.RejectedCompositionCount;
+      }
+      if (other.Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationMode.Unspecified) {
+        Mode = other.Mode;
+      }
+      if (other.Enabled != false) {
+        Enabled = other.Enabled;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            MaxProbeStatesPerSnapshot = input.ReadUInt32();
+            break;
+          }
+          case 18: {
+            probes_.AddEntriesFrom(input, _repeated_probes_codec);
+            break;
+          }
+          case 26: {
+            Diagnostic = input.ReadString();
+            break;
+          }
+          case 32: {
+            CompositionCount = input.ReadUInt64();
+            break;
+          }
+          case 40: {
+            RejectedCompositionCount = input.ReadUInt64();
+            break;
+          }
+          case 48: {
+            Mode = (global::SailorEditor.Protocol.Generated.GlobalIlluminationMode) input.ReadEnum();
+            break;
+          }
+          case 56: {
+            Enabled = input.ReadBool();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            MaxProbeStatesPerSnapshot = input.ReadUInt32();
+            break;
+          }
+          case 18: {
+            probes_.AddEntriesFrom(ref input, _repeated_probes_codec);
+            break;
+          }
+          case 26: {
+            Diagnostic = input.ReadString();
+            break;
+          }
+          case 32: {
+            CompositionCount = input.ReadUInt64();
+            break;
+          }
+          case 40: {
+            RejectedCompositionCount = input.ReadUInt64();
+            break;
+          }
+          case 48: {
+            Mode = (global::SailorEditor.Protocol.Generated.GlobalIlluminationMode) input.ReadEnum();
+            break;
+          }
+          case 56: {
+            Enabled = input.ReadBool();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
   public sealed partial class RemoteViewportRequest : pb::IMessage<RemoteViewportRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
@@ -7625,7 +11375,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[15]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[22]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -8045,7 +11795,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[16]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[23]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -8317,7 +12067,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[17]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[24]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -8922,7 +12672,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[18]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[25]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -9157,7 +12907,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[19]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[26]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -9392,7 +13142,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[20]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[27]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -9664,7 +13414,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[21]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[28]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -9899,7 +13649,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[22]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[29]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10171,7 +13921,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[23]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[30]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10701,7 +14451,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[24]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[31]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10936,7 +14686,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[25]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[32]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11208,7 +14958,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[26]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[33]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11480,7 +15230,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[27]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[34]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11798,7 +15548,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[28]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[35]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -12033,7 +15783,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[29]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[36]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -12268,7 +16018,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[30]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[37]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -12540,7 +16290,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[31]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[38]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -12727,7 +16477,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[32]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[39]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -12925,7 +16675,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[33]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[40]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -13271,7 +17021,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[34]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[41]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -13469,7 +17219,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[35]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[42]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -13667,7 +17417,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[36]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[43]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -13865,7 +17615,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[37]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[44]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -14063,7 +17813,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[38]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[45]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -14298,7 +18048,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[39]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[46]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -14485,7 +18235,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[40]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[47]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -14794,7 +18544,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[41]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[48]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -15029,7 +18779,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[42]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[49]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -15236,7 +18986,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[43]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[50]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -15471,7 +19221,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[44]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[51]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -16002,7 +19752,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[45]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[52]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -16311,7 +20061,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[46]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[53]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -16509,7 +20259,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[47]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[54]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -17057,7 +20807,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[48]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[55]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -17329,7 +21079,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[49]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[56]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -17527,7 +21277,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[50]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[57]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -18001,7 +21751,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[51]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[58]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]

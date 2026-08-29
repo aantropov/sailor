@@ -2,6 +2,7 @@ name: PerformanceTest
 prefabs:
   - gameObjects:
       - name: PerformanceRunner
+        mobilityType: Stationary
         position:
           - 0
           - 0

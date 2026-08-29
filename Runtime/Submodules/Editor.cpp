@@ -23,6 +23,7 @@
 #include "Math/Math.h"
 #include "Math/Transform.h"
 #include "Editor/EditorViewportController.h"
+#include "Editor/GlobalIlluminationBakeController.h"
 #if defined(_WIN32)
 #include <libloaderapi.h>
 #endif
@@ -277,6 +278,7 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMai
 	m_editorHwnd(editorHwnd),
 	m_pMainWindow(pMainWindow),
 	m_viewportController(TUniquePtr<EditorViewport::EditorViewportController>::Make()),
+	m_giProbesBakeController(TUniquePtr<GlobalIlluminationBakeController>::Make()),
 	m_managedMutationState(TUniquePtr<EditorManagedMutationState>::Make())
 {
 
@@ -284,6 +286,9 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMai
 
 Editor::~Editor()
 {
+	std::string diagnostic;
+	m_giProbesBakeController->Cancel(diagnostic);
+	m_giProbesBakeController->Wait();
 	StopAudioPreview();
 }
 
@@ -336,6 +341,12 @@ void Editor::StopAudioPreview()
 
 void Editor::SetWorld(World* world)
 {
+	std::string diagnostic;
+	if (m_giProbesBakeController->GetStatus().IsRunning())
+	{
+		m_giProbesBakeController->Cancel(diagnostic);
+		m_giProbesBakeController->Wait();
+	}
 	m_world = world;
 	m_simulationSnapshot.clear();
 	m_bSimulationEnabled = false;
@@ -343,6 +354,27 @@ void Editor::SetWorld(World* world)
 	m_managedMutationState->m_objectRevisions.Clear();
 	m_viewportController->Reset();
 	m_viewportController->SetManagedMutationRevisions(0, 0);
+}
+
+bool Editor::StartGIProbesBake(
+	const EditorGIProbesBakeRequest& request,
+	std::string& outDiagnostic)
+{
+	return m_giProbesBakeController &&
+		m_giProbesBakeController->Start(m_world, request, outDiagnostic);
+}
+
+bool Editor::CancelGIProbesBake(std::string& outDiagnostic)
+{
+	return m_giProbesBakeController &&
+		m_giProbesBakeController->Cancel(outDiagnostic);
+}
+
+EditorGIProbesBakeStatus Editor::GetGIProbesBakeStatus() const
+{
+	return m_giProbesBakeController
+		? m_giProbesBakeController->GetStatus()
+		: EditorGIProbesBakeStatus{};
 }
 
 bool Editor::SetSimulationEnabled(bool bEnabled)
@@ -588,7 +620,7 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 			reflected.Deserialize(inData);
 
 			go->SetName(reflected.m_name);
-			//go->SetMobilityType(reflected.m_mobilityType);
+			go->SetMobilityType(reflected.m_mobilityType);
 
 			auto& transform = go->GetTransformComponent();
 			transform.SetPosition(reflected.m_position);

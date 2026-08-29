@@ -55,7 +55,8 @@ namespace
 		float cloudsResolutionMultiplier,
 		uint32_t skyResolution,
 		uint32_t vegetationInstanceBudget,
-		int32_t lodBias)
+		int32_t lodBias,
+		uint32_t maxGiProbeStatesPerSnapshot)
 	{
 		GraphicsQualityProfile profile;
 		profile.m_resolutionFactor = resolutionFactor;
@@ -70,6 +71,7 @@ namespace
 		profile.m_skyResolution = skyResolution;
 		profile.m_vegetationInstanceBudget = vegetationInstanceBudget;
 		profile.m_lodBias = lodBias;
+		profile.m_maxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot;
 		return profile;
 	}
 
@@ -391,52 +393,6 @@ namespace
 		return true;
 	}
 
-	bool ParseQuality(const std::string& value, EGraphicsQuality& outQuality) noexcept
-	{
-		if (value == "Ultra") outQuality = EGraphicsQuality::Ultra;
-		else if (value == "High") outQuality = EGraphicsQuality::High;
-		else if (value == "Medium") outQuality = EGraphicsQuality::Medium;
-		else if (value == "Low") outQuality = EGraphicsQuality::Low;
-		else if (value == "VeryLow") outQuality = EGraphicsQuality::VeryLow;
-		else return false;
-		return true;
-	}
-
-	bool ParseQualitySelection(
-		const std::string& value,
-		EGraphicsQualitySelection& outSelection) noexcept
-	{
-		if (value == "ProjectDefault") outSelection = EGraphicsQualitySelection::ProjectDefault;
-		else if (value == "Ultra") outSelection = EGraphicsQualitySelection::Ultra;
-		else if (value == "High") outSelection = EGraphicsQualitySelection::High;
-		else if (value == "Medium") outSelection = EGraphicsQualitySelection::Medium;
-		else if (value == "Low") outSelection = EGraphicsQualitySelection::Low;
-		else if (value == "VeryLow") outSelection = EGraphicsQualitySelection::VeryLow;
-		else return false;
-		return true;
-	}
-
-	bool ParseShadowQuality(
-		const std::string& value,
-		ELightShadowQuality& outQuality) noexcept
-	{
-		if (value == "High") outQuality = ELightShadowQuality::High;
-		else if (value == "Medium") outQuality = ELightShadowQuality::Medium;
-		else if (value == "Low") outQuality = ELightShadowQuality::Low;
-		else if (value == "VeryLow") outQuality = ELightShadowQuality::VeryLow;
-		else return false;
-		return true;
-	}
-
-	bool ParseStatsMode(const std::string& value, ERenderStatsMode& outMode) noexcept
-	{
-		if (value == "None") outMode = ERenderStatsMode::None;
-		else if (value == "RenderStats") outMode = ERenderStatsMode::RenderStats;
-		else if (value == "RenderStatsAndQueries") outMode = ERenderStatsMode::RenderStatsAndQueries;
-		else return false;
-		return true;
-	}
-
 	bool IsPowerOfTwo(uint32_t value) noexcept
 	{
 		return value != 0u && (value & (value - 1u)) == 0u;
@@ -449,10 +405,16 @@ namespace
 		GraphicsQualityProfile& outProfile,
 		std::string& outDiagnostic)
 	{
-		const char* qualityName = ToString(quality);
-		const std::string profilePath = "graphics.presets." + std::string(qualityName);
+		const std::string qualityName(magic_enum::enum_name(quality));
+		const std::string profilePath = "graphics.presets." + qualityName;
 		YAML::Node profile;
-		if (!ReadMap(presets, qualityName, source, profilePath, profile, outDiagnostic))
+		if (!ReadMap(
+				presets,
+				qualityName.c_str(),
+				source,
+				profilePath,
+				profile,
+				outDiagnostic))
 		{
 			return false;
 		}
@@ -528,18 +490,21 @@ namespace
 				source,
 				profilePath + ".shadowQuality",
 				shadowQuality,
-				outDiagnostic) ||
-			!ParseShadowQuality(shadowQuality, outProfile.m_shadowQuality))
+				outDiagnostic))
 		{
-			if (outDiagnostic.empty())
-			{
-				outDiagnostic = InvalidField(
-					source,
-					profilePath + ".shadowQuality",
-					"must be one of High, Medium, Low, or VeryLow");
-			}
 			return false;
 		}
+		const auto parsedShadowQuality =
+			magic_enum::enum_cast<ELightShadowQuality>(shadowQuality);
+		if (!parsedShadowQuality)
+		{
+			outDiagnostic = InvalidField(
+				source,
+				profilePath + ".shadowQuality",
+				"must be one of High, Medium, Low, or VeryLow");
+			return false;
+		}
+		outProfile.m_shadowQuality = *parsedShadowQuality;
 
 		if (!ReadConvertedScalar(
 				profile,
@@ -717,6 +682,36 @@ namespace
 			return false;
 		}
 
+		if (!ReadConvertedScalar(
+				profile,
+				"enableGlobalIllumination",
+				source,
+				profilePath + ".enableGlobalIllumination",
+				"a boolean",
+				outProfile.m_bEnableGlobalIllumination,
+				outDiagnostic))
+		{
+			return false;
+		}
+		if (!ReadUint32(
+				profile,
+				"maxGiProbeStatesPerSnapshot",
+				source,
+				profilePath + ".maxGiProbeStatesPerSnapshot",
+				outProfile.m_maxGiProbeStatesPerSnapshot,
+				outDiagnostic) ||
+			outProfile.m_maxGiProbeStatesPerSnapshot > 16u)
+		{
+			if (outDiagnostic.empty())
+			{
+				outDiagnostic = InvalidField(
+					source,
+					profilePath + ".maxGiProbeStatesPerSnapshot",
+					"must be in the range [0, 16]");
+			}
+			return false;
+		}
+
 		return true;
 	}
 
@@ -800,66 +795,71 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		120u,
 		8u,
 		ELightShadowQuality::High,
-		0.0f,
+		1.25f,
 		4u,
 		{ 4096u, 2048u, 2048u, 1024u },
 		true,
 		1.0f,
 		512u,
-		65536u,
-		-1);
+		16384u,
+		-1,
+		4u);
 	m_presets[QualityIndex(EGraphicsQuality::High)] = MakeProfile(
 		1.0f,
 		120u,
 		4u,
 		ELightShadowQuality::High,
-		0.0f,
+		1.25f,
 		4u,
 		{ 2048u, 2048u, 1024u, 1024u },
 		true,
 		0.75f,
 		256u,
-		32768u,
-		0);
+		8192u,
+		0,
+		3u);
 	m_presets[QualityIndex(EGraphicsQuality::Medium)] = MakeProfile(
 		0.85f,
 		120u,
 		2u,
 		ELightShadowQuality::Medium,
-		0.0f,
+		1.25f,
 		3u,
 		{ 2048u, 1024u, 512u, 0u },
 		true,
 		0.5f,
 		256u,
-		16384u,
-		0);
+		4096u,
+		0,
+		2u);
 	m_presets[QualityIndex(EGraphicsQuality::Low)] = MakeProfile(
 		0.7f,
 		120u,
 		1u,
 		ELightShadowQuality::Low,
-		0.0f,
+		1.25f,
 		2u,
 		{ 1024u, 512u, 0u, 0u },
 		false,
 		0.25f,
 		128u,
-		8192u,
-		1);
+		2048u,
+		1,
+		2u);
 	m_presets[QualityIndex(EGraphicsQuality::VeryLow)] = MakeProfile(
 		0.5f,
 		120u,
 		1u,
 		ELightShadowQuality::VeryLow,
-		0.0f,
+		1.25f,
 		1u,
 		{ 512u, 0u, 0u, 0u },
 		false,
 		0.125f,
 		64u,
-		2048u,
-		2);
+		512u,
+		2,
+		1u);
 }
 
 bool Sailor::Settings::GraphicsQualityProfile::IsShadowCascadeActive(
@@ -883,51 +883,6 @@ const Sailor::Settings::GraphicsQualityProfile& Sailor::Settings::GraphicsSettin
 const Sailor::Settings::GraphicsQualityProfile& Sailor::Settings::GraphicsSettingsState::GetActiveProfile() const noexcept
 {
 	return m_projectSettings.GetProfile(m_activeQuality);
-}
-
-const char* Sailor::Settings::ToString(EGraphicsQuality quality) noexcept
-{
-	switch (quality)
-	{
-	case EGraphicsQuality::Ultra: return "Ultra";
-	case EGraphicsQuality::High: return "High";
-	case EGraphicsQuality::Medium: return "Medium";
-	case EGraphicsQuality::Low: return "Low";
-	case EGraphicsQuality::VeryLow: return "VeryLow";
-	default: return "High";
-	}
-}
-
-const char* Sailor::Settings::ToString(EGraphicsQualitySelection selection) noexcept
-{
-	switch (selection)
-	{
-	case EGraphicsQualitySelection::ProjectDefault: return "ProjectDefault";
-	case EGraphicsQualitySelection::Ultra: return "Ultra";
-	case EGraphicsQualitySelection::High: return "High";
-	case EGraphicsQualitySelection::Medium: return "Medium";
-	case EGraphicsQualitySelection::Low: return "Low";
-	case EGraphicsQualitySelection::VeryLow: return "VeryLow";
-	default: return "ProjectDefault";
-	}
-}
-
-const char* Sailor::Settings::ToString(ERenderStatsMode mode) noexcept
-{
-	switch (mode)
-	{
-	case ERenderStatsMode::None: return "None";
-	case ERenderStatsMode::RenderStats: return "RenderStats";
-	case ERenderStatsMode::RenderStatsAndQueries: return "RenderStatsAndQueries";
-	default: return "None";
-	}
-}
-
-bool Sailor::Settings::IsValidRenderStatsMode(ERenderStatsMode mode) noexcept
-{
-	return mode == ERenderStatsMode::None ||
-		mode == ERenderStatsMode::RenderStats ||
-		mode == ERenderStatsMode::RenderStatsAndQueries;
 }
 
 Sailor::Settings::EGraphicsQuality Sailor::Settings::ResolveQualitySelection(
@@ -1057,11 +1012,11 @@ Sailor::Settings::ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProje
 		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
 		return result;
 	}
-	if (parsedSettings.m_version != GraphicsSettingsVersion)
+	if (parsedSettings.m_version != ProjectGraphicsSettingsVersion)
 	{
 		result.m_status = EGraphicsSettingsLoadStatus::UnsupportedVersion;
 		result.m_diagnostic = source + " has unsupported settingsVersion (expected " +
-			Quote(std::to_string(GraphicsSettingsVersion)) + ", actual " +
+			Quote(std::to_string(ProjectGraphicsSettingsVersion)) + ", actual " +
 			Quote(std::to_string(parsedSettings.m_version)) + "); using built-in defaults.";
 		return result;
 	}
@@ -1080,19 +1035,23 @@ Sailor::Settings::ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProje
 			source,
 			"graphics.defaultQuality",
 			defaultQuality,
-			result.m_diagnostic) ||
-		!ParseQuality(defaultQuality, parsedSettings.m_defaultQuality))
+			result.m_diagnostic))
 	{
 		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
-		if (result.m_diagnostic.empty())
-		{
-			result.m_diagnostic = InvalidField(
-				source,
-				"graphics.defaultQuality",
-				"must be one of Ultra, High, Medium, Low, or VeryLow");
-		}
 		return result;
 	}
+	const auto parsedDefaultQuality =
+		magic_enum::enum_cast<EGraphicsQuality>(defaultQuality);
+	if (!parsedDefaultQuality)
+	{
+		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
+		result.m_diagnostic = InvalidField(
+			source,
+			"graphics.defaultQuality",
+			"must be one of Ultra, High, Medium, Low, or VeryLow");
+		return result;
+	}
+	parsedSettings.m_defaultQuality = *parsedDefaultQuality;
 
 	YAML::Node presets;
 	if (!ReadMap(graphics, "presets", source, "graphics.presets", presets, result.m_diagnostic))
@@ -1114,7 +1073,6 @@ Sailor::Settings::ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProje
 			return result;
 		}
 	}
-
 	result.m_settings = std::move(parsedSettings);
 	result.m_status = EGraphicsSettingsLoadStatus::Loaded;
 	result.m_diagnostic = "Loaded " + source + ".";
@@ -1154,11 +1112,11 @@ Sailor::Settings::EditorGraphicsSettingsLoadResult Sailor::Settings::ParseEditor
 		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
 		return result;
 	}
-	if (parsedSettings.m_version != GraphicsSettingsVersion)
+	if (parsedSettings.m_version != EditorGraphicsSettingsVersion)
 	{
 		result.m_status = EGraphicsSettingsLoadStatus::UnsupportedVersion;
 		result.m_diagnostic = source + " has unsupported settingsVersion (expected " +
-			Quote(std::to_string(GraphicsSettingsVersion)) + ", actual " +
+			Quote(std::to_string(EditorGraphicsSettingsVersion)) + ", actual " +
 			Quote(std::to_string(parsedSettings.m_version)) + "); using editor defaults.";
 		return result;
 	}
@@ -1177,19 +1135,23 @@ Sailor::Settings::EditorGraphicsSettingsLoadResult Sailor::Settings::ParseEditor
 			source,
 			"graphics.selectedQuality",
 			selectedQuality,
-			result.m_diagnostic) ||
-		!ParseQualitySelection(selectedQuality, parsedSettings.m_selectedQuality))
+			result.m_diagnostic))
 	{
 		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
-		if (result.m_diagnostic.empty())
-		{
-			result.m_diagnostic = InvalidField(
-				source,
-				"graphics.selectedQuality",
-				"must be one of ProjectDefault, Ultra, High, Medium, Low, or VeryLow");
-		}
 		return result;
 	}
+	const auto parsedSelectedQuality =
+		magic_enum::enum_cast<EGraphicsQualitySelection>(selectedQuality);
+	if (!parsedSelectedQuality)
+	{
+		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
+		result.m_diagnostic = InvalidField(
+			source,
+			"graphics.selectedQuality",
+			"must be one of ProjectDefault, Ultra, High, Medium, Low, or VeryLow");
+		return result;
+	}
+	parsedSettings.m_selectedQuality = *parsedSelectedQuality;
 
 	std::string statsMode;
 	if (!ReadString(
@@ -1198,19 +1160,23 @@ Sailor::Settings::EditorGraphicsSettingsLoadResult Sailor::Settings::ParseEditor
 			source,
 			"graphics.statsMode",
 			statsMode,
-			result.m_diagnostic) ||
-		!ParseStatsMode(statsMode, parsedSettings.m_statsMode))
+			result.m_diagnostic))
 	{
 		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
-		if (result.m_diagnostic.empty())
-		{
-			result.m_diagnostic = InvalidField(
-				source,
-				"graphics.statsMode",
-				"must be one of None, RenderStats, or RenderStatsAndQueries");
-		}
 		return result;
 	}
+	const auto parsedStatsMode =
+		magic_enum::enum_cast<ERenderStatsMode>(statsMode);
+	if (!parsedStatsMode)
+	{
+		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
+		result.m_diagnostic = InvalidField(
+			source,
+			"graphics.statsMode",
+			"must be one of None, RenderStats, or RenderStatsAndQueries");
+		return result;
+	}
+	parsedSettings.m_statsMode = *parsedStatsMode;
 
 	result.m_settings = parsedSettings;
 	result.m_status = EGraphicsSettingsLoadStatus::Loaded;

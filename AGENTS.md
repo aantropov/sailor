@@ -10,6 +10,25 @@ For C++ code use tabs. For C# code use spaces.
 
 Use branch names only in English.
 
+Until the project has its first public release, keep every project-owned asset
+format, generated-data schema, generator version, settings/layout schema, and
+editor/runtime protocol at version 1. When a pre-release schema changes, update
+all producers and consumers together and regenerate derived data; do not add
+legacy migrations, backward-compatibility paths, or version increments unless
+explicitly requested.
+
+Do not commit generated `.probes` files or their `.probes.asset` sidecars. Tests
+must generate any GI probes payloads they need in a temporary location and
+must not depend on tracked `.probes` fixtures.
+
+Do not add tests that verify an implementation by searching raw source text for
+specific identifiers, snippets, function names, code paths, or flags. Tests
+should validate observable behavior, parsed structured configuration contracts,
+or compiled/reflected interfaces. Structured configuration tests may verify
+meaningful relationships across passes, such as a feature being enabled in a
+main pass and disabled in its prepass. If only raw source presence can be
+tested, do not add a test.
+
 ## Agent Workflow Infrastructure
 
 The agent workflow documentation lives in `Docs/Agents/`.
