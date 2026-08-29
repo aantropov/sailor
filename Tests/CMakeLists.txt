@@ -54,6 +54,10 @@ add_executable(InstanceIdContractTests
     InstanceIdContractTests.cpp
 )
 
+add_executable(YamlUtilsContractTests
+    YamlUtilsContractTests.cpp
+)
+
 add_executable(EcsLifecycleContractTests
     EcsLifecycleContractTests.cpp
 )
@@ -230,6 +234,7 @@ target_compile_features(EditorEngineWebSocketServerTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
 target_compile_features(SmartPointerTests PRIVATE cxx_std_20)
 target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
+target_compile_features(YamlUtilsContractTests PRIVATE cxx_std_20)
 target_compile_features(EcsLifecycleContractTests PRIVATE cxx_std_20)
 target_compile_features(BoundsContractTests PRIVATE cxx_std_20)
 target_compile_features(LandscapeStreamingTests PRIVATE cxx_std_20)
@@ -292,6 +297,7 @@ target_link_libraries(EditorEngineWebSocketServerTests PRIVATE
 target_link_libraries(EditorViewportSessionTests PRIVATE Sailor::Runtime)
 target_link_libraries(SmartPointerTests PRIVATE Sailor::Runtime)
 target_link_libraries(InstanceIdContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(YamlUtilsContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(EcsLifecycleContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(BoundsContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(LandscapeStreamingTests PRIVATE Sailor::Runtime)
@@ -396,6 +402,9 @@ target_include_directories(SmartPointerTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(InstanceIdContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(YamlUtilsContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(EcsLifecycleContractTests PRIVATE
@@ -545,6 +554,11 @@ add_test(
 add_test(
     NAME InstanceIdContractTests
     COMMAND InstanceIdContractTests
+)
+
+add_test(
+    NAME YamlUtilsContractTests
+    COMMAND YamlUtilsContractTests
 )
 
 add_test(

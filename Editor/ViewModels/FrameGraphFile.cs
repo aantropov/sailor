@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Helpers;
 using SailorEditor.Utility;
 using SailorEditor.Workflow;
 using System.Collections.Specialized;
@@ -194,12 +195,11 @@ public partial class FrameGraphFile : AssetFile
         list.ItemChanged += (_, _) => MarkDirty(propertyName);
     }
 
-    static ObservableList<T> ReadList<T>(YamlMappingNode root, string name, Func<YamlMappingNode, T> factory)
+    static ObservableList<T> ReadList<T>(YamlMappingNode? root, string name, Func<YamlMappingNode, T> factory)
         where T : INotifyPropertyChanged
     {
         var result = new ObservableList<T>();
-        if (root?.Children.TryGetValue(new YamlScalarNode(name), out var node) != true ||
-            node is not YamlSequenceNode sequence)
+        if (root is null || !YamlHelper.TryGetSequence(root, name, out var sequence))
         {
             return result;
         }
@@ -212,11 +212,10 @@ public partial class FrameGraphFile : AssetFile
         return result;
     }
 
-    static ObservableList<FrameGraphScalar> ReadNamedScalarList(YamlMappingNode root, string name)
+    static ObservableList<FrameGraphScalar> ReadNamedScalarList(YamlMappingNode? root, string name)
     {
         var result = new ObservableList<FrameGraphScalar>();
-        if (root?.Children.TryGetValue(new YamlScalarNode(name), out var node) != true ||
-            node is not YamlSequenceNode sequence)
+        if (root is null || !YamlHelper.TryGetSequence(root, name, out var sequence))
         {
             return result;
         }
@@ -236,11 +235,10 @@ public partial class FrameGraphFile : AssetFile
         return result;
     }
 
-    static ObservableList<FrameGraphVec4Value> ReadNamedVec4List(YamlMappingNode root, string name)
+    static ObservableList<FrameGraphVec4Value> ReadNamedVec4List(YamlMappingNode? root, string name)
     {
         var result = new ObservableList<FrameGraphVec4Value>();
-        if (root?.Children.TryGetValue(new YamlScalarNode(name), out var node) != true ||
-            node is not YamlSequenceNode sequence)
+        if (root is null || !YamlHelper.TryGetSequence(root, name, out var sequence))
         {
             return result;
         }
@@ -315,9 +313,9 @@ public partial class FrameGraphSampler : ObservableObject
 
     public static FrameGraphSampler FromYaml(YamlMappingNode node) => new()
     {
-        Name = ReadString(node, "name"),
-        FileId = ReadString(node, "fileId"),
-        Path = ReadString(node, "path")
+        Name = YamlHelper.ReadString(node, "name"),
+        FileId = YamlHelper.ReadString(node, "fileId"),
+        Path = YamlHelper.ReadString(node, "path")
     };
 
     public YamlMappingNode ToYaml() => new()
@@ -327,8 +325,6 @@ public partial class FrameGraphSampler : ObservableObject
         { "path", Path ?? string.Empty }
     };
 
-    static string ReadString(YamlMappingNode node, string name) =>
-        node.Children.TryGetValue(new YamlScalarNode(name), out var value) && value is YamlScalarNode scalar ? scalar.Value ?? string.Empty : string.Empty;
 }
 
 public partial class FrameGraphRenderTarget : ObservableObject
@@ -368,17 +364,17 @@ public partial class FrameGraphRenderTarget : ObservableObject
 
     public static FrameGraphRenderTarget FromYaml(YamlMappingNode node) => new()
     {
-        Name = ReadString(node, "name"),
-        Format = ReadString(node, "format", "R16G16B16A16_SFLOAT"),
-        Width = ReadString(node, "width", "ViewportWidth"),
-        Height = ReadString(node, "height", "ViewportHeight"),
-        Clamping = ReadString(node, "clamping"),
-        Filtration = ReadString(node, "filtration"),
-        Reduction = ReadString(node, "reduction"),
-        IsSurface = ReadBool(node, "bIsSurface"),
-        IsCompatibleWithComputeShaders = ReadBool(node, "bIsCompatibleWithComputeShaders"),
-        GenerateMips = ReadBool(node, "bGenerateMips"),
-        MaxMipLevel = ReadInt(node, "maxMipLevel")
+        Name = YamlHelper.ReadString(node, "name"),
+        Format = YamlHelper.ReadString(node, "format", "R16G16B16A16_SFLOAT"),
+        Width = YamlHelper.ReadString(node, "width", "ViewportWidth"),
+        Height = YamlHelper.ReadString(node, "height", "ViewportHeight"),
+        Clamping = YamlHelper.ReadString(node, "clamping"),
+        Filtration = YamlHelper.ReadString(node, "filtration"),
+        Reduction = YamlHelper.ReadString(node, "reduction"),
+        IsSurface = YamlHelper.ReadBool(node, "bIsSurface"),
+        IsCompatibleWithComputeShaders = YamlHelper.ReadBool(node, "bIsCompatibleWithComputeShaders"),
+        GenerateMips = YamlHelper.ReadBool(node, "bGenerateMips"),
+        MaxMipLevel = YamlHelper.ReadInt(node, "maxMipLevel")
     };
 
     public YamlMappingNode ToYaml()
@@ -413,14 +409,6 @@ public partial class FrameGraphRenderTarget : ObservableObject
         }
     }
 
-    static string ReadString(YamlMappingNode node, string name, string fallback = "") =>
-        node.Children.TryGetValue(new YamlScalarNode(name), out var value) && value is YamlScalarNode scalar ? scalar.Value ?? fallback : fallback;
-
-    static bool ReadBool(YamlMappingNode node, string name) =>
-        node.Children.TryGetValue(new YamlScalarNode(name), out var value) && bool.TryParse((value as YamlScalarNode)?.Value, out var parsed) && parsed;
-
-    static int ReadInt(YamlMappingNode node, string name) =>
-        node.Children.TryGetValue(new YamlScalarNode(name), out var value) && int.TryParse((value as YamlScalarNode)?.Value, out var parsed) ? parsed : 0;
 }
 
 public partial class FrameGraphScalar : ObservableObject
@@ -556,8 +544,8 @@ public partial class FrameGraphNode : ObservableObject
     {
         var result = new FrameGraphNode
         {
-            Name = ReadString(node, "name"),
-            Tag = ReadString(node, "tag")
+            Name = YamlHelper.ReadString(node, "name"),
+            Tag = YamlHelper.ReadString(node, "tag")
         };
         ReadNamedScalarList(node, "string", result.Strings);
         ReadNamedScalarList(node, "float", result.Floats);
@@ -592,13 +580,9 @@ public partial class FrameGraphNode : ObservableObject
         }
     }
 
-    static string ReadString(YamlMappingNode node, string name) =>
-        node.Children.TryGetValue(new YamlScalarNode(name), out var value) && value is YamlScalarNode scalar ? scalar.Value ?? string.Empty : string.Empty;
-
     static void ReadNamedScalarList(YamlMappingNode node, string name, ObservableList<FrameGraphScalar> values)
     {
-        if (!node.Children.TryGetValue(new YamlScalarNode(name), out var value) ||
-            value is not YamlSequenceNode sequence)
+        if (!YamlHelper.TryGetSequence(node, name, out var sequence))
         {
             return;
         }
@@ -618,8 +602,7 @@ public partial class FrameGraphNode : ObservableObject
 
     static void ReadVec4List(YamlMappingNode node, ObservableList<FrameGraphVec4Value> values)
     {
-        if (!node.Children.TryGetValue(new YamlScalarNode("vec4"), out var value) ||
-            value is not YamlSequenceNode sequence)
+        if (!YamlHelper.TryGetSequence(node, "vec4", out var sequence))
         {
             return;
         }
@@ -639,8 +622,7 @@ public partial class FrameGraphNode : ObservableObject
 
     static void ReadRenderTargets(YamlMappingNode node, ObservableList<FrameGraphTargetBinding> values)
     {
-        if (!node.Children.TryGetValue(new YamlScalarNode("renderTargets"), out var value) ||
-            value is not YamlSequenceNode sequence)
+        if (!YamlHelper.TryGetSequence(node, "renderTargets", out var sequence))
         {
             return;
         }

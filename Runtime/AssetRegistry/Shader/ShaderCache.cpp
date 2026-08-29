@@ -5,6 +5,7 @@
 #include "AssetRegistry/Shader/ShaderDependencyFingerprint.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "Core/Utils.h"
+#include "Core/YamlUtils.h"
 #include "Sailor.h"
 #include "YamlExceptionBoundary.h"
 
@@ -110,62 +111,40 @@ namespace
 		const std::string& context,
 		std::string& outDiagnostic)
 	{
-		if (!node.IsMap())
-		{
-			outDiagnostic = context + " must be a YAML map.";
-			return false;
-		}
-
-		TSet<std::string> expected;
+		TVector<std::string> requiredFields;
+		requiredFields.Reserve(expectedFields.size());
 		for (const char* field : expectedFields)
 		{
-			expected.Insert(field);
+			requiredFields.Add(field);
 		}
 
-		TSet<std::string> actual;
-		for (const auto& field : node)
+		const Utils::YamlMapValidationResult validation =
+			Utils::ValidateYamlMapFields(node, requiredFields);
+		switch (validation.m_error)
 		{
-			if (!field.first.IsScalar())
-			{
-				outDiagnostic = context + " contains a non-scalar field name.";
-				return false;
-			}
-
-			const std::string name = field.first.Scalar();
-			if (!actual.Insert(name))
-			{
-				outDiagnostic = context + " contains duplicate field '" + name + "'.";
-				return false;
-			}
-			if (!expected.Contains(name))
-			{
-				outDiagnostic = context + " contains unknown field '" + name + "'.";
-				return false;
-			}
+		case Utils::EYamlMapValidationError::None:
+			return true;
+		case Utils::EYamlMapValidationError::ExpectedMap:
+			outDiagnostic = context + " must be a YAML map.";
+			break;
+		case Utils::EYamlMapValidationError::NonScalarKey:
+			outDiagnostic = context + " contains a non-scalar field name.";
+			break;
+		case Utils::EYamlMapValidationError::EmptyKey:
+		case Utils::EYamlMapValidationError::UnknownField:
+			outDiagnostic = context + " contains unknown field '" +
+				validation.m_fieldName + "'.";
+			break;
+		case Utils::EYamlMapValidationError::DuplicateKey:
+			outDiagnostic = context + " contains duplicate field '" +
+				validation.m_fieldName + "'.";
+			break;
+		case Utils::EYamlMapValidationError::MissingField:
+			outDiagnostic = context + " is missing required field '" +
+				validation.m_fieldName + "'.";
+			break;
 		}
-
-		for (const std::string& field : expected)
-		{
-			if (!actual.Contains(field))
-			{
-				outDiagnostic = context + " is missing required field '" + field + "'.";
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	YAML::Node FindField(const YAML::Node& node, const char* fieldName)
-	{
-		for (const auto& field : node)
-		{
-			if (field.first.IsScalar() && field.first.Scalar() == fieldName)
-			{
-				return field.second;
-			}
-		}
-		return YAML::Node(YAML::NodeType::Undefined);
+		return false;
 	}
 
 	bool PathsEqual(const std::filesystem::path& lhs, const std::filesystem::path& rhs)
@@ -515,13 +494,13 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 		return false;
 	}
 
-	const YAML::Node shaderCache = FindField(root, "shaderCache");
+	const YAML::Node shaderCache = Utils::FindYamlMapField(root, "shaderCache");
 	if (!ValidateExactFields(shaderCache, { "entries" }, "Shader cache payload", outDiagnostic))
 	{
 		return false;
 	}
 
-	const YAML::Node entriesNode = FindField(shaderCache, "entries");
+	const YAML::Node entriesNode = Utils::FindYamlMapField(shaderCache, "entries");
 	if (!entriesNode.IsMap())
 	{
 		outDiagnostic = "Shader cache field 'entries' must be a YAML map, including when empty.";
@@ -536,8 +515,8 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 		{
 			return false;
 		}
-		const YAML::Node byteLength = FindField(node, "byteLength");
-		const YAML::Node checksum = FindField(node, "checksum");
+		const YAML::Node byteLength = Utils::FindYamlMapField(node, "byteLength");
+		const YAML::Node checksum = Utils::FindYamlMapField(node, "checksum");
 		if (!byteLength.IsScalar() || !checksum.IsScalar())
 		{
 			outDiagnostic = context + " fields must be unsigned integer scalars.";
@@ -566,9 +545,9 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 		{
 			return false;
 		}
-		return parseMetadata(FindField(node, "vertex"), outSet.m_vertex, context + " vertex artifact") &&
-			parseMetadata(FindField(node, "fragment"), outSet.m_fragment, context + " fragment artifact") &&
-			parseMetadata(FindField(node, "compute"), outSet.m_compute, context + " compute artifact");
+		return parseMetadata(Utils::FindYamlMapField(node, "vertex"), outSet.m_vertex, context + " vertex artifact") &&
+			parseMetadata(Utils::FindYamlMapField(node, "fragment"), outSet.m_fragment, context + " fragment artifact") &&
+			parseMetadata(Utils::FindYamlMapField(node, "compute"), outSet.m_compute, context + " compute artifact");
 	};
 
 	ShaderCacheData candidate;
@@ -611,32 +590,32 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 			const std::string context = "Shader cache entry '" + serializedFileId +
 				"' at index " + std::to_string(index);
 			const YAML::Node entryNode = entrySequence[index];
-				if (!ValidateExactFields(
-					entryNode,
-					{ "fileId", "timestamp", "sourceFingerprint", "permutation", "generation", "regular", "debug" },
+			if (!ValidateExactFields(
+				entryNode,
+				{ "fileId", "timestamp", "sourceFingerprint", "permutation", "generation", "regular", "debug" },
 				context,
 				outDiagnostic))
 			{
 				return false;
 			}
 
-				const YAML::Node entryFileId = FindField(entryNode, "fileId");
-				const YAML::Node timestamp = FindField(entryNode, "timestamp");
-				const YAML::Node sourceFingerprint = FindField(entryNode, "sourceFingerprint");
-				const YAML::Node permutation = FindField(entryNode, "permutation");
-				const YAML::Node generation = FindField(entryNode, "generation");
-				if (!entryFileId.IsScalar() || !timestamp.IsScalar() ||
-					!sourceFingerprint.IsScalar() || !permutation.IsScalar() || !generation.IsScalar())
+			const YAML::Node entryFileId = Utils::FindYamlMapField(entryNode, "fileId");
+			const YAML::Node timestamp = Utils::FindYamlMapField(entryNode, "timestamp");
+			const YAML::Node sourceFingerprint = Utils::FindYamlMapField(entryNode, "sourceFingerprint");
+			const YAML::Node permutation = Utils::FindYamlMapField(entryNode, "permutation");
+			const YAML::Node generation = Utils::FindYamlMapField(entryNode, "generation");
+			if (!entryFileId.IsScalar() || !timestamp.IsScalar() ||
+				!sourceFingerprint.IsScalar() || !permutation.IsScalar() || !generation.IsScalar())
 			{
 				outDiagnostic = context + " contains a non-scalar identity or timestamp field.";
 				return false;
 			}
 
 			ShaderCacheData::Entry entry;
-				entry.m_fileId = entryFileId.as<FileId>();
-				entry.m_timestamp = timestamp.as<std::time_t>();
-				entry.m_sourceFingerprint = sourceFingerprint.as<uint64_t>();
-				entry.m_permutation = permutation.as<uint32_t>();
+			entry.m_fileId = entryFileId.as<FileId>();
+			entry.m_timestamp = timestamp.as<std::time_t>();
+			entry.m_sourceFingerprint = sourceFingerprint.as<uint64_t>();
+			entry.m_permutation = permutation.as<uint32_t>();
 			entry.m_generation = generation.as<std::string>();
 			if (!entry.m_fileId || entry.m_fileId != fileId)
 			{
@@ -655,8 +634,8 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 				return false;
 			}
 
-			if (!parseSet(FindField(entryNode, "regular"), entry.m_regular, context + " regular artifacts") ||
-				!parseSet(FindField(entryNode, "debug"), entry.m_debug, context + " debug artifacts"))
+			if (!parseSet(Utils::FindYamlMapField(entryNode, "regular"), entry.m_regular, context + " regular artifacts") ||
+				!parseSet(Utils::FindYamlMapField(entryNode, "debug"), entry.m_debug, context + " debug artifacts"))
 			{
 				return false;
 			}

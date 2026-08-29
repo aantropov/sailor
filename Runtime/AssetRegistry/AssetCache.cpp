@@ -5,6 +5,7 @@
 #include "Containers/ConcurrentMap.h"
 #include "Core/Utils.h"
 #include "Core/YamlSerializable.h"
+#include "Core/YamlUtils.h"
 #include "Sailor.h"
 #include "Tasks/Tasks.h"
 #include "YamlExceptionBoundary.h"
@@ -45,12 +46,6 @@ namespace
 		return result;
 	}
 
-	template<typename T>
-	bool TryDecodeScalar(const YAML::Node& node, T& outValue)
-	{
-		return node.IsScalar() && YAML::convert<T>::decode(node, outValue);
-	}
-
 	Workspace::WorkspaceCacheIdentity MakeExpectedIdentity()
 	{
 		return Workspace::MakeWorkspaceCacheIdentity(
@@ -72,15 +67,10 @@ namespace
 			return false;
 		}
 
-		uint32_t matches = 0;
-		for (const auto& field : map)
-		{
-			if (field.first.IsScalar() && field.first.Scalar() == fieldName)
-			{
-				outField = field.second;
-				++matches;
-			}
-		}
+		const size_t matches = Utils::CountYamlMapField(
+			map,
+			fieldName,
+			&outField);
 
 		if (matches != 1)
 		{
@@ -221,12 +211,12 @@ void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 			}
 
 			std::string decodedSourcePath;
-			if (!TryDecodeScalar(fileId, m_fileId) ||
-				!TryDecodeScalar(assetImportTime, m_assetImportTime) ||
-				!TryDecodeScalar(sourcePath, decodedSourcePath) ||
-				!TryDecodeScalar(modificationTimeNanoseconds, m_sourceRevision.m_modificationTimeNanoseconds) ||
-				!TryDecodeScalar(fileSize, m_sourceRevision.m_fileSize) ||
-				!TryDecodeScalar(contentHash, m_sourceRevision.m_contentHash))
+			if (!Utils::TryDecodeYamlScalar(fileId, m_fileId) ||
+				!Utils::TryDecodeYamlScalar(assetImportTime, m_assetImportTime) ||
+				!Utils::TryDecodeYamlScalar(sourcePath, decodedSourcePath) ||
+				!Utils::TryDecodeYamlScalar(modificationTimeNanoseconds, m_sourceRevision.m_modificationTimeNanoseconds) ||
+				!Utils::TryDecodeYamlScalar(fileSize, m_sourceRevision.m_fileSize) ||
+				!Utils::TryDecodeYamlScalar(contentHash, m_sourceRevision.m_contentHash))
 			{
 				return;
 			}
@@ -248,11 +238,11 @@ void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 			{
 				return;
 			}
-			if (!TryDecodeScalar(metadataFilename, m_metadataFilename) ||
-				!TryDecodeScalar(metadataModificationTime, m_metadataRevision.m_modificationTimeNanoseconds) ||
-				!TryDecodeScalar(metadataFileSize, m_metadataRevision.m_fileSize) ||
-				!TryDecodeScalar(metadataContentHash, m_metadataRevision.m_contentHash) ||
-				!TryDecodeScalar(assetInfoType, m_assetInfoType))
+			if (!Utils::TryDecodeYamlScalar(metadataFilename, m_metadataFilename) ||
+				!Utils::TryDecodeYamlScalar(metadataModificationTime, m_metadataRevision.m_modificationTimeNanoseconds) ||
+				!Utils::TryDecodeYamlScalar(metadataFileSize, m_metadataRevision.m_fileSize) ||
+				!Utils::TryDecodeYamlScalar(metadataContentHash, m_metadataRevision.m_contentHash) ||
+				!Utils::TryDecodeYamlScalar(assetInfoType, m_assetInfoType))
 			{
 				return;
 			}
@@ -341,7 +331,7 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 		}
 
 		FileId fileId;
-		if (!TryDecodeScalar(serializedEntry.first, fileId) || !fileId)
+		if (!Utils::TryDecodeYamlScalar(serializedEntry.first, fileId) || !fileId)
 		{
 			outDiagnostic = "Asset cache contains invalid file id '" + serializedFileId + "'.";
 			return false;
@@ -395,12 +385,12 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 
 		AssetCacheData::Entry entry;
 		std::string serializedSourcePath;
-		if (!TryDecodeScalar(entryFileId, entry.m_fileId) ||
-			!TryDecodeScalar(assetImportTime, entry.m_assetImportTime) ||
-			!TryDecodeScalar(modificationTimeNanoseconds, entry.m_sourceRevision.m_modificationTimeNanoseconds) ||
-			!TryDecodeScalar(fileSize, entry.m_sourceRevision.m_fileSize) ||
-			!TryDecodeScalar(contentHash, entry.m_sourceRevision.m_contentHash) ||
-			!TryDecodeScalar(sourcePath, serializedSourcePath))
+		if (!Utils::TryDecodeYamlScalar(entryFileId, entry.m_fileId) ||
+			!Utils::TryDecodeYamlScalar(assetImportTime, entry.m_assetImportTime) ||
+			!Utils::TryDecodeYamlScalar(modificationTimeNanoseconds, entry.m_sourceRevision.m_modificationTimeNanoseconds) ||
+			!Utils::TryDecodeYamlScalar(fileSize, entry.m_sourceRevision.m_fileSize) ||
+			!Utils::TryDecodeYamlScalar(contentHash, entry.m_sourceRevision.m_contentHash) ||
+			!Utils::TryDecodeYamlScalar(sourcePath, serializedSourcePath))
 		{
 			outDiagnostic = "Asset cache entry '" + serializedFileId +
 				"' contains an invalid scalar value.";
@@ -435,11 +425,11 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 		{
 			return false;
 		}
-		if (!TryDecodeScalar(metadataFilename, entry.m_metadataFilename) ||
-			!TryDecodeScalar(metadataModificationTime, entry.m_metadataRevision.m_modificationTimeNanoseconds) ||
-			!TryDecodeScalar(metadataFileSize, entry.m_metadataRevision.m_fileSize) ||
-			!TryDecodeScalar(metadataContentHash, entry.m_metadataRevision.m_contentHash) ||
-			!TryDecodeScalar(assetInfoType, entry.m_assetInfoType))
+		if (!Utils::TryDecodeYamlScalar(metadataFilename, entry.m_metadataFilename) ||
+			!Utils::TryDecodeYamlScalar(metadataModificationTime, entry.m_metadataRevision.m_modificationTimeNanoseconds) ||
+			!Utils::TryDecodeYamlScalar(metadataFileSize, entry.m_metadataRevision.m_fileSize) ||
+			!Utils::TryDecodeYamlScalar(metadataContentHash, entry.m_metadataRevision.m_contentHash) ||
+			!Utils::TryDecodeYamlScalar(assetInfoType, entry.m_assetInfoType))
 		{
 			outDiagnostic = "Asset cache entry '" + serializedFileId +
 				"' contains an invalid lazy metadata scalar value.";
