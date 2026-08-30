@@ -2,6 +2,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/Shader/ShaderDependencyFingerprint.h"
 #include "AssetRegistry/Shader/ShaderYamlIncludeResolver.h"
+#include "FrameGraph/RenderSceneNode.h"
 #include "RHI/GlobalIllumination.h"
 #include "Workspace/WorkspaceCacheContract.h"
 
@@ -1156,16 +1157,20 @@ namespace
 			"Shaders/HBAO_Blur.shader"
 		};
 
-		auto compileRuntimeFragment = [&contentRoot](
+		auto compileRuntimeStage = [&contentRoot](
 			const char* shaderPath,
-			std::initializer_list<const char*> permutationDefines)
+			std::initializer_list<const char*> permutationDefines,
+			RHI::EShaderStage stage)
 			-> RHI::ShaderByteCode
 		{
 			const std::filesystem::path sourcePath = contentRoot / shaderPath;
 			ShaderAsset shader;
 			shader.Deserialize(YAML::Load(ReadText(sourcePath)));
 
-			std::string source = shader.GetGlslCommonCode() + "\n#define FRAGMENT\n";
+			const bool bVertex = stage == RHI::EShaderStage::Vertex;
+			const char* stageDefine = bVertex ? "VERTEX" : "FRAGMENT";
+			std::string source = shader.GetGlslCommonCode() +
+				"\n#define " + stageDefine + "\n";
 			for (const char* define : permutationDefines)
 			{
 				source += std::string("#define ") + define + "\n";
@@ -1195,20 +1200,41 @@ namespace
 				std::string("runtime shader includes should resolve for ") + shaderPath +
 					": " + diagnostic);
 
-			source += "\n#ifdef FRAGMENT\n" + shader.GetGlslFragmentCode() +
+			source += "\n#ifdef " + std::string(stageDefine) + "\n" +
+				(bVertex ? shader.GetGlslVertexCode() : shader.GetGlslFragmentCode()) +
 				"\n#endif\n";
 			RHI::ShaderByteCode byteCode;
 			Require(
 				ShaderCompilerTestAccess::CompileGlslToSpirv(
 					shaderPath,
 					source,
-					RHI::EShaderStage::Fragment,
+					stage,
 					byteCode,
 					false),
-				std::string("runtime fragment shader should compile: ") + shaderPath);
+				std::string("runtime shader stage should compile: ") + shaderPath +
+					" " + stageDefine);
 			Require(!byteCode.IsEmpty(),
-				std::string("runtime fragment shader should produce SPIR-V: ") + shaderPath);
+				std::string("runtime shader stage should produce SPIR-V: ") +
+					shaderPath + " " + stageDefine);
 			return byteCode;
+		};
+		auto compileRuntimeFragment = [&compileRuntimeStage](
+			const char* shaderPath,
+			std::initializer_list<const char*> permutationDefines)
+		{
+			return compileRuntimeStage(
+				shaderPath,
+				permutationDefines,
+				RHI::EShaderStage::Fragment);
+		};
+		auto compileRuntimeVertex = [&compileRuntimeStage](
+			const char* shaderPath,
+			std::initializer_list<const char*> permutationDefines)
+		{
+			return compileRuntimeStage(
+				shaderPath,
+				permutationDefines,
+				RHI::EShaderStage::Vertex);
 		};
 
 		for (size_t shaderIndex = 0u;
@@ -1219,6 +1245,20 @@ namespace
 				compileRuntimeFragment(shaderPaths[shaderIndex], {});
 			if (shaderIndex < 3u)
 			{
+				const RHI::ShaderByteCode vertexByteCode =
+					compileRuntimeVertex(shaderPaths[shaderIndex], {});
+				RequireSpirvStorageBufferBinding(vertexByteCode, 2u, 0u);
+				RequireSpirvStorageBufferBinding(vertexByteCode, 2u, 1u);
+				RequireSpirvStorageBufferArrayStride(
+					vertexByteCode,
+					2u,
+					0u,
+					sizeof(Framegraph::RenderSceneNode::PerInstanceData));
+				RequireSpirvStorageBufferArrayStride(
+					vertexByteCode,
+					2u,
+					1u,
+					sizeof(uint32_t));
 				RequireSpirvStorageBufferBinding(byteCode, 1u, 12u);
 				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 13u);
 				RequireSpirvStorageBufferBinding(byteCode, 1u, 14u);
@@ -1264,6 +1304,9 @@ namespace
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
 			{ "CLEAR_COAT", "SHEEN", "TRANSMISSION" });
+		compileRuntimeVertex(
+			"Shaders/Standard_glTF.shader",
+			{ "SKINNING", "TRANSMISSION" });
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
 			{ "DISABLE_SCREEN_SPACE_AO" });

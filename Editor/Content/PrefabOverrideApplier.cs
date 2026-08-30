@@ -1,4 +1,5 @@
 using System.Globalization;
+using SailorEditor.Helpers;
 using YamlDotNet.RepresentationModel;
 
 namespace SailorEditor.Content;
@@ -37,8 +38,8 @@ public static class PrefabOverrideApplier
         YamlMappingNode source,
         YamlMappingNode linked)
     {
-        if (!TryGetSequence(source, "gameObjects", out var sourceObjects) ||
-            !TryGetSequence(linked, "gameObjects", out var linkedObjects))
+        if (!YamlHelper.TryGetSequence(source, "gameObjects", out var sourceObjects) ||
+            !YamlHelper.TryGetSequence(linked, "gameObjects", out var linkedObjects))
         {
             return;
         }
@@ -48,7 +49,7 @@ public static class PrefabOverrideApplier
         foreach (var sourceObject in sourceObjects.Children
                      .OfType<YamlMappingNode>())
         {
-            if (!TryGetScalar(sourceObject, "instanceId", out var sourceId) ||
+            if (!TryGetRequiredScalar(sourceObject, "instanceId", out var sourceId) ||
                 !linkedByInstanceId.TryGetValue(
                     ResolveLiveInstanceId(sourceId, instanceIds),
                     out var linkedObject))
@@ -73,8 +74,8 @@ public static class PrefabOverrideApplier
         YamlMappingNode source,
         YamlMappingNode linked)
     {
-        if (!TryGetSequence(source, "components", out var sourceComponents) ||
-            !TryGetSequence(linked, "components", out var linkedComponents))
+        if (!YamlHelper.TryGetSequence(source, "components", out var sourceComponents) ||
+            !YamlHelper.TryGetSequence(linked, "components", out var linkedComponents))
         {
             return;
         }
@@ -83,8 +84,8 @@ public static class PrefabOverrideApplier
         var linkedByInstanceId = linkedComponents.Children
             .OfType<YamlMappingNode>()
             .Where(component =>
-                TryGetMapping(component, "overrideProperties", out var properties) &&
-                TryGetScalar(properties, "instanceId", out _))
+                YamlHelper.TryGetMapping(component, "overrideProperties", out var properties) &&
+                TryGetRequiredScalar(properties, "instanceId", out _))
             .ToDictionary(
                 component => GetScalar(
                     (YamlMappingNode)component.Children[
@@ -95,15 +96,15 @@ public static class PrefabOverrideApplier
         foreach (var sourceComponent in sourceComponents.Children
                      .OfType<YamlMappingNode>())
         {
-            if (!TryGetMapping(
+            if (!YamlHelper.TryGetMapping(
                     sourceComponent,
                     "overrideProperties",
                     out var sourceProperties) ||
-                !TryGetScalar(sourceProperties, "instanceId", out var sourceId) ||
+                !TryGetRequiredScalar(sourceProperties, "instanceId", out var sourceId) ||
                 !linkedByInstanceId.TryGetValue(
                     ResolveLiveInstanceId(sourceId, instanceIds),
                     out var linkedComponent) ||
-                !TryGetMapping(
+                !YamlHelper.TryGetMapping(
                     linkedComponent,
                     "overrideProperties",
                     out var linkedProperties))
@@ -111,8 +112,8 @@ public static class PrefabOverrideApplier
                 continue;
             }
 
-            if (TryGetScalar(sourceComponent, "typename", out var sourceType) &&
-                TryGetScalar(linkedComponent, "typename", out var linkedType) &&
+            if (TryGetRequiredScalar(sourceComponent, "typename", out var sourceType) &&
+                TryGetRequiredScalar(linkedComponent, "typename", out var linkedType) &&
                 !string.Equals(sourceType, linkedType, StringComparison.Ordinal))
             {
                 continue;
@@ -126,15 +127,15 @@ public static class PrefabOverrideApplier
         YamlMappingNode source,
         YamlMappingNode linked)
     {
-        if (!TryGetMapping(linked, "gameObjectOverrides", out var overrides) ||
-            !TryGetSequence(source, "gameObjects", out var gameObjects))
+        if (!YamlHelper.TryGetMapping(linked, "gameObjectOverrides", out var overrides) ||
+            !YamlHelper.TryGetSequence(source, "gameObjects", out var gameObjects))
         {
             return;
         }
 
         var byInstanceId = gameObjects.Children
             .OfType<YamlMappingNode>()
-            .Where(gameObject => TryGetScalar(
+            .Where(gameObject => TryGetRequiredScalar(
                 gameObject,
                 "instanceId",
                 out _))
@@ -165,15 +166,15 @@ public static class PrefabOverrideApplier
     }
 
     static bool IsPrefabRoot(YamlMappingNode gameObject) =>
-        TryGetScalar(gameObject, "parentIndex", out var parentIndex) &&
+        TryGetRequiredScalar(gameObject, "parentIndex", out var parentIndex) &&
         parentIndex == uint.MaxValue.ToString(CultureInfo.InvariantCulture);
 
     static void ApplyComponentOverrides(
         YamlMappingNode source,
         YamlMappingNode linked)
     {
-        if (!TryGetMapping(linked, "componentOverrides", out var overrides) ||
-            !TryGetSequence(source, "components", out var components))
+        if (!YamlHelper.TryGetMapping(linked, "componentOverrides", out var overrides) ||
+            !YamlHelper.TryGetSequence(source, "components", out var components))
         {
             return;
         }
@@ -181,8 +182,8 @@ public static class PrefabOverrideApplier
         var byInstanceId = components.Children
             .OfType<YamlMappingNode>()
             .Where(component =>
-                TryGetMapping(component, "overrideProperties", out var properties) &&
-                TryGetScalar(properties, "instanceId", out _))
+                YamlHelper.TryGetMapping(component, "overrideProperties", out var properties) &&
+                TryGetRequiredScalar(properties, "instanceId", out _))
             .ToDictionary(
                 component => GetScalar(
                     (YamlMappingNode)component.Children[
@@ -195,11 +196,11 @@ public static class PrefabOverrideApplier
             if (sourceId is null ||
                 entry.Value is not YamlMappingNode reflectedOverride ||
                 !byInstanceId.TryGetValue(sourceId, out var target) ||
-                !TryGetMapping(
+                !YamlHelper.TryGetMapping(
                     reflectedOverride,
                     "overrideProperties",
                     out var changedProperties) ||
-                !TryGetMapping(
+                !YamlHelper.TryGetMapping(
                     target,
                     "overrideProperties",
                     out var targetProperties))
@@ -207,7 +208,7 @@ public static class PrefabOverrideApplier
                 continue;
             }
 
-            if (TryGetScalar(reflectedOverride, "typename", out var typename))
+            if (TryGetRequiredScalar(reflectedOverride, "typename", out var typename))
             {
                 target.Children[new YamlScalarNode("typename")] =
                     new YamlScalarNode(typename);
@@ -234,7 +235,7 @@ public static class PrefabOverrideApplier
     static Dictionary<string, string> ReadInstanceIdMap(
         YamlMappingNode linked)
     {
-        if (!TryGetMapping(linked, "instanceIds", out var mapping))
+        if (!YamlHelper.TryGetMapping(linked, "instanceIds", out var mapping))
             return new Dictionary<string, string>(StringComparer.Ordinal);
 
         return mapping.Children
@@ -250,7 +251,7 @@ public static class PrefabOverrideApplier
     static Dictionary<string, YamlMappingNode> IndexByInstanceId(
         YamlSequenceNode nodes) => nodes.Children
         .OfType<YamlMappingNode>()
-        .Where(node => TryGetScalar(node, "instanceId", out _))
+        .Where(node => TryGetRequiredScalar(node, "instanceId", out _))
         .ToDictionary(
             node => GetScalar(node, "instanceId"),
             StringComparer.Ordinal);
@@ -274,57 +275,18 @@ public static class PrefabOverrideApplier
         return sourceId;
     }
 
-    static bool TryGetMapping(
+    static bool TryGetRequiredScalar(
         YamlMappingNode parent,
         string key,
-        out YamlMappingNode mapping)
-    {
-        if (parent.Children.TryGetValue(
-                new YamlScalarNode(key),
-                out var value) &&
-            value is YamlMappingNode resolved)
-        {
-            mapping = resolved;
-            return true;
-        }
-
-        mapping = null!;
-        return false;
-    }
-
-    static bool TryGetSequence(
-        YamlMappingNode parent,
-        string key,
-        out YamlSequenceNode sequence)
-    {
-        if (parent.Children.TryGetValue(
-                new YamlScalarNode(key),
-                out var value) &&
-            value is YamlSequenceNode resolved)
-        {
-            sequence = resolved;
-            return true;
-        }
-
-        sequence = null!;
-        return false;
-    }
-
-    static bool TryGetScalar(
-        YamlMappingNode parent,
-        string key,
-        out string value)
-    {
-        value = string.Empty;
-        return parent.Children.TryGetValue(
-                new YamlScalarNode(key),
-                out var node) &&
-            node is YamlScalarNode { Value: not null } scalar &&
-            !string.IsNullOrWhiteSpace(value = scalar.Value);
-    }
+        out string value) =>
+        YamlHelper.TryGetScalar(
+            parent,
+            key,
+            out value,
+            requireNonWhitespace: true);
 
     static string GetScalar(YamlMappingNode parent, string key) =>
-        TryGetScalar(parent, key, out var value)
+        TryGetRequiredScalar(parent, key, out var value)
             ? value
             : throw new InvalidDataException(
                 $"Prefab field '{key}' is missing.");

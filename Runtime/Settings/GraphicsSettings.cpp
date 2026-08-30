@@ -1,5 +1,6 @@
 #include "Settings/GraphicsSettings.h"
 
+#include "Core/YamlUtils.h"
 #include "RHI/Types.h"
 #include "Workspace/WorkspaceContext.h"
 #include "Workspace/WorkspacePathEncoding.h"
@@ -13,7 +14,6 @@
 #include <sstream>
 #include <system_error>
 #include <utility>
-#include <yaml-cpp/eventhandler.h>
 #include <yaml-cpp/yaml.h>
 
 namespace
@@ -93,94 +93,15 @@ namespace
 		return source + " is invalid: field " + Quote(fieldPath) + " " + requirement + ".";
 	}
 
-	class YamlDocumentCounter final : public YAML::EventHandler
-	{
-	public:
-		void OnDocumentStart(const YAML::Mark&) override { ++m_numDocuments; }
-		void OnDocumentEnd() override {}
-		void OnNull(const YAML::Mark&, YAML::anchor_t) override {}
-		void OnAlias(const YAML::Mark&, YAML::anchor_t) override {}
-		void OnScalar(
-			const YAML::Mark&,
-			const std::string&,
-			YAML::anchor_t,
-			const std::string&) override {}
-		void OnSequenceStart(
-			const YAML::Mark&,
-			const std::string&,
-			YAML::anchor_t,
-			YAML::EmitterStyle::value) override {}
-		void OnSequenceEnd() override {}
-		void OnMapStart(
-			const YAML::Mark&,
-			const std::string&,
-			YAML::anchor_t,
-			YAML::EmitterStyle::value) override {}
-		void OnMapEnd() override {}
-
-		size_t GetNumDocuments() const noexcept { return m_numDocuments; }
-
-	private:
-		size_t m_numDocuments = 0u;
-	};
-
-	bool TryLoadSingleDocument(
-		const std::string& payload,
-		YAML::Node& outDocument,
-		std::string& outDiagnostic) noexcept
-	{
-		size_t documentCount = 0u;
-		if (!External::GuardYamlExceptions(
-				[&]()
-				{
-					std::istringstream input(payload);
-					YAML::Parser parser(input);
-					YamlDocumentCounter counter;
-					while (parser.HandleNextDocument(counter)) {}
-					documentCount = counter.GetNumDocuments();
-					if (documentCount == 1u)
-					{
-						outDocument = YAML::Load(payload);
-					}
-				},
-				outDiagnostic))
-		{
-			return false;
-		}
-		if (documentCount != 1u)
-		{
-			outDiagnostic = "expected exactly one YAML document, found " +
-				std::to_string(documentCount);
-			return false;
-		}
-		return true;
-	}
-
-	YAML::Node FindField(const YAML::Node& document, const char* fieldName)
-	{
-		if (!document.IsMap())
-		{
-			return YAML::Node(YAML::NodeType::Undefined);
-		}
-
-		for (const auto& field : document)
-		{
-			if (field.first.IsScalar() && field.first.Scalar() == fieldName)
-			{
-				return field.second;
-			}
-		}
-
-		return YAML::Node(YAML::NodeType::Undefined);
-	}
-
 	bool ValidateMap(
 		const YAML::Node& document,
 		const std::string& source,
 		const std::string& fieldPath,
 		std::string& outDiagnostic)
 	{
-		if (!document.IsMap())
+		const Utils::YamlMapValidationResult validation =
+			Utils::ValidateYamlMap(document);
+		if (validation.m_error == Utils::EYamlMapValidationError::ExpectedMap)
 		{
 			outDiagnostic = fieldPath.empty()
 				? source + " is invalid: the document root must be a map."
@@ -188,33 +109,21 @@ namespace
 			return false;
 		}
 
-		size_t fieldIndex = 0u;
-		for (const auto& field : document)
+		if (validation.m_error == Utils::EYamlMapValidationError::NonScalarKey ||
+			validation.m_error == Utils::EYamlMapValidationError::EmptyKey)
 		{
-			if (!field.first.IsScalar() || field.first.Scalar().empty())
-			{
-				outDiagnostic = fieldPath.empty()
-					? source + " is invalid: the document contains an empty or non-scalar field name."
-					: InvalidField(source, fieldPath, "contains an empty or non-scalar field name");
-				return false;
-			}
-
-			const std::string key = field.first.Scalar();
-			size_t previousIndex = 0u;
-			for (const auto& previousField : document)
-			{
-				if (previousIndex++ >= fieldIndex)
-				{
-					break;
-				}
-				if (previousField.first.IsScalar() && previousField.first.Scalar() == key)
-				{
-					const std::string duplicatePath = fieldPath.empty() ? key : fieldPath + "." + key;
-					outDiagnostic = InvalidField(source, duplicatePath, "is duplicated");
-					return false;
-				}
-			}
-			++fieldIndex;
+			outDiagnostic = fieldPath.empty()
+				? source + " is invalid: the document contains an empty or non-scalar field name."
+				: InvalidField(source, fieldPath, "contains an empty or non-scalar field name");
+			return false;
+		}
+		if (validation.m_error == Utils::EYamlMapValidationError::DuplicateKey)
+		{
+			const std::string duplicatePath = fieldPath.empty()
+				? validation.m_fieldName
+				: fieldPath + "." + validation.m_fieldName;
+			outDiagnostic = InvalidField(source, duplicatePath, "is duplicated");
+			return false;
 		}
 
 		return true;
@@ -228,7 +137,7 @@ namespace
 		YAML::Node& outValue,
 		std::string& outDiagnostic)
 	{
-		outValue = FindField(parent, fieldName);
+		outValue = Utils::FindYamlMapField(parent, fieldName);
 		if (!outValue.IsDefined())
 		{
 			outDiagnostic = InvalidField(source, fieldPath, "is required and must be a map");
@@ -245,7 +154,7 @@ namespace
 		YAML::Node& outValue,
 		std::string& outDiagnostic)
 	{
-		outValue = FindField(parent, fieldName);
+		outValue = Utils::FindYamlMapField(parent, fieldName);
 		if (!outValue.IsDefined() || !outValue.IsScalar())
 		{
 			outDiagnostic = InvalidField(source, fieldPath, "is required and must be a scalar");
@@ -288,7 +197,7 @@ namespace
 		uint32_t& outValue,
 		std::string& outDiagnostic)
 	{
-		const YAML::Node field = FindField(parent, fieldName);
+		const YAML::Node field = Utils::FindYamlMapField(parent, fieldName);
 		if (!field.IsDefined())
 		{
 			return true;
@@ -549,7 +458,9 @@ namespace
 		}
 
 		const std::string cascadePath = profilePath + ".shadowCascadeResolutions";
-		const YAML::Node cascadeResolutions = FindField(profile, "shadowCascadeResolutions");
+		const YAML::Node cascadeResolutions = Utils::FindYamlMapField(
+			profile,
+			"shadowCascadeResolutions");
 		if (!cascadeResolutions.IsDefined() || !cascadeResolutions.IsSequence() ||
 			cascadeResolutions.size() != outProfile.m_shadowCascadeCount)
 		{
@@ -987,7 +898,7 @@ Sailor::Settings::ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProje
 	const std::string source = SourceLabel(sourceName, "ProjectSettings.yaml");
 	YAML::Node document;
 	std::string yamlDiagnostic;
-	if (!TryLoadSingleDocument(payload, document, yamlDiagnostic))
+	if (!Utils::TryLoadSingleYamlDocument(payload, document, yamlDiagnostic))
 	{
 		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
 		result.m_diagnostic = source + " is invalid YAML: " + yamlDiagnostic;
@@ -1087,7 +998,7 @@ Sailor::Settings::EditorGraphicsSettingsLoadResult Sailor::Settings::ParseEditor
 	const std::string source = SourceLabel(sourceName, "EditorSettings.yaml");
 	YAML::Node document;
 	std::string yamlDiagnostic;
-	if (!TryLoadSingleDocument(payload, document, yamlDiagnostic))
+	if (!Utils::TryLoadSingleYamlDocument(payload, document, yamlDiagnostic))
 	{
 		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
 		result.m_diagnostic = source + " is invalid YAML: " + yamlDiagnostic;

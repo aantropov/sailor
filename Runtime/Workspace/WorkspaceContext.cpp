@@ -1,5 +1,6 @@
 #include "Workspace/WorkspaceContext.h"
 #include "Containers/Containers.h"
+#include "Core/YamlUtils.h"
 #include "Workspace/WorkspacePathEncoding.h"
 #include "YamlExceptionBoundary.h"
 
@@ -14,7 +15,6 @@
 
 namespace
 {
-	using Sailor::TSet;
 	using Sailor::TVector;
 	using namespace Sailor::Workspace;
 
@@ -202,42 +202,31 @@ namespace
 		return true;
 	}
 
-	YAML::Node FindField(const YAML::Node& document, const char* fieldName)
-	{
-		for (const auto& field : document)
-		{
-			if (field.first.IsScalar() && field.first.Scalar() == fieldName)
-			{
-				return field.second;
-			}
-		}
-
-		return YAML::Node(YAML::NodeType::Undefined);
-	}
-
 	bool ValidateManifestMap(const YAML::Node& document, std::string& outError)
 	{
-		if (!document.IsMap())
+		const Sailor::Utils::YamlMapValidationResult validation =
+			Sailor::Utils::ValidateYamlMap(document);
+		if (validation.m_error ==
+			Sailor::Utils::EYamlMapValidationError::ExpectedMap)
 		{
 			outError = "Workspace manifest must contain a YAML map.";
 			return false;
 		}
 
-		TSet<std::string> keys;
-		for (const auto& field : document)
+		if (validation.m_error ==
+			Sailor::Utils::EYamlMapValidationError::NonScalarKey)
 		{
-			if (!field.first.IsScalar())
-			{
-				outError = "Workspace manifest contains a non-scalar field name.";
-				return false;
-			}
-
-			const std::string key = field.first.Scalar();
-			if (key.empty() || !keys.Insert(key))
-			{
-				outError = "Workspace manifest contains duplicate or empty field '" + key + "'.";
-				return false;
-			}
+			outError = "Workspace manifest contains a non-scalar field name.";
+			return false;
+		}
+		if (validation.m_error ==
+				Sailor::Utils::EYamlMapValidationError::EmptyKey ||
+			validation.m_error ==
+				Sailor::Utils::EYamlMapValidationError::DuplicateKey)
+		{
+			outError = "Workspace manifest contains duplicate or empty field '" +
+				validation.m_fieldName + "'.";
+			return false;
 		}
 
 		return true;
@@ -256,15 +245,10 @@ namespace
 		}
 
 		YAML::Node version;
-		size_t versionCount = 0;
-		for (const auto& field : document)
-		{
-			if (field.first.IsScalar() && field.first.Scalar() == "manifestVersion")
-			{
-				version = field.second;
-				++versionCount;
-			}
-		}
+		const size_t versionCount = Sailor::Utils::CountYamlMapField(
+			document,
+			"manifestVersion",
+			&version);
 
 		if (versionCount == 0)
 		{
@@ -308,7 +292,9 @@ namespace
 		std::string& outValue,
 		std::string& outError)
 	{
-		const YAML::Node field = FindField(document, fieldName);
+		const YAML::Node field = Sailor::Utils::FindYamlMapField(
+			document,
+			fieldName);
 		if (!field.IsDefined())
 		{
 			if (bRequired)

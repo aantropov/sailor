@@ -4,6 +4,7 @@ includes:
 - Shaders/Math.glsl
 - Shaders/Lighting.glsl
 - Shaders/GlobalIllumination.glsl
+- Shaders/ForwardLighting.glsl
 
 defines:
  - ALPHA_CUTOUT
@@ -45,58 +46,6 @@ glslVertex: |
   #endif
   } vout;
   
-  struct PerInstanceData
-  {
-    mat4 model;
-    vec4 sphereBounds;
-    uint materialInstance;
-    uint skeletonOffset;
-    uint isCulled;
-    uint padding;
-    vec4 bakedVolumeScale;
-  };
-  
-  struct MaterialData
-  {
-    vec4 baseColorFactor;
-    vec4 emissiveFactor;
-
-    float metallicFactor;
-    float roughnessFactor;
-    float occlusionStrength;
-    float normalScale;
-    float alphaCutoff;
-
-    uint baseColorSampler;
-    uint normalSampler;
-    uint ormSampler;
-    uint occlusionSampler;
-    uint emissiveSampler;
-
-    float clearcoatFactor;
-    float clearcoatRoughnessFactor;
-    float clearcoatNormalScale;
-
-    float sheenRoughnessFactor;
-    vec4 sheenColorFactor;
-
-    uint clearcoatSampler;
-    uint clearcoatRoughnessSampler;
-    uint clearcoatNormalSampler;
-    uint sheenColorSampler;
-    uint sheenRoughnessSampler;
-
-  #ifdef TRANSMISSION
-    float transmissionFactor;
-    uint transmissionSampler;
-    float thicknessFactor;
-    float attenuationDistance;
-    float indexOfRefraction;
-    uint thicknessSampler;
-    vec4 attenuationColor;
-  #endif
-  };
-
   struct BoneData
   {
     mat4 matrix;
@@ -104,92 +53,6 @@ glslVertex: |
 
   const uint INVALID_SKELETON_OFFSET = 0xFFFFFFFFu;
   
-  layout(set = 0, binding = 0) uniform FrameData
-  {
-    mat4 view;
-    mat4 projection;
-    mat4 invProjection;
-    vec4 cameraPosition;
-    ivec2 viewportSize;
-    vec2 cameraZNearZFar;
-    float currentTime;
-    float deltaTime;
-  } frame;
-  
-  layout(set = 0, binding = 1) uniform PreviousFrameData
-  {
-    mat4 view;
-    mat4 projection;
-    mat4 invProjection;
-    vec4 cameraPosition;
-    ivec2 viewportSize;
-    vec2 cameraZNearZFar;
-    float currentTime;
-    float deltaTime;
-  } previousFrame;
-  
-  layout(std430, set = 1, binding = 0) readonly buffer LightDataSSBO
-  {  
-    LightData instance[];
-  } light;
-  
-  layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
-  {
-      uint indices[MAX_TEXTURES_IN_SCENE];
-  } culledLights;
-  
-  layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
-  {
-      LightsGrid instance[];
-  } lightsGrid;
-  
-  layout(set=1, binding=3) uniform samplerCube g_irradianceCubemap;
-  layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
-  layout(set=1, binding=5) uniform samplerCube g_envCubemap;
-
-  layout(std430, set = 1, binding = 6) readonly buffer LightsMatricesSSBO
-  {
-      mat4 instance[];
-  } lightsMatrices;
-
-  layout(std430, set = 1, binding = 7) readonly buffer ShadowIndicesSSBO
-  {
-      uint instance[];
-  } shadowIndices;
-
-  layout(set=1, binding=8) uniform sampler2D g_aoSampler;
-  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOW_MAP_SAMPLERS];
-
-     layout(std430, set = 1, binding = 11) readonly buffer ShadowAtlasTilesSSBO
-     {
-         uint instance[];
-     } shadowAtlasTiles;
-
-  layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
-  {
-      PerInstanceData instance[];
-  } data;
-
-  layout(std430, set = 2, binding = 1) readonly buffer InstanceIndicesSSBO
-  {
-      uint instance[];
-  } instanceIndices;
-  
-  layout(std430, set = 3, binding = 0) readonly buffer MaterialDataSSBO
-  {
-      MaterialData instance[];
-  } material;
-  
-  #if defined(SAILOR_TEXTURE_REMAP)
-  layout(std430, set=4, binding=0) readonly buffer TextureSamplerRemapSSBO
-  {
-      uint indices[MAX_TEXTURES_IN_SCENE];
-  } textureSamplerRemap;
-  layout(set=4, binding=1) uniform sampler2D textureSamplers[];
-  #else
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[];
-  #endif
-
   #ifdef SKINNING
   layout(std430, set = 5, binding = 0) readonly buffer BoneMatricesSSBO
   {
@@ -223,34 +86,15 @@ glslVertex: |
     }
   #endif
 
-    vec4 vertexPosition = modelMatrix * vec4(inPosition, 1.0);
-    vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
-
-    gl_Position = frame.projection * (frame.view * vertexPosition);
-
-    mat3 linearMatrix = mat3(modelMatrix);
-    mat3 normalMatrix = transpose(inverse(linearMatrix));
-    vec3 normal = normalize(normalMatrix * inNormal);
-
-    vec3 tangent = linearMatrix * inTangent;
-    tangent -= normal * dot(normal, tangent);
-    float tangentLengthSquared = dot(tangent, tangent);
-    if(tangentLengthSquared > 1e-8)
-    {
-      tangent *= inversesqrt(tangentLengthSquared);
-    }
-    else
-    {
-      vec3 fallbackAxis = abs(normal.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-      tangent = normalize(cross(fallbackAxis, normal));
-    }
-
-    vec3 transformedBitangent = linearMatrix * inBitangent;
-    float handedness = dot(cross(normal, tangent), transformedBitangent) < 0.0 ? -1.0 : 1.0;
-    vec3 bitangent = normalize(cross(normal, tangent)) * handedness;
-
-    vout.normal = normal;
-    vout.tangentBasis = mat3(tangent, bitangent, normal);
+    BuildForwardVertexFrame(
+      modelMatrix,
+      inPosition,
+      inNormal,
+      inTangent,
+      inBitangent,
+      vout.worldPosition,
+      vout.normal,
+      vout.tangentBasis);
 
     vout.color = inColor;
     vout.texcoord = inTexcoord;
@@ -274,17 +118,6 @@ glslFragment: |
   } vin;
   
   layout(location=0) out vec4 outColor;
-  
-  struct PerInstanceData
-  {
-      mat4 model;
-      vec4 sphereBounds;
-      uint materialInstance;
-      uint skeletonOffset;
-      uint isCulled;
-      uint padding;
-      vec4 bakedVolumeScale;
-  };
   
   struct MaterialData
   {
@@ -327,229 +160,15 @@ glslFragment: |
   #endif
   };
   
-  layout(set = 0, binding = 0) uniform FrameData
-  {
-      mat4 view;
-      mat4 projection;
-      mat4 invProjection;
-      vec4 cameraPosition;
-      ivec2 viewportSize;
-      vec2 cameraZNearZFar;
-      float currentTime;
-      float deltaTime;
-  } frame;
-  
-  layout(set = 0, binding = 1) uniform PreviousFrameData
-  {
-      mat4 view;
-      mat4 projection;
-      mat4 invProjection;
-      vec4 cameraPosition;
-      ivec2 viewportSize;
-      vec2 cameraZNearZFar;
-      float currentTime;
-      float deltaTime;
-  } previousFrame;
-  
-  layout(std430, set = 1, binding = 0) readonly buffer LightDataSSBO
-  {  
-    LightData instance[];
-  } light;
-  
-  layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
-  {
-      uint indices[];
-  } culledLights;
-  
-  layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
-  {
-      LightsGrid instance[];
-  } lightsGrid;
-  
-  layout(set=1, binding=3) uniform samplerCube g_irradianceCubemap;
-  layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
-  layout(set=1, binding=5) uniform samplerCube g_envCubemap;
-
-  layout(std430, set = 1, binding = 6) readonly buffer LightsMatricesSSBO
-  {
-      mat4 instance[];
-  } lightsMatrices;
-  
-  layout(std430, set = 1, binding = 7) readonly buffer ShadowIndicesSSBO
-  {
-      uint instance[];
-  } shadowIndices;
-
-  layout(set=1, binding=8) uniform sampler2D g_aoSampler;
-  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOW_MAP_SAMPLERS];
-  #ifdef TRANSMISSION
-  layout(set=1, binding=10) uniform sampler2D g_transmissionFramebufferSampler;
-  #endif
-
-     layout(std430, set = 1, binding = 11) readonly buffer ShadowAtlasTilesSSBO
-     {
-         uint instance[];
-     } shadowAtlasTiles;
-  
-  layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
-  {
-      PerInstanceData instance[];
-  } data;
-  
   layout(std430, set = 3, binding = 0) readonly buffer MaterialDataSSBO
   {
       MaterialData instance[];
   } material;
   
-  //layout(set=3, binding=1) uniform sampler2D albedoSampler;
-  //layout(set=3, binding=2) uniform sampler2D metalnessSampler;
-  //layout(set=3, binding=3) uniform sampler2D normalSampler;
-  //layout(set=3, binding=4) uniform sampler2D roughnessSampler;
-  
-  #if defined(SAILOR_TEXTURE_REMAP)
-  layout(std430, set=4, binding=0) readonly buffer TextureSamplerRemapSSBO
-  {
-      uint indices[];
-  } textureSamplerRemap;
-  layout(set=4, binding=1) uniform sampler2D textureSamplers[];
-  #else
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[];
-  #endif
-
-  uint ResolveTextureSamplerIndex(uint globalTextureIndex)
-  {
-  #if defined(SAILOR_TEXTURE_REMAP)
-      if(globalTextureIndex >= MAX_TEXTURES_IN_SCENE)
-      {
-        return 0;
-      }
-      return textureSamplerRemap.indices[globalTextureIndex];
-  #else
-      return globalTextureIndex;
-  #endif
-  }
-  
   MaterialData GetMaterialData()
   {
       return material.instance[materialInstance];
   }
-
-  float CalculateCascadedDirectionalShadow(
-    LightData light,
-    vec3 worldPosition,
-    vec3 surfaceNormal,
-    vec3 surfaceToLightDirection)
-  {
-    const uint activeCascadeCount = clamp(
-      light.activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
-    const int cascadeLayer = SelectCascade(
-      frame.view, worldPosition, frame.cameraZNearZFar, activeCascadeCount);
-    if(cascadeLayer >= int(activeCascadeCount))
-    {
-      return 1.0f;
-    }
-
-    const uint cascadeShadowType = GetDirectionalCascadeShadowType(
-      light.shadowType,
-      cascadeLayer);
-    const vec3 shadowReceiverPosition = OffsetDirectionalShadowReceiver(
-      worldPosition,
-      surfaceNormal,
-      surfaceToLightDirection,
-      GetDirectionalShadowReceiverBiasScale(
-        cascadeShadowType,
-        light.shadowBias));
-    const mat4 cascadeLightMatrix = lightsMatrices.instance[cascadeLayer];
-    float shadow = CalculateDirectionalShadow(
-      cascadeShadowType,
-      shadowMaps[cascadeLayer],
-      cascadeLightMatrix * vec4(shadowReceiverPosition, 1.0f),
-      cascadeLayer);
-
-    const float cascadeBlend = CalculateCascadeBlend(
-      frame.view,
-      worldPosition,
-      frame.cameraZNearZFar,
-      cascadeLayer,
-      activeCascadeCount);
-    if(cascadeBlend > 0.0f)
-    {
-      const int nextCascadeLayer = cascadeLayer + 1;
-      const uint nextCascadeShadowType = GetDirectionalCascadeShadowType(
-        light.shadowType,
-        nextCascadeLayer);
-      const vec3 nextShadowReceiverPosition = OffsetDirectionalShadowReceiver(
-        worldPosition,
-        surfaceNormal,
-        surfaceToLightDirection,
-        GetDirectionalShadowReceiverBiasScale(
-          nextCascadeShadowType,
-          light.shadowBias));
-      const mat4 nextCascadeLightMatrix = lightsMatrices.instance[nextCascadeLayer];
-      const float nextShadow = CalculateDirectionalShadow(
-        nextCascadeShadowType,
-        shadowMaps[nextCascadeLayer],
-        nextCascadeLightMatrix * vec4(nextShadowReceiverPosition, 1.0f),
-        nextCascadeLayer);
-      shadow = mix(shadow, nextShadow, cascadeBlend);
-    }
-
-    const float shadowDistanceFade = CalculateShadowDistanceFade(
-      frame.view,
-      worldPosition,
-      frame.cameraZNearZFar,
-      cascadeLayer,
-      activeCascadeCount);
-    shadow = mix(shadow, 1.0f, shadowDistanceFade);
-
-    return shadow;
-  }
-
-  float CalculateLocalLightShadow(
-    LightData light,
-    uint lightIndex,
-    vec3 worldPosition,
-    vec3 surfaceNormal,
-    vec3 surfaceToLightDirection)
-  {
-    const uint packedShadowIndex = shadowIndices.instance[lightIndex];
-    if(light.shadowType == SHADOW_TYPE_NONE ||
-       packedShadowIndex == INVALID_SHADOW_MAP_INDEX)
-    {
-      return 1.0f;
-    }
-
-    uint shadowMapIndex = packedShadowIndex & SHADOW_MAP_INDEX_MASK;
-    if(light.type == 1u)
-    {
-      shadowMapIndex += SelectPointShadowFace(worldPosition - light.worldPosition);
-    }
-    if(shadowMapIndex >= MAX_SHADOWS_IN_VIEW)
-    {
-      return 1.0f;
-    }
-
-    const uint packedAtlasTile = shadowAtlasTiles.instance[shadowMapIndex];
-    const uint shadowSamplerIndex = NUM_CSM_CASCADES + DecodeShadowAtlasIndex(packedAtlasTile);
-    if(shadowSamplerIndex >= MAX_SHADOW_MAP_SAMPLERS)
-    {
-      return 1.0f;
-    }
-
-    const vec4 atlasRect = DecodeShadowAtlasRect(packedAtlasTile);
-    return CalculateLocalPcfShadow(
-      shadowMaps[nonuniformEXT(shadowSamplerIndex)],
-      lightsMatrices.instance[shadowMapIndex],
-      atlasRect,
-      worldPosition,
-      surfaceNormal,
-      surfaceToLightDirection,
-      length(light.worldPosition - worldPosition),
-      (packedShadowIndex & SOFT_SHADOW_MAP_BIT) != 0u,
-      light.shadowBias);
-  }
-  
-  const float Epsilon = 0.00001;
 
   #ifdef TRANSMISSION
   float ApplyIorToRoughness(float roughness, float ior)
@@ -617,116 +236,56 @@ glslFragment: |
   }
   #endif
 
-  vec3 CalculateLighting(LightData light, uint lightIndex, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
+  vec3 CalculateLighting(
+    LightData lightData,
+    uint lightIndex,
+    MaterialData materialData,
+    ForwardPbrMaterial forwardMaterial,
+    vec3 F0,
+    vec3 surfaceToCamera,
+    float cosLo,
+    vec3 normal,
+    vec3 worldPosition)
   {
-    float falloff = 1.0f;
-    float shadow = 1.0f;
-    vec3 pointToLight = light.type == 0 ?
-      -light.direction :
-      light.worldPosition - worldPos;
-    float pointToLightLengthSquared = dot(pointToLight, pointToLight);
-    vec3 Li = pointToLightLengthSquared > Epsilon ?
-      pointToLight * inversesqrt(pointToLightLengthSquared) :
-      vec3(0.0);
-    
-    // Directional light
-    if(light.type == 0)
-    {
-        shadow = CalculateCascadedDirectionalShadow(
-          light,
-          worldPos,
-          normal,
-          Li);
-    }
-    // Point light
-    else if(light.type == 1)
-    {
-      // Attenuation
-      const float distance    = length(pointToLight);
-      falloff = CalculateLocalLightRangeAttenuation(light, distance);
-      shadow = CalculateLocalLightShadow(light, lightIndex, worldPos, normal, Li);
-    }
-    // Spot light
-    else if(light.type == 2)
-    {
-      // Attenuation
-      vec3 lightDir = Li;
-      float epsilon   = light.cutOff.x - light.cutOff.y;
-      float theta = dot(lightDir, normalize(-light.direction));
-      const float distance    = length(pointToLight);
-      falloff = CalculateLocalLightRangeAttenuation(light, distance) *
-        clamp((theta - light.cutOff.y) / max(epsilon, Epsilon), 0.0, 1.0);
-      
-      if(theta < light.cutOff.y)
-      {
-        falloff = 0.0f;
-      }
-
-      shadow = CalculateLocalLightShadow(light, lightIndex, worldPos, normal, Li);
-    }
-    
-    vec3 Lradiance = light.intensity;
-
-    // Half-vector between Li and Lo.
-    vec3 halfVector = Li + Lo;
-    float halfVectorLengthSquared = dot(halfVector, halfVector);
-    vec3 Lh = halfVectorLengthSquared > Epsilon ?
-      halfVector * inversesqrt(halfVectorLengthSquared) :
-      normal;
-
-    // Calculate angles between surface normal and various light vectors.
-    float cosLi = max(0.0, dot(normal, Li));
-    float cosLh = max(0.0, dot(normal, Lh));
-
-    // Calculate Fresnel term for direct lighting. 
-    vec3 F  = FresnelSchlick(F0, max(0.0, dot(Lh, Lo)));
-    // Calculate normal distribution for specular BRDF.
-    float D = NdfGGX(cosLh, material.roughnessFactor);
-    // Calculate geometric attenuation for specular BRDF.
-    float G = GeometrySchlickGGX(cosLi, cosLo, material.roughnessFactor);
-
-    // Diffuse scattering happens due to light being refracted multiple times by a dielectric medium.
-    // Metals on the other hand either reflect or absorb energy, so diffuse contribution is always zero.
-    // To be energy conserving we must scale diffuse BRDF contribution based on Fresnel factor & metalness.
-    vec3 kd = mix(vec3(1.0) - F, vec3(0.0), material.metallicFactor);
-  #ifdef TRANSMISSION
-    kd *= 1.0 - material.transmissionFactor;
-  #endif
-
-    // Lambert diffuse BRDF.
-    // We don't scale by 1/PI for lighting & material units to be more convenient.
-    // See: https://seblagarde.wordpress.com/2012/01/08/pi-or-not-to-pi-in-game-lighting-equation/
-    vec3 diffuseBRDF = kd * material.baseColorFactor.xyz;
-
-    // Cook-Torrance specular microfacet BRDF.
-    vec3 specularBRDF = (F * D * G) / max(Epsilon, 4.0 * cosLi * cosLo);
-
-    vec3 directLighting =
-      (diffuseBRDF + specularBRDF) * Lradiance * cosLi * falloff;
+    const ForwardLightSample lightSample = ResolveForwardLightSample(
+      lightData,
+      lightIndex,
+      worldPosition,
+      normal);
+    vec3 directLighting = EvaluateForwardPbrDirectLighting(
+      lightSample,
+      forwardMaterial,
+      F0,
+      surfaceToCamera,
+      cosLo,
+      normal);
+    const float falloff = lightSample.falloff;
+    const float shadow = lightSample.shadow;
+    const vec3 lightRadiance = lightSample.radiance;
 
   #ifdef TRANSMISSION
     vec3 refractionNormal = gl_FrontFacing ? normal : -normal;
     vec3 refractionDirection = GetRefractionDirection(
       refractionNormal,
-      Lo,
-      material.indexOfRefraction);
+      surfaceToCamera,
+      materialData.indexOfRefraction);
     vec3 transmissionRay = GetVolumeTransmissionRay(
       refractionDirection,
-      material.thicknessFactor,
+      materialData.thicknessFactor,
       vin.modelScale);
     float transmissionRayLength = length(transmissionRay);
     float canTransmit = step(Epsilon, dot(
       refractionDirection,
       refractionDirection));
-    float dielectricTransmission = material.transmissionFactor *
-      (1.0 - clamp(material.metallicFactor, 0.0, 1.0));
+    float dielectricTransmission = materialData.transmissionFactor *
+      (1.0 - clamp(materialData.metallicFactor, 0.0, 1.0));
 
     if(canTransmit > 0.0 &&
       dielectricTransmission > Epsilon)
     {
-      vec3 exitPointToLight = light.type == 0 ?
-        -light.direction :
-        light.worldPosition - (worldPos + transmissionRay);
+      vec3 exitPointToLight = lightData.type == 0 ?
+        -lightData.direction :
+        lightData.worldPosition - (worldPosition + transmissionRay);
       float exitPointToLightLength = length(exitPointToLight);
       if(exitPointToLightLength > Epsilon)
       {
@@ -742,7 +301,7 @@ glslFragment: |
         {
           vec3 mirroredLi = mirroredLiVector *
             inversesqrt(mirroredLiLengthSquared);
-          vec3 transmissionHalfVector = mirroredLi + Lo;
+          vec3 transmissionHalfVector = mirroredLi + surfaceToCamera;
           float transmissionHalfLengthSquared = dot(
             transmissionHalfVector,
             transmissionHalfVector);
@@ -751,8 +310,8 @@ glslFragment: |
             vec3 transmissionH = transmissionHalfVector *
               inversesqrt(transmissionHalfLengthSquared);
             float alphaRoughness = ApplyIorToRoughness(
-              material.roughnessFactor * material.roughnessFactor,
-              material.indexOfRefraction);
+              materialData.roughnessFactor * materialData.roughnessFactor,
+              materialData.indexOfRefraction);
             float transmissionDistribution = NdfGGXAlpha(
               clamp(dot(refractionNormal, transmissionH), 0.0, 1.0),
               max(alphaRoughness, Epsilon));
@@ -761,7 +320,7 @@ glslFragment: |
               0.0,
               1.0);
             float transmissionCosLo = clamp(
-              dot(refractionNormal, Lo),
+              dot(refractionNormal, surfaceToCamera),
               0.0,
               1.0);
             float transmissionVisibility = VisibilityGGXAlpha(
@@ -769,41 +328,41 @@ glslFragment: |
               transmissionCosLo,
               max(alphaRoughness, Epsilon));
             float dielectricFresnel =
-              (material.indexOfRefraction - 1.0) /
-              (material.indexOfRefraction + 1.0);
+              (materialData.indexOfRefraction - 1.0) /
+              (materialData.indexOfRefraction + 1.0);
             vec3 transmissionFresnel = FresnelSchlick(
               vec3(dielectricFresnel * dielectricFresnel),
-              clamp(abs(dot(Lo, transmissionH)), 0.0, 1.0));
+              clamp(abs(dot(surfaceToCamera, transmissionH)), 0.0, 1.0));
 
             float transmissionFalloff = falloff;
-            if(light.type == 1)
+            if(lightData.type == 1)
             {
               transmissionFalloff = CalculateLocalLightRangeAttenuation(
-                light,
+                lightData,
                 exitPointToLightLength);
             }
-            else if(light.type == 2)
+            else if(lightData.type == 2)
             {
-              float coneRange = light.cutOff.x - light.cutOff.y;
+              float coneRange = lightData.cutOff.x - lightData.cutOff.y;
               float coneCos = dot(
                 transmissionLi,
-                normalize(-light.direction));
+                normalize(-lightData.direction));
               transmissionFalloff = CalculateLocalLightRangeAttenuation(
-                light,
+                lightData,
                 exitPointToLightLength) * clamp(
-                (coneCos - light.cutOff.y) / max(coneRange, Epsilon),
+                (coneCos - lightData.cutOff.y) / max(coneRange, Epsilon),
                 0.0,
                 1.0);
             }
 
             vec3 volumeAttenuation = GetVolumeAttenuation(
               transmissionRayLength,
-              material.attenuationColor.rgb,
-              material.attenuationDistance);
-            directLighting += material.baseColorFactor.rgb *
+              materialData.attenuationColor.rgb,
+              materialData.attenuationDistance);
+            directLighting += materialData.baseColorFactor.rgb *
               transmissionDistribution * transmissionVisibility *
               volumeAttenuation * (vec3(1.0) - transmissionFresnel) *
-              dielectricTransmission * Lradiance * transmissionFalloff;
+              dielectricTransmission * lightRadiance * transmissionFalloff;
           }
         }
       }
@@ -814,87 +373,6 @@ glslFragment: |
     return shadow * directLighting;
   }
   
-  vec3 AmbientLighting(
-    MaterialData material,
-    vec3 F0,
-    vec3 Lr,
-    vec3 normal,
-    vec3 geometricNormal,
-    vec3 worldPosition,
-    vec3 surfaceToCamera,
-    float cosLo,
-    vec2 screenUv,
-    out float environmentVisibility)
-  {
-    // Baked probes replace diffuse environment irradiance only. Specular IBL
-    // remains sourced from the pre-filtered environment cubemap.
-    GlobalIlluminationSampleDebug globalIlluminationDebug;
-    environmentVisibility = 1.0;
-    vec3 irradiance = vec3(0.0);
-    if(!TryResolveGlobalIlluminationDiffuseIrradiance(
-      screenUv,
-      worldPosition,
-      normal,
-      geometricNormal,
-      surfaceToCamera,
-      Lr,
-      irradiance,
-      environmentVisibility,
-      globalIlluminationDebug))
-    {
-      irradiance = texture(g_irradianceCubemap, normal).rgb;
-    }
-    if(GlobalIlluminationDebugUsesProbeData())
-    {
-      return irradiance;
-    }
-    
-    // Calculate Fresnel term for ambient lighting.
-    // Since we use pre-filtered cubemap(s) and irradiance is coming from many directions
-    // use cosLo instead of angle with light's half-vector (cosLh above).
-    // See: https://seblagarde.wordpress.com/2011/08/17/hello-world/
-    vec3 F = FresnelSchlick(F0, cosLo);
-    
-    // Get diffuse contribution factor (as with direct lighting).
-    vec3 kd = mix(vec3(1.0) - F, vec3(0.0), material.metallicFactor);
-  #ifdef TRANSMISSION
-    kd *= 1.0 - material.transmissionFactor;
-  #endif
-    
-    // Irradiance map contains exitant radiance assuming Lambertian BRDF, no need to scale by 1/PI here either.
-    vec3 diffuseIBL = kd * material.baseColorFactor.xyz * irradiance;
-
-    float ambientOcclusion = clamp(material.occlusionStrength, 0.0, 1.0);
-    if(globalIlluminationHeader.stateAndDebug.z ==
-      GLOBAL_ILLUMINATION_DEBUG_INDIRECT_ONLY)
-    {
-      return diffuseIBL * ambientOcclusion;
-    }
-    
-    // Sample pre-filtered specular reflection environment at correct mipmap level.
-    int specularTextureLevels = textureQueryLevels(g_envCubemap);
-    vec3 specularIrradiance = textureLod(g_envCubemap, Lr, material.roughnessFactor * specularTextureLevels).rgb;
-    
-    // Split-sum approximation factors for Cook-Torrance specular BRDF.
-    vec2 specularBRDF = texture(g_brdfSampler, vec2(cosLo, material.roughnessFactor)).rg;
-    
-    // Total specular IBL contribution.
-    vec3 specularIBL = (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
-
-    // Apply visibility directly to diffuse IBL and use a view- and
-    // roughness-aware approximation for specular IBL. The bounded analytic
-    // contact term is composed separately after direct-light accumulation.
-    float specularOcclusion = CalculateSpecularOcclusion(
-      min(ambientOcclusion, environmentVisibility),
-      cosLo,
-      material.roughnessFactor);
-    vec3 indirectLighting = diffuseIBL * ambientOcclusion +
-      specularIBL * specularOcclusion;
-    return ApplyGlobalIlluminationDebug(
-      indirectLighting,
-      globalIlluminationDebug);
-  }
-
   #ifdef CLEAR_COAT
   vec3 ClearCoatLighting(LightData light, float roughness, vec3 F0, vec3 Lo, float cosLo, vec3 normal, vec3 worldPos)
   {
@@ -1009,9 +487,6 @@ glslFragment: |
   }
   #endif
   
-  // Constant normal incidence Fresnel factor for all dielectrics.
-  const vec3 Fdielectric = vec3(0.04);
-  
   void main() 
   {
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
@@ -1096,6 +571,17 @@ glslFragment: |
     material.attenuationColor = clamp(material.attenuationColor, vec4(0.0), vec4(1.0));
   #endif
 
+    float diffuseWeight = 1.0;
+  #ifdef TRANSMISSION
+    diffuseWeight -= material.transmissionFactor;
+  #endif
+    const ForwardPbrMaterial forwardMaterial = ForwardPbrMaterial(
+      material.baseColorFactor.xyz,
+      material.metallicFactor,
+      material.roughnessFactor,
+      material.occlusionStrength,
+      diffuseWeight);
+
     const vec3 geometricNormal = normalize(vin.normal);
     vec3 normal;
     if(material.normalSampler != 0)
@@ -1121,7 +607,6 @@ glslFragment: |
     vec3 LrCC = 2.0 * cosLoCC * clearcoatNormal + viewDirection;
   #endif
     
-    //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);
     outColor.xyz = vec3(material.emissiveFactor.xyz);
     
     // Angle between surface normal and outgoing light direction.
@@ -1138,43 +623,17 @@ glslFragment: |
     vec3 F0 = mix(Fdielectric, material.baseColorFactor.xyz, material.metallicFactor);
   #endif
     
-    //outColor.xyz += vec3(texture(g_envCubemap, R).xyz);
-    //outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), vin.normal.xyz)) * 0.5;
-  
     const bool bEvaluateDirectLighting =
       !GlobalIlluminationDebugSuppressesDirectLighting();
-    uint offset = 0u;
-    bool lightsOverflow = false;
-    uint numLights = 0u;
+    ForwardLightList lightList = ForwardLightList(0u, 0u, false);
     if(bEvaluateDirectLighting)
     {
-      const uint tileIndex = GetLightTileIndex(
-        gl_FragCoord.xy,
-        frame.viewportSize);
-      const uint gridLength = uint(lightsGrid.instance.length());
-      const bool hasLightTile = tileIndex < gridLength;
-      offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0u;
-      const uint listLength = uint(culledLights.indices.length());
-      const uint availableLights = offset < listLength
-        ? listLength - offset
-        : 0u;
-      const uint packedNumLights = hasLightTile
-        ? lightsGrid.instance[tileIndex].num
-        : 0u;
-      lightsOverflow =
-        (packedNumLights & LIGHT_TILE_OVERFLOW_BIT) != 0u;
-      numLights = !hasLightTile ? 0u :
-    #ifdef SUPPORT_LIGHTS_OVERFLOW
-        (lightsOverflow ? min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(light.instance.length())) :
-            min(packedNumLights & LIGHT_TILE_COUNT_MASK, availableLights));
-    #else
-        min(min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(LIGHTS_PER_TILE)), availableLights);
-    #endif
+      lightList = ResolveForwardLightList(gl_FragCoord.xy);
     }
     
     float environmentVisibility = 1.0;
-    outColor.xyz += AmbientLighting(
-      material,
+    outColor.xyz += CalculateForwardAmbientLighting(
+      forwardMaterial,
       F0,
       Lr,
       normal,
@@ -1198,13 +657,9 @@ glslFragment: |
     
     if(bEvaluateDirectLighting)
     {
-      for(int i = 0; i < numLights; i++)
+      for(uint i = 0u; i < lightList.count; ++i)
       {
-    #ifdef SUPPORT_LIGHTS_OVERFLOW
-        uint index = lightsOverflow ? uint(i) : culledLights.indices[offset + i];
-    #else
-        uint index = culledLights.indices[offset + i];
-    #endif
+        const uint index = ResolveForwardLightIndex(lightList, i);
         if(index == uint(-1) ||
             index >= uint(light.instance.length()) ||
             light.instance[index].type == INVALID_LIGHT_TYPE)
@@ -1212,7 +667,16 @@ glslFragment: |
             continue;
         }
 
-        outColor.xyz += CalculateLighting(light.instance[index], index, material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
+        outColor.xyz += CalculateLighting(
+          light.instance[index],
+          index,
+          material,
+          forwardMaterial,
+          F0,
+          -viewDirection,
+          cosLo,
+          normal,
+          vin.worldPosition);
   #ifdef CLEAR_COAT
         outColor.xyz += material.clearcoatFactor * ClearCoatLighting(light.instance[index], material.clearcoatRoughnessFactor, Fdielectric, -viewDirection, cosLoCC, clearcoatNormal, vin.worldPosition);
   #endif
