@@ -288,6 +288,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdPostProcess);
 
 	if (!m_pSkyShader)
@@ -296,11 +297,21 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
 		{
+			TVector<std::string> cloudsDefines;
+			cloudsDefines.Add("CLOUDS");
+			if (graphicsProfile.m_bCloudsDithering)
+			{
+				cloudsDefines.Add("DITHER");
+			}
+
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pSkyShader, { "FILL" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pSkyEnvShader, { });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pSunShader, { "SUN" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComposeShader, { "COMPOSE" });
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pCloudsShader, { "CLOUDS" /*,"DITHER", "DISCARD_BY_DEPTH"*/ });
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(
+				shaderInfo->GetFileId(),
+				m_pCloudsShader,
+				cloudsDefines);
 		}
 	}
 
@@ -423,7 +434,6 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		}
 	}
 
-	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
 	const Settings::GraphicsExtent desiredSkyExtent =
 		Settings::ResolveSkyExtent(graphicsProfile);
 	if (m_pSkyTexture &&

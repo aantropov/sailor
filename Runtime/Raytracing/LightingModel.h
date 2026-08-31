@@ -40,7 +40,7 @@ namespace Sailor::Raytracing
 		}
 	};
 
-	class LightingModel
+	class SAILOR_SHARED_API LightingModel
 	{
 	public:
 

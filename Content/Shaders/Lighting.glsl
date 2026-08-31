@@ -778,25 +778,13 @@ float CalculateDirectionalShadow(
 vec3 OffsetDirectionalShadowReceiver(
   vec3 worldPosition,
   vec3 surfaceNormal,
-  vec3 surfaceToLightDirection,
-  float receiverBiasScale)
+  vec3 surfaceToLightDirection)
 {
   const vec3 normal = normalize(surfaceNormal);
   const vec3 toLight = normalize(surfaceToLightDirection);
   const float cosTheta = clamp(dot(normal, toLight), 0.0f, 1.0f);
   const float sinTheta = sqrt(max(1.0f - cosTheta * cosTheta, 0.0f));
   return worldPosition +
-    receiverBiasScale * (
-      toLight * SHADOW_RECEIVER_LIGHT_OFFSET +
-      normal * (SHADOW_RECEIVER_NORMAL_OFFSET * sinTheta));
-}
-
-float GetDirectionalShadowReceiverBiasScale(
-  uint shadowType,
-  float configuredBias)
-{
-  // The quality setting is explicitly a PCF bias. Preserve the established
-  // receiver offset for the EVSM near cascade while making PCF receivers,
-  // including Landscape, follow the active profile.
-  return shadowType == SHADOW_TYPE_PCF ? configuredBias : 1.0f;
+    toLight * SHADOW_RECEIVER_LIGHT_OFFSET +
+    normal * (SHADOW_RECEIVER_NORMAL_OFFSET * sinTheta);
 }

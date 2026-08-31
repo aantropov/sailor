@@ -7,6 +7,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -124,6 +125,8 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			1.0f);
 		const float minEV100 = std::min(adaptation.x, adaptation.y);
 		const float maxEV100 = std::max(adaptation.x, adaptation.y);
+		const float minimumMeteredLuminance =
+			std::exp2(minEV100) / 8.0f;
 		const float speedUp = std::max(adaptation.z, 0.0f);
 		const float speedDown = std::max(adaptation.w, 0.0f);
 
@@ -134,7 +137,7 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			minLogLuminance,
 			1.0f / logLuminanceRange,
 			centerWeight,
-			0.0f
+			minimumMeteredLuminance
 		};
 
 		const float pushConstantsAverage[] =

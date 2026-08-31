@@ -128,7 +128,7 @@ glslCompute: |
       // attenuated by the final intensity at every level.
       const float reconstructionWeight = isFinalComposite
         ? PushConstants.u_bloom_intensity * bloomToHdrScale
-        : 0.35f;
+        : clamp(PushConstants.u_scatter, 0.0f, 1.0f);
   
       vec4 out_pixel = sanitize_hdr(
         imageLoad(u_output_image, pixel_coords));

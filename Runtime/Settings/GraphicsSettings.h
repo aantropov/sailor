@@ -89,6 +89,7 @@ namespace Sailor::Settings
 		};
 		bool m_bSupportSoftShadows = false;
 		float m_cloudsResolutionMultiplier = 0.5f;
+		bool m_bCloudsDithering = false;
 		uint32_t m_skyResolution = 256u;
 		uint32_t m_vegetationInstanceBudget = 8192u;
 		int32_t m_lodBias = 0;

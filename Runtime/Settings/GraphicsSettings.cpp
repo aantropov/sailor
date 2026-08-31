@@ -53,6 +53,7 @@ namespace
 		const std::array<uint32_t, MaxShadowCascades>& shadowCascadeResolutions,
 		bool bSupportSoftShadows,
 		float cloudsResolutionMultiplier,
+		bool bCloudsDithering,
 		uint32_t skyResolution,
 		uint32_t vegetationInstanceBudget,
 		int32_t lodBias,
@@ -68,6 +69,7 @@ namespace
 		profile.m_shadowCascadeResolutions = shadowCascadeResolutions;
 		profile.m_bSupportSoftShadows = bSupportSoftShadows;
 		profile.m_cloudsResolutionMultiplier = cloudsResolutionMultiplier;
+		profile.m_bCloudsDithering = bCloudsDithering;
 		profile.m_skyResolution = skyResolution;
 		profile.m_vegetationInstanceBudget = vegetationInstanceBudget;
 		profile.m_lodBias = lodBias;
@@ -534,6 +536,18 @@ namespace
 			return false;
 		}
 
+		if (!ReadConvertedScalar(
+				profile,
+				"cloudsDithering",
+				source,
+				profilePath + ".cloudsDithering",
+				"a boolean",
+				outProfile.m_bCloudsDithering,
+				outDiagnostic))
+		{
+			return false;
+		}
+
 		if (!ReadUint32(
 				profile,
 				"skyResolution",
@@ -711,6 +725,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		{ 4096u, 2048u, 2048u, 1024u },
 		true,
 		1.0f,
+		false,
 		512u,
 		16384u,
 		-1,
@@ -725,6 +740,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		{ 2048u, 2048u, 1024u, 1024u },
 		true,
 		0.75f,
+		false,
 		256u,
 		8192u,
 		0,
@@ -739,6 +755,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		{ 2048u, 1024u, 512u, 0u },
 		true,
 		0.5f,
+		false,
 		256u,
 		4096u,
 		0,
@@ -753,6 +770,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		{ 1024u, 512u, 0u, 0u },
 		false,
 		0.25f,
+		false,
 		128u,
 		2048u,
 		1,
@@ -767,6 +785,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		{ 512u, 0u, 0u, 0u },
 		false,
 		0.125f,
+		false,
 		64u,
 		512u,
 		2,

@@ -868,6 +868,7 @@ static class GraphicsSettingsEquality
             left.SupportSoftShadows == right.SupportSoftShadows &&
             left.CloudsResolutionMultiplier.Equals(
                 right.CloudsResolutionMultiplier) &&
+            left.CloudsDithering == right.CloudsDithering &&
             left.SkyResolution == right.SkyResolution &&
             left.VegetationInstanceBudget == right.VegetationInstanceBudget &&
             left.LodBias == right.LodBias &&

@@ -570,6 +570,45 @@ namespace
 				glm::vec3(9.6f, 4.8f, 1.92f)) <= 0.0001f,
 			"normal-incidence clearcoat must transmit 96 percent of base emission through its Fresnel layer");
 
+		const glm::vec3 obliqueView = glm::normalize(
+			glm::vec3(0.8f, 0.6f, 0.0f));
+		const glm::vec3 obliqueHalfVector = glm::normalize(
+			obliqueView + lightDirection);
+		const float obliqueViewCosine = glm::dot(normal, obliqueView);
+		const float obliqueLightCosine = glm::dot(normal, lightDirection);
+		const float obliqueViewHalfCosine = glm::abs(glm::dot(
+			obliqueView,
+			obliqueHalfVector));
+		const float expectedClearcoatWeight =
+			Raytracing::LightingModel::FresnelSchlick(
+				obliqueViewHalfCosine,
+				glm::vec3(0.04f)).x;
+		const float expectedClearcoatResponse = expectedClearcoatWeight *
+			Raytracing::LightingModel::DistributionGGX(
+				normal,
+				obliqueHalfVector,
+				clearcoat.m_clearcoatRoughness) *
+			Raytracing::LightingModel::GeometrySmithGGXCorrelated(
+				obliqueLightCosine,
+				obliqueViewCosine,
+				clearcoat.m_clearcoatRoughness) /
+			(4.0f * obliqueLightCosine * obliqueViewCosine) *
+			obliqueLightCosine;
+		const glm::vec3 obliqueClearcoatResponse =
+			Raytracing::LightingModel::CalculateBRDFCosineWeighted(
+				obliqueView,
+				normal,
+				lightDirection,
+				clearcoat,
+				1.0f,
+				1.0f);
+		Require(
+			IsNear(
+				obliqueClearcoatResponse.r,
+				expectedClearcoatResponse,
+				0.00001f),
+			"direct clearcoat attenuation must use the per-light view-half Fresnel term");
+
 		Raytracing::LightingModel::SampledData sheen;
 		sheen.m_baseColor = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 		sheen.m_orm = glm::vec3(1.0f, 0.7f, 0.0f);
@@ -796,32 +835,6 @@ namespace
 			}
 		}
 	};
-
-	bool IntersectsBakeTriangles(
-		const TVector<Math::Triangle>& triangles,
-		const Math::Ray& ray,
-		float maxRayLength)
-	{
-		for (const Math::Triangle& triangle : triangles)
-		{
-			glm::vec2 barycentric{};
-			float distance = 0.0f;
-			if (Math::IntersectRayTriangle(
-					ray.GetOrigin(),
-					ray.GetDirection(),
-					triangle.m_vertices[0],
-					triangle.m_vertices[1],
-					triangle.m_vertices[2],
-					barycentric,
-					distance) &&
-				distance < maxRayLength &&
-				distance > -0.0000001f)
-			{
-				return true;
-			}
-		}
-		return false;
-	}
 
 	struct EveningLandscapeRaytracingFixture final
 	{

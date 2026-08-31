@@ -1343,6 +1343,9 @@ namespace
 		compileRuntimeFragment("Shaders/Sky.shader", { "ATMOSPHERE" });
 		compileRuntimeFragment("Shaders/Sky.shader", { "SUN" });
 		compileRuntimeFragment("Shaders/Sky.shader", { "CLOUDS" });
+		compileRuntimeFragment(
+			"Shaders/Sky.shader",
+			{ "CLOUDS", "DITHER" });
 		compileRuntimeFragment("Shaders/SunShafts.shader", {});
 		compileRuntimeFragment("Shaders/Tonemapping.shader", { "AGX" });
 		compileRuntimeFragment("Shaders/Tonemapping.shader", { "ACES" });

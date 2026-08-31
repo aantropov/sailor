@@ -48,6 +48,7 @@ public sealed record GraphicsQualityPresetSettings
     public IReadOnlyList<int> ShadowCascadeResolutions { get; init; } = [];
     public bool SupportSoftShadows { get; init; }
     public double CloudsResolutionMultiplier { get; init; }
+    public bool CloudsDithering { get; init; }
     public int SkyResolution { get; init; }
     public int VegetationInstanceBudget { get; init; }
     public int LodBias { get; init; }
@@ -131,6 +132,7 @@ public static class GraphicsSettingsDefaults
             ShadowCascadeResolutions = [4096, 2048, 2048, 1024],
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 1.0,
+            CloudsDithering = false,
             SkyResolution = 512,
             VegetationInstanceBudget = 16384,
             LodBias = -1,
@@ -147,6 +149,7 @@ public static class GraphicsSettingsDefaults
             ShadowCascadeResolutions = [2048, 2048, 1024, 1024],
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 0.75,
+            CloudsDithering = false,
             SkyResolution = 256,
             VegetationInstanceBudget = 8192,
             LodBias = 0,
@@ -163,6 +166,7 @@ public static class GraphicsSettingsDefaults
             ShadowCascadeResolutions = [2048, 1024, 512],
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 0.5,
+            CloudsDithering = false,
             SkyResolution = 256,
             VegetationInstanceBudget = 4096,
             LodBias = 0,
@@ -179,6 +183,7 @@ public static class GraphicsSettingsDefaults
             ShadowCascadeResolutions = [1024, 512],
             SupportSoftShadows = false,
             CloudsResolutionMultiplier = 0.25,
+            CloudsDithering = false,
             SkyResolution = 128,
             VegetationInstanceBudget = 2048,
             LodBias = 1,
@@ -195,6 +200,7 @@ public static class GraphicsSettingsDefaults
             ShadowCascadeResolutions = [512],
             SupportSoftShadows = false,
             CloudsResolutionMultiplier = 0.125,
+            CloudsDithering = false,
             SkyResolution = 64,
             VegetationInstanceBudget = 512,
             LodBias = 2,
@@ -714,6 +720,7 @@ public static class GraphicsSettingsYamlCodec
             ShadowCascadeResolutions = ReadIntSequence(preset, "shadowCascadeResolutions", $"{path}.shadowCascadeResolutions", issues),
             SupportSoftShadows = ReadBool(preset, "supportSoftShadows", $"{path}.supportSoftShadows", issues),
             CloudsResolutionMultiplier = ReadDouble(preset, "cloudsResolutionMultiplier", $"{path}.cloudsResolutionMultiplier", issues),
+            CloudsDithering = ReadBool(preset, "cloudsDithering", $"{path}.cloudsDithering", issues),
             SkyResolution = ReadInt(preset, "skyResolution", $"{path}.skyResolution", issues),
             VegetationInstanceBudget = ReadOptionalInt(
                 preset,
@@ -752,6 +759,7 @@ public static class GraphicsSettingsYamlCodec
                 new YamlScalarNode(x.ToString(CultureInfo.InvariantCulture)))));
         SetScalar(preset, "supportSoftShadows", settings.SupportSoftShadows);
         SetScalar(preset, "cloudsResolutionMultiplier", settings.CloudsResolutionMultiplier);
+        SetScalar(preset, "cloudsDithering", settings.CloudsDithering);
         SetScalar(preset, "skyResolution", settings.SkyResolution);
         SetScalar(preset, "vegetationInstanceBudget", settings.VegetationInstanceBudget);
         SetScalar(preset, "lodBias", settings.LodBias);

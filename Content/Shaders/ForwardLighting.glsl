@@ -208,10 +208,7 @@ float CalculateCascadedDirectionalShadow(
   const vec3 shadowReceiverPosition = OffsetDirectionalShadowReceiver(
     worldPosition,
     surfaceNormal,
-    surfaceToLightDirection,
-    GetDirectionalShadowReceiverBiasScale(
-      cascadeShadowType,
-      lightData.shadowBias));
+    surfaceToLightDirection);
   const mat4 cascadeLightMatrix = lightsMatrices.instance[cascadeLayer];
   float shadow = CalculateDirectionalShadow(
     cascadeShadowType,
@@ -234,10 +231,7 @@ float CalculateCascadedDirectionalShadow(
     const vec3 nextShadowReceiverPosition = OffsetDirectionalShadowReceiver(
       worldPosition,
       surfaceNormal,
-      surfaceToLightDirection,
-      GetDirectionalShadowReceiverBiasScale(
-        nextCascadeShadowType,
-        lightData.shadowBias));
+      surfaceToLightDirection);
     const mat4 nextCascadeLightMatrix =
       lightsMatrices.instance[nextCascadeLayer];
     const float nextShadow = CalculateDirectionalShadow(

@@ -55,42 +55,41 @@ glslCompute: |
             nonBlackCount += histogramShared[index];
         }
 
-        if(nonBlackCount == 0)
-        {
-            return;
-        }
-
-        const float lowRank = float(nonBlackCount) *
-          clamp(PushConstants.lowPercentile, 0.0f, 1.0f);
-        const float highRank = float(nonBlackCount) *
-          clamp(PushConstants.highPercentile, 0.0f, 1.0f);
-        float cumulative = 0.0f;
-        float includedCount = 0.0f;
-        float weightedBins = 0.0f;
-        for(uint index = 1; index < GROUP_SIZE; ++index)
-        {
-            const float count = float(histogramShared[index]);
-            const float nextCumulative = cumulative + count;
-            const float included = max(
-              min(nextCumulative, highRank) - max(cumulative, lowRank),
-              0.0f);
-            includedCount += included;
-            weightedBins += included * float(index);
-            cumulative = nextCumulative;
-        }
-
-        const float weightedLogAverage =
-          weightedBins / max(includedCount, 1.0f) - 1.0f;
-        float weightedAvgLum = exp2(
-          (weightedLogAverage / 254.0f) *
-            PushConstants.log2LuminanceRange +
-          PushConstants.minLog2Luminance);
-
         // EV100 = log2(8 * luminance) for ISO 100 reflected-light metering.
         // Clamping the target EV bounds how far a dark view may lift the night
         // sky and keeps physically authored daylight values inside the meter.
         const float minLuminance = exp2(PushConstants.minEV100) / 8.0f;
         const float maxLuminance = exp2(PushConstants.maxEV100) / 8.0f;
+        float weightedAvgLum = minLuminance;
+        if(nonBlackCount > 0)
+        {
+            const float lowRank = float(nonBlackCount) *
+              clamp(PushConstants.lowPercentile, 0.0f, 1.0f);
+            const float highRank = float(nonBlackCount) *
+              clamp(PushConstants.highPercentile, 0.0f, 1.0f);
+            float cumulative = 0.0f;
+            float includedCount = 0.0f;
+            float weightedBins = 0.0f;
+            for(uint index = 1; index < GROUP_SIZE; ++index)
+            {
+                const float count = float(histogramShared[index]);
+                const float nextCumulative = cumulative + count;
+                const float included = max(
+                  min(nextCumulative, highRank) - max(cumulative, lowRank),
+                  0.0f);
+                includedCount += included;
+                weightedBins += included * float(index);
+                cumulative = nextCumulative;
+            }
+
+            const float weightedLogAverage =
+              weightedBins / max(includedCount, 1.0f) - 1.0f;
+            weightedAvgLum = exp2(
+              (weightedLogAverage / 254.0f) *
+                PushConstants.log2LuminanceRange +
+              PushConstants.minLog2Luminance);
+        }
+
         weightedAvgLum = clamp(
           weightedAvgLum,
           min(minLuminance, maxLuminance),

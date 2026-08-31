@@ -132,7 +132,10 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 	PushConstantsUpscale upscaleParams{};
 	upscaleParams.m_bloomIntensity = GetVec4("bloomIntensity").x;
 	upscaleParams.m_dirtIntensity = GetVec4("dirtIntensity").x;
-	upscaleParams.m_scatter = GetVec4("scatter").x;
+	upscaleParams.m_scatter = (std::clamp)(
+		GetVec4("scatter").x,
+		0.0f,
+		1.0f);
 
 	// Bloom Upscale
 	for (uint32_t i = (uint32_t)bloomRenderTarget->GetMipLevels() - 1; i >= 1; --i)

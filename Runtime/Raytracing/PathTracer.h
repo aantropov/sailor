@@ -39,7 +39,7 @@ namespace Sailor::Raytracing
 			size_t m_total = 0u;
 		};
 
-			struct ScenePreparationStats final
+		struct ScenePreparationStats final
 		{
 			size_t m_instanceCount = 0u;
 			size_t m_geometryInstanceCount = 0u;
@@ -122,7 +122,7 @@ namespace Sailor::Raytracing
 			const ScenePreparationWarningCallback& warning = {});
 		void SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::uvec2& extent);
 		SAILOR_SHARED_API void SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
-		void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
+		SAILOR_SHARED_API void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		void ClearRuntimeEnvironment();
 		bool RenderPreparedScene(const Params& params);
 		SAILOR_SHARED_API bool SamplePreparedSceneRay(
@@ -229,7 +229,7 @@ namespace Sailor::Raytracing
 			uint32_t& randomState, bool bAllowEmissiveHit) const;
 		vec3 SampleRuntimeEnvironment(const vec3& direction) const;
 		vec3 SampleRuntimeDiffuseEnvironment(const vec3& direction) const;
-		vec3 SampleRuntimeDirectEnvironment(const vec3& direction) const;
+		SAILOR_SHARED_API vec3 SampleRuntimeDirectEnvironment(const vec3& direction) const;
 		void RebuildRuntimeEnvironmentImportance();
 		float RuntimeEnvironmentImportancePdf(
 			const vec3& direction) const;
@@ -237,10 +237,10 @@ namespace Sailor::Raytracing
 			uint32_t& randomState,
 			vec3& outDirection,
 			float& outPdf) const;
-		float DirectEnvironmentPdf(
+		SAILOR_SHARED_API float DirectEnvironmentPdf(
 			const vec3& worldNormal,
 			const vec3& direction) const;
-		bool SampleDirectEnvironment(
+		SAILOR_SHARED_API bool SampleDirectEnvironment(
 			const vec3& worldNormal,
 			uint32_t& randomState,
 			vec3& outDirection,

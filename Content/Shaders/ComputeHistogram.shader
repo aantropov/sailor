@@ -17,7 +17,7 @@ glslCompute: |
   	float minLog2Luminance;
     float invLog2LuminanceRange;
     float centerWeight;
-    float padding;
+    float minimumMeteredLuminance;
   } PushConstants;
   
   #define GROUP_SIZE 256
@@ -29,7 +29,11 @@ glslCompute: |
   shared uint histogramShared[GROUP_SIZE];
   
   // For a given color and luminance range, return the histogram bin index
-  uint colorToBin(vec3 hdrColor, float minLogLum, float inverseLogLumRange) 
+  uint colorToBin(
+    vec3 hdrColor,
+    float minLogLum,
+    float inverseLogLumRange,
+    float minimumMeteredLuminance)
   {
     if(any(isnan(hdrColor)))
     {
@@ -44,9 +48,10 @@ glslCompute: |
     // Convert our RGB value to Luminance, see note for RGB_TO_LUM macro above
     float lum = dot(hdrColor, RGB_TO_LUM);
     
-    // Reserve bin zero for actual black. Positive values below the configured
-    // meter range still belong in bin one so night scenes can adapt.
-    if (lum <= 0.0f)
+    // Samples darker than the exposure floor cannot lower the target exposure
+    // any further. Keep them out of the percentile population so a black
+    // background does not make the visible subject clip to white.
+    if (lum <= minimumMeteredLuminance)
     {
         return 0;
     }
@@ -72,7 +77,11 @@ glslCompute: |
     if (gl_GlobalInvocationID.x < dim.x && gl_GlobalInvocationID.y < dim.y) 
     {
         vec3 hdrColor = imageLoad(s_texColor, ivec2(gl_GlobalInvocationID.xy)).xyz;
-        uint binIndex = colorToBin(hdrColor, PushConstants.minLog2Luminance, PushConstants.invLog2LuminanceRange);
+        uint binIndex = colorToBin(
+          hdrColor,
+          PushConstants.minLog2Luminance,
+          PushConstants.invLog2LuminanceRange,
+          PushConstants.minimumMeteredLuminance);
 
         // A smooth center-weighted mask prevents bright objects entering at the
         // viewport edges from steering exposure for the whole image. Keep a

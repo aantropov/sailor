@@ -239,7 +239,7 @@ namespace
 			1.0f);
 	}
 
-	float ResolveClearcoatLayerWeight(
+	float ResolveClearcoatViewLayerWeight(
 		const LightingModel::SampledData& sample,
 		const vec3& worldNormal,
 		const vec3& viewDirection)
@@ -262,6 +262,43 @@ namespace
 		return clamp(
 			factor * LightingModel::FresnelSchlick(
 				nDotV,
+				vec3(0.04f)).x,
+			0.0f,
+			1.0f);
+	}
+
+	float ResolveClearcoatDirectLayerWeight(
+		const LightingModel::SampledData& sample,
+		const vec3& viewDirection,
+		const vec3& lightDirection)
+	{
+		const float factor = clamp(
+			sample.m_clearcoatFactor,
+			0.0f,
+			1.0f);
+		if (factor <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		const vec3 halfVectorValue = viewDirection + lightDirection;
+		const float halfVectorLengthSquared = dot(
+			halfVectorValue,
+			halfVectorValue);
+		if (halfVectorLengthSquared <= DirectionEpsilon)
+		{
+			return 0.0f;
+		}
+
+		const vec3 halfVector = halfVectorValue *
+			inversesqrt(halfVectorLengthSquared);
+		const float viewHalfCosine = clamp(
+			abs(dot(viewDirection, halfVector)),
+			0.0f,
+			1.0f);
+		return clamp(
+			factor * LightingModel::FresnelSchlick(
+				viewHalfCosine,
 				vec3(0.04f)).x,
 			0.0f,
 			1.0f);
@@ -307,7 +344,7 @@ namespace
 			dielectricTransmissionEnergy *
 			Luminance(vec3(sample.m_baseColor));
 
-		const float clearcoatWeight = ResolveClearcoatLayerWeight(
+		const float clearcoatWeight = ResolveClearcoatViewLayerWeight(
 			sample,
 			worldNormal,
 			viewDirection);
@@ -918,7 +955,7 @@ vec3 LightingModel::CalculateBTDF(
 			sample,
 			nDotV,
 			nDotL) *
-		(1.0f - ResolveClearcoatLayerWeight(
+		(1.0f - ResolveClearcoatViewLayerWeight(
 			sample,
 			worldNormal,
 			viewDirection));
@@ -1043,10 +1080,10 @@ vec3 LightingModel::CalculateBRDF(
 		dot(worldNormal, viewDirection),
 		dot(worldNormal, lightDirection));
 	const vec3 belowClearcoat = sheen + base * sheenBaseScaling;
-	const float clearcoatWeight = ResolveClearcoatLayerWeight(
+	const float clearcoatWeight = ResolveClearcoatDirectLayerWeight(
 		sample,
-		worldNormal,
-		viewDirection);
+		viewDirection,
+		lightDirection);
 	const vec3 clearcoat = CalculateClearcoatBRDF(
 		viewDirection,
 		worldNormal,
@@ -1092,10 +1129,10 @@ vec3 LightingModel::CalculateBRDFCosineWeighted(
 		sample) * (std::max)(
 			dot(clearcoatNormal, lightDirection),
 			0.0f);
-	const float clearcoatWeight = ResolveClearcoatLayerWeight(
+	const float clearcoatWeight = ResolveClearcoatDirectLayerWeight(
 		sample,
-		worldNormal,
-		viewDirection);
+		viewDirection,
+		lightDirection);
 	return mix(belowClearcoat, clearcoat, clearcoatWeight);
 }
 
@@ -1105,7 +1142,7 @@ vec3 LightingModel::CalculateEmittedRadiance(
 	const vec3& viewDirection)
 {
 	return max(sample.m_emissive, vec3(0.0f)) *
-		(1.0f - ResolveClearcoatLayerWeight(
+		(1.0f - ResolveClearcoatViewLayerWeight(
 			sample,
 			worldNormal,
 			viewDirection));
@@ -1382,7 +1419,7 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 					sample,
 					dot(worldNormal, viewDirection),
 					dot(worldNormal, -viewDirection)) *
-				(1.0f - ResolveClearcoatLayerWeight(
+				(1.0f - ResolveClearcoatViewLayerWeight(
 					sample,
 					worldNormal,
 					viewDirection));

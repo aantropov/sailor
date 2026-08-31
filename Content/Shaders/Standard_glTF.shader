@@ -256,20 +256,14 @@ glslFragment: |
 
   vec3 CalculateLighting(
     LightData lightData,
-    uint lightIndex,
+    ForwardLightSample lightSample,
     MaterialData materialData,
     ForwardPbrMaterial forwardMaterial,
     vec3 surfaceToCamera,
     float cosLo,
     vec3 normal,
-    vec3 geometricNormal,
     vec3 worldPosition)
   {
-    const ForwardLightSample lightSample = ResolveForwardLightSample(
-      lightData,
-      lightIndex,
-      worldPosition,
-      geometricNormal);
     vec3 directLighting = EvaluateForwardPbrDirectLighting(
       lightSample,
       forwardMaterial,
@@ -386,25 +380,27 @@ glslFragment: |
   
   #ifdef CLEAR_COAT
   vec3 ClearCoatLighting(
-    LightData lightData,
-    uint lightIndex,
+    ForwardLightSample lightSample,
+    float factor,
     float roughness,
     vec3 surfaceToCamera,
     float cosLo,
     vec3 normal,
-    vec3 geometricNormal,
-    vec3 worldPosition)
+    out float layerWeight)
   {
-    const ForwardLightSample lightSample = ResolveForwardLightSample(
-      lightData,
-      lightIndex,
-      worldPosition,
-      geometricNormal);
     vec3 halfVector = lightSample.direction + surfaceToCamera;
     float halfVectorLengthSquared = dot(halfVector, halfVector);
     vec3 halfDirection = halfVectorLengthSquared > Epsilon
       ? halfVector * inversesqrt(halfVectorLengthSquared)
       : normal;
+    float halfViewCosine = clamp(
+      abs(dot(halfDirection, surfaceToCamera)),
+      0.0,
+      1.0);
+    layerWeight = clamp(
+      factor * FresnelSchlick(Fdielectric, halfViewCosine).x,
+      0.0,
+      1.0);
     float cosLi = max(0.0, dot(normal, lightSample.direction));
     float cosLh = max(0.0, dot(normal, halfDirection));
     float distribution = NdfGGX(cosLh, roughness);
@@ -463,22 +459,14 @@ glslFragment: |
   }
 
   vec3 SheenLighting(
-    LightData lightData,
-    uint lightIndex,
+    ForwardLightSample lightSample,
     float roughness,
     vec3 color,
     vec3 surfaceToCamera,
     float cosLo,
     vec3 normal,
-    vec3 geometricNormal,
-    vec3 worldPosition,
     out float albedoScaling)
   {
-    const ForwardLightSample lightSample = ResolveForwardLightSample(
-      lightData,
-      lightIndex,
-      worldPosition,
-      geometricNormal);
     vec3 halfVector = lightSample.direction + surfaceToCamera;
     float halfVectorLengthSquared = dot(halfVector, halfVector);
     vec3 halfDirection = halfVectorLengthSquared > Epsilon
@@ -686,7 +674,7 @@ glslFragment: |
     }
     float cosLoCC = max(0.0, dot(clearcoatNormal, -viewDirection));
     vec3 LrCC = 2.0 * cosLoCC * clearcoatNormal + viewDirection;
-    float clearcoatLayerWeight = clamp(
+    float clearcoatViewLayerWeight = clamp(
       material.clearcoatFactor *
         FresnelSchlick(Fdielectric, cosLoCC).x,
       0.0,
@@ -697,7 +685,7 @@ glslFragment: |
       !GlobalIlluminationDebugSuppressesDirectLighting();
     vec3 emissiveLighting = material.emissiveFactor.xyz;
   #ifdef CLEAR_COAT
-    emissiveLighting *= 1.0 - clearcoatLayerWeight;
+    emissiveLighting *= 1.0 - clearcoatViewLayerWeight;
   #endif
     outColor.xyz = bEvaluateDirectLighting
       ? emissiveLighting
@@ -718,6 +706,8 @@ glslFragment: |
   #endif
     
     ForwardLightList lightList = ForwardLightList(0u, 0u, false);
+    const bool bEvaluateIndirectMaterialLighting =
+      !GlobalIlluminationDebugUsesProbeData();
     if(bEvaluateDirectLighting)
     {
       lightList = ResolveForwardLightList(gl_FragCoord.xy);
@@ -735,7 +725,7 @@ glslFragment: |
       cosLo,
       viewportUv,
       environmentVisibility);
-    if(bEvaluateDirectLighting)
+    if(bEvaluateIndirectMaterialLighting)
     {
   #ifdef SHEEN
       ambientLighting = SheenAmbientLighting(
@@ -757,7 +747,7 @@ glslFragment: |
           LrCC,
           cosLoCC,
           min(material.occlusionStrength, environmentVisibility)),
-        clearcoatLayerWeight);
+        clearcoatViewLayerWeight);
   #endif
     }
     outColor.xyz += ambientLighting;
@@ -774,51 +764,53 @@ glslFragment: |
             continue;
         }
 
-        vec3 directLighting = CalculateLighting(
-          light.instance[index],
+        const LightData lightData = light.instance[index];
+        const ForwardLightSample lightSample = ResolveForwardLightSample(
+          lightData,
           index,
+          vin.worldPosition,
+          geometricNormal);
+        vec3 directLighting = CalculateLighting(
+          lightData,
+          lightSample,
           material,
           forwardMaterial,
           -viewDirection,
           cosLo,
           normal,
-          geometricNormal,
           vin.worldPosition);
   #ifdef SHEEN
         float sheenAlbedoScaling = 1.0;
         directLighting = SheenLighting(
-          light.instance[index],
-          index,
+          lightSample,
           material.sheenRoughnessFactor,
           material.sheenColorFactor.rgb,
           -viewDirection,
           cosLo,
           normal,
-          geometricNormal,
-          vin.worldPosition,
           sheenAlbedoScaling) +
           directLighting * sheenAlbedoScaling;
   #endif
   #ifdef CLEAR_COAT
+        float clearcoatDirectLayerWeight = 0.0;
         directLighting = mix(
           directLighting,
           ClearCoatLighting(
-            light.instance[index],
-            index,
+            lightSample,
+            material.clearcoatFactor,
             material.clearcoatRoughnessFactor,
             -viewDirection,
             cosLoCC,
             clearcoatNormal,
-            geometricNormal,
-            vin.worldPosition),
-          clearcoatLayerWeight);
+            clearcoatDirectLayerWeight),
+          clearcoatDirectLayerWeight);
   #endif
         outColor.xyz += directLighting;
       }
     }
 
   #ifdef TRANSMISSION
-    if(bEvaluateDirectLighting)
+    if(bEvaluateIndirectMaterialLighting)
     {
       float dielectricFresnel =
       (material.indexOfRefraction - 1.0) /
@@ -909,7 +901,7 @@ glslFragment: |
       material.sheenColorFactor.rgb);
   #endif
   #ifdef CLEAR_COAT
-    transmittedLighting *= 1.0 - clearcoatLayerWeight;
+    transmittedLighting *= 1.0 - clearcoatViewLayerWeight;
   #endif
     outColor.xyz += transmittedLighting;
     }
