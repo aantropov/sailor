@@ -863,9 +863,9 @@ namespace
 			HashVec3(sourceHash, light.m_direction);
 			HashVec3(sourceHash, light.m_intensity);
 			HashValue(sourceHash, light.m_indirectLightingIntensity);
-			HashVec3(sourceHash, light.m_attenuation);
 			HashVec3(sourceHash, light.m_bounds);
 			HashVec2(sourceHash, light.m_cutOff);
+			HashValue(sourceHash, light.m_bCastShadows);
 		}
 		HashVec3(sourceHash, request.m_fallbackEnvironment);
 		HashValue(sourceHash, scene.m_bHasSkyEnvironment);
@@ -882,6 +882,9 @@ namespace
 			HashVec4(
 				sourceHash,
 				scene.m_skyParameters.m_lightDirection);
+			HashVec4(
+				sourceHash,
+				scene.m_skyParameters.m_sunIlluminance);
 			HashValue(sourceHash, scene.m_skyIndirectIntensity);
 		}
 		scene.m_materialRevisions.Reserve(scene.m_materials.Num());

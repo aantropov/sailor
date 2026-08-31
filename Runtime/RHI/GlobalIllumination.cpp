@@ -1,11 +1,11 @@
 #include "RHI/GlobalIllumination.h"
 
 #include <algorithm>
-#include <array>
 #include <bit>
 #include <cmath>
 #include <exception>
 #include <limits>
+#include <vector>
 
 #include <glm/gtc/packing.hpp>
 
@@ -16,6 +16,7 @@ namespace
 {
 	constexpr uint32_t LeafBit = 0x80000000u;
 	constexpr float MaxHalfFloat = 65504.0f;
+	constexpr float PackedCoefficientHeadroom = 60000.0f;
 
 	void HashU32(uint64_t& hash, uint32_t value) noexcept
 	{
@@ -143,69 +144,59 @@ namespace
 		TVector<RHIGlobalIlluminationGpuBvhNode> m_nodes{};
 	};
 
-	bool ContainsPoint(
-		const RHIGlobalIlluminationGpuBvhNode& node,
-		const glm::vec3& point) noexcept
+	bool OverlapsFace(
+		const GIProbeBrick& brick,
+		const GIProbeBrick& neighbor,
+		uint32_t axis,
+		bool bMaximumFace) noexcept
 	{
-		return glm::all(glm::greaterThanEqual(point, glm::vec3(node.m_minAndLeft))) &&
-			glm::all(glm::lessThanEqual(point, glm::vec3(node.m_maxAndRight)));
-	}
-
-	bool HasDifferentSubdivisionNeighbor(
-		const GIProbesData& data,
-		const TVector<RHIGlobalIlluminationGpuBvhNode>& nodes,
-		uint32_t brickIndex,
-		const glm::vec3& point) noexcept
-	{
-		if (nodes.IsEmpty() || brickIndex >= data.m_bricks.Num())
+		const auto maxAbsComponent = [](const glm::vec3& value)
+			{
+				const glm::vec3 absolute = glm::abs(value);
+				return glm::max(absolute.x, glm::max(absolute.y, absolute.z));
+			};
+		const float coordinateMagnitude = glm::max(
+			1.0f,
+			glm::max(
+				maxAbsComponent(brick.m_min),
+				glm::max(
+					maxAbsComponent(brick.m_max),
+					glm::max(
+						maxAbsComponent(neighbor.m_min),
+						maxAbsComponent(neighbor.m_max)))));
+		const float tolerance =
+			coordinateMagnitude * std::numeric_limits<float>::epsilon() * 8.0f;
+		const float brickFace =
+			bMaximumFace ? brick.m_max[axis] : brick.m_min[axis];
+		const float neighborFace =
+			bMaximumFace ? neighbor.m_min[axis] : neighbor.m_max[axis];
+		if (std::abs(brickFace - neighborFace) > tolerance)
 		{
-			return true;
+			return false;
 		}
 
-		std::array<uint32_t, 128u> stack{};
-		size_t stackSize = 0u;
-		stack[stackSize++] = 0u;
-		while (stackSize > 0u)
+		for (uint32_t overlapAxis = 0u; overlapAxis < 3u; ++overlapAxis)
 		{
-			const uint32_t nodeIndex = stack[--stackSize];
-			if (nodeIndex >= nodes.Num())
-			{
-				return true;
-			}
-			const RHIGlobalIlluminationGpuBvhNode& node = nodes[nodeIndex];
-			if (!ContainsPoint(node, point))
+			if (overlapAxis == axis)
 			{
 				continue;
 			}
-
-			const uint32_t leftOrLeaf =
-				std::bit_cast<uint32_t>(node.m_minAndLeft.w);
-			if ((leftOrLeaf & LeafBit) != 0u)
+			const float overlapMin = glm::max(
+				brick.m_min[overlapAxis],
+				neighbor.m_min[overlapAxis]);
+			const float overlapMax = glm::min(
+				brick.m_max[overlapAxis],
+				neighbor.m_max[overlapAxis]);
+			if (overlapMax - overlapMin <= tolerance)
 			{
-				const uint32_t neighborIndex = leftOrLeaf & ~LeafBit;
-				if (neighborIndex != brickIndex &&
-					neighborIndex < data.m_bricks.Num() &&
-					data.m_bricks[neighborIndex].m_subdivisionLevel !=
-						data.m_bricks[brickIndex].m_subdivisionLevel)
-				{
-					return true;
-				}
-				continue;
+				return false;
 			}
-
-			if (stackSize + 2u > stack.size())
-			{
-				return true;
-			}
-			stack[stackSize++] = std::bit_cast<uint32_t>(node.m_maxAndRight.w);
-			stack[stackSize++] = leftOrLeaf;
 		}
-		return false;
+		return true;
 	}
 
 	uint32_t FindAdaptiveFaceMask(
 		const GIProbesData& data,
-		const TVector<RHIGlobalIlluminationGpuBvhNode>& nodes,
 		uint32_t brickIndex) noexcept
 	{
 		if (brickIndex >= data.m_bricks.Num())
@@ -213,34 +204,30 @@ namespace
 			return 0x3fu;
 		}
 		const GIProbeBrick& brick = data.m_bricks[brickIndex];
-		const glm::vec3 center = (brick.m_min + brick.m_max) * 0.5f;
 		uint32_t result = 0u;
-		for (uint32_t axis = 0u; axis < 3u; ++axis)
+		for (uint32_t neighborIndex = 0u;
+			neighborIndex < data.m_bricks.Num();
+			++neighborIndex)
 		{
-			glm::vec3 point = center;
-			point[axis] = std::nextafter(
-				brick.m_min[axis],
-				-(std::numeric_limits<float>::infinity)());
-			if (HasDifferentSubdivisionNeighbor(
-				data,
-				nodes,
-				brickIndex,
-				point))
+			if (neighborIndex == brickIndex)
 			{
-				result |= 1u << (axis * 2u);
+				continue;
 			}
-
-			point = center;
-			point[axis] = std::nextafter(
-				brick.m_max[axis],
-				(std::numeric_limits<float>::infinity)());
-			if (HasDifferentSubdivisionNeighbor(
-				data,
-				nodes,
-				brickIndex,
-				point))
+			const GIProbeBrick& neighbor = data.m_bricks[neighborIndex];
+			if (neighbor.m_subdivisionLevel == brick.m_subdivisionLevel)
 			{
-				result |= 1u << (axis * 2u + 1u);
+				continue;
+			}
+			for (uint32_t axis = 0u; axis < 3u; ++axis)
+			{
+				if (OverlapsFace(brick, neighbor, axis, false))
+				{
+					result |= 1u << (axis * 2u);
+				}
+				if (OverlapsFace(brick, neighbor, axis, true))
+				{
+					result |= 1u << (axis * 2u + 1u);
+				}
 			}
 		}
 		return result;
@@ -426,12 +413,17 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 		BvhBuilder builder(data);
 		builder.Build(0u, static_cast<uint32_t>(data.m_bricks.Num()));
 		outLayout.m_nodes = builder.TakeNodes();
+		std::vector<float> probeVisibilityMaxDistances(
+			data.m_probes.Num(),
+			data.m_bakeSettings.m_maxRayDistance);
 		outLayout.m_bricks.Reserve(data.m_bricks.Num());
 		for (uint32_t brickIndex = 0u;
 			brickIndex < data.m_bricks.Num();
 			++brickIndex)
 		{
 			const GIProbeBrick& source = data.m_bricks[brickIndex];
+			const float visibilityMaxDistance =
+				CalculateGIProbeVisibilityMaxDistance(data, source);
 			uint32_t validProbeCount = 0u;
 			bool bAllProbesFullyValid = true;
 			for (uint32_t probeOffset = 0u;
@@ -440,13 +432,15 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 			{
 				const GIProbe& probe = data.m_probes[
 					source.m_firstProbeIndex + probeOffset];
+				probeVisibilityMaxDistances[
+					source.m_firstProbeIndex + probeOffset] =
+					visibilityMaxDistance;
 				validProbeCount += probe.m_validity > 0.000001f ? 1u : 0u;
 				bAllProbesFullyValid = bAllProbesFullyValid &&
 					probe.m_validity >= 0.999999f;
 			}
 			const uint32_t adaptiveFaceMask = FindAdaptiveFaceMask(
 				data,
-				outLayout.m_nodes,
 				brickIndex);
 			const uint32_t brickMetadata =
 				(source.m_subdivisionLevel &
@@ -470,8 +464,30 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 		}
 
 		outLayout.m_probes.Reserve(data.m_probes.Num());
-		for (const GIProbe& source : data.m_probes)
+		for (uint32_t probeIndex = 0u;
+			probeIndex < data.m_probes.Num();
+			++probeIndex)
 		{
+			const GIProbe& source = data.m_probes[probeIndex];
+			const float visibilityMaxDistance = (std::max)(
+				probeVisibilityMaxDistances[probeIndex],
+				0.001f);
+			const float visibilityMaxDistanceSquared =
+				visibilityMaxDistance * visibilityMaxDistance;
+			auto packVisibilityMoments = [&](uint32_t directionIndex)
+				{
+					const glm::vec2 moments =
+						source.m_visibility[directionIndex];
+					return ClampAndPackHalf(
+						glm::clamp(
+							moments.x / visibilityMaxDistance,
+							0.0f,
+							1.0f),
+						glm::clamp(
+							moments.y / visibilityMaxDistanceSquared,
+							0.0f,
+							1.0f));
+				};
 			RHIGlobalIlluminationGpuProbe probe;
 			probe.m_positionAndValidity = glm::vec4(
 				source.m_position,
@@ -484,9 +500,19 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 			probe.m_environmentVisibility45 = glm::vec4(
 				source.m_environmentVisibility[4],
 				source.m_environmentVisibility[5],
+				visibilityMaxDistance,
 				EncodeUint(
-					source.m_flags & GIProbeBlockedDirectionMask),
-				0.0f);
+					source.m_flags & GIProbeBlockedDirectionMask));
+			probe.m_visibilityMoments0123 = glm::uvec4(
+				packVisibilityMoments(0u),
+				packVisibilityMoments(1u),
+				packVisibilityMoments(2u),
+				packVisibilityMoments(3u));
+			probe.m_visibilityMoments45 = glm::uvec4(
+				packVisibilityMoments(4u),
+				packVisibilityMoments(5u),
+				0u,
+				0u);
 			outLayout.m_probes.Add(probe);
 		}
 
@@ -542,12 +568,41 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuCoefficients(
 			{
 				float components[32]{};
 				uint32_t componentIndex = 0u;
+				float maximumMagnitude = 0.0f;
 				for (const glm::vec3& coefficient : source.m_irradiance)
 				{
-					components[componentIndex++] = coefficient.x;
-					components[componentIndex++] = coefficient.y;
-					components[componentIndex++] = coefficient.z;
+					for (glm::length_t channel = 0; channel < 3; ++channel)
+					{
+						const float value = coefficient[channel];
+						if (!std::isfinite(value))
+						{
+							outCoefficients.Clear();
+							outDiagnostic =
+								"global-illumination coefficients contain a non-finite value";
+							return false;
+						}
+						components[componentIndex++] = value;
+						maximumMagnitude = (std::max)(
+							maximumMagnitude,
+							std::abs(value));
+					}
 				}
+				const float coefficientScale = (std::max)(
+					1.0f,
+					maximumMagnitude / PackedCoefficientHeadroom);
+				if (!std::isfinite(coefficientScale) ||
+					coefficientScale > MaxHalfFloat)
+				{
+					outCoefficients.Clear();
+					outDiagnostic =
+						"global-illumination coefficients exceed the GPU HDR encoding range";
+					return false;
+				}
+				for (uint32_t index = 0u; index < componentIndex; ++index)
+				{
+					components[index] /= coefficientScale;
+				}
+				components[componentIndex] = coefficientScale;
 				RHIGlobalIlluminationGpuCoefficients packed;
 				for (uint32_t pairIndex = 0u; pairIndex < 16u; ++pairIndex)
 				{

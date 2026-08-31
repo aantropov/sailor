@@ -10,9 +10,9 @@ glslCommon: |
 glslCompute: |
   // Computes diffuse irradiance cubemap convolution for image-based lighting.
   // Uses quasi Monte Carlo sampling with Hammersley sequence.
-  
+
   const float Epsilon = 0.00001;
-  
+
   const uint NumSamples = 64 * 1024;
   const float InvNumSamples = 1.0 / float(NumSamples);
   
@@ -41,7 +41,9 @@ glslCompute: |
   // See: OpenGL core profile specs, section 8.13.
   vec3 GetSamplingVector()
   {
-    vec2 st = gl_GlobalInvocationID.xy/vec2(imageSize(irradianceMap));
+    vec2 st =
+      (vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) /
+      vec2(imageSize(irradianceMap));
     vec2 uv = 2.0 * vec2(st.x, 1.0-st.y) - vec2(1.0);
   
     vec3 ret;
@@ -94,7 +96,6 @@ glslCompute: |
       irradiance += 2.0 * textureLod(envMap, Li, 0).rgb * cosTheta;
     }
     irradiance /= vec3(NumSamples);
-  
+
     imageStore(irradianceMap, ivec3(gl_GlobalInvocationID), vec4(irradiance, 1.0));
   }
-  

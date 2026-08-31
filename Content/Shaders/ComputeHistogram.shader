@@ -1,13 +1,7 @@
-includes:
-- Shaders/Constants.glsl
-- Shaders/Math.glsl
-- Shaders/Lighting.glsl
-  
 defines: []
 glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable
-  #extension GL_EXT_shader_atomic_float : enable
 glslCompute: |
   
   // The code below taken from the next source: https://bruop.github.io/exposure/
@@ -16,17 +10,18 @@ glslCompute: |
   	 uint data[];
   } histogram;  
   
-  layout(set = 0, binding = 1, rgba16f) uniform image2D s_texColor;
+  layout(set = 0, binding = 1, rgba16f) uniform readonly image2D s_texColor;
   
   layout(push_constant) uniform Constants
   {
   	float minLog2Luminance;
-    float invMinLog2Luminance;
+    float invLog2LuminanceRange;
+    float centerWeight;
+    float padding;
   } PushConstants;
   
   #define GROUP_SIZE 256
   
-  #define EPSILON 0.005
   // Taken from RTR vol 4 pg. 278
   #define RGB_TO_LUM vec3(0.2125, 0.7154, 0.0721)
   
@@ -36,11 +31,22 @@ glslCompute: |
   // For a given color and luminance range, return the histogram bin index
   uint colorToBin(vec3 hdrColor, float minLogLum, float inverseLogLumRange) 
   {
+    if(any(isnan(hdrColor)))
+    {
+        return 0;
+    }
+    hdrColor = max(hdrColor, vec3(0.0f));
+    if(any(isinf(hdrColor)))
+    {
+        return 255;
+    }
+
     // Convert our RGB value to Luminance, see note for RGB_TO_LUM macro above
     float lum = dot(hdrColor, RGB_TO_LUM);
     
-    // Avoid taking the log of zero
-    if (lum < EPSILON) 
+    // Reserve bin zero for actual black. Positive values below the configured
+    // meter range still belong in bin one so night scenes can adapt.
+    if (lum <= 0.0f)
     {
         return 0;
     }
@@ -66,11 +72,21 @@ glslCompute: |
     if (gl_GlobalInvocationID.x < dim.x && gl_GlobalInvocationID.y < dim.y) 
     {
         vec3 hdrColor = imageLoad(s_texColor, ivec2(gl_GlobalInvocationID.xy)).xyz;
-        uint binIndex = colorToBin(hdrColor, PushConstants.minLog2Luminance, PushConstants.invMinLog2Luminance);
-        
+        uint binIndex = colorToBin(hdrColor, PushConstants.minLog2Luminance, PushConstants.invLog2LuminanceRange);
+
+        // A smooth center-weighted mask prevents bright objects entering at the
+        // viewport edges from steering exposure for the whole image. Keep a
+        // weight of one at the edges so every part of the frame is represented.
+        const vec2 screenPosition =
+          ((vec2(gl_GlobalInvocationID.xy) + vec2(0.5f)) / vec2(dim)) * 2.0f - 1.0f;
+        const float center = max(1.0f - dot(screenPosition, screenPosition), 0.0f);
+        const uint sampleWeight = max(
+          uint(round(1.0f + PushConstants.centerWeight * center * center)),
+          1u);
+
         // We use an atomic add to ensure we don't write to the same bin in our
         // histogram from two different threads at the same time.
-        atomicAdd(histogramShared[binIndex], 1);
+        atomicAdd(histogramShared[binIndex], sampleWeight);
     }
     
     // Wait for all threads in the work group to reach this point before adding our

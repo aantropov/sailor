@@ -25,8 +25,8 @@ namespace Sailor
 		SAILOR_API void SetBoxScale(float value) { m_boxScale = value; }
 		SAILOR_API float GetRotationSpeedDeg() const { return m_rotationSpeedDeg; }
 		SAILOR_API void SetRotationSpeedDeg(float value) { m_rotationSpeedDeg = value; }
-		SAILOR_API float GetDirectionalLightIntensity() const { return m_directionalLightIntensity; }
-		SAILOR_API void SetDirectionalLightIntensity(float value) { m_directionalLightIntensity = value; }
+		SAILOR_API float GetDirectionalLightIlluminance() const { return m_directionalLightIlluminance; }
+		SAILOR_API void SetDirectionalLightIlluminance(float value) { m_directionalLightIlluminance = value; }
 		SAILOR_API bool GetSpawnPointLights() const { return m_bSpawnPointLights; }
 		SAILOR_API void SetSpawnPointLights(bool value) { m_bSpawnPointLights = value; }
 
@@ -49,7 +49,7 @@ namespace Sailor
 		float m_boxScale = 60.0f;
 		TVector<GameObjectPtr> m_spawnedObjects;
 		float m_rotationSpeedDeg = 10.0f;
-		float m_directionalLightIntensity = 320.0f;
+		float m_directionalLightIlluminance = 320000.0f;
 		bool m_bSpawnPointLights = true;
 
 		float m_minFps = FLT_MAX;
@@ -76,8 +76,8 @@ REFL_AUTO(
 	func(SetBoxScale, property("boxScale"), SkipCDO()),
 	func(GetRotationSpeedDeg, property("rotationSpeedDeg"), SkipCDO()),
 	func(SetRotationSpeedDeg, property("rotationSpeedDeg"), SkipCDO()),
-	func(GetDirectionalLightIntensity, property("directionalLightIntensity"), SkipCDO()),
-	func(SetDirectionalLightIntensity, property("directionalLightIntensity"), SkipCDO()),
+	func(GetDirectionalLightIlluminance, property("directionalLightIlluminance"), SkipCDO()),
+	func(SetDirectionalLightIlluminance, property("directionalLightIlluminance"), SkipCDO()),
 	func(GetSpawnPointLights, property("spawnPointLights"), SkipCDO()),
 	func(SetSpawnPointLights, property("spawnPointLights"), SkipCDO())
 )

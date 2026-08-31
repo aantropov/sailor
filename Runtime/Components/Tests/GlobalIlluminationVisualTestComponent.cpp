@@ -180,7 +180,7 @@ void GlobalIlluminationVisualTestComponent::EnsureSkyAndCamera()
 	auto skyObject = GetWorld()->Instantiate("GiVisualTestSky");
 	auto sky = skyObject->AddComponent<SkyComponent>();
 	sky->SetAmbient(0.0f);
-	sky->SetSunIntensity(0.0f);
+	sky->SetCloudScatteringScale(0.0f);
 	sky->SetCloudsCoverage(0.0f);
 	sky->SetDirectionalLight(directionalLight);
 

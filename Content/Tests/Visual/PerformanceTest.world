@@ -37,7 +37,7 @@ prefabs:
         overrideProperties:
           gridSize: 15
           spawnPointLights: true
-          directionalLightIntensity: 4
+          directionalLightIlluminance: 4000
           baseColor:
             - 0.5
             - 0.5

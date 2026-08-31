@@ -13,9 +13,9 @@
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "Editor/GlobalIlluminationBakeController.h"
-#include "FrameGraph/FrameGraphNode.h"
 #include "Memory/ObjectAllocator.hpp"
 #include "RHI/GlobalIllumination.h"
+#include "Raytracing/LightingModel.h"
 #include "Raytracing/PathTracer.h"
 #include "Raytracing/GIProbesPathTracer.h"
 
@@ -78,14 +78,6 @@ namespace
 		{
 			throw std::runtime_error(message);
 		}
-	}
-
-	void TestGlobalIlluminationResolveNodeRegistration()
-	{
-		Framegraph::FrameGraphBuilder builder;
-		Require(
-			builder.CreateNode("GlobalIlluminationResolve").IsValid(),
-			"the runtime library must register the GlobalIlluminationResolve framegraph node");
 	}
 
 	std::string ReadContractText(const std::filesystem::path& path)
@@ -241,9 +233,432 @@ namespace
 #endif
 	}
 
+	void TestPhysicalHdrFrameGraphContract()
+	{
+#if defined(SAILOR_TEST_SOURCE_DIR)
+		const std::filesystem::path contentRoot =
+			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		const char* rendererPaths[] =
+		{
+			"DefaultRenderer.renderer",
+			"EditorRenderer.renderer"
+		};
+		for (const char* rendererPath : rendererPaths)
+		{
+			const YAML::Node renderer = YAML::Load(
+				ReadContractText(contentRoot / rendererPath));
+			const YAML::Node renderTargets = renderer["renderTargets"];
+			const YAML::Node frame = renderer["frame"];
+
+			YAML::Node averageLuminance;
+			for (const YAML::Node& target : renderTargets)
+			{
+				if (target["name"] &&
+					target["name"].as<std::string>() == "AverageLuminance")
+				{
+					averageLuminance = target;
+					break;
+				}
+			}
+			Require(
+				averageLuminance &&
+					averageLuminance["format"].as<std::string>() == "R32_SFLOAT" &&
+					averageLuminance["width"].as<std::string>() == "1" &&
+					averageLuminance["height"].as<std::string>() == "1" &&
+					averageLuminance["bIsCompatibleWithComputeShaders"].as<bool>(),
+				std::string(rendererPath) +
+					" must keep adapted luminance in a sampled R32 compute target");
+
+			size_t eyeAdaptationIndex = frame.size();
+			size_t bloomIndex = frame.size();
+			size_t tonemappingIndex = frame.size();
+			uint32_t eyeAdaptationCount = 0u;
+			uint32_t bloomCount = 0u;
+			uint32_t tonemappingCount = 0u;
+			for (size_t passIndex = 0u; passIndex < frame.size(); ++passIndex)
+			{
+				const YAML::Node pass = frame[passIndex];
+				const std::string name = pass["name"] ?
+					pass["name"].as<std::string>() : std::string{};
+				const std::string tag = pass["tag"] ?
+					pass["tag"].as<std::string>() : std::string{};
+				const YAML::Node attachments = pass["renderTargets"];
+				if (name == "EyeAdaptation")
+				{
+					++eyeAdaptationCount;
+					eyeAdaptationIndex = passIndex;
+					Require(
+						GetSequenceMapping(attachments, "hdrColor") == "Main" &&
+							GetSequenceMapping(attachments, "averageLuminance") ==
+								"AverageLuminance",
+						std::string(rendererPath) +
+							" must meter the unmodified HDR scene into AverageLuminance");
+				}
+				else if (name == "Bloom")
+				{
+					++bloomCount;
+					bloomIndex = passIndex;
+					Require(
+						GetSequenceMapping(attachments, "bloom") == "Main" &&
+							GetSequenceMapping(
+								attachments,
+								"averageLuminanceSampler") == "AverageLuminance",
+						std::string(rendererPath) +
+							" bloom must threshold in the metered scene space");
+				}
+				else if (name == "PostProcess" && tag == "Tonemapping")
+				{
+					++tonemappingCount;
+					tonemappingIndex = passIndex;
+					Require(
+						GetSequenceMapping(pass["string"], "shader") ==
+							"Shaders/Tonemapping.shader" &&
+							GetSequenceMapping(attachments, "color") == "Secondary" &&
+							GetSequenceMapping(attachments, "colorSampler") == "Main" &&
+							GetSequenceMapping(
+								attachments,
+								"averageLuminanceSampler") == "AverageLuminance",
+						std::string(rendererPath) +
+							" tonemapping must consume the bloomed HDR scene and its meter");
+				}
+			}
+
+			Require(
+				eyeAdaptationCount == 1u &&
+					bloomCount == 1u &&
+					tonemappingCount == 1u &&
+					eyeAdaptationIndex < bloomIndex &&
+					bloomIndex < tonemappingIndex,
+				std::string(rendererPath) +
+					" must execute HDR metering, bloom, and tonemapping in that order");
+		}
+#endif
+	}
+
 	bool IsNear(float lhs, float rhs, float tolerance = 0.0001f)
 	{
 		return std::abs(lhs - rhs) <= tolerance;
+	}
+
+	void TestPhysicalDielectricTransport()
+	{
+		Require(IsNear(
+				Raytracing::LightingModel::FresnelDielectric(
+					1.0f,
+					1.0f,
+					1.5f),
+				0.04f,
+				0.00001f),
+			"air-to-glass normal-incidence Fresnel reflectance must be 4 percent");
+		Require(IsNear(
+				Raytracing::LightingModel::FresnelDielectric(
+					0.0f,
+					1.0f,
+					1.0f),
+				0.0f),
+			"an interface between matching IORs must not create a false reflection");
+		Require(IsNear(
+				Raytracing::LightingModel::FresnelDielectric(
+					0.5f,
+					1.5f,
+					1.0f),
+				1.0f),
+				"glass-to-air transport above the critical angle must be total internal reflection");
+		Require(IsNear(
+				Raytracing::LightingModel::FresnelDielectric(
+					1.0f,
+					1.0f,
+					1000000.0f),
+				1.0f),
+			"the glTF infinite-IOR compatibility value must reflect all incident energy");
+
+		Raytracing::LightingModel::SampledData glass;
+		glass.m_baseColor = glm::vec4(1.0f);
+		glass.m_orm = glm::vec3(1.0f, 0.1f, 0.0f);
+		glass.m_ior = 1.5f;
+		glass.m_thicknessFactor = 1.0f;
+		glass.m_transmission = 1.0f;
+		const glm::vec3 normal(0.0f, 1.0f, 0.0f);
+		const glm::vec3 normalView = normal;
+
+		const auto sampleInterface = [&glass, &normal](
+			const glm::vec3& viewDirection,
+			float fromIor,
+			float toIor,
+			glm::vec2 randomSample)
+		{
+			struct Result
+			{
+				glm::vec3 m_term{};
+				glm::vec3 m_direction{};
+				float m_pdf = 0.0f;
+				bool m_bTransmission = false;
+				bool m_bSampled = false;
+			};
+			Result result;
+			result.m_bSampled = Raytracing::LightingModel::Sample(
+				glass,
+				normal,
+				viewDirection,
+				fromIor,
+				toIor,
+				result.m_term,
+				result.m_pdf,
+				result.m_bTransmission,
+				result.m_direction,
+				randomSample,
+				glm::vec2(0.999f, 0.5f));
+			return result;
+		};
+
+		const auto entering = sampleInterface(
+			normalView,
+			1.0f,
+			1.5f,
+			glm::vec2(0.0f));
+		const auto exiting = sampleInterface(
+			normalView,
+			1.5f,
+			1.0f,
+			glm::vec2(0.0f));
+		Require(
+			entering.m_bSampled && entering.m_bTransmission &&
+			exiting.m_bSampled && exiting.m_bTransmission &&
+			entering.m_pdf > 0.0f && exiting.m_pdf > 0.0f &&
+			glm::dot(entering.m_direction, normal) < -0.999f &&
+			glm::dot(exiting.m_direction, normal) < -0.999f,
+			"a normal-incidence thick dielectric path must refract through both interfaces");
+		Require(
+			IsNear(entering.m_term.r, 1.0f / 2.25f, 0.001f) &&
+				IsNear(exiting.m_term.r, 2.25f, 0.005f) &&
+				IsNear(
+					entering.m_term.r * exiting.m_term.r,
+					1.0f,
+					0.005f),
+			"radiance-mode refraction must apply reciprocal eta-squared factors instead of unit throughput");
+
+		glass.m_ior = 1.0f;
+		const auto matchedIor = sampleInterface(
+			normalView,
+			1.0f,
+			1.0f,
+			glm::vec2(0.0f));
+		Require(
+			matchedIor.m_bSampled && matchedIor.m_bTransmission &&
+			glm::length(matchedIor.m_direction + normalView) <= 0.0001f &&
+			glm::length(matchedIor.m_term - glm::vec3(1.0f)) <= 0.0001f,
+			"matching IORs must pass radiance straight through without a singular microfacet PDF");
+
+		glass.m_ior = 1.5f;
+		glass.m_orm.y = 0.6f;
+		const glm::vec3 obliqueView = glm::normalize(
+			glm::vec3(0.6f, 0.8f, 0.0f));
+		bool bFoundFiniteTirReflection = false;
+		for (uint32_t y = 1u; y < 32u && !bFoundFiniteTirReflection; ++y)
+		{
+			for (uint32_t x = 0u; x < 32u; ++x)
+			{
+				const auto tir = sampleInterface(
+					obliqueView,
+					1.5f,
+					1.0f,
+					glm::vec2(
+						(static_cast<float>(x) + 0.5f) / 32.0f,
+						(static_cast<float>(y) + 0.5f) / 32.0f));
+				bFoundFiniteTirReflection =
+					tir.m_bSampled && !tir.m_bTransmission &&
+					tir.m_pdf > 0.0f && std::isfinite(tir.m_pdf) &&
+					std::isfinite(tir.m_term.x) &&
+					std::isfinite(tir.m_term.y) &&
+					std::isfinite(tir.m_term.z) &&
+					glm::dot(tir.m_direction, normal) > 0.0f;
+				if (bFoundFiniteTirReflection)
+				{
+					break;
+				}
+			}
+		}
+		Require(bFoundFiniteTirReflection,
+			"a transmission sample that reaches total internal reflection must become a finite reflected path");
+	}
+
+	void TestLayeredGltfTransport()
+	{
+		const glm::vec3 normal(0.0f, 1.0f, 0.0f);
+		const glm::vec3 viewDirection = normal;
+		const glm::vec3 lightDirection = normal;
+
+		Raytracing::LightingModel::SampledData metallicRoughness;
+		metallicRoughness.m_baseColor =
+			glm::vec4(0.72f, 0.41f, 0.18f, 1.0f);
+		metallicRoughness.m_orm = glm::vec3(1.0f, 0.47f, 0.0f);
+		metallicRoughness.m_ior = 1.5f;
+		const glm::vec3 mixedView = glm::normalize(
+			glm::vec3(0.6f, 0.8f, 0.0f));
+		const glm::vec3 mixedLight = glm::normalize(
+			glm::vec3(-0.2f, 0.98f, 0.0f));
+		const glm::vec3 dielectricResponse =
+			Raytracing::LightingModel::CalculateBRDFCosineWeighted(
+				mixedView,
+				normal,
+				mixedLight,
+				metallicRoughness,
+				1.0f,
+				1.5f);
+		metallicRoughness.m_orm.z = 1.0f;
+		const glm::vec3 metalResponse =
+			Raytracing::LightingModel::CalculateBRDFCosineWeighted(
+				mixedView,
+				normal,
+				mixedLight,
+				metallicRoughness,
+				1.0f,
+				1.5f);
+		metallicRoughness.m_orm.z = 0.5f;
+		const glm::vec3 mixedResponse =
+			Raytracing::LightingModel::CalculateBRDFCosineWeighted(
+				mixedView,
+				normal,
+				mixedLight,
+				metallicRoughness,
+				1.0f,
+				1.5f);
+		Require(
+			glm::length(mixedResponse -
+				glm::mix(dielectricResponse, metalResponse, 0.5f)) <=
+				0.00001f,
+			"intermediate metalness must linearly mix the complete dielectric and metallic BRDF endpoints");
+
+		const float grazingSheenVisibility =
+			Raytracing::LightingModel::VisibilitySheen(
+				0.05f,
+				0.05f,
+				0.5f);
+		Require(
+			IsNear(grazingSheenVisibility, 2.3525f, 0.001f),
+			"Charlie visibility must retain its finite grazing response instead of clipping the sheen BRDF");
+
+		Raytracing::LightingModel::SampledData clearcoat;
+		clearcoat.m_baseColor = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		clearcoat.m_orm = glm::vec3(1.0f, 0.45f, 0.0f);
+		clearcoat.m_ior = 1.0f;
+		clearcoat.m_clearcoatNormal = normal;
+		clearcoat.m_clearcoatFactor = 1.0f;
+		clearcoat.m_clearcoatRoughness = 0.35f;
+		clearcoat.m_emissive = glm::vec3(10.0f, 5.0f, 2.0f);
+
+		const glm::vec3 coatedResponse =
+			Raytracing::LightingModel::CalculateBRDFCosineWeighted(
+				viewDirection,
+				normal,
+				lightDirection,
+				clearcoat,
+				1.0f,
+				1.0f);
+		const glm::vec3 coatedEmission =
+			Raytracing::LightingModel::CalculateEmittedRadiance(
+				clearcoat,
+				normal,
+				viewDirection);
+		Require(
+			coatedResponse.r > 0.0f &&
+			IsNear(coatedResponse.r, coatedResponse.g, 0.00001f) &&
+			IsNear(coatedResponse.g, coatedResponse.b, 0.00001f),
+			"a clearcoat layer over a non-reflecting base must produce a neutral microfacet reflection");
+		Require(
+			glm::length(coatedEmission -
+				glm::vec3(9.6f, 4.8f, 1.92f)) <= 0.0001f,
+			"normal-incidence clearcoat must transmit 96 percent of base emission through its Fresnel layer");
+
+		Raytracing::LightingModel::SampledData sheen;
+		sheen.m_baseColor = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		sheen.m_orm = glm::vec3(1.0f, 0.7f, 0.0f);
+		sheen.m_ior = 1.0f;
+		sheen.m_sheenColor = glm::vec3(0.8f, 0.1f, 0.0f);
+		sheen.m_sheenRoughness = 0.65f;
+		const glm::vec3 grazingView = glm::normalize(
+			glm::vec3(0.95f, 0.31225f, 0.0f));
+		const glm::vec3 grazingLight = grazingView;
+		const glm::vec3 sheenResponse =
+			Raytracing::LightingModel::CalculateBRDFCosineWeighted(
+				grazingView,
+				normal,
+				grazingLight,
+				sheen,
+				1.0f,
+				1.0f);
+		Require(
+			sheenResponse.r > sheenResponse.g * 4.0f &&
+			sheenResponse.g > 0.0f &&
+			IsNear(sheenResponse.b, 0.0f, 0.000001f),
+			"Charlie sheen must preserve its authored color in the grazing reflection lobe");
+
+		Raytracing::LightingModel::SampledData layered;
+		layered.m_baseColor = glm::vec4(0.45f, 0.32f, 0.18f, 1.0f);
+		layered.m_orm = glm::vec3(1.0f, 0.55f, 0.0f);
+		layered.m_ior = 1.5f;
+		layered.m_sheenColor = glm::vec3(0.3f, 0.12f, 0.04f);
+		layered.m_sheenRoughness = 0.7f;
+		layered.m_clearcoatNormal = normal;
+		layered.m_clearcoatFactor = 0.65f;
+		layered.m_clearcoatRoughness = 0.4f;
+		uint32_t finiteSamples = 0u;
+		glm::vec3 accumulatedThroughput(0.0f);
+		for (uint32_t sampleIndex = 0u; sampleIndex < 2048u;
+			++sampleIndex)
+		{
+			const glm::vec2 randomSample(
+				(static_cast<float>(sampleIndex % 64u) + 0.5f) / 64.0f,
+				(static_cast<float>(sampleIndex / 64u) + 0.5f) / 32.0f);
+			const glm::vec2 selectionSample(
+				(static_cast<float>(sampleIndex) + 0.5f) / 2048.0f,
+				0.5f);
+			glm::vec3 term{};
+			glm::vec3 direction{};
+			float pdf = 0.0f;
+			bool bTransmission = false;
+			if (!Raytracing::LightingModel::Sample(
+					layered,
+					normal,
+					viewDirection,
+					1.0f,
+					1.5f,
+					term,
+					pdf,
+					bTransmission,
+					direction,
+					randomSample,
+					selectionSample))
+			{
+				continue;
+			}
+			const float evaluatedPdf =
+				Raytracing::LightingModel::ReflectionPdf(
+					layered,
+					normal,
+					viewDirection,
+					direction);
+			Require(
+				!bTransmission && pdf > 0.0f &&
+				std::isfinite(pdf) &&
+				IsNear(pdf, evaluatedPdf, 0.00001f) &&
+				std::isfinite(term.x) &&
+				std::isfinite(term.y) &&
+				std::isfinite(term.z) &&
+				glm::all(glm::greaterThanEqual(
+					term,
+					glm::vec3(0.0f))),
+				"layered clearcoat and sheen samples must report the finite mixture PDF used by their throughput");
+			accumulatedThroughput += term;
+			++finiteSamples;
+		}
+		Require(
+			finiteSamples > 1500u &&
+			std::isfinite(accumulatedThroughput.x) &&
+			std::isfinite(accumulatedThroughput.y) &&
+			std::isfinite(accumulatedThroughput.z) &&
+			glm::dot(accumulatedThroughput, glm::vec3(1.0f)) > 0.0f,
+			"the layered glTF BSDF must sample all reflective energy without collapsing into rejected or invalid paths");
 	}
 
 	template<typename TTest>
@@ -459,7 +874,7 @@ namespace
 		Raytracing::LightProxy light;
 		light.m_type = ELightType::Directional;
 		light.m_direction = GetEveningLightDirection();
-		light.m_intensity = GetEveningLightIntensity();
+		light.m_intensity = GetEveningSunIlluminance();
 		light.m_indirectLightingIntensity = 1.0f;
 		fixture.m_lights.Add(std::move(light));
 		return fixture;
@@ -654,6 +1069,53 @@ namespace
 			outSample.m_bHit = false;
 			return true;
 		}
+	};
+
+	class PdfWeightedPrimaryDirectionSampler final :
+		public IGIProbeBakeRaySampler
+	{
+	public:
+		bool SamplePrimaryDirection(
+			const glm::vec3&,
+			uint32_t sampleIndex,
+			uint32_t,
+			uint32_t,
+			glm::vec3& outDirection,
+			float& outPdf,
+			std::string& outDiagnostic) const override
+		{
+			const bool bUpper = (sampleIndex & 1u) == 0u;
+			outDirection = bUpper ?
+				glm::vec3(0.0f, 1.0f, 0.0f) :
+				glm::vec3(0.0f, -1.0f, 0.0f);
+			outPdf = bUpper ? UpperPdf : LowerPdf;
+			outDiagnostic.clear();
+			return true;
+		}
+
+		bool Sample(
+			const glm::vec3&,
+			const glm::vec3& direction,
+			float maxDistance,
+			uint32_t,
+			GIProbeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override
+		{
+			const float pdf = direction.y >= 0.0f ? UpperPdf : LowerPdf;
+			outSample.m_radiance = glm::vec3(pdf * RadianceOverPdf);
+			outSample.m_distance = maxDistance;
+			outSample.m_bHit = false;
+			outDiagnostic.clear();
+			return true;
+		}
+
+		static constexpr float RadianceOverPdf = 4.0f;
+
+	private:
+		static constexpr float UpperPdf =
+			1.0f / (16.0f * 3.14159265358979323846f);
+		static constexpr float LowerPdf =
+			1.0f / (8.0f * 3.14159265358979323846f);
 	};
 
 	class ConcurrentSeedDrivenBakeRaySampler final :
@@ -989,6 +1451,15 @@ namespace
 	class InspectablePathTracer final : public Raytracing::PathTracer
 	{
 	public:
+		float TraceDirectTransmittance(
+			const Math::Ray& ray,
+			float maxDistance) const
+		{
+			return TraceDirectLightTransmittance(
+				ray,
+				maxDistance);
+		}
+
 		bool IntersectIgnoring(
 			const Math::Ray& ray,
 			uint32_t ignoreInstance,
@@ -1010,11 +1481,49 @@ namespace
 			outDistance = hit.m_hit.m_rayLenght;
 			return true;
 		}
+
+		bool UsesEnvironmentImportance() const
+		{
+			return m_bUseRuntimeEnvironmentImportance;
+		}
+
+		bool SampleEnvironment(
+			const glm::vec3& worldNormal,
+			uint32_t& randomState,
+			glm::vec3& outDirection,
+			float& outPdf) const
+		{
+			return SampleDirectEnvironment(
+				worldNormal,
+				randomState,
+				outDirection,
+				outPdf);
+		}
+
+		float EnvironmentPdf(
+			const glm::vec3& worldNormal,
+			const glm::vec3& direction) const
+		{
+			return DirectEnvironmentPdf(worldNormal, direction);
+		}
+
+		glm::vec3 DirectEnvironmentRadiance(
+			const glm::vec3& direction) const
+		{
+			return SampleRuntimeDirectEnvironment(direction);
+		}
 	};
 
 	class MaterialSamplingPathTracer final : public Raytracing::PathTracer
 	{
 	public:
+		Raytracing::LightingModel::SampledData SamplePreparedMaterial(
+			size_t materialIndex,
+			glm::vec2 uv = glm::vec2(0.5f)) const
+		{
+			return GetMaterialData(materialIndex, uv);
+		}
+
 		Raytracing::LightingModel::SampledData SampleLayeredMaterial(
 			const glm::vec4& first,
 			const glm::vec4& second,
@@ -1041,6 +1550,43 @@ namespace
 			addTexture(second);
 
 			return GetMaterialData(0u, glm::vec2(0.0f), weights);
+		}
+
+		glm::vec3 SampleScaledNormal(
+			const glm::vec3& normal,
+			float normalScale)
+		{
+			m_materials.Clear();
+			m_textures.Clear();
+
+			Raytracing::Material material;
+			material.m_normalIndex = 0u;
+			material.m_normalScale = normalScale;
+			m_materials.Add(material);
+
+			TSharedPtr<Raytracing::CombinedSampler2D> texture =
+				TSharedPtr<Raytracing::CombinedSampler2D>::Make();
+			texture->Initialize<glm::vec3>(1u, 1u, 3u);
+			texture->SetPixel(0u, 0u, normal);
+			m_textures.Add(std::move(texture));
+
+			return GetMaterialData(0u, glm::vec2(0.0f)).m_normal;
+		}
+
+		glm::vec4 SampleVertexTint(
+			const glm::vec4& baseColor,
+			const glm::vec4& vertexColor)
+		{
+			m_materials.Clear();
+			m_textures.Clear();
+
+			Raytracing::Material material;
+			material.m_baseColorFactor = baseColor;
+			m_materials.Add(material);
+			return GetMaterialData(
+				0u,
+				glm::vec2(0.0f),
+				vertexColor).m_baseColor;
 		}
 	};
 
@@ -1262,19 +1808,13 @@ namespace
 			}
 			probe.m_flags |= GIProbeBlockedDirectionMask;
 		}
-		Require(SampleGIProbesIrradiance(
+		Require(!SampleGIProbesIrradiance(
 			data,
 			glm::vec3(0.5f),
 			glm::vec3(0.0f),
 			sampled,
-			&debug) &&
-			IsNear(sampled.x, unoccludedIrradiance),
-			"six-axis blocker metadata must not become infinite runtime planes "
-			"that create black holes");
-		float rescueWeight = 0.0f;
-		for (float weight : debug.m_weights) rescueWeight += weight;
-		Require(IsNear(rescueWeight, 1.0f),
-			"receiver-side weights must remain normalized when blocker metadata is present");
+			&debug),
+			"near-zero local distance moments must reject a receiver beyond nearby geometry");
 
 		GIProbesData directional;
 		directional.m_volumeMin = glm::vec3(-2.0f);
@@ -1292,6 +1832,7 @@ namespace
 			visibility = glm::vec2(2.0f, 4.0f);
 		}
 		directionalProbe.m_visibility[2u] = glm::vec2(0.1f, 0.01001f);
+		directionalProbe.m_flags |= GIProbeBlockedDirectionBit(2u);
 		directional.m_probes.Add(directionalProbe);
 		GIProbe referenceProbe;
 		referenceProbe.m_position = glm::vec3(2.0f, 0.0f, 0.0f);
@@ -1303,25 +1844,31 @@ namespace
 		directional.m_probes.Add(referenceProbe);
 		glm::vec3 xDominant{};
 		glm::vec3 yDominant{};
+		GIProbeDebugInfo xDominantDebug;
+		GIProbeDebugInfo yDominantDebug;
 		Require(SampleGIProbesIrradiance(
 			directional,
 			glm::vec3(1.0f, 0.99f, 0.0f),
 			glm::vec3(0.0f),
-			xDominant) &&
+			xDominant,
+			&xDominantDebug) &&
 			SampleGIProbesIrradiance(
 				directional,
 				glm::vec3(0.99f, 1.0f, 0.0f),
 				glm::vec3(0.0f),
-				yDominant),
+				yDominant,
+				&yDominantDebug),
 			"directional visibility fixtures should sample inside their brick");
 		const float fullDirectionalIrradiance = 0.2820947918f;
 		Require(
 			IsNear(xDominant.x, fullDirectionalIrradiance) &&
 			IsNear(yDominant.x, fullDirectionalIrradiance) &&
-			std::abs(xDominant.x - yDominant.x) <
-				fullDirectionalIrradiance * 0.02f,
-			"clearance values without blocker bits must not create circular "
-			"attenuation or an axis-lobe boundary");
+			xDominantDebug.m_totalUnnormalizedWeight < 1.0f &&
+			yDominantDebug.m_totalUnnormalizedWeight < 1.0f &&
+			std::abs(
+				xDominantDebug.m_totalUnnormalizedWeight -
+				yDominantDebug.m_totalUnnormalizedWeight) < 0.02f,
+			"broad visibility moments must vary smoothly across signed-axis lobe boundaries");
 		Require(!SampleGIProbesIrradiance(
 			data,
 			glm::vec3(2.0f),
@@ -1372,9 +1919,20 @@ namespace
 			sampled,
 			&debug),
 			"a surface between two valid probes should sample");
-		Require(IsNear(sampled.x, 50.5f * 0.2820947918f, 0.0001f),
-			"a signed-axis clearance hit must not be extended into an infinite "
-			"runtime plane across an oblique receiver");
+		const float obliqueIrradiance = sampled.x;
+		glm::vec3 nearbySample{};
+		Require(
+			obliqueIrradiance > 10.0f * 0.2820947918f &&
+			obliqueIrradiance < 50.5f * 0.2820947918f &&
+			SampleGIProbesIrradiance(
+				data,
+				glm::vec3(0.74f, 0.0f, 0.0f),
+				glm::vec3(0.0f),
+				nearbySample) &&
+			std::abs(nearbySample.x - obliqueIrradiance) <
+				obliqueIrradiance * 0.05f,
+			"broad distance moments must attenuate cross-wall leakage without an "
+				"infinite hard rejection plane");
 
 		data.m_probes[0].m_flags &= ~GIProbeBlockedDirectionMask;
 		data.m_probes[0].m_visibility[4u] = glm::vec2(2.0f, 4.0f);
@@ -1389,10 +1947,23 @@ namespace
 			"a bright probe behind the shaded surface must not win over a "
 			"same-side reference probe");
 
+		Require(SampleGIProbesIrradiance(
+			data,
+			glm::vec3(0.0f, 0.0f, -0.8f),
+			glm::vec3(0.0f, 0.0f, 1.0f),
+			sampled,
+			&debug),
+			"low receiver coverage should retain its same-side probe support");
+		Require(IsNear(sampled.x, 0.2f * 0.2820947918f, 0.0001f),
+			"ten percent surviving receiver support must not be amplified to a "
+			"full bright probe contribution");
+		float lowCoverageWeight = 0.0f;
+		for (float weight : debug.m_weights) lowCoverageWeight += weight;
+		Require(IsNear(lowCoverageWeight, 0.2f, 0.0001f),
+			"debug weights must expose conservative low-coverage normalization");
+
 		data.m_probes[0].m_visibility[4u] = glm::vec2(0.25f, 0.0625f);
 		data.m_probes[0].m_flags |= GIProbeBlockedDirectionBit(4u);
-		data.m_probes[1].m_visibility[5u] = glm::vec2(0.25f, 0.0625f);
-		data.m_probes[1].m_flags |= GIProbeBlockedDirectionBit(5u);
 		Require(SampleGIProbesIrradiance(
 			data,
 			glm::vec3(0.0f),
@@ -1607,8 +2178,8 @@ components:
 			{
 				const YAML::Node directionalLight =
 					properties["m_directionalLight"];
-				const YAML::Node intensity =
-					properties["directionalLightIntensity"];
+				const YAML::Node illuminance =
+					properties["sunIlluminance"];
 				bHasSky = name == "Evening Sky" &&
 					IsNear(
 						properties["sunAngle"].as<float>(),
@@ -1616,20 +2187,20 @@ components:
 							EveningSunAngleDegrees) &&
 					directionalLight && directionalLight.IsMap() &&
 					directionalLight["instanceId"] &&
-					intensity && intensity.IsSequence() &&
-					intensity.size() == 3u &&
+					illuminance && illuminance.IsSequence() &&
+					illuminance.size() == 3u &&
 					IsNear(
-						intensity[0].as<float>(),
+						illuminance[0].as<float>(),
 						GlobalIlluminationLandscapeTestScene::
-							GetEveningLightIntensity().x) &&
+							GetEveningSunIlluminance().x) &&
 					IsNear(
-						intensity[1].as<float>(),
+						illuminance[1].as<float>(),
 						GlobalIlluminationLandscapeTestScene::
-							GetEveningLightIntensity().y) &&
+							GetEveningSunIlluminance().y) &&
 					IsNear(
-						intensity[2].as<float>(),
+						illuminance[2].as<float>(),
 						GlobalIlluminationLandscapeTestScene::
-							GetEveningLightIntensity().z);
+							GetEveningSunIlluminance().z);
 				if (bHasSky)
 				{
 					skyDirectionalLightComponentId =
@@ -1886,11 +2457,13 @@ components:
 		adaptiveNeighbors.m_volumeMax = glm::vec3(2.0f, 1.0f, 1.0f);
 		adaptiveNeighbors.m_bricks.Clear();
 		adaptiveNeighbors.m_probes.Clear();
-		auto appendBrick = [&](float minX, float maxX, uint32_t subdivision)
+		auto appendBrick = [&](const glm::vec3& brickMin,
+			const glm::vec3& brickMax,
+			uint32_t subdivision)
 			{
 				GIProbeBrick brick;
-				brick.m_min = glm::vec3(minX, 0.0f, 0.0f);
-				brick.m_max = glm::vec3(maxX, 1.0f, 1.0f);
+				brick.m_min = brickMin;
+				brick.m_max = brickMax;
 				brick.m_subdivisionLevel = subdivision;
 				brick.m_firstProbeIndex = static_cast<uint32_t>(
 					adaptiveNeighbors.m_probes.Num());
@@ -1905,17 +2478,20 @@ components:
 						{
 							GIProbe probe;
 							probe.m_position = glm::vec3(
-								x != 0u ? maxX : minX,
-								static_cast<float>(y),
-								static_cast<float>(z));
+								x != 0u ? brickMax.x : brickMin.x,
+								y != 0u ? brickMax.y : brickMin.y,
+								z != 0u ? brickMax.z : brickMin.z);
 							probe.m_irradiance[0] = glm::vec3(1.0f);
 							adaptiveNeighbors.m_probes.Add(std::move(probe));
 						}
 					}
 				}
 			};
-		appendBrick(0.0f, 1.0f, 0u);
-		appendBrick(1.0f, 2.0f, 1u);
+		appendBrick(glm::vec3(0.0f), glm::vec3(1.0f), 0u);
+		appendBrick(
+			glm::vec3(1.0f, 0.0f, 0.0f),
+			glm::vec3(2.0f, 0.4f, 0.4f),
+			1u);
 		adaptiveNeighbors.m_layoutHash =
 			ComputeGIProbesLayoutHash(adaptiveNeighbors);
 		RHI::RHIGlobalIlluminationGpuLayout adaptiveLayout;
@@ -1937,19 +2513,29 @@ components:
 		Require(
 			adaptiveFaceMask(0u) == (1u << 1u) &&
 			adaptiveFaceMask(1u) == (1u << 0u),
-			"GPU brick metadata must mark both sides of an adaptive X-face so "
-			"fragment sampling can retain the full eight-probe path there");
+			"GPU brick metadata must mark both sides of a partial adaptive "
+			"X-face even when the neighbor does not cover the face center");
+		const float visibilityMaxDistance =
+			CalculateGIProbeVisibilityMaxDistance(
+				*day,
+				day->m_bricks[0]);
+		const glm::vec2 packedVisibilityMoments = glm::unpackHalf2x16(
+			layout.m_probes[0].m_visibilityMoments0123.x);
 		Require(
 			layout.m_probes[0].m_environmentVisibility0123 ==
 				glm::vec4(0.1f, 0.2f, 0.3f, 0.4f) &&
 			layout.m_probes[0].m_environmentVisibility45.x == 0.5f &&
 			layout.m_probes[0].m_environmentVisibility45.y == 0.6f &&
+			IsNear(
+				layout.m_probes[0].m_environmentVisibility45.z,
+				visibilityMaxDistance) &&
 			std::bit_cast<uint32_t>(
-				layout.m_probes[0].m_environmentVisibility45.z) ==
+				layout.m_probes[0].m_environmentVisibility45.w) ==
 				blockedDirection &&
-			layout.m_probes[0].m_environmentVisibility45.w == 0.0f,
-			"GPU probe layout must preserve all six environment lobes and pack "
-			"the six blocking bits into the unused transport component");
+			IsNear(packedVisibilityMoments.x, 1.0f, 0.001f) &&
+			IsNear(packedVisibilityMoments.y, 1.0f, 0.001f),
+			"GPU probe layout must preserve environment lobes, local support, "
+				"blocker bits, and normalized distance moments");
 
 		TVector<RHI::RHIGlobalIlluminationGpuCoefficients> coefficients;
 		Require(RHI::BuildGlobalIlluminationGpuCoefficients(
@@ -1967,6 +2553,41 @@ components:
 			IsNear(firstTwo.y, 1.0f, 0.001f) &&
 			IsNear(nextTwo.x, 1.0f, 0.001f),
 			"signed RGB SH components must retain their sequential FP16 representation");
+
+		GIProbesDataPtr hdr = GIProbesDataPtr::Make();
+		*hdr = MakeVolume(0.0f, 44u);
+		hdr->m_probes[0].m_irradiance[0] =
+			glm::vec3(180000.0f, -90000.0f, 45000.0f);
+		hdr->m_probes[0].m_irradiance[8].z = -120000.0f;
+		RHI::RHIGlobalIlluminationSnapshot hdrSnapshot;
+		hdrSnapshot.m_layout = hdr;
+		hdrSnapshot.m_qualityBudget = 1u;
+		RHI::RHIGlobalIlluminationState hdrState;
+		hdrState.m_name = "HDR";
+		hdrState.m_data = hdr;
+		hdrState.m_effectiveWeight = 1.0f;
+		hdrSnapshot.m_states.Add(std::move(hdrState));
+		TVector<RHI::RHIGlobalIlluminationGpuCoefficients> hdrCoefficients;
+		Require(RHI::BuildGlobalIlluminationGpuCoefficients(
+				hdrSnapshot,
+				hdrCoefficients,
+				diagnostic) &&
+			hdrCoefficients.Num() == hdr->m_probes.Num(),
+			"physical HDR SH coefficients should pack without FP16 clipping: " +
+				diagnostic);
+		const glm::vec2 hdrFirstTwo = glm::unpackHalf2x16(
+			hdrCoefficients[0].m_packed[0].x);
+		const glm::vec2 hdrNextTwo = glm::unpackHalf2x16(
+			hdrCoefficients[0].m_packed[0].y);
+		const glm::vec2 hdrLastPair = glm::unpackHalf2x16(
+			hdrCoefficients[0].m_packed[3].y);
+		const float hdrScale = hdrLastPair.y;
+		Require(hdrScale > 1.0f &&
+			IsNear(hdrFirstTwo.x * hdrScale, 180000.0f, 100.0f) &&
+			IsNear(hdrFirstTwo.y * hdrScale, -90000.0f, 100.0f) &&
+			IsNear(hdrNextTwo.x * hdrScale, 45000.0f, 100.0f) &&
+			IsNear(hdrLastPair.x * hdrScale, -120000.0f, 100.0f),
+			"the shared FP16 HDR scale must preserve bright signed SH values");
 
 		TVector<RHI::RHIGlobalIlluminationGpuState> states;
 		Require(RHI::BuildGlobalIlluminationGpuStates(
@@ -2334,6 +2955,38 @@ components:
 			"into free space");
 	}
 
+	void TestPrimaryDirectionPdfWeighting()
+	{
+		GIProbesBakeRequest request;
+		request.m_stateName = "Primary Direction PDF";
+		request.m_volumeMin = glm::vec3(0.0f);
+		request.m_volumeMax = glm::vec3(1.0f);
+		request.m_settings.m_raysPerProbe = 8u;
+		request.m_settings.m_bounceCount = 1u;
+		request.m_settings.m_maxSubdivisionLevel = 0u;
+		request.m_settings.m_minProbeSpacing = 1.0f;
+
+		const PdfWeightedPrimaryDirectionSampler sampler;
+		const GIProbesBakeResult result = GIProbesBaker::Bake(
+			request,
+			sampler);
+		Require(result.IsSuccess(),
+			"PDF-weighted primary-direction bake should succeed: " +
+			result.m_diagnostic);
+		const float expectedL0 =
+			PdfWeightedPrimaryDirectionSampler::RadianceOverPdf *
+			0.2820947918f;
+		for (const GIProbe& probe : result.m_data->m_probes)
+		{
+			Require(IsNear(
+					probe.m_irradiance[0].x,
+					expectedL0,
+					0.0001f),
+				"primary SH projection must divide each radiance sample by "
+				"its direction PDF");
+		}
+	}
+
 	void TestDeterministicBakeSeedsAndReusedLayoutValidation()
 	{
 		GIProbesBakeRequest request;
@@ -2574,35 +3227,34 @@ components:
 					"geometry hits must close the corresponding deterministic sky-specular transport lobe");
 			}
 		}
+		const float visibilityMaxDistance =
+			CalculateGIProbeVisibilityMaxDistance(
+				*stable.m_data,
+				stable.m_data->m_bricks[0]);
 		for (const GIProbe& probe : stable.m_data->m_probes)
 		{
-			const std::array<float, GIProbeVisibilityDirectionCount>
-				expectedClearances
-			{
-				1.5f,
-				1.0f,
-				1.25f,
-				1.25f,
-				1.375f,
-				1.125f
-			};
 			for (uint32_t directionIndex = 0u;
 				directionIndex < GIProbeVisibilityDirectionCount;
 				++directionIndex)
 			{
-				const float expected = expectedClearances[directionIndex];
+				const glm::vec2 moments =
+					probe.m_visibility[directionIndex];
 				Require(
-					IsNear(probe.m_visibility[directionIndex].x, expected) &&
-					IsNear(
-						probe.m_visibility[directionIndex].y,
-						expected * expected),
-					"local blocker transport must store the exact signed-axis "
-					"clearance and its square");
+					moments.x > 0.0f &&
+					moments.x < visibilityMaxDistance &&
+					moments.y >= moments.x * moments.x &&
+					moments.y <= visibilityMaxDistance * visibilityMaxDistance,
+					"local blocker transport must store bounded first and second "
+						"distance moments for every broad signed-axis lobe");
 			}
+			Require(
+				probe.m_visibility[0u].x > probe.m_visibility[1u].x &&
+				probe.m_visibility[4u].x > probe.m_visibility[5u].x,
+				"broad lobe moments must preserve the sampler's positive X and Z distance gradients");
 			Require(
 				(probe.m_flags & GIProbeBlockedDirectionMask) ==
 					GIProbeBlockedDirectionMask,
-				"a deterministic local hit along every signed axis must bake "
+				"a deterministic local hit in every signed-axis lobe must bake "
 				"all six blocking-direction bits");
 		}
 	}
@@ -2631,8 +3283,7 @@ components:
 				triangle.m_normals[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
 				triangle.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
 				triangle.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, -1.0f);
-				triangle.m_colors[vertexIndex] = vertexIndex == 0u ?
-					glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) : glm::vec4(0.0f);
+				triangle.m_colors[vertexIndex] = glm::vec4(1.0f);
 			}
 			return triangle;
 		};
@@ -2840,8 +3491,7 @@ components:
 			triangle.m_normals[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
 			triangle.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
 			triangle.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, -1.0f);
-			triangle.m_colors[vertexIndex] = vertexIndex == 0u ?
-				glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) : glm::vec4(0.0f);
+			triangle.m_colors[vertexIndex] = glm::vec4(1.0f);
 		}
 		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
 		triangles->Add(triangle);
@@ -2982,6 +3632,101 @@ components:
 			IsNear(sampled.m_baseColor.b, 0.75f) &&
 			IsNear(sampled.m_baseColor.a, 1.0f),
 			"the bake path tracer must normalize vertex layer weights and sample landscape layers");
+
+		const glm::vec3 scaledNormal = pathTracer.SampleScaledNormal(
+			glm::vec3(0.8f, -0.6f, 0.4f),
+			0.25f);
+		Require(
+			IsNear(scaledNormal.x, 0.2f) &&
+			IsNear(scaledNormal.y, -0.15f) &&
+			IsNear(scaledNormal.z, 0.4f),
+			"the bake path tracer must apply the material normal scale to tangent-space XY");
+
+		const glm::vec4 vertexTinted = pathTracer.SampleVertexTint(
+			glm::vec4(0.8f, 0.6f, 0.4f, 0.5f),
+			glm::vec4(0.25f, 0.5f, 0.75f, 0.4f));
+		Require(
+			IsNear(vertexTinted.r, 0.2f) &&
+			IsNear(vertexTinted.g, 0.3f) &&
+			IsNear(vertexTinted.b, 0.3f) &&
+			IsNear(vertexTinted.a, 0.2f),
+			"ordinary bake materials must apply vertex color and alpha like the raster shader");
+
+		EveningLandscapeRaytracingFixture fixture =
+			MakeEveningLandscapeRaytracingFixture();
+		MaterialPtr layeredMaterial = fixture.m_materials[0];
+		layeredMaterial->SetUniform("material.clearcoatFactor", 0.8f);
+		layeredMaterial->SetUniform(
+			"material.clearcoatRoughnessFactor",
+			0.6f);
+		layeredMaterial->SetUniform(
+			"material.clearcoatNormalScale",
+			0.5f);
+		layeredMaterial->SetUniform(
+			"material.sheenColorFactor",
+			glm::vec4(0.75f, 0.5f, 0.25f, 0.0f));
+		layeredMaterial->SetUniform(
+			"material.sheenRoughnessFactor",
+			0.9f);
+		auto layeredTexture = TObjectPtr<CpuTextureFixture>::Make(
+			fixture.m_allocator,
+			FileId::Invalid);
+		layeredTexture->SetPixel(glm::u8vec4(128u, 64u, 192u, 32u));
+		const TexturePtr texture = layeredTexture;
+		layeredMaterial->SetSampler("clearcoatSampler", texture);
+		layeredMaterial->SetSampler(
+			"clearcoatRoughnessSampler",
+			texture);
+		layeredMaterial->SetSampler("clearcoatNormalSampler", texture);
+		layeredMaterial->SetSampler("sheenColorSampler", texture);
+		layeredMaterial->SetSampler("sheenRoughnessSampler", texture);
+
+		MaterialSamplingPathTracer preparedPathTracer;
+		Require(preparedPathTracer.InitializeScene(
+				fixture.m_instances,
+				fixture.m_materials,
+				fixture.m_lights,
+				false),
+			"the layered material conversion fixture must initialize");
+		const Raytracing::LightingModel::SampledData layeredSample =
+			preparedPathTracer.SamplePreparedMaterial(0u);
+		const auto srgbToLinear = [](float value)
+		{
+			return value <= 0.04045f ?
+				value / 12.92f :
+				std::pow((value + 0.055f) / 1.055f, 2.4f);
+		};
+		const float red = 128.0f / 255.0f;
+		const float green = 64.0f / 255.0f;
+		const float blue = 192.0f / 255.0f;
+		const float alpha = 32.0f / 255.0f;
+		Require(
+			IsNear(layeredSample.m_clearcoatFactor, 0.8f * red) &&
+			IsNear(
+				layeredSample.m_clearcoatRoughness,
+				0.6f * green) &&
+			IsNear(
+				layeredSample.m_clearcoatNormal.x,
+				(2.0f * red - 1.0f) * 0.5f) &&
+			IsNear(
+				layeredSample.m_clearcoatNormal.y,
+				(2.0f * green - 1.0f) * 0.5f) &&
+			IsNear(
+				layeredSample.m_clearcoatNormal.z,
+				2.0f * blue - 1.0f),
+			"the bake material converter must preserve clearcoat factor, G-channel roughness, and its independently scaled normal map");
+		Require(
+			IsNear(
+				layeredSample.m_sheenColor.r,
+				0.75f * srgbToLinear(red)) &&
+			IsNear(
+				layeredSample.m_sheenColor.g,
+				0.5f * srgbToLinear(green)) &&
+			IsNear(
+				layeredSample.m_sheenColor.b,
+				0.25f * srgbToLinear(blue)) &&
+			IsNear(layeredSample.m_sheenRoughness, 0.9f * alpha),
+			"the bake material converter must linearize sheen color and read sheen roughness from alpha");
 	}
 
 	void TestMobilityAndLightModeContributionPolicy()
@@ -3122,8 +3867,8 @@ components:
 		pointLight->SetLightType(ELightType::Point);
 		pointLight->SetIntensity(glm::vec3(40.0f));
 		pointLight->SetIndirectLightingIntensity(1.0f);
-		pointLight->SetAttenuation(glm::vec3(1.0f, 0.0f, 0.0f));
 		pointLight->SetRadius(20.0f);
+		pointLight->SetShadowType(RHI::EShadowType::None);
 
 		const glm::vec3 receiver(
 			20.5f,
@@ -3147,6 +3892,9 @@ components:
 			TVector<Raytracing::LightProxy> bakeLights;
 			world.GetECS<LightingECS>()
 				->GetGlobalIlluminationBakeLightProxies(bakeLights);
+			Require(
+				bakeLights.IsEmpty() || !bakeLights[0].m_bCastShadows,
+				"GI bake proxies must preserve a light's disabled shadow state");
 
 			Raytracing::GIProbesPathTracer pathTracer;
 			Require(pathTracer.Initialize(
@@ -3216,8 +3964,7 @@ components:
 			floor.m_normals[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
 			floor.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
 			floor.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, -1.0f);
-			floor.m_colors[vertexIndex] = vertexIndex == 0u ?
-				glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) : glm::vec4(0.0f);
+			floor.m_colors[vertexIndex] = glm::vec4(1.0f);
 		}
 
 		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
@@ -3255,7 +4002,6 @@ components:
 		Raytracing::LightProxy pointLight;
 		pointLight.m_type = ELightType::Point;
 		pointLight.m_intensity = glm::vec3(7.0f, 5.0f, 3.0f);
-		pointLight.m_attenuation = glm::vec3(1.0f, 0.5f, 0.25f);
 
 		const auto expectedAttenuation = [&](float distance, float radius)
 		{
@@ -3263,23 +4009,23 @@ components:
 				distance / radius,
 				0.0f,
 				1.0f);
-			const float edgeProgress = glm::clamp(
-				(normalizedDistance - 0.9f) / 0.1f,
+			const float normalizedDistanceSquared =
+				normalizedDistance * normalizedDistance;
+			const float rangeBase = glm::clamp(
+				1.0f - normalizedDistanceSquared *
+					normalizedDistanceSquared,
 				0.0f,
 				1.0f);
-			const float rangeWindow = 1.0f -
-				edgeProgress * edgeProgress *
-					(3.0f - 2.0f * edgeProgress);
-			return rangeWindow / std::max(
-				pointLight.m_attenuation.x +
-					pointLight.m_attenuation.y * distance +
-					pointLight.m_attenuation.z * distance * distance,
-				0.00001f);
+			const float rangeWindow = rangeBase * rangeBase;
+			const float safeDistance = std::max(distance, 0.01f);
+			return rangeWindow / (safeDistance * safeDistance);
 		};
 
-		const auto sampleDirect = [&](float distance, float radius)
+		const auto sampleDirect = [&](const Raytracing::LightProxy& sourceLight,
+			float distance,
+			float radius)
 		{
-			Raytracing::LightProxy light = pointLight;
+			Raytracing::LightProxy light = sourceLight;
 			light.m_worldPosition = glm::vec3(0.0f, distance, 0.0f);
 			light.m_bounds = glm::vec3(radius);
 			TVector<Raytracing::LightProxy> lights;
@@ -3303,6 +4049,10 @@ components:
 				"the Point Light attenuation fixture must hit the receiver");
 			return sample.m_radiance;
 		};
+		const auto samplePoint = [&](float distance, float radius)
+		{
+			return sampleDirect(pointLight, distance, radius);
+		};
 
 		// The fixture uses a rough, non-metallic 0.8-gray surface with aligned
 		// normal, view, and light directions. Evaluate that closed-form BRDF in
@@ -3310,7 +4060,7 @@ components:
 		// intentionally internal LightingModel implementation.
 		constexpr float Pi = 3.14159265358979323846f;
 		const glm::vec3 directBrdf(
-			(0.96f * 0.8f + 0.04f / 4.001f) / Pi);
+			0.96f * 0.8f / Pi + 0.04f / (Pi * 4.001f));
 		const auto expectedDirect = [&](float distance, float radius)
 		{
 			return directBrdf * pointLight.m_intensity *
@@ -3326,26 +4076,326 @@ components:
 				message);
 		};
 
-		const glm::vec3 middleRadiance = sampleDirect(5.0f, 10.0f);
+		const glm::vec3 middleRadiance = samplePoint(5.0f, 10.0f);
 		requireNear(
 			middleRadiance,
 			expectedDirect(5.0f, 10.0f),
 			"CPU Point Light attenuation must use the surface-to-light distance");
 		requireNear(
-			sampleDirect(8.0f, 10.0f),
+			samplePoint(8.0f, 10.0f),
 			expectedDirect(8.0f, 10.0f),
-			"CPU Point Light polynomial attenuation must match the realtime shader");
+			"CPU Point Light inverse-square attenuation must match the realtime shader");
 		requireNear(
-			sampleDirect(9.5f, 10.0f),
+			samplePoint(9.5f, 10.0f),
 			expectedDirect(9.5f, 10.0f),
-			"CPU Point Light falloff must match the shader's 90-100 percent range window");
+			"CPU Point Light falloff must match the KHR range window");
+		const glm::vec3 narrowRadiusRadiance = samplePoint(5.0f, 6.0f);
 		requireNear(
-			sampleDirect(5.0f, 6.0f),
-			middleRadiance,
-			"changing radius must not rescale attenuation before the edge window");
+			narrowRadiusRadiance,
+			expectedDirect(5.0f, 6.0f),
+			"changing radius must evaluate the same smooth KHR range window");
 		Require(
-			glm::length(sampleDirect(5.0f, 5.0f)) <= 0.000001f &&
-				glm::length(sampleDirect(5.0f, 4.0f)) <= 0.000001f,
+			glm::length(narrowRadiusRadiance) < glm::length(middleRadiance),
+			"a narrower Point Light range must reduce radiance at a fixed distance");
+
+		Raytracing::LightProxy spotLight = pointLight;
+		spotLight.m_type = ELightType::Spot;
+		spotLight.m_cutOff = glm::vec2(0.9f, 0.5f);
+		const float middleConeCosine =
+			(spotLight.m_cutOff.x + spotLight.m_cutOff.y) * 0.5f;
+		spotLight.m_direction = glm::normalize(glm::vec3(
+			sqrt(1.0f - middleConeCosine * middleConeCosine),
+			-middleConeCosine,
+			0.0f));
+		requireNear(
+			sampleDirect(spotLight, 5.0f, 10.0f),
+			expectedDirect(5.0f, 10.0f) * 0.25f,
+			"CPU Spot Light angular falloff must square the normalized cone weight");
+
+		auto blockedTriangles =
+			TSharedPtr<TVector<Math::Triangle>>::Make();
+		blockedTriangles->Add(floor);
+		Math::Triangle blocker{};
+		blocker.m_vertices[0] = glm::vec3(-2.0f, 3.0f, -2.0f);
+		blocker.m_vertices[1] = glm::vec3(2.0f, 3.0f, -2.0f);
+		blocker.m_vertices[2] = glm::vec3(0.0f, 3.0f, 2.0f);
+		blocker.m_centroid =
+			(blocker.m_vertices[0] + blocker.m_vertices[1] +
+				blocker.m_vertices[2]) / 3.0f;
+		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
+		{
+			blocker.m_normals[vertexIndex] = glm::vec3(0.0f, -1.0f, 0.0f);
+			blocker.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
+			blocker.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, 1.0f);
+		}
+		blockedTriangles->Add(blocker);
+		auto blockedBlas = TSharedPtr<Raytracing::BVH>::Make(
+			static_cast<uint32_t>(blockedTriangles->Num()));
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*blockedBlas,
+			*blockedTriangles);
+		Math::AABB blockedBounds;
+		for (const Math::Triangle& triangle : *blockedTriangles)
+		{
+			for (const glm::vec3& vertex : triangle.m_vertices)
+			{
+				blockedBounds.Extend(vertex);
+			}
+		}
+		Raytracing::PathTracer::TLASInstance blockedInstance;
+		blockedInstance.m_triangles = blockedTriangles;
+		blockedInstance.m_blas = blockedBlas;
+		blockedInstance.m_worldBounds = blockedBounds;
+		blockedInstance.m_worldMatrix = glm::mat4(1.0f);
+		blockedInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		blockedInstance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> blockedInstances;
+		blockedInstances.Add(std::move(blockedInstance));
+		const auto sampleBehindBlocker = [&](bool bCastShadows)
+		{
+			Raytracing::LightProxy light = pointLight;
+			light.m_worldPosition = glm::vec3(0.0f, 5.0f, 0.0f);
+			light.m_bounds = glm::vec3(10.0f);
+			light.m_bCastShadows = bCastShadows;
+			TVector<Raytracing::LightProxy> lights;
+			lights.Add(light);
+			Raytracing::PathTracer pathTracer;
+			Require(pathTracer.InitializeScene(
+					blockedInstances,
+					materials,
+					lights,
+					false),
+				"the Point Light blocker fixture must initialize");
+			Raytracing::PathTracer::PreparedRaySample sample;
+			Require(pathTracer.SamplePreparedSceneRay(
+					glm::vec3(0.0f, 2.0f, 0.0f),
+					glm::vec3(0.0f, -1.0f, 0.0f),
+					4.0f,
+					params,
+					13u,
+					sample) && sample.m_bHit,
+				"the Point Light blocker fixture must hit the receiver");
+			return sample.m_radiance;
+		};
+		Require(
+			glm::length(sampleBehindBlocker(true)) <= 0.000001f,
+			"a shadowed Point Light must be occluded during GI baking");
+		requireNear(
+			sampleBehindBlocker(false),
+			expectedDirect(5.0f, 10.0f),
+			"a Point Light with shadows disabled must illuminate GI receivers through blockers");
+
+		auto behindLightTriangles =
+			TSharedPtr<TVector<Math::Triangle>>::Make();
+		behindLightTriangles->Add(floor);
+		Math::Triangle behindLightBlocker = blocker;
+		for (glm::vec3& vertex : behindLightBlocker.m_vertices)
+		{
+			vertex.y = 5.05f;
+		}
+		behindLightBlocker.m_centroid =
+			(behindLightBlocker.m_vertices[0] +
+				behindLightBlocker.m_vertices[1] +
+				behindLightBlocker.m_vertices[2]) / 3.0f;
+		behindLightTriangles->Add(behindLightBlocker);
+		auto behindLightBlas = TSharedPtr<Raytracing::BVH>::Make(
+			static_cast<uint32_t>(behindLightTriangles->Num()));
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*behindLightBlas,
+			*behindLightTriangles);
+		Math::AABB behindLightBounds;
+		for (const Math::Triangle& triangle : *behindLightTriangles)
+		{
+			for (const glm::vec3& vertex : triangle.m_vertices)
+			{
+				behindLightBounds.Extend(vertex);
+			}
+		}
+		Raytracing::PathTracer::TLASInstance behindLightInstance;
+		behindLightInstance.m_triangles = behindLightTriangles;
+		behindLightInstance.m_blas = behindLightBlas;
+		behindLightInstance.m_worldBounds = behindLightBounds;
+		behindLightInstance.m_worldMatrix = glm::mat4(1.0f);
+		behindLightInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		behindLightInstance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> behindLightInstances;
+		behindLightInstances.Add(std::move(behindLightInstance));
+		Raytracing::LightProxy endpointLight = pointLight;
+		endpointLight.m_worldPosition = glm::vec3(0.0f, 5.0f, 0.0f);
+		endpointLight.m_bounds = glm::vec3(10.0f);
+		TVector<Raytracing::LightProxy> endpointLights;
+		endpointLights.Add(endpointLight);
+		Raytracing::PathTracer endpointPathTracer;
+		Require(endpointPathTracer.InitializeScene(
+				behindLightInstances,
+				materials,
+				endpointLights,
+				false),
+			"the local-light endpoint fixture must initialize");
+		Raytracing::PathTracer::Params endpointParams = params;
+		endpointParams.m_rayBiasBase = 0.05f;
+		endpointParams.m_rayBiasScale = 0.05f;
+		Raytracing::PathTracer::PreparedRaySample endpointSample;
+		Require(endpointPathTracer.SamplePreparedSceneRay(
+				glm::vec3(0.0f, 2.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				4.0f,
+				endpointParams,
+				19u,
+				endpointSample) && endpointSample.m_bHit,
+			"the local-light endpoint fixture must hit its receiver");
+		requireNear(
+			endpointSample.m_radiance,
+			expectedDirect(5.0f, 10.0f),
+			"geometry behind a local light must not shadow its GI contribution");
+
+		auto thinBlockerTriangles =
+			TSharedPtr<TVector<Math::Triangle>>::Make();
+		thinBlockerTriangles->Add(floor);
+		const glm::vec3 thinBlockerDirection = glm::normalize(
+			glm::vec3(1.0f, 1.0f, 0.0f));
+		const glm::vec3 thinBlockerTangent = glm::normalize(
+			glm::vec3(-1.0f, 1.0f, 0.0f));
+		const glm::vec3 thinBlockerCenter = thinBlockerDirection * 0.06f;
+		Math::Triangle thinBlocker{};
+		thinBlocker.m_vertices[0] = thinBlockerCenter +
+			thinBlockerTangent * 0.012f + glm::vec3(0.0f, 0.0f, 0.012f);
+		thinBlocker.m_vertices[1] = thinBlockerCenter -
+			thinBlockerTangent * 0.012f + glm::vec3(0.0f, 0.0f, 0.012f);
+		thinBlocker.m_vertices[2] = thinBlockerCenter -
+			glm::vec3(0.0f, 0.0f, 0.024f);
+		thinBlocker.m_centroid =
+			(thinBlocker.m_vertices[0] + thinBlocker.m_vertices[1] +
+				thinBlocker.m_vertices[2]) / 3.0f;
+		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
+		{
+			thinBlocker.m_normals[vertexIndex] = -thinBlockerDirection;
+			thinBlocker.m_tangent[vertexIndex] = thinBlockerTangent;
+			thinBlocker.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, 1.0f);
+		}
+		thinBlockerTriangles->Add(thinBlocker);
+		auto thinBlockerBlas = TSharedPtr<Raytracing::BVH>::Make(
+			static_cast<uint32_t>(thinBlockerTriangles->Num()));
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*thinBlockerBlas,
+			*thinBlockerTriangles);
+		Math::AABB thinBlockerBounds;
+		for (const Math::Triangle& triangle : *thinBlockerTriangles)
+		{
+			for (const glm::vec3& vertex : triangle.m_vertices)
+			{
+				thinBlockerBounds.Extend(vertex);
+			}
+		}
+		Raytracing::PathTracer::TLASInstance thinBlockerInstance;
+		thinBlockerInstance.m_triangles = thinBlockerTriangles;
+		thinBlockerInstance.m_blas = thinBlockerBlas;
+		thinBlockerInstance.m_worldBounds = thinBlockerBounds;
+		thinBlockerInstance.m_worldMatrix = glm::mat4(1.0f);
+		thinBlockerInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		thinBlockerInstance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> thinBlockerInstances;
+		thinBlockerInstances.Add(std::move(thinBlockerInstance));
+
+		Raytracing::LightProxy thinBlockerLight = pointLight;
+		thinBlockerLight.m_worldPosition = glm::vec3(1.0f, 1.0f, 0.0f);
+		thinBlockerLight.m_bounds = glm::vec3(3.0f);
+		TVector<Raytracing::LightProxy> thinBlockerLights;
+		thinBlockerLights.Add(thinBlockerLight);
+		GIProbesBakeSettings thinBlockerSettings;
+		thinBlockerSettings.m_bounceCount = 1u;
+		thinBlockerSettings.m_normalBias = 0.05f;
+		thinBlockerSettings.m_viewBias = 0.05f;
+		thinBlockerSettings.m_bIncludeSky = false;
+		thinBlockerSettings.m_bIncludeEmissive = false;
+		thinBlockerSettings.m_bIncludeDirectLighting = true;
+		Raytracing::GIProbesPathTracer thinBlockerPathTracer;
+		Require(thinBlockerPathTracer.Initialize(
+				thinBlockerInstances,
+				materials,
+				thinBlockerLights,
+				thinBlockerSettings,
+				glm::vec3(0.0f)),
+			"the thin GI shadow blocker fixture must initialize");
+		GIProbeBakeRaySample thinBlockerSample;
+		std::string thinBlockerDiagnostic;
+		Require(thinBlockerPathTracer.Sample(
+				glm::vec3(0.0f, 2.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				4.0f,
+				17u,
+				thinBlockerSample,
+				thinBlockerDiagnostic) &&
+			thinBlockerSample.m_bHit,
+			"the thin GI shadow blocker fixture must hit its receiver: " +
+				thinBlockerDiagnostic);
+		Require(
+			glm::length(thinBlockerSample.m_radiance) <= 0.000001f,
+			"runtime probe interpolation biases must not make bake rays jump "
+			"across thin shadow blockers");
+
+		const glm::vec3 largeWorldOffset(8000.0f, 0.0f, -8000.0f);
+		Math::AABB translatedBounds;
+		for (const Math::Triangle& triangle : *blockedTriangles)
+		{
+			for (const glm::vec3& vertex : triangle.m_vertices)
+			{
+				translatedBounds.Extend(vertex + largeWorldOffset);
+			}
+		}
+		Raytracing::PathTracer::TLASInstance translatedInstance;
+		translatedInstance.m_triangles = blockedTriangles;
+		translatedInstance.m_blas = blockedBlas;
+		translatedInstance.m_worldBounds = translatedBounds;
+		translatedInstance.m_worldMatrix = glm::translate(
+			glm::mat4(1.0f),
+			largeWorldOffset);
+		translatedInstance.m_inverseWorldMatrix = glm::translate(
+			glm::mat4(1.0f),
+			-largeWorldOffset);
+		translatedInstance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> translatedInstances;
+		translatedInstances.Add(std::move(translatedInstance));
+		const auto sampleLargeWorldBlocker = [&](bool bCastShadows)
+		{
+			Raytracing::LightProxy light = pointLight;
+			light.m_worldPosition =
+				largeWorldOffset + glm::vec3(0.0f, 5.0f, 0.0f);
+			light.m_bounds = glm::vec3(10.0f);
+			light.m_bCastShadows = bCastShadows;
+			TVector<Raytracing::LightProxy> lights;
+			lights.Add(light);
+			Raytracing::PathTracer pathTracer;
+			Require(pathTracer.InitializeScene(
+					translatedInstances,
+					materials,
+					lights,
+					false),
+				"the large-world Point Light blocker fixture must initialize");
+			Raytracing::PathTracer::Params largeWorldParams = params;
+			largeWorldParams.m_rayBiasBase = 0.05f;
+			largeWorldParams.m_rayBiasScale = 0.05f;
+			Raytracing::PathTracer::PreparedRaySample sample;
+			Require(pathTracer.SamplePreparedSceneRay(
+					largeWorldOffset + glm::vec3(0.0f, 2.0f, 0.0f),
+					glm::vec3(0.0f, -1.0f, 0.0f),
+					4.0f,
+					largeWorldParams,
+					13u,
+					sample) && sample.m_bHit,
+				"the large-world Point Light fixture must hit the receiver");
+			return sample.m_radiance;
+		};
+		Require(
+			glm::length(sampleLargeWorldBlocker(true)) <= 0.000001f,
+			"GI shadow bias must not grow with absolute world coordinates and jump past blockers");
+		requireNear(
+			sampleLargeWorldBlocker(false),
+			expectedDirect(5.0f, 10.0f),
+			"large-world GI lighting must remain unchanged when shadow traversal is disabled");
+		Require(
+			glm::length(samplePoint(5.0f, 5.0f)) <= 0.000001f &&
+				glm::length(samplePoint(5.0f, 4.0f)) <= 0.000001f,
 			"Point Light radiance must be zero at and beyond the authored radius");
 
 		Raytracing::LightProxy crossingLight = pointLight;
@@ -3390,8 +4440,7 @@ components:
 				wall.m_normals[vertexIndex] = glm::vec3(-1.0f, 0.0f, 0.0f);
 				wall.m_tangent[vertexIndex] = glm::vec3(0.0f, 0.0f, 1.0f);
 				wall.m_bitangent[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
-				wall.m_colors[vertexIndex] = vertexIndex == 0u ?
-					glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) : glm::vec4(0.0f);
+				wall.m_colors[vertexIndex] = glm::vec4(1.0f);
 			}
 			bounceTriangles->Add(std::move(wall));
 		};
@@ -3429,8 +4478,7 @@ components:
 
 		Raytracing::LightProxy bounceLight = pointLight;
 		bounceLight.m_worldPosition = glm::vec3(3.0f, 4.0f, 0.0f);
-		bounceLight.m_intensity = glm::vec3(40.0f);
-		bounceLight.m_attenuation = glm::vec3(1.0f, 0.0f, 0.0f);
+		bounceLight.m_intensity = glm::vec3(4000.0f);
 		bounceLight.m_bounds = glm::vec3(4.5f);
 		TVector<Raytracing::LightProxy> bounceLights;
 		bounceLights.Add(bounceLight);
@@ -3481,6 +4529,168 @@ components:
 		}
 		Require(strongestSecondaryContribution > 0.01f,
 			"a real secondary surface inside Point Light radius must carry baked radiance");
+
+		TVector<MaterialPtr> lowThroughputMaterials;
+		MaterialPtr lowThroughputMaterial = MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(0.005f));
+		lowThroughputMaterial->SetUniform(
+			"material.indexOfRefraction",
+			1.0f);
+		lowThroughputMaterials.Add(lowThroughputMaterial);
+		Raytracing::PathTracer lowThroughputPathTracer;
+		Require(lowThroughputPathTracer.InitializeScene(
+				bounceInstances,
+				lowThroughputMaterials,
+				bounceLights,
+				false),
+			"the low-throughput secondary-light fixture must initialize");
+		float strongestLowThroughputContribution = 0.0f;
+		for (uint32_t seed = 1u; seed <= 2048u; ++seed)
+		{
+			Raytracing::PathTracer::PreparedRaySample sample;
+			Require(lowThroughputPathTracer.SamplePreparedSceneRay(
+					glm::vec3(0.0f, 5.0f, 0.0f),
+					glm::vec3(0.0f, -1.0f, 0.0f),
+					10.0f,
+					bounceParams,
+					seed,
+					sample) && sample.m_bHit,
+				"the low-throughput fixture must sample the floor");
+			const float contribution = glm::length(sample.m_radiance);
+			Require(std::isfinite(contribution),
+				"low-throughput secondary radiance must remain finite");
+			strongestLowThroughputContribution = std::max(
+				strongestLowThroughputContribution,
+				contribution);
+			if (strongestLowThroughputContribution > 0.000001f)
+			{
+				break;
+			}
+		}
+		Require(strongestLowThroughputContribution > 0.000001f,
+			"finite-bounce GI must preserve weak indirect paths instead of "
+			"discarding them with a throughput threshold");
+	}
+
+	void TestHdrEnvironmentImportanceDistribution()
+	{
+		constexpr uint32_t Width = 64u;
+		constexpr uint32_t Height = 32u;
+		constexpr uint32_t BrightX = 32u;
+		constexpr uint32_t BrightY = 8u;
+		TVector<glm::vec4> environment;
+		environment.Resize(Width * Height);
+		for (glm::vec4& pixel : environment)
+		{
+			pixel = glm::vec4(1.0f);
+		}
+		environment[BrightX + BrightY * Width] =
+			glm::vec4(65504.0f, 65504.0f, 65504.0f, 1.0f);
+
+		InspectablePathTracer pathTracer;
+		pathTracer.SetRuntimeEnvironmentLinear(
+			environment,
+			glm::uvec2(Width, Height));
+		Require(pathTracer.UsesEnvironmentImportance(),
+			"a concentrated HDR environment must use a luminance-weighted "
+			"direct-light distribution");
+
+		TVector<glm::vec4> diffuseEnvironment;
+		diffuseEnvironment.Resize(Width * Height);
+		for (glm::vec4& pixel : diffuseEnvironment)
+		{
+			pixel = glm::vec4(0.0f, 16.0f, 0.0f, 1.0f);
+		}
+		pathTracer.SetRuntimeDiffuseEnvironmentLinear(
+			diffuseEnvironment,
+			glm::uvec2(Width, Height));
+		Require(pathTracer.UsesEnvironmentImportance(),
+			"a preconvolved diffuse environment must not replace the raw HDR "
+			"importance distribution");
+		const glm::vec3 directEnvironment =
+			pathTracer.DirectEnvironmentRadiance(glm::vec3(1.0f, 0.0f, 0.0f));
+		Require(glm::length(directEnvironment - glm::vec3(1.0f)) <= 0.0001f,
+			"direct environment lighting must evaluate raw radiance instead of "
+			"the preconvolved irradiance map");
+
+		const glm::vec3 worldNormal(0.0f, 1.0f, 0.0f);
+		double integratedPdf = 0.0;
+		for (uint32_t y = 0u; y < Height; ++y)
+		{
+			const double theta0 = glm::pi<double>() *
+				static_cast<double>(y) / static_cast<double>(Height);
+			const double theta1 = glm::pi<double>() *
+				static_cast<double>(y + 1u) / static_cast<double>(Height);
+			const double pixelSolidAngle =
+				2.0 * glm::pi<double>() / static_cast<double>(Width) *
+				(std::cos(theta0) - std::cos(theta1));
+			const float theta = glm::pi<float>() *
+				(static_cast<float>(y) + 0.5f) /
+				static_cast<float>(Height);
+			for (uint32_t x = 0u; x < Width; ++x)
+			{
+				const float phi = -glm::pi<float>() +
+					2.0f * glm::pi<float>() *
+					(static_cast<float>(x) + 0.5f) /
+					static_cast<float>(Width);
+				const glm::vec3 direction(
+					std::cos(phi) * std::sin(theta),
+					std::cos(theta),
+					std::sin(phi) * std::sin(theta));
+				integratedPdf += pathTracer.EnvironmentPdf(
+					worldNormal,
+					direction) * pixelSolidAngle;
+			}
+		}
+		Require(std::abs(integratedPdf - 1.0) <= 0.001,
+			"the mixed HDR environment PDF must integrate to one; got " +
+				std::to_string(integratedPdf));
+
+		constexpr uint32_t SampleCount = 4096u;
+		uint32_t randomState = 0x155155u;
+		uint32_t brightSamples = 0u;
+		for (uint32_t sampleIndex = 0u;
+			sampleIndex < SampleCount;
+			++sampleIndex)
+		{
+			glm::vec3 direction{};
+			float pdf = 0.0f;
+			Require(pathTracer.SampleEnvironment(
+					worldNormal,
+					randomState,
+					direction,
+					pdf) &&
+				std::isfinite(pdf) && pdf > 0.0f,
+				"HDR environment importance samples must have finite positive PDFs");
+			const float queriedPdf = pathTracer.EnvironmentPdf(
+				worldNormal,
+				direction);
+			Require(std::abs(pdf - queriedPdf) <=
+					0.00001f * (std::max)(pdf, 1.0f),
+				"sampled and queried HDR environment PDFs must agree");
+
+			const float phi = std::atan2(direction.z, direction.x);
+			const float theta = std::acos(glm::clamp(
+				direction.y,
+				-1.0f,
+				1.0f));
+			const uint32_t x = (std::min)(
+				static_cast<uint32_t>(
+					(phi + glm::pi<float>()) /
+					(2.0f * glm::pi<float>()) * Width),
+				Width - 1u);
+			const uint32_t y = (std::min)(
+				static_cast<uint32_t>(
+					theta / glm::pi<float>() * Height),
+				Height - 1u);
+			brightSamples += x == BrightX && y == BrightY ? 1u : 0u;
+		}
+		Require(brightSamples > SampleCount / 3u,
+			"HDR environment sampling must concentrate work on the bright texel "
+			"instead of producing rare uniform-sampling fireflies; got " +
+				std::to_string(brightSamples) + " of " +
+				std::to_string(SampleCount));
 	}
 
 	void TestEnvironmentMissIsCountedOnce()
@@ -3507,8 +4717,7 @@ components:
 			floor.m_normals[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
 			floor.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
 			floor.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, -1.0f);
-			floor.m_colors[vertexIndex] = vertexIndex == 0u ?
-				glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) : glm::vec4(0.0f);
+			floor.m_colors[vertexIndex] = glm::vec4(1.0f);
 		}
 
 		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
@@ -3597,6 +4806,174 @@ components:
 				std::to_string(energyCeiling.y) + ", " +
 				std::to_string(energyCeiling.z));
 
+		constexpr float HdrScale = 128.0f;
+		TVector<glm::vec4> hdrEnvironment;
+		hdrEnvironment.Add(glm::vec4(
+			environmentRadiance * HdrScale,
+			1.0f));
+		pathTracer.SetRuntimeEnvironmentLinear(
+			hdrEnvironment,
+			glm::uvec2(1u));
+		Raytracing::PathTracer::PreparedRaySample hdrSample;
+		Require(
+			pathTracer.SamplePreparedSceneRay(
+				glm::vec3(0.0f, 2.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				4.0f,
+				params,
+				155u,
+				hdrSample) &&
+			hdrSample.m_bHit,
+			"the HDR constant-environment fixture ray should hit its receiver");
+		const glm::vec3 expectedHdrRadiance = sample.m_radiance * HdrScale;
+		Require(
+			glm::length(hdrSample.m_radiance - expectedHdrRadiance) <=
+				0.001f * (std::max)(
+					glm::length(expectedHdrRadiance),
+					1.0f) &&
+			(std::max)({
+				hdrSample.m_radiance.x,
+				hdrSample.m_radiance.y,
+				hdrSample.m_radiance.z }) > 10.0f,
+			"environment transport must stay linear above the legacy LDR clamp; "
+			"expected " +
+				std::to_string(expectedHdrRadiance.x) + ", " +
+				std::to_string(expectedHdrRadiance.y) + ", " +
+				std::to_string(expectedHdrRadiance.z) + " but got " +
+				std::to_string(hdrSample.m_radiance.x) + ", " +
+				std::to_string(hdrSample.m_radiance.y) + ", " +
+				std::to_string(hdrSample.m_radiance.z));
+
+		TVector<MaterialPtr> diffuseMaterials;
+		diffuseMaterials.Add(MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(1.0f)));
+		Raytracing::PathTracer openSkyPathTracer;
+		Require(
+			openSkyPathTracer.InitializeScene(
+				instances,
+				diffuseMaterials,
+				{},
+				false),
+			"the open-sky diffuse fixture should initialize");
+		openSkyPathTracer.SetRuntimeEnvironmentLinear(
+			environment,
+			glm::uvec2(1u));
+
+		auto coveredTriangles =
+			TSharedPtr<TVector<Math::Triangle>>::Make();
+		coveredTriangles->Add(floor);
+		const glm::vec3 roofVertices[] = {
+			glm::vec3(-1000.0f, 1.0f, -1000.0f),
+			glm::vec3(1000.0f, 1.0f, -1000.0f),
+			glm::vec3(1000.0f, 1.0f, 1000.0f),
+			glm::vec3(-1000.0f, 1.0f, 1000.0f)
+		};
+		for (uint32_t triangleIndex = 0u;
+			triangleIndex < 2u;
+			++triangleIndex)
+		{
+			Math::Triangle roof{};
+			const uint32_t indices[2][3] = {
+				{ 0u, 1u, 2u },
+				{ 0u, 2u, 3u }
+			};
+			for (uint32_t vertexIndex = 0u;
+				vertexIndex < 3u;
+				++vertexIndex)
+			{
+				roof.m_vertices[vertexIndex] =
+					roofVertices[indices[triangleIndex][vertexIndex]];
+				roof.m_normals[vertexIndex] =
+					glm::vec3(0.0f, -1.0f, 0.0f);
+				roof.m_tangent[vertexIndex] =
+					glm::vec3(1.0f, 0.0f, 0.0f);
+				roof.m_bitangent[vertexIndex] =
+					glm::vec3(0.0f, 0.0f, 1.0f);
+			}
+			roof.m_centroid =
+				(roof.m_vertices[0] + roof.m_vertices[1] +
+					roof.m_vertices[2]) / 3.0f;
+			coveredTriangles->Add(std::move(roof));
+		}
+		auto coveredBlas = TSharedPtr<Raytracing::BVH>::Make(
+			static_cast<uint32_t>(coveredTriangles->Num()));
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*coveredBlas,
+			*coveredTriangles);
+		Math::AABB coveredBounds;
+		for (const Math::Triangle& triangle : *coveredTriangles)
+		{
+			for (const glm::vec3& vertex : triangle.m_vertices)
+			{
+				coveredBounds.Extend(vertex);
+			}
+		}
+		Raytracing::PathTracer::TLASInstance coveredInstance;
+		coveredInstance.m_triangles = coveredTriangles;
+		coveredInstance.m_blas = coveredBlas;
+		coveredInstance.m_worldBounds = coveredBounds;
+		coveredInstance.m_worldMatrix = glm::mat4(1.0f);
+		coveredInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		coveredInstance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> coveredInstances;
+		coveredInstances.Add(std::move(coveredInstance));
+		Raytracing::PathTracer coveredSkyPathTracer;
+		Require(
+			coveredSkyPathTracer.InitializeScene(
+				coveredInstances,
+				diffuseMaterials,
+				{},
+				false),
+			"the covered-sky diffuse fixture should initialize");
+		coveredSkyPathTracer.SetRuntimeEnvironmentLinear(
+			environment,
+			glm::uvec2(1u));
+
+		Raytracing::PathTracer::Params skyShadowParams = params;
+		skyShadowParams.m_numSamples = 256u;
+		skyShadowParams.m_numAmbientSamples = 4096u;
+		const auto sampleSkyReceiver = [&skyShadowParams](
+			const Raytracing::PathTracer& tracer)
+		{
+			Raytracing::PathTracer::PreparedRaySample result;
+			Require(
+				tracer.SamplePreparedSceneRay(
+					glm::vec3(0.0f, 0.5f, 0.0f),
+					glm::vec3(0.0f, -1.0f, 0.0f),
+					2.0f,
+					skyShadowParams,
+					0x5a17u,
+					result) &&
+				result.m_bHit,
+				"the sky-shadow fixture ray should hit its receiver");
+			return result.m_radiance;
+		};
+		const glm::vec3 openSkyRadiance =
+			sampleSkyReceiver(openSkyPathTracer);
+		const glm::vec3 coveredSkyRadiance =
+			sampleSkyReceiver(coveredSkyPathTracer);
+		const glm::vec3 roughDiffuseEnergyCeiling =
+			environmentRadiance * 1.05f;
+		Require(
+			glm::all(glm::lessThanEqual(
+				openSkyRadiance,
+				roughDiffuseEnergyCeiling)),
+			"a passive rough dielectric under a constant environment must not "
+			"gain energy from rejected BSDF directions; radiance " +
+				std::to_string(openSkyRadiance.x) + ", " +
+				std::to_string(openSkyRadiance.y) + ", " +
+				std::to_string(openSkyRadiance.z) + " exceeds ceiling " +
+				std::to_string(roughDiffuseEnergyCeiling.x) + ", " +
+				std::to_string(roughDiffuseEnergyCeiling.y) + ", " +
+				std::to_string(roughDiffuseEnergyCeiling.z));
+		Require(
+			glm::length(openSkyRadiance) > 0.01f &&
+			glm::length(coveredSkyRadiance) <=
+				glm::length(openSkyRadiance) * 0.001f,
+			"bake geometry must occlude the environment instead of leaking "
+			"through the sky estimator");
+
 		TVector<MaterialPtr> seededMaterials;
 		seededMaterials.Add(MakeDiffuseFixtureMaterial(allocator, baseColor));
 		Raytracing::PathTracer seededPathTracer;
@@ -3641,6 +5018,334 @@ components:
 				"a prepared GI bake ray must derive every material-lobe decision from its explicit random seed");
 		}
 	}
+
+	void TestEmissiveTrianglesIlluminateProbeReceivers()
+	{
+		Memory::ObjectAllocatorPtr allocator =
+			Memory::ObjectAllocatorPtr::Make(
+				Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		TVector<MaterialPtr> materials;
+		materials.Add(MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(1.0f)));
+		auto emitterMaterial = MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(1.0f));
+		emitterMaterial->SetUniform(
+			"material.emissiveFactor",
+			glm::vec4(20.0f, 4.0f, 1.0f, 0.0f));
+		materials.Add(std::move(emitterMaterial));
+
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		Math::Triangle receiver{};
+		receiver.m_vertices[0] = glm::vec3(-5.0f, 0.0f, -5.0f);
+		receiver.m_vertices[1] = glm::vec3(0.0f, 0.0f, 5.0f);
+		receiver.m_vertices[2] = glm::vec3(5.0f, 0.0f, -5.0f);
+		receiver.m_centroid =
+			(receiver.m_vertices[0] + receiver.m_vertices[1] +
+				receiver.m_vertices[2]) / 3.0f;
+		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
+		{
+			receiver.m_normals[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
+			receiver.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
+			receiver.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, 1.0f);
+			receiver.m_colors[vertexIndex] = glm::vec4(1.0f);
+		}
+		triangles->Add(receiver);
+
+		Math::Triangle emitter{};
+		emitter.m_vertices[0] = glm::vec3(0.5f, 2.0f, -0.5f);
+		emitter.m_vertices[1] = glm::vec3(1.5f, 2.0f, -0.5f);
+		emitter.m_vertices[2] = glm::vec3(1.0f, 2.0f, 0.5f);
+		emitter.m_centroid =
+			(emitter.m_vertices[0] + emitter.m_vertices[1] +
+				emitter.m_vertices[2]) / 3.0f;
+		emitter.m_materialIndex = 1u;
+		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
+		{
+			emitter.m_normals[vertexIndex] = glm::vec3(0.0f, -1.0f, 0.0f);
+			emitter.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
+			emitter.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, -1.0f);
+			emitter.m_colors[vertexIndex] = glm::vec4(1.0f);
+		}
+		triangles->Add(emitter);
+
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(
+			static_cast<uint32_t>(triangles->Num()));
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*blas,
+			*triangles);
+		Math::AABB bounds;
+		for (const Math::Triangle& triangle : *triangles)
+		{
+			for (const glm::vec3& vertex : triangle.m_vertices)
+			{
+				bounds.Extend(vertex);
+			}
+		}
+		Raytracing::PathTracer::TLASInstance instance;
+		instance.m_triangles = triangles;
+		instance.m_blas = blas;
+		instance.m_worldBounds = bounds;
+		instance.m_worldMatrix = glm::mat4(1.0f);
+		instance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		instance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> instances;
+		instances.Add(std::move(instance));
+
+		Raytracing::PathTracer pathTracer;
+		Require(pathTracer.InitializeScene(
+				instances,
+				materials,
+				{},
+				false),
+			"the emissive area-light fixture must initialize");
+		const auto& preparationStats =
+			pathTracer.GetLastScenePreparationStats();
+		Require(
+			preparationStats.m_triangleCount == 2u &&
+			preparationStats.m_emissiveTriangleCount == 1u &&
+			preparationStats.m_emissiveSamplingWeight > 0.0,
+			"scene preparation must register the authored emissive triangle "
+			"as an importance-sampled area light");
+
+		Raytracing::PathTracer::Params params{};
+		params.m_numSamples = 1u;
+		params.m_numAmbientSamples = 1u;
+		params.m_maxBounces = 0u;
+		params.m_msaa = 1u;
+		params.m_bRunTasksInline = true;
+		params.m_bIncludeDirectLighting = false;
+		params.m_bIncludeEnvironment = false;
+		params.m_bIncludeEmissive = false;
+		Raytracing::PathTracer::PreparedRaySample disabled;
+		Require(pathTracer.SamplePreparedSceneRay(
+				glm::vec3(0.0f, 1.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				10.0f,
+				params,
+				155u,
+				disabled) && disabled.m_bHit,
+			"the emissive area-light fixture must hit its receiver");
+		Require(glm::length(disabled.m_radiance) <= 0.000001f,
+			"disabled emissive baking must leave the receiver dark");
+
+		params.m_bIncludeEmissive = true;
+		Raytracing::PathTracer::PreparedRaySample enabled;
+		Require(pathTracer.SamplePreparedSceneRay(
+				glm::vec3(0.0f, 1.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				10.0f,
+				params,
+				155u,
+				enabled) && enabled.m_bHit,
+			"the emissive area-light fixture must resample its receiver");
+		Require(
+			enabled.m_radiance.r > 0.1f &&
+				enabled.m_radiance.r > enabled.m_radiance.g &&
+				enabled.m_radiance.g > enabled.m_radiance.b,
+			"a small emissive triangle must illuminate a diffuse GI receiver with authored HDR color");
+	}
+
+	void TestAlphaCutoutTraversalMatchesRasterVisibility()
+	{
+		Memory::ObjectAllocatorPtr allocator =
+			Memory::ObjectAllocatorPtr::Make(
+				Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		auto cutoutTexture = TObjectPtr<CpuTextureFixture>::Make(
+			allocator,
+			FileId::Invalid);
+		cutoutTexture->SetPixel(glm::u8vec4(255u, 255u, 255u, 0u));
+
+		auto cutoutMaterial = MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(1.0f));
+		cutoutMaterial->SetSampler("baseColorSampler", cutoutTexture);
+		cutoutMaterial->SetUniform("material.alphaCutoff", 0.5f);
+		cutoutMaterial->SetRenderState(RHI::RenderState(
+			true,
+			true,
+			0.0f,
+			true,
+			RHI::ECullMode::Back,
+			RHI::EBlendMode::None));
+
+		TVector<MaterialPtr> materials;
+		materials.Add(std::move(cutoutMaterial));
+		materials.Add(MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(1.0f)));
+
+		const auto makeTriangle = [](float y, uint8_t materialIndex)
+		{
+			Math::Triangle triangle{};
+			triangle.m_vertices[0] = glm::vec3(-2.0f, y, -2.0f);
+			triangle.m_vertices[1] = glm::vec3(0.0f, y, 2.0f);
+			triangle.m_vertices[2] = glm::vec3(2.0f, y, -2.0f);
+			triangle.m_centroid =
+				(triangle.m_vertices[0] + triangle.m_vertices[1] +
+					triangle.m_vertices[2]) / 3.0f;
+			triangle.m_materialIndex = materialIndex;
+			for (uint32_t vertexIndex = 0u; vertexIndex < 3u;
+				++vertexIndex)
+			{
+				triangle.m_normals[vertexIndex] =
+					glm::vec3(0.0f, 1.0f, 0.0f);
+				triangle.m_tangent[vertexIndex] =
+					glm::vec3(1.0f, 0.0f, 0.0f);
+				triangle.m_bitangent[vertexIndex] =
+					glm::vec3(0.0f, 0.0f, 1.0f);
+				triangle.m_colors[vertexIndex] = glm::vec4(1.0f);
+			}
+			return triangle;
+		};
+
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		triangles->Add(makeTriangle(1.0f, 0u));
+		triangles->Add(makeTriangle(0.0f, 1u));
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(2u);
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*blas,
+			*triangles);
+		Math::AABB bounds;
+		for (const Math::Triangle& triangle : *triangles)
+		{
+			for (const glm::vec3& vertex : triangle.m_vertices)
+			{
+				bounds.Extend(vertex);
+			}
+		}
+
+		Raytracing::PathTracer::TLASInstance instance;
+		instance.m_triangles = triangles;
+		instance.m_blas = blas;
+		instance.m_worldBounds = bounds;
+		instance.m_worldMatrix = glm::mat4(1.0f);
+		instance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		instance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> instances;
+		instances.Add(std::move(instance));
+
+		Raytracing::PathTracer pathTracer;
+		Require(pathTracer.InitializeScene(
+				instances,
+				materials,
+				{},
+				false),
+			"the alpha-cutout traversal fixture must initialize");
+		Raytracing::PathTracer::PreparedRaySample visibility;
+		Require(
+			pathTracer.SamplePreparedSceneVisibility(
+				glm::vec3(0.0f, 2.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				4.0f,
+				visibility) &&
+			visibility.m_bHit &&
+			IsNear(visibility.m_distance, 2.0f, 0.0002f),
+			"a transparent masked texel must not occlude bake, shadow, or "
+			"probe-visibility rays before the opaque surface behind it");
+	}
+
+	void TestAlphaBlendDirectLightTransmittance()
+	{
+		Memory::ObjectAllocatorPtr allocator =
+			Memory::ObjectAllocatorPtr::Make(
+				Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		TVector<MaterialPtr> materials;
+		for (const float alpha : { 0.25f, 0.5f })
+		{
+			auto material = MakeDiffuseFixtureMaterial(
+				allocator,
+				glm::vec3(1.0f));
+			material->SetUniform(
+				"material.baseColorFactor",
+				glm::vec4(1.0f, 1.0f, 1.0f, alpha));
+			material->SetRenderState(RHI::RenderState(
+				true,
+				false,
+				0.0f,
+				false,
+				RHI::ECullMode::Back,
+				RHI::EBlendMode::AlphaBlending));
+			materials.Add(std::move(material));
+		}
+		materials.Add(MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(1.0f)));
+
+		const auto makeTriangle = [](float y, uint8_t materialIndex)
+		{
+			Math::Triangle triangle{};
+			triangle.m_vertices[0] = glm::vec3(-2.0f, y, -2.0f);
+			triangle.m_vertices[1] = glm::vec3(0.0f, y, 2.0f);
+			triangle.m_vertices[2] = glm::vec3(2.0f, y, -2.0f);
+			triangle.m_centroid =
+				(triangle.m_vertices[0] + triangle.m_vertices[1] +
+					triangle.m_vertices[2]) / 3.0f;
+			triangle.m_materialIndex = materialIndex;
+			for (uint32_t vertexIndex = 0u; vertexIndex < 3u;
+				++vertexIndex)
+			{
+				triangle.m_normals[vertexIndex] =
+					glm::vec3(0.0f, 1.0f, 0.0f);
+				triangle.m_tangent[vertexIndex] =
+					glm::vec3(1.0f, 0.0f, 0.0f);
+				triangle.m_bitangent[vertexIndex] =
+					glm::vec3(0.0f, 0.0f, 1.0f);
+				triangle.m_colors[vertexIndex] = glm::vec4(1.0f);
+			}
+			return triangle;
+		};
+
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		triangles->Add(makeTriangle(1.0f, 0u));
+		triangles->Add(makeTriangle(0.5f, 1u));
+		triangles->Add(makeTriangle(0.0f, 2u));
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(2u);
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*blas,
+			*triangles);
+		Math::AABB bounds;
+		for (const Math::Triangle& triangle : *triangles)
+		{
+			for (const glm::vec3& vertex : triangle.m_vertices)
+			{
+				bounds.Extend(vertex);
+			}
+		}
+
+		Raytracing::PathTracer::TLASInstance instance;
+		instance.m_triangles = triangles;
+		instance.m_blas = blas;
+		instance.m_worldBounds = bounds;
+		instance.m_worldMatrix = glm::mat4(1.0f);
+		instance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		instance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> instances;
+		instances.Add(std::move(instance));
+
+		InspectablePathTracer pathTracer;
+		Require(pathTracer.InitializeScene(
+				instances,
+				materials,
+				{},
+				false),
+			"the alpha-blend shadow fixture must initialize");
+		const Math::Ray ray(
+			glm::vec3(0.0f, 2.0f, 0.0f),
+			glm::vec3(0.0f, -1.0f, 0.0f));
+		Require(IsNear(
+				pathTracer.TraceDirectTransmittance(ray, 1.75f),
+				0.375f,
+				0.0001f),
+			"two alpha-blended layers must attenuate direct light by the "
+			"product of their uncovered fractions");
+		Require(IsNear(
+				pathTracer.TraceDirectTransmittance(ray, 3.0f),
+				0.0f),
+			"an opaque surface behind alpha-blended layers must still block "
+			"the remaining direct light");
+	}
 }
 
 int main(int argc, char** argv)
@@ -3653,11 +5358,11 @@ int main(int argc, char** argv)
 	try
 	{
 		RunTest(
-			"GlobalIlluminationResolveNodeRegistration",
-			TestGlobalIlluminationResolveNodeRegistration);
-		RunTest(
 			"GlobalIlluminationFrameGraphProbeCellContract",
 			TestGlobalIlluminationFrameGraphProbeCellContract);
+		RunTest(
+			"PhysicalHdrFrameGraphContract",
+			TestPhysicalHdrFrameGraphContract);
 		RunTest("BinaryRoundTripDeterminismAndCorruption", TestBinaryRoundTripDeterminismAndCorruption);
 		RunTest("AtomicFileAndPortableIdentityBoundary", TestAtomicFileAndPortableIdentityBoundary);
 		RunTest("BlendAndAdditiveComposition", TestBlendAndAdditiveComposition);
@@ -3681,6 +5386,9 @@ int main(int argc, char** argv)
 		RunTest("GpuPackingAndWeightOnlyUpdates", TestGpuPackingAndWeightOnlyUpdates);
 		RunTest("AdaptiveBakerAndLayoutReuse", TestAdaptiveBakerAndLayoutReuse);
 		RunTest(
+			"PrimaryDirectionPdfWeighting",
+			TestPrimaryDirectionPdfWeighting);
+		RunTest(
 			"AnisotropicAdaptiveSubdivisionHonorsSpacing",
 			TestAnisotropicAdaptiveSubdivisionHonorsSpacing);
 		RunTest(
@@ -3694,6 +5402,12 @@ int main(int argc, char** argv)
 		RunTest(
 			"PathTracerBackfacesAndIgnoredTriangleTraversal",
 			TestPathTracerBackfacesAndIgnoredTriangleTraversal);
+		RunTest(
+			"PhysicalDielectricTransport",
+			TestPhysicalDielectricTransport);
+		RunTest(
+			"LayeredGltfTransport",
+			TestLayeredGltfTransport);
 		RunTest(
 			"PathTracerPreparationDeduplicationAndProgress",
 			TestPathTracerPreparationDeduplicationAndProgress);
@@ -3711,8 +5425,20 @@ int main(int argc, char** argv)
 			"PointLightRadiusAttenuationAndSecondaryBounce",
 			TestPointLightRadiusAttenuationAndSecondaryBounce);
 		RunTest(
+			"HdrEnvironmentImportanceDistribution",
+			TestHdrEnvironmentImportanceDistribution);
+		RunTest(
 			"EnvironmentMissIsCountedOnce",
 			TestEnvironmentMissIsCountedOnce);
+		RunTest(
+			"EmissiveTrianglesIlluminateProbeReceivers",
+			TestEmissiveTrianglesIlluminateProbeReceivers);
+		RunTest(
+			"AlphaCutoutTraversalMatchesRasterVisibility",
+			TestAlphaCutoutTraversalMatchesRasterVisibility);
+		RunTest(
+			"AlphaBlendDirectLightTransmittance",
+			TestAlphaBlendDirectLightTransmittance);
 	}
 	catch (const std::exception& exception)
 	{

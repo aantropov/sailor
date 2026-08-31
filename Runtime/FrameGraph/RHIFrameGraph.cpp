@@ -710,6 +710,7 @@ namespace
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_irradianceCubemap")));
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_brdfSampler")));
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_envCubemap")));
+		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_sheenEnvCubemap")));
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetRenderTarget("g_AO")));
 		const bool bRecreateLights = !resources->m_lightsBindings ||
 			bRecreateLightCulling ||
@@ -828,6 +829,19 @@ namespace
 					"g_envCubemap",
 					texture,
 					5u);
+			}
+			auto sheenEnvironment = owner->GetSampler("g_sheenEnvCubemap");
+			if (!sheenEnvironment)
+			{
+				sheenEnvironment = owner->GetSampler("g_envCubemap");
+			}
+			if (sheenEnvironment)
+			{
+				driver->AddSamplerToShaderBindings(
+					resources->m_lightsBindings,
+					"g_sheenEnvCubemap",
+					sheenEnvironment,
+					19u);
 			}
 			if (auto texture = owner->GetRenderTarget("g_AO"))
 			{

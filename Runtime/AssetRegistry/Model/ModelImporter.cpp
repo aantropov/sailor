@@ -2445,6 +2445,7 @@ GltfImporterUtils::MaterialTransmissionSettings GltfImporterUtils::ResolveMateri
 	size_t numTextures,
 	float unitScale)
 {
+	constexpr float InfiniteIndexOfRefraction = 1000000.0f;
 	MaterialTransmissionSettings result;
 	auto tryReadFiniteNumber = [](
 		const tinygltf::Value& object,
@@ -2506,6 +2507,18 @@ GltfImporterUtils::MaterialTransmissionSettings GltfImporterUtils::ResolveMateri
 			return true;
 		};
 
+	double parsedValue = 0.0;
+	const auto iorIt = material.extensions.find("KHR_materials_ior");
+	if (iorIt != material.extensions.end() &&
+		tryReadFiniteNumber(iorIt->second, "ior", parsedValue) &&
+		(parsedValue == 0.0 || parsedValue >= 1.0))
+	{
+		result.m_bHasIndexOfRefraction = true;
+		result.m_indexOfRefraction = parsedValue == 0.0 ?
+			InfiniteIndexOfRefraction :
+			static_cast<float>(parsedValue);
+	}
+
 	const auto extensionIt = material.extensions.find(
 		"KHR_materials_transmission");
 	if (extensionIt == material.extensions.end() ||
@@ -2515,7 +2528,6 @@ GltfImporterUtils::MaterialTransmissionSettings GltfImporterUtils::ResolveMateri
 	}
 
 	const tinygltf::Value& extension = extensionIt->second;
-	double parsedValue = 0.0;
 	if (tryReadFiniteNumber(
 			extension,
 			"transmissionFactor",
@@ -2595,14 +2607,6 @@ GltfImporterUtils::MaterialTransmissionSettings GltfImporterUtils::ResolveMateri
 		}
 	}
 
-	const auto iorIt = material.extensions.find("KHR_materials_ior");
-	if (iorIt != material.extensions.end() &&
-		tryReadFiniteNumber(iorIt->second, "ior", parsedValue))
-	{
-		result.m_indexOfRefraction = static_cast<float>(
-			(std::max)(1.0, parsedValue));
-	}
-
 	const double lengthScale = std::isfinite(unitScale) ?
 		std::abs(static_cast<double>(unitScale)) :
 		1.0;
@@ -2621,6 +2625,41 @@ GltfImporterUtils::MaterialTransmissionSettings GltfImporterUtils::ResolveMateri
 			result.m_attenuationDistance);
 	}
 
+	return result;
+}
+
+glm::vec3 GltfImporterUtils::ResolveMaterialEmissiveFactor(
+	const tinygltf::Material& material)
+{
+	double emissiveStrength = 1.0;
+	const auto extensionIt = material.extensions.find(
+		"KHR_materials_emissive_strength");
+	if (extensionIt != material.extensions.end() &&
+		extensionIt->second.IsObject() &&
+		extensionIt->second.Has("emissiveStrength"))
+	{
+		const tinygltf::Value& value =
+			extensionIt->second.Get("emissiveStrength");
+		if (value.IsNumber())
+		{
+			const double parsedStrength = value.GetNumberAsDouble();
+			if (std::isfinite(parsedStrength) && parsedStrength >= 0.0)
+			{
+				emissiveStrength = parsedStrength;
+			}
+		}
+	}
+
+	glm::vec3 result(0.0f);
+	for (glm::length_t component = 0; component < 3; ++component)
+	{
+		const double radiance =
+			material.emissiveFactor[component] * emissiveStrength;
+		result[component] = static_cast<float>(std::clamp(
+			std::isfinite(radiance) ? radiance : 0.0,
+			0.0,
+			static_cast<double>((std::numeric_limits<float>::max)())));
+	}
 	return result;
 }
 
@@ -2668,8 +2707,8 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(
 
 	auto isManagedDefine = [](const std::string& define)
 		{
-			return define == "TRANSMISSION" || define == "ALPHA_CUTOUT" ||
-				define == "SKINNING";
+			return define == "TRANSMISSION" || define == "MATERIAL_IOR" ||
+				define == "ALPHA_CUTOUT" || define == "SKINNING";
 		};
 
 	YAML::Node mergedDefines(YAML::NodeType::Sequence);
@@ -2705,6 +2744,7 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(
 		}
 
 		bool bHasTransmission = false;
+		bool bHasMaterialIor = false;
 		bool bHasAlphaCutout = false;
 		bool bHasSkinning = false;
 		for (const YAML::Node& defineNode : generatedDefines)
@@ -2719,6 +2759,11 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(
 			{
 				mergedDefines.push_back(define);
 				bHasTransmission = true;
+			}
+			else if (define == "MATERIAL_IOR" && !bHasMaterialIor)
+			{
+				mergedDefines.push_back(define);
+				bHasMaterialIor = true;
 			}
 			else if (define == "ALPHA_CUTOUT" && !bHasAlphaCutout)
 			{
@@ -2750,7 +2795,8 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(
 		"material.indexOfRefraction"
 	};
 	static const char* Vec4Properties[] = {
-		"material.attenuationColor"
+		"material.attenuationColor",
+		"material.emissiveFactor"
 	};
 	static const char* SamplerProperties[] = {
 		"transmissionSampler",
@@ -4206,9 +4252,8 @@ bool ModelImporter::GenerateFingerprint(
 		material->SetUniform(
 			"material.emissiveFactor",
 			vec4(
-				sourceMaterial.emissiveFactor[0],
-				sourceMaterial.emissiveFactor[1],
-				sourceMaterial.emissiveFactor[2],
+				GltfImporterUtils::ResolveMaterialEmissiveFactor(
+					sourceMaterial),
 				0.0f));
 		material->SetUniform(
 			"material.roughnessFactor",
@@ -4231,13 +4276,17 @@ bool ModelImporter::GenerateFingerprint(
 				"material.attenuationDistance",
 				transmissionSettings.m_attenuationDistance);
 			material->SetUniform(
-				"material.indexOfRefraction",
-				transmissionSettings.m_indexOfRefraction);
-			material->SetUniform(
 				"material.attenuationColor",
 				glm::vec4(
 					transmissionSettings.m_attenuationColor,
 					1.0f));
+		}
+		if (transmissionSettings.IsEnabled() ||
+			transmissionSettings.m_bHasIndexOfRefraction)
+		{
+			material->SetUniform(
+				"material.indexOfRefraction",
+				transmissionSettings.m_indexOfRefraction);
 		}
 
 		auto bindTexture = [&](
@@ -4909,9 +4958,6 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			data.m_uniformsFloat.Add(
 				"material.attenuationDistance",
 				transmissionSettings.m_attenuationDistance);
-			data.m_uniformsFloat.Add(
-				"material.indexOfRefraction",
-				transmissionSettings.m_indexOfRefraction);
 			data.m_uniformsVec4.Add(
 				"material.attenuationColor",
 				glm::vec4(
@@ -4928,6 +4974,18 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					CreateTextureAsset(materialName + "_thicknessTexture.png.asset", assetInfo->GetAssetFilename(), transmissionSettings.m_thicknessTextureIndex, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 			}
 			data.m_shaderDefines.Add("TRANSMISSION");
+		}
+		if (transmissionSettings.IsEnabled() ||
+			transmissionSettings.m_bHasIndexOfRefraction)
+		{
+			data.m_uniformsFloat.Add(
+				"material.indexOfRefraction",
+				transmissionSettings.m_indexOfRefraction);
+		}
+		if (!transmissionSettings.IsEnabled() &&
+			transmissionSettings.m_bHasIndexOfRefraction)
+		{
+			data.m_shaderDefines.Add("MATERIAL_IOR");
 		}
 
 		int32_t textureIndex = -1;
@@ -5033,7 +5091,9 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			(float)material.pbrMetallicRoughness.baseColorFactor[2],
 			(float)material.pbrMetallicRoughness.baseColorFactor[3]);
 
-		const vec4 emissiveFactor = vec4((float)material.emissiveFactor[0], (float)material.emissiveFactor[1], (float)material.emissiveFactor[2], 0.0f);
+		const vec4 emissiveFactor = vec4(
+			GltfImporterUtils::ResolveMaterialEmissiveFactor(material),
+			0.0f);
 
 		data.m_uniformsVec4.Add("material.baseColorFactor", baseColor);
 		data.m_uniformsVec4.Add("material.emissiveFactor", emissiveFactor);
@@ -5440,6 +5500,10 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 		{
 			generatedDefines.push_back("TRANSMISSION");
 		}
+		else if (transmission.m_bHasIndexOfRefraction)
+		{
+			generatedDefines.push_back("MATERIAL_IOR");
+		}
 		if (alphaMode.m_bAlphaCutout)
 		{
 			generatedDefines.push_back("ALPHA_CUTOUT");
@@ -5447,6 +5511,11 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 		generatedProperties["defines"] = generatedDefines;
 		generatedProperties["uniformsFloat"]["material.alphaCutoff"] =
 			static_cast<float>(sourceMaterial.alphaCutoff);
+		generatedProperties["uniformsVec4"]["material.emissiveFactor"] =
+			glm::vec4(
+				GltfImporterUtils::ResolveMaterialEmissiveFactor(
+					sourceMaterial),
+				0.0f);
 
 		if (transmission.IsEnabled())
 		{
@@ -5458,9 +5527,6 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 			generatedProperties["uniformsFloat"]
 				["material.attenuationDistance"] =
 					transmission.m_attenuationDistance;
-			generatedProperties["uniformsFloat"]
-				["material.indexOfRefraction"] =
-					transmission.m_indexOfRefraction;
 			generatedProperties["uniformsVec4"]
 				["material.attenuationColor"] = glm::vec4(
 					transmission.m_attenuationColor,
@@ -5545,6 +5611,13 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 				"thicknessSampler",
 				"thicknessTexture",
 				transmission.m_thicknessTextureIndex);
+		}
+		if (transmission.IsEnabled() ||
+			transmission.m_bHasIndexOfRefraction)
+		{
+			generatedProperties["uniformsFloat"]
+				["material.indexOfRefraction"] =
+					transmission.m_indexOfRefraction;
 		}
 
 		YAML::Node materialDocument;

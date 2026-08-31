@@ -336,10 +336,11 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			}
 		}
 
-		m_pCloudsMapTexture = m_clouds->GetRHI();
+		m_pCloudsMapTexture = m_clouds ? m_clouds->GetRHI() : nullptr;
 
 		if (!m_pCloudsMapTexture)
 		{
+			commands->EndDebugRegion(commandList);
 			return;
 		}
 	}
@@ -385,6 +386,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 		if (bShouldReturn)
 		{
+			commands->EndDebugRegion(commandList);
 			return;
 		}
 

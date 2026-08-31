@@ -28,6 +28,14 @@ namespace Sailor::Raytracing
 			return m_pathTracer.GetLastScenePreparationStats();
 		}
 
+		bool SamplePrimaryDirection(
+			const glm::vec3& uniformDirection,
+			uint32_t sampleIndex,
+			uint32_t sampleCount,
+			uint32_t randomSeed,
+			glm::vec3& outDirection,
+			float& outPdf,
+			std::string& outDiagnostic) const override;
 		bool Sample(
 			const glm::vec3& origin,
 			const glm::vec3& direction,

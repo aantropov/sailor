@@ -161,8 +161,7 @@ void LocalShadowAtlasStressTestSetupComponent::SpawnLightField(
 				auto light = gameObject->AddComponent<LightComponent>();
 				light->SetLightType(ELightType::Point);
 				light->SetIntensity(LightPalette[
-					(index + fieldIndex * 3u) % (sizeof(LightPalette) / sizeof(LightPalette[0]))] * 20.0f);
-				light->SetAttenuation(glm::vec3(1.0f, 0.045f, 0.0075f));
+					(index + fieldIndex * 3u) % (sizeof(LightPalette) / sizeof(LightPalette[0]))] * 2000.0f);
 				light->SetRadius(65.0f);
 				light->SetShadowType(RHI::EShadowType::PCF);
 				light->SetShadowQuality(ELightShadowQuality::VeryLow);
@@ -176,7 +175,7 @@ void LocalShadowAtlasStressTestSetupComponent::EnsureSky()
 	auto gameObject = GetWorld()->Instantiate("ShadowStressSky");
 	auto sky = gameObject->AddComponent<SkyComponent>();
 	sky->SetAmbient(0.02f);
-	sky->SetSunIntensity(0.0f);
+	sky->SetCloudScatteringScale(0.0f);
 	sky->SetCloudsCoverage(0.0f);
 }
 

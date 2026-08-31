@@ -15,6 +15,8 @@ namespace Sailor::Framegraph
 
 		static constexpr uint32_t EnvMapSize = 512;
 		static constexpr uint32_t EnvMapLevels = 10;
+		static constexpr uint32_t SheenEnvMapSize = 128;
+		static constexpr uint32_t SheenEnvMapLevels = 8;
 
 		static constexpr uint32_t IrradianceMapSize = 32;
 		static constexpr uint32_t BrdfLutSize = 256;
@@ -30,14 +32,17 @@ namespace Sailor::Framegraph
 
 		ShaderSetPtr m_pComputeIrradianceShader{};
 		ShaderSetPtr m_pComputeSpecularShader{};
+		ShaderSetPtr m_pComputeSheenShader{};
 		ShaderSetPtr m_pComputeBrdfShader{};
 
 		RHI::RHIShaderBindingSetPtr m_computeIrradianceBindings{};
 		RHI::RHIShaderBindingSetPtr m_computeSpecularBindings{};
+		RHI::RHIShaderBindingSetPtr m_computeSheenBindings{};
 		RHI::RHIShaderBindingSetPtr m_computeBrdfBindings{};
 
 		TMap<SkyEnvironmentKey, RHI::RHICubemapPtr> m_envCubemaps{};
 		TMap<SkyEnvironmentKey, RHI::RHICubemapPtr> m_irradianceCubemaps{};
+		TMap<SkyEnvironmentKey, RHI::RHICubemapPtr> m_sheenEnvCubemaps{};
 		RHI::RHITexturePtr m_brdfSampler{};
 
 		TexturePtr m_envMapTexture;

@@ -29,16 +29,12 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 3.5
-            - 3.20000005
-            - 2.79999995
+            - 3500
+            - 3200
+            - 2800
           shadowQuality: Medium
           indirectLightingIntensity: 1
           globalIlluminationMode: RealtimeAndBaked
-          attenuation:
-            - 1
-            - 0
-            - 0
           radius: 150
           instanceId: D1A60000000040008000000000000001_16060000000000000001
           cutOff:
@@ -90,15 +86,15 @@ prefabs:
           giIndirectIntensity: 1
           scatteringDensity: 0.5
           instanceId: D1A60000000040008000000000000002_16060000000000000002
-          sunIntensity: 0
+          cloudScatteringScale: 0
           scatteringPhase: 0.5
           sunShaftsIntensity: 0.00100000005
           ambient: 0
           scatteringIntensity: 0.5
-          directionalLightIntensity:
-            - 3.5
-            - 3.20000005
-            - 2.79999995
+          sunIlluminance:
+            - 3500
+            - 3200
+            - 2800
           fileId: ""
           sunShaftsDistance: 60
   - gameObjects:
@@ -428,16 +424,12 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 30
-            - 30
-            - 30
+            - 480
+            - 480
+            - 480
           shadowQuality: Medium
           indirectLightingIntensity: 1
           globalIlluminationMode: RealtimeAndBaked
-          attenuation:
-            - 1
-            - 0.119999997
-            - 0.0250000004
           radius: 22
           instanceId: D1A6000000004000800000000000000C_16060000000000000011
           cutOff:
@@ -739,16 +731,12 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 80
-            - 42
-            - 16
+            - 900
+            - 470
+            - 180
           shadowQuality: Medium
           indirectLightingIntensity: 1
           globalIlluminationMode: RealtimeAndBaked
-          attenuation:
-            - 1
-            - 0.0700000003
-            - 0.00999999978
           radius: 48
           instanceId: D1A60000000040008000000000000014_16060000000000000019
           cutOff:

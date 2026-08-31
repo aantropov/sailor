@@ -9,6 +9,7 @@ using namespace Sailor;
 namespace
 {
 	constexpr float SurfacePlaneTolerance = 0.0001f;
+	constexpr float MinimumReceiverCoverage = 0.5f;
 
 	bool Contains(const GIProbeBrick& brick, const glm::vec3& position) noexcept
 	{
@@ -27,7 +28,8 @@ namespace
 	float SurfaceFacingWeight(
 		const GIProbe& probe,
 		const glm::vec3& worldPosition,
-		const glm::vec3& worldNormal) noexcept
+		const glm::vec3& worldNormal,
+		float transitionWidth) noexcept
 	{
 		const float normalLength = glm::length(worldNormal);
 		if (!std::isfinite(normalLength) || normalLength <= 1e-6f)
@@ -41,8 +43,75 @@ namespace
 		{
 			return 0.0f;
 		}
-		return glm::dot(worldNormal / normalLength, surfaceToProbe) <
-			-SurfacePlaneTolerance ? 0.0f : 1.0f;
+		const float signedPlaneDistance = glm::dot(
+			worldNormal / normalLength,
+			surfaceToProbe);
+		const float width = (std::max)(
+			transitionWidth,
+			SurfacePlaneTolerance);
+		const float normalized = glm::clamp(
+			(signedPlaneDistance + width) / (2.0f * width),
+			0.0f,
+			1.0f);
+		return normalized * normalized * (3.0f - 2.0f * normalized);
+	}
+
+	float ProbeMomentVisibility(
+		const GIProbe& probe,
+		const glm::vec3& worldPosition,
+		const GIProbesBakeSettings& settings) noexcept
+	{
+		if ((probe.m_flags & GIProbeBlockedDirectionMask) == 0u)
+		{
+			return 1.0f;
+		}
+		const glm::vec3 probeToReceiver = worldPosition - probe.m_position;
+		const float receiverDistance = glm::length(probeToReceiver);
+		if (!std::isfinite(receiverDistance))
+		{
+			return 0.0f;
+		}
+		if (receiverDistance <= 1e-6f)
+		{
+			return 1.0f;
+		}
+
+		const glm::vec3 direction = probeToReceiver / receiverDistance;
+		const glm::vec3 axisWeights = glm::abs(direction);
+		const float totalAxisWeight =
+			axisWeights.x + axisWeights.y + axisWeights.z;
+		float meanDistance = 0.0f;
+		float meanDistanceSquared = 0.0f;
+		for (uint32_t axis = 0u; axis < 3u; ++axis)
+		{
+			const uint32_t directionIndex = axis * 2u +
+				(direction[axis] >= 0.0f ? 0u : 1u);
+			const glm::vec2 moments = probe.m_visibility[directionIndex];
+			meanDistance += moments.x * axisWeights[axis];
+			meanDistanceSquared += moments.y * axisWeights[axis];
+		}
+		meanDistance /= totalAxisWeight;
+		meanDistanceSquared /= totalAxisWeight;
+
+		const float distanceBias = (std::max)(
+			settings.m_normalBias + settings.m_viewBias,
+			settings.m_minProbeSpacing * 0.02f);
+		const float distanceBeyondMean =
+			receiverDistance - distanceBias - meanDistance;
+		if (distanceBeyondMean <= 0.0f)
+		{
+			return 1.0f;
+		}
+
+		const float standardDeviationFloor = (std::max)(
+			settings.m_minProbeSpacing * 0.02f,
+			0.001f);
+		const float variance = (std::max)(
+			meanDistanceSquared - meanDistance * meanDistance,
+			standardDeviationFloor * standardDeviationFloor);
+		const float chebyshev = variance /
+			(variance + distanceBeyondMean * distanceBeyondMean);
+		return chebyshev * chebyshev * chebyshev;
 	}
 }
 
@@ -168,15 +237,16 @@ bool Sailor::SampleGIProbesIrradiance(
 					(z ? fraction.z : 1.0f - fraction.z);
 				const float interpolationWeight = trilinearWeight *
 					glm::clamp(probe.m_validity, 0.0f, 1.0f);
-				const float surfaceFacingWeight = SurfaceFacingWeight(
-					probe,
-					worldPosition,
-					worldNormal);
-				// Six signed-axis clearance rays cannot represent finite scene
-				// occluders without extending hits into visible rejection planes.
-				// Diffuse occlusion is already baked into SH, so runtime visibility
-				// is receiver-side selection.
-				const float visibility = surfaceFacingWeight;
+					const float surfaceFacingWeight = SurfaceFacingWeight(
+						probe,
+						worldPosition,
+						worldNormal,
+						data.m_bakeSettings.m_normalBias);
+					const float visibility = surfaceFacingWeight *
+						ProbeMomentVisibility(
+							probe,
+							worldPosition,
+							data.m_bakeSettings);
 				const float visibleWeight = interpolationWeight * visibility;
 				totalInterpolationWeight += interpolationWeight;
 				for (uint32_t coefficientIndex = 0u;
@@ -205,9 +275,17 @@ bool Sailor::SampleGIProbesIrradiance(
 	{
 		return false;
 	}
+	// Never promote a tiny surviving receiver-side weight to a full probe
+	// contribution. That amplification turns a single bright probe into white
+	// pixels at depth discontinuities and thin alpha-tested geometry. Cells with
+	// at least half of their valid interpolation support retain the established
+	// normalized result; lower coverage fades conservatively instead.
+	const float normalizationWeight = (std::max)(
+		totalVisibleWeight,
+		totalInterpolationWeight * MinimumReceiverCoverage);
 	for (glm::vec3& coefficient : blended)
 	{
-		coefficient /= totalVisibleWeight;
+		coefficient /= normalizationWeight;
 	}
 	outIrradiance = EvaluateProbeIrradianceSH(blended, worldNormal);
 	if (outDebugInfo)
@@ -216,7 +294,7 @@ bool Sailor::SampleGIProbesIrradiance(
 		outDebugInfo->m_totalUnnormalizedWeight = totalVisibleWeight;
 		for (float& weight : outDebugInfo->m_weights)
 		{
-			weight /= totalVisibleWeight;
+			weight /= normalizationWeight;
 		}
 	}
 	return true;

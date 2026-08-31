@@ -17,7 +17,8 @@ namespace
 	constexpr uint32_t ScatteringIntegralSteps = 128u;
 	constexpr float RayleighScaleHeight = 7994.0f;
 	constexpr float MieScaleHeight = 1200.0f;
-	constexpr float SkyLightIntensity = 7.0f;
+	constexpr float SunAngularRadius = 0.00464257581f;
+	constexpr float MaxHalfFloat = 65504.0f;
 	constexpr float IntersectionEpsilon = 0.000001f;
 
 	float PlanetHeight(const glm::vec3& position)
@@ -140,6 +141,36 @@ namespace
 		return true;
 	}
 
+	float SunVisibility(
+		const glm::vec3& position,
+		const glm::vec3& directionToSun)
+	{
+		const glm::vec3 radialPosition(
+			position.x,
+			EarthRadius + position.y,
+			position.z);
+		const float motionTowardSun = glm::dot(
+			radialPosition,
+			directionToSun);
+		if (motionTowardSun >= 0.0f)
+		{
+			return 1.0f;
+		}
+
+		const float closestRadius = std::sqrt((std::max)(
+			glm::dot(radialPosition, radialPosition) -
+				motionTowardSun * motionTowardSun,
+			0.0f));
+		const float tangentAltitude = closestRadius - EarthRadius;
+		const float penumbraWidth = (std::max)(
+			-motionTowardSun * std::tan(SunAngularRadius),
+			1.0f);
+		return glm::smoothstep(
+			-penumbraWidth,
+			penumbraWidth,
+			tangentAltitude);
+	}
+
 	glm::vec3 IntersectAtmosphere(
 		const glm::vec3& origin,
 		const glm::vec3& direction)
@@ -166,7 +197,9 @@ namespace
 
 	float PhaseRayleigh(float cosAngle)
 	{
-		return (3.0f * glm::pi<float>() / 16.0f) *
+		// A phase function is a probability density over solid angle. Keeping it
+		// normalized is required when the source is authored as illuminance.
+		return (3.0f / (16.0f * glm::pi<float>())) *
 			(1.0f + cosAngle * cosAngle);
 	}
 
@@ -180,12 +213,14 @@ namespace
 			glm::vec3(1.5f));
 		return glm::dot(
 			(cosAngle * cosAngle + 1.0f) * c / denominator,
-			glm::vec3(1.0f / 3.0f));
+			glm::vec3(1.0f / 3.0f)) /
+			(4.0f * glm::pi<float>());
 	}
 
 	glm::vec3 EvaluateClearSky(
 		const glm::vec3& direction,
-		const glm::vec3& lightDirection)
+		const glm::vec3& lightDirection,
+		const glm::vec3& sunIlluminance)
 	{
 		const glm::vec3 surfaceOrigin(0.0f);
 		glm::vec3 origin;
@@ -224,11 +259,11 @@ namespace
 		const float phaseMie = PhaseMie(angle);
 
 		for (uint32_t index = 0u;
-			index < ScatteringIntegralSteps - 1u;
+			index < ScatteringIntegralSteps;
 			++index)
 		{
 			const glm::vec3 point = origin + step *
-				static_cast<float>(index + 1u);
+				(static_cast<float>(index) + 0.5f);
 			const float height = (std::max)(PlanetHeight(point), 0.0f);
 			const float localRayleigh =
 				std::exp(-height / RayleighScaleHeight) * stepLength;
@@ -236,6 +271,14 @@ namespace
 				std::exp(-height / MieScaleHeight) * stepLength;
 			viewDensityRayleigh += localRayleigh;
 			viewDensityMie += localMie;
+
+			const float sunVisibility = SunVisibility(
+				point,
+				-lightDirection);
+			if (sunVisibility <= 0.0f)
+			{
+				continue;
+			}
 
 			const glm::vec3 toLight =
 				IntersectAtmosphere(point, -lightDirection);
@@ -247,13 +290,6 @@ namespace
 				static_cast<float>(DensityIntegralSteps);
 			float lightDensityRayleigh = 0.0f;
 			float lightDensityMie = 0.0f;
-			float planetEntryDistance = -1.0f;
-			bool bReachedSun = !RayEntersAltitudeSphere(
-				point,
-				-lightDirection,
-				0.0f,
-				planetEntryDistance);
-
 			for (uint32_t lightIndex = 0u;
 				lightIndex < DensityIntegralSteps;
 				++lightIndex)
@@ -262,7 +298,6 @@ namespace
 					static_cast<float>(lightIndex);
 				if (sampleHeight < 0.0f)
 				{
-					bReachedSun = false;
 					break;
 				}
 				lightDensityMie +=
@@ -273,25 +308,63 @@ namespace
 					lightDistanceStep;
 			}
 
-			if (bReachedSun)
-			{
-				const glm::vec3 attenuation = glm::exp(
-					-rayleighCoefficient *
-						(viewDensityRayleigh + lightDensityRayleigh) -
-					mieCoefficient * 1.1f *
-						(lightDensityMie + viewDensityMie));
-				accumulatedRayleigh += attenuation * localRayleigh;
-				accumulatedMie += attenuation * localMie;
-			}
+			const glm::vec3 attenuation = glm::exp(
+				-rayleighCoefficient *
+					(viewDensityRayleigh + lightDensityRayleigh) -
+				mieCoefficient * 1.1f *
+					(lightDensityMie + viewDensityMie));
+			accumulatedRayleigh += attenuation *
+				localRayleigh * sunVisibility;
+			accumulatedMie += attenuation *
+				localMie * sunVisibility;
 		}
 
-		const glm::vec3 result = SkyLightIntensity *
+		const glm::vec3 result = sunIlluminance *
 			(rayleighCoefficient * accumulatedRayleigh * phaseRayleigh +
 				mieCoefficient * accumulatedMie * phaseMie);
 		return Math::AllFinite(result)
-			? glm::max(result, glm::vec3(0.0f))
+			? glm::clamp(result, glm::vec3(0.0f), glm::vec3(MaxHalfFloat))
 			: glm::vec3(0.0f);
 	}
+}
+
+glm::vec3 Sailor::Raytracing::CalculateDirectSunIlluminance(
+	const SkyParameters& parameters)
+{
+	const glm::vec3 lightDirection = Math::SafeNormalize(
+		glm::vec3(parameters.m_lightDirection),
+		Math::vec3_Down);
+	const float sunElevationSine = glm::clamp(
+		-lightDirection.y,
+		-1.0f,
+		1.0f);
+	if (sunElevationSine <= 0.0f)
+	{
+		return glm::vec3(0.0f);
+	}
+
+	// Kasten-Young relative optical air mass remains stable close to the
+	// horizon, where the plane-parallel 1 / sin(elevation) approximation
+	// diverges. The vertical density integrals of the exponential atmosphere
+	// are its Rayleigh and Mie scale heights.
+	const float elevationDegrees = glm::degrees(std::asin(sunElevationSine));
+	const float relativeAirMass = 1.0f /
+		(sunElevationSine + 0.50572f * std::pow(
+			elevationDegrees + 6.07995f,
+			-1.6364f));
+	const glm::vec3 rayleighCoefficient(
+		3.8e-6f,
+		13.5e-6f,
+		33.1e-6f);
+	const glm::vec3 mieCoefficient(22.0e-6f);
+	const glm::vec3 transmittance = glm::exp(
+		-rayleighCoefficient * RayleighScaleHeight * relativeAirMass -
+		mieCoefficient * (1.1f * MieScaleHeight * relativeAirMass));
+	const glm::vec3 sourceIlluminance = glm::max(
+		glm::vec3(parameters.m_sunIlluminance),
+		glm::vec3(0.0f));
+	const glm::vec3 result = sourceIlluminance * transmittance;
+	return Math::AllFinite(result) ? result : glm::vec3(0.0f);
 }
 
 bool Sailor::Raytracing::GenerateSkyEnvironmentEquirectangular(
@@ -309,6 +382,9 @@ bool Sailor::Raytracing::GenerateSkyEnvironmentEquirectangular(
 	const glm::vec3 lightDirection = Math::SafeNormalize(
 		glm::vec3(parameters.m_lightDirection),
 		Math::vec3_Down);
+	const glm::vec3 sunIlluminance = glm::max(
+		glm::vec3(parameters.m_sunIlluminance),
+		glm::vec3(0.0f));
 	outEnvironment.Resize(
 		static_cast<size_t>(extent.x) * static_cast<size_t>(extent.y));
 	const float pi = glm::pi<float>();
@@ -336,7 +412,10 @@ bool Sailor::Raytracing::GenerateSkyEnvironmentEquirectangular(
 				cosTheta,
 				std::sin(phi) * sinTheta);
 			outEnvironment[x + y * extent.x] = glm::vec4(
-				EvaluateClearSky(direction, lightDirection),
+				EvaluateClearSky(
+						direction,
+						lightDirection,
+						sunIlluminance),
 				1.0f);
 		}
 	}

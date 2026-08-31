@@ -581,35 +581,6 @@ namespace
 			GIProbesMaxSubdivisionLevel + 1u : level;
 	}
 
-	float CalculateVisibilityMaxDistance(
-		const GIProbesData& data,
-		const GIProbeBrick& brick) noexcept
-	{
-		const glm::uvec3 cellCounts = glm::max(
-			brick.m_probeCounts,
-			glm::uvec3(2u)) - glm::uvec3(1u);
-		const glm::vec3 cellExtent =
-			(brick.m_max - brick.m_min) / glm::vec3(cellCounts);
-		float cellDiagonal = glm::length(cellExtent);
-		if (!std::isfinite(cellDiagonal) || cellDiagonal <= 0.0f)
-		{
-			cellDiagonal = data.m_bakeSettings.m_maxRayDistance;
-		}
-
-		// Visibility only rejects probes across geometry inside their local
-		// interpolation support. Keeping path-tracing misses at the much larger
-		// radiance range makes the distance moments hundreds of metres wide and
-		// turns every local probe-to-surface query into "visible".
-		const float relocationAndSamplingMargin =
-			data.m_bakeSettings.m_minProbeSpacing * 0.45f +
-			data.m_bakeSettings.m_normalBias +
-			data.m_bakeSettings.m_viewBias;
-		return glm::clamp(
-			cellDiagonal + relocationAndSamplingMargin,
-			(std::min)(0.001f, data.m_bakeSettings.m_maxRayDistance),
-			data.m_bakeSettings.m_maxRayDistance);
-	}
-
 	std::vector<float> CalculateProbeVisibilityMaxDistances(
 		const GIProbesData& data)
 	{
@@ -618,7 +589,9 @@ namespace
 			data.m_bakeSettings.m_maxRayDistance);
 		for (const GIProbeBrick& brick : data.m_bricks)
 		{
-			const float maxDistance = CalculateVisibilityMaxDistance(data, brick);
+			const float maxDistance = CalculateGIProbeVisibilityMaxDistance(
+				data,
+				brick);
 			const uint32_t endProbeIndex = (std::min)(
 				brick.m_firstProbeIndex + brick.m_probeCount,
 				static_cast<uint32_t>(result.size()));
@@ -741,6 +714,10 @@ namespace
 			m_weights{};
 		std::array<double, GIProbeVisibilityDirectionCount>
 			m_environmentVisibilitySums{};
+		std::array<double, GIProbeVisibilityDirectionCount>
+			m_distanceSums{};
+		std::array<double, GIProbeVisibilityDirectionCount>
+			m_distanceSquaredSums{};
 		uint32_t m_backfaceCount = 0u;
 		float m_closestBackfaceDistance =
 			(std::numeric_limits<float>::max)();
@@ -769,6 +746,7 @@ namespace
 		const IGIProbeBakeRaySampler& sampler,
 		const glm::vec3& position,
 		float targetClearance,
+		float visibilityMaxDistance,
 		uint32_t probeIndex,
 		uint32_t stream,
 		ProbeTransport& outTransport,
@@ -811,6 +789,10 @@ namespace
 			}
 
 			const glm::vec3 axisWeights = glm::abs(direction);
+			const float localDistance = sample.m_bHit &&
+				std::isfinite(sample.m_distance) ?
+				glm::clamp(sample.m_distance, 0.0f, visibilityMaxDistance) :
+				visibilityMaxDistance;
 			for (uint32_t axis = 0u; axis < 3u; ++axis)
 			{
 				const uint32_t directionIndex = axis * 2u +
@@ -819,6 +801,10 @@ namespace
 				outTransport.m_weights[directionIndex] += weight;
 				outTransport.m_environmentVisibilitySums[directionIndex] +=
 					weight * (sample.m_bHit ? 0.0 : 1.0);
+				outTransport.m_distanceSums[directionIndex] +=
+					weight * static_cast<double>(localDistance);
+				outTransport.m_distanceSquaredSums[directionIndex] +=
+					weight * static_cast<double>(localDistance * localDistance);
 			}
 
 			if (sample.m_bHit && sample.m_bBackFace)
@@ -861,8 +847,6 @@ namespace
 
 	void StoreProbeVisibility(
 		const ProbeTransport& transport,
-		const std::array<float, GIProbeVisibilityDirectionCount>&
-			clearanceDistances,
 		float fallbackDistance,
 		GIProbe& probe) noexcept
 	{
@@ -874,20 +858,26 @@ namespace
 			directionIndex < GIProbeVisibilityDirectionCount;
 			++directionIndex)
 		{
-			const float distance = glm::clamp(
-				clearanceDistances[directionIndex],
-				0.0f,
-				fallbackDistance);
+			const double weight = transport.m_weights[directionIndex];
+			const float meanDistance = weight > 0.0 ?
+				static_cast<float>(
+					transport.m_distanceSums[directionIndex] / weight) :
+				fallbackDistance;
+			const float meanDistanceSquared = weight > 0.0 ?
+				static_cast<float>(
+					transport.m_distanceSquaredSums[directionIndex] / weight) :
+				fallbackDistance * fallbackDistance;
 			probe.m_visibility[directionIndex] = glm::vec2(
-				distance,
-				distance * distance);
-			if (distance < fallbackDistance - blockingEpsilon)
+				meanDistance,
+				(std::max)(
+					meanDistanceSquared,
+					meanDistance * meanDistance));
+			if (meanDistance < fallbackDistance - blockingEpsilon)
 			{
 				probe.m_flags |= GIProbeBlockedDirectionBit(
 					directionIndex);
 			}
 
-			const double weight = transport.m_weights[directionIndex];
 			if (weight > 0.0)
 			{
 				probe.m_environmentVisibility[directionIndex] =
@@ -957,6 +947,7 @@ namespace
 					sampler,
 					probe.m_position,
 					targetClearance,
+					visibilityMaxDistance,
 					probeIndex,
 					1u,
 					transport,
@@ -1021,6 +1012,7 @@ namespace
 						sampler,
 						probe.m_position,
 						targetClearance,
+						visibilityMaxDistance,
 						probeIndex,
 						2u + iteration,
 						transport,
@@ -1041,25 +1033,8 @@ namespace
 				probe.m_flags &= ~static_cast<uint32_t>(
 					EGIProbeFlag::Valid);
 			}
-			// Relocation changes the origin, so the six blocker rays must be
-			// sampled once more from the final position. These exact axis
-			// distances define planar rejection boundaries at runtime; deriving
-			// them from broad Fibonacci lobes creates circular visibility islands.
-			if (!SampleVisibility(
-					sampler,
-					probe.m_position,
-					visibilityMaxDistance,
-					request.m_settings.m_randomSeed,
-					probeIndex,
-					32u,
-					clearanceDistances,
-					outDiagnostic))
-			{
-				return false;
-			}
 			StoreProbeVisibility(
 				transport,
-				clearanceDistances,
 				visibilityMaxDistance,
 				probe);
 		}
@@ -1070,8 +1045,6 @@ namespace
 			return true;
 		}
 		const uint32_t rayCount = request.m_settings.m_raysPerProbe;
-		const float projectionScale = 4.0f * Pi /
-			static_cast<float>(rayCount);
 		for (uint32_t rayIndex = 0u; rayIndex < rayCount; ++rayIndex)
 		{
 			if (IsCancelled(request))
@@ -1079,11 +1052,43 @@ namespace
 				outDiagnostic = "GI probe bake was cancelled";
 				return false;
 			}
-			const glm::vec3 direction = FibonacciDirection(
+			// Direction samples are shared by neighbouring probes. The path tracer
+			// may replace part of this uniform sequence with HDR environment samples;
+			// the returned mixture PDF keeps the SH projection unbiased.
+			const glm::vec3 uniformDirection = FibonacciDirection(
 				rayIndex,
 				rayCount,
 				request.m_settings.m_randomSeed,
-				probeIndex);
+				0u);
+			glm::vec3 direction{};
+			float directionPdf = 0.0f;
+			if (!sampler.SamplePrimaryDirection(
+					uniformDirection,
+					rayIndex,
+					rayCount,
+					MixRandomSeed(
+						request.m_settings.m_randomSeed,
+						0u,
+						rayIndex,
+						3u),
+					direction,
+					directionPdf,
+					outDiagnostic))
+			{
+				return false;
+			}
+			const float directionLength = glm::length(direction);
+			if (!IsFinite(direction) ||
+				!std::isfinite(directionLength) ||
+				directionLength <= 1e-6f ||
+				!std::isfinite(directionPdf) ||
+				directionPdf <= 0.0f)
+			{
+				outDiagnostic =
+					"GI probe sampler returned an invalid primary direction or PDF";
+				return false;
+			}
+			direction /= directionLength;
 			GIProbeBakeRaySample sample;
 			if (!sampler.Sample(
 					probe.m_position,
@@ -1101,6 +1106,8 @@ namespace
 			}
 			const glm::vec3 radiance = IsFinite(sample.m_radiance) ?
 				glm::max(sample.m_radiance, glm::vec3(0.0f)) : glm::vec3(0.0f);
+			const float projectionScale = 1.0f /
+				(static_cast<float>(rayCount) * directionPdf);
 			float basis[GIProbeSphericalHarmonicsCoefficientCount]{};
 			EvaluateSphericalHarmonicsBasis(direction, basis);
 			for (uint32_t coefficientIndex = 0u;
@@ -1212,6 +1219,21 @@ namespace
 		}
 		return true;
 	}
+}
+
+bool IGIProbeBakeRaySampler::SamplePrimaryDirection(
+	const glm::vec3& uniformDirection,
+	uint32_t,
+	uint32_t,
+	uint32_t,
+	glm::vec3& outDirection,
+	float& outPdf,
+	std::string& outDiagnostic) const
+{
+	outDirection = uniformDirection;
+	outPdf = 1.0f / (4.0f * Pi);
+	outDiagnostic.clear();
+	return true;
 }
 
 GIProbesBakeResult GIProbesBaker::Bake(

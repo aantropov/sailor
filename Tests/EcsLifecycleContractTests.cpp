@@ -1162,6 +1162,11 @@ namespace
 			"released GPU light payload should use an explicit invalid marker");
 		Require(offsetof(LightingECS::LightShaderData, m_shadowBias) == 12u,
 			"the profile shadow bias must occupy the existing std430 light padding");
+		Require(
+			offsetof(LightingECS::LightShaderData, m_cutOff) == 64u &&
+			offsetof(LightingECS::LightShaderData, m_bounds) == 80u &&
+			sizeof(LightingECS::LightShaderData) == 96u,
+			"the CPU light payload must match the shader's std430 layout");
 		Require(invalidShaderData.m_shadowBias == 0.0f,
 			"an invalid GPU light payload should not introduce receiver bias");
 

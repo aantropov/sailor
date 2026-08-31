@@ -10,10 +10,15 @@ public static class InspectorPropertyPresentation
         string componentTypeName,
         string propertyName)
     {
-        if (componentTypeName == SkyComponentTypeName &&
-            propertyName == "giIndirectIntensity")
+        if (componentTypeName == SkyComponentTypeName)
         {
-            return "GI Indirect Intensity";
+            return propertyName switch
+            {
+                "sunIlluminance" => "Sun Illuminance (lux)",
+                "cloudScatteringScale" => "Cloud Scattering Scale",
+                "giIndirectIntensity" => "GI Indirect Intensity",
+                _ => propertyName
+            };
         }
 
         if (componentTypeName != LightComponentTypeName)
@@ -23,8 +28,10 @@ public static class InspectorPropertyPresentation
 
         return propertyName switch
         {
+            "intensity" => "Intensity (cd / lux)",
             "indirectLightingIntensity" => "GI Intensity",
             GlobalIlluminationModePropertyName => "GI Mode",
+            "radius" => "Range (m)",
             _ => propertyName
         };
     }

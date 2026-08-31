@@ -5,11 +5,10 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
-#include "PostProcessNode.h"
 
 namespace Sailor::Framegraph
 {
-	class EyeAdaptationNode : public TFrameGraphNode<PostProcessNode>
+	class EyeAdaptationNode : public TFrameGraphNode<EyeAdaptationNode>
 	{
 	public:
 
@@ -24,20 +23,18 @@ namespace Sailor::Framegraph
 
 		static const char* m_name;
 
-		float m_whitePointLum{};
-
-		ShaderSetPtr m_pToneMappingShader{};
 		ShaderSetPtr m_pComputeHistogramShader{};
 		ShaderSetPtr m_pComputeAverageShader{};
 
-		RHI::RHIMaterialPtr m_postEffectMaterial{};
-		RHI::RHIShaderBindingSetPtr m_shaderBindings{};
-
 		RHI::RHIShaderBindingSetPtr m_computeHistogramShaderBindings{};
 		RHI::RHIShaderBindingSetPtr m_computeAverageShaderBindings{};
-
-		RHI::RHITexturePtr m_averageLuminance;
+		RHI::RHITexturePtr m_averageLuminanceTarget{};
+		bool m_bAverageLuminanceInitialized = false;
 	};
 
+#ifndef _SAILOR_IMPORT_
 	template class TFrameGraphNode<EyeAdaptationNode>;
-};
+#else
+	extern template class TFrameGraphNode<EyeAdaptationNode>;
+#endif
+}

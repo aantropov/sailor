@@ -56,7 +56,7 @@ namespace Sailor::GlobalIlluminationLandscapeTestScene
 		const TVector<Math::Triangle>& triangles);
 
 	SAILOR_SHARED_API glm::vec3 GetEveningLightDirection();
-	SAILOR_SHARED_API glm::vec3 GetEveningLightIntensity();
+	SAILOR_SHARED_API glm::vec3 GetEveningSunIlluminance();
 	SAILOR_SHARED_API glm::vec3 GetReceiverEvidencePoint();
 	SAILOR_SHARED_API glm::vec3 GetBounceCliffEvidencePoint();
 	SAILOR_SHARED_API glm::vec3 GetCameraPosition();

@@ -69,7 +69,11 @@ glslFragment: |
       vec4 viewPos = inverse(frame.projection) * clipPos;
       viewPos /= viewPos.w;
 
-      vec3 color = textureLod(colorSampler, fragTexcoord, 0.0).xyz;
+      const vec4 sourceColor = textureLod(
+        colorSampler,
+        fragTexcoord,
+        0.0);
+      vec3 color = sourceColor.xyz;
   
       vec4 worldPos = inverse(frame.view) * viewPos;
 
@@ -86,7 +90,7 @@ glslFragment: |
       
       if(length(velocity) <= 0.0001)
       {
-          outColor = vec4(color, 1.0f);
+          outColor = sourceColor;
           return;
       }
       
@@ -100,5 +104,8 @@ glslFragment: |
       }
       
       color /= float(sampleCount);
-      outColor = vec4(color, 1.0);
+      // Preserve auxiliary HDR metadata from the current pixel. The motion
+      // vector affects RGB reconstruction only; post effects such as bloom
+      // consume the current pixel's classification after this pass.
+      outColor = vec4(color, sourceColor.a);
   }

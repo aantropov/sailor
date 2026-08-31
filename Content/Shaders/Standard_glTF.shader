@@ -12,6 +12,7 @@ defines:
  - CLEAR_COAT
  - SHEEN
  - TRANSMISSION
+ - MATERIAL_IOR
  - SUPPORT_LIGHTS_OVERFLOW
 
 glslCommon: |
@@ -118,6 +119,10 @@ glslFragment: |
   } vin;
   
   layout(location=0) out vec4 outColor;
+
+  #ifdef SHEEN
+  layout(set=1, binding=19) uniform samplerCube g_sheenEnvCubemap;
+  #endif
   
   struct MaterialData
   {
@@ -154,7 +159,11 @@ glslFragment: |
     uint transmissionSampler;
     float thicknessFactor;
     float attenuationDistance;
+  #endif
+  #if defined(TRANSMISSION) || defined(MATERIAL_IOR)
     float indexOfRefraction;
+  #endif
+  #ifdef TRANSMISSION
     uint thicknessSampler;
     vec4 attenuationColor;
   #endif
@@ -168,6 +177,15 @@ glslFragment: |
   MaterialData GetMaterialData()
   {
       return material.instance[materialInstance];
+  }
+
+  float ResolveMaterialIndexOfRefraction(MaterialData materialData)
+  {
+  #if defined(TRANSMISSION) || defined(MATERIAL_IOR)
+    return max(materialData.indexOfRefraction, 1.0);
+  #else
+    return 1.5;
+  #endif
   }
 
   #ifdef TRANSMISSION
@@ -241,21 +259,20 @@ glslFragment: |
     uint lightIndex,
     MaterialData materialData,
     ForwardPbrMaterial forwardMaterial,
-    vec3 F0,
     vec3 surfaceToCamera,
     float cosLo,
     vec3 normal,
+    vec3 geometricNormal,
     vec3 worldPosition)
   {
     const ForwardLightSample lightSample = ResolveForwardLightSample(
       lightData,
       lightIndex,
       worldPosition,
-      normal);
+      geometricNormal);
     vec3 directLighting = EvaluateForwardPbrDirectLighting(
       lightSample,
       forwardMaterial,
-      F0,
       surfaceToCamera,
       cosLo,
       normal);
@@ -264,7 +281,7 @@ glslFragment: |
     const vec3 lightRadiance = lightSample.radiance;
 
   #ifdef TRANSMISSION
-    vec3 refractionNormal = gl_FrontFacing ? normal : -normal;
+    vec3 refractionNormal = normal;
     vec3 refractionDirection = GetRefractionDirection(
       refractionNormal,
       surfaceToCamera,
@@ -327,12 +344,10 @@ glslFragment: |
               transmissionCosLi,
               transmissionCosLo,
               max(alphaRoughness, Epsilon));
-            float dielectricFresnel =
-              (materialData.indexOfRefraction - 1.0) /
-              (materialData.indexOfRefraction + 1.0);
-            vec3 transmissionFresnel = FresnelSchlick(
-              vec3(dielectricFresnel * dielectricFresnel),
-              clamp(abs(dot(surfaceToCamera, transmissionH)), 0.0, 1.0));
+            vec3 transmissionFresnel = vec3(FresnelDielectric(
+              clamp(abs(dot(surfaceToCamera, transmissionH)), 0.0, 1.0),
+              1.0,
+              materialData.indexOfRefraction));
 
             float transmissionFalloff = falloff;
             if(lightData.type == 1)
@@ -343,16 +358,12 @@ glslFragment: |
             }
             else if(lightData.type == 2)
             {
-              float coneRange = lightData.cutOff.x - lightData.cutOff.y;
-              float coneCos = dot(
-                transmissionLi,
-                normalize(-lightData.direction));
               transmissionFalloff = CalculateLocalLightRangeAttenuation(
                 lightData,
-                exitPointToLightLength) * clamp(
-                (coneCos - lightData.cutOff.y) / max(coneRange, Epsilon),
-                0.0,
-                1.0);
+                exitPointToLightLength) *
+                CalculateSpotLightAngularAttenuation(
+                  lightData,
+                  transmissionLi);
             }
 
             vec3 volumeAttenuation = GetVolumeAttenuation(
@@ -374,116 +385,139 @@ glslFragment: |
   }
   
   #ifdef CLEAR_COAT
-  vec3 ClearCoatLighting(LightData light, float roughness, vec3 F0, vec3 Lo, float cosLo, vec3 normal, vec3 worldPos)
+  vec3 ClearCoatLighting(
+    LightData lightData,
+    uint lightIndex,
+    float roughness,
+    vec3 surfaceToCamera,
+    float cosLo,
+    vec3 normal,
+    vec3 geometricNormal,
+    vec3 worldPosition)
   {
-    float falloff = 1.0f;
-    float shadow = 1.0f;
-    if(light.type == 0)
-    {
-        shadow = CalculateCascadedDirectionalShadow(
-          light,
-          worldPos,
-          normal,
-          -light.direction);
-    }
-    else if(light.type == 1 || light.type == 2)
-    {
-        const float distance = length(light.worldPosition - worldPos);
-        falloff = CalculateLocalLightRangeAttenuation(light, distance);
-    }
-
-    vec3 pointToLight = light.type == 0 ?
-      -light.direction :
-      light.worldPosition - worldPos;
-    float pointToLightLengthSquared = dot(pointToLight, pointToLight);
-    vec3 Li = pointToLightLengthSquared > Epsilon ?
-      pointToLight * inversesqrt(pointToLightLengthSquared) :
-      vec3(0.0);
-    vec3 Lradiance = light.intensity;
-
-    vec3 halfVector = Li + Lo;
+    const ForwardLightSample lightSample = ResolveForwardLightSample(
+      lightData,
+      lightIndex,
+      worldPosition,
+      geometricNormal);
+    vec3 halfVector = lightSample.direction + surfaceToCamera;
     float halfVectorLengthSquared = dot(halfVector, halfVector);
-    vec3 Lh = halfVectorLengthSquared > Epsilon ?
-      halfVector * inversesqrt(halfVectorLengthSquared) :
-      normal;
-    float cosLi = max(0.0, dot(normal, Li));
-    float cosLh = max(0.0, dot(normal, Lh));
-
-    vec3 F  = FresnelSchlick(F0, max(0.0, dot(Lh, Lo)));
-    float D = NdfGGX(cosLh, roughness);
-    float G = GeometrySchlickGGX(cosLi, cosLo, roughness);
-
-    vec3 specularBRDF = (F * D * G) / max(Epsilon, 4.0 * cosLi * cosLo);
-    return shadow * (specularBRDF * Lradiance * cosLi) * falloff;
+    vec3 halfDirection = halfVectorLengthSquared > Epsilon
+      ? halfVector * inversesqrt(halfVectorLengthSquared)
+      : normal;
+    float cosLi = max(0.0, dot(normal, lightSample.direction));
+    float cosLh = max(0.0, dot(normal, halfDirection));
+    float distribution = NdfGGX(cosLh, roughness);
+    float visibility = GeometrySmithGGXCorrelated(
+      cosLi,
+      cosLo,
+      roughness);
+    vec3 specularBrdf = vec3(
+      distribution * visibility /
+        max(Epsilon, 4.0 * cosLi * cosLo));
+    return lightSample.shadow * specularBrdf *
+      lightSample.radiance * cosLi * lightSample.falloff;
   }
 
-  vec3 ClearCoatAmbientLighting(float roughness, vec3 F0, vec3 Lr, vec3 normal, float cosLo, float ambientOcclusion)
+  vec3 ClearCoatAmbientLighting(
+    float roughness,
+    vec3 reflectionDirection,
+    float cosLo,
+    float ambientOcclusion)
   {
-    int specularTextureLevels = textureQueryLevels(g_envCubemap);
-    vec3 specularIrradiance = textureLod(g_envCubemap, Lr, roughness * specularTextureLevels).rgb;
-    vec2 specularBRDF = texture(g_brdfSampler, vec2(cosLo, roughness)).rg;
+    vec3 specularIrradiance = textureLod(
+      g_envCubemap,
+      reflectionDirection,
+      CalculateSpecularEnvironmentLod(
+        textureQueryLevels(g_envCubemap),
+        roughness)).rgb;
+    vec2 clearcoatBrdf = texture(
+      g_brdfSampler,
+      vec2(clamp(cosLo, 0.0, 1.0), roughness)).rg;
+    float integratedCoatResponse = max(
+      clearcoatBrdf.x + clearcoatBrdf.y,
+      0.0);
     float specularOcclusion = CalculateSpecularOcclusion(
       ambientOcclusion,
       cosLo,
       roughness);
-    return (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance * specularOcclusion;
+    return specularIrradiance * integratedCoatResponse *
+      specularOcclusion;
   }
   #endif
 
   #ifdef SHEEN
-  vec3 SheenLighting(LightData light, float roughness, vec3 color, vec3 Lo, float cosLo, vec3 normal, vec3 worldPos)
+  float ResolveSheenAlbedoScaling(
+    float cosine,
+    float roughness,
+    vec3 color)
   {
-    float falloff = 1.0f;
-    float shadow = 1.0f;
-    if(light.type == 0)
-    {
-        shadow = CalculateCascadedDirectionalShadow(
-          light,
-          worldPos,
-          normal,
-          -light.direction);
-    }
-    else if(light.type == 1 || light.type == 2)
-    {
-        const float distance = length(light.worldPosition - worldPos);
-        falloff = CalculateLocalLightRangeAttenuation(light, distance);
-    }
-
-    vec3 pointToLight = light.type == 0 ?
-      -light.direction :
-      light.worldPosition - worldPos;
-    float pointToLightLengthSquared = dot(pointToLight, pointToLight);
-    vec3 Li = pointToLightLengthSquared > Epsilon ?
-      pointToLight * inversesqrt(pointToLightLengthSquared) :
-      vec3(0.0);
-    vec3 Lradiance = light.intensity;
-
-    vec3 halfVector = Li + Lo;
-    float halfVectorLengthSquared = dot(halfVector, halfVector);
-    vec3 Lh = halfVectorLengthSquared > Epsilon ?
-      halfVector * inversesqrt(halfVectorLengthSquared) :
-      normal;
-    float cosLi = max(0.0, dot(normal, Li));
-    float cosLh = max(0.0, dot(normal, Lh));
-
-    vec3 F  = FresnelSchlick(color, max(0.0, dot(Lh, Lo)));
-    float D = NdfCharlie(cosLh, roughness);
-    float V = GeometryNeubelt(cosLi, cosLo);
-
-    vec3 specularBRDF = F * D * V;
-    return shadow * (specularBRDF * Lradiance * cosLi) * falloff;
+    float directionalAlbedo = texture(
+      g_brdfSampler,
+      clamp(vec2(cosine, roughness), vec2(0.0), vec2(1.0))).b;
+    float maximumColor = max(color.r, max(color.g, color.b));
+    return clamp(
+      1.0 - maximumColor * directionalAlbedo,
+      0.0,
+      1.0);
   }
 
-  vec3 SheenAmbientLighting(float roughness, vec3 color, vec3 Lr, vec3 normal, float cosLo, float ambientOcclusion)
+  vec3 SheenLighting(
+    LightData lightData,
+    uint lightIndex,
+    float roughness,
+    vec3 color,
+    vec3 surfaceToCamera,
+    float cosLo,
+    vec3 normal,
+    vec3 geometricNormal,
+    vec3 worldPosition,
+    out float albedoScaling)
   {
-    int specularTextureLevels = textureQueryLevels(g_envCubemap);
-    vec3 specularIrradiance = textureLod(g_envCubemap, Lr, roughness * specularTextureLevels).rgb;
-    vec2 specularBRDF = texture(g_brdfSampler, vec2(cosLo, roughness)).rg;
+    const ForwardLightSample lightSample = ResolveForwardLightSample(
+      lightData,
+      lightIndex,
+      worldPosition,
+      geometricNormal);
+    vec3 halfVector = lightSample.direction + surfaceToCamera;
+    float halfVectorLengthSquared = dot(halfVector, halfVector);
+    vec3 halfDirection = halfVectorLengthSquared > Epsilon
+      ? halfVector * inversesqrt(halfVectorLengthSquared)
+      : normal;
+    float cosLi = max(0.0, dot(normal, lightSample.direction));
+    float cosLh = max(0.0, dot(normal, halfDirection));
+    float distribution = NdfCharlie(cosLh, roughness);
+    float visibility = VisibilitySheen(cosLi, cosLo, roughness);
+    albedoScaling = min(
+      ResolveSheenAlbedoScaling(cosLo, roughness, color),
+      ResolveSheenAlbedoScaling(cosLi, roughness, color));
+    vec3 specularBrdf = color * distribution * visibility;
+    return lightSample.shadow * specularBrdf *
+      lightSample.radiance * cosLi * lightSample.falloff;
+  }
+
+  vec3 SheenAmbientLighting(
+    float roughness,
+    vec3 color,
+    vec3 reflectionDirection,
+    float cosLo,
+    float ambientOcclusion)
+  {
+    vec3 specularIrradiance = textureLod(
+      g_sheenEnvCubemap,
+      reflectionDirection,
+      CalculateSpecularEnvironmentLod(
+        textureQueryLevels(g_sheenEnvCubemap),
+        roughness)).rgb;
+    float directionalAlbedo = texture(
+      g_brdfSampler,
+      clamp(vec2(cosLo, roughness), vec2(0.0), vec2(1.0))).b;
     float specularOcclusion = CalculateSpecularOcclusion(
       ambientOcclusion,
       cosLo,
       roughness);
-    return (color * specularBRDF.x + specularBRDF.y) * specularIrradiance * specularOcclusion;
+    return color * directionalAlbedo *
+      specularIrradiance * specularOcclusion;
   }
   #endif
   
@@ -516,6 +550,14 @@ glslFragment: |
       material.metallicFactor = material.metallicFactor * orm.b;
       material.roughnessFactor = material.roughnessFactor * orm.g;
     }
+    material.metallicFactor = clamp(
+      material.metallicFactor,
+      0.0,
+      1.0);
+    material.roughnessFactor = clamp(
+      material.roughnessFactor,
+      0.001,
+      1.0);
 
     float screenSpaceOcclusion = 1.0;
   #ifndef DISABLE_SCREEN_SPACE_AO
@@ -544,6 +586,14 @@ glslFragment: |
     {
       material.clearcoatRoughnessFactor = material.clearcoatRoughnessFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.clearcoatRoughnessSampler))], vin.texcoord).g;
     }
+    material.clearcoatFactor = clamp(
+      material.clearcoatFactor,
+      0.0,
+      1.0);
+    material.clearcoatRoughnessFactor = clamp(
+      material.clearcoatRoughnessFactor,
+      0.001,
+      1.0);
   #endif
   #ifdef SHEEN
     if(material.sheenColorSampler != 0)
@@ -552,8 +602,19 @@ glslFragment: |
     }
     if(material.sheenRoughnessSampler != 0)
     {
-      material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.sheenRoughnessSampler))], vin.texcoord).g;
+      material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.sheenRoughnessSampler))], vin.texcoord).a;
     }
+    material.sheenColorFactor = clamp(
+      material.sheenColorFactor,
+      vec4(0.0),
+      vec4(1.0));
+    material.sheenRoughnessFactor = clamp(
+      material.sheenRoughnessFactor,
+      0.001,
+      1.0);
+  #endif
+  #if defined(TRANSMISSION) || defined(MATERIAL_IOR)
+    material.indexOfRefraction = max(material.indexOfRefraction, 1.0);
   #endif
   #ifdef TRANSMISSION
     material.transmissionFactor = clamp(material.transmissionFactor, 0.0, 1.0);
@@ -566,7 +627,6 @@ glslFragment: |
     {
       material.thicknessFactor *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.thicknessSampler))], vin.texcoord).g;
     }
-    material.indexOfRefraction = max(material.indexOfRefraction, 1.0);
     material.attenuationDistance = max(material.attenuationDistance, Epsilon);
     material.attenuationColor = clamp(material.attenuationColor, vec4(0.0), vec4(1.0));
   #endif
@@ -580,34 +640,68 @@ glslFragment: |
       material.metallicFactor,
       material.roughnessFactor,
       material.occlusionStrength,
-      diffuseWeight);
+      diffuseWeight,
+      ResolveMaterialIndexOfRefraction(material));
 
-    const vec3 geometricNormal = normalize(vin.normal);
+    vec3 geometricNormal;
+    vec3 vertexNormal;
+    mat3 tangentBasis;
+    ResolveFragmentSurfaceGeometry(
+      vin.worldPosition,
+      -viewDirection,
+      vin.normal,
+      vin.tangentBasis,
+      geometricNormal,
+      vertexNormal,
+      tangentBasis);
     vec3 normal;
     if(material.normalSampler != 0)
     {
       normal = 2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0;
       normal.xy *= material.normalScale;
-      normal = normalize(vin.tangentBasis * normal);
+      normal = NormalizeOrFallback(
+        tangentBasis * normal,
+        vertexNormal);
+      normal = KeepShadingNormalOnGeometricSurface(
+        normal,
+        geometricNormal);
     }
     else
     {
-      normal = geometricNormal;
+      normal = vertexNormal;
     }
 
   #ifdef CLEAR_COAT
-    vec3 clearcoatNormal = normal;
+    vec3 clearcoatNormal = vertexNormal;
     if(material.clearcoatNormalSampler != 0)
     {
       clearcoatNormal = 2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.clearcoatNormalSampler))], vin.texcoord).rgb - 1.0;
       clearcoatNormal.xy *= material.clearcoatNormalScale;
-      clearcoatNormal = normalize(vin.tangentBasis * clearcoatNormal);
+      clearcoatNormal = NormalizeOrFallback(
+        tangentBasis * clearcoatNormal,
+        vertexNormal);
+      clearcoatNormal = KeepShadingNormalOnGeometricSurface(
+        clearcoatNormal,
+        geometricNormal);
     }
     float cosLoCC = max(0.0, dot(clearcoatNormal, -viewDirection));
     vec3 LrCC = 2.0 * cosLoCC * clearcoatNormal + viewDirection;
+    float clearcoatLayerWeight = clamp(
+      material.clearcoatFactor *
+        FresnelSchlick(Fdielectric, cosLoCC).x,
+      0.0,
+      1.0);
   #endif
-    
-    outColor.xyz = vec3(material.emissiveFactor.xyz);
+
+    const bool bEvaluateDirectLighting =
+      !GlobalIlluminationDebugSuppressesDirectLighting();
+    vec3 emissiveLighting = material.emissiveFactor.xyz;
+  #ifdef CLEAR_COAT
+    emissiveLighting *= 1.0 - clearcoatLayerWeight;
+  #endif
+    outColor.xyz = bEvaluateDirectLighting
+      ? emissiveLighting
+      : vec3(0.0);
     
     // Angle between surface normal and outgoing light direction.
     float cosLo = max(0.0, dot(normal, -viewDirection));
@@ -616,15 +710,13 @@ glslFragment: |
     vec3 Lr = 2.0 * cosLo * normal + viewDirection;
     
     // Fresnel reflectance at normal incidence (for metals use albedo color).
-  #ifdef TRANSMISSION
+  #if defined(TRANSMISSION) || defined(MATERIAL_IOR)
     float iorFresnel = (material.indexOfRefraction - 1.0) / (material.indexOfRefraction + 1.0);
     vec3 F0 = mix(vec3(iorFresnel * iorFresnel), material.baseColorFactor.xyz, material.metallicFactor);
   #else
     vec3 F0 = mix(Fdielectric, material.baseColorFactor.xyz, material.metallicFactor);
   #endif
     
-    const bool bEvaluateDirectLighting =
-      !GlobalIlluminationDebugSuppressesDirectLighting();
     ForwardLightList lightList = ForwardLightList(0u, 0u, false);
     if(bEvaluateDirectLighting)
     {
@@ -632,7 +724,7 @@ glslFragment: |
     }
     
     float environmentVisibility = 1.0;
-    outColor.xyz += CalculateForwardAmbientLighting(
+    vec3 ambientLighting = CalculateForwardAmbientLighting(
       forwardMaterial,
       F0,
       Lr,
@@ -645,15 +737,30 @@ glslFragment: |
       environmentVisibility);
     if(bEvaluateDirectLighting)
     {
-  #ifdef CLEAR_COAT
-      outColor.xyz += material.clearcoatFactor * ClearCoatAmbientLighting(material.clearcoatRoughnessFactor, Fdielectric, LrCC, clearcoatNormal, cosLoCC, min(material.occlusionStrength, environmentVisibility));
-  #endif
   #ifdef SHEEN
-      outColor.xyz += SheenAmbientLighting(material.sheenRoughnessFactor, material.sheenColorFactor.rgb, Lr, normal, cosLo, min(material.occlusionStrength, environmentVisibility));
+      ambientLighting = SheenAmbientLighting(
+        material.sheenRoughnessFactor,
+        material.sheenColorFactor.rgb,
+        Lr,
+        cosLo,
+        min(material.occlusionStrength, environmentVisibility)) +
+        ambientLighting * ResolveSheenAlbedoScaling(
+          cosLo,
+          material.sheenRoughnessFactor,
+          material.sheenColorFactor.rgb);
+  #endif
+  #ifdef CLEAR_COAT
+      ambientLighting = mix(
+        ambientLighting,
+        ClearCoatAmbientLighting(
+          material.clearcoatRoughnessFactor,
+          LrCC,
+          cosLoCC,
+          min(material.occlusionStrength, environmentVisibility)),
+        clearcoatLayerWeight);
   #endif
     }
-
-    const vec3 nonAnalyticLighting = outColor.xyz;
+    outColor.xyz += ambientLighting;
     
     if(bEvaluateDirectLighting)
     {
@@ -667,30 +774,47 @@ glslFragment: |
             continue;
         }
 
-        outColor.xyz += CalculateLighting(
+        vec3 directLighting = CalculateLighting(
           light.instance[index],
           index,
           material,
           forwardMaterial,
-          F0,
           -viewDirection,
           cosLo,
           normal,
+          geometricNormal,
           vin.worldPosition);
-  #ifdef CLEAR_COAT
-        outColor.xyz += material.clearcoatFactor * ClearCoatLighting(light.instance[index], material.clearcoatRoughnessFactor, Fdielectric, -viewDirection, cosLoCC, clearcoatNormal, vin.worldPosition);
-  #endif
   #ifdef SHEEN
-        outColor.xyz += SheenLighting(light.instance[index], material.sheenRoughnessFactor, material.sheenColorFactor.rgb, -viewDirection, cosLo, normal, vin.worldPosition);
+        float sheenAlbedoScaling = 1.0;
+        directLighting = SheenLighting(
+          light.instance[index],
+          index,
+          material.sheenRoughnessFactor,
+          material.sheenColorFactor.rgb,
+          -viewDirection,
+          cosLo,
+          normal,
+          geometricNormal,
+          vin.worldPosition,
+          sheenAlbedoScaling) +
+          directLighting * sheenAlbedoScaling;
   #endif
+  #ifdef CLEAR_COAT
+        directLighting = mix(
+          directLighting,
+          ClearCoatLighting(
+            light.instance[index],
+            index,
+            material.clearcoatRoughnessFactor,
+            -viewDirection,
+            cosLoCC,
+            clearcoatNormal,
+            geometricNormal,
+            vin.worldPosition),
+          clearcoatLayerWeight);
+  #endif
+        outColor.xyz += directLighting;
       }
-    }
-
-    if(bEvaluateDirectLighting)
-    {
-      outColor.xyz = nonAnalyticLighting +
-        (outColor.xyz - nonAnalyticLighting) *
-        CalculateDirectLightingOcclusion(screenSpaceOcclusion);
     }
 
   #ifdef TRANSMISSION
@@ -707,7 +831,7 @@ glslFragment: |
       dielectricF0 * transmissionBrdf.x + transmissionBrdf.y,
       vec3(0.0),
       vec3(1.0));
-    vec3 refractionNormal = gl_FrontFacing ? normal : -normal;
+    vec3 refractionNormal = normal;
     vec3 refractionDirection = GetRefractionDirection(
       refractionNormal,
       -viewDirection,
@@ -775,9 +899,19 @@ glslFragment: |
     float dielectricTransmission = material.transmissionFactor *
       (1.0 - clamp(material.metallicFactor, 0.0, 1.0)) *
       canTransmit;
-    outColor.xyz += transmittedColor *
+    vec3 transmittedLighting = transmittedColor *
       (vec3(1.0) - transmissionFresnel) *
       dielectricTransmission;
+  #ifdef SHEEN
+    transmittedLighting *= ResolveSheenAlbedoScaling(
+      cosLo,
+      material.sheenRoughnessFactor,
+      material.sheenColorFactor.rgb);
+  #endif
+  #ifdef CLEAR_COAT
+    transmittedLighting *= 1.0 - clearcoatLayerWeight;
+  #endif
+    outColor.xyz += transmittedLighting;
     }
   #endif
 

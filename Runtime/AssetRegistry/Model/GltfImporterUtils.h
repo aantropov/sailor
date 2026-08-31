@@ -42,6 +42,7 @@ namespace Sailor::GltfImporterUtils
 		glm::vec3 m_attenuationColor = glm::vec3(1.0f);
 		float m_attenuationDistance = (std::numeric_limits<float>::max)();
 		float m_indexOfRefraction = 1.5f;
+		bool m_bHasIndexOfRefraction = false;
 
 		bool IsEnabled() const { return m_factor > 0.0f; }
 	};
@@ -87,8 +88,12 @@ namespace Sailor::GltfImporterUtils
 		size_t numTextures,
 		float unitScale = 1.0f);
 
-	// Updates only the material properties owned by the glTF alpha/transmission
-	// import path. All other authored material properties remain untouched.
+	// Returns emitted radiance in cd/m2 (nits), including the HDR strength.
+	SAILOR_SHARED_API glm::vec3 ResolveMaterialEmissiveFactor(
+		const tinygltf::Material& material);
+
+	// Updates only the material properties owned by the glTF import path. All
+	// other authored material properties remain untouched.
 	SAILOR_SHARED_API bool MergeGeneratedMaterialProperties(
 		YAML::Node& inOutMaterial,
 		const YAML::Node& generatedProperties);

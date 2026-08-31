@@ -23,6 +23,7 @@ const uint GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED = 1u;
 const uint GLOBAL_ILLUMINATION_MODE_BAKED_ONLY = 2u;
 const float GLOBAL_ILLUMINATION_SURFACE_PLANE_TOLERANCE = 0.0001;
 const float GLOBAL_ILLUMINATION_NEIGHBOR_SUPPORT_SCALE = 0.5;
+const float GLOBAL_ILLUMINATION_MINIMUM_RECEIVER_COVERAGE = 0.5;
 
 struct GlobalIlluminationBvhNode
 {
@@ -42,6 +43,8 @@ struct GlobalIlluminationProbe
   vec4 positionAndValidity;
   vec4 environmentVisibility0123;
   vec4 environmentVisibility45;
+  uvec4 visibilityMoments0123;
+  uvec4 visibilityMoments45;
 };
 
 struct GlobalIlluminationCoefficients
@@ -251,6 +254,83 @@ float GlobalIlluminationSurfaceFacingWeight(
     signedPlaneDistance);
 }
 
+vec2 GlobalIlluminationVisibilityMoments(
+  GlobalIlluminationProbe probe,
+  uint directionIndex)
+{
+  const uint packedMoments = directionIndex < 4u
+    ? probe.visibilityMoments0123[directionIndex]
+    : probe.visibilityMoments45[directionIndex - 4u];
+  const vec2 normalizedMoments = unpackHalf2x16(packedMoments);
+  const float supportDistance = max(
+    probe.environmentVisibility45.z,
+    0.001);
+  return normalizedMoments * vec2(
+    supportDistance,
+    supportDistance * supportDistance);
+}
+
+float GlobalIlluminationMomentVisibility(
+  GlobalIlluminationProbe probe,
+  vec3 worldPosition)
+{
+  if(floatBitsToUint(probe.environmentVisibility45.w) == 0u)
+  {
+    return 1.0;
+  }
+
+  const vec3 probeToReceiver =
+    worldPosition - probe.positionAndValidity.xyz;
+  const float receiverDistanceSquared = dot(
+    probeToReceiver,
+    probeToReceiver);
+  if(receiverDistanceSquared <= 0.000000000001)
+  {
+    return 1.0;
+  }
+  const float receiverDistance = sqrt(receiverDistanceSquared);
+  // The common direction length cancels when the moments are divided by
+  // their L1 weight. Use the unnormalized delta to avoid a reciprocal and
+  // three component-wise multiplies for every contributing probe.
+  const vec3 axisWeights = abs(probeToReceiver);
+  const float totalAxisWeight =
+    axisWeights.x + axisWeights.y + axisWeights.z;
+  vec2 moments = vec2(0.0);
+  for(uint axis = 0u; axis < 3u; ++axis)
+  {
+    const uint directionIndex = axis * 2u +
+      (probeToReceiver[axis] >= 0.0 ? 0u : 1u);
+    moments += GlobalIlluminationVisibilityMoments(
+      probe,
+      directionIndex) * axisWeights[axis];
+  }
+  moments /= totalAxisWeight;
+
+  const float minProbeSpacing = max(
+    uintBitsToFloat(globalIlluminationHeader.settings.z),
+    0.001);
+  const float distanceBias = max(
+    max(globalIlluminationHeader.volumeMin.w, 0.0) +
+      max(globalIlluminationHeader.volumeMax.w, 0.0),
+    minProbeSpacing * 0.02);
+  const float distanceBeyondMean =
+    receiverDistance - distanceBias - moments.x;
+  if(distanceBeyondMean <= 0.0)
+  {
+    return 1.0;
+  }
+
+  const float standardDeviationFloor = max(
+    minProbeSpacing * 0.02,
+    0.001);
+  const float variance = max(
+    moments.y - moments.x * moments.x,
+    standardDeviationFloor * standardDeviationFloor);
+  const float chebyshev = variance /
+    (variance + distanceBeyondMean * distanceBeyondMean);
+  return chebyshev * chebyshev * chebyshev;
+}
+
 #ifdef COMPUTE
 bool GlobalIlluminationFindBrickCandidates(
   vec3 worldPosition,
@@ -438,7 +518,8 @@ vec3 GlobalIlluminationEvaluateProbe(
   const vec2 pair12 = unpackHalf2x16(coefficients.packed[3].x);
   const vec2 pair13 = unpackHalf2x16(coefficients.packed[3].y);
   irradiance += vec3(pair12, pair13.x) * basis.value8;
-  return irradiance;
+  const float coefficientScale = max(pair13.y, 1.0);
+  return irradiance * coefficientScale;
 }
 
 vec3 GlobalIlluminationEvaluateProbeStates(
@@ -661,13 +742,24 @@ bool TrySampleGlobalIlluminationTetrahedral(
     const GlobalIlluminationProbe probe =
       globalIlluminationProbes.instance[probeIndex];
     const float interpolationWeight = tetrahedralWeights[probeOffset];
+    const float validity = clamp(
+      probe.positionAndValidity.w,
+      0.0,
+      1.0);
+    if(interpolationWeight > 0.000001 && validity <= 0.05)
+    {
+      return false;
+    }
     const float surfaceFacingWeight =
       GlobalIlluminationSurfaceFacingWeight(
         probe,
         worldPosition,
         geometricNormal);
-    const float spatialWeight =
-      interpolationWeight * surfaceFacingWeight;
+    const float visibility = surfaceFacingWeight *
+      GlobalIlluminationMomentVisibility(
+        probe,
+        worldPosition);
+    const float spatialWeight = interpolationWeight * validity * visibility;
     probeIndices[probeOffset] = probeIndex;
     spatialWeights[probeOffset] = spatialWeight;
     totalVisibleWeight += spatialWeight;
@@ -685,7 +777,10 @@ bool TrySampleGlobalIlluminationTetrahedral(
     return false;
   }
   const float receiverCoverage = clamp(totalVisibleWeight, 0.0, 1.0);
-  if(receiverCoverage < 0.15)
+  // Tetrahedral interpolation is only safe when nearly all of its receiver-
+  // side support survives. Renormalizing one or two remaining probes creates
+  // large triangular dark or bright regions on walls and depth edges.
+  if(receiverCoverage < 0.75)
   {
     return false;
   }
@@ -732,8 +827,6 @@ bool SampleGlobalIlluminationFromProbeCell(
   environmentVisibility = 1.0;
   vec3 positiveDirectionVisibility = vec3(0.0);
   vec3 negativeDirectionVisibility = vec3(0.0);
-  vec3 interpolationPositiveDirectionVisibility = vec3(0.0);
-  vec3 interpolationNegativeDirectionVisibility = vec3(0.0);
 
   if(globalIlluminationHeader.counts.x == 0u ||
     globalIlluminationHeader.stateAndDebug.x == 0u ||
@@ -841,11 +934,10 @@ bool SampleGlobalIlluminationFromProbeCell(
             probe,
             worldPosition,
             geometricNormal);
-        // Six signed-axis clearance rays cannot describe the finite extent of
-        // scene occluders. Extending any hit into a runtime rejection plane
-        // creates camera-moving rectangular holes. The baked SH already carries
-        // diffuse occlusion, so runtime visibility is receiver-side selection.
-        const float visibility = surfaceFacingWeight;
+        const float visibility = surfaceFacingWeight *
+          GlobalIlluminationMomentVisibility(
+            probe,
+            worldPosition);
         const float spatialWeight = interpolationWeight * visibility;
         const vec3 probePositiveDirectionVisibility = vec3(
           probe.environmentVisibility0123.x,
@@ -861,10 +953,6 @@ bool SampleGlobalIlluminationFromProbeCell(
           probePositiveDirectionVisibility * spatialWeight;
         negativeDirectionVisibility +=
           probeNegativeDirectionVisibility * spatialWeight;
-        interpolationPositiveDirectionVisibility +=
-          probePositiveDirectionVisibility * interpolationWeight;
-        interpolationNegativeDirectionVisibility +=
-          probeNegativeDirectionVisibility * interpolationWeight;
         if(spatialWeight > 0.0)
         {
           irradiance += GlobalIlluminationEvaluateProbeStates(
@@ -908,7 +996,9 @@ bool SampleGlobalIlluminationFromProbeCell(
           const float visibility = GlobalIlluminationSurfaceFacingWeight(
             probe,
             worldPosition,
-            geometricNormal);
+            geometricNormal) * GlobalIlluminationMomentVisibility(
+              probe,
+              worldPosition);
           if(bTrackProbe)
           {
             const float spatialWeight =
@@ -936,84 +1026,27 @@ bool SampleGlobalIlluminationFromProbeCell(
   {
     return false;
   }
-  const float receiverCoverage = clamp(
-    totalVisibleWeight / totalInterpolationWeight,
-    0.0,
-    1.0);
-  const float receiverBlend = smoothstep(0.0, 0.05, receiverCoverage);
-  vec3 unfilteredIrradiance = vec3(0.0);
-  if(receiverBlend < 1.0 || totalVisibleWeight <= 0.000001)
+  if(totalVisibleWeight <= 0.000001)
   {
-    for(uint z = 0u; z < 2u; ++z)
-    {
-      for(uint y = 0u; y < 2u; ++y)
-      {
-        for(uint x = 0u; x < 2u; ++x)
-        {
-          const uvec3 coordinate = uvec3(
-            x != 0u ? upper.x : lower.x,
-            y != 0u ? upper.y : lower.y,
-            z != 0u ? upper.z : lower.z);
-          const uint probeIndex = firstProbeIndex +
-            GlobalIlluminationFlattenIndex(coordinate, probeCounts);
-          const float trilinearWeight =
-            (x != 0u ? fraction.x : 1.0 - fraction.x) *
-            (y != 0u ? fraction.y : 1.0 - fraction.y) *
-            (z != 0u ? fraction.z : 1.0 - fraction.z);
-          const float validity = clamp(
-            globalIlluminationProbes.instance[probeIndex]
-              .positionAndValidity.w,
-            0.0,
-            1.0);
-          const float interpolationWeight = trilinearWeight * validity;
-          if(interpolationWeight > 0.0)
-          {
-            unfilteredIrradiance += GlobalIlluminationEvaluateProbeStates(
-              probeIndex,
-              shBasis,
-              stateCount,
-              singleStateWeight) * interpolationWeight;
-          }
-        }
-      }
-    }
-    unfilteredIrradiance /= totalInterpolationWeight;
+    return false;
   }
-  const vec3 unfilteredPositiveDirectionVisibility =
-    interpolationPositiveDirectionVisibility / totalInterpolationWeight;
-  const vec3 unfilteredNegativeDirectionVisibility =
-    interpolationNegativeDirectionVisibility / totalInterpolationWeight;
-  vec3 receiverIrradiance = unfilteredIrradiance;
-  vec3 receiverPositiveDirectionVisibility =
-    unfilteredPositiveDirectionVisibility;
-  vec3 receiverNegativeDirectionVisibility =
-    unfilteredNegativeDirectionVisibility;
-  if(totalVisibleWeight > 0.000001)
-  {
-    receiverIrradiance = irradiance / totalVisibleWeight;
-    receiverPositiveDirectionVisibility =
-      positiveDirectionVisibility / totalVisibleWeight;
-    receiverNegativeDirectionVisibility =
-      negativeDirectionVisibility / totalVisibleWeight;
-  }
-  // Surface-facing weights select probes on the receiver side. Validity-only
-  // irradiance is evaluated lazily only inside the narrow low-coverage fade;
-  // ordinary receivers avoid loading and decoding probes with zero spatial
-  // weight while retaining the exact boundary fallback.
-  irradiance = max(mix(
-    unfilteredIrradiance,
-    receiverIrradiance,
-    receiverBlend), vec3(0.0));
-  positiveDirectionVisibility = clamp(mix(
-    unfilteredPositiveDirectionVisibility,
-    receiverPositiveDirectionVisibility,
-    receiverBlend),
+
+  // Renormalizing five percent of the interpolation support to one hundred
+  // percent produces bright pixels at depth edges and thin geometry. Preserve
+  // the normalized result once half the valid support survives, but attenuate
+  // lower receiver coverage instead of amplifying it or sampling probes from
+  // the opposite side of the surface.
+  const float normalizationWeight = max(
+    totalVisibleWeight,
+    totalInterpolationWeight *
+      GLOBAL_ILLUMINATION_MINIMUM_RECEIVER_COVERAGE);
+  irradiance = max(irradiance / normalizationWeight, vec3(0.0));
+  positiveDirectionVisibility = clamp(
+    positiveDirectionVisibility / normalizationWeight,
     vec3(0.0),
     vec3(1.0));
-  negativeDirectionVisibility = clamp(mix(
-    unfilteredNegativeDirectionVisibility,
-    receiverNegativeDirectionVisibility,
-    receiverBlend),
+  negativeDirectionVisibility = clamp(
+    negativeDirectionVisibility / normalizationWeight,
     vec3(0.0),
     vec3(1.0));
   environmentVisibility = GlobalIlluminationEnvironmentVisibility(
