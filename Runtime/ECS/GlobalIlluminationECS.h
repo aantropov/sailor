@@ -1,6 +1,8 @@
 #pragma once
 
 #include "GlobalIllumination/GIProbesComposition.h"
+#include "GlobalIllumination/GIProbesScene.h"
+#include "GlobalIllumination/RuntimeGIProbesService.h"
 #include "AssetRegistry/GlobalIllumination/GIProbesImporter.h"
 #include "Core/SpinLock.h"
 #include "ECS/ECS.h"
@@ -14,6 +16,11 @@
 
 namespace Sailor
 {
+	namespace Settings
+	{
+		enum class ERuntimeGIProbesEditorBudget : uint8_t;
+	}
+
 	class GlobalIlluminationECSData final : public ECS::TComponent
 	{};
 
@@ -82,6 +89,30 @@ namespace Sailor
 		SAILOR_API GlobalIlluminationSnapshotPtr GetActiveSnapshot() const;
 		SAILOR_API TVector<GlobalIlluminationProbeState> GetProbeStates() const;
 		SAILOR_API std::string GetDiagnostic() const;
+		SAILOR_API RuntimeGIProbesStatus GetRuntimeGIProbesStatus() const;
+		SAILOR_API bool IsRuntimeGIProbesPreviewEnabled() const noexcept
+		{
+			return m_bRuntimePreviewEnabled;
+		}
+		SAILOR_API bool SetRuntimeGIProbesPreviewEnabled(
+			bool bEnabled,
+			std::string& outDiagnostic);
+		SAILOR_API Settings::ERuntimeGIProbesEditorBudget
+			GetRuntimeGIProbesEditorBudget() const noexcept
+		{
+			return m_runtimeEditorBudget;
+		}
+		SAILOR_API bool SetRuntimeGIProbesEditorBudget(
+			Settings::ERuntimeGIProbesEditorBudget budget,
+			std::string& outDiagnostic);
+		SAILOR_API bool SetRuntimeGIProbesPaused(
+			bool bPaused,
+			std::string& outDiagnostic);
+		SAILOR_API bool RestartRuntimeGIProbes(
+			std::string& outDiagnostic);
+		SAILOR_API bool RebuildRuntimeGIProbesScene(
+			std::string& outDiagnostic);
+		SAILOR_API void SetRuntimeGIProbesWorkAllowed(bool bAllowed) noexcept;
 		SAILOR_API uint64_t GetCompositionCount() const noexcept
 		{
 			return m_compositionCount.load(std::memory_order_acquire);
@@ -108,7 +139,27 @@ namespace Sailor
 			std::string m_diagnostic{};
 		};
 
+		struct RuntimeScenePreparationResult final
+		{
+			GIProbesPreparedScenePtr m_scene{};
+			uint64_t m_requestId = 0u;
+			std::string m_diagnostic{};
+		};
+
 		void InitializeFromWorld();
+		void TickBakedProvider();
+		void TickRuntimeProvider(float deltaTime);
+		bool BeginRuntimeScenePreparation(std::string& outDiagnostic);
+		void ConsumeRuntimeScenePreparation(
+			const glm::vec3& cameraPosition);
+		bool StartRuntimeSolver(
+			const glm::vec3& cameraPosition,
+			std::string& outDiagnostic);
+		RuntimeGIProbesQualitySettings ResolveRuntimeQualitySettings() const noexcept;
+		void PublishRuntimeSnapshotIfNeeded();
+		void StopRuntimeProvider(bool bClearSnapshot);
+		bool ShouldRunRuntimeProvider() const noexcept;
+		bool TryGetRuntimeCameraPosition(glm::vec3& outPosition) const;
 		bool StartLoad(
 			const std::string& name,
 			RuntimeBinding& binding,
@@ -134,6 +185,24 @@ namespace Sailor
 		bool m_bObservedEnabled = true;
 		bool m_bInitialized = false;
 		bool m_bCompositionDirty = true;
+		RuntimeGIProbesService m_runtimeProbes{};
+		Tasks::TaskPtr<RuntimeScenePreparationResult>
+			m_runtimeScenePreparationTask{};
+		TSharedPtr<std::atomic<bool>> m_runtimeScenePreparationCancel{};
+		GIProbesPreparedScenePtr m_runtimePreparedScene{};
+		RuntimeGIProbesQualitySettings m_runtimeObservedQuality{};
+		uint64_t m_runtimeScenePreparationRequestId = 0u;
+		uint64_t m_runtimePublishedRevision = 0u;
+		glm::vec3 m_runtimeAnchorCamera{};
+		std::string m_runtimePreparationDiagnostic{};
+		bool m_bRuntimeAnchorValid = false;
+		bool m_bRuntimeObservedQualityValid = false;
+		bool m_bRuntimePreviewEnabled = false;
+		Settings::ERuntimeGIProbesEditorBudget m_runtimeEditorBudget{};
+		bool m_bRuntimeSceneRebuildRequested = true;
+		bool m_bRuntimePreparationFailed = false;
+		float m_runtimeRevisionPollSeconds = 0.0f;
+		float m_runtimePreparationRetrySeconds = 0.0f;
 	};
 
 	template class ECS::TSystem<GlobalIlluminationECS, GlobalIlluminationECSData>;

@@ -30,4 +30,79 @@ public class SettingsContractsTests
         Assert.False(SettingsValidationResult.Success.Messages.Any());
         Assert.True(SettingsValidationResult.Success.IsValid);
     }
+
+    [Fact]
+    public void RuntimeGISettings_RoundTripThroughStructuredYaml()
+    {
+        var runtime = new RuntimeGIProbesQualitySettings
+        {
+            Enabled = true,
+            MaxActiveProbes = 4096,
+            ClipmapCascadeCount = 3,
+            SpacingMultiplier = 1.5,
+            InitialSamplesPerProbe = 8,
+            TargetSamplesPerProbe = 32,
+            WorkerCount = 1,
+            CpuDutyFraction = 0.2,
+            CpuBudgetMilliseconds = 2.0,
+            MaxPublicationsPerSecond = 1.0,
+            InitialPublicationCoverage = 0.25,
+            MaxDirtyUploadBytesPerFrame = 1024 * 1024
+        };
+        var source = GraphicsSettingsDefaults.Project with
+        {
+            Graphics = GraphicsSettingsDefaults.Project.Graphics with
+            {
+                Presets = GraphicsSettingsDefaults.Project.Graphics.Presets.With(
+                    GraphicsQualityLevel.High,
+                    GraphicsSettingsDefaults.Project.Graphics.Presets.High with
+                    {
+                        RuntimeGIProbes = runtime
+                    })
+            }
+        };
+
+        var yaml = GraphicsSettingsYamlCodec.SerializeProject(source);
+        var diagnostics = new List<string>();
+        var parsed = GraphicsSettingsYamlCodec.ParseProject(
+            yaml,
+            diagnostics,
+            "runtime-gi-project-settings");
+
+        Assert.Empty(diagnostics);
+        Assert.Equal(1, parsed.SettingsVersion);
+        Assert.Equal(runtime, parsed.Graphics.Presets.High.RuntimeGIProbes);
+    }
+
+    [Fact]
+    public void RuntimeGIPreview_RoundTripsAsWorkspaceLocalState()
+    {
+        var source = GraphicsSettingsDefaults.Editor with
+        {
+            Graphics = GraphicsSettingsDefaults.Editor.Graphics with
+            {
+                RuntimeGIProbesPreviewEnabled = true,
+                RuntimeGIProbesBudget = RuntimeGIProbesEditorBudget.Balanced,
+                RuntimeGIProbesDebugView =
+                    RuntimeGIProbesEditorDebugView.ClipmapCascades
+            }
+        };
+
+        var yaml = GraphicsSettingsYamlCodec.SerializeEditor(source);
+        var diagnostics = new List<string>();
+        var parsed = GraphicsSettingsYamlCodec.ParseEditor(
+            yaml,
+            diagnostics,
+            "runtime-gi-editor-settings");
+
+        Assert.Empty(diagnostics);
+        Assert.Equal(1, parsed.SettingsVersion);
+        Assert.True(parsed.Graphics.RuntimeGIProbesPreviewEnabled);
+        Assert.Equal(
+            RuntimeGIProbesEditorBudget.Balanced,
+            parsed.Graphics.RuntimeGIProbesBudget);
+        Assert.Equal(
+            RuntimeGIProbesEditorDebugView.ClipmapCascades,
+            parsed.Graphics.RuntimeGIProbesDebugView);
+    }
 }

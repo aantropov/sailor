@@ -2,6 +2,7 @@
 
 #include "Core/Defines.h"
 #include "Engine/Types.h"
+#include "GlobalIllumination/RuntimeGIProbesSettings.h"
 
 #include <array>
 #include <cstdint>
@@ -56,6 +57,25 @@ namespace Sailor::Settings
 		RenderStatsAndQueries
 	};
 
+	enum class ERuntimeGIProbesEditorBudget : uint8_t
+	{
+		Eco = 0,
+		Balanced
+	};
+
+	enum class ERuntimeGIProbesEditorDebugView : uint8_t
+	{
+		Lit = 0,
+		IndirectOnly,
+		Probes,
+		Bricks,
+		Validity,
+		Visibility,
+		Residency,
+		Fallback,
+		ClipmapCascades
+	};
+
 	enum class EGraphicsSettingsLoadStatus : uint8_t
 	{
 		NotLoaded = 0,
@@ -95,6 +115,7 @@ namespace Sailor::Settings
 		int32_t m_lodBias = 0;
 		bool m_bEnableGlobalIllumination = true;
 		uint32_t m_maxGiProbeStatesPerSnapshot = 3u;
+		RuntimeGIProbesQualitySettings m_runtimeGIProbes{};
 
 		bool IsShadowCascadeActive(uint32_t cascadeIndex) const noexcept;
 		uint32_t GetShadowCascadeResolution(uint32_t cascadeIndex) const noexcept;
@@ -116,6 +137,11 @@ namespace Sailor::Settings
 		uint32_t m_version = EditorGraphicsSettingsVersion;
 		EGraphicsQualitySelection m_selectedQuality = EGraphicsQualitySelection::ProjectDefault;
 		ERenderStatsMode m_statsMode = ERenderStatsMode::None;
+		bool m_bRuntimeGIProbesPreviewEnabled = false;
+		ERuntimeGIProbesEditorBudget m_runtimeGIProbesBudget =
+			ERuntimeGIProbesEditorBudget::Eco;
+		ERuntimeGIProbesEditorDebugView m_runtimeGIProbesDebugView =
+			ERuntimeGIProbesEditorDebugView::Lit;
 	};
 
 	struct SAILOR_SHARED_API ProjectGraphicsSettingsLoadResult final

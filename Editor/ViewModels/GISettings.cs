@@ -16,6 +16,27 @@ public enum GlobalIlluminationMode
     BakedOnly
 }
 
+public enum GlobalIlluminationProbeSource
+{
+    BakedAssets = 0,
+    RuntimeExperimental
+}
+
+public sealed class RuntimeGIProbesSettings
+{
+    public const uint CurrentVersion = 1;
+
+    public uint Version { get; set; } = CurrentVersion;
+    public bool IncludeSky { get; set; } = true;
+    public bool IncludeEmissive { get; set; } = true;
+    public bool IncludeDirectLighting { get; set; } = true;
+    public uint BounceCount { get; set; } = 3;
+    public float MinProbeSpacing { get; set; } = 1.0f;
+    public float NormalBias { get; set; } = 0.05f;
+    public float ViewBias { get; set; } = 0.05f;
+    public float MaxRayDistance { get; set; } = 1000.0f;
+}
+
 public sealed partial class GlobalIlluminationProbeAssetReference : ObservableObject
 {
     [ObservableProperty]
@@ -41,5 +62,8 @@ public sealed class GISettings
 {
     public GlobalIlluminationMode Mode { get; set; } =
         GlobalIlluminationMode.RealtimeAndBaked;
+    public GlobalIlluminationProbeSource ProbeSource { get; set; } =
+        GlobalIlluminationProbeSource.BakedAssets;
+    public RuntimeGIProbesSettings RuntimeProbes { get; set; } = new();
     public Dictionary<string, GlobalIlluminationProbeBinding> Probes { get; set; } = [];
 }

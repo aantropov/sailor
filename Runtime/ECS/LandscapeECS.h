@@ -218,6 +218,8 @@ namespace Sailor
 		SAILOR_API bool CollectBakeGeometrySnapshots(
 			TVector<LandscapeBakeGeometrySnapshot>& outSnapshots,
 			std::string& outDiagnostic) const;
+		SAILOR_API uint64_t GetGlobalIlluminationContributorRevision()
+			const noexcept;
 		virtual uint32_t GetOrder() const override { return 990u; }
 
 	protected:

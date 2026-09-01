@@ -356,7 +356,9 @@ namespace
 			IsSceneViewDebugVisualization(
 				ESceneViewRenderMode::GlobalIlluminationOnly) &&
 			IsSceneViewDebugVisualization(
-				ESceneViewRenderMode::GlobalIlluminationFallback),
+				ESceneViewRenderMode::GlobalIlluminationFallback) &&
+			IsSceneViewDebugVisualization(
+				ESceneViewRenderMode::GlobalIlluminationClipmapCascades),
 			"CPU path-traced Lit composition must yield to every Scene View debug visualization");
 	}
 

@@ -110,6 +110,11 @@ Settings::EGraphicsQualitySelection App::GetSelectedGraphicsQuality()
 	return g_graphicsSettingsState.m_editorSettings.m_selectedQuality;
 }
 
+const Settings::EditorGraphicsSettings& App::GetEditorGraphicsSettings()
+{
+	return g_graphicsSettingsState.m_editorSettings;
+}
+
 Settings::EGraphicsQuality App::GetActiveGraphicsQuality()
 {
 	return g_graphicsSettingsState.m_activeQuality;
@@ -839,6 +844,7 @@ void App::Start()
 		{
 			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
 			EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
+			EditorRuntime::UpdateRuntimeGIWorkAllowanceOnEngineThread();
 		}
 
 		if (!pEngineLoop->GetWorlds().IsEmpty() &&

@@ -247,6 +247,9 @@ namespace
 		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK:
 			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationFallback;
 			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_CLIPMAP_CASCADES:
+			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationClipmapCascades;
+			return true;
 		case sailor::editor::v1::EDITOR_RENDER_MODE_UNSPECIFIED:
 		default:
 			return false;
@@ -280,6 +283,8 @@ namespace
 			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY;
 		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationFallback:
 			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK;
+		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationClipmapCascades:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_CLIPMAP_CASCADES;
 		case Sailor::RHI::ESceneViewRenderMode::Lit:
 		default:
 			return sailor::editor::v1::EDITOR_RENDER_MODE_LIT;
@@ -371,6 +376,24 @@ namespace
 		}
 	}
 
+	bool TryGetGlobalIlluminationProbeSource(
+		sailor::editor::v1::GlobalIlluminationProbeSource protocolSource,
+		Sailor::EGlobalIlluminationProbeSource& outSource)
+	{
+		switch (protocolSource)
+		{
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_SOURCE_BAKED_ASSETS:
+			outSource = Sailor::EGlobalIlluminationProbeSource::BakedAssets;
+			return true;
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_SOURCE_RUNTIME_EXPERIMENTAL:
+			outSource = Sailor::EGlobalIlluminationProbeSource::RuntimeExperimental;
+			return true;
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_SOURCE_UNSPECIFIED:
+		default:
+			return false;
+		}
+	}
+
 	sailor::editor::v1::GlobalIlluminationMode
 		ToProtocolGlobalIlluminationMode(
 			Sailor::EGlobalIlluminationMode mode)
@@ -394,6 +417,85 @@ namespace
 		return mode == Sailor::EGlobalIlluminationProbeMode::Additive
 			? sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_MODE_ADDITIVE
 			: sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_MODE_BLEND;
+	}
+
+	sailor::editor::v1::GlobalIlluminationProbeSource
+		ToProtocolGlobalIlluminationProbeSource(
+			Sailor::EGlobalIlluminationProbeSource source)
+	{
+		return source ==
+			Sailor::EGlobalIlluminationProbeSource::RuntimeExperimental
+			? sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_SOURCE_RUNTIME_EXPERIMENTAL
+			: sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_SOURCE_BAKED_ASSETS;
+	}
+
+	sailor::editor::v1::RuntimeGIProbesLifecycle
+		ToProtocolRuntimeGIProbesLifecycle(
+			Sailor::ERuntimeGIProbesLifecycle lifecycle)
+	{
+		switch (lifecycle)
+		{
+		case Sailor::ERuntimeGIProbesLifecycle::Disabled:
+			return sailor::editor::v1::RUNTIME_GI_PROBES_LIFECYCLE_DISABLED;
+		case Sailor::ERuntimeGIProbesLifecycle::PreparingScene:
+			return sailor::editor::v1::RUNTIME_GI_PROBES_LIFECYCLE_PREPARING_SCENE;
+		case Sailor::ERuntimeGIProbesLifecycle::Tracing:
+			return sailor::editor::v1::RUNTIME_GI_PROBES_LIFECYCLE_TRACING;
+		case Sailor::ERuntimeGIProbesLifecycle::Ready:
+			return sailor::editor::v1::RUNTIME_GI_PROBES_LIFECYCLE_READY;
+		case Sailor::ERuntimeGIProbesLifecycle::Paused:
+			return sailor::editor::v1::RUNTIME_GI_PROBES_LIFECYCLE_PAUSED;
+		case Sailor::ERuntimeGIProbesLifecycle::Throttled:
+			return sailor::editor::v1::RUNTIME_GI_PROBES_LIFECYCLE_THROTTLED;
+		case Sailor::ERuntimeGIProbesLifecycle::Failed:
+			return sailor::editor::v1::RUNTIME_GI_PROBES_LIFECYCLE_FAILED;
+		default:
+			return sailor::editor::v1::RUNTIME_GI_PROBES_LIFECYCLE_UNSPECIFIED;
+		}
+	}
+
+	sailor::editor::v1::RuntimeGIProbesPreviewBudget
+		ToProtocolRuntimeGIProbesPreviewBudget(
+			Sailor::Settings::ERuntimeGIProbesEditorBudget budget)
+	{
+		return budget ==
+			Sailor::Settings::ERuntimeGIProbesEditorBudget::Balanced
+			? sailor::editor::v1::RUNTIME_GI_PROBES_PREVIEW_BUDGET_BALANCED
+			: sailor::editor::v1::RUNTIME_GI_PROBES_PREVIEW_BUDGET_ECO;
+	}
+
+	bool TryGetRuntimeGIProbesPreviewBudget(
+		sailor::editor::v1::RuntimeGIProbesPreviewBudget protocolBudget,
+		Sailor::Settings::ERuntimeGIProbesEditorBudget& outBudget)
+	{
+		switch (protocolBudget)
+		{
+		case sailor::editor::v1::RUNTIME_GI_PROBES_PREVIEW_BUDGET_ECO:
+			outBudget = Sailor::Settings::ERuntimeGIProbesEditorBudget::Eco;
+			return true;
+		case sailor::editor::v1::RUNTIME_GI_PROBES_PREVIEW_BUDGET_BALANCED:
+			outBudget = Sailor::Settings::ERuntimeGIProbesEditorBudget::Balanced;
+			return true;
+		case sailor::editor::v1::RUNTIME_GI_PROBES_PREVIEW_BUDGET_UNSPECIFIED:
+		default:
+			return false;
+		}
+	}
+
+	void SetProtocolRuntimeGIProbesSettings(
+		sailor::editor::v1::RuntimeGIProbesSettings& destination,
+		const Sailor::RuntimeGIProbesSettings& source)
+	{
+		destination.set_version(source.m_version);
+		destination.set_include_sky(source.m_bIncludeSky);
+		destination.set_include_emissive(source.m_bIncludeEmissive);
+		destination.set_include_direct_lighting(
+			source.m_bIncludeDirectLighting);
+		destination.set_bounce_count(source.m_bounceCount);
+		destination.set_min_probe_spacing(source.m_minProbeSpacing);
+		destination.set_normal_bias(source.m_normalBias);
+		destination.set_view_bias(source.m_viewBias);
+		destination.set_max_ray_distance(source.m_maxRayDistance);
 	}
 
 	sailor::editor::v1::GlobalIlluminationProbeResidency
@@ -1536,6 +1638,43 @@ namespace
 				bValid = false;
 				diagnostic = "The Global Illumination mode is invalid.";
 			}
+			if (bValid && !TryGetGlobalIlluminationProbeSource(
+					protocolSettings.probe_source(),
+					nativeSettings.m_probeSource))
+			{
+				bValid = false;
+				diagnostic = "The Global Illumination probe source is invalid.";
+			}
+			if (bValid && !protocolSettings.has_runtime_probes())
+			{
+				bValid = false;
+				diagnostic = "Runtime GI probe settings are required.";
+			}
+			if (bValid)
+			{
+				const auto& runtime = protocolSettings.runtime_probes();
+				nativeSettings.m_runtimeProbes.m_version = runtime.version();
+				nativeSettings.m_runtimeProbes.m_bIncludeSky =
+					runtime.include_sky();
+				nativeSettings.m_runtimeProbes.m_bIncludeEmissive =
+					runtime.include_emissive();
+				nativeSettings.m_runtimeProbes.m_bIncludeDirectLighting =
+					runtime.include_direct_lighting();
+				nativeSettings.m_runtimeProbes.m_bounceCount =
+					runtime.bounce_count();
+				nativeSettings.m_runtimeProbes.m_minProbeSpacing =
+					runtime.min_probe_spacing();
+				nativeSettings.m_runtimeProbes.m_normalBias =
+					runtime.normal_bias();
+				nativeSettings.m_runtimeProbes.m_viewBias =
+					runtime.view_bias();
+				nativeSettings.m_runtimeProbes.m_maxRayDistance =
+					runtime.max_ray_distance();
+				if (!nativeSettings.m_runtimeProbes.Validate(diagnostic))
+				{
+					bValid = false;
+				}
+			}
 			for (const auto& probe : protocolSettings.probes())
 			{
 				if (!bValid)
@@ -1606,6 +1745,50 @@ namespace
 			result->set_mode(
 				ToProtocolGlobalIlluminationMode(state.m_mode));
 			result->set_enabled(state.m_bEnabled);
+			result->set_probe_source(
+				ToProtocolGlobalIlluminationProbeSource(state.m_probeSource));
+			SetProtocolRuntimeGIProbesSettings(
+				*result->mutable_runtime_probes(),
+				state.m_runtimeSettings);
+			auto* runtime = result->mutable_runtime_state();
+			runtime->set_lifecycle(ToProtocolRuntimeGIProbesLifecycle(
+				state.m_runtimeStatus.m_lifecycle));
+			runtime->set_enabled(state.m_runtimeStatus.m_bEnabled);
+			runtime->set_paused(state.m_runtimeStatus.m_bPaused);
+			runtime->set_throttled(state.m_runtimeStatus.m_bThrottled);
+			runtime->set_preview_enabled(state.m_bRuntimePreviewEnabled);
+			runtime->set_preview_budget(
+				ToProtocolRuntimeGIProbesPreviewBudget(
+					state.m_runtimeEditorBudget));
+			runtime->set_scene_generation(
+				state.m_runtimeStatus.m_sceneGeneration);
+			runtime->set_lighting_generation(
+				state.m_runtimeStatus.m_lightingGeneration);
+			runtime->set_published_revision(
+				state.m_runtimeStatus.m_publishedRevision);
+			runtime->set_capacity(state.m_runtimeStatus.m_capacity);
+			runtime->set_active_probe_count(
+				state.m_runtimeStatus.m_activeProbeCount);
+			runtime->set_ready_probe_count(
+				state.m_runtimeStatus.m_readyProbeCount);
+			runtime->set_dirty_probe_count(
+				state.m_runtimeStatus.m_dirtyProbeCount);
+			runtime->set_queued_probe_count(
+				state.m_runtimeStatus.m_queuedProbeCount);
+			runtime->set_worker_count(state.m_runtimeStatus.m_workerCount);
+			runtime->set_traced_ray_count(
+				state.m_runtimeStatus.m_tracedRayCount);
+			runtime->set_published_bytes(
+				state.m_runtimeStatus.m_publishedBytes);
+			runtime->set_coverage(state.m_runtimeStatus.m_coverage);
+			runtime->set_refinement(state.m_runtimeStatus.m_refinement);
+			runtime->set_rays_per_second(
+				state.m_runtimeStatus.m_raysPerSecond);
+			runtime->set_worker_cpu_milliseconds(
+				state.m_runtimeStatus.m_workerCpuMilliseconds);
+			runtime->set_last_publication_milliseconds(
+				state.m_runtimeStatus.m_lastPublicationMilliseconds);
+			runtime->set_diagnostic(state.m_runtimeStatus.m_diagnostic);
 			for (const Sailor::GlobalIlluminationProbeState& probe :
 				state.m_probes)
 			{
@@ -1621,6 +1804,90 @@ namespace
 				protocolProbe->set_asset_revision(probe.m_assetRevision);
 				protocolProbe->set_diagnostic(probe.m_diagnostic);
 			}
+			break;
+		}
+
+		case ProtocolRequest::kSetRuntimeGiProbesPreview:
+		{
+			std::string diagnostic;
+			if (!Sailor::App::SetEditorRuntimeGIProbesPreviewEnabled(
+					request.set_runtime_gi_probes_preview().enabled(),
+					diagnostic))
+			{
+				SetError(response, diagnostic.empty()
+					? "Failed to update Runtime GI probe preview."
+					: diagnostic);
+				break;
+			}
+			SetBoolResult(response, true);
+			break;
+		}
+
+		case ProtocolRequest::kSetRuntimeGiProbesPaused:
+		{
+			std::string diagnostic;
+			if (!Sailor::App::SetEditorRuntimeGIProbesPaused(
+					request.set_runtime_gi_probes_paused().paused(),
+					diagnostic))
+			{
+				SetError(response, diagnostic.empty()
+					? "Failed to update Runtime GI probe pause state."
+					: diagnostic);
+				break;
+			}
+			SetBoolResult(response, true);
+			break;
+		}
+
+		case ProtocolRequest::kSetRuntimeGiProbesPreviewBudget:
+		{
+			Sailor::Settings::ERuntimeGIProbesEditorBudget budget{};
+			if (!TryGetRuntimeGIProbesPreviewBudget(
+					request.set_runtime_gi_probes_preview_budget().budget(),
+					budget))
+			{
+				SetError(response, "Runtime GI preview budget is unsupported.");
+				break;
+			}
+			std::string diagnostic;
+			if (!Sailor::App::SetEditorRuntimeGIProbesBudget(
+					budget,
+					diagnostic))
+			{
+				SetError(response, diagnostic.empty()
+					? "Failed to update the Runtime GI preview budget."
+					: diagnostic);
+				break;
+			}
+			SetBoolResult(response, true);
+			break;
+		}
+
+		case ProtocolRequest::kRestartRuntimeGiProbes:
+		{
+			std::string diagnostic;
+			if (!Sailor::App::RestartEditorRuntimeGIProbes(diagnostic))
+			{
+				SetError(response, diagnostic.empty()
+					? "Failed to restart Runtime GI probes."
+					: diagnostic);
+				break;
+			}
+			SetBoolResult(response, true);
+			break;
+		}
+
+		case ProtocolRequest::kRebuildRuntimeGiProbesScene:
+		{
+			std::string diagnostic;
+			if (!Sailor::App::RebuildEditorRuntimeGIProbesScene(diagnostic))
+			{
+				SetError(response, diagnostic.empty()
+					? "Failed to rebuild the Runtime GI probe scene."
+					: diagnostic);
+				break;
+			}
+			SetBoolResult(response, true);
 			break;
 		}
 

@@ -73,7 +73,8 @@ namespace Sailor::RHI
 		Visibility,
 		Residency,
 		AssetIdentity,
-		Fallback
+		Fallback,
+		ClipmapCascades
 	};
 
 	struct alignas(16) RHIGlobalIlluminationGpuHeader final

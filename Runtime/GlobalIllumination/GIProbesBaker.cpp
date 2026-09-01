@@ -1,4 +1,5 @@
 #include "GlobalIllumination/GIProbesBaker.h"
+#include "GlobalIllumination/GIProbesTracing.h"
 
 #include "Containers/Hash.h"
 #include "Core/Utils.h"
@@ -7,7 +8,6 @@
 #include <array>
 #include <bit>
 #include <cmath>
-#include <limits>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -19,20 +19,6 @@ namespace
 	constexpr float Pi = 3.14159265358979323846f;
 	constexpr uint32_t MaxBakeBrickCount = 1024u * 1024u;
 	constexpr uint32_t MaxBakeProbeCount = 16u * 1024u * 1024u;
-	constexpr uint32_t ProbeTransportRayCount = 64u;
-	constexpr uint32_t MaxProbeRelocationIterations = 4u;
-	constexpr float MaxValidBackfaceRatio = 0.25f;
-
-	const std::array<glm::vec3, GIProbeVisibilityDirectionCount>
-		VisibilityDirections
-	{
-		glm::vec3(1.0f, 0.0f, 0.0f),
-		glm::vec3(-1.0f, 0.0f, 0.0f),
-		glm::vec3(0.0f, 1.0f, 0.0f),
-		glm::vec3(0.0f, -1.0f, 0.0f),
-		glm::vec3(0.0f, 0.0f, 1.0f),
-		glm::vec3(0.0f, 0.0f, -1.0f)
-	};
 
 	bool IsFinite(const glm::vec3& value) noexcept
 	{
@@ -45,23 +31,6 @@ namespace
 	{
 		return request.m_cancel &&
 			request.m_cancel->load(std::memory_order_acquire);
-	}
-
-	uint32_t MixRandomSeed(
-		uint32_t baseSeed,
-		uint32_t probeIndex,
-		uint32_t sampleIndex,
-		uint32_t stream) noexcept
-	{
-		uint32_t value = baseSeed ^ 0x9e3779b9u;
-		value ^= probeIndex * 0x85ebca6bu + 0xc2b2ae35u;
-		value ^= sampleIndex * 0x27d4eb2du + stream * 0x165667b1u;
-		value ^= value >> 16u;
-		value *= 0x7feb352du;
-		value ^= value >> 15u;
-		value *= 0x846ca68bu;
-		value ^= value >> 16u;
-		return value != 0u ? value : 0x6d2b79f5u;
 	}
 
 	void HashBytes(uint64_t& hash, const void* data, size_t size) noexcept
@@ -605,293 +574,6 @@ namespace
 		return result;
 	}
 
-	glm::vec3 FibonacciDirection(
-		uint32_t index,
-		uint32_t count,
-		uint32_t seed,
-		uint32_t probeIndex) noexcept
-	{
-		const float offset = 2.0f / static_cast<float>(count);
-		const float y = static_cast<float>(index) * offset - 1.0f +
-			offset * 0.5f;
-		const float radius = std::sqrt((std::max)(0.0f, 1.0f - y * y));
-		const uint32_t rotationBits =
-			seed * 747796405u + probeIndex * 2891336453u;
-		const float rotation = static_cast<float>(rotationBits & 0x00ffffffu) /
-			16777216.0f * 2.0f * Pi;
-		const float phi = static_cast<float>(index) * 2.39996322972865332f +
-			rotation;
-		return glm::vec3(
-			std::cos(phi) * radius,
-			y,
-			std::sin(phi) * radius);
-	}
-
-	void EvaluateSphericalHarmonicsBasis(
-		const glm::vec3& direction,
-		float* outBasis) noexcept
-	{
-		const float x = direction.x;
-		const float y = direction.y;
-		const float z = direction.z;
-		outBasis[0] = 0.2820947918f;
-		outBasis[1] = 0.4886025119f * y;
-		outBasis[2] = 0.4886025119f * z;
-		outBasis[3] = 0.4886025119f * x;
-		outBasis[4] = 1.0925484306f * x * y;
-		outBasis[5] = 1.0925484306f * y * z;
-		outBasis[6] = 0.3153915653f * (3.0f * z * z - 1.0f);
-		outBasis[7] = 1.0925484306f * x * z;
-		outBasis[8] = 0.5462742153f * (x * x - y * y);
-	}
-
-	float IrradianceConvolution(uint32_t coefficientIndex) noexcept
-	{
-		// Match ComputeIrradianceMap.shader: store diffuse exitant radiance for
-		// a white Lambertian surface, including the BRDF's 1 / PI factor.
-		return coefficientIndex == 0u ? 1.0f :
-			coefficientIndex <= 3u ? 2.0f / 3.0f : 0.25f;
-	}
-
-	bool SampleVisibility(
-		const IGIProbeBakeRaySampler& sampler,
-		const glm::vec3& position,
-		float maxDistance,
-		uint32_t baseSeed,
-		uint32_t probeIndex,
-		uint32_t stream,
-		std::array<float, GIProbeVisibilityDirectionCount>& outDistances,
-		std::string& outDiagnostic)
-	{
-		for (uint32_t directionIndex = 0u;
-			directionIndex < GIProbeVisibilityDirectionCount;
-			++directionIndex)
-		{
-			GIProbeBakeRaySample sample;
-			if (!sampler.SampleVisibility(
-					position,
-					VisibilityDirections[directionIndex],
-					maxDistance,
-					MixRandomSeed(
-						baseSeed,
-						probeIndex,
-						directionIndex,
-						stream),
-					sample,
-					outDiagnostic))
-			{
-				return false;
-			}
-			outDistances[directionIndex] = sample.m_bHit ?
-				glm::clamp(sample.m_distance, 0.0f, maxDistance) : maxDistance;
-		}
-		return true;
-	}
-
-	glm::vec3 CalculateRelocation(
-		const std::array<float, GIProbeVisibilityDirectionCount>& distances,
-		float spacing) noexcept
-	{
-		const float targetClearance = (std::max)(spacing * 0.25f, 0.001f);
-		glm::vec3 relocation{};
-		for (uint32_t axis = 0u; axis < 3u; ++axis)
-		{
-			const float positivePush =
-				(std::max)(0.0f, targetClearance - distances[axis * 2u]);
-			const float negativePush =
-				(std::max)(0.0f, targetClearance - distances[axis * 2u + 1u]);
-			relocation[axis] = negativePush - positivePush;
-		}
-		const float maxRelocation = spacing * 0.45f;
-		const float length = glm::length(relocation);
-		return length > maxRelocation && length > 1e-6f ?
-			relocation * (maxRelocation / length) : relocation;
-	}
-
-	struct ProbeTransport final
-	{
-		std::array<double, GIProbeVisibilityDirectionCount>
-			m_weights{};
-		std::array<double, GIProbeVisibilityDirectionCount>
-			m_environmentVisibilitySums{};
-		std::array<double, GIProbeVisibilityDirectionCount>
-			m_distanceSums{};
-		std::array<double, GIProbeVisibilityDirectionCount>
-			m_distanceSquaredSums{};
-		uint32_t m_backfaceCount = 0u;
-		float m_closestBackfaceDistance =
-			(std::numeric_limits<float>::max)();
-		glm::vec3 m_closestBackfaceDirection{};
-		glm::vec3 m_frontFaceRepulsion{};
-		float m_frontFaceClearanceDeficit = 0.0f;
-	};
-
-	glm::vec3 CalculateWallRepulsion(
-		const ProbeTransport& transport) noexcept
-	{
-		const float directionLength = glm::length(
-			transport.m_frontFaceRepulsion);
-		if (!std::isfinite(directionLength) ||
-			directionLength <= 1e-6f ||
-			transport.m_frontFaceClearanceDeficit <= 1e-6f)
-		{
-			return glm::vec3(0.0f);
-		}
-		return transport.m_frontFaceRepulsion /
-			directionLength * transport.m_frontFaceClearanceDeficit;
-	}
-
-	bool SampleProbeTransport(
-		const GIProbesBakeRequest& request,
-		const IGIProbeBakeRaySampler& sampler,
-		const glm::vec3& position,
-		float targetClearance,
-		float visibilityMaxDistance,
-		uint32_t probeIndex,
-		uint32_t stream,
-		ProbeTransport& outTransport,
-		std::string& outDiagnostic)
-	{
-		outTransport = {};
-		for (uint32_t rayIndex = 0u;
-			rayIndex < ProbeTransportRayCount;
-			++rayIndex)
-		{
-			if (IsCancelled(request))
-			{
-				outDiagnostic = "GI probe bake was cancelled";
-				return false;
-			}
-
-			// Transport directions deliberately do not rotate per probe. The
-			// radiance estimator remains decorrelated below, while fixed transport
-			// prevents random visibility islands from moving between neighbouring
-			// probes and duplicate brick corners.
-			const glm::vec3 direction = FibonacciDirection(
-				rayIndex,
-				ProbeTransportRayCount,
-				0u,
-				0u);
-			GIProbeBakeRaySample sample;
-			if (!sampler.SampleVisibility(
-					position,
-					direction,
-					request.m_settings.m_maxRayDistance,
-					MixRandomSeed(
-						request.m_settings.m_randomSeed,
-						probeIndex,
-						rayIndex,
-						stream),
-					sample,
-					outDiagnostic))
-			{
-				return false;
-			}
-
-			const glm::vec3 axisWeights = glm::abs(direction);
-			const float localDistance = sample.m_bHit &&
-				std::isfinite(sample.m_distance) ?
-				glm::clamp(sample.m_distance, 0.0f, visibilityMaxDistance) :
-				visibilityMaxDistance;
-			for (uint32_t axis = 0u; axis < 3u; ++axis)
-			{
-				const uint32_t directionIndex = axis * 2u +
-					(direction[axis] >= 0.0f ? 0u : 1u);
-				const double weight = static_cast<double>(axisWeights[axis]);
-				outTransport.m_weights[directionIndex] += weight;
-				outTransport.m_environmentVisibilitySums[directionIndex] +=
-					weight * (sample.m_bHit ? 0.0 : 1.0);
-				outTransport.m_distanceSums[directionIndex] +=
-					weight * static_cast<double>(localDistance);
-				outTransport.m_distanceSquaredSums[directionIndex] +=
-					weight * static_cast<double>(localDistance * localDistance);
-			}
-
-			if (sample.m_bHit && sample.m_bBackFace)
-			{
-				++outTransport.m_backfaceCount;
-				if (sample.m_distance <
-					outTransport.m_closestBackfaceDistance)
-				{
-					outTransport.m_closestBackfaceDistance =
-						sample.m_distance;
-					outTransport.m_closestBackfaceDirection = direction;
-				}
-			}
-			else if (sample.m_bHit &&
-				std::isfinite(sample.m_distance) &&
-				sample.m_distance < targetClearance)
-			{
-				const float clearanceDeficit =
-					targetClearance - (std::max)(sample.m_distance, 0.0f);
-				// A ray points from the probe towards the nearby surface, so its
-				// opposite direction is a local estimate of "away from the wall".
-				// Combining the fixed spherical directions also resolves corners and
-				// slanted walls that the six signed-axis clearance rays cannot see.
-				outTransport.m_frontFaceRepulsion -=
-					direction * clearanceDeficit;
-				outTransport.m_frontFaceClearanceDeficit = (std::max)(
-					outTransport.m_frontFaceClearanceDeficit,
-					clearanceDeficit);
-			}
-		}
-		return true;
-	}
-
-	bool IsEmbeddedProbe(const ProbeTransport& transport) noexcept
-	{
-		return static_cast<float>(transport.m_backfaceCount) /
-			static_cast<float>(ProbeTransportRayCount) >
-			MaxValidBackfaceRatio;
-	}
-
-	void StoreProbeVisibility(
-		const ProbeTransport& transport,
-		float fallbackDistance,
-		GIProbe& probe) noexcept
-	{
-		probe.m_flags &= ~GIProbeBlockedDirectionMask;
-		const float blockingEpsilon = (std::max)(
-			fallbackDistance * 0.0001f,
-			0.0001f);
-		for (uint32_t directionIndex = 0u;
-			directionIndex < GIProbeVisibilityDirectionCount;
-			++directionIndex)
-		{
-			const double weight = transport.m_weights[directionIndex];
-			const float meanDistance = weight > 0.0 ?
-				static_cast<float>(
-					transport.m_distanceSums[directionIndex] / weight) :
-				fallbackDistance;
-			const float meanDistanceSquared = weight > 0.0 ?
-				static_cast<float>(
-					transport.m_distanceSquaredSums[directionIndex] / weight) :
-				fallbackDistance * fallbackDistance;
-			probe.m_visibility[directionIndex] = glm::vec2(
-				meanDistance,
-				(std::max)(
-					meanDistanceSquared,
-					meanDistance * meanDistance));
-			if (meanDistance < fallbackDistance - blockingEpsilon)
-			{
-				probe.m_flags |= GIProbeBlockedDirectionBit(
-					directionIndex);
-			}
-
-			if (weight > 0.0)
-			{
-				probe.m_environmentVisibility[directionIndex] =
-					static_cast<float>(
-						transport.m_environmentVisibilitySums[directionIndex] /
-							weight);
-			}
-			else
-			{
-				probe.m_environmentVisibility[directionIndex] = 1.0f;
-			}
-		}
-	}
-
 	bool BakeProbe(
 		const GIProbesBakeRequest& request,
 		const IGIProbeBakeRaySampler& sampler,
@@ -901,142 +583,23 @@ namespace
 		GIProbe& probe,
 		std::string& outDiagnostic)
 	{
-		std::array<float, GIProbeVisibilityDirectionCount>
-			clearanceDistances{};
+		GIProbeTraceRequest traceRequest;
+		traceRequest.m_settings = request.m_settings;
+		traceRequest.m_volumeMin = request.m_volumeMin;
+		traceRequest.m_volumeMax = request.m_volumeMax;
+		traceRequest.m_cancel = request.m_cancel;
 		if (!bReuseTransport)
 		{
-			const glm::vec3 originalPosition = probe.m_position;
-			if (!SampleVisibility(
+			if (!TraceGIProbeTransport(
+					traceRequest,
 					sampler,
-					probe.m_position,
-					request.m_settings.m_maxRayDistance,
-					request.m_settings.m_randomSeed,
 					probeIndex,
-					0u,
-					clearanceDistances,
-					outDiagnostic))
-			{
-				return false;
-			}
-
-			probe.m_relocationOffset = CalculateRelocation(
-				clearanceDistances,
-				request.m_settings.m_minProbeSpacing);
-			if (glm::length(probe.m_relocationOffset) > 1e-6f)
-			{
-				probe.m_position = glm::clamp(
-					originalPosition + probe.m_relocationOffset,
-					request.m_volumeMin,
-					request.m_volumeMax);
-				probe.m_relocationOffset = probe.m_position - originalPosition;
-				if (glm::length(probe.m_relocationOffset) > 1e-6f)
-				{
-					probe.m_flags |= static_cast<uint32_t>(
-						EGIProbeFlag::Relocated);
-				}
-			}
-
-			const float targetClearance = (std::max)(
-				request.m_settings.m_minProbeSpacing * 0.25f,
-				0.001f);
-			const float maxRelocation =
-				request.m_settings.m_minProbeSpacing * 0.45f;
-			ProbeTransport transport;
-			if (!SampleProbeTransport(
-					request,
-					sampler,
-					probe.m_position,
-					targetClearance,
 					visibilityMaxDistance,
-					probeIndex,
-					1u,
-					transport,
+					probe,
 					outDiagnostic))
 			{
 				return false;
 			}
-
-			for (uint32_t iteration = 0u;
-				iteration < MaxProbeRelocationIterations;
-				++iteration)
-			{
-				glm::vec3 relocationStep{};
-				if (IsEmbeddedProbe(transport))
-				{
-					if (!std::isfinite(
-							transport.m_closestBackfaceDistance) ||
-						transport.m_closestBackfaceDistance >=
-							(std::numeric_limits<float>::max)() ||
-						glm::length(
-							transport.m_closestBackfaceDirection) <= 1e-6f)
-					{
-						break;
-					}
-					relocationStep =
-						transport.m_closestBackfaceDirection *
-						(transport.m_closestBackfaceDistance +
-							targetClearance);
-				}
-				else
-				{
-					relocationStep = CalculateWallRepulsion(transport);
-					if (glm::length(relocationStep) <= 1e-6f)
-					{
-						break;
-					}
-				}
-
-				glm::vec3 requestedOffset =
-					probe.m_position - originalPosition + relocationStep;
-				const float requestedLength = glm::length(requestedOffset);
-				if (requestedLength > maxRelocation &&
-					requestedLength > 1e-6f)
-				{
-					requestedOffset *= maxRelocation / requestedLength;
-				}
-				const glm::vec3 relocatedPosition = glm::clamp(
-					originalPosition + requestedOffset,
-					request.m_volumeMin,
-					request.m_volumeMax);
-				if (glm::length(relocatedPosition - probe.m_position) <= 1e-6f)
-				{
-					break;
-				}
-				probe.m_position = relocatedPosition;
-				probe.m_relocationOffset =
-					probe.m_position - originalPosition;
-				probe.m_flags |= static_cast<uint32_t>(
-					EGIProbeFlag::Relocated);
-				if (!SampleProbeTransport(
-						request,
-						sampler,
-						probe.m_position,
-						targetClearance,
-						visibilityMaxDistance,
-						probeIndex,
-						2u + iteration,
-						transport,
-						outDiagnostic))
-				{
-					return false;
-				}
-			}
-
-			probe.m_validity = IsEmbeddedProbe(transport) ? 0.0f : 1.0f;
-			if (probe.m_validity > 0.05f)
-			{
-				probe.m_flags |= static_cast<uint32_t>(
-					EGIProbeFlag::Valid);
-			}
-			else
-			{
-				probe.m_flags &= ~static_cast<uint32_t>(
-					EGIProbeFlag::Valid);
-			}
-			StoreProbeVisibility(
-				transport,
-				visibilityMaxDistance,
-				probe);
 		}
 
 		probe.m_irradiance = {};
@@ -1045,81 +608,24 @@ namespace
 			return true;
 		}
 		const uint32_t rayCount = request.m_settings.m_raysPerProbe;
-		for (uint32_t rayIndex = 0u; rayIndex < rayCount; ++rayIndex)
-		{
-			if (IsCancelled(request))
-			{
-				outDiagnostic = "GI probe bake was cancelled";
-				return false;
-			}
-			// Direction samples are shared by neighbouring probes. The path tracer
-			// may replace part of this uniform sequence with HDR environment samples;
-			// the returned mixture PDF keeps the SH projection unbiased.
-			const glm::vec3 uniformDirection = FibonacciDirection(
-				rayIndex,
+		GIProbeIrradianceAccumulator accumulator;
+		if (!AccumulateGIProbeIrradianceRange(
+				traceRequest,
+				sampler,
+				probe.m_position,
+				probeIndex,
+				0u,
 				rayCount,
-				request.m_settings.m_randomSeed,
-				0u);
-			glm::vec3 direction{};
-			float directionPdf = 0.0f;
-			if (!sampler.SamplePrimaryDirection(
-					uniformDirection,
-					rayIndex,
-					rayCount,
-					MixRandomSeed(
-						request.m_settings.m_randomSeed,
-						0u,
-						rayIndex,
-						3u),
-					direction,
-					directionPdf,
-					outDiagnostic))
-			{
-				return false;
-			}
-			const float directionLength = glm::length(direction);
-			if (!IsFinite(direction) ||
-				!std::isfinite(directionLength) ||
-				directionLength <= 1e-6f ||
-				!std::isfinite(directionPdf) ||
-				directionPdf <= 0.0f)
-			{
-				outDiagnostic =
-					"GI probe sampler returned an invalid primary direction or PDF";
-				return false;
-			}
-			direction /= directionLength;
-			GIProbeBakeRaySample sample;
-			if (!sampler.Sample(
-					probe.m_position,
-					direction,
-					request.m_settings.m_maxRayDistance,
-					MixRandomSeed(
-						request.m_settings.m_randomSeed,
-						probeIndex,
-						rayIndex,
-						2u),
-					sample,
-					outDiagnostic))
-			{
-				return false;
-			}
-			const glm::vec3 radiance = IsFinite(sample.m_radiance) ?
-				glm::max(sample.m_radiance, glm::vec3(0.0f)) : glm::vec3(0.0f);
-			const float projectionScale = 1.0f /
-				(static_cast<float>(rayCount) * directionPdf);
-			float basis[GIProbeSphericalHarmonicsCoefficientCount]{};
-			EvaluateSphericalHarmonicsBasis(direction, basis);
-			for (uint32_t coefficientIndex = 0u;
-				coefficientIndex < GIProbeSphericalHarmonicsCoefficientCount;
-				++coefficientIndex)
-			{
-				probe.m_irradiance[coefficientIndex] += radiance *
-					basis[coefficientIndex] * projectionScale *
-					IrradianceConvolution(coefficientIndex);
-			}
+				rayCount,
+				accumulator,
+				outDiagnostic))
+		{
+			return false;
 		}
-		return true;
+		return ResolveGIProbeIrradiance(
+			accumulator,
+			probe,
+			outDiagnostic);
 	}
 
 	bool ValidateRequest(

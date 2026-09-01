@@ -1,0 +1,57 @@
+name: RuntimeGIProbesExperimental
+globalIllumination:
+  mode: RealtimeAndBaked
+  probeSource: RuntimeExperimental
+  runtimeProbes:
+    version: 1
+    includeSky: true
+    includeEmissive: true
+    includeDirectLighting: true
+    bounceCount: 2
+    minProbeSpacing: 80
+    normalBias: 0.05
+    viewBias: 0.05
+    maxRayDistance: 5000
+  probes: {}
+prefabs:
+  - gameObjects:
+      - name: RuntimeGIProbesExperimental
+        mobilityType: Stationary
+        position:
+          - 0
+          - 0
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: BB47E2F36D07497BB4EBF040702FE16D
+        components:
+          - 0
+    components:
+      - typename: Sailor::PerformanceTestSetupComponent
+        overrideProperties:
+          gridSize: 2
+          spacing: 180
+          baseColor:
+            - 0.5
+            - 0.5
+            - 0.5
+          colorVariance:
+            - 0.2
+            - 0.1
+            - 0.05
+          boxScale: 60
+          rotationSpeedDeg: 0
+          directionalLightIlluminance: 17000
+          spawnPointLights: false
+          fileId: NullFileId
+          instanceId: D50E5984577E486AA5561325A44488C3_BB47E2F36D07497BB4EBF040702FE16D

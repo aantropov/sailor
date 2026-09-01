@@ -3084,13 +3084,31 @@ namespace SailorEditor.Services
 
         public async Task<bool> SetGISettingsAsync(
             GlobalIlluminationRuntimeMode mode,
+            GlobalIlluminationProbeSourceKind probeSource,
+            RuntimeGIProbesSettingsDescriptor runtimeSettings,
             IReadOnlyCollection<GlobalIlluminationBindingDescriptor> bindings,
             CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(runtimeSettings);
             ArgumentNullException.ThrowIfNull(bindings);
             var protocolSettings = new SetGISettingsRequest
             {
-                Mode = ToProtocolGlobalIlluminationRuntimeMode(mode)
+                Mode = ToProtocolGlobalIlluminationRuntimeMode(mode),
+                ProbeSource = ToProtocolGlobalIlluminationProbeSource(
+                    probeSource),
+                RuntimeProbes = new Protocol.Generated.RuntimeGIProbesSettings
+                {
+                    Version = runtimeSettings.Version,
+                    IncludeSky = runtimeSettings.IncludeSky,
+                    IncludeEmissive = runtimeSettings.IncludeEmissive,
+                    IncludeDirectLighting =
+                        runtimeSettings.IncludeDirectLighting,
+                    BounceCount = runtimeSettings.BounceCount,
+                    MinProbeSpacing = runtimeSettings.MinProbeSpacing,
+                    NormalBias = runtimeSettings.NormalBias,
+                    ViewBias = runtimeSettings.ViewBias,
+                    MaxRayDistance = runtimeSettings.MaxRayDistance
+                }
             };
             foreach (var binding in bindings.OrderBy(
                 static value => value.Name,
@@ -3138,10 +3156,54 @@ namespace SailorEditor.Services
             {
                 return null;
             }
+            var runtimeSettings = protocolState.RuntimeProbes ??
+                throw new InvalidDataException(
+                    "Runtime GI probe settings are missing from the engine state.");
+            var runtimeState = protocolState.RuntimeState ??
+                throw new InvalidDataException(
+                    "Runtime GI probe status is missing from the engine state.");
             return new GlobalIlluminationRuntimeState(
                 protocolState.MaxProbeStatesPerSnapshot,
                 FromProtocolGlobalIlluminationRuntimeMode(protocolState.Mode),
                 protocolState.Enabled,
+                FromProtocolGlobalIlluminationProbeSource(
+                    protocolState.ProbeSource),
+                new RuntimeGIProbesSettingsDescriptor(
+                    runtimeSettings.Version,
+                    runtimeSettings.IncludeSky,
+                    runtimeSettings.IncludeEmissive,
+                    runtimeSettings.IncludeDirectLighting,
+                    runtimeSettings.BounceCount,
+                    runtimeSettings.MinProbeSpacing,
+                    runtimeSettings.NormalBias,
+                    runtimeSettings.ViewBias,
+                    runtimeSettings.MaxRayDistance),
+                new RuntimeGIProbesRuntimeState(
+                    FromProtocolRuntimeGIProbesLifecycle(
+                        runtimeState.Lifecycle),
+                    runtimeState.Enabled,
+                    runtimeState.Paused,
+                    runtimeState.Throttled,
+                    runtimeState.PreviewEnabled,
+                    FromProtocolRuntimeGIProbesPreviewBudget(
+                        runtimeState.PreviewBudget),
+                    runtimeState.SceneGeneration,
+                    runtimeState.LightingGeneration,
+                    runtimeState.PublishedRevision,
+                    runtimeState.Capacity,
+                    runtimeState.ActiveProbeCount,
+                    runtimeState.ReadyProbeCount,
+                    runtimeState.DirtyProbeCount,
+                    runtimeState.QueuedProbeCount,
+                    runtimeState.WorkerCount,
+                    runtimeState.TracedRayCount,
+                    runtimeState.PublishedBytes,
+                    runtimeState.Coverage,
+                    runtimeState.Refinement,
+                    runtimeState.RaysPerSecond,
+                    runtimeState.WorkerCpuMilliseconds,
+                    runtimeState.LastPublicationMilliseconds,
+                    runtimeState.Diagnostic),
                 protocolState.Probes.Select(
                     static probe => new GlobalIlluminationProbeRuntimeState(
                         probe.Name,
@@ -3156,6 +3218,45 @@ namespace SailorEditor.Services
                 protocolState.CompositionCount,
                 protocolState.RejectedCompositionCount);
         }
+
+        public Task<bool> SetRuntimeGIProbesPreviewAsync(
+            bool enabled,
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.SetRuntimeGIProbesPreviewAsync(
+                    enabled,
+                    token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> SetRuntimeGIProbesPausedAsync(
+            bool paused,
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.SetRuntimeGIProbesPausedAsync(
+                    paused,
+                    token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> SetRuntimeGIProbesPreviewBudgetAsync(
+            RuntimeGIProbesEditorBudget budget,
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.SetRuntimeGIProbesPreviewBudgetAsync(
+                    ToProtocolRuntimeGIProbesPreviewBudget(budget),
+                    token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> RestartRuntimeGIProbesAsync(
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.RestartRuntimeGIProbesAsync(token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> RebuildRuntimeGIProbesSceneAsync(
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.RebuildRuntimeGIProbesSceneAsync(token),
+                cancellationToken: cancellationToken);
 
         static Protocol.Generated.Vector4 ToProtocolVector(
             System.Numerics.Vector3 value) => new()
@@ -3239,6 +3340,77 @@ namespace SailorEditor.Services
                 $"Unknown Global Illumination runtime mode: {mode}.")
         };
 
+        static Protocol.Generated.GlobalIlluminationProbeSource
+            ToProtocolGlobalIlluminationProbeSource(
+                GlobalIlluminationProbeSourceKind source) => source switch
+        {
+            GlobalIlluminationProbeSourceKind.BakedAssets =>
+                Protocol.Generated.GlobalIlluminationProbeSource.BakedAssets,
+            GlobalIlluminationProbeSourceKind.RuntimeExperimental =>
+                Protocol.Generated.GlobalIlluminationProbeSource.RuntimeExperimental,
+            _ => throw new ArgumentOutOfRangeException(nameof(source))
+        };
+
+        static GlobalIlluminationProbeSourceKind
+            FromProtocolGlobalIlluminationProbeSource(
+                Protocol.Generated.GlobalIlluminationProbeSource source) =>
+            source switch
+            {
+                Protocol.Generated.GlobalIlluminationProbeSource.BakedAssets =>
+                    GlobalIlluminationProbeSourceKind.BakedAssets,
+                Protocol.Generated.GlobalIlluminationProbeSource.RuntimeExperimental =>
+                    GlobalIlluminationProbeSourceKind.RuntimeExperimental,
+                _ => throw new InvalidDataException(
+                    $"Unknown Global Illumination probe source: {source}.")
+            };
+
+        static RuntimeGIProbesLifecycleState
+            FromProtocolRuntimeGIProbesLifecycle(
+                Protocol.Generated.RuntimeGIProbesLifecycle lifecycle) =>
+            lifecycle switch
+            {
+                Protocol.Generated.RuntimeGIProbesLifecycle.Disabled =>
+                    RuntimeGIProbesLifecycleState.Disabled,
+                Protocol.Generated.RuntimeGIProbesLifecycle.PreparingScene =>
+                    RuntimeGIProbesLifecycleState.PreparingScene,
+                Protocol.Generated.RuntimeGIProbesLifecycle.Tracing =>
+                    RuntimeGIProbesLifecycleState.Tracing,
+                Protocol.Generated.RuntimeGIProbesLifecycle.Ready =>
+                    RuntimeGIProbesLifecycleState.Ready,
+                Protocol.Generated.RuntimeGIProbesLifecycle.Paused =>
+                    RuntimeGIProbesLifecycleState.Paused,
+                Protocol.Generated.RuntimeGIProbesLifecycle.Throttled =>
+                    RuntimeGIProbesLifecycleState.Throttled,
+                Protocol.Generated.RuntimeGIProbesLifecycle.Failed =>
+                    RuntimeGIProbesLifecycleState.Failed,
+                _ => throw new InvalidDataException(
+                    $"Unknown Runtime GI probe lifecycle: {lifecycle}.")
+            };
+
+        static Protocol.Generated.RuntimeGIProbesPreviewBudget
+            ToProtocolRuntimeGIProbesPreviewBudget(
+                RuntimeGIProbesEditorBudget budget) => budget switch
+            {
+                RuntimeGIProbesEditorBudget.Eco =>
+                    Protocol.Generated.RuntimeGIProbesPreviewBudget.Eco,
+                RuntimeGIProbesEditorBudget.Balanced =>
+                    Protocol.Generated.RuntimeGIProbesPreviewBudget.Balanced,
+                _ => throw new ArgumentOutOfRangeException(nameof(budget))
+            };
+
+        static RuntimeGIProbesEditorBudget
+            FromProtocolRuntimeGIProbesPreviewBudget(
+                Protocol.Generated.RuntimeGIProbesPreviewBudget budget) =>
+            budget switch
+            {
+                Protocol.Generated.RuntimeGIProbesPreviewBudget.Eco =>
+                    RuntimeGIProbesEditorBudget.Eco,
+                Protocol.Generated.RuntimeGIProbesPreviewBudget.Balanced =>
+                    RuntimeGIProbesEditorBudget.Balanced,
+                _ => throw new InvalidDataException(
+                    $"Unknown Runtime GI preview budget: {budget}.")
+            };
+
         static GlobalIlluminationResidency
             FromProtocolGlobalIlluminationResidency(
                 Protocol.Generated.GlobalIlluminationProbeResidency residency)
@@ -3280,6 +3452,8 @@ namespace SailorEditor.Services
                     EditorRenderMode.GlobalIlluminationAssetIdentity,
                 SceneViewRenderMode.GlobalIlluminationFallback =>
                     EditorRenderMode.GlobalIlluminationFallback,
+                SceneViewRenderMode.GlobalIlluminationClipmapCascades =>
+                    EditorRenderMode.GlobalIlluminationClipmapCascades,
                 _ => throw new ArgumentOutOfRangeException(nameof(mode))
             };
 
@@ -3307,6 +3481,8 @@ namespace SailorEditor.Services
                     SceneViewRenderMode.GlobalIlluminationAssetIdentity,
                 EditorRenderMode.GlobalIlluminationFallback =>
                     SceneViewRenderMode.GlobalIlluminationFallback,
+                EditorRenderMode.GlobalIlluminationClipmapCascades =>
+                    SceneViewRenderMode.GlobalIlluminationClipmapCascades,
                 _ => throw new ArgumentOutOfRangeException(nameof(mode))
             };
 

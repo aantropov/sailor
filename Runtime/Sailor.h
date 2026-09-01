@@ -62,6 +62,7 @@ namespace Sailor
 		SAILOR_API static const Settings::GraphicsSettings& GetGraphicsSettings();
 		SAILOR_API static const Settings::GraphicsQualityProfile& GetActiveGraphicsSettings();
 		SAILOR_API static Settings::EGraphicsQualitySelection GetSelectedGraphicsQuality();
+		SAILOR_API static const Settings::EditorGraphicsSettings& GetEditorGraphicsSettings();
 		SAILOR_API static Settings::EGraphicsQuality GetActiveGraphicsQuality();
 		SAILOR_API static Settings::ERenderStatsMode GetRenderStatsMode();
 		SAILOR_API static bool SetRenderStatsMode(Settings::ERenderStatsMode mode);
@@ -123,6 +124,19 @@ namespace Sailor
 			std::string& outDiagnostic);
 		SAILOR_API static bool GetEditorGlobalIlluminationState(
 			EditorGlobalIlluminationState& outState);
+		SAILOR_API static bool SetEditorRuntimeGIProbesPreviewEnabled(
+			bool bEnabled,
+			std::string& outDiagnostic);
+		SAILOR_API static bool SetEditorRuntimeGIProbesBudget(
+			Settings::ERuntimeGIProbesEditorBudget budget,
+			std::string& outDiagnostic);
+		SAILOR_API static bool SetEditorRuntimeGIProbesPaused(
+			bool bPaused,
+			std::string& outDiagnostic);
+		SAILOR_API static bool RestartEditorRuntimeGIProbes(
+			std::string& outDiagnostic);
+		SAILOR_API static bool RebuildEditorRuntimeGIProbesScene(
+			std::string& outDiagnostic);
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool SetEditorAnimatorParameter(
 			const char* strInstanceId,

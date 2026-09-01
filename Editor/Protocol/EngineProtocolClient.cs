@@ -569,6 +569,89 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false)).GlobalIlluminationStateResult,
             nameof(ProtocolRequest.GetGlobalIlluminationState));
 
+    public async Task<bool> SetRuntimeGIProbesPreviewAsync(
+        bool enabled,
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetRuntimeGiProbesPreview =
+                            new RuntimeGIProbesPreviewRequest
+                            {
+                                Enabled = enabled
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetRuntimeGiProbesPreview));
+
+    public async Task<bool> SetRuntimeGIProbesPausedAsync(
+        bool paused,
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetRuntimeGiProbesPaused =
+                            new RuntimeGIProbesPauseRequest
+                            {
+                                Paused = paused
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetRuntimeGiProbesPaused));
+
+    public async Task<bool> SetRuntimeGIProbesPreviewBudgetAsync(
+        RuntimeGIProbesPreviewBudget budget,
+        CancellationToken cancellationToken = default)
+    {
+        if (budget == RuntimeGIProbesPreviewBudget.Unspecified ||
+            !Enum.IsDefined(budget))
+        {
+            throw new ArgumentOutOfRangeException(nameof(budget));
+        }
+
+        return ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetRuntimeGiProbesPreviewBudget =
+                            new RuntimeGIProbesPreviewBudgetRequest
+                            {
+                                Budget = budget
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetRuntimeGiProbesPreviewBudget));
+    }
+
+    public async Task<bool> RestartRuntimeGIProbesAsync(
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        RestartRuntimeGiProbes = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.RestartRuntimeGiProbes));
+
+    public async Task<bool> RebuildRuntimeGIProbesSceneAsync(
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        RebuildRuntimeGiProbesScene = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.RebuildRuntimeGiProbesScene));
+
     public async Task<bool> PreviewAudioAssetAsync(
         string fileId,
         CancellationToken cancellationToken = default)
@@ -1574,7 +1657,8 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             EditorRenderMode.GlobalIlluminationVisibility or
             EditorRenderMode.GlobalIlluminationResidency or
             EditorRenderMode.GlobalIlluminationAssetIdentity or
-            EditorRenderMode.GlobalIlluminationFallback
+            EditorRenderMode.GlobalIlluminationFallback or
+            EditorRenderMode.GlobalIlluminationClipmapCascades
             ? mode
             : throw new ArgumentOutOfRangeException(
                 nameof(mode),

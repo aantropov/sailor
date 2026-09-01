@@ -22,6 +22,20 @@ graphics:
       lodBias: -1
       enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 4
+      runtimeGIProbes:
+        version: 1
+        enabled: false
+        maxActiveProbes: 16384
+        clipmapCascadeCount: 1
+        spacingMultiplier: 1
+        initialSamplesPerProbe: 16
+        targetSamplesPerProbe: 64
+        workerCount: 2
+        cpuDutyFraction: 0.5
+        cpuBudgetMilliseconds: 4
+        maxPublicationsPerSecond: 2
+        initialPublicationCoverage: 0.125
+        maxDirtyUploadBytesPerFrame: 2097152
     High:
       resolutionFactor: 1
       fpsCap: 120
@@ -42,6 +56,20 @@ graphics:
       lodBias: 0
       enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 3
+      runtimeGIProbes:
+        version: 1
+        enabled: false
+        maxActiveProbes: 8192
+        clipmapCascadeCount: 1
+        spacingMultiplier: 1
+        initialSamplesPerProbe: 16
+        targetSamplesPerProbe: 64
+        workerCount: 1
+        cpuDutyFraction: 0.25
+        cpuBudgetMilliseconds: 4
+        maxPublicationsPerSecond: 2
+        initialPublicationCoverage: 0.125
+        maxDirtyUploadBytesPerFrame: 2097152
     Medium:
       resolutionFactor: 0.85
       fpsCap: 120
@@ -61,6 +89,20 @@ graphics:
       lodBias: 0
       enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 2
+      runtimeGIProbes:
+        version: 1
+        enabled: false
+        maxActiveProbes: 4096
+        clipmapCascadeCount: 1
+        spacingMultiplier: 1
+        initialSamplesPerProbe: 16
+        targetSamplesPerProbe: 64
+        workerCount: 1
+        cpuDutyFraction: 0.2
+        cpuBudgetMilliseconds: 4
+        maxPublicationsPerSecond: 2
+        initialPublicationCoverage: 0.125
+        maxDirtyUploadBytesPerFrame: 2097152
     Low:
       resolutionFactor: 0.7
       fpsCap: 120
@@ -79,6 +121,20 @@ graphics:
       lodBias: 1
       enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 2
+      runtimeGIProbes:
+        version: 1
+        enabled: false
+        maxActiveProbes: 2048
+        clipmapCascadeCount: 1
+        spacingMultiplier: 1
+        initialSamplesPerProbe: 16
+        targetSamplesPerProbe: 32
+        workerCount: 1
+        cpuDutyFraction: 0.15
+        cpuBudgetMilliseconds: 4
+        maxPublicationsPerSecond: 2
+        initialPublicationCoverage: 0.125
+        maxDirtyUploadBytesPerFrame: 2097152
     VeryLow:
       resolutionFactor: 0.5
       fpsCap: 120
@@ -96,4 +152,18 @@ graphics:
       lodBias: 2
       enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 1
+      runtimeGIProbes:
+        version: 1
+        enabled: false
+        maxActiveProbes: 2048
+        clipmapCascadeCount: 1
+        spacingMultiplier: 1
+        initialSamplesPerProbe: 8
+        targetSamplesPerProbe: 16
+        workerCount: 1
+        cpuDutyFraction: 0.1
+        cpuBudgetMilliseconds: 4
+        maxPublicationsPerSecond: 2
+        initialPublicationCoverage: 0.125
+        maxDirtyUploadBytesPerFrame: 2097152
 ...

@@ -2,6 +2,36 @@ using System.Globalization;
 
 namespace SailorEditor.Settings;
 
+public sealed record RuntimeGIProbesQualityDraft(
+    bool Enabled,
+    string MaxActiveProbes,
+    string ClipmapCascadeCount,
+    string SpacingMultiplier,
+    string InitialSamplesPerProbe,
+    string TargetSamplesPerProbe,
+    string WorkerCount,
+    string CpuDutyFraction,
+    string CpuBudgetMilliseconds,
+    string MaxPublicationsPerSecond,
+    string InitialPublicationCoverage,
+    string MaxDirtyUploadBytesPerFrame)
+{
+    public static RuntimeGIProbesQualityDraft FromSettings(
+        RuntimeGIProbesQualitySettings settings) => new(
+            settings.Enabled,
+            settings.MaxActiveProbes.ToString(CultureInfo.InvariantCulture),
+            settings.ClipmapCascadeCount.ToString(CultureInfo.InvariantCulture),
+            settings.SpacingMultiplier.ToString("0.####", CultureInfo.InvariantCulture),
+            settings.InitialSamplesPerProbe.ToString(CultureInfo.InvariantCulture),
+            settings.TargetSamplesPerProbe.ToString(CultureInfo.InvariantCulture),
+            settings.WorkerCount.ToString(CultureInfo.InvariantCulture),
+            settings.CpuDutyFraction.ToString("0.####", CultureInfo.InvariantCulture),
+            settings.CpuBudgetMilliseconds.ToString("0.####", CultureInfo.InvariantCulture),
+            settings.MaxPublicationsPerSecond.ToString("0.####", CultureInfo.InvariantCulture),
+            settings.InitialPublicationCoverage.ToString("0.####", CultureInfo.InvariantCulture),
+            settings.MaxDirtyUploadBytesPerFrame.ToString(CultureInfo.InvariantCulture));
+}
+
 public sealed record GraphicsQualityPresetDraft(
     string ResolutionFactor,
     string FpsCap,
@@ -17,7 +47,8 @@ public sealed record GraphicsQualityPresetDraft(
     string VegetationInstanceBudget,
     string LodBias,
     bool EnableGlobalIllumination,
-    string MaxGiProbeStatesPerSnapshot)
+    string MaxGiProbeStatesPerSnapshot,
+    RuntimeGIProbesQualityDraft RuntimeGIProbes)
 {
     public static GraphicsQualityPresetDraft FromSettings(
         GraphicsQualityPresetSettings settings)
@@ -37,7 +68,8 @@ public sealed record GraphicsQualityPresetDraft(
             settings.LodBias.ToString(CultureInfo.InvariantCulture),
             settings.EnableGlobalIllumination,
             settings.MaxGiProbeStatesPerSnapshot.ToString(
-                CultureInfo.InvariantCulture));
+                CultureInfo.InvariantCulture),
+            RuntimeGIProbesQualityDraft.FromSettings(settings.RuntimeGIProbes));
 
     internal bool TryBuild(
         GraphicsQualityLevel quality,
@@ -99,6 +131,18 @@ public sealed record GraphicsQualityPresetDraft(
             "Maximum GI probe states per snapshot",
             issues,
             out var maxGiProbeStatesPerSnapshot);
+        var runtimePath = $"{path}.runtimeGIProbes";
+        valid &= TryParseInt(RuntimeGIProbes.MaxActiveProbes, $"{runtimePath}.maxActiveProbes", "Runtime GI probe capacity", issues, out var runtimeMaxActiveProbes);
+        valid &= TryParseInt(RuntimeGIProbes.ClipmapCascadeCount, $"{runtimePath}.clipmapCascadeCount", "Runtime GI cascade count", issues, out var runtimeCascadeCount);
+        valid &= TryParseDouble(RuntimeGIProbes.SpacingMultiplier, $"{runtimePath}.spacingMultiplier", "Runtime GI spacing multiplier", issues, out var runtimeSpacingMultiplier);
+        valid &= TryParseInt(RuntimeGIProbes.InitialSamplesPerProbe, $"{runtimePath}.initialSamplesPerProbe", "Runtime GI initial samples", issues, out var runtimeInitialSamples);
+        valid &= TryParseInt(RuntimeGIProbes.TargetSamplesPerProbe, $"{runtimePath}.targetSamplesPerProbe", "Runtime GI target samples", issues, out var runtimeTargetSamples);
+        valid &= TryParseInt(RuntimeGIProbes.WorkerCount, $"{runtimePath}.workerCount", "Runtime GI worker count", issues, out var runtimeWorkerCount);
+        valid &= TryParseDouble(RuntimeGIProbes.CpuDutyFraction, $"{runtimePath}.cpuDutyFraction", "Runtime GI CPU duty fraction", issues, out var runtimeCpuDuty);
+        valid &= TryParseDouble(RuntimeGIProbes.CpuBudgetMilliseconds, $"{runtimePath}.cpuBudgetMilliseconds", "Runtime GI CPU budget", issues, out var runtimeCpuBudget);
+        valid &= TryParseDouble(RuntimeGIProbes.MaxPublicationsPerSecond, $"{runtimePath}.maxPublicationsPerSecond", "Runtime GI publication rate", issues, out var runtimePublicationRate);
+        valid &= TryParseDouble(RuntimeGIProbes.InitialPublicationCoverage, $"{runtimePath}.initialPublicationCoverage", "Runtime GI initial coverage", issues, out var runtimeInitialCoverage);
+        valid &= TryParseInt(RuntimeGIProbes.MaxDirtyUploadBytesPerFrame, $"{runtimePath}.maxDirtyUploadBytesPerFrame", "Runtime GI upload budget", issues, out var runtimeUploadBudget);
 
         settings = new GraphicsQualityPresetSettings
         {
@@ -116,7 +160,22 @@ public sealed record GraphicsQualityPresetDraft(
             VegetationInstanceBudget = vegetationInstanceBudget,
             LodBias = lodBias,
             EnableGlobalIllumination = EnableGlobalIllumination,
-            MaxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot
+            MaxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot,
+            RuntimeGIProbes = new RuntimeGIProbesQualitySettings
+            {
+                Enabled = RuntimeGIProbes.Enabled,
+                MaxActiveProbes = runtimeMaxActiveProbes,
+                ClipmapCascadeCount = runtimeCascadeCount,
+                SpacingMultiplier = runtimeSpacingMultiplier,
+                InitialSamplesPerProbe = runtimeInitialSamples,
+                TargetSamplesPerProbe = runtimeTargetSamples,
+                WorkerCount = runtimeWorkerCount,
+                CpuDutyFraction = runtimeCpuDuty,
+                CpuBudgetMilliseconds = runtimeCpuBudget,
+                MaxPublicationsPerSecond = runtimePublicationRate,
+                InitialPublicationCoverage = runtimeInitialCoverage,
+                MaxDirtyUploadBytesPerFrame = runtimeUploadBudget
+            }
         };
         return valid;
     }

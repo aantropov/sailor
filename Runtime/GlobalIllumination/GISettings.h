@@ -4,6 +4,7 @@
 #include "Containers/Map.h"
 #include "Core/Defines.h"
 #include "Engine/Types.h"
+#include "GlobalIllumination/RuntimeGIProbesSettings.h"
 
 #include <cstdint>
 #include <string>
@@ -32,6 +33,12 @@ namespace Sailor
 		BakedOnly
 	};
 
+	enum class EGlobalIlluminationProbeSource : uint8_t
+	{
+		BakedAssets = 0,
+		RuntimeExperimental
+	};
+
 	constexpr bool UsesBakedGlobalIllumination(
 		EGlobalIlluminationMode mode) noexcept
 	{
@@ -51,6 +58,9 @@ namespace Sailor
 	{
 		EGlobalIlluminationMode m_mode =
 			EGlobalIlluminationMode::RealtimeAndBaked;
+		EGlobalIlluminationProbeSource m_probeSource =
+			EGlobalIlluminationProbeSource::BakedAssets;
+		RuntimeGIProbesSettings m_runtimeProbes{};
 		TMap<std::string, GlobalIlluminationProbeBinding> m_probes{};
 
 		bool Validate(std::string& outDiagnostic) const noexcept;

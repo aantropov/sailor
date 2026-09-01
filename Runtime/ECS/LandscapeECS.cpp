@@ -3255,6 +3255,24 @@ bool LandscapeECS::CollectBakeGeometrySnapshots(
 	return true;
 }
 
+uint64_t LandscapeECS::GetGlobalIlluminationContributorRevision()
+	const noexcept
+{
+	if (!m_publishedSceneVersion ||
+		!m_publishedSceneVersion->m_sceneVersion)
+	{
+		return 0u;
+	}
+	const RHI::RHISceneVersion& version =
+		*m_publishedSceneVersion->m_sceneVersion;
+	uint64_t revision = version.m_staticRevision;
+	revision ^= version.m_stationaryRevision + 0x9e3779b97f4a7c15ull +
+		(revision << 6u) + (revision >> 2u);
+	revision ^= version.m_materialRevision + 0x9e3779b97f4a7c15ull +
+		(revision << 6u) + (revision >> 2u);
+	return revision;
+}
+
 void LandscapeECS::EndPlay()
 {
 	for (auto& component : m_components)

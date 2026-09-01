@@ -655,6 +655,16 @@ bool App::GetEditorGlobalIlluminationState(
 			outState.m_maxProbeStatesPerSnapshot =
 				globalIllumination->GetMaxProbeStatesPerSnapshot();
 			outState.m_mode = globalIllumination->GetWorldSettings().m_mode;
+			outState.m_probeSource =
+				globalIllumination->GetWorldSettings().m_probeSource;
+			outState.m_runtimeSettings =
+				globalIllumination->GetWorldSettings().m_runtimeProbes;
+			outState.m_runtimeStatus =
+				globalIllumination->GetRuntimeGIProbesStatus();
+			outState.m_bRuntimePreviewEnabled =
+				globalIllumination->IsRuntimeGIProbesPreviewEnabled();
+			outState.m_runtimeEditorBudget =
+				globalIllumination->GetRuntimeGIProbesEditorBudget();
 			outState.m_bEnabled = globalIllumination->IsEnabled();
 			outState.m_probes = globalIllumination->GetProbeStates();
 			outState.m_diagnostic = globalIllumination->GetDiagnostic();
@@ -663,6 +673,119 @@ bool App::GetEditorGlobalIlluminationState(
 			outState.m_rejectedCompositionCount =
 				globalIllumination->GetRejectedCompositionCount();
 			return true;
+		});
+}
+
+bool App::SetEditorRuntimeGIProbesPreviewEnabled(
+	bool bEnabled,
+	std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[bEnabled, &outDiagnostic]()
+		{
+			auto* editor = GetSubmodule<Editor>();
+			auto* world = editor ? editor->GetWorld() : nullptr;
+			auto* globalIllumination = world
+				? world->GetECS<GlobalIlluminationECS>()
+				: nullptr;
+			if (!globalIllumination)
+			{
+				outDiagnostic = "Global Illumination ECS is unavailable";
+				return false;
+			}
+			return globalIllumination->SetRuntimeGIProbesPreviewEnabled(
+				bEnabled,
+				outDiagnostic);
+		});
+}
+
+bool App::SetEditorRuntimeGIProbesPaused(
+	bool bPaused,
+	std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[bPaused, &outDiagnostic]()
+		{
+			auto* editor = GetSubmodule<Editor>();
+			auto* world = editor ? editor->GetWorld() : nullptr;
+			auto* globalIllumination = world
+				? world->GetECS<GlobalIlluminationECS>()
+				: nullptr;
+			if (!globalIllumination)
+			{
+				outDiagnostic = "Global Illumination ECS is unavailable";
+				return false;
+			}
+			return globalIllumination->SetRuntimeGIProbesPaused(
+				bPaused,
+				outDiagnostic);
+		});
+}
+
+bool App::SetEditorRuntimeGIProbesBudget(
+	Settings::ERuntimeGIProbesEditorBudget budget,
+	std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[budget, &outDiagnostic]()
+		{
+			auto* editor = GetSubmodule<Editor>();
+			auto* world = editor ? editor->GetWorld() : nullptr;
+			auto* globalIllumination = world
+				? world->GetECS<GlobalIlluminationECS>()
+				: nullptr;
+			if (!globalIllumination)
+			{
+				outDiagnostic = "Global Illumination ECS is unavailable";
+				return false;
+			}
+			return globalIllumination->SetRuntimeGIProbesEditorBudget(
+				budget,
+				outDiagnostic);
+		});
+}
+
+bool App::RestartEditorRuntimeGIProbes(std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[&outDiagnostic]()
+		{
+			auto* editor = GetSubmodule<Editor>();
+			auto* world = editor ? editor->GetWorld() : nullptr;
+			auto* globalIllumination = world
+				? world->GetECS<GlobalIlluminationECS>()
+				: nullptr;
+			if (!globalIllumination)
+			{
+				outDiagnostic = "Global Illumination ECS is unavailable";
+				return false;
+			}
+			return globalIllumination->RestartRuntimeGIProbes(outDiagnostic);
+		});
+}
+
+bool App::RebuildEditorRuntimeGIProbesScene(std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[&outDiagnostic]()
+		{
+			auto* editor = GetSubmodule<Editor>();
+			auto* world = editor ? editor->GetWorld() : nullptr;
+			auto* globalIllumination = world
+				? world->GetECS<GlobalIlluminationECS>()
+				: nullptr;
+			if (!globalIllumination)
+			{
+				outDiagnostic = "Global Illumination ECS is unavailable";
+				return false;
+			}
+			return globalIllumination->RebuildRuntimeGIProbesScene(
+				outDiagnostic);
 		});
 }
 

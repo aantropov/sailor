@@ -274,6 +274,7 @@ public sealed class EngineProtocolClientTests
     [InlineData(EditorRenderMode.GlobalIlluminationResidency)]
     [InlineData(EditorRenderMode.GlobalIlluminationAssetIdentity)]
     [InlineData(EditorRenderMode.GlobalIlluminationFallback)]
+    [InlineData(EditorRenderMode.GlobalIlluminationClipmapCascades)]
     public async Task SetEditorRenderModeAsync_SendsExplicitTypedMode(
         EditorRenderMode mode)
     {
@@ -310,6 +311,49 @@ public sealed class EngineProtocolClientTests
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             client.SetEditorRenderModeAsync(mode));
+    }
+
+    [Theory]
+    [InlineData(RuntimeGIProbesPreviewBudget.Eco)]
+    [InlineData(RuntimeGIProbesPreviewBudget.Balanced)]
+    public async Task SetRuntimeGIProbesPreviewBudgetAsync_SendsTypedBudget(
+        RuntimeGIProbesPreviewBudget budget)
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true });
+        });
+
+        Assert.True(await client.SetRuntimeGIProbesPreviewBudgetAsync(budget));
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.SetRuntimeGiProbesPreviewBudget,
+            capturedRequest.CommandCase);
+        Assert.Equal(
+            budget,
+            capturedRequest.SetRuntimeGiProbesPreviewBudget.Budget);
+    }
+
+    [Theory]
+    [InlineData(RuntimeGIProbesPreviewBudget.Unspecified)]
+    [InlineData((RuntimeGIProbesPreviewBudget)99)]
+    public async Task SetRuntimeGIProbesPreviewBudgetAsync_RejectsInvalidBudget(
+        RuntimeGIProbesPreviewBudget budget)
+    {
+        var client = CreateClient(request =>
+            Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true }));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            client.SetRuntimeGIProbesPreviewBudgetAsync(budget));
     }
 
     [Fact]

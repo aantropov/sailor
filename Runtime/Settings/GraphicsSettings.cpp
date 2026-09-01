@@ -637,6 +637,125 @@ namespace
 			return false;
 		}
 
+		const std::string runtimeGIPath = profilePath + ".runtimeGIProbes";
+		YAML::Node runtimeGI;
+		if (!ReadMap(
+				profile,
+				"runtimeGIProbes",
+				source,
+				runtimeGIPath,
+				runtimeGI,
+				outDiagnostic) ||
+			!ReadUint32(
+				runtimeGI,
+				"version",
+				source,
+				runtimeGIPath + ".version",
+				outProfile.m_runtimeGIProbes.m_version,
+				outDiagnostic) ||
+			!ReadConvertedScalar(
+				runtimeGI,
+				"enabled",
+				source,
+				runtimeGIPath + ".enabled",
+				"a boolean",
+				outProfile.m_runtimeGIProbes.m_bEnabled,
+				outDiagnostic) ||
+			!ReadUint32(
+				runtimeGI,
+				"maxActiveProbes",
+				source,
+				runtimeGIPath + ".maxActiveProbes",
+				outProfile.m_runtimeGIProbes.m_maxActiveProbes,
+				outDiagnostic) ||
+			!ReadUint32(
+				runtimeGI,
+				"clipmapCascadeCount",
+				source,
+				runtimeGIPath + ".clipmapCascadeCount",
+				outProfile.m_runtimeGIProbes.m_clipmapCascadeCount,
+				outDiagnostic) ||
+			!ReadConvertedScalar(
+				runtimeGI,
+				"spacingMultiplier",
+				source,
+				runtimeGIPath + ".spacingMultiplier",
+				"a finite number",
+				outProfile.m_runtimeGIProbes.m_spacingMultiplier,
+				outDiagnostic) ||
+			!ReadUint32(
+				runtimeGI,
+				"initialSamplesPerProbe",
+				source,
+				runtimeGIPath + ".initialSamplesPerProbe",
+				outProfile.m_runtimeGIProbes.m_initialSamplesPerProbe,
+				outDiagnostic) ||
+			!ReadUint32(
+				runtimeGI,
+				"targetSamplesPerProbe",
+				source,
+				runtimeGIPath + ".targetSamplesPerProbe",
+				outProfile.m_runtimeGIProbes.m_targetSamplesPerProbe,
+				outDiagnostic) ||
+			!ReadUint32(
+				runtimeGI,
+				"workerCount",
+				source,
+				runtimeGIPath + ".workerCount",
+				outProfile.m_runtimeGIProbes.m_workerCount,
+				outDiagnostic) ||
+			!ReadConvertedScalar(
+				runtimeGI,
+				"cpuDutyFraction",
+				source,
+				runtimeGIPath + ".cpuDutyFraction",
+				"a finite number",
+				outProfile.m_runtimeGIProbes.m_cpuDutyFraction,
+				outDiagnostic) ||
+			!ReadConvertedScalar(
+				runtimeGI,
+				"cpuBudgetMilliseconds",
+				source,
+				runtimeGIPath + ".cpuBudgetMilliseconds",
+				"a finite number",
+				outProfile.m_runtimeGIProbes.m_cpuBudgetMilliseconds,
+				outDiagnostic) ||
+			!ReadConvertedScalar(
+				runtimeGI,
+				"maxPublicationsPerSecond",
+				source,
+				runtimeGIPath + ".maxPublicationsPerSecond",
+				"a finite number",
+				outProfile.m_runtimeGIProbes.m_maxPublicationsPerSecond,
+				outDiagnostic) ||
+			!ReadConvertedScalar(
+				runtimeGI,
+				"initialPublicationCoverage",
+				source,
+				runtimeGIPath + ".initialPublicationCoverage",
+				"a finite number",
+				outProfile.m_runtimeGIProbes.m_initialPublicationCoverage,
+				outDiagnostic) ||
+			!ReadUint32(
+				runtimeGI,
+				"maxDirtyUploadBytesPerFrame",
+				source,
+				runtimeGIPath + ".maxDirtyUploadBytesPerFrame",
+				outProfile.m_runtimeGIProbes.m_maxDirtyUploadBytesPerFrame,
+				outDiagnostic))
+		{
+			return false;
+		}
+		std::string runtimeGIDiagnostic;
+		if (!outProfile.m_runtimeGIProbes.Validate(runtimeGIDiagnostic))
+		{
+			outDiagnostic = InvalidField(
+				source,
+				runtimeGIPath,
+				runtimeGIDiagnostic);
+			return false;
+		}
+
 		return true;
 	}
 
@@ -790,6 +909,30 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		512u,
 		2,
 		1u);
+
+	auto& ultraRuntime =
+		m_presets[QualityIndex(EGraphicsQuality::Ultra)].m_runtimeGIProbes;
+	ultraRuntime.m_maxActiveProbes = 16384u;
+	ultraRuntime.m_workerCount = 2u;
+	ultraRuntime.m_cpuDutyFraction = 0.5f;
+	auto& highRuntime =
+		m_presets[QualityIndex(EGraphicsQuality::High)].m_runtimeGIProbes;
+	highRuntime.m_maxActiveProbes = 8192u;
+	auto& mediumRuntime =
+		m_presets[QualityIndex(EGraphicsQuality::Medium)].m_runtimeGIProbes;
+	mediumRuntime.m_maxActiveProbes = 4096u;
+	mediumRuntime.m_cpuDutyFraction = 0.2f;
+	auto& lowRuntime =
+		m_presets[QualityIndex(EGraphicsQuality::Low)].m_runtimeGIProbes;
+	lowRuntime.m_maxActiveProbes = 2048u;
+	lowRuntime.m_targetSamplesPerProbe = 32u;
+	lowRuntime.m_cpuDutyFraction = 0.15f;
+	auto& veryLowRuntime =
+		m_presets[QualityIndex(EGraphicsQuality::VeryLow)].m_runtimeGIProbes;
+	veryLowRuntime.m_maxActiveProbes = 2048u;
+	veryLowRuntime.m_initialSamplesPerProbe = 8u;
+	veryLowRuntime.m_targetSamplesPerProbe = 16u;
+	veryLowRuntime.m_cpuDutyFraction = 0.1f;
 }
 
 bool Sailor::Settings::GraphicsQualityProfile::IsShadowCascadeActive(
@@ -1107,6 +1250,68 @@ Sailor::Settings::EditorGraphicsSettingsLoadResult Sailor::Settings::ParseEditor
 		return result;
 	}
 	parsedSettings.m_statsMode = *parsedStatsMode;
+	if (!ReadConvertedScalar(
+			graphics,
+			"runtimeGIProbesPreviewEnabled",
+			source,
+			"graphics.runtimeGIProbesPreviewEnabled",
+			"a boolean",
+			parsedSettings.m_bRuntimeGIProbesPreviewEnabled,
+			result.m_diagnostic))
+	{
+		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
+		return result;
+	}
+	std::string runtimeGIBudget;
+	if (!ReadString(
+			graphics,
+			"runtimeGIProbesBudget",
+			source,
+			"graphics.runtimeGIProbesBudget",
+			runtimeGIBudget,
+			result.m_diagnostic))
+	{
+		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
+		return result;
+	}
+	const auto parsedRuntimeGIBudget =
+		magic_enum::enum_cast<ERuntimeGIProbesEditorBudget>(runtimeGIBudget);
+	if (!parsedRuntimeGIBudget)
+	{
+		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
+		result.m_diagnostic = InvalidField(
+			source,
+			"graphics.runtimeGIProbesBudget",
+			"must be Eco or Balanced");
+		return result;
+	}
+	parsedSettings.m_runtimeGIProbesBudget = *parsedRuntimeGIBudget;
+
+	std::string runtimeGIDebugView;
+	if (!ReadString(
+			graphics,
+			"runtimeGIProbesDebugView",
+			source,
+			"graphics.runtimeGIProbesDebugView",
+			runtimeGIDebugView,
+			result.m_diagnostic))
+	{
+		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
+		return result;
+	}
+	const auto parsedRuntimeGIDebugView =
+		magic_enum::enum_cast<ERuntimeGIProbesEditorDebugView>(
+			runtimeGIDebugView);
+	if (!parsedRuntimeGIDebugView)
+	{
+		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
+		result.m_diagnostic = InvalidField(
+			source,
+			"graphics.runtimeGIProbesDebugView",
+			"must be a supported Runtime GI debug view");
+		return result;
+	}
+	parsedSettings.m_runtimeGIProbesDebugView = *parsedRuntimeGIDebugView;
 
 	result.m_settings = parsedSettings;
 	result.m_status = EGraphicsSettingsLoadStatus::Loaded;

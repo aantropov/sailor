@@ -1,4 +1,5 @@
 using SailorEditor.Services;
+using SailorEditor.Settings;
 using SailorEngine;
 
 namespace SailorEditor.Tests;
@@ -109,6 +110,32 @@ public sealed class GIProbesBakeBindingPolicyTests
             MaxProbeStatesPerSnapshot: 4,
             Mode: GlobalIlluminationRuntimeMode.RealtimeAndBaked,
             Enabled: true,
+            ProbeSource: GlobalIlluminationProbeSourceKind.BakedAssets,
+            RuntimeSettings: new RuntimeGIProbesSettingsDescriptor(),
+            RuntimeState: new RuntimeGIProbesRuntimeState(
+                Lifecycle: RuntimeGIProbesLifecycleState.Disabled,
+                Enabled: false,
+                Paused: false,
+                Throttled: false,
+                PreviewEnabled: false,
+                PreviewBudget: RuntimeGIProbesEditorBudget.Eco,
+                SceneGeneration: 0,
+                LightingGeneration: 0,
+                PublishedRevision: 0,
+                Capacity: 0,
+                ActiveProbeCount: 0,
+                ReadyProbeCount: 0,
+                DirtyProbeCount: 0,
+                QueuedProbeCount: 0,
+                WorkerCount: 0,
+                TracedRayCount: 0,
+                PublishedBytes: 0,
+                Coverage: 0,
+                Refinement: 0,
+                RaysPerSecond: 0,
+                WorkerCpuMilliseconds: 0,
+                LastPublicationMilliseconds: 0,
+                Diagnostic: string.Empty),
             Probes: probes ?? [],
             Diagnostic: diagnostic,
             CompositionCount: compositions,

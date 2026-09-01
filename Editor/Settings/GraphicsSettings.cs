@@ -37,6 +37,44 @@ public enum GraphicsStatsMode
     RenderStatsAndQueries,
 }
 
+public enum RuntimeGIProbesEditorBudget
+{
+    Eco = 0,
+    Balanced
+}
+
+public enum RuntimeGIProbesEditorDebugView
+{
+    Lit = 0,
+    IndirectOnly,
+    Probes,
+    Bricks,
+    Validity,
+    Visibility,
+    Residency,
+    Fallback,
+    ClipmapCascades
+}
+
+public sealed record RuntimeGIProbesQualitySettings
+{
+    public const int CurrentVersion = 1;
+
+    public int Version { get; init; } = CurrentVersion;
+    public bool Enabled { get; init; }
+    public int MaxActiveProbes { get; init; } = 8192;
+    public int ClipmapCascadeCount { get; init; } = 1;
+    public double SpacingMultiplier { get; init; } = 1.0;
+    public int InitialSamplesPerProbe { get; init; } = 16;
+    public int TargetSamplesPerProbe { get; init; } = 64;
+    public int WorkerCount { get; init; } = 1;
+    public double CpuDutyFraction { get; init; } = 0.25;
+    public double CpuBudgetMilliseconds { get; init; } = 4.0;
+    public double MaxPublicationsPerSecond { get; init; } = 2.0;
+    public double InitialPublicationCoverage { get; init; } = 0.125;
+    public int MaxDirtyUploadBytesPerFrame { get; init; } = 2 * 1024 * 1024;
+}
+
 public sealed record GraphicsQualityPresetSettings
 {
     public double ResolutionFactor { get; init; }
@@ -54,6 +92,7 @@ public sealed record GraphicsQualityPresetSettings
     public int LodBias { get; init; }
     public bool EnableGlobalIllumination { get; init; } = true;
     public int MaxGiProbeStatesPerSnapshot { get; init; }
+    public RuntimeGIProbesQualitySettings RuntimeGIProbes { get; init; } = new();
 }
 
 public sealed record GraphicsQualityPresets
@@ -107,6 +146,11 @@ public sealed record EditorGraphicsSettings
 {
     public EditorQualitySelection SelectedQuality { get; init; } = EditorQualitySelection.ProjectDefault;
     public GraphicsStatsMode StatsMode { get; init; } = GraphicsStatsMode.None;
+    public bool RuntimeGIProbesPreviewEnabled { get; init; }
+    public RuntimeGIProbesEditorBudget RuntimeGIProbesBudget { get; init; } =
+        RuntimeGIProbesEditorBudget.Eco;
+    public RuntimeGIProbesEditorDebugView RuntimeGIProbesDebugView { get; init; } =
+        RuntimeGIProbesEditorDebugView.Lit;
 }
 
 public sealed record WorkspaceEditorSettingsDocument
@@ -136,7 +180,13 @@ public static class GraphicsSettingsDefaults
             SkyResolution = 512,
             VegetationInstanceBudget = 16384,
             LodBias = -1,
-            MaxGiProbeStatesPerSnapshot = 4
+            MaxGiProbeStatesPerSnapshot = 4,
+            RuntimeGIProbes = new RuntimeGIProbesQualitySettings
+            {
+                MaxActiveProbes = 16384,
+                WorkerCount = 2,
+                CpuDutyFraction = 0.5
+            }
         },
         High = new GraphicsQualityPresetSettings
         {
@@ -153,7 +203,8 @@ public static class GraphicsSettingsDefaults
             SkyResolution = 256,
             VegetationInstanceBudget = 8192,
             LodBias = 0,
-            MaxGiProbeStatesPerSnapshot = 3
+            MaxGiProbeStatesPerSnapshot = 3,
+            RuntimeGIProbes = new RuntimeGIProbesQualitySettings()
         },
         Medium = new GraphicsQualityPresetSettings
         {
@@ -170,7 +221,12 @@ public static class GraphicsSettingsDefaults
             SkyResolution = 256,
             VegetationInstanceBudget = 4096,
             LodBias = 0,
-            MaxGiProbeStatesPerSnapshot = 2
+            MaxGiProbeStatesPerSnapshot = 2,
+            RuntimeGIProbes = new RuntimeGIProbesQualitySettings
+            {
+                MaxActiveProbes = 4096,
+                CpuDutyFraction = 0.2
+            }
         },
         Low = new GraphicsQualityPresetSettings
         {
@@ -187,7 +243,13 @@ public static class GraphicsSettingsDefaults
             SkyResolution = 128,
             VegetationInstanceBudget = 2048,
             LodBias = 1,
-            MaxGiProbeStatesPerSnapshot = 2
+            MaxGiProbeStatesPerSnapshot = 2,
+            RuntimeGIProbes = new RuntimeGIProbesQualitySettings
+            {
+                MaxActiveProbes = 2048,
+                TargetSamplesPerProbe = 32,
+                CpuDutyFraction = 0.15
+            }
         },
         VeryLow = new GraphicsQualityPresetSettings
         {
@@ -204,7 +266,14 @@ public static class GraphicsSettingsDefaults
             SkyResolution = 64,
             VegetationInstanceBudget = 512,
             LodBias = 2,
-            MaxGiProbeStatesPerSnapshot = 1
+            MaxGiProbeStatesPerSnapshot = 1,
+            RuntimeGIProbes = new RuntimeGIProbesQualitySettings
+            {
+                MaxActiveProbes = 2048,
+                InitialSamplesPerProbe = 8,
+                TargetSamplesPerProbe = 16,
+                CpuDutyFraction = 0.1
+            }
         }
     };
 
@@ -224,7 +293,10 @@ public static class GraphicsSettingsDefaults
         Graphics = new EditorGraphicsSettings
         {
             SelectedQuality = EditorQualitySelection.ProjectDefault,
-            StatsMode = GraphicsStatsMode.None
+            StatsMode = GraphicsStatsMode.None,
+            RuntimeGIProbesPreviewEnabled = false,
+            RuntimeGIProbesBudget = RuntimeGIProbesEditorBudget.Eco,
+            RuntimeGIProbesDebugView = RuntimeGIProbesEditorDebugView.Lit
         }
     };
 }
@@ -313,6 +385,20 @@ public static class GraphicsSettingsValidator
             issues.Add(new GraphicsSettingsValidationIssue(
                 "graphics.statsMode",
                 "Stats mode must be None, RenderStats, or RenderStatsAndQueries."));
+        }
+
+        if (!Enum.IsDefined(document.Graphics.RuntimeGIProbesBudget))
+        {
+            issues.Add(new GraphicsSettingsValidationIssue(
+                "graphics.runtimeGIProbesBudget",
+                "Runtime GI preview budget must be Eco or Balanced."));
+        }
+
+        if (!Enum.IsDefined(document.Graphics.RuntimeGIProbesDebugView))
+        {
+            issues.Add(new GraphicsSettingsValidationIssue(
+                "graphics.runtimeGIProbesDebugView",
+                "Runtime GI debug view is unsupported."));
         }
 
         return issues.Count == 0
@@ -423,6 +509,72 @@ public static class GraphicsSettingsValidator
                 $"{path}.maxGiProbeStatesPerSnapshot",
                 "Maximum GI probe states per snapshot",
                 "0 and 16");
+        }
+        ValidateRuntimeGIProbes(
+            preset.RuntimeGIProbes,
+            $"{path}.runtimeGIProbes",
+            issues);
+    }
+
+    static void ValidateRuntimeGIProbes(
+        RuntimeGIProbesQualitySettings? settings,
+        string path,
+        ICollection<GraphicsSettingsValidationIssue> issues)
+    {
+        if (settings is null)
+        {
+            issues.Add(new GraphicsSettingsValidationIssue(
+                path,
+                "Runtime GI probe quality settings are required."));
+            return;
+        }
+        if (settings.Version != RuntimeGIProbesQualitySettings.CurrentVersion)
+            AddRangeIssue(issues, $"{path}.version", "Runtime GI settings version", "1 and 1");
+        if (settings.ClipmapCascadeCount is < 1 or > 4)
+            AddRangeIssue(issues, $"{path}.clipmapCascadeCount", "Runtime GI cascade count", "1 and 4");
+        else if (settings.MaxActiveProbes < settings.ClipmapCascadeCount * 8 ||
+            settings.MaxActiveProbes > 32768)
+        {
+            issues.Add(new GraphicsSettingsValidationIssue(
+                $"{path}.maxActiveProbes",
+                "Runtime GI probe capacity must hold at least eight probes per clipmap cascade and at most 32768 probes."));
+        }
+        if (settings.InitialSamplesPerProbe < 1 ||
+            settings.InitialSamplesPerProbe > settings.TargetSamplesPerProbe ||
+            settings.TargetSamplesPerProbe > 65536)
+        {
+            issues.Add(new GraphicsSettingsValidationIssue(
+                $"{path}.initialSamplesPerProbe",
+                "Runtime GI sample thresholds must satisfy 1 <= initial <= target <= 65536."));
+        }
+        if (settings.WorkerCount is < 1 or > 2)
+            AddRangeIssue(issues, $"{path}.workerCount", "Runtime GI worker count", "1 and 2");
+        if (settings.MaxDirtyUploadBytesPerFrame <= 0)
+            issues.Add(new GraphicsSettingsValidationIssue(
+                $"{path}.maxDirtyUploadBytesPerFrame",
+                "Runtime GI upload budget must be positive."));
+        ValidateFiniteRange(settings.SpacingMultiplier, 0.25, 16.0, $"{path}.spacingMultiplier", "Runtime GI spacing multiplier", issues);
+        ValidateFiniteRange(settings.CpuDutyFraction, double.Epsilon, 1.0, $"{path}.cpuDutyFraction", "Runtime GI CPU duty fraction", issues);
+        ValidateFiniteRange(settings.CpuBudgetMilliseconds, double.Epsilon, 100.0, $"{path}.cpuBudgetMilliseconds", "Runtime GI CPU budget", issues);
+        ValidateFiniteRange(settings.MaxPublicationsPerSecond, double.Epsilon, 60.0, $"{path}.maxPublicationsPerSecond", "Runtime GI publication rate", issues);
+        ValidateFiniteRange(settings.InitialPublicationCoverage, double.Epsilon, 1.0, $"{path}.initialPublicationCoverage", "Runtime GI initial publication coverage", issues);
+    }
+
+    static void ValidateFiniteRange(
+        double value,
+        double minimumExclusiveOrInclusive,
+        double maximum,
+        string path,
+        string displayName,
+        ICollection<GraphicsSettingsValidationIssue> issues)
+    {
+        if (!double.IsFinite(value) ||
+            value < minimumExclusiveOrInclusive ||
+            value > maximum)
+        {
+            issues.Add(new GraphicsSettingsValidationIssue(
+                path,
+                $"{displayName} is outside the supported range."));
         }
     }
 
@@ -628,7 +780,23 @@ public static class GraphicsSettingsYamlCodec
                     graphics,
                     "statsMode",
                     "graphics.statsMode",
-                    issues)
+                    issues),
+                RuntimeGIProbesPreviewEnabled = ReadBool(
+                    graphics,
+                    "runtimeGIProbesPreviewEnabled",
+                    "graphics.runtimeGIProbesPreviewEnabled",
+                    issues),
+                RuntimeGIProbesBudget = ReadEnum<RuntimeGIProbesEditorBudget>(
+                    graphics,
+                    "runtimeGIProbesBudget",
+                    "graphics.runtimeGIProbesBudget",
+                    issues),
+                RuntimeGIProbesDebugView =
+                    ReadEnum<RuntimeGIProbesEditorDebugView>(
+                        graphics,
+                        "runtimeGIProbesDebugView",
+                        "graphics.runtimeGIProbesDebugView",
+                        issues)
             }
         };
         issues.AddRange(GraphicsSettingsValidator.Validate(parsed).Issues);
@@ -662,6 +830,18 @@ public static class GraphicsSettingsYamlCodec
         var graphics = GetOrCreateMapping(root, "graphics");
         SetScalar(graphics, "selectedQuality", document.Graphics.SelectedQuality);
         SetScalar(graphics, "statsMode", document.Graphics.StatsMode);
+        SetScalar(
+            graphics,
+            "runtimeGIProbesPreviewEnabled",
+            document.Graphics.RuntimeGIProbesPreviewEnabled);
+        SetScalar(
+            graphics,
+            "runtimeGIProbesBudget",
+            document.Graphics.RuntimeGIProbesBudget);
+        SetScalar(
+            graphics,
+            "runtimeGIProbesDebugView",
+            document.Graphics.RuntimeGIProbesDebugView);
     }
 
     internal static bool TryLoadRoot(
@@ -738,7 +918,35 @@ public static class GraphicsSettingsYamlCodec
                 preset,
                 "maxGiProbeStatesPerSnapshot",
                 $"{path}.maxGiProbeStatesPerSnapshot",
+                issues),
+            RuntimeGIProbes = ReadRuntimeGIProbes(
+                preset,
+                $"{path}.runtimeGIProbes",
                 issues)
+        };
+    }
+
+    static RuntimeGIProbesQualitySettings ReadRuntimeGIProbes(
+        YamlMappingNode preset,
+        string path,
+        ICollection<GraphicsSettingsValidationIssue> issues)
+    {
+        var runtime = ReadMapping(preset, "runtimeGIProbes", path, issues);
+        return new RuntimeGIProbesQualitySettings
+        {
+            Version = ReadInt(runtime, "version", $"{path}.version", issues),
+            Enabled = ReadBool(runtime, "enabled", $"{path}.enabled", issues),
+            MaxActiveProbes = ReadInt(runtime, "maxActiveProbes", $"{path}.maxActiveProbes", issues),
+            ClipmapCascadeCount = ReadInt(runtime, "clipmapCascadeCount", $"{path}.clipmapCascadeCount", issues),
+            SpacingMultiplier = ReadDouble(runtime, "spacingMultiplier", $"{path}.spacingMultiplier", issues),
+            InitialSamplesPerProbe = ReadInt(runtime, "initialSamplesPerProbe", $"{path}.initialSamplesPerProbe", issues),
+            TargetSamplesPerProbe = ReadInt(runtime, "targetSamplesPerProbe", $"{path}.targetSamplesPerProbe", issues),
+            WorkerCount = ReadInt(runtime, "workerCount", $"{path}.workerCount", issues),
+            CpuDutyFraction = ReadDouble(runtime, "cpuDutyFraction", $"{path}.cpuDutyFraction", issues),
+            CpuBudgetMilliseconds = ReadDouble(runtime, "cpuBudgetMilliseconds", $"{path}.cpuBudgetMilliseconds", issues),
+            MaxPublicationsPerSecond = ReadDouble(runtime, "maxPublicationsPerSecond", $"{path}.maxPublicationsPerSecond", issues),
+            InitialPublicationCoverage = ReadDouble(runtime, "initialPublicationCoverage", $"{path}.initialPublicationCoverage", issues),
+            MaxDirtyUploadBytesPerFrame = ReadInt(runtime, "maxDirtyUploadBytesPerFrame", $"{path}.maxDirtyUploadBytesPerFrame", issues)
         };
     }
 
@@ -771,6 +979,20 @@ public static class GraphicsSettingsYamlCodec
             preset,
             "maxGiProbeStatesPerSnapshot",
             settings.MaxGiProbeStatesPerSnapshot);
+        var runtime = GetOrCreateMapping(preset, "runtimeGIProbes");
+        SetScalar(runtime, "version", settings.RuntimeGIProbes.Version);
+        SetScalar(runtime, "enabled", settings.RuntimeGIProbes.Enabled);
+        SetScalar(runtime, "maxActiveProbes", settings.RuntimeGIProbes.MaxActiveProbes);
+        SetScalar(runtime, "clipmapCascadeCount", settings.RuntimeGIProbes.ClipmapCascadeCount);
+        SetScalar(runtime, "spacingMultiplier", settings.RuntimeGIProbes.SpacingMultiplier);
+        SetScalar(runtime, "initialSamplesPerProbe", settings.RuntimeGIProbes.InitialSamplesPerProbe);
+        SetScalar(runtime, "targetSamplesPerProbe", settings.RuntimeGIProbes.TargetSamplesPerProbe);
+        SetScalar(runtime, "workerCount", settings.RuntimeGIProbes.WorkerCount);
+        SetScalar(runtime, "cpuDutyFraction", settings.RuntimeGIProbes.CpuDutyFraction);
+        SetScalar(runtime, "cpuBudgetMilliseconds", settings.RuntimeGIProbes.CpuBudgetMilliseconds);
+        SetScalar(runtime, "maxPublicationsPerSecond", settings.RuntimeGIProbes.MaxPublicationsPerSecond);
+        SetScalar(runtime, "initialPublicationCoverage", settings.RuntimeGIProbes.InitialPublicationCoverage);
+        SetScalar(runtime, "maxDirtyUploadBytesPerFrame", settings.RuntimeGIProbes.MaxDirtyUploadBytesPerFrame);
     }
 
     static YamlMappingNode ReadMapping(

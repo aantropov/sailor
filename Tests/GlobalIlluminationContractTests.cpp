@@ -2,6 +2,8 @@
 #include "GlobalIllumination/GIProbesBinary.h"
 #include "GlobalIllumination/GIProbesComposition.h"
 #include "GlobalIllumination/GIProbesSampling.h"
+#include "GlobalIllumination/GIProbesTracing.h"
+#include "GlobalIllumination/RuntimeGIProbesService.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Components/LightComponent.h"
@@ -1044,6 +1046,23 @@ namespace
 			GIProbeBakeRaySample& outSample,
 			std::string&) const override
 		{
+			m_irradianceSampleCount.fetch_add(1u, std::memory_order_relaxed);
+			m_lastMaxDistance.store(maxDistance, std::memory_order_relaxed);
+			outSample.m_radiance = m_radiance;
+			outSample.m_distance = maxDistance;
+			outSample.m_bHit = false;
+			return true;
+		}
+
+		bool SampleVisibility(
+			const glm::vec3&,
+			const glm::vec3&,
+			float maxDistance,
+			uint32_t,
+			GIProbeBakeRaySample& outSample,
+			std::string&) const override
+		{
+			m_visibilitySampleCount.fetch_add(1u, std::memory_order_relaxed);
 			m_lastMaxDistance.store(maxDistance, std::memory_order_relaxed);
 			outSample.m_radiance = m_radiance;
 			outSample.m_distance = maxDistance;
@@ -1056,9 +1075,21 @@ namespace
 			return m_lastMaxDistance.load(std::memory_order_relaxed);
 		}
 
+		uint64_t GetIrradianceSampleCount() const noexcept
+		{
+			return m_irradianceSampleCount.load(std::memory_order_relaxed);
+		}
+
+		uint64_t GetVisibilitySampleCount() const noexcept
+		{
+			return m_visibilitySampleCount.load(std::memory_order_relaxed);
+		}
+
 	private:
 		glm::vec3 m_radiance{};
 		mutable std::atomic<float> m_lastMaxDistance{ 0.0f };
+		mutable std::atomic<uint64_t> m_irradianceSampleCount{ 0u };
+		mutable std::atomic<uint64_t> m_visibilitySampleCount{ 0u };
 	};
 
 	class SeedDrivenBakeRaySampler final : public IGIProbeBakeRaySampler
@@ -1082,6 +1113,53 @@ namespace
 			outSample.m_bHit = false;
 			return true;
 		}
+	};
+
+	class FailingBakeRaySampler final : public IGIProbeBakeRaySampler
+	{
+	public:
+		bool Sample(
+			const glm::vec3&,
+			const glm::vec3&,
+			float,
+			uint32_t,
+			GIProbeBakeRaySample&,
+			std::string& outDiagnostic) const override
+		{
+			outDiagnostic = "intentional runtime GI sampler failure";
+			return false;
+		}
+	};
+
+	class CancellingBakeRaySampler final : public IGIProbeBakeRaySampler
+	{
+	public:
+		explicit CancellingBakeRaySampler(std::atomic<bool>& cancel) :
+			m_cancel(cancel)
+		{}
+
+		bool Sample(
+			const glm::vec3&,
+			const glm::vec3&,
+			float maxDistance,
+			uint32_t,
+			GIProbeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override
+		{
+			outSample.m_radiance = glm::vec3(1.0f);
+			outSample.m_distance = maxDistance;
+			outSample.m_bHit = false;
+			outDiagnostic.clear();
+			if (++m_sampleCount == 2u)
+			{
+				m_cancel.store(true, std::memory_order_release);
+			}
+			return true;
+		}
+
+	private:
+		std::atomic<bool>& m_cancel;
+		mutable uint32_t m_sampleCount = 0u;
 	};
 
 	class PdfWeightedPrimaryDirectionSampler final :
@@ -1257,6 +1335,30 @@ namespace
 			if (!HasSameVectorBits(
 					lhs.m_irradiance[index],
 					rhs.m_irradiance[index]))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool HasSameTransportBits(
+		const GIProbe& lhs,
+		const GIProbe& rhs)
+	{
+		if (!HasSameVectorBits(lhs.m_position, rhs.m_position) ||
+			!HasSameVectorBits(lhs.m_relocationOffset, rhs.m_relocationOffset) ||
+			!HasSameFloatBits(lhs.m_validity, rhs.m_validity) ||
+			lhs.m_flags != rhs.m_flags)
+		{
+			return false;
+		}
+		for (size_t index = 0u; index < lhs.m_visibility.size(); ++index)
+		{
+			if (!HasSameVectorBits(lhs.m_visibility[index], rhs.m_visibility[index]) ||
+				!HasSameFloatBits(
+					lhs.m_environmentVisibility[index],
+					rhs.m_environmentVisibility[index]))
 			{
 				return false;
 			}
@@ -2001,6 +2103,14 @@ namespace
 	{
 		GISettings source;
 		source.m_mode = EGlobalIlluminationMode::BakedOnly;
+		source.m_probeSource =
+			EGlobalIlluminationProbeSource::RuntimeExperimental;
+		source.m_runtimeProbes.m_bounceCount = 2u;
+		source.m_runtimeProbes.m_minProbeSpacing = 2.5f;
+		source.m_runtimeProbes.m_normalBias = 0.075f;
+		source.m_runtimeProbes.m_viewBias = 0.125f;
+		source.m_runtimeProbes.m_maxRayDistance = 750.0f;
+		source.m_runtimeProbes.m_bIncludeSky = false;
 		GlobalIlluminationProbeBinding day;
 		day.m_asset = ParseFileId("11111111-1111-1111-1111-111111111111");
 		day.m_mode = EGlobalIlluminationProbeMode::Blend;
@@ -2020,6 +2130,15 @@ namespace
 		Require(parsed.Deserialize(root, diagnostic),
 			"world GI settings should round-trip: " + diagnostic);
 		Require(parsed.m_mode == EGlobalIlluminationMode::BakedOnly &&
+			parsed.m_probeSource ==
+				EGlobalIlluminationProbeSource::RuntimeExperimental &&
+			parsed.m_runtimeProbes.m_version == 1u &&
+			parsed.m_runtimeProbes.m_bounceCount == 2u &&
+			IsNear(parsed.m_runtimeProbes.m_minProbeSpacing, 2.5f) &&
+			IsNear(parsed.m_runtimeProbes.m_normalBias, 0.075f) &&
+			IsNear(parsed.m_runtimeProbes.m_viewBias, 0.125f) &&
+			IsNear(parsed.m_runtimeProbes.m_maxRayDistance, 750.0f) &&
+			!parsed.m_runtimeProbes.m_bIncludeSky &&
 			parsed.m_probes.Num() == 2u &&
 			parsed.m_probes["Day"].m_mode == EGlobalIlluminationProbeMode::Blend &&
 			parsed.m_probes["Lamps"].m_mode == EGlobalIlluminationProbeMode::Additive &&
@@ -2029,12 +2148,17 @@ namespace
 		YAML::Node incompleteRoot = YAML::Clone(root);
 		incompleteRoot["globalIllumination"].remove("mode");
 		Require(!parsed.Deserialize(incompleteRoot, diagnostic) &&
-			diagnostic.find("mode is required") != std::string::npos,
-			"world GI settings must provide an explicit mode");
+			diagnostic.find("mode is required") != std::string::npos &&
+			parsed.m_mode == EGlobalIlluminationMode::BakedOnly &&
+			parsed.m_probeSource ==
+				EGlobalIlluminationProbeSource::RuntimeExperimental &&
+			parsed.m_probes.Num() == 2u,
+			"invalid world GI settings must preserve the previous complete value");
 
 		root["globalIllumination"]["mode"] = "ReflectionsOnly";
 		Require(!parsed.Deserialize(root, diagnostic) &&
-			diagnostic.find("RealtimeAndBaked") != std::string::npos,
+			diagnostic.find("RealtimeAndBaked") != std::string::npos &&
+			parsed.m_mode == EGlobalIlluminationMode::BakedOnly,
 			"unknown world GI modes must fail atomically");
 		root["globalIllumination"]["mode"] = "BakedOnly";
 
@@ -2998,6 +3122,515 @@ components:
 				"primary SH projection must divide each radiance sample by "
 				"its direction PDF");
 		}
+	}
+
+	void TestIncrementalProbeIrradianceAccumulation()
+	{
+		GIProbeTraceRequest request;
+		request.m_settings.m_raysPerProbe = 64u;
+		request.m_settings.m_bounceCount = 1u;
+		request.m_settings.m_randomSeed = 1729u;
+		request.m_settings.m_maxRayDistance = 100.0f;
+		const SeedDrivenBakeRaySampler sampler;
+		const glm::vec3 position(2.0f, 3.0f, 4.0f);
+		constexpr uint32_t ProbeSeed = 91u;
+		constexpr uint32_t SequenceSamples = 64u;
+		std::string diagnostic;
+
+		GIProbeIrradianceAccumulator oneShot;
+		Require(AccumulateGIProbeIrradianceRange(
+				request,
+				sampler,
+				position,
+				ProbeSeed,
+				0u,
+				SequenceSamples,
+				SequenceSamples,
+				oneShot,
+				diagnostic),
+			"one-shot probe irradiance accumulation should succeed: " +
+				diagnostic);
+		GIProbe oneShotProbe;
+		Require(ResolveGIProbeIrradiance(
+				oneShot,
+				oneShotProbe,
+				diagnostic),
+			"one-shot probe irradiance should resolve: " + diagnostic);
+
+		GIProbeIrradianceAccumulator progressive;
+		Require(AccumulateGIProbeIrradianceRange(
+				request,
+				sampler,
+				position,
+				ProbeSeed,
+				0u,
+				16u,
+				SequenceSamples,
+				progressive,
+				diagnostic),
+			"the first runtime probe sample range should succeed: " +
+				diagnostic);
+		GIProbe warmProbe;
+		Require(ResolveGIProbeIrradiance(
+				progressive,
+				warmProbe,
+				diagnostic) &&
+			progressive.m_sampleCount == 16u &&
+			std::isfinite(warmProbe.m_irradiance[0].x),
+			"a partially warmed runtime probe must resolve finite energy");
+
+		Require(AccumulateGIProbeIrradianceRange(
+				request,
+				sampler,
+				position,
+				ProbeSeed,
+				16u,
+				16u,
+				SequenceSamples,
+				progressive,
+				diagnostic) &&
+			AccumulateGIProbeIrradianceRange(
+				request,
+				sampler,
+				position,
+				ProbeSeed,
+				32u,
+				32u,
+				SequenceSamples,
+				progressive,
+				diagnostic),
+			"sequential runtime probe ranges should refine without restarting: " +
+				diagnostic);
+		GIProbe progressiveProbe;
+		Require(ResolveGIProbeIrradiance(
+				progressive,
+				progressiveProbe,
+				diagnostic),
+			"fully refined runtime probe irradiance should resolve: " +
+				diagnostic);
+		for (uint32_t coefficientIndex = 0u;
+			coefficientIndex < GIProbeSphericalHarmonicsCoefficientCount;
+			++coefficientIndex)
+		{
+			for (uint32_t component = 0u; component < 3u; ++component)
+			{
+				Require(IsNear(
+						progressiveProbe.m_irradiance[coefficientIndex][component],
+						oneShotProbe.m_irradiance[coefficientIndex][component],
+						0.000001f),
+					"incremental probe ranges must match one-shot irradiance");
+			}
+		}
+
+		const uint32_t completedSamples = progressive.m_sampleCount;
+		Require(!AccumulateGIProbeIrradianceRange(
+				request,
+				sampler,
+				position,
+				ProbeSeed,
+				16u,
+				1u,
+				SequenceSamples,
+				progressive,
+				diagnostic) &&
+			progressive.m_sampleCount == completedSamples,
+			"overlapping or repeated sample ranges must be rejected without mutation");
+
+		std::atomic<bool> cancel{ true };
+		request.m_cancel = &cancel;
+		GIProbeIrradianceAccumulator cancelled;
+		Require(!AccumulateGIProbeIrradianceRange(
+				request,
+				sampler,
+				position,
+				ProbeSeed,
+				0u,
+				16u,
+				SequenceSamples,
+				cancelled,
+				diagnostic) &&
+			cancelled.m_sampleCount == 0u,
+			"cancelled runtime probe tracing must not publish samples");
+
+		cancel.store(false, std::memory_order_release);
+		const CancellingBakeRaySampler cancellingSampler(cancel);
+		GIProbeIrradianceAccumulator interrupted;
+		Require(!AccumulateGIProbeIrradianceRange(
+				request,
+				cancellingSampler,
+				position,
+				ProbeSeed,
+				0u,
+				16u,
+				SequenceSamples,
+				interrupted,
+				diagnostic) &&
+			interrupted.m_sampleCount == 0u &&
+			interrupted.m_sequenceSampleCount == 0u,
+			"cancellation during a runtime batch must discard the entire batch");
+	}
+
+	void TestReusableProbeTransportTracing()
+	{
+		GIProbesBakeRequest bakeRequest;
+		bakeRequest.m_stateName = "Reusable Transport";
+		bakeRequest.m_volumeMin = glm::vec3(0.0f);
+		bakeRequest.m_volumeMax = glm::vec3(1.0f);
+		bakeRequest.m_settings.m_raysPerProbe = 8u;
+		bakeRequest.m_settings.m_bounceCount = 1u;
+		bakeRequest.m_settings.m_maxSubdivisionLevel = 0u;
+		bakeRequest.m_settings.m_minProbeSpacing = 1.0f;
+		bakeRequest.m_settings.m_maxRayDistance = 10.0f;
+
+		const DirectionalDistanceBakeRaySampler sampler;
+		const GIProbesBakeResult baked = GIProbesBaker::Bake(
+			bakeRequest,
+			sampler);
+		Require(baked.IsSuccess(),
+			"reference transport bake should succeed: " + baked.m_diagnostic);
+		const GIProbe& bakedProbe = baked.m_data->m_probes[0];
+		GIProbe tracedProbe;
+		tracedProbe.m_position =
+			bakedProbe.m_position - bakedProbe.m_relocationOffset;
+
+		GIProbeTraceRequest traceRequest;
+		traceRequest.m_settings = bakeRequest.m_settings;
+		traceRequest.m_volumeMin = bakeRequest.m_volumeMin;
+		traceRequest.m_volumeMax = bakeRequest.m_volumeMax;
+		const float visibilityMaxDistance =
+			CalculateGIProbeVisibilityMaxDistance(
+				*baked.m_data,
+				baked.m_data->m_bricks[0]);
+		std::string diagnostic;
+		Require(TraceGIProbeTransport(
+				traceRequest,
+				sampler,
+				0u,
+				visibilityMaxDistance,
+				tracedProbe,
+				diagnostic),
+			"standalone runtime transport tracing should succeed: " +
+				diagnostic);
+		Require(HasSameTransportBits(tracedProbe, bakedProbe),
+			"standalone runtime transport must match the established bake path");
+
+		std::atomic<bool> cancel{ true };
+		traceRequest.m_cancel = &cancel;
+		GIProbe untouched = tracedProbe;
+		Require(!TraceGIProbeTransport(
+				traceRequest,
+				sampler,
+				0u,
+				visibilityMaxDistance,
+				untouched,
+				diagnostic) &&
+			HasSameProbeBits(untouched, tracedProbe),
+			"cancelled standalone transport must preserve the last probe state");
+	}
+
+	RuntimeGIProbesStartRequest MakeRuntimeGIProbesRequest(
+		const TSharedPtr<IGIProbeBakeRaySampler>& sampler,
+		uint64_t geometryGeneration,
+		uint64_t lightingGeneration)
+	{
+		RuntimeGIProbesStartRequest request;
+		request.m_sampler = sampler;
+		request.m_cameraPosition = glm::vec3(0.0f);
+		request.m_geometryGeneration = geometryGeneration;
+		request.m_lightingGeneration = lightingGeneration;
+		request.m_randomSeed = 9187u;
+		request.m_worldSettings.m_bounceCount = 1u;
+		request.m_worldSettings.m_minProbeSpacing = 1.0f;
+		request.m_worldSettings.m_maxRayDistance = 10.0f;
+		request.m_qualitySettings.m_bEnabled = true;
+		request.m_qualitySettings.m_maxActiveProbes = 8u;
+		request.m_qualitySettings.m_clipmapCascadeCount = 1u;
+		request.m_qualitySettings.m_initialSamplesPerProbe = 2u;
+		request.m_qualitySettings.m_targetSamplesPerProbe = 4u;
+		request.m_qualitySettings.m_workerCount = 1u;
+		request.m_qualitySettings.m_cpuDutyFraction = 1.0f;
+		request.m_qualitySettings.m_cpuBudgetMilliseconds = 4.0f;
+		request.m_qualitySettings.m_maxPublicationsPerSecond = 60.0f;
+		request.m_qualitySettings.m_initialPublicationCoverage = 0.125f;
+		return request;
+	}
+
+	template<typename TPredicate>
+	bool WaitForRuntimeGIProbes(
+		RuntimeGIProbesService& service,
+		TPredicate&& predicate,
+		std::chrono::milliseconds timeout = std::chrono::seconds(2))
+	{
+		const auto deadline = std::chrono::steady_clock::now() + timeout;
+		do
+		{
+			service.Tick();
+			if (predicate(service.GetStatus()))
+			{
+				return true;
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		while (std::chrono::steady_clock::now() < deadline);
+		service.Tick();
+		return predicate(service.GetStatus());
+	}
+
+	void TestRuntimeGIProbesServiceLifecycleAndPublication()
+	{
+		RuntimeGIProbesService service;
+		service.SetWorkAllowed(false);
+		auto constantSampler =
+			TSharedPtr<ConstantBakeRaySampler>::Make(glm::vec3(0.5f));
+		TSharedPtr<IGIProbeBakeRaySampler> sampler = constantSampler;
+		RuntimeGIProbesStartRequest request = MakeRuntimeGIProbesRequest(
+			sampler,
+			11u,
+			21u);
+		std::string diagnostic;
+		Require(service.Start(request, diagnostic),
+			"the bounded runtime GI service should accept a prepared sampler: " +
+				diagnostic);
+		Require(
+			service.GetStatus().m_lifecycle ==
+				ERuntimeGIProbesLifecycle::Throttled &&
+			service.GetStatus().m_readyProbeCount == 0u &&
+			!service.GetPublishedData(),
+			"runtime tracing must remain idle while frame headroom disallows work");
+
+		service.SetPaused(true);
+		service.SetWorkAllowed(true);
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		Require(
+			service.GetStatus().m_lifecycle ==
+				ERuntimeGIProbesLifecycle::Paused &&
+			service.GetStatus().m_readyProbeCount == 0u &&
+			!service.GetPublishedData(),
+			"pause must prevent queued probes from entering placement or tracing");
+
+		service.SetPaused(false);
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[&service](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_readyProbeCount > 0u &&
+						service.GetPublishedData();
+				}),
+			"runtime probes should reach initial coverage and publish within the test budget");
+
+		const RuntimeGIProbesStatus publishedStatus = service.GetStatus();
+		GIProbesDataPtr firstPublished = service.GetPublishedData();
+		Require(
+			firstPublished &&
+			publishedStatus.m_activeProbeCount == 8u &&
+			publishedStatus.m_activeProbeCount <= publishedStatus.m_capacity &&
+			publishedStatus.m_publishedRevision > 0u &&
+			publishedStatus.m_publishedBytes > 0u,
+			"runtime publication must remain inside the configured capacity and expose telemetry");
+		Require(firstPublished->Validate(diagnostic),
+			"a runtime publication must satisfy the existing probe payload contract: " +
+				diagnostic);
+		uint32_t usableProbeCount = 0u;
+		for (const GIProbe& probe : firstPublished->m_probes)
+		{
+			if ((probe.m_flags & static_cast<uint32_t>(EGIProbeFlag::Valid)) == 0u)
+			{
+				continue;
+			}
+			++usableProbeCount;
+			Require(
+				std::isfinite(probe.m_irradiance[0].x) &&
+				probe.m_irradiance[0].x > 0.0f,
+				"a ready runtime probe must never publish cleared or non-finite irradiance");
+		}
+		Require(usableProbeCount > 0u,
+			"initial runtime coverage must contain at least one usable probe");
+
+		auto failingSampler = TSharedPtr<FailingBakeRaySampler>::Make();
+		TSharedPtr<IGIProbeBakeRaySampler> failingSamplerBase = failingSampler;
+		RuntimeGIProbesStartRequest failingRequest = MakeRuntimeGIProbesRequest(
+			failingSamplerBase,
+			12u,
+			22u);
+		Require(service.Start(failingRequest, diagnostic),
+			"a new prepared generation should start before its trace failure is observed");
+		Require(
+			service.GetPublishedData().GetRawPtr() == firstPublished.GetRawPtr(),
+			"starting a replacement generation must retain the last immutable publication");
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_lifecycle ==
+						ERuntimeGIProbesLifecycle::Failed;
+				}),
+			"the service must expose a failed replacement generation");
+		Require(
+			service.GetPublishedData().GetRawPtr() == firstPublished.GetRawPtr() &&
+			service.GetStatus().m_diagnostic.find("intentional") !=
+				std::string::npos,
+			"a failed generation must preserve the previous GI snapshot and diagnostic");
+
+		RuntimeGIProbesStartRequest replacementRequest = MakeRuntimeGIProbesRequest(
+			sampler,
+			13u,
+			23u);
+		Require(service.Start(replacementRequest, diagnostic),
+			"the solver should restart after a failed generation: " + diagnostic);
+		const uint64_t firstRevision = publishedStatus.m_publishedRevision;
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[&service, firstRevision](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_publishedRevision > firstRevision &&
+						service.GetPublishedData();
+				}),
+			"a later valid generation should replace the retained snapshot");
+		Require(
+			service.GetPublishedData().GetRawPtr() != firstPublished.GetRawPtr() &&
+			service.GetStatus().m_sceneGeneration == 13u &&
+			service.GetStatus().m_lightingGeneration == 23u,
+			"only the current scene and lighting generation may become visible");
+
+		service.Disable();
+		Require(
+			service.GetStatus().m_lifecycle ==
+				ERuntimeGIProbesLifecycle::Disabled &&
+			!service.GetPublishedData(),
+			"disabling the experimental provider must stop publishing transient data");
+	}
+
+	void TestRuntimeGIProbesClipmapReuseAndBudgets()
+	{
+		RuntimeGIProbesService service;
+		auto constantSampler =
+			TSharedPtr<ConstantBakeRaySampler>::Make(glm::vec3(0.25f));
+		TSharedPtr<IGIProbeBakeRaySampler> sampler = constantSampler;
+		RuntimeGIProbesStartRequest request = MakeRuntimeGIProbesRequest(
+			sampler,
+			31u,
+			41u);
+		request.m_qualitySettings.m_maxActiveProbes = 64u;
+		request.m_qualitySettings.m_clipmapCascadeCount = 2u;
+		request.m_qualitySettings.m_initialSamplesPerProbe = 1u;
+		request.m_qualitySettings.m_targetSamplesPerProbe = 2u;
+		request.m_qualitySettings.m_maxDirtyUploadBytesPerFrame = 64u * 1024u;
+		std::string diagnostic;
+		Require(service.Start(request, diagnostic),
+			"the runtime clipmap should start: " + diagnostic);
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_lifecycle ==
+						ERuntimeGIProbesLifecycle::Ready &&
+						status.m_publishedRevision > 0u;
+				}),
+			"the two-cascade runtime clipmap should converge within the test budget");
+
+		const GIProbesDataPtr firstPublished = service.GetPublishedData();
+		Require(firstPublished && firstPublished->Validate(diagnostic),
+			"the converged runtime clipmap must satisfy the probe payload contract: " +
+				diagnostic);
+		Require(firstPublished->m_bricks.Num() == 2u &&
+			firstPublished->m_bakeSettings.m_maxSubdivisionLevel == 1u &&
+			firstPublished->m_bricks[0].m_subdivisionLevel == 1u &&
+			firstPublished->m_bricks[1].m_subdivisionLevel == 0u &&
+			glm::all(glm::greaterThanEqual(
+				firstPublished->m_bricks[1].m_max -
+					firstPublished->m_bricks[1].m_min,
+				firstPublished->m_bricks[0].m_max -
+					firstPublished->m_bricks[0].m_min)),
+			"runtime cascades must nest a fine near-camera grid inside wider coverage");
+
+		const uint64_t visibilityBeforeMove =
+			constantSampler->GetVisibilitySampleCount();
+		service.SetWorkAllowed(false);
+		RuntimeGIProbesStartRequest movedRequest = request;
+		movedRequest.m_cameraPosition.x += 1.25f;
+		Require(service.Start(movedRequest, diagnostic),
+			"moving the runtime clipmap should start a replacement generation: " +
+				diagnostic);
+		const RuntimeGIProbesStatus movedStatus = service.GetStatus();
+		Require(movedStatus.m_readyProbeCount > 0u &&
+			movedStatus.m_readyProbeCount < movedStatus.m_activeProbeCount &&
+			service.GetPublishedData().GetRawPtr() ==
+				firstPublished.GetRawPtr(),
+			"camera movement must recycle overlapping logical cells while retaining the last publication");
+		service.SetWorkAllowed(true);
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_lifecycle ==
+						ERuntimeGIProbesLifecycle::Ready;
+				}),
+			"the moved runtime clipmap should fill only newly exposed cells");
+		const uint64_t visibilityAfterMove =
+			constantSampler->GetVisibilitySampleCount();
+		Require(visibilityAfterMove > visibilityBeforeMove &&
+			visibilityAfterMove - visibilityBeforeMove <
+				static_cast<uint64_t>(service.GetStatus().m_activeProbeCount) * 70u,
+			"camera movement must not retrace transport for every overlapping cell");
+
+		service.SetWorkAllowed(false);
+		const uint64_t visibilityBeforeLightingChange =
+			constantSampler->GetVisibilitySampleCount();
+		const uint64_t irradianceBeforeLightingChange =
+			constantSampler->GetIrradianceSampleCount();
+		RuntimeGIProbesStartRequest relitRequest = movedRequest;
+		++relitRequest.m_lightingGeneration;
+		Require(service.Start(relitRequest, diagnostic),
+			"a lighting-only generation should restart irradiance: " + diagnostic);
+		Require(service.GetStatus().m_readyProbeCount == 0u,
+			"valid probes must warm new irradiance before a lighting generation publishes");
+		service.SetWorkAllowed(true);
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_lifecycle ==
+						ERuntimeGIProbesLifecycle::Ready;
+				}),
+			"the lighting-only generation should converge");
+		Require(constantSampler->GetVisibilitySampleCount() ==
+				visibilityBeforeLightingChange &&
+			constantSampler->GetIrradianceSampleCount() >
+				irradianceBeforeLightingChange,
+			"lighting-only invalidation must reuse placement and visibility while retracing irradiance");
+
+		service.Disable();
+		RuntimeGIProbesStartRequest boundedRequest = request;
+		boundedRequest.m_qualitySettings.m_maxActiveProbes =
+			RuntimeGIProbesHardMaxActiveProbes;
+		boundedRequest.m_qualitySettings.m_maxDirtyUploadBytesPerFrame =
+			16u * 1024u;
+		Require(service.Start(boundedRequest, diagnostic),
+			"a small publication budget should reduce effective runtime capacity: " +
+				diagnostic);
+		Require(service.GetStatus().m_capacity <
+				RuntimeGIProbesHardMaxActiveProbes &&
+			service.GetStatus().m_activeProbeCount <=
+				service.GetStatus().m_capacity,
+			"the effective cache must remain inside both probe and publication limits");
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_lifecycle ==
+						ERuntimeGIProbesLifecycle::Ready &&
+						status.m_publishedRevision > 0u;
+				}),
+			"the publication-limited cache should still converge");
+		Require(service.GetStatus().m_publishedBytes <=
+				boundedRequest.m_qualitySettings.m_maxDirtyUploadBytesPerFrame,
+			"a runtime snapshot must never exceed its configured publication budget");
+
+		service.Disable();
+		boundedRequest.m_qualitySettings.m_maxDirtyUploadBytesPerFrame = 1u;
+		Require(!service.Start(boundedRequest, diagnostic) &&
+			diagnostic.find("minimum eight probes") != std::string::npos,
+			"an impossible publication budget must be rejected before workers start");
 	}
 
 	void TestDeterministicBakeSeedsAndReusedLayoutValidation()
@@ -5401,6 +6034,18 @@ int main(int argc, char** argv)
 		RunTest(
 			"PrimaryDirectionPdfWeighting",
 			TestPrimaryDirectionPdfWeighting);
+		RunTest(
+			"IncrementalProbeIrradianceAccumulation",
+			TestIncrementalProbeIrradianceAccumulation);
+		RunTest(
+			"ReusableProbeTransportTracing",
+			TestReusableProbeTransportTracing);
+		RunTest(
+			"RuntimeGIProbesServiceLifecycleAndPublication",
+			TestRuntimeGIProbesServiceLifecycleAndPublication);
+		RunTest(
+			"RuntimeGIProbesClipmapReuseAndBudgets",
+			TestRuntimeGIProbesClipmapReuseAndBudgets);
 		RunTest(
 			"AnisotropicAdaptiveSubdivisionHonorsSpacing",
 			TestAnisotropicAdaptiveSubdivisionHonorsSpacing);
