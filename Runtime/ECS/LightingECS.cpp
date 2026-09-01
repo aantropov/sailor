@@ -274,7 +274,6 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 					1u,
 					NumCascades);
 				shaderData.m_shadowBias = graphicsProfile.m_shadowBias;
-				shaderData.m_attenuation = data.m_attenuation;
 				shaderData.m_bounds = glm::vec3(data.m_radius);
 				shaderData.m_intensity = data.m_intensity;
 				shaderData.m_direction = glm::normalize(ownerTransform.GetForwardVector());
@@ -1708,6 +1707,12 @@ void LightingECS::CollectLightProxies(
 		{
 			continue;
 		}
+		if (!glm::any(glm::greaterThan(
+				light.m_intensity,
+				glm::vec3(0.0f))))
+		{
+			continue;
+		}
 		const bool bContributes = bGlobalIlluminationBakeContributorsOnly ?
 			ContributesToBakedGlobalIllumination(
 				light.m_globalIlluminationMode) :
@@ -1738,9 +1743,10 @@ void LightingECS::CollectLightProxies(
 		lightProxy.m_intensity = light.m_intensity;
 		lightProxy.m_indirectLightingIntensity =
 			light.m_indirectLightingIntensity;
-		lightProxy.m_attenuation = light.m_attenuation;
 		lightProxy.m_bounds = glm::vec3(light.m_radius);
 		lightProxy.m_cutOff = vec2(glm::cos(glm::radians(light.m_cutOff.x)), glm::cos(glm::radians(light.m_cutOff.y)));
+		lightProxy.m_bCastShadows =
+			light.m_shadowType != RHI::EShadowType::None;
 
 		outLights.Add(lightProxy);
 	}

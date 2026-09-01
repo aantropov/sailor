@@ -128,12 +128,29 @@ glslFragment: |
     }
     material.ao = texture(g_aoSampler, viewportUv).r;
     
-    const vec3 geometricNormal = normalize(vin.normal);
-    vec3 normal = geometricNormal;
+    vec3 geometricNormal;
+    vec3 vertexNormal;
+    mat3 tangentBasis;
+    ResolveFragmentSurfaceGeometry(
+      vin.worldPosition,
+      -viewDirection,
+      vin.normal,
+      vin.tangentBasis,
+      geometricNormal,
+      vertexNormal,
+      tangentBasis);
+    vec3 normal = vertexNormal;
     if(material.normalSampler != 0u)
     {
-      const vec3 tangentNormal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0);
-      normal = normalize(vin.tangentBasis * tangentNormal);
+      const vec3 tangentNormal = NormalizeOrFallback(
+        2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0,
+        vec3(0.0, 0.0, 1.0));
+      normal = NormalizeOrFallback(
+        tangentBasis * tangentNormal,
+        vertexNormal);
+      normal = KeepShadingNormalOnGeometricSurface(
+        normal,
+        geometricNormal);
     }
 
     const ForwardPbrMaterial forwardMaterial = ForwardPbrMaterial(
@@ -141,7 +158,8 @@ glslFragment: |
       material.metallic,
       material.roughness,
       material.ao,
-      1.0);
+      1.0,
+      1.5);
     
     // Angle between surface normal and outgoing light direction.
     float cosLo = max(0.0, dot(normal, -viewDirection));
@@ -190,15 +208,12 @@ glslFragment: |
           light.instance[index],
           index,
           forwardMaterial,
-          F0,
           -viewDirection,
           cosLo,
           normal,
+          geometricNormal,
           vin.worldPosition);
       }
-      outColor.xyz = indirectLighting +
-        (outColor.xyz - indirectLighting) *
-        CalculateDirectLightingOcclusion(material.ao);
     }
 
     outColor.a = material.albedo.a;

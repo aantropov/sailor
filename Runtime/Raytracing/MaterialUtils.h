@@ -140,8 +140,19 @@ namespace Sailor::Raytracing
 		Mask
 	};
 
+	enum class FaceCullMode : uint8_t
+	{
+		None = 0,
+		Front,
+		Back,
+		FrontAndBack
+	};
+
 	struct Material
 	{
+		static constexpr uint16_t InvalidTextureIndex =
+			(std::numeric_limits<uint16_t>::max)();
+
 		glm::mat3 m_uvTransform = mat3(1);
 		glm::vec4 m_layerUvScale = vec4(1);
 
@@ -149,9 +160,15 @@ namespace Sailor::Raytracing
 		glm::vec3 m_emissiveFactor = vec3(0, 0, 0);
 		glm::vec3 m_specularColorFactor = vec3(1, 1, 1);
 		glm::vec3 m_attenuationColor = vec3(1, 1, 1);
+		glm::vec3 m_sheenColorFactor = vec3(0, 0, 0);
 
 		float m_metallicFactor = 1.0f;
 		float m_roughnessFactor = 1.0f;
+		float m_normalScale = 1.0f;
+		float m_clearcoatFactor = 0.0f;
+		float m_clearcoatRoughnessFactor = 0.0f;
+		float m_clearcoatNormalScale = 1.0f;
+		float m_sheenRoughnessFactor = 0.0f;
 		float m_indexOfRefraction = 1.5f;
 		float m_occlusionFactor = 1;
 		float m_transmissionFactor = 0;
@@ -160,20 +177,26 @@ namespace Sailor::Raytracing
 		float m_thicknessFactor = 0.0f;
 		float m_attenuationDistance = std::numeric_limits<float>().max();
 
-		bool HasEmissiveTexture() const { return m_emissiveIndex != u8(-1); }
-		bool HasBaseTexture() const { return m_baseColorIndex != u8(-1); }
-		bool HasAmbientTexture() const { return m_ambientIndex != u8(-1); }
-		bool HasNormalTexture() const { return m_normalIndex != u8(-1); }
-		bool HasMetallicRoughnessTexture() const { return m_metallicRoughnessIndex != u8(-1); }
-		bool HasRoughnessTexture() const { return m_roughnessIndex != u8(-1); }
-		bool HasMetallicTexture() const { return m_metallicIndex != u8(-1); }
-		bool HasSpecularTexture() const { return m_specularColorIndex != u8(-1); }
-		bool HasOcclusionTexture() const { return m_occlusionIndex != u8(-1); }
-		bool HasTransmissionTexture() const { return m_transmissionIndex != u8(-1); }
-		bool HasThicknessTexture() const { return m_thicknessIndex != u8(-1); }
+		bool HasEmissiveTexture() const { return m_emissiveIndex != InvalidTextureIndex; }
+		bool HasBaseTexture() const { return m_baseColorIndex != InvalidTextureIndex; }
+		bool HasAmbientTexture() const { return m_ambientIndex != InvalidTextureIndex; }
+		bool HasNormalTexture() const { return m_normalIndex != InvalidTextureIndex; }
+		bool HasMetallicRoughnessTexture() const { return m_metallicRoughnessIndex != InvalidTextureIndex; }
+		bool HasRoughnessTexture() const { return m_roughnessIndex != InvalidTextureIndex; }
+		bool HasMetallicTexture() const { return m_metallicIndex != InvalidTextureIndex; }
+		bool HasSpecularTexture() const { return m_specularColorIndex != InvalidTextureIndex; }
+		bool HasOcclusionTexture() const { return m_occlusionIndex != InvalidTextureIndex; }
+		bool HasTransmissionTexture() const { return m_transmissionIndex != InvalidTextureIndex; }
+		bool HasThicknessTexture() const { return m_thicknessIndex != InvalidTextureIndex; }
+		bool HasClearcoatTexture() const { return m_clearcoatIndex != InvalidTextureIndex; }
+		bool HasClearcoatRoughnessTexture() const { return m_clearcoatRoughnessIndex != InvalidTextureIndex; }
+		bool HasClearcoatNormalTexture() const { return m_clearcoatNormalIndex != InvalidTextureIndex; }
+		bool HasSheenColorTexture() const { return m_sheenColorIndex != InvalidTextureIndex; }
+		bool HasSheenRoughnessTexture() const { return m_sheenRoughnessIndex != InvalidTextureIndex; }
 		bool HasLayerColorTexture(size_t layer) const
 		{
-			return layer < 4u && m_layerColorIndices[layer] != u8(-1);
+			return layer < 4u &&
+				m_layerColorIndices[layer] != InvalidTextureIndex;
 		}
 		bool HasLayerColorTextures() const
 		{
@@ -183,23 +206,32 @@ namespace Sailor::Raytracing
 				HasLayerColorTexture(3u);
 		}
 
-		u8 m_baseColorIndex = u8(-1);
-		u8 m_ambientIndex = u8(-1);
-		u8 m_specularIndex = u8(-1);
-		u8 m_emissiveIndex = u8(-1);
-		u8 m_normalIndex = u8(-1);
-		u8 m_metallicRoughnessIndex = u8(-1); // already in linear
-		u8 m_roughnessIndex = u8(-1);
-		u8 m_metallicIndex = u8(-1);
-		u8 m_occlusionIndex = u8(-1);
-		u8 m_transmissionIndex = u8(-1);
-		u8 m_thicknessIndex = u8(-1);
-		u8 m_specularColorIndex = u8(-1);
-		u8 m_layerColorIndices[4] = {
-			u8(-1), u8(-1), u8(-1), u8(-1)
+		uint16_t m_baseColorIndex = InvalidTextureIndex;
+		uint16_t m_ambientIndex = InvalidTextureIndex;
+		uint16_t m_specularIndex = InvalidTextureIndex;
+		uint16_t m_emissiveIndex = InvalidTextureIndex;
+		uint16_t m_normalIndex = InvalidTextureIndex;
+		uint16_t m_metallicRoughnessIndex = InvalidTextureIndex;
+		uint16_t m_roughnessIndex = InvalidTextureIndex;
+		uint16_t m_metallicIndex = InvalidTextureIndex;
+		uint16_t m_occlusionIndex = InvalidTextureIndex;
+		uint16_t m_transmissionIndex = InvalidTextureIndex;
+		uint16_t m_thicknessIndex = InvalidTextureIndex;
+		uint16_t m_specularColorIndex = InvalidTextureIndex;
+		uint16_t m_clearcoatIndex = InvalidTextureIndex;
+		uint16_t m_clearcoatRoughnessIndex = InvalidTextureIndex;
+		uint16_t m_clearcoatNormalIndex = InvalidTextureIndex;
+		uint16_t m_sheenColorIndex = InvalidTextureIndex;
+		uint16_t m_sheenRoughnessIndex = InvalidTextureIndex;
+		uint16_t m_layerColorIndices[4] = {
+			InvalidTextureIndex,
+			InvalidTextureIndex,
+			InvalidTextureIndex,
+			InvalidTextureIndex
 		};
 
 		BlendMode m_blendMode = BlendMode::Opaque;
+		FaceCullMode m_faceCullMode = FaceCullMode::Back;
 	};
 
 	SAILOR_API uint PackVec3ToByte(vec3 v);

@@ -50,6 +50,16 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		m_computeSpecularBindings = driver->CreateShaderBindings();
 	}
 
+	if (!m_pComputeSheenShader)
+	{
+		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeSheenEnvMap.shader"))
+		{
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pComputeSheenShader);
+		}
+
+		m_computeSheenBindings = driver->CreateShaderBindings();
+	}
+
 	if (!m_pComputeIrradianceShader)
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeIrradianceMap.shader"))
@@ -69,7 +79,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	if (!m_brdfSampler)
 	{
 		m_brdfSampler = RHI::Renderer::GetDriver()->CreateRenderTarget(ivec2(BrdfLutSize, BrdfLutSize), 1,
-			RHI::EFormat::R16G16_SFLOAT, RHI::ETextureFiltration::Linear,
+			RHI::EFormat::R16G16B16A16_SFLOAT, RHI::ETextureFiltration::Linear,
 			RHI::ETextureClamping::Clamp, usage);
 
 		commands->ImageMemoryBarrier(commandList, m_brdfSampler, EImageLayout::ShaderReadOnlyOptimal);
@@ -86,7 +96,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			commands->Dispatch(commandList, m_pComputeBrdfShader->GetComputeShaderRHI(),
 				(uint32_t)(m_brdfSampler->GetExtent().x / 32.0f),
 				(uint32_t)(m_brdfSampler->GetExtent().y / 32.0f),
-				6u,
+				1u,
 				{ m_computeBrdfBindings },
 				nullptr, 0);
 
@@ -106,6 +116,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				{
 					App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetFileId(), m_envMapTexture);
 				}
+				commands->EndDebugRegion(commandList);
 				return;
 			}
 		}
@@ -144,6 +155,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 		else
 		{
+			commands->EndDebugRegion(commandList);
 			return;
 		}
 
@@ -160,23 +172,41 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 		auto& envCubemap = m_envCubemaps[skyHash];
 		auto& irradianceCubemap = m_irradianceCubemaps[skyHash];
+		auto& sheenEnvCubemap = m_sheenEnvCubemaps[skyHash];
 
 		const bool bShouldUpdateEnvCubemap = !envCubemap;
 		const bool bShouldUpdateIrradianceCubemap = !irradianceCubemap;
+		const bool bShouldUpdateSheenEnvCubemap = !sheenEnvCubemap;
 
-		if (!bShouldUpdateEnvCubemap && !bShouldUpdateIrradianceCubemap)
+		if (!bShouldUpdateEnvCubemap &&
+			!bShouldUpdateIrradianceCubemap &&
+			!bShouldUpdateSheenEnvCubemap)
 		{
 			frameGraph->SetSampler("g_rawEnvCubemap", rawEnvCubemap);
 			frameGraph->SetSampler("g_envCubemap", envCubemap);
 			frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
+			frameGraph->SetSampler("g_sheenEnvCubemap", sheenEnvCubemap);
 
 			m_bIsDirty = false;
 
+			commands->EndDebugRegion(commandList);
 			return;
 		}
 
 		// Create all textures/cubemaps
 		frameGraph->SetSampler("g_rawEnvCubemap", rawEnvCubemap);
+		if (envCubemap)
+		{
+			frameGraph->SetSampler("g_envCubemap", envCubemap);
+		}
+		if (irradianceCubemap)
+		{
+			frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
+		}
+		if (sheenEnvCubemap)
+		{
+			frameGraph->SetSampler("g_sheenEnvCubemap", sheenEnvCubemap);
+		}
 
 		if (bShouldUpdateEnvCubemap)
 		{
@@ -234,6 +264,10 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 						&pushConstants, sizeof(PushConstants));
 				}
 			}
+			commands->ImageMemoryBarrier(
+				commandList,
+				envCubemap,
+				EImageLayout::ShaderReadOnlyOptimal);
 			commands->EndDebugRegion(commandList);
 		}
 
@@ -270,12 +304,112 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					IrradianceMapSize / 32u,
 					6u,
 					{ m_computeIrradianceBindings });
-
-				//commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, envCubemap->GetDefaultLayout());
 			}
+			commands->ImageMemoryBarrier(
+				commandList,
+				irradianceCubemap,
+				EImageLayout::ShaderReadOnlyOptimal);
 			commands->EndDebugRegion(commandList);
 		}
 
+		if (bShouldUpdateSheenEnvCubemap)
+		{
+			sheenEnvCubemap = RHI::Renderer::GetDriver()->CreateCubemap(
+				ivec2(SheenEnvMapSize, SheenEnvMapSize),
+				SheenEnvMapLevels,
+				RHI::EFormat::R16G16B16A16_SFLOAT,
+				RHI::ETextureFiltration::Linear,
+				RHI::ETextureClamping::Clamp,
+				usage);
+
+			commands->ImageMemoryBarrier(
+				commandList,
+				sheenEnvCubemap,
+				EImageLayout::ShaderReadOnlyOptimal);
+			sheenEnvCubemap->ForceSetDefaultLayout(
+				EImageLayout::ShaderReadOnlyOptimal);
+			frameGraph->SetSampler(
+				"g_sheenEnvCubemap",
+				sheenEnvCubemap);
+			RHI::Renderer::GetDriver()->SetDebugName(
+				sheenEnvCubemap,
+				"g_sheenEnvCubemap");
+
+			commands->BeginDebugRegion(
+				commandList,
+				"Compute Charlie pre-filtered sheen environment map",
+				DebugContext::Color_CmdCompute);
+			{
+				struct PushConstants
+				{
+					int32_t level{};
+					float roughness{};
+				};
+				TVector<RHI::RHITexturePtr> sheenEnvMapMips;
+				for (uint32_t level = 0u;
+					level < SheenEnvMapLevels;
+					++level)
+				{
+					sheenEnvMapMips.Add(
+						level == 0u
+							? sheenEnvCubemap
+							: sheenEnvCubemap->GetMipLevel(level));
+				}
+
+				driver->AddSamplerToShaderBindings(
+					m_computeSheenBindings,
+					"rawEnvMap",
+					rawEnvCubemap,
+					0u);
+				driver->AddStorageImageToShaderBindings(
+					m_computeSheenBindings,
+					"sheenEnvMap",
+					sheenEnvMapMips,
+					1u);
+				m_computeSheenBindings->RecalculateCompatibility();
+
+				commands->ImageMemoryBarrier(
+					commandList,
+					rawEnvCubemap,
+					EImageLayout::ShaderReadOnlyOptimal);
+				commands->ImageMemoryBarrier(
+					commandList,
+					sheenEnvCubemap,
+					EImageLayout::ComputeWrite);
+
+				const float deltaRoughness = 1.0f /
+					std::max(float(SheenEnvMapLevels - 1u), 1.0f);
+				for (uint32_t level = 0u, size = SheenEnvMapSize;
+					level < SheenEnvMapLevels;
+					++level, size = std::max(size / 2u, 1u))
+				{
+					const uint32_t numGroups =
+						std::max<uint32_t>(1u, (size + 15u) / 16u);
+					const PushConstants pushConstants = {
+						static_cast<int32_t>(level),
+						level * deltaRoughness
+					};
+					commands->Dispatch(
+						commandList,
+						m_pComputeSheenShader->GetComputeShaderRHI(),
+						numGroups,
+						numGroups,
+						6u,
+						{ m_computeSheenBindings },
+						&pushConstants,
+						sizeof(PushConstants));
+				}
+			}
+			commands->ImageMemoryBarrier(
+				commandList,
+				sheenEnvCubemap,
+				EImageLayout::ShaderReadOnlyOptimal);
+			commands->EndDebugRegion(commandList);
+		}
+
+		frameGraph->SetSampler("g_envCubemap", envCubemap);
+		frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
+		frameGraph->SetSampler("g_sheenEnvCubemap", sheenEnvCubemap);
 		m_bIsDirty = false;
 	}
 

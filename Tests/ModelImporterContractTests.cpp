@@ -153,15 +153,19 @@ namespace
 			GetShadingBasis(hit, outNormal, outTangent, outBitangent);
 		}
 
-		bool OrientAgainstRay(
+		bool OrientToGeometricSurface(
 			const glm::vec3& rayDirection,
+			const glm::vec3& geometricNormal,
 			glm::vec3& inOutNormal,
-			glm::vec3& inOutBitangent)
+			glm::vec3& inOutBitangent,
+			glm::vec3& outOrientedGeometricNormal)
 		{
-			return OrientShadingBasisAgainstRay(
+			return OrientShadingBasisToGeometricSurface(
 				rayDirection,
+				geometricNormal,
 				inOutNormal,
-				inOutBitangent);
+				inOutBitangent,
+				outOrientedGeometricNormal);
 		}
 	};
 
@@ -616,6 +620,30 @@ uniformsVec4:
 			2).IsEnabled(),
 			"materials without KHR_materials_transmission must remain disabled");
 
+		tinygltf::Material opaqueIorMaterial;
+		tinygltf::Value::Object opaqueIorExtension;
+		opaqueIorExtension.emplace("ior", tinygltf::Value(1.33));
+		opaqueIorMaterial.extensions["KHR_materials_ior"] =
+			tinygltf::Value(std::move(opaqueIorExtension));
+		const auto opaqueIor = GltfImporterUtils::ResolveMaterialTransmission(
+			opaqueIorMaterial,
+			0);
+		Require(!opaqueIor.IsEnabled() &&
+			opaqueIor.m_bHasIndexOfRefraction &&
+			std::abs(opaqueIor.m_indexOfRefraction - 1.33f) < 0.0001f,
+			"KHR_materials_ior must affect opaque dielectric materials independently of transmission");
+
+		tinygltf::Value::Object infiniteIorExtension;
+		infiniteIorExtension.emplace("ior", tinygltf::Value(0.0));
+		opaqueIorMaterial.extensions["KHR_materials_ior"] =
+			tinygltf::Value(std::move(infiniteIorExtension));
+		const auto infiniteIor = GltfImporterUtils::ResolveMaterialTransmission(
+			opaqueIorMaterial,
+			0);
+		Require(infiniteIor.m_bHasIndexOfRefraction &&
+			infiniteIor.m_indexOfRefraction >= 100000.0f,
+			"KHR_materials_ior zero must retain its full dielectric reflection semantics");
+
 		tinygltf::Value::Object textureInfo;
 		textureInfo.emplace("index", tinygltf::Value(1));
 		tinygltf::Value::Object extension;
@@ -637,7 +665,8 @@ uniformsVec4:
 			transmission.m_attenuationColor == glm::vec3(1.0f) &&
 			transmission.m_attenuationDistance ==
 				(std::numeric_limits<float>::max)() &&
-			transmission.m_indexOfRefraction == 1.5f,
+			transmission.m_indexOfRefraction == 1.5f &&
+			!transmission.m_bHasIndexOfRefraction,
 			"transmission materials must retain glTF volume and IOR defaults");
 
 		tinygltf::Value::Object thicknessTexture;
@@ -698,6 +727,25 @@ uniformsVec4:
 			"out-of-range glTF transmission textures must be ignored");
 	}
 
+	void TestGltfEmissiveStrengthResolvesMaterialRadiance()
+	{
+		tinygltf::Material material;
+		material.emissiveFactor = { 1.0, 0.25, 0.0 };
+		Require(
+			GltfImporterUtils::ResolveMaterialEmissiveFactor(material) ==
+				glm::vec3(1.0f, 0.25f, 0.0f),
+			"glTF emissive factors without a strength extension must retain unit strength");
+
+		tinygltf::Value::Object extension;
+		extension.emplace("emissiveStrength", tinygltf::Value(24.0));
+		material.extensions["KHR_materials_emissive_strength"] =
+			tinygltf::Value(std::move(extension));
+		Require(
+			GltfImporterUtils::ResolveMaterialEmissiveFactor(material) ==
+				glm::vec3(24.0f, 6.0f, 0.0f),
+			"KHR_materials_emissive_strength must preserve physical emissive radiance");
+	}
+
 	void TestGeneratedMaterialMigrationPreservesAuthoredProperties()
 	{
 		YAML::Node material = YAML::Load(R"(
@@ -718,6 +766,7 @@ uniformsFloat:
 uniformsVec4:
   material.baseColorFactor: [0.1, 0.2, 0.3, 1.0]
   material.attenuationColor: [1.0, 0.0, 0.0, 1.0]
+  material.emissiveFactor: [1.0, 1.0, 1.0, 0.0]
 samplers:
   baseColorSampler: authored-base-color
   transmissionSampler: stale-transmission
@@ -738,6 +787,7 @@ uniformsFloat:
   material.indexOfRefraction: 1.5
 uniformsVec4:
   material.attenuationColor: [0.8, 0.8, 0.8, 1.0]
+  material.emissiveFactor: [24.0, 6.0, 0.0, 0.0]
 samplers:
   transmissionSampler: generated-transmission
 )");
@@ -757,10 +807,17 @@ samplers:
 		Require(material["uniformsFloat"]["material.roughnessFactor"]
 			.as<float>() == 0.37f &&
 			material["uniformsFloat"]["material.transmissionFactor"]
-			.as<float>() == 1.0f &&
+				.as<float>() == 1.0f &&
 			material["uniformsFloat"]["material.alphaCutoff"]
-			.as<float>() == 0.5f,
+				.as<float>() == 0.5f,
 			"migration must replace only importer-owned scalar uniforms");
+		const YAML::Node migratedEmissive =
+			material["uniformsVec4"]["material.emissiveFactor"];
+		Require(
+			migratedEmissive[0].as<float>() == 24.0f &&
+			migratedEmissive[1].as<float>() == 6.0f &&
+			migratedEmissive[2].as<float>() == 0.0f,
+			"migration must refresh importer-owned HDR emissive radiance");
 		Require(material["samplers"]["baseColorSampler"].as<std::string>() ==
 			"authored-base-color" &&
 			material["samplers"]["transmissionSampler"].as<std::string>() ==
@@ -970,10 +1027,13 @@ uniformsFloat:
 		const glm::vec3 frontNormal = actualNormal;
 		const glm::vec3 frontTangent = actualTangent;
 		const glm::vec3 frontBitangent = actualBitangent;
-		Require(!pathTracer.OrientAgainstRay(
+		glm::vec3 orientedGeometricNormal{};
+		Require(!pathTracer.OrientToGeometricSurface(
+				frontNormal,
 				frontNormal,
 				actualNormal,
-				actualBitangent),
+				actualBitangent,
+				orientedGeometricNormal),
 			"a ray traveling with the shading normal must hit the back face");
 		RequireVec3Near(actualNormal, -frontNormal,
 			"back-face orientation must flip the shading normal");
@@ -989,6 +1049,24 @@ uniformsFloat:
 				glm::cross(frontNormal, frontTangent),
 				frontBitangent) > 0.0f,
 			"back-face orientation must preserve tangent-space handedness");
+		RequireVec3Near(orientedGeometricNormal, -frontNormal,
+			"the geometric normal must face the incident side of a back-face hit");
+
+		actualNormal = -frontNormal;
+		actualBitangent = -frontBitangent;
+		Require(pathTracer.OrientToGeometricSurface(
+				-frontNormal,
+				frontNormal,
+				actualNormal,
+				actualBitangent,
+				orientedGeometricNormal),
+			"triangle winding, not an inverted vertex normal, must identify a front-face hit");
+		RequireVec3Near(actualNormal, frontNormal,
+			"an inverted vertex normal must be returned to the geometric hemisphere");
+		RequireVec3Near(actualBitangent, frontBitangent,
+			"repairing an inverted vertex normal must preserve tangent-space handedness");
+		RequireVec3Near(orientedGeometricNormal, frontNormal,
+			"a front-face hit must retain the winding normal");
 	}
 
 	void TestBuildBlasRejectsOutOfRangeIndicesAtomically()
@@ -1556,6 +1634,7 @@ int main()
 		{ "MaterialAssetRetainsRenderQueue", TestMaterialAssetRetainsRenderQueue },
 		{ "StandardGltfTexturelessDefaultsAndLegacyAliases", TestStandardGltfTexturelessDefaultsAndLegacyAliases },
 		{ "GltfTransmissionExtensionResolvesMaterialFields", TestGltfTransmissionExtensionResolvesMaterialFields },
+		{ "GltfEmissiveStrengthResolvesMaterialRadiance", TestGltfEmissiveStrengthResolvesMaterialRadiance },
 		{ "GeneratedMaterialMigrationPreservesAuthoredProperties", TestGeneratedMaterialMigrationPreservesAuthoredProperties },
 		{ "SkinnedGltfMaterialsRequireSkinningShaderVariant", TestSkinnedGltfMaterialsRequireSkinningShaderVariant },
 		{ "CompactedMeshesRetainMaterialSlots", TestCompactedMeshesRetainMaterialSlots },

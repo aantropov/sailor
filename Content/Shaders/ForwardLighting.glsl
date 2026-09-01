@@ -155,6 +155,7 @@ struct ForwardPbrMaterial
   float roughness;
   float ambientOcclusion;
   float diffuseWeight;
+  float indexOfRefraction;
 };
 
 struct ForwardLightSample
@@ -207,10 +208,7 @@ float CalculateCascadedDirectionalShadow(
   const vec3 shadowReceiverPosition = OffsetDirectionalShadowReceiver(
     worldPosition,
     surfaceNormal,
-    surfaceToLightDirection,
-    GetDirectionalShadowReceiverBiasScale(
-      cascadeShadowType,
-      lightData.shadowBias));
+    surfaceToLightDirection);
   const mat4 cascadeLightMatrix = lightsMatrices.instance[cascadeLayer];
   float shadow = CalculateDirectionalShadow(
     cascadeShadowType,
@@ -233,10 +231,7 @@ float CalculateCascadedDirectionalShadow(
     const vec3 nextShadowReceiverPosition = OffsetDirectionalShadowReceiver(
       worldPosition,
       surfaceNormal,
-      surfaceToLightDirection,
-      GetDirectionalShadowReceiverBiasScale(
-        nextCascadeShadowType,
-        lightData.shadowBias));
+      surfaceToLightDirection);
     const mat4 nextCascadeLightMatrix =
       lightsMatrices.instance[nextCascadeLayer];
     const float nextShadow = CalculateDirectionalShadow(
@@ -305,7 +300,7 @@ ForwardLightSample ResolveForwardLightSample(
   LightData lightData,
   uint lightIndex,
   vec3 worldPosition,
-  vec3 surfaceNormal)
+  vec3 geometricNormal)
 {
   ForwardLightSample result;
   result.radiance = lightData.intensity;
@@ -319,7 +314,7 @@ ForwardLightSample ResolveForwardLightSample(
     result.shadow = CalculateCascadedDirectionalShadow(
       lightData,
       worldPosition,
-      surfaceNormal,
+      geometricNormal,
       result.direction);
   }
   else if(lightData.type == 1u || lightData.type == 2u)
@@ -335,24 +330,15 @@ ForwardLightSample ResolveForwardLightSample(
       distanceToLight);
     if(lightData.type == 2u)
     {
-      const float coneRange = lightData.cutOff.x - lightData.cutOff.y;
-      const float coneCos = dot(
-        result.direction,
-        normalize(-lightData.direction));
-      result.falloff *= clamp(
-        (coneCos - lightData.cutOff.y) / max(coneRange, Epsilon),
-        0.0,
-        1.0);
-      if(coneCos < lightData.cutOff.y)
-      {
-        result.falloff = 0.0;
-      }
+      result.falloff *= CalculateSpotLightAngularAttenuation(
+        lightData,
+        result.direction);
     }
     result.shadow = CalculateLocalLightShadow(
       lightData,
       lightIndex,
       worldPosition,
-      surfaceNormal,
+      geometricNormal,
       result.direction);
   }
 
@@ -362,7 +348,6 @@ ForwardLightSample ResolveForwardLightSample(
 vec3 EvaluateForwardPbrDirectLighting(
   ForwardLightSample lightSample,
   ForwardPbrMaterial materialData,
-  vec3 F0,
   vec3 surfaceToCamera,
   float cosLo,
   vec3 normal)
@@ -375,19 +360,32 @@ vec3 EvaluateForwardPbrDirectLighting(
 
   float cosLi = max(0.0, dot(normal, lightSample.direction));
   float cosLh = max(0.0, dot(normal, Lh));
-  vec3 F = FresnelSchlick(
-    F0,
-    max(0.0, dot(Lh, surfaceToCamera)));
+  const float halfViewCosine = clamp(
+    abs(dot(Lh, surfaceToCamera)),
+    0.0,
+    1.0);
+  vec3 dielectricFresnel = vec3(FresnelDielectric(
+    halfViewCosine,
+    1.0,
+    materialData.indexOfRefraction));
+  vec3 metalFresnel = FresnelSchlick(
+    materialData.baseColor,
+    halfViewCosine);
+  vec3 F = mix(
+    dielectricFresnel,
+    metalFresnel,
+    clamp(materialData.metallic, 0.0, 1.0));
   float D = NdfGGX(cosLh, materialData.roughness);
-  float G = GeometrySchlickGGX(
+  float G = GeometrySmithGGXCorrelated(
     cosLi,
     cosLo,
     materialData.roughness);
-  vec3 kd = mix(
-    vec3(1.0) - F,
-    vec3(0.0),
-    materialData.metallic) * materialData.diffuseWeight;
-  vec3 diffuseBrdf = kd * materialData.baseColor;
+  vec3 kd = (vec3(1.0) - dielectricFresnel) *
+    (1.0 - clamp(materialData.metallic, 0.0, 1.0)) *
+    materialData.diffuseWeight;
+  vec3 diffuseBrdf = CalculateLambertDiffuseBRDF(
+    kd,
+    materialData.baseColor);
   vec3 specularBrdf = (F * D * G) /
     max(Epsilon, 4.0 * cosLi * cosLo);
   return (diffuseBrdf + specularBrdf) *
@@ -398,21 +396,20 @@ vec3 CalculateForwardPbrLighting(
   LightData lightData,
   uint lightIndex,
   ForwardPbrMaterial materialData,
-  vec3 F0,
   vec3 surfaceToCamera,
   float cosLo,
   vec3 normal,
+  vec3 geometricNormal,
   vec3 worldPosition)
 {
   const ForwardLightSample lightSample = ResolveForwardLightSample(
     lightData,
     lightIndex,
     worldPosition,
-    normal);
+    geometricNormal);
   return lightSample.shadow * EvaluateForwardPbrDirectLighting(
     lightSample,
     materialData,
-    F0,
     surfaceToCamera,
     cosLo,
     normal);
@@ -451,27 +448,26 @@ vec3 CalculateForwardAmbientLighting(
     return irradiance;
   }
 
-  vec3 F = FresnelSchlick(F0, cosLo);
-  vec3 kd = mix(
-    vec3(1.0) - F,
-    vec3(0.0),
-    materialData.metallic) * materialData.diffuseWeight;
+  const float ior = max(materialData.indexOfRefraction, 1.0);
+  const float dielectricF0Value = (ior - 1.0) / (ior + 1.0);
+  vec3 dielectricFresnel = FresnelSchlickRoughness(
+    cosLo,
+    vec3(dielectricF0Value * dielectricF0Value),
+    materialData.roughness);
+  vec3 kd = (vec3(1.0) - dielectricFresnel) *
+    (1.0 - clamp(materialData.metallic, 0.0, 1.0)) *
+    materialData.diffuseWeight;
   vec3 diffuseIbl = kd * materialData.baseColor * irradiance;
   float ambientOcclusion = clamp(
     materialData.ambientOcclusion,
     0.0,
     1.0);
-  if(globalIlluminationHeader.stateAndDebug.z ==
-    GLOBAL_ILLUMINATION_DEBUG_INDIRECT_ONLY)
-  {
-    return diffuseIbl * ambientOcclusion;
-  }
-
-  int specularTextureLevels = textureQueryLevels(g_envCubemap);
   vec3 specularIrradiance = textureLod(
     g_envCubemap,
     reflectionDirection,
-    materialData.roughness * specularTextureLevels).rgb;
+    CalculateSpecularEnvironmentLod(
+      textureQueryLevels(g_envCubemap),
+      materialData.roughness)).rgb;
   vec2 specularBrdf = texture(
     g_brdfSampler,
     vec2(cosLo, materialData.roughness)).rg;

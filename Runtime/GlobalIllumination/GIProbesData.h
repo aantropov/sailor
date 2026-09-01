@@ -101,15 +101,13 @@ namespace Sailor
 		glm::vec3 m_position{};
 		glm::vec3 m_relocationOffset{};
 		float m_validity = 1.0f;
-		// Valid/relocated state plus six baked local-occluder bits for
+		// Valid/relocated state plus six baked local-occluder lobe bits for
 		// +X, -X, +Y, -Y, +Z and -Z starting at bit 8.
 		uint32_t m_flags = static_cast<uint32_t>(EGIProbeFlag::Valid);
 		std::array<glm::vec3, GIProbeSphericalHarmonicsCoefficientCount> m_irradiance{};
-		// Exact locally clamped clearance distance and its square for rays along
-		// +X, -X, +Y, -Y, +Z and -Z. A matching flag bit means that exact ray hit
-		// geometry inside this probe's owning-brick interpolation support. These
-		// values preserve bake/layout diagnostics and compatibility, but runtime
-		// diffuse sampling must not extend six ray hits into infinite blocker planes.
+		// Locally clamped first and second distance moments for six broad signed-
+		// axis lobes. The smooth directional projection rejects probe samples across
+		// nearby geometry without extending individual ray hits into infinite planes.
 		std::array<glm::vec2, GIProbeVisibilityDirectionCount> m_visibility{};
 		// Fraction of rays in each signed-axis lobe that reached the environment
 		// without intersecting scene geometry. Unlike the locally clamped moments
@@ -161,4 +159,7 @@ namespace Sailor
 		uint32_t formatVersion,
 		uint32_t shOrder,
 		EGIProbesCompression compression) noexcept;
+	SAILOR_SHARED_API float CalculateGIProbeVisibilityMaxDistance(
+		const GIProbesData& data,
+		const GIProbeBrick& brick) noexcept;
 }

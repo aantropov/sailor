@@ -47,6 +47,14 @@ renderTargets:
   bIsSurface: false
   bGenerateMips: true
 
+- name: AverageLuminance
+  format: R32_SFLOAT
+  filtration: Nearest
+  clamping: Clamp
+  width: 1
+  height: 1
+  bIsCompatibleWithComputeShaders: true
+
 - name: EditorOutput
   format: B8G8R8A8_SRGB
   width: ViewportWidth
@@ -397,30 +405,43 @@ frame:
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
 
+#############################
+- name: EyeAdaptation
+#############################
+  vec4:
+  - metering: [1.5, 0.45, 0.98, 0.0]
+  - adaptation: [0.0, 16.0, 3.6, 1.2]
+  renderTargets:
+  - hdrColor: Main
+  - averageLuminance: AverageLuminance
+
 ##############################
 - name: Bloom
 ##############################
   vec4:
-  - bloomIntensity: [1.3, 0, 0, 0]
-  - dirtIntensity: [5.0, 0, 0, 0]
+  - bloomIntensity: [0.35, 0, 0, 0]
+  - scatter: [0.35, 0, 0, 0]
+  - dirtIntensity: [0.75, 0, 0, 0]
   - threshold: [3.0, 0, 0, 0]
   - knee: [0.2, 0, 0, 0]
   renderTargets:
   - bloom: Main
+  - averageLuminanceSampler: AverageLuminance
 
 #############################
-- name: EyeAdaptation
+- name: PostProcess
+  tag: Tonemapping
 #############################
   string:
-  - toneMappingShader: Shaders/Tonemapping.shader
-  - toneMappingDefines: ACES
+  - shader: Shaders/Tonemapping.shader
+  - defines: AGX
   vec4:
-  - data.exposure: [1.0, 0, 0, 0]
-  - data.whitePoint: [1.4, 1.5, 1.4, 0]
+  - data.exposureCompensation: [0.15, 0, 0, 0]
+  - data.whitePoint: [11.2, 11.2, 11.2, 0]
   renderTargets:
   - color: Secondary
-  - hdrColor: Main
   - colorSampler: Main
+  - averageLuminanceSampler: AverageLuminance
   - depthStencil: DepthBuffer
 
 ############################

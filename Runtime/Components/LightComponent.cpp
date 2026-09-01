@@ -4,6 +4,7 @@
 #include "ECS/LightingECS.h"
 #include "Math/Math.h"
 
+#include <algorithm>
 #include <cmath>
 
 using namespace Sailor;
@@ -56,10 +57,20 @@ void LightComponent::OnGizmo()
 void LightComponent::SetCutOff(const glm::vec2& innerOuterDegrees)
 {
 	LightData& lightData = GetData();
-
-	if (innerOuterDegrees != lightData.m_cutOff)
+	glm::vec2 value = innerOuterDegrees;
+	for (uint32_t component = 0u; component < 2u; ++component)
 	{
-		lightData.m_cutOff = innerOuterDegrees;
+		value[component] = std::isfinite(value[component]) ?
+			glm::clamp(value[component], 0.0f, 179.0f) : 0.0f;
+	}
+	if (value.x > value.y)
+	{
+		std::swap(value.x, value.y);
+	}
+
+	if (value != lightData.m_cutOff)
+	{
+		lightData.m_cutOff = value;
 		lightData.MarkDirty();
 	}
 }
@@ -67,10 +78,16 @@ void LightComponent::SetCutOff(const glm::vec2& innerOuterDegrees)
 void LightComponent::SetIntensity(const glm::vec3& value)
 {
 	LightData& lightData = GetData();
-
-	if (value != lightData.m_intensity)
+	glm::vec3 physicalValue{};
+	for (uint32_t component = 0u; component < 3u; ++component)
 	{
-		lightData.m_intensity = value;
+		physicalValue[component] = std::isfinite(value[component]) ?
+			(std::max)(value[component], 0.0f) : 0.0f;
+	}
+
+	if (physicalValue != lightData.m_intensity)
+	{
+		lightData.m_intensity = physicalValue;
 		lightData.MarkDirty();
 	}
 }
@@ -99,21 +116,11 @@ void LightComponent::SetGlobalIlluminationMode(
 	}
 }
 
-void LightComponent::SetAttenuation(const glm::vec3& value)
-{
-	LightData& lightData = GetData();
-
-	if (value != lightData.m_attenuation)
-	{
-		lightData.m_attenuation = value;
-		lightData.MarkDirty();
-	}
-}
-
 void LightComponent::SetRadius(float value)
 {
 	LightData& lightData = GetData();
-	value = (std::max)(value, 0.01f);
+	value = std::isfinite(value) ?
+		(std::max)(value, 0.01f) : 0.01f;
 
 	if (value != lightData.m_radius)
 	{

@@ -56,9 +56,9 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 8
-            - 8
-            - 8
+            - 8000
+            - 8000
+            - 8000
           lightType: Directional
           shadowType: PCF
           fileId: NullFileId

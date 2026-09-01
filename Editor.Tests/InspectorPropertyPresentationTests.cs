@@ -5,10 +5,11 @@ namespace SailorEditor.Editor.Tests;
 public sealed class InspectorPropertyPresentationTests
 {
     [Theory]
+    [InlineData("intensity", "Intensity (cd / lux)")]
     [InlineData("indirectLightingIntensity", "GI Intensity")]
     [InlineData("globalIlluminationMode", "GI Mode")]
-    [InlineData("intensity", "intensity")]
-    public void FormatPropertyName_UsesLightGiLabels(
+    [InlineData("radius", "Range (m)")]
+    public void FormatPropertyName_UsesLightLabels(
         string propertyName,
         string expected)
     {
@@ -35,14 +36,19 @@ public sealed class InspectorPropertyPresentationTests
                 value));
     }
 
-    [Fact]
-    public void FormatPropertyName_UsesSkyGiIndirectIntensityLabel()
+    [Theory]
+    [InlineData("sunIlluminance", "Sun Illuminance (lux)")]
+    [InlineData("cloudScatteringScale", "Cloud Scattering Scale")]
+    [InlineData("giIndirectIntensity", "GI Indirect Intensity")]
+    public void FormatPropertyName_UsesSkyLightingLabels(
+        string propertyName,
+        string expected)
     {
         Assert.Equal(
-            "GI Indirect Intensity",
+            expected,
             InspectorPropertyPresentation.FormatPropertyName(
                 "Sailor::SkyComponent",
-                "giIndirectIntensity"));
+                propertyName));
     }
 
     [Fact]

@@ -112,14 +112,19 @@ namespace Sailor::RHI
 	{
 		glm::vec4 m_positionAndValidity{};
 		glm::vec4 m_environmentVisibility0123{};
-		// XY are environment visibility for +Z/-Z. Z stores the six blocked
-		// direction bits through uintBitsToFloat/floatBitsToUint.
+		// XY are environment visibility for +Z/-Z. Z stores the local visibility
+		// support distance; W stores the six broad-lobe blocker bits.
 		glm::vec4 m_environmentVisibility45{};
+		// Each uint packs normalized mean distance and mean squared distance for
+		// one broad signed-axis lobe as two FP16 values.
+		glm::uvec4 m_visibilityMoments0123{};
+		glm::uvec4 m_visibilityMoments45{};
 	};
 
 	struct alignas(16) RHIGlobalIlluminationGpuCoefficients final
 	{
-		// 27 signed RGB coefficient components packed sequentially as FP16.
+		// 27 signed RGB coefficient components followed by one shared HDR scale,
+		// packed sequentially as FP16. The remaining four half values are zero.
 		glm::uvec4 m_packed[4]{};
 	};
 
@@ -169,7 +174,7 @@ namespace Sailor::RHI
 	static_assert(sizeof(RHIGlobalIlluminationGpuHeader) == 96u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuBvhNode) == 32u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuBrick) == 48u);
-	static_assert(sizeof(RHIGlobalIlluminationGpuProbe) == 48u);
+	static_assert(sizeof(RHIGlobalIlluminationGpuProbe) == 80u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuCoefficients) == 64u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuState) == 32u);
 }

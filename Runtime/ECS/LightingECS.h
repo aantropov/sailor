@@ -24,11 +24,12 @@ namespace Sailor
 
 	public:
 
+		// Point and spot lights use candela; directional lights use lux.
 		glm::vec3 m_intensity{ 100.0f, 100.0f, 100.0f };
 		float m_indirectLightingIntensity = 1.0f;
 		ELightGlobalIlluminationMode m_globalIlluminationMode =
 			ELightGlobalIlluminationMode::RealtimeAndBaked;
-		glm::vec3 m_attenuation{ 1.0f, 0.022f, 0.0019f };
+		// Smooth culling range for local lights, in metres.
 		float m_radius = 100.0f;
 		glm::vec2 m_cutOff{ 30.0f, 45.0f };
 		ELightType m_type = ELightType::Point;

@@ -95,17 +95,66 @@ namespace
 			NextRandom01(randomState));
 	}
 
-	__forceinline vec3 ComputeRayOriginBias(const vec3& worldPoint, const vec3& geometricNormal, float biasBase, float biasScale)
+	__forceinline vec3 OffsetRayOrigin(
+		const vec3& worldPoint,
+		const vec3& geometricNormal,
+		const vec3& rayDirection,
+		float normalBias,
+		float viewBias)
 	{
-		// Scale epsilon by world-space position to keep it stable across differently scaled scenes.
-		const float pointScale = (std::max)(1.0f, (std::max)(glm::abs(worldPoint.x), (std::max)(glm::abs(worldPoint.y), glm::abs(worldPoint.z))));
-		return geometricNormal * ((biasBase + biasScale * pointScale));
+		const float normalSign =
+			glm::dot(rayDirection, geometricNormal) >= 0.0f ? 1.0f : -1.0f;
+		return worldPoint +
+			geometricNormal * normalSign * (std::max)(normalBias, 0.0f) +
+			rayDirection * (std::max)(viewBias, 0.0f);
 	}
 
-	__forceinline vec3 OffsetRayOrigin(const vec3& worldPoint, const vec3& geometricNormal, const vec3& rayDirection, float biasBase, float biasScale)
+	__forceinline vec3 SanitizeRadiance(const vec3& value)
 	{
-		const vec3 bias = ComputeRayOriginBias(worldPoint, geometricNormal, biasBase, biasScale);
-		return worldPoint + (glm::dot(rayDirection, geometricNormal) >= 0.0f ? bias : -bias);
+		vec3 result{};
+		for (uint32_t channel = 0u; channel < 3u; ++channel)
+		{
+			result[channel] = std::isfinite(value[channel]) ?
+				(std::max)(value[channel], 0.0f) : 0.0f;
+		}
+		return result;
+	}
+
+	__forceinline vec3 ResolveWorldShadingNormal(
+		const mat3& tangentBasis,
+		const vec3& tangentSpaceNormal,
+		const vec3& fallbackNormal,
+		const vec3& orientedGeometricNormal)
+	{
+		vec3 worldNormal = Math::SafeNormalize(
+			tangentBasis * tangentSpaceNormal,
+			fallbackNormal);
+		const float geometricCosine = dot(
+			worldNormal,
+			orientedGeometricNormal);
+		return Math::SafeNormalize(
+			worldNormal - 2.0f * (std::min)(geometricCosine, 0.0f) *
+				orientedGeometricNormal,
+			orientedGeometricNormal);
+	}
+
+	bool IsMaterialFaceVisible(
+		const Raytracing::Material& material,
+		bool bFrontFace)
+	{
+		switch (material.m_faceCullMode)
+		{
+		case Raytracing::FaceCullMode::None:
+			return true;
+		case Raytracing::FaceCullMode::Front:
+			return !bFrontFace;
+		case Raytracing::FaceCullMode::Back:
+			return bFrontFace;
+		case Raytracing::FaceCullMode::FrontAndBack:
+			return false;
+		}
+
+		return false;
 	}
 
 	const Raytracing::BVH* ResolveInstanceBlas(
@@ -273,10 +322,12 @@ namespace
 						{
 							DirectionalLight dir{};
 							dir.m_direction = glm::normalize(vec3(world * vec4(0, 0, -1, 0)));
+							// KHR_lights_punctual defines directional intensity in lux.
 							dir.m_intensity = vec3(
 								static_cast<float>(light.color[0]),
 								static_cast<float>(light.color[1]),
-								static_cast<float>(light.color[2])) * static_cast<float>(light.intensity / 683.0);
+								static_cast<float>(light.color[2])) *
+								static_cast<float>(light.intensity);
 							outLights.Add(dir);
 						}
 					}
@@ -324,19 +375,20 @@ namespace
 			distanceToLight / safeRadius,
 			0.0f,
 			1.0f);
-		const float squaredDistance = distanceToLight * distanceToLight;
-		const float attenuation = 1.0f / std::max(
-			light.m_attenuation.x +
-				light.m_attenuation.y * distanceToLight +
-				light.m_attenuation.z * squaredDistance,
-			0.00001f);
-		const float edgeProgress = glm::clamp(
-			(normalizedDistance - 0.9f) / 0.1f,
+		constexpr float MinimumDistance = 0.01f;
+		const float safeDistance = std::max(
+			distanceToLight,
+			MinimumDistance);
+		const float inverseSquareFalloff =
+			1.0f / (safeDistance * safeDistance);
+		const float normalizedDistanceSquared =
+			normalizedDistance * normalizedDistance;
+		const float rangeBase = glm::clamp(
+			1.0f - normalizedDistanceSquared * normalizedDistanceSquared,
 			0.0f,
 			1.0f);
-		const float rangeWindow = 1.0f -
-			edgeProgress * edgeProgress * (3.0f - 2.0f * edgeProgress);
-		return attenuation * rangeWindow;
+		const float rangeWindow = rangeBase * rangeBase;
+		return inverseSquareFalloff * rangeWindow;
 	}
 
 	bool EvaluateDirectLight(const LightProxy& light,
@@ -380,9 +432,10 @@ namespace
 				return false;
 			}
 
-			const float cone = innerCos > outerCos ?
+			const float coneBase = innerCos > outerCos ?
 				glm::clamp((cosTheta - outerCos) / (innerCos - outerCos), 0.0f, 1.0f) :
 				1.0f;
+			const float cone = coneBase * coneBase;
 			outRadiance = light.m_intensity * cone;
 		}
 		else
@@ -468,7 +521,7 @@ namespace
 			bool bLinear,
 			bool bNormalMap,
 			uint8_t channels,
-			uint8_t& outTextureIndex,
+			uint16_t& outTextureIndex,
 			std::string& outDiagnostic) -> bool
 		{
 			outDiagnostic.clear();
@@ -508,7 +561,7 @@ namespace
 
 			if (outTextureMapping.ContainsKey(key))
 			{
-				outTextureIndex = static_cast<uint8_t>(outTextureMapping[key]);
+				outTextureIndex = static_cast<uint16_t>(outTextureMapping[key]);
 				return true;
 			}
 
@@ -560,9 +613,8 @@ namespace
 			const int32_t width = snapshot.m_width;
 			const int32_t height = snapshot.m_height;
 
-			// 0xff is the no-texture sentinel in Raytracing::Material, so the
-			// largest representable sampler table contains indices 0..254.
-			if (outTextures.Num() >= static_cast<size_t>(u8(-1)))
+			if (outTextures.Num() >= static_cast<size_t>(
+				Raytracing::Material::InvalidTextureIndex))
 			{
 				outDiagnostic =
 					"the CPU path tracer texture-table limit was exceeded";
@@ -622,7 +674,7 @@ namespace
 			const uint32_t index = (uint32_t)outTextures.Num();
 			outTextures.Add(sampler);
 			outTextureMapping[key] = index;
-			outTextureIndex = static_cast<uint8_t>(index);
+			outTextureIndex = static_cast<uint16_t>(index);
 			return true;
 		};
 
@@ -671,11 +723,16 @@ namespace
 			glm::vec4 baseColorFactor(1.0f);
 			glm::vec4 emissiveFactor(0.0f);
 			glm::vec4 attenuationColor(1.0f);
+			glm::vec4 sheenColor(0.0f);
 			glm::vec4 layerUvScale(1.0f);
 			float roughness = 1.0f;
 			float metallic = 1.0f;
 			float alphaCutoff = 0.5f;
 			float normalScale = 1.0f;
+			float clearcoat = 0.0f;
+			float clearcoatRoughness = 0.0f;
+			float clearcoatNormalScale = 1.0f;
+			float sheenRoughness = 0.0f;
 			float transmission = 0.0f;
 			float thickness = 0.0f;
 			float attenuationDistance = (std::numeric_limits<float>::max)();
@@ -687,6 +744,7 @@ namespace
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissive", emissiveFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emission", emissiveFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.attenuationColor", attenuationColor);
+			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.sheenColorFactor", sheenColor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.layerUvScale", layerUvScale);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughnessFactor", roughness);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughness", roughness);
@@ -694,6 +752,10 @@ namespace
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallic", metallic);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.alphaCutoff", alphaCutoff);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.normalScale", normalScale);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.clearcoatFactor", clearcoat);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.clearcoatRoughnessFactor", clearcoatRoughness);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.clearcoatNormalScale", clearcoatNormalScale);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.sheenRoughnessFactor", sheenRoughness);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.transmissionFactor", transmission);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.thicknessFactor", thickness);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.attenuationDistance", attenuationDistance);
@@ -708,6 +770,23 @@ namespace
 			}
 			outMaterial.m_roughnessFactor = roughness;
 			outMaterial.m_metallicFactor = metallic;
+			outMaterial.m_normalScale = std::isfinite(normalScale) ?
+				normalScale : 1.0f;
+			outMaterial.m_clearcoatFactor = std::isfinite(clearcoat) ?
+				glm::clamp(clearcoat, 0.0f, 1.0f) : 0.0f;
+			outMaterial.m_clearcoatRoughnessFactor =
+				std::isfinite(clearcoatRoughness) ?
+				glm::clamp(clearcoatRoughness, 0.0f, 1.0f) : 0.0f;
+			outMaterial.m_clearcoatNormalScale =
+				std::isfinite(clearcoatNormalScale) ?
+				clearcoatNormalScale : 1.0f;
+			outMaterial.m_sheenRoughnessFactor =
+				std::isfinite(sheenRoughness) ?
+				glm::clamp(sheenRoughness, 0.0f, 1.0f) : 0.0f;
+			outMaterial.m_sheenColorFactor = glm::clamp(
+				glm::vec3(sheenColor),
+				glm::vec3(0.0f),
+				glm::vec3(1.0f));
 			outMaterial.m_alphaCutoff = alphaCutoff;
 			outMaterial.m_transmissionFactor = std::isfinite(transmission) ?
 				glm::clamp(transmission, 0.0f, 1.0f) :
@@ -727,11 +806,27 @@ namespace
 					glm::clamp(value, 0.0f, 1.0f) :
 					1.0f;
 			}
-			outMaterial.m_indexOfRefraction = std::isfinite(indexOfRefraction) ?
-				(std::max)(1.0f, indexOfRefraction) :
+			outMaterial.m_indexOfRefraction = std::isfinite(indexOfRefraction) &&
+				indexOfRefraction >= 1.0f ?
+				indexOfRefraction :
 				1.5f;
 
 			const RHI::RenderState& renderState = pMaterial->GetRenderState();
+			switch (renderState.GetCullMode())
+			{
+			case RHI::ECullMode::None:
+				outMaterial.m_faceCullMode = FaceCullMode::None;
+				break;
+			case RHI::ECullMode::Front:
+				outMaterial.m_faceCullMode = FaceCullMode::Front;
+				break;
+			case RHI::ECullMode::Back:
+				outMaterial.m_faceCullMode = FaceCullMode::Back;
+				break;
+			case RHI::ECullMode::FrontAndBack:
+				outMaterial.m_faceCullMode = FaceCullMode::FrontAndBack;
+				break;
+			}
 			if (renderState.GetBlendMode() != RHI::EBlendMode::None)
 			{
 				outMaterial.m_blendMode = BlendMode::Blend;
@@ -755,7 +850,7 @@ namespace
 				bool bLinear,
 				bool bNormalMap,
 				uint8_t channels,
-				uint8_t& outTextureIndex)
+				uint16_t& outTextureIndex)
 			{
 				std::string diagnostic;
 				if (addTexture(
@@ -842,6 +937,26 @@ namespace
 				else if (samplerName == "thicknessSampler")
 				{
 					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_thicknessIndex);
+				}
+				else if (samplerName == "clearcoatSampler")
+				{
+					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_clearcoatIndex);
+				}
+				else if (samplerName == "clearcoatRoughnessSampler")
+				{
+					prepareTexture(samplerName, pTexture, false, false, 4, outMaterial.m_clearcoatRoughnessIndex);
+				}
+				else if (samplerName == "clearcoatNormalSampler")
+				{
+					prepareTexture(samplerName, pTexture, false, true, 3, outMaterial.m_clearcoatNormalIndex);
+				}
+				else if (samplerName == "sheenColorSampler")
+				{
+					prepareTexture(samplerName, pTexture, true, false, 3, outMaterial.m_sheenColorIndex);
+				}
+				else if (samplerName == "sheenRoughnessSampler")
+				{
+					prepareTexture(samplerName, pTexture, false, false, 4, outMaterial.m_sheenRoughnessIndex);
 				}
 			}
 
@@ -987,6 +1102,8 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 	m_lightProxies = lightProxies;
 	m_bAddDefaultLightIfEmpty = bAddDefaultLightIfEmpty;
 	m_tlasOctree.Clear();
+	m_emissiveTriangles.Clear();
+	m_totalEmissiveWeight = 0.0f;
 	m_lastScenePreparationStats = {};
 	m_lastScenePreparationStats.m_instanceCount = m_tlasInstances.Num();
 
@@ -1200,6 +1317,8 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 
 		bHasGeometry = true;
 		++m_lastScenePreparationStats.m_geometryInstanceCount;
+		m_lastScenePreparationStats.m_triangleCount +=
+			ResolveInstanceTriangles(instance)->Num();
 		const glm::ivec3 integerMin =
 			glm::ivec3(glm::floor(instance.m_worldBounds.m_min));
 		const glm::ivec3 integerMax =
@@ -1213,7 +1332,12 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 			integerCenter,
 			glm::max(integerExtents, glm::ivec3(1)),
 			i);
+		AppendEmissiveTriangles(static_cast<uint32_t>(i));
 	}
+	m_lastScenePreparationStats.m_emissiveTriangleCount =
+		m_emissiveTriangles.Num();
+	m_lastScenePreparationStats.m_emissiveSamplingWeight =
+		m_totalEmissiveWeight;
 
 	if (m_bAddDefaultLightIfEmpty && m_lightProxies.Num() == 0)
 	{
@@ -1245,6 +1369,7 @@ void PathTracer::SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::
 	}
 
 	m_bHasRuntimeEnvironment = true;
+	RebuildRuntimeEnvironmentImportance();
 }
 
 void PathTracer::SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent)
@@ -1265,6 +1390,7 @@ void PathTracer::SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const g
 	}
 
 	m_bHasRuntimeEnvironment = true;
+	RebuildRuntimeEnvironmentImportance();
 }
 
 void PathTracer::SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent)
@@ -1285,6 +1411,7 @@ void PathTracer::SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, 
 	}
 
 	m_bHasRuntimeDiffuseEnvironment = true;
+	RebuildRuntimeEnvironmentImportance();
 }
 
 void PathTracer::ClearRuntimeEnvironment()
@@ -1302,6 +1429,9 @@ void PathTracer::ClearRuntimeEnvironment()
 	m_runtimeDiffuseEnvironment.m_channels = 3;
 	m_runtimeDiffuseEnvironment.m_clamping = SamplerClamping::Clamp;
 	m_bHasRuntimeDiffuseEnvironment = false;
+	m_runtimeEnvironmentImportanceCdf.Clear();
+	m_runtimeEnvironmentImportancePdf.Clear();
+	m_bUseRuntimeEnvironmentImportance = false;
 }
 
 vec3 PathTracer::SampleRuntimeEnvironment(const vec3& direction) const
@@ -1334,6 +1464,278 @@ vec3 PathTracer::SampleRuntimeDiffuseEnvironment(const vec3& direction) const
 	const float v = theta / Pi;
 
 	return m_runtimeDiffuseEnvironment.Sample<vec3>(vec2(u, v));
+}
+
+vec3 PathTracer::SampleRuntimeDirectEnvironment(const vec3& direction) const
+{
+	return m_bHasRuntimeEnvironment ?
+		SampleRuntimeEnvironment(direction) :
+		SampleRuntimeDiffuseEnvironment(direction);
+}
+
+void PathTracer::RebuildRuntimeEnvironmentImportance()
+{
+	m_runtimeEnvironmentImportanceCdf.Clear();
+	m_runtimeEnvironmentImportancePdf.Clear();
+	m_bUseRuntimeEnvironmentImportance = false;
+
+	const CombinedSampler2D* source = m_bHasRuntimeEnvironment ?
+		&m_runtimeEnvironment :
+		(m_bHasRuntimeDiffuseEnvironment ?
+			&m_runtimeDiffuseEnvironment : nullptr);
+	if (!source || source->m_width <= 0 || source->m_height <= 0)
+	{
+		return;
+	}
+
+	const size_t pixelCount = static_cast<size_t>(source->m_width) *
+		static_cast<size_t>(source->m_height);
+	if (source->m_data.Num() < pixelCount * sizeof(vec3))
+	{
+		return;
+	}
+
+	const vec3* pixels = reinterpret_cast<const vec3*>(
+		source->m_data.GetData());
+	TVector<double> solidAngleWeights;
+	solidAngleWeights.Resize(pixelCount);
+	double totalLuminanceWeight = 0.0;
+	double maximumLuminance = 0.0;
+	const double deltaPhi = 2.0 * static_cast<double>(Pi) /
+		static_cast<double>(source->m_width);
+	for (int32_t y = 0; y < source->m_height; ++y)
+	{
+		const double theta0 = static_cast<double>(Pi) *
+			static_cast<double>(y) /
+			static_cast<double>(source->m_height);
+		const double theta1 = static_cast<double>(Pi) *
+			static_cast<double>(y + 1) /
+			static_cast<double>(source->m_height);
+		const double pixelSolidAngle = deltaPhi *
+			(std::cos(theta0) - std::cos(theta1));
+		for (int32_t x = 0; x < source->m_width; ++x)
+		{
+			const size_t index = static_cast<size_t>(x) +
+				static_cast<size_t>(y) *
+				static_cast<size_t>(source->m_width);
+			const vec3 radiance = SanitizeRadiance(pixels[index]);
+			const double luminance = static_cast<double>(glm::dot(
+				radiance,
+				vec3(0.2126f, 0.7152f, 0.0722f)));
+			solidAngleWeights[index] = luminance * pixelSolidAngle;
+			totalLuminanceWeight += solidAngleWeights[index];
+			maximumLuminance = (std::max)(maximumLuminance, luminance);
+		}
+	}
+
+	if (!std::isfinite(totalLuminanceWeight) ||
+		totalLuminanceWeight <= 0.0)
+	{
+		return;
+	}
+
+	const double sphereSolidAngle = 4.0 * static_cast<double>(Pi);
+	const double averageLuminance =
+		totalLuminanceWeight / sphereSolidAngle;
+	// A nearly uniform map is sampled more efficiently by the receiver-aligned
+	// hemisphere technique. Importance sampling is reserved for concentrated
+	// HDR features such as the solar aureole and bright emissive texels.
+	if (maximumLuminance <= averageLuminance * 4.0)
+	{
+		return;
+	}
+
+	const double uniformFloor = averageLuminance * 0.01;
+	double totalWeight = totalLuminanceWeight +
+		uniformFloor * sphereSolidAngle;
+	if (!std::isfinite(totalWeight) || totalWeight <= 0.0)
+	{
+		return;
+	}
+
+	m_runtimeEnvironmentImportanceCdf.Resize(pixelCount);
+	m_runtimeEnvironmentImportancePdf.Resize(pixelCount);
+	double cumulativeProbability = 0.0;
+	for (int32_t y = 0; y < source->m_height; ++y)
+	{
+		const double theta0 = static_cast<double>(Pi) *
+			static_cast<double>(y) /
+			static_cast<double>(source->m_height);
+		const double theta1 = static_cast<double>(Pi) *
+			static_cast<double>(y + 1) /
+			static_cast<double>(source->m_height);
+		const double pixelSolidAngle = deltaPhi *
+			(std::cos(theta0) - std::cos(theta1));
+		for (int32_t x = 0; x < source->m_width; ++x)
+		{
+			const size_t index = static_cast<size_t>(x) +
+				static_cast<size_t>(y) *
+				static_cast<size_t>(source->m_width);
+			const double probability =
+				(solidAngleWeights[index] +
+					uniformFloor * pixelSolidAngle) / totalWeight;
+			cumulativeProbability += probability;
+			m_runtimeEnvironmentImportanceCdf[index] =
+				static_cast<float>(cumulativeProbability);
+			m_runtimeEnvironmentImportancePdf[index] =
+				static_cast<float>(probability / pixelSolidAngle);
+		}
+	}
+	m_runtimeEnvironmentImportanceCdf[pixelCount - 1u] = 1.0f;
+	m_bUseRuntimeEnvironmentImportance = true;
+}
+
+float PathTracer::RuntimeEnvironmentImportancePdf(
+	const vec3& direction) const
+{
+	if (!m_bUseRuntimeEnvironmentImportance ||
+		m_runtimeEnvironmentImportancePdf.IsEmpty())
+	{
+		return 0.0f;
+	}
+
+	const CombinedSampler2D* source = m_bHasRuntimeEnvironment ?
+		&m_runtimeEnvironment :
+		(m_bHasRuntimeDiffuseEnvironment ?
+			&m_runtimeDiffuseEnvironment : nullptr);
+	if (!source || source->m_width <= 0 || source->m_height <= 0)
+	{
+		return 0.0f;
+	}
+
+	const vec3 normalizedDirection = glm::normalize(direction);
+	const float phi = std::atan2(
+		normalizedDirection.z,
+		normalizedDirection.x);
+	const float theta = std::acos(glm::clamp(
+		normalizedDirection.y,
+		-1.0f,
+		1.0f));
+	const float u = (phi + Pi) / (2.0f * Pi);
+	const float v = theta / Pi;
+	const uint32_t x = (std::min)(
+		static_cast<uint32_t>(u * static_cast<float>(source->m_width)),
+		static_cast<uint32_t>(source->m_width - 1));
+	const uint32_t y = (std::min)(
+		static_cast<uint32_t>(v * static_cast<float>(source->m_height)),
+		static_cast<uint32_t>(source->m_height - 1));
+	return m_runtimeEnvironmentImportancePdf[
+		static_cast<size_t>(x) + static_cast<size_t>(y) *
+			static_cast<size_t>(source->m_width)];
+}
+
+bool PathTracer::SampleRuntimeEnvironmentImportance(
+	uint32_t& randomState,
+	vec3& outDirection,
+	float& outPdf) const
+{
+	outDirection = vec3(0.0f);
+	outPdf = 0.0f;
+	if (!m_bUseRuntimeEnvironmentImportance ||
+		m_runtimeEnvironmentImportanceCdf.IsEmpty())
+	{
+		return false;
+	}
+
+	const CombinedSampler2D* source = m_bHasRuntimeEnvironment ?
+		&m_runtimeEnvironment :
+		(m_bHasRuntimeDiffuseEnvironment ?
+			&m_runtimeDiffuseEnvironment : nullptr);
+	if (!source || source->m_width <= 0 || source->m_height <= 0)
+	{
+		return false;
+	}
+
+	const float selection = NextRandom01(randomState);
+	size_t first = 0u;
+	size_t count = m_runtimeEnvironmentImportanceCdf.Num();
+	while (count > 0u)
+	{
+		const size_t step = count / 2u;
+		const size_t middle = first + step;
+		if (m_runtimeEnvironmentImportanceCdf[middle] < selection)
+		{
+			first = middle + 1u;
+			count -= step + 1u;
+		}
+		else
+		{
+			count = step;
+		}
+	}
+	const size_t index = (std::min)(
+		first,
+		m_runtimeEnvironmentImportanceCdf.Num() - 1u);
+	const uint32_t x = static_cast<uint32_t>(
+		index % static_cast<size_t>(source->m_width));
+	const uint32_t y = static_cast<uint32_t>(
+		index / static_cast<size_t>(source->m_width));
+	const float theta0 = Pi * static_cast<float>(y) /
+		static_cast<float>(source->m_height);
+	const float theta1 = Pi * static_cast<float>(y + 1u) /
+		static_cast<float>(source->m_height);
+	const float cosTheta = glm::mix(
+		std::cos(theta0),
+		std::cos(theta1),
+		NextRandom01(randomState));
+	const float sinTheta = std::sqrt((std::max)(
+		0.0f,
+		1.0f - cosTheta * cosTheta));
+	const float phi = -Pi + 2.0f * Pi *
+		(static_cast<float>(x) + NextRandom01(randomState)) /
+		static_cast<float>(source->m_width);
+	outDirection = vec3(
+		std::cos(phi) * sinTheta,
+		cosTheta,
+		std::sin(phi) * sinTheta);
+	outPdf = RuntimeEnvironmentImportancePdf(outDirection);
+	return std::isfinite(outPdf) && outPdf > 0.0f;
+}
+
+float PathTracer::DirectEnvironmentPdf(
+	const vec3& worldNormal,
+	const vec3& direction) const
+{
+	const float hemispherePdf = glm::dot(worldNormal, direction) > 0.0f ?
+		1.0f / (2.0f * Pi) : 0.0f;
+	if (!m_bUseRuntimeEnvironmentImportance)
+	{
+		return hemispherePdf;
+	}
+	constexpr float ImportanceMix = 0.5f;
+	return hemispherePdf * (1.0f - ImportanceMix) +
+		RuntimeEnvironmentImportancePdf(direction) * ImportanceMix;
+}
+
+bool PathTracer::SampleDirectEnvironment(
+	const vec3& worldNormal,
+	uint32_t& randomState,
+	vec3& outDirection,
+	float& outPdf) const
+{
+	outDirection = vec3(0.0f);
+	outPdf = 0.0f;
+	constexpr float ImportanceMix = 0.5f;
+	if (m_bUseRuntimeEnvironmentImportance &&
+		NextRandom01(randomState) < ImportanceMix)
+	{
+		if (!SampleRuntimeEnvironmentImportance(
+				randomState,
+				outDirection,
+				outPdf))
+		{
+			return false;
+		}
+	}
+
+	if (glm::dot(outDirection, outDirection) <= 0.0f)
+	{
+		outDirection = LightingModel::ImportanceSampleHemisphere(
+			NextRandomVec2_01(randomState),
+			worldNormal);
+	}
+	outPdf = DirectEnvironmentPdf(worldNormal, outDirection);
+	return std::isfinite(outPdf) && outPdf > 0.0f;
 }
 
 bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
@@ -1470,7 +1872,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 									ray.SetDirection(glm::normalize(pixelDir));
 									TLASHit primaryHit{};
 									alphaCoverage += IntersectScene(ray, primaryHit, std::numeric_limits<float>::max(), (uint32_t)(-1), (uint32_t)(-1)) ? 1.0f : 0.0f;
-									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), std::numeric_limits<float>::max(), params, 1.0f, 1.0f, randomState);
+									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), std::numeric_limits<float>::max(), params, 1.0f, randomState, true);
 								}
 
 								vec3 res = accumulator / (float)params.m_msaa;
@@ -1583,8 +1985,8 @@ bool PathTracer::SamplePreparedSceneRay(
 			maxDistance,
 			params,
 			1.0f,
-			1.0f,
-			randomState);
+			randomState,
+			true);
 	}
 	else if (params.m_bIncludeEnvironment)
 	{
@@ -1868,7 +2270,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 									TLASHit primaryHit{};
 									alphaCoverage += IntersectScene(ray, primaryHit, std::numeric_limits<float>::max(), (uint32_t)(-1), (uint32_t)(-1)) ? 1.0f : 0.0f;
 
-									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), std::numeric_limits<float>::max(), params, 1.0f, 1.0f, randomState);
+									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), std::numeric_limits<float>::max(), params, 1.0f, randomState, true);
 								}
 
 								vec3 res = accumulator / (float)params.m_msaa;
@@ -1982,7 +2384,11 @@ void PathTracer::Run(const PathTracer::Params& params)
 	}
 }
 
-bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, float maxRayLength, uint32_t ignoreInstance, uint32_t ignoreTriangle) const
+bool PathTracer::IntersectSceneGeometry(const Math::Ray& worldRay,
+	TLASHit& outHit,
+	float maxRayLength,
+	uint32_t ignoreInstance,
+	uint32_t ignoreTriangle) const
 {
 	outHit = TLASHit{};
 
@@ -2082,6 +2488,174 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 	return false;
 }
 
+bool PathTracer::IntersectScene(const Math::Ray& worldRay,
+	TLASHit& outHit,
+	float maxRayLength,
+	uint32_t ignoreInstance,
+	uint32_t ignoreTriangle) const
+{
+	outHit = TLASHit{};
+	const vec3 direction = worldRay.GetDirection();
+	float traveledDistance = 0.0f;
+	constexpr uint32_t MaxMaskedIntersections = 256u;
+
+	for (uint32_t intersectionIndex = 0u;
+		intersectionIndex < MaxMaskedIntersections;
+		++intersectionIndex)
+	{
+		const float remainingDistance = std::isfinite(maxRayLength) ?
+			maxRayLength - traveledDistance : maxRayLength;
+		if (remainingDistance <= 0.0f)
+		{
+			return false;
+		}
+
+		const vec3 currentOrigin =
+			worldRay.GetOrigin() + direction * traveledDistance;
+		TLASHit candidate{};
+		if (!IntersectSceneGeometry(
+				Math::Ray(currentOrigin, direction),
+				candidate,
+				remainingDistance,
+				ignoreInstance,
+				ignoreTriangle))
+		{
+			return false;
+		}
+
+		const uint32_t materialIndex = ResolveMaterialIndex(candidate);
+		const Material& material = m_materials[materialIndex];
+		bool bAcceptHit = material.m_blendMode != BlendMode::Mask;
+		if (!bAcceptHit)
+		{
+			const Math::Triangle& triangle = GetTriangle(candidate);
+			const vec2 uv = ResolveHitTextureCoordinates(
+				triangle,
+				candidate.m_hit);
+			const vec2 transformedUv = glm::vec2(
+				material.m_uvTransform * glm::vec3(uv, 1.0f));
+			const glm::vec4 layerWeights =
+				candidate.m_hit.m_barycentricCoordinate.x *
+					triangle.m_colors[0] +
+				candidate.m_hit.m_barycentricCoordinate.y *
+					triangle.m_colors[1] +
+				candidate.m_hit.m_barycentricCoordinate.z *
+					triangle.m_colors[2];
+			const glm::vec4 baseColor = SampleMaterialBaseColor(
+				materialIndex,
+				transformedUv,
+				layerWeights);
+			bAcceptHit = baseColor.a >= material.m_alphaCutoff;
+		}
+
+		const float localDistance = candidate.m_hit.m_rayLenght;
+		if (bAcceptHit)
+		{
+			candidate.m_hit.m_rayLenght =
+				traveledDistance + localDistance;
+			outHit = candidate;
+			return true;
+		}
+
+		const vec3 absolutePoint = glm::abs(candidate.m_hit.m_point);
+		const float coordinateScale = (std::max)({
+			absolutePoint.x,
+			absolutePoint.y,
+			absolutePoint.z,
+			1.0f });
+		const float advance = (std::max)(
+			1e-5f,
+			coordinateScale * std::numeric_limits<float>::epsilon() * 8.0f);
+		traveledDistance += localDistance + advance;
+	}
+
+	return false;
+}
+
+float PathTracer::TraceDirectLightTransmittance(
+	const Math::Ray& worldRay,
+	float maxRayLength,
+	uint32_t ignoreInstance,
+	uint32_t ignoreTriangle) const
+{
+	const vec3 direction = worldRay.GetDirection();
+	float transmittance = 1.0f;
+	float traveledDistance = 0.0f;
+	constexpr uint32_t MaxBlendedIntersections = 256u;
+
+	for (uint32_t intersectionIndex = 0u;
+		intersectionIndex < MaxBlendedIntersections;
+		++intersectionIndex)
+	{
+		const float remainingDistance = std::isfinite(maxRayLength) ?
+			maxRayLength - traveledDistance : maxRayLength;
+		if (remainingDistance <= 0.0f)
+		{
+			return transmittance;
+		}
+
+		const vec3 currentOrigin =
+			worldRay.GetOrigin() + direction * traveledDistance;
+		TLASHit candidate{};
+		if (!IntersectScene(
+				Math::Ray(currentOrigin, direction),
+				candidate,
+				remainingDistance,
+				ignoreInstance,
+				ignoreTriangle))
+		{
+			return transmittance;
+		}
+
+		const uint32_t materialIndex = ResolveMaterialIndex(candidate);
+		const Material& material = m_materials[materialIndex];
+		if (material.m_blendMode != BlendMode::Blend)
+		{
+			return 0.0f;
+		}
+
+		const Math::Triangle& triangle = GetTriangle(candidate);
+		const vec2 uv = ResolveHitTextureCoordinates(
+			triangle,
+			candidate.m_hit);
+		const vec2 transformedUv = glm::vec2(
+			material.m_uvTransform * glm::vec3(uv, 1.0f));
+		const glm::vec4 layerWeights =
+			candidate.m_hit.m_barycentricCoordinate.x *
+				triangle.m_colors[0] +
+			candidate.m_hit.m_barycentricCoordinate.y *
+				triangle.m_colors[1] +
+			candidate.m_hit.m_barycentricCoordinate.z *
+				triangle.m_colors[2];
+		const float alpha = glm::clamp(
+			SampleMaterialBaseColor(
+				materialIndex,
+				transformedUv,
+				layerWeights).a,
+			0.0f,
+			1.0f);
+		transmittance *= 1.0f - alpha;
+		if (transmittance <= 0.0001f)
+		{
+			return 0.0f;
+		}
+
+		const float localDistance = candidate.m_hit.m_rayLenght;
+		const vec3 absolutePoint = glm::abs(candidate.m_hit.m_point);
+		const float coordinateScale = (std::max)({
+			absolutePoint.x,
+			absolutePoint.y,
+			absolutePoint.z,
+			1.0f });
+		const float advance = (std::max)(
+			1e-5f,
+			coordinateScale * std::numeric_limits<float>::epsilon() * 8.0f);
+		traveledDistance += localDistance + advance;
+	}
+
+	return 0.0f;
+}
+
 const Math::Triangle& PathTracer::GetTriangle(const TLASHit& hit) const
 {
 	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
@@ -2131,20 +2705,33 @@ void PathTracer::GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outT
 	outBitangent = canonicalBitangent * handedness;
 }
 
-bool PathTracer::OrientShadingBasisAgainstRay(
+bool PathTracer::OrientShadingBasisToGeometricSurface(
 	const vec3& rayDirection,
+	const vec3& geometricNormal,
 	vec3& inOutNormal,
-	vec3& inOutBitangent)
+	vec3& inOutBitangent,
+	vec3& outOrientedGeometricNormal)
 {
-	const bool bIsOppositeRay =
-		glm::dot(inOutNormal, rayDirection) < 0.0f;
-	if (!bIsOppositeRay)
+	outOrientedGeometricNormal = Math::SafeNormalize(
+		geometricNormal,
+		inOutNormal);
+	const bool bFrontFace =
+		glm::dot(outOrientedGeometricNormal, rayDirection) < 0.0f;
+	if (!bFrontFace)
+	{
+		outOrientedGeometricNormal *= -1.0f;
+	}
+
+	// Winding determines the physical side of a triangle. Imported vertex
+	// normals may be smoothed, mirrored, or malformed and must not change face
+	// culling, volume entry/exit, or one-sided emission.
+	if (glm::dot(inOutNormal, outOrientedGeometricNormal) < 0.0f)
 	{
 		inOutNormal *= -1.0f;
 		inOutBitangent *= -1.0f;
 	}
 
-	return bIsOppositeRay;
+	return bFrontFace;
 }
 
 uint32_t PathTracer::ResolveMaterialIndex(const TLASHit& hit) const
@@ -2188,56 +2775,304 @@ bool PathTracer::IsThickVolumeAtHit(
 	return material.m_thicknessFactor > 0.0f;
 }
 
-vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Params& params, float currentIor, uint32_t ignoreInstance, uint32_t ignoreTriangle) const
+void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
 {
-	vec3 att = vec3(1, 1, 1);
-	vec3 prevHitPoint = startPoint;
-	for (uint32_t j = 0; j < params.m_maxBounces; j++)
+	if (instanceIndex >= m_tlasInstances.Num())
 	{
-		TLASHit hitLight{};
-		Ray rayToLight(startPoint, toLight);
-
-		if (!IntersectScene(rayToLight, hitLight, std::numeric_limits<float>().max(), ignoreInstance, ignoreTriangle))
-		{
-			return att * SampleRuntimeEnvironment(toLight);
-		}
-
-		const uint32_t materialIndex = ResolveMaterialIndex(hitLight);
-		const auto& material = m_materials[materialIndex];
-		vec3 shadingNormal{}, shadingTangent{}, shadingBitangent{};
-		GetShadingBasis(hitLight, shadingNormal, shadingTangent, shadingBitangent);
-
-		const bool bHitOpposite = dot(toLight, shadingNormal) < 0.0f;
-		const bool bHitThickVolume =
-			IsThickVolumeAtHit(hitLight, materialIndex);
-
-		if (!bHitThickVolume)
-		{
-			return vec3(0, 0, 0);
-		}
-
-		const float distance = length(hitLight.m_hit.m_point - prevHitPoint);
-		prevHitPoint = hitLight.m_hit.m_point;
-
-		vec3 hitWorldNormal = bHitOpposite ? shadingNormal : -shadingNormal;
-
-		toLight = LightingModel::CalculateRefraction(toLight, hitWorldNormal, currentIor, bHitOpposite ? material.m_indexOfRefraction : 1.0f);
-		currentIor = bHitOpposite ? material.m_indexOfRefraction : 1.0f;
-
-		if (!bHitOpposite)
-		{
-			att *= CalculateVolumeAttenuation(
-				material.m_attenuationColor,
-				material.m_attenuationDistance,
-				distance);
-		}
-
-		startPoint = hitLight.m_hit.m_point;
-		ignoreInstance = hitLight.m_instanceIndex;
-		ignoreTriangle = hitLight.m_triangleIndex;
+		return;
 	}
 
-	return att * SampleRuntimeEnvironment(toLight);
+	const TLASInstance& instance = m_tlasInstances[instanceIndex];
+	const TVector<Math::Triangle>* triangles =
+		ResolveInstanceTriangles(instance);
+	if (!triangles)
+	{
+		return;
+	}
+
+	for (uint32_t triangleIndex = 0u;
+		triangleIndex < triangles->Num();
+		++triangleIndex)
+	{
+		const Math::Triangle& triangle = (*triangles)[triangleIndex];
+		const int64_t materialIndex =
+			static_cast<int64_t>(instance.m_materialBaseOffset) +
+			static_cast<int64_t>(triangle.m_materialIndex);
+		if (materialIndex < 0 ||
+			materialIndex >= static_cast<int64_t>(m_materials.Num()) ||
+			materialIndex >= static_cast<int64_t>(
+				m_resolvedMaterialSlots.Num()) ||
+			m_resolvedMaterialSlots[static_cast<size_t>(materialIndex)] == 0u)
+		{
+			continue;
+		}
+
+		const glm::vec3 emissiveFactor = glm::max(
+			m_materials[static_cast<size_t>(materialIndex)].m_emissiveFactor,
+			glm::vec3(0.0f));
+		const float emissivePower = glm::dot(
+			emissiveFactor,
+			glm::vec3(0.2126f, 0.7152f, 0.0722f));
+		if (!std::isfinite(emissivePower) || emissivePower <= 0.0f)
+		{
+			continue;
+		}
+
+		EmissiveTriangle source;
+		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
+		{
+			source.m_vertices[vertexIndex] = glm::vec3(
+				instance.m_worldMatrix *
+					glm::vec4(triangle.m_vertices[vertexIndex], 1.0f));
+			source.m_uvs[vertexIndex] = triangle.m_uvs[vertexIndex];
+			source.m_colors[vertexIndex] = triangle.m_colors[vertexIndex];
+		}
+		const glm::vec3 areaVector = glm::cross(
+			source.m_vertices[1] - source.m_vertices[0],
+			source.m_vertices[2] - source.m_vertices[0]);
+		source.m_area = glm::length(areaVector) * 0.5f;
+		if (!std::isfinite(source.m_area) || source.m_area <= 1e-8f)
+		{
+			continue;
+		}
+
+		source.m_instanceIndex = instanceIndex;
+		source.m_triangleIndex = triangleIndex;
+		source.m_materialIndex = static_cast<uint32_t>(materialIndex);
+
+		const Material& material = m_materials[source.m_materialIndex];
+		constexpr glm::vec3 WeightSamples[] = {
+			glm::vec3(1.0f / 3.0f),
+			glm::vec3(0.6f, 0.2f, 0.2f),
+			glm::vec3(0.2f, 0.6f, 0.2f),
+			glm::vec3(0.2f, 0.2f, 0.6f)
+		};
+		constexpr float WeightSampleCount = 4.0f;
+		float sampledEmissivePower = 0.0f;
+		for (const glm::vec3& barycentric : WeightSamples)
+		{
+			const glm::vec2 uv =
+				barycentric.x * source.m_uvs[0] +
+				barycentric.y * source.m_uvs[1] +
+				barycentric.z * source.m_uvs[2];
+			const glm::vec2 transformedUv = glm::vec2(
+				material.m_uvTransform * glm::vec3(uv, 1.0f));
+			const glm::vec4 layerWeights =
+				barycentric.x * source.m_colors[0] +
+				barycentric.y * source.m_colors[1] +
+				barycentric.z * source.m_colors[2];
+			const LightingModel::SampledData sample = GetMaterialData(
+				source.m_materialIndex,
+				transformedUv,
+				layerWeights);
+			const float alpha = sample.m_bIsOpaque ?
+				1.0f : sample.m_baseColor.a;
+			sampledEmissivePower += glm::dot(
+				glm::max(sample.m_emissive * alpha, glm::vec3(0.0f)),
+				glm::vec3(0.2126f, 0.7152f, 0.0722f));
+		}
+		sampledEmissivePower /= WeightSampleCount;
+		const float conservativeWeightFloor = emissivePower * 0.01f;
+		source.m_weight = source.m_area * (std::max)(
+			sampledEmissivePower,
+			conservativeWeightFloor);
+		m_totalEmissiveWeight += source.m_weight;
+		source.m_cumulativeWeight = m_totalEmissiveWeight;
+		m_emissiveTriangles.Add(std::move(source));
+	}
+}
+
+vec3 PathTracer::SampleDirectEmissive(
+	const TLASHit& receiverHit,
+	const LightingModel::SampledData& receiverMaterial,
+	const vec3& viewDirection,
+	const vec3& worldNormal,
+	float fromIor,
+	float toIor,
+	const Params& params,
+	uint32_t& randomState) const
+{
+	if (m_emissiveTriangles.IsEmpty() ||
+		!std::isfinite(m_totalEmissiveWeight) ||
+		m_totalEmissiveWeight <= 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	const float selectedWeight =
+		NextRandom01(randomState) * m_totalEmissiveWeight;
+	const auto selectedIt = std::lower_bound(
+		m_emissiveTriangles.begin(),
+		m_emissiveTriangles.end(),
+		selectedWeight,
+		[](const EmissiveTriangle& source, float value)
+		{
+			return source.m_cumulativeWeight < value;
+		});
+	const EmissiveTriangle& source = selectedIt !=
+		m_emissiveTriangles.end() ?
+		*selectedIt :
+			m_emissiveTriangles[m_emissiveTriangles.Num() - 1u];
+	if (source.m_instanceIndex == receiverHit.m_instanceIndex &&
+		source.m_triangleIndex == receiverHit.m_triangleIndex)
+	{
+		return vec3(0.0f);
+	}
+
+	const vec2 randomSample = NextRandomVec2_01(randomState);
+	const float sqrtSample = std::sqrt(randomSample.x);
+	const glm::vec3 barycentric(
+		1.0f - sqrtSample,
+		sqrtSample * (1.0f - randomSample.y),
+		sqrtSample * randomSample.y);
+	const glm::vec3 target =
+		barycentric.x * source.m_vertices[0] +
+		barycentric.y * source.m_vertices[1] +
+		barycentric.z * source.m_vertices[2];
+	const glm::vec3 receiverToTarget = target - receiverHit.m_hit.m_point;
+	const float distanceSquared = glm::dot(
+		receiverToTarget,
+		receiverToTarget);
+	if (!std::isfinite(distanceSquared) || distanceSquared <= 1e-8f)
+	{
+		return vec3(0.0f);
+	}
+
+	const float distance = std::sqrt(distanceSquared);
+	const glm::vec3 direction = receiverToTarget / distance;
+	const glm::vec3 emitterAreaVector = glm::cross(
+		source.m_vertices[1] - source.m_vertices[0],
+		source.m_vertices[2] - source.m_vertices[0]);
+	const float emitterAreaVectorLength = glm::length(emitterAreaVector);
+	if (emitterAreaVectorLength <= 1e-8f)
+	{
+		return vec3(0.0f);
+	}
+	const glm::vec3 emitterNormal =
+		emitterAreaVector / emitterAreaVectorLength;
+	const float signedEmitterCosine =
+		glm::dot(emitterNormal, -direction);
+	if (!IsMaterialFaceVisible(
+			m_materials[source.m_materialIndex],
+			signedEmitterCosine >= 0.0f))
+	{
+		return vec3(0.0f);
+	}
+	const float emitterCosine = std::abs(signedEmitterCosine);
+	if (emitterCosine <= 1e-6f)
+	{
+		return vec3(0.0f);
+	}
+
+	const float selectionProbability =
+		source.m_weight / m_totalEmissiveWeight;
+	const float solidAnglePdf =
+		selectionProbability / source.m_area *
+		distanceSquared / emitterCosine;
+	if (!std::isfinite(solidAnglePdf) || solidAnglePdf <= 1e-8f)
+	{
+		return vec3(0.0f);
+	}
+
+	const Material& emitterMaterial =
+		m_materials[source.m_materialIndex];
+	const glm::vec2 uv =
+		barycentric.x * source.m_uvs[0] +
+		barycentric.y * source.m_uvs[1] +
+		barycentric.z * source.m_uvs[2];
+	const glm::vec2 transformedUv = glm::vec2(
+		emitterMaterial.m_uvTransform * glm::vec3(uv, 1.0f));
+	const glm::vec4 layerWeights =
+		barycentric.x * source.m_colors[0] +
+		barycentric.y * source.m_colors[1] +
+		barycentric.z * source.m_colors[2];
+	LightingModel::SampledData emitterSample = GetMaterialData(
+		source.m_materialIndex,
+		transformedUv,
+		layerWeights);
+	TLASHit emitterHit;
+	emitterHit.m_instanceIndex = source.m_instanceIndex;
+	emitterHit.m_triangleIndex = source.m_triangleIndex;
+	emitterHit.m_geometricNormal = emitterNormal;
+	emitterHit.m_hit.m_barycentricCoordinate = barycentric;
+	vec3 emitterVertexNormal{};
+	vec3 emitterTangent{};
+	vec3 emitterBitangent{};
+	GetShadingBasis(
+		emitterHit,
+		emitterVertexNormal,
+		emitterTangent,
+		emitterBitangent);
+	vec3 orientedEmitterGeometricNormal{};
+	OrientShadingBasisToGeometricSurface(
+		direction,
+		emitterNormal,
+		emitterVertexNormal,
+		emitterBitangent,
+		orientedEmitterGeometricNormal);
+	const mat3 emitterTangentBasis(
+		emitterTangent,
+		emitterBitangent,
+		emitterVertexNormal);
+	const vec3 emitterWorldNormal = ResolveWorldShadingNormal(
+		emitterTangentBasis,
+		emitterSample.m_normal,
+		emitterVertexNormal,
+		orientedEmitterGeometricNormal);
+	emitterSample.m_clearcoatNormal = ResolveWorldShadingNormal(
+		emitterTangentBasis,
+		emitterSample.m_clearcoatNormal,
+		emitterVertexNormal,
+		orientedEmitterGeometricNormal);
+	const float alpha = emitterSample.m_bIsOpaque ?
+		1.0f : emitterSample.m_baseColor.a;
+	const glm::vec3 emittedRadiance = glm::max(
+		LightingModel::CalculateEmittedRadiance(
+			emitterSample,
+			emitterWorldNormal,
+			-direction) * alpha,
+		glm::vec3(0.0f));
+	if (glm::dot(emittedRadiance, emittedRadiance) <= 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	const glm::vec3 visibilityOrigin = OffsetRayOrigin(
+		receiverHit.m_hit.m_point,
+		receiverHit.m_geometricNormal,
+		direction,
+		params.m_rayBiasBase,
+		params.m_rayBiasScale);
+	const glm::vec3 visibilityVector = target - visibilityOrigin;
+	const float visibilityDistance = glm::length(visibilityVector);
+	if (!std::isfinite(visibilityDistance) || visibilityDistance <= 1e-5f)
+	{
+		return vec3(0.0f);
+	}
+	const float endpointTolerance = (std::max)(
+		1e-4f,
+		visibilityDistance * 1e-4f);
+	Math::Ray visibilityRay(
+		visibilityOrigin,
+		visibilityVector / visibilityDistance);
+	const float transmittance = TraceDirectLightTransmittance(
+		visibilityRay,
+		(std::max)(0.0f, visibilityDistance - endpointTolerance),
+		receiverHit.m_instanceIndex,
+		receiverHit.m_triangleIndex);
+	if (transmittance <= 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	return LightingModel::CalculateBRDFCosineWeighted(
+		viewDirection,
+		worldNormal,
+		direction,
+		receiverMaterial,
+		fromIor,
+		toIor) * emittedRadiance *
+		transmittance / solidAnglePdf;
 }
 
 vec3 PathTracer::Raytrace(
@@ -2247,9 +3082,9 @@ vec3 PathTracer::Raytrace(
 	uint32_t ignoreTriangle,
 	float maxRayDistance,
 	const PathTracer::Params& params,
-	float inAcc,
 	float environmentIor,
-	uint32_t& randomState) const
+	uint32_t& randomState,
+	bool bAllowEmissiveHit) const
 {
 
 	uint32_t randSeedX = NextRandomRange(randomState, 681u);
@@ -2271,10 +3106,13 @@ vec3 PathTracer::Raytrace(
 		vec3 faceNormal{}, tangent{}, bitangent{};
 		GetShadingBasis(hit, faceNormal, tangent, bitangent);
 
-		const bool bIsOppositeRay = OrientShadingBasisAgainstRay(
+		vec3 orientedGeometricNormal{};
+		const bool bFrontFace = OrientShadingBasisToGeometricSurface(
 			ray.GetDirection(),
+			hit.m_geometricNormal,
 			faceNormal,
-			bitangent);
+			bitangent,
+			orientedGeometricNormal);
 
 		const mat3 tbn(tangent, bitangent, faceNormal);
 
@@ -2288,37 +3126,35 @@ vec3 PathTracer::Raytrace(
 			hit.m_hit.m_barycentricCoordinate.x * tri.m_colors[0] +
 			hit.m_hit.m_barycentricCoordinate.y * tri.m_colors[1] +
 			hit.m_hit.m_barycentricCoordinate.z * tri.m_colors[2];
-		const LightingModel::SampledData sample = GetMaterialData(
+		LightingModel::SampledData sample = GetMaterialData(
 			materialIndex,
 			uvTransformed,
 			layerWeights);
 		const vec3 viewDirection = -normalize(ray.GetDirection());
-		const vec3 worldNormal = normalize(tbn * sample.m_normal);
+		const vec3 worldNormal = ResolveWorldShadingNormal(
+			tbn,
+			sample.m_normal,
+			faceNormal,
+			orientedGeometricNormal);
+		sample.m_clearcoatNormal = ResolveWorldShadingNormal(
+			tbn,
+			sample.m_clearcoatNormal,
+			faceNormal,
+			orientedGeometricNormal);
 
 		const bool bHasAlphaBlending = !sample.m_bIsOpaque && sample.m_baseColor.a < 1.0f;
 		const uint32_t numSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numSamples)) : params.m_numSamples;
 		const uint32_t numAmbientSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numAmbientSamples)) : params.m_numAmbientSamples;
 
 		const bool bFullMetallic = sample.m_orm.z == 1.0f;
+		const bool bOnlySpecularRay =
+			bFullMetallic && sample.m_orm.y <= 0.001f;
 		const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
 		const bool bThickVolume = bHasTransmission && material.m_thicknessFactor > 0.0f;
-
-		if (!bIsOppositeRay && bThickVolume)
-		{
-			const vec3 newDirection = LightingModel::CalculateRefraction(ray.GetDirection(), worldNormal, environmentIor, 1.0f);
-
-			if (newDirection == vec3(0, 0, 0) || bounceLimit == 0)
-			{
-				return vec3(0.0f);
-			}
-
-			Ray rayToLight(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, newDirection, params.m_rayBiasBase, params.m_rayBiasScale), newDirection);
-
-			//const float angle = abs(glm::dot(newDirection, worldNormal));
-			//vec3 term = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, newDirection, sample, environmentIor) * angle;
-
-			return Raytrace(rayToLight, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, std::numeric_limits<float>::max(), params, inAcc, 1.0f, randomState);
-		}
+		const float interfaceFromIor = bThickVolume ?
+			environmentIor : 1.0f;
+		const float interfaceToIor = bThickVolume ?
+			(bFrontFace ? sample.m_ior : 1.0f) : sample.m_ior;
 
 		// Analytic local-light range is a surface-lighting cutoff, not emissive
 		// geometry in otherwise empty space.
@@ -2335,14 +3171,74 @@ vec3 PathTracer::Raytrace(
 					continue;
 				}
 
-				Ray rayToLight(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, toLight, params.m_rayBiasBase, params.m_rayBiasScale), toLight);
-				TLASHit occluder{};
-				if (!IntersectScene(rayToLight, occluder, maxDistanceToLight, hit.m_instanceIndex, hit.m_triangleIndex))
+				float directTransmittance = 1.0f;
+				if (m_lightProxies[i].m_bCastShadows)
 				{
-					const float angle = glm::max(0.0f, glm::dot(toLight, worldNormal));
-					res += LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * radiance * angle;
+					const vec3 visibilityOrigin = OffsetRayOrigin(
+						hit.m_hit.m_point,
+						hit.m_geometricNormal,
+						toLight,
+						params.m_rayBiasBase,
+						params.m_rayBiasScale);
+					vec3 visibilityDirection = toLight;
+					float visibilityDistance = maxDistanceToLight;
+					if (m_lightProxies[i].m_type != ELightType::Directional)
+					{
+						const vec3 visibilityVector =
+							m_lightProxies[i].m_worldPosition - visibilityOrigin;
+						const float distance = glm::length(visibilityVector);
+						if (!std::isfinite(distance) || distance <= 1e-5f)
+						{
+							directTransmittance = 0.0f;
+						}
+						else
+						{
+							visibilityDirection = visibilityVector / distance;
+							const float endpointTolerance = (std::max)(
+								1e-4f,
+								distance * 1e-4f);
+							visibilityDistance = (std::max)(
+								0.0f,
+								distance - endpointTolerance);
+						}
+					}
+					if (directTransmittance <= 0.0f)
+					{
+						continue;
+					}
+					Ray rayToLight(
+						visibilityOrigin,
+						visibilityDirection);
+					directTransmittance = TraceDirectLightTransmittance(
+						rayToLight,
+						visibilityDistance,
+						hit.m_instanceIndex,
+						hit.m_triangleIndex);
+				}
+				if (directTransmittance > 0.0f)
+				{
+					res += LightingModel::CalculateBRDFCosineWeighted(
+						viewDirection,
+						worldNormal,
+						toLight,
+						sample,
+						interfaceFromIor,
+						interfaceToIor) * radiance *
+						directTransmittance;
 				}
 			}
+		}
+		if (params.m_bIncludeEmissive && !bOnlySpecularRay)
+		{
+			res += SampleDirectEmissive(
+				hit,
+				sample,
+				viewDirection,
+				worldNormal,
+				interfaceFromIor,
+				interfaceToIor,
+				params,
+				randomState);
 		}
 
 		// Ambient / environment lighting and recursive indirect bounces.
@@ -2355,28 +3251,68 @@ vec3 PathTracer::Raytrace(
 		{
 			// Random ray
 			vec3 ambient1 = vec3(0, 0, 0);
-			const float pdfHemisphere = 1.0f / (Pi * 2.0f);
 
 			const uint32_t ambientNumSamples = bIsFirstIntersection ? numAmbientSamples : 1u;
 			const uint32_t numExtraSamples = bIsFirstIntersection ? numSamples : 1;
 
 			// Hemisphere sampling loop
-			if (bHasEnvironmentLighting && !bThickVolume)
+			if (bHasEnvironmentLighting &&
+				!bThickVolume &&
+				!bOnlySpecularRay)
 			{
 				for (uint32_t i = 0; i < ambientNumSamples; i++)
 				{
-					const vec2 randomSample = NextVec2_Linear(randomState);
-					vec3 H = LightingModel::ImportanceSampleHemisphere(randomSample, worldNormal);
-					vec3 toLight = bThickVolume ? glm::sphericalRand(1.0f) : (2.0f * dot(viewDirection, H) * H - viewDirection);
-					Ray skyRay(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, toLight, params.m_rayBiasBase, params.m_rayBiasScale), toLight);
-					TLASHit skyOccluder{};
-					if (!IntersectScene(skyRay, skyOccluder, std::numeric_limits<float>::max(), hit.m_instanceIndex, hit.m_triangleIndex))
+					vec3 toLight{};
+					float environmentPdf = 0.0f;
+					if (!SampleDirectEnvironment(
+							worldNormal,
+							randomState,
+							toLight,
+							environmentPdf))
 					{
-						const vec3 env = (m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment) ? SampleRuntimeDiffuseEnvironment(toLight) : params.m_ambient;
-						const float angle = glm::max(0.0f, glm::dot(toLight, worldNormal));
-						const vec3 value = LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * env;
-						ambient1 += glm::clamp((value * angle) / pdfHemisphere,
-							vec3(0, 0, 0), vec3(10, 10, 10));
+						continue;
+					}
+					const float angle = glm::max(
+						0.0f,
+						glm::dot(toLight, worldNormal));
+					if (angle <= 0.0f)
+					{
+						continue;
+					}
+					Ray skyRay(OffsetRayOrigin(hit.m_hit.m_point, hit.m_geometricNormal, toLight, params.m_rayBiasBase, params.m_rayBiasScale), toLight);
+					const float skyTransmittance =
+						TraceDirectLightTransmittance(
+							skyRay,
+							std::numeric_limits<float>::max(),
+							hit.m_instanceIndex,
+							hit.m_triangleIndex);
+					if (skyTransmittance > 0.0f)
+					{
+						const vec3 env =
+							(m_bHasRuntimeEnvironment ||
+								m_bHasRuntimeDiffuseEnvironment) ?
+							SampleRuntimeDirectEnvironment(toLight) :
+							params.m_ambient;
+						const vec3 value = LightingModel::CalculateBRDFCosineWeighted(
+							viewDirection,
+							worldNormal,
+							toLight,
+							sample,
+							interfaceFromIor,
+							interfaceToIor) * env;
+						const float bsdfPdf = LightingModel::ReflectionPdf(
+							sample,
+							worldNormal,
+							viewDirection,
+							toLight);
+						const float misWeight = LightingModel::PowerHeuristic(
+							static_cast<int32_t>(ambientNumSamples),
+							environmentPdf,
+							static_cast<int32_t>(numExtraSamples),
+							bsdfPdf);
+						ambient1 += SanitizeRadiance(
+							(value * skyTransmittance) /
+								environmentPdf) * misWeight;
 					}
 				}
 			}
@@ -2388,14 +3324,10 @@ vec3 PathTracer::Raytrace(
 
 			// Importance sampling ray
 			vec3 ambient2 = vec3(0, 0, 0);
-			float avgPdfLambert = 0.0f;
 
 			// Indirect lighting
 			vec3 indirect = vec3(0.0f, 0.0f, 0.0f);
 			float indirectContribution = 0.0f;
-
-			const float toIor = bThickVolume ? (bIsOppositeRay ? sample.m_ior : 1.0f) : environmentIor;
-			bool bHasTransmissionRay = false;
 
 			// Importance sampling loop
 			for (uint32_t i = 0; i < numExtraSamples; i++)
@@ -2404,62 +3336,45 @@ vec3 PathTracer::Raytrace(
 				float pdf = 0.0f;
 				bool bTransmissionRay = false;
 				vec3 direction = vec3(0);
-				bool bSample = false;
-
-				constexpr uint32_t MaxSamplingAttempts = 64;
-				for (uint32_t attempt = 0;
-					attempt < MaxSamplingAttempts &&
-					(!bSample || (bThickVolume && !bHasTransmissionRay && i == (numExtraSamples - 1)));
-					attempt++)
+				const vec2 randomSample = NextVec2_BlueNoise(
+					randSeedX,
+					randSeedY,
+					randomState);
+				const vec2 selectionSample = NextRandomVec2_01(randomState);
+				const bool bSample = LightingModel::Sample(
+					sample,
+					worldNormal,
+					viewDirection,
+					interfaceFromIor,
+					interfaceToIor,
+					term,
+					pdf,
+					bTransmissionRay,
+					direction,
+					randomSample,
+					selectionSample);
+				if (!bSample)
 				{
-					direction = vec3(0);
-					const vec2 randomSample = NextVec2_BlueNoise(
-						randSeedX,
-						randSeedY,
-						randomState);
-					const vec2 selectionSample = NextRandomVec2_01(randomState);
-					bSample = LightingModel::Sample(
-						sample,
-						worldNormal,
-						viewDirection,
-						environmentIor,
-						toIor,
-						term,
-						pdf,
-						bTransmissionRay,
-						direction,
-						randomSample,
-						selectionSample);
-					bHasTransmissionRay |= bTransmissionRay;
-				}
-
-				const bool bMissingRequiredTransmissionRay =
-					bThickVolume &&
-					!bHasTransmissionRay &&
-					i == (numExtraSamples - 1);
-				if (!bSample || bMissingRequiredTransmissionRay)
-				{
-					term = vec3(0.0f);
-					pdf = 1.0f;
-					bTransmissionRay = false;
-					direction = worldNormal;
+					// Rejection is a zero-valued sample from the original BSDF
+					// distribution. Retrying until a direction is accepted samples a
+					// conditional distribution while retaining the original PDF and
+					// systematically overestimates indirect lighting.
+					indirectContribution += 1.0f;
+					continue;
 				}
 
 				float newEnvironmentIor = environmentIor;
 
-				if (bIsOppositeRay && bTransmissionRay && bThickVolume)
+				if (bFrontFace && bTransmissionRay && bThickVolume)
 				{
 					newEnvironmentIor = sample.m_ior;
 				}
-				else if (!bIsOppositeRay && bTransmissionRay && bThickVolume)
+				else if (!bFrontFace && bTransmissionRay && bThickVolume)
 				{
 					newEnvironmentIor = 1.0f;
 				}
 
-				Ray rayToLight(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, direction, params.m_rayBiasBase, params.m_rayBiasScale), direction);
-
-				//vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), bvh, params, environmentIor, hit.m_triangleIndex);
-				//const bool bSkyTraced = length(att) > 0.0f;
+				Ray rayToLight(OffsetRayOrigin(hit.m_hit.m_point, hit.m_geometricNormal, direction, params.m_rayBiasBase, params.m_rayBiasScale), direction);
 
 				TLASHit hitLight{};
 				if (!IntersectScene(rayToLight, hitLight, std::numeric_limits<float>().max(), hit.m_instanceIndex, hit.m_triangleIndex))
@@ -2468,11 +3383,24 @@ vec3 PathTracer::Raytrace(
 						(m_bHasRuntimeEnvironment ? SampleRuntimeEnvironment(direction) :
 							(m_bHasRuntimeDiffuseEnvironment ? SampleRuntimeDiffuseEnvironment(direction) : params.m_ambient)) :
 						vec3(0.0f);
-					vec3 value = glm::clamp(term * env, vec3(0, 0, 0), vec3(10, 10, 10));
+					const vec3 value = SanitizeRadiance(term * env);
+					const float directEnvironmentPdf =
+						DirectEnvironmentPdf(worldNormal, direction);
+					const bool bEnvironmentTechniqueSupportsDirection =
+						bHasEnvironmentLighting &&
+						!bThickVolume &&
+						!bOnlySpecularRay &&
+						!bTransmissionRay &&
+						directEnvironmentPdf > 0.0f;
+					const float misWeight = bEnvironmentTechniqueSupportsDirection ?
+						LightingModel::PowerHeuristic(
+							static_cast<int32_t>(numExtraSamples),
+							pdf,
+							static_cast<int32_t>(ambientNumSamples),
+							directEnvironmentPdf) : 1.0f;
 
 					// Ambient lighting
-					ambient2 += value;
-					avgPdfLambert += pdf;
+					ambient2 += value * misWeight;
 
 					// A miss reaches the environment directly from this surface.
 					// It already belongs to the MIS ambient estimator above; adding
@@ -2483,7 +3411,7 @@ vec3 PathTracer::Raytrace(
 				{
 					// Indirect
 					vec3 lightAttenuation = vec3(1, 1, 1);
-					if (bIsOppositeRay && bTransmissionRay && bThickVolume)
+					if (bFrontFace && bTransmissionRay && bThickVolume)
 					{
 						const float distance = glm::length(hitLight.m_hit.m_point - hit.m_hit.m_point);
 						lightAttenuation = CalculateVolumeAttenuation(
@@ -2492,49 +3420,36 @@ vec3 PathTracer::Raytrace(
 							distance);
 					}
 
-					vec3 raytraced = vec3(0, 0, 0);
-					const float newAcc = inAcc * length(term * lightAttenuation) * sample.m_baseColor.a;
-					if (newAcc > 0.01f)
-					{
-						raytraced = Raytrace(rayToLight, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, std::numeric_limits<float>::max(), params, newAcc, newEnvironmentIor, randomState);
-					}
+					// Non-delta emitter paths are sampled explicitly above. Keeping
+					// their BSDF-hit estimator as well would count the same path twice.
+					const bool bAllowNextEmissiveHit =
+						bOnlySpecularRay || bTransmissionRay ||
+						m_emissiveTriangles.IsEmpty();
+					const vec3 raytraced = Raytrace(
+						rayToLight,
+						bounceLimit - 1,
+						hit.m_instanceIndex,
+						hit.m_triangleIndex,
+						std::numeric_limits<float>::max(),
+						params,
+						newEnvironmentIor,
+						randomState,
+						bAllowNextEmissiveHit);
 
-					vec3 value = glm::clamp(term * lightAttenuation * raytraced, vec3(0, 0, 0), vec3(10, 10, 10));
+					const vec3 value = SanitizeRadiance(
+						term * lightAttenuation * raytraced);
 
 					// Indirect lighting with bounces in case of hit
 					indirect += value;
 
-					// Ambient 2, Sky is reachable
-					if (bHasEnvironmentLighting && !bThickVolume)
-					{
-						const uint32_t hitMaterialIndex =
-							ResolveMaterialIndex(hitLight);
-						if (IsThickVolumeAtHit(
-							hitLight,
-							hitMaterialIndex))
-						{
-							vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), params, environmentIor, hitLight.m_instanceIndex, hitLight.m_triangleIndex);
-
-							if (att != vec3(0, 0, 0))
-							{
-								ambient2 += value * att;
-								avgPdfLambert += pdf;
-							}
-						}
-					}
 				}
 				indirectContribution += 1.0f;
 			}
 
 			ambient2 /= (float)indirectContribution;
-			avgPdfLambert /= (float)indirectContribution;
-
-			const vec3 ambient = ambient1 + ambient2;
-			if (bHasEnvironmentLighting && ambient.x + ambient.y + ambient.z > 0.0f)
+			if (bHasEnvironmentLighting)
 			{
-				const vec3 combinedAmbient = ambient1 * LightingModel::PowerHeuristic(ambientNumSamples, pdfHemisphere, (int32_t)indirectContribution, avgPdfLambert) +
-					ambient2 * LightingModel::PowerHeuristic((int32_t)indirectContribution, avgPdfLambert, ambientNumSamples, pdfHemisphere);
-				res += combinedAmbient;
+				res += ambient1 + ambient2;
 			}
 
 			if (indirectContribution > 0.0f)
@@ -2543,9 +3458,14 @@ vec3 PathTracer::Raytrace(
 			}
 		}
 
-		if (params.m_bIncludeEmissive)
+		if (params.m_bIncludeEmissive &&
+			bAllowEmissiveHit &&
+			IsMaterialFaceVisible(material, bFrontFace))
 		{
-			res += sample.m_emissive;
+			res += LightingModel::CalculateEmittedRadiance(
+				sample,
+				worldNormal,
+				viewDirection);
 		}
 
 		// Alpha Blending
@@ -2561,7 +3481,7 @@ vec3 PathTracer::Raytrace(
 			p.m_numAmbientSamples = std::max(1u, params.m_numAmbientSamples - numAmbientSamples);
 
 			res = res * sample.m_baseColor.a +
-				Raytrace(newRay, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, std::numeric_limits<float>::max(), p, inAcc * (1.0f - sample.m_baseColor.a), environmentIor, randomState) * (1.0f - sample.m_baseColor.a);
+				Raytrace(newRay, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, std::numeric_limits<float>::max(), p, environmentIor, randomState, bAllowEmissiveHit) * (1.0f - sample.m_baseColor.a);
 		}
 	}
 	else
@@ -2580,22 +3500,13 @@ vec3 PathTracer::Raytrace(
 	return res;
 }
 
-LightingModel::SampledData PathTracer::GetMaterialData(
+glm::vec4 PathTracer::SampleMaterialBaseColor(
 	const size_t& materialIndex,
 	glm::vec2 uv,
 	glm::vec4 layerWeights) const
 {
 	const auto& material = m_materials[materialIndex];
-
-	LightingModel::SampledData res{};
-	res.m_baseColor = material.m_baseColorFactor;
-	res.m_normal = vec3(0, 0, 1.0f);
-	res.m_orm = vec3(0.0f, material.m_roughnessFactor, material.m_metallicFactor);
-	res.m_emissive = material.m_emissiveFactor;
-	res.m_transmission = material.m_transmissionFactor;
-	res.m_bIsOpaque = material.m_blendMode == BlendMode::Opaque;
-	res.m_thicknessFactor = material.m_thicknessFactor;
-	res.m_ior = material.m_indexOfRefraction;
+	glm::vec4 baseColor = material.m_baseColorFactor;
 
 	if (material.HasLayerColorTextures())
 	{
@@ -2626,13 +3537,46 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 		}
 		if (resolvedWeight > 0.0001f)
 		{
-			res.m_baseColor *= layeredColor / resolvedWeight;
+			baseColor *= layeredColor / resolvedWeight;
 		}
 	}
-	else if (material.HasBaseTexture())
+	else
 	{
-		res.m_baseColor *= m_textures[material.m_baseColorIndex]->Sample<vec4>(uv);
+		if (material.HasBaseTexture())
+		{
+			baseColor *=
+				m_textures[material.m_baseColorIndex]->Sample<vec4>(uv);
+		}
+		baseColor *= layerWeights;
 	}
+
+	return baseColor;
+}
+
+LightingModel::SampledData PathTracer::GetMaterialData(
+	const size_t& materialIndex,
+	glm::vec2 uv,
+	glm::vec4 layerWeights) const
+{
+	const auto& material = m_materials[materialIndex];
+
+	LightingModel::SampledData res{};
+	res.m_baseColor = SampleMaterialBaseColor(
+		materialIndex,
+		uv,
+		layerWeights);
+	res.m_normal = vec3(0, 0, 1.0f);
+	res.m_orm = vec3(0.0f, material.m_roughnessFactor, material.m_metallicFactor);
+	res.m_emissive = material.m_emissiveFactor;
+	res.m_clearcoatNormal = vec3(0.0f, 0.0f, 1.0f);
+	res.m_clearcoatFactor = material.m_clearcoatFactor;
+	res.m_clearcoatRoughness = material.m_clearcoatRoughnessFactor;
+	res.m_sheenColor = material.m_sheenColorFactor;
+	res.m_sheenRoughness = material.m_sheenRoughnessFactor;
+	res.m_transmission = material.m_transmissionFactor;
+	res.m_bIsOpaque = material.m_blendMode == BlendMode::Opaque;
+	res.m_thicknessFactor = material.m_thicknessFactor;
+	res.m_ior = material.m_indexOfRefraction;
 
 	if (material.HasEmissiveTexture())
 	{
@@ -2662,7 +3606,58 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 	if (material.HasNormalTexture())
 	{
 		res.m_normal = m_textures[material.m_normalIndex]->Sample<vec3>(uv);
+		res.m_normal.x *= material.m_normalScale;
+		res.m_normal.y *= material.m_normalScale;
 	}
+
+	if (material.HasClearcoatTexture())
+	{
+		res.m_clearcoatFactor *=
+			m_textures[material.m_clearcoatIndex]->Sample<vec3>(uv).r;
+	}
+
+	if (material.HasClearcoatRoughnessTexture())
+	{
+		res.m_clearcoatRoughness *=
+			m_textures[material.m_clearcoatRoughnessIndex]->Sample<vec4>(uv).g;
+	}
+
+	if (material.HasClearcoatNormalTexture())
+	{
+		res.m_clearcoatNormal =
+			m_textures[material.m_clearcoatNormalIndex]->Sample<vec3>(uv);
+		res.m_clearcoatNormal.x *= material.m_clearcoatNormalScale;
+		res.m_clearcoatNormal.y *= material.m_clearcoatNormalScale;
+	}
+
+	if (material.HasSheenColorTexture())
+	{
+		res.m_sheenColor *=
+			m_textures[material.m_sheenColorIndex]->Sample<vec3>(uv);
+	}
+
+	if (material.HasSheenRoughnessTexture())
+	{
+		res.m_sheenRoughness *=
+			m_textures[material.m_sheenRoughnessIndex]->Sample<vec4>(uv).a;
+	}
+
+	res.m_clearcoatFactor = glm::clamp(
+		res.m_clearcoatFactor,
+		0.0f,
+		1.0f);
+	res.m_clearcoatRoughness = glm::clamp(
+		res.m_clearcoatRoughness,
+		0.0f,
+		1.0f);
+	res.m_sheenColor = glm::clamp(
+		res.m_sheenColor,
+		vec3(0.0f),
+		vec3(1.0f));
+	res.m_sheenRoughness = glm::clamp(
+		res.m_sheenRoughness,
+		0.0f,
+		1.0f);
 
 	if (material.HasTransmissionTexture())
 	{
@@ -2676,7 +3671,7 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 
 	if (material.m_blendMode == BlendMode::Mask)
 	{
-		res.m_baseColor.a = res.m_baseColor.a > material.m_alphaCutoff;
+		res.m_baseColor.a = res.m_baseColor.a >= material.m_alphaCutoff;
 	}
 
 	return res;

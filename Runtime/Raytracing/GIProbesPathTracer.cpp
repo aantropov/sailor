@@ -7,6 +7,12 @@
 using namespace Sailor;
 using namespace Sailor::Raytracing;
 
+namespace
+{
+	constexpr float ProbeBakeRayNormalBias = 0.0001f;
+	constexpr float ProbeBakeRayDirectionBias = 0.0003f;
+}
+
 bool GIProbesPathTracer::Initialize(
 	const TVector<PathTracer::TLASInstance>& instances,
 	const TVector<MaterialPtr>& materials,
@@ -38,8 +44,11 @@ bool GIProbesPathTracer::Initialize(
 	m_params.m_ambient = settings.m_bIncludeSky ?
 		glm::max(fallbackEnvironment, glm::vec3(0.0f)) *
 			settings.m_skyIndirectIntensity : glm::vec3(0.0f);
-	m_params.m_rayBiasBase = settings.m_normalBias;
-	m_params.m_rayBiasScale = settings.m_viewBias;
+	// Probe interpolation biases move the runtime receiver and are authored in
+	// metres. Reusing them as a path-tracing epsilon lets secondary rays
+	// jump across thin walls and turns occluded baked lighting into light leaks.
+	m_params.m_rayBiasBase = ProbeBakeRayNormalBias;
+	m_params.m_rayBiasScale = ProbeBakeRayDirectionBias;
 	m_params.m_bRunTasksInline = true;
 	m_params.m_bIncludeDirectLighting = settings.m_bIncludeDirectLighting;
 	m_params.m_bIncludeEnvironment = settings.m_bIncludeSky;
@@ -70,6 +79,61 @@ void GIProbesPathTracer::SetEnvironmentLinear(
 	const glm::uvec2& extent)
 {
 	m_pathTracer.SetRuntimeEnvironmentLinear(image, extent);
+}
+
+bool GIProbesPathTracer::SamplePrimaryDirection(
+	const glm::vec3& uniformDirection,
+	uint32_t sampleIndex,
+	uint32_t sampleCount,
+	uint32_t randomSeed,
+	glm::vec3& outDirection,
+	float& outPdf,
+	std::string& outDiagnostic) const
+{
+	constexpr float UniformSpherePdf =
+		0.07957747154594766788f;
+	outDirection = uniformDirection;
+	outPdf = UniformSpherePdf;
+	if (!m_pathTracer.m_bUseRuntimeEnvironmentImportance ||
+		sampleCount < 2u)
+	{
+		outDiagnostic.clear();
+		return true;
+	}
+
+	const uint32_t importanceSampleCount = sampleCount / 2u;
+	const uint32_t uniformSampleCount =
+		sampleCount - importanceSampleCount;
+	const float importanceFraction =
+		static_cast<float>(importanceSampleCount) /
+		static_cast<float>(sampleCount);
+	const float uniformFraction =
+		static_cast<float>(uniformSampleCount) /
+		static_cast<float>(sampleCount);
+	float directionImportancePdf = 0.0f;
+	if ((sampleIndex & 1u) != 0u)
+	{
+		uint32_t importanceRandomState = randomSeed;
+		if (!m_pathTracer.SampleRuntimeEnvironmentImportance(
+				importanceRandomState,
+				outDirection,
+				directionImportancePdf))
+		{
+			outDiagnostic =
+				"GI probe path tracer could not sample its HDR environment distribution";
+			return false;
+		}
+	}
+	else
+	{
+		directionImportancePdf =
+			m_pathTracer.RuntimeEnvironmentImportancePdf(outDirection);
+	}
+
+	outPdf = uniformFraction * UniformSpherePdf +
+		importanceFraction * directionImportancePdf;
+	outDiagnostic.clear();
+	return std::isfinite(outPdf) && outPdf > 0.0f;
 }
 
 bool GIProbesPathTracer::Sample(

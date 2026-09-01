@@ -16,6 +16,7 @@ graphics:
       - 1024
       supportSoftShadows: true
       cloudsResolutionMultiplier: 1
+      cloudsDithering: false
       skyResolution: 512
       vegetationInstanceBudget: 16384
       lodBias: -1
@@ -35,6 +36,7 @@ graphics:
       - 1024
       supportSoftShadows: true
       cloudsResolutionMultiplier: 0.75
+      cloudsDithering: false
       skyResolution: 256
       vegetationInstanceBudget: 8192
       lodBias: 0
@@ -53,6 +55,7 @@ graphics:
       - 512
       supportSoftShadows: true
       cloudsResolutionMultiplier: 0.5
+      cloudsDithering: false
       skyResolution: 256
       vegetationInstanceBudget: 4096
       lodBias: 0
@@ -70,6 +73,7 @@ graphics:
       - 512
       supportSoftShadows: false
       cloudsResolutionMultiplier: 0.5
+      cloudsDithering: false
       skyResolution: 128
       vegetationInstanceBudget: 2048
       lodBias: 1
@@ -86,6 +90,7 @@ graphics:
       - 512
       supportSoftShadows: false
       cloudsResolutionMultiplier: 0.125
+      cloudsDithering: false
       skyResolution: 64
       vegetationInstanceBudget: 512
       lodBias: 2

@@ -4,6 +4,7 @@
 #include "AssetRegistry/Shader/ShaderYamlIncludeResolver.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "RHI/GlobalIllumination.h"
+#include "RHI/Lighting.h"
 #include "Workspace/WorkspaceCacheContract.h"
 
 #include <array>
@@ -1245,6 +1246,11 @@ namespace
 				compileRuntimeFragment(shaderPaths[shaderIndex], {});
 			if (shaderIndex < 3u)
 			{
+				RequireSpirvStorageBufferArrayStride(
+					byteCode,
+					1u,
+					0u,
+					sizeof(RHI::RHILightShaderData));
 				const RHI::ShaderByteCode vertexByteCode =
 					compileRuntimeVertex(shaderPaths[shaderIndex], {});
 				RequireSpirvStorageBufferBinding(vertexByteCode, 2u, 0u);
@@ -1301,9 +1307,17 @@ namespace
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
 			{ "ALPHA_CUTOUT" });
+		const RHI::ShaderByteCode materialExtensionsByteCode =
+			compileRuntimeFragment(
+				"Shaders/Standard_glTF.shader",
+				{ "CLEAR_COAT", "SHEEN", "TRANSMISSION" });
+		RequireSpirvCombinedImageSamplerBinding(
+			materialExtensionsByteCode,
+			1u,
+			19u);
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
-			{ "CLEAR_COAT", "SHEEN", "TRANSMISSION" });
+			{ "MATERIAL_IOR" });
 		compileRuntimeVertex(
 			"Shaders/Standard_glTF.shader",
 			{ "SKINNING", "TRANSMISSION" });
@@ -1326,6 +1340,21 @@ namespace
 			8u);
 		compileRuntimeFragment("Shaders/Debug.shader", { "CASCADES" });
 		compileRuntimeFragment("Shaders/Debug.shader", { "LIGHT_TILES" });
+		compileRuntimeFragment("Shaders/Sky.shader", { "ATMOSPHERE" });
+		compileRuntimeFragment("Shaders/Sky.shader", { "SUN" });
+		compileRuntimeFragment("Shaders/Sky.shader", { "CLOUDS" });
+		compileRuntimeFragment(
+			"Shaders/Sky.shader",
+			{ "CLOUDS", "DITHER" });
+		compileRuntimeFragment("Shaders/SunShafts.shader", {});
+		compileRuntimeFragment("Shaders/Tonemapping.shader", { "AGX" });
+		compileRuntimeFragment("Shaders/Tonemapping.shader", { "ACES" });
+		compileRuntimeFragment(
+			"Shaders/Tonemapping.shader",
+			{ "ACES", "LUMINANCE" });
+		compileRuntimeFragment(
+			"Shaders/Tonemapping.shader",
+			{ "UNCHARTED2" });
 
 		auto compileRuntimeCompute = [&contentRoot](
 			const char* computeShaderPath) -> RHI::ShaderByteCode
@@ -1373,7 +1402,30 @@ namespace
 				return computeByteCode;
 			};
 
-		compileRuntimeCompute("Shaders/ComputeLightCulling.shader");
+		const RHI::ShaderByteCode lightCullingByteCode =
+			compileRuntimeCompute("Shaders/ComputeLightCulling.shader");
+		RequireSpirvStorageBufferArrayStride(
+			lightCullingByteCode,
+			0u,
+			0u,
+			sizeof(RHI::RHILightShaderData));
+		compileRuntimeCompute("Shaders/ComputeHistogram.shader");
+		compileRuntimeCompute("Shaders/ComputeAverageLuminance.shader");
+		compileRuntimeCompute("Shaders/ComputeBloomDownscale.shader");
+		compileRuntimeCompute("Shaders/ComputeBloomUpscale.shader");
+		const RHI::ShaderByteCode brdfLutByteCode =
+			compileRuntimeCompute("Shaders/ComputeBrdfLut.shader");
+		RequireSpirvStorageImageBinding(brdfLutByteCode, 0u, 0u);
+		const RHI::ShaderByteCode sheenEnvironmentByteCode =
+			compileRuntimeCompute("Shaders/ComputeSheenEnvMap.shader");
+		RequireSpirvCombinedImageSamplerBinding(
+			sheenEnvironmentByteCode,
+			0u,
+			0u);
+		RequireSpirvStorageImageBinding(
+			sheenEnvironmentByteCode,
+			0u,
+			1u);
 		const RHI::ShaderByteCode giResolveByteCode =
 			compileRuntimeCompute("Shaders/GlobalIlluminationResolve.shader");
 		for (uint32_t binding = 12u; binding <= 14u; ++binding)

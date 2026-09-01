@@ -88,13 +88,9 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 5
-            - 5
-            - 5
-          attenuation:
-            - 1
-            - 0.0219999999
-            - 0.00190000003
+            - 5000
+            - 5000
+            - 5000
           lightType: Directional
           bounds:
             - 100
@@ -110,9 +106,9 @@ prefabs:
           m_directionalLight:
             fileId: NullFileId
             instanceId: 21EDB035AC31897E_210B5A989F3E1BF694FC
-          directionalLightIntensity:
-            - 5
-            - 5
-            - 5
+          sunIlluminance:
+            - 5000
+            - 5000
+            - 5000
           fileId: NullFileId
           instanceId: 2F509D4F456E4DAE946D4BF6EDD85E2E_210B5A989F3E1BF694FC

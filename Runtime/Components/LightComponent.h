@@ -30,7 +30,6 @@ namespace Sailor
 		{
 			return GetData().m_globalIlluminationMode;
 		}
-		SAILOR_API __forceinline const glm::vec3& GetAttenuation() const { return GetData().m_attenuation; }
 		SAILOR_API __forceinline float GetRadius() const { return GetData().m_radius; }
 		SAILOR_API __forceinline const glm::vec2& GetCutOff() const { return GetData().m_cutOff; }
 		SAILOR_API __forceinline ELightType GetLightType() const { return (ELightType)GetData().m_type; }
@@ -43,7 +42,6 @@ namespace Sailor
 		SAILOR_API void SetIndirectLightingIntensity(float value);
 		SAILOR_API void SetGlobalIlluminationMode(
 			ELightGlobalIlluminationMode value);
-		SAILOR_API void SetAttenuation(const glm::vec3& value);
 		SAILOR_API void SetRadius(float value);
 		SAILOR_API void SetLightType(ELightType value);
 		SAILOR_API void SetShadowType(RHI::EShadowType value);
@@ -69,9 +67,6 @@ REFL_AUTO(
 	func(SetIndirectLightingIntensity, property("indirectLightingIntensity"), SkipCDO()),
 	func(GetGlobalIlluminationMode, property("globalIlluminationMode"), SkipCDO()),
 	func(SetGlobalIlluminationMode, property("globalIlluminationMode"), SkipCDO()),
-
-	func(GetAttenuation, property("attenuation"), SkipCDO()),
-	func(SetAttenuation, property("attenuation"), SkipCDO()),
 
 	func(GetRadius, property("radius"), SkipCDO()),
 	func(SetRadius, property("radius"), SkipCDO()),

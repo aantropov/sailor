@@ -46,7 +46,7 @@ prefabs:
             - 0
           boxScale: 60
           rotationSpeedDeg: 0
-          directionalLightIntensity: 17
+          directionalLightIlluminance: 17000
           spawnPointLights: false
           fileId: NullFileId
           instanceId: 4A67E063B315A44100E1A2FF5E091BF9_9FD54079743D95319187

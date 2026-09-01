@@ -2,6 +2,7 @@
 
 #include "Math/Math.h"
 
+#include <cstddef>
 #include <cstdint>
 
 namespace Sailor::RHI
@@ -17,8 +18,11 @@ namespace Sailor::RHI
 		alignas(16) glm::vec3 m_worldPosition{};
 		alignas(16) glm::vec3 m_direction{};
 		alignas(16) glm::vec3 m_intensity{};
-		alignas(16) glm::vec3 m_attenuation{};
 		alignas(16) glm::vec2 m_cutOff{};
 		alignas(16) glm::vec3 m_bounds{};
 	};
+
+	static_assert(offsetof(RHILightShaderData, m_cutOff) == 64u);
+	static_assert(offsetof(RHILightShaderData, m_bounds) == 80u);
+	static_assert(sizeof(RHILightShaderData) == 96u);
 }

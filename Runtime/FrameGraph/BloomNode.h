@@ -28,7 +28,7 @@ namespace Sailor::Framegraph
 
 		struct PushConstantsDownscale
 		{
-			glm::vec4  m_threshold; // x -> threshold, yzw -> (threshold - knee, 2.0 * knee, 0.25 * knee)
+			glm::vec4  m_threshold; // x -> threshold, yzw -> (threshold - knee, 2.0 * knee, 0.25 / knee)
 			bool	   m_useThreshold;
 		};
 
@@ -37,6 +37,7 @@ namespace Sailor::Framegraph
 			uint32_t  m_mipLevel;
 			float	  m_bloomIntensity;
 			float	  m_dirtIntensity;
+			float	  m_scatter;
 		};
 	};
 

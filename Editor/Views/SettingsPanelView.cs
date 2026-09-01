@@ -918,6 +918,7 @@ public sealed class SettingsPanelView : ContentView
         readonly Entry _shadowCascadeResolutions;
         readonly Switch _supportSoftShadows;
         readonly Entry _cloudsResolutionMultiplier;
+        readonly Switch _cloudsDithering;
         readonly Entry _skyResolution;
         readonly Entry _vegetationInstanceBudget;
         readonly Entry _lodBias;
@@ -955,6 +956,14 @@ public sealed class SettingsPanelView : ContentView
             _supportSoftShadows.Toggled += (_, _) => _changed();
             _cloudsResolutionMultiplier = CreateEntry(
                 draft.CloudsResolutionMultiplier);
+            _cloudsDithering = new Switch
+            {
+                IsToggled = draft.CloudsDithering,
+                Scale = 0.8,
+                HeightRequest = 30,
+                HorizontalOptions = LayoutOptions.End
+            };
+            _cloudsDithering.Toggled += (_, _) => _changed();
             _skyResolution = CreateEntry(draft.SkyResolution);
             _vegetationInstanceBudget = CreateEntry(
                 draft.VegetationInstanceBudget);
@@ -986,6 +995,7 @@ public sealed class SettingsPanelView : ContentView
                 _shadowCascadeResolutions.Text ?? string.Empty,
                 _supportSoftShadows.IsToggled,
                 _cloudsResolutionMultiplier.Text ?? string.Empty,
+                _cloudsDithering.IsToggled,
                 _skyResolution.Text ?? string.Empty,
                 _vegetationInstanceBudget.Text ?? string.Empty,
                 _lodBias.Text ?? string.Empty,
@@ -1008,6 +1018,7 @@ public sealed class SettingsPanelView : ContentView
                     CreatePresetField("Cascade Resolutions", "Comma-separated powers of two, one per active cascade", _shadowCascadeResolutions),
                     CreatePresetField("Soft Shadows", "Enable soft shadow filtering", _supportSoftShadows),
                     CreatePresetField("Clouds Resolution Multiplier", "0.0625–2.0", _cloudsResolutionMultiplier),
+                    CreatePresetField("Clouds Dithering", "Render interleaved cloud samples", _cloudsDithering),
                     CreatePresetField("Sky Resolution", "Power of two, 32–8192", _skyResolution),
                     CreatePresetField("Vegetation Instance Budget", "Global active grass instances, 0–1048576", _vegetationInstanceBudget),
                     CreatePresetField("LOD Bias", "Signed index shift, -8 (finer) to +8 (coarser)", _lodBias),
@@ -1161,6 +1172,7 @@ public sealed class SettingsPanelView : ContentView
                 ShadowCascadeResolutions = cascadeResolutions,
                 SupportSoftShadows = _supportSoftShadows.IsToggled,
                 CloudsResolutionMultiplier = cloudsResolutionMultiplier,
+                CloudsDithering = _cloudsDithering.IsToggled,
                 SkyResolution = skyResolution,
                 VegetationInstanceBudget = vegetationInstanceBudget,
                 LodBias = lodBias,

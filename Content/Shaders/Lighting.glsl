@@ -14,6 +14,11 @@ const uint SHADOW_MAP_INDEX_MASK = 0x7FFFFFFFu;
 
 uint GetDirectionalCascadeShadowType(uint lightShadowType, int cascadeLayer)
 {
+  if (lightShadowType == SHADOW_TYPE_NONE)
+  {
+    return SHADOW_TYPE_NONE;
+  }
+
   // The renderer stores the near cascade using the light's requested mode,
   // while all wider cascades use depth-only PCF maps. Sampling a PCF map as
   // EVSM moments produces a dark band during the cross-cascade blend.
@@ -30,7 +35,6 @@ struct LightData
   vec3 worldPosition;
   vec3 direction;
   vec3 intensity;
-  vec3 attenuation;
   vec2 cutOff;
   vec3 bounds;
 };
@@ -38,7 +42,6 @@ struct LightData
 const uint INVALID_LIGHT_TYPE = 0xFFFFFFFFu;
 const uint LIGHT_TILE_OVERFLOW_BIT = 0x80000000u;
 const uint LIGHT_TILE_COUNT_MASK = 0x7FFFFFFFu;
-const float SCREEN_SPACE_AO_DIRECT_LIGHTING_STRENGTH = 0.5f;
 
 layout(std430)
 struct LightsGrid
@@ -64,34 +67,147 @@ float CalculateLocalLightRangeAttenuation(LightData light, float distanceToLight
 {
   const float safeRadius = max(light.bounds.x, 0.00001f);
   const float normalizedDistance = clamp(distanceToLight / safeRadius, 0.0f, 1.0f);
-  const float squaredDistance = distanceToLight * distanceToLight;
-  const float attenuation = 1.0f / max(
-    light.attenuation.x +
-      light.attenuation.y * distanceToLight +
-      light.attenuation.z * squaredDistance,
-    0.00001f);
+  const float minimumDistance = 0.01f;
+  const float safeDistance = max(distanceToLight, minimumDistance);
+  const float inverseSquareFalloff = 1.0f / (safeDistance * safeDistance);
 
-  // Radius is the actual light range in world metres. Preserve the configured
-  // attenuation throughout that range and only soften the final edge so tile
-  // rejection reaches zero without visibly shrinking the light volume.
-  const float rangeWindow = 1.0f - smoothstep(0.9f, 1.0f, normalizedDistance);
-  return attenuation * rangeWindow;
+  // Radius is a culling range in world metres, not a brightness parameter.
+  // This is the KHR_lights_punctual range window: inverse-square falloff is
+  // preserved near the source and reaches zero with a continuous derivative.
+  const float normalizedDistanceSquared =
+    normalizedDistance * normalizedDistance;
+  const float rangeBase = clamp(
+    1.0f - normalizedDistanceSquared * normalizedDistanceSquared,
+    0.0f,
+    1.0f);
+  const float rangeWindow = rangeBase * rangeBase;
+  return inverseSquareFalloff * rangeWindow;
 }
+
+float CalculateSpotLightAngularAttenuation(
+  LightData light,
+  vec3 surfaceToLightDirection)
+{
+  const float coneRange = max(light.cutOff.x - light.cutOff.y, 0.00001f);
+  const float actualCosine = dot(
+    surfaceToLightDirection,
+    normalize(-light.direction));
+  const float angularBase = clamp(
+    (actualCosine - light.cutOff.y) / coneRange,
+    0.0f,
+    1.0f);
+  return angularBase * angularBase;
+}
+
+vec3 CalculateLambertDiffuseBRDF(vec3 diffuseWeight, vec3 albedo)
+{
+  return diffuseWeight * albedo / PI;
+}
+
+vec3 NormalizeOrFallback(vec3 value, vec3 fallback)
+{
+  const float lengthSquared = dot(value, value);
+  return lengthSquared > 1e-12 ?
+    value * inversesqrt(lengthSquared) :
+    fallback;
+}
+
+#ifdef FRAGMENT
+void ResolveFragmentSurfaceGeometry(
+  vec3 worldPosition,
+  vec3 surfaceToCamera,
+  vec3 interpolatedNormal,
+  mat3 interpolatedTangentBasis,
+  out vec3 geometricNormal,
+  out vec3 vertexNormal,
+  out mat3 tangentBasis)
+{
+  const vec3 derivativeNormal = cross(
+    dFdx(worldPosition),
+    dFdy(worldPosition));
+  const float derivativeLengthSquared = dot(
+    derivativeNormal,
+    derivativeNormal);
+  const vec3 interpolatedNormalFallback = NormalizeOrFallback(
+    interpolatedNormal,
+    vec3(0.0, 1.0, 0.0));
+  geometricNormal = derivativeLengthSquared > 1e-12 ?
+    derivativeNormal * inversesqrt(derivativeLengthSquared) :
+    interpolatedNormalFallback;
+  if(dot(geometricNormal, surfaceToCamera) < 0.0)
+  {
+    geometricNormal *= -1.0;
+  }
+  vertexNormal = NormalizeOrFallback(
+    interpolatedNormal,
+    geometricNormal);
+  tangentBasis = interpolatedTangentBasis;
+  if(dot(vertexNormal, geometricNormal) < 0.0)
+  {
+    vertexNormal *= -1.0;
+    tangentBasis[1] *= -1.0;
+  }
+
+  vec3 tangent = tangentBasis[0] -
+    vertexNormal * dot(vertexNormal, tangentBasis[0]);
+  const float tangentLengthSquared = dot(tangent, tangent);
+  if(tangentLengthSquared <= 1e-12)
+  {
+    const vec3 fallbackAxis = abs(vertexNormal.y) < 0.999
+      ? vec3(0.0, 1.0, 0.0)
+      : vec3(1.0, 0.0, 0.0);
+    tangent = cross(fallbackAxis, vertexNormal);
+  }
+  tangent = normalize(tangent);
+  const vec3 canonicalBitangent = normalize(cross(vertexNormal, tangent));
+  const float handedness = dot(
+    canonicalBitangent,
+    tangentBasis[1]) < 0.0 ? -1.0 : 1.0;
+  tangentBasis = mat3(
+    tangent,
+    canonicalBitangent * handedness,
+    vertexNormal);
+}
+
+vec3 KeepShadingNormalOnGeometricSurface(
+  vec3 shadingNormal,
+  vec3 geometricNormal)
+{
+  const float geometricCosine = dot(shadingNormal, geometricNormal);
+  return normalize(shadingNormal -
+    2.0 * min(geometricCosine, 0.0) * geometricNormal);
+}
+#endif
 
 // Importance sample GGX normal distribution function for a fixed roughness value.
 // This returns normalized half-vector between Li & Lo.
 // For derivation see: http://blog.tobias-franke.eu/2014/03/30/notes_on_importance_sampling.html
 vec3 SampleGGX(float u1, float u2, float roughness)
 {
-  float alpha = roughness * roughness;
+  float alpha = max(roughness * roughness, 0.001);
 
   float cosTheta = sqrt((1.0 - u2) / (1.0 + (alpha*alpha - 1.0) * u2));
-  float sinTheta = sqrt(1.0 - cosTheta*cosTheta); // Trig. identity
+  float sinTheta = sqrt(max(1.0 - cosTheta*cosTheta, 0.0)); // Trig. identity
   float phi = TwoPI * u1;
 
   // Convert to Cartesian upon return.
   return vec3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
-}  
+}
+
+// Importance sample the Charlie distribution used by KHR_materials_sheen.
+vec3 SampleCharlie(float u1, float u2, float roughness)
+{
+  const float alpha = max(roughness * roughness, 0.000001);
+  const float sinTheta = pow(
+    clamp(u2, 0.000001, 0.999999),
+    alpha / (2.0 * alpha + 1.0));
+  const float cosTheta = sqrt(max(1.0 - sinTheta * sinTheta, 0.0));
+  const float phi = TwoPI * u1;
+  return vec3(
+    sinTheta * cos(phi),
+    sinTheta * sin(phi),
+    cosTheta);
+}
 
 // GGX/Towbridge-Reitz normal distribution function.
 // Uses Disney's reparametrization of alpha = roughness^2.
@@ -104,53 +220,142 @@ float NdfGGX(float cosLh, float roughness)
   return alphaSq / max(PI * denom * denom, 1e-7);
 }
 
-// Single term for separable Schlick-GGX below.
-float GeometrySchlickG1(float cosTheta, float k)
+// Height-correlated Smith masking-shadowing for isotropic GGX.
+float GeometrySmithGGXCorrelated(float cosLi, float cosLo, float roughness)
 {
-  return cosTheta / (cosTheta * (1.0 - k) + k);
-}
+  const float nDotL = clamp(cosLi, 0.0, 1.0);
+  const float nDotV = clamp(cosLo, 0.0, 1.0);
+  if(nDotL <= 0.0 || nDotV <= 0.0)
+  {
+    return 0.0;
+  }
 
-// Schlick-GGX approximation of geometric attenuation function using Smith's method.
-float GeometrySchlickGGX(float cosLi, float cosLo, float roughness)
-{
-  float r = roughness + 1.0;
-  float k = (r * r) / 8.0; // Epic suggests using this roughness remapping for analytic lights.
-  return GeometrySchlickG1(cosLi, k) * GeometrySchlickG1(cosLo, k);
+  const float alpha = max(roughness * roughness, 0.001);
+  const float alphaSq = alpha * alpha;
+  const float lambdaV = nDotL * sqrt(
+    nDotV * nDotV * (1.0 - alphaSq) + alphaSq);
+  const float lambdaL = nDotV * sqrt(
+    nDotL * nDotL * (1.0 - alphaSq) + alphaSq);
+  return 2.0 * nDotL * nDotV /
+    max(lambdaV + lambdaL, 1e-7);
 }
 
 // Charlie microfacet normal distribution function used for cloth-like sheen.
 float NdfCharlie(float cosLh, float roughness)
 {
-  float alpha = max(roughness, 0.001);
+  const float alpha = max(roughness * roughness, 0.000001);
   float invAlpha = 1.0 / alpha;
   float cos2h = cosLh * cosLh;
-  float sin2h = max(1.0 - cos2h, 0.0078125);
+  float sin2h = max(1.0 - cos2h, 0.0);
   return (2.0 + invAlpha) * pow(sin2h, 0.5 * invAlpha) / (2.0 * PI);
 }
 
-// Neubelt visibility term for cloth-like sheen.
-float GeometryNeubelt(float cosLi, float cosLo)
+float LambdaSheenNumericHelper(float cosine, float alpha)
 {
-  return 1.0 / (4.0 * (cosLi + cosLo - cosLi * cosLo));
+  const float oneMinusAlphaSquared =
+    (1.0 - alpha) * (1.0 - alpha);
+  const float a = mix(21.5473, 25.3245, oneMinusAlphaSquared);
+  const float b = mix(3.82987, 3.32435, oneMinusAlphaSquared);
+  const float c = mix(0.19823, 0.16801, oneMinusAlphaSquared);
+  const float d = mix(-1.97760, -1.27393, oneMinusAlphaSquared);
+  const float e = mix(-4.32054, -4.85967, oneMinusAlphaSquared);
+  const float x = clamp(cosine, 0.0, 1.0);
+  return a / (1.0 + b * pow(x, c)) + d * x + e;
 }
 
-// Schlick-GGX approximation of geometric attenuation function using Smith's method (IBL version).
-float GeometrySchlickGGX_IBL(float cosLi, float cosLo, float roughness)
+float LambdaSheen(float cosine, float alpha)
 {
-  float r = roughness;
-  float k = (r * r) / 2.0; // Epic suggests using this roughness remapping for IBL lighting.
-  return GeometrySchlickG1(cosLi, k) * GeometrySchlickG1(cosLo, k);
+  const float x = clamp(abs(cosine), 0.0, 1.0);
+  return x < 0.5 ?
+    exp(LambdaSheenNumericHelper(x, alpha)) :
+    exp(
+      2.0 * LambdaSheenNumericHelper(0.5, alpha) -
+      LambdaSheenNumericHelper(1.0 - x, alpha));
 }
-  
-// Shlick's approximation of the Fresnel factor.
+
+// Charlie masking-shadowing visibility fitted to the production sheen model.
+float VisibilitySheen(float cosLi, float cosLo, float roughness)
+{
+  const float clampedCosLi = clamp(cosLi, 0.0, 1.0);
+  const float clampedCosLo = clamp(cosLo, 0.0, 1.0);
+  if(clampedCosLi <= 0.0 || clampedCosLo <= 0.0)
+  {
+    return 0.0;
+  }
+
+  const float alpha = max(roughness * roughness, 0.000001);
+  const float denominator =
+    (1.0 +
+      LambdaSheen(clampedCosLo, alpha) +
+      LambdaSheen(clampedCosLi, alpha)) *
+    4.0 * clampedCosLo * clampedCosLi;
+  return 1.0 / max(denominator, 1e-7);
+}
+
+// Schlick's approximation of the Fresnel factor.
 vec3 FresnelSchlick(vec3 F0, float cosTheta)
 {
-  return F0 + (vec3(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
+  const vec3 clampedF0 = clamp(F0, vec3(0.0), vec3(1.0));
+  const float clampedCosine = clamp(cosTheta, 0.0, 1.0);
+  return clampedF0 + (vec3(1.0) - clampedF0) *
+    pow(1.0 - clampedCosine, 5.0);
+}
+
+float FresnelDielectric(float cosTheta, float fromIor, float toIor)
+{
+  const float etaI = max(fromIor, 0.0001);
+  const float etaT = max(toIor, 0.0001);
+  if(abs(etaI - etaT) <= 0.0001)
+  {
+    return 0.0;
+  }
+  // KHR_materials_ior uses zero as the specular-glossiness compatibility
+  // value. The importer represents its effective infinite IOR with 1e6.
+  if(etaI >= 100000.0 || etaT >= 100000.0)
+  {
+    return 1.0;
+  }
+
+  const float cosThetaI = clamp(abs(cosTheta), 0.0, 1.0);
+  const float sinThetaISquared = max(
+    0.0,
+    1.0 - cosThetaI * cosThetaI);
+  const float eta = etaI / etaT;
+  const float sinThetaTSquared =
+    eta * eta * sinThetaISquared;
+  if(sinThetaTSquared >= 1.0)
+  {
+    return 1.0;
+  }
+
+  const float cosThetaT = sqrt(max(
+    0.0,
+    1.0 - sinThetaTSquared));
+  const float parallelNumerator =
+    etaT * cosThetaI - etaI * cosThetaT;
+  const float parallelDenominator =
+    etaT * cosThetaI + etaI * cosThetaT;
+  const float perpendicularNumerator =
+    etaI * cosThetaI - etaT * cosThetaT;
+  const float perpendicularDenominator =
+    etaI * cosThetaI + etaT * cosThetaT;
+  const float parallel = abs(parallelDenominator) > 0.0001 ?
+    parallelNumerator / parallelDenominator : 1.0;
+  const float perpendicular = abs(perpendicularDenominator) > 0.0001 ?
+    perpendicularNumerator / perpendicularDenominator : 1.0;
+  return clamp(
+    0.5 * (parallel * parallel + perpendicular * perpendicular),
+    0.0,
+    1.0);
 }
 
 vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
 {
-    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+    const vec3 clampedF0 = clamp(F0, vec3(0.0), vec3(1.0));
+    const float clampedRoughness = clamp(roughness, 0.0, 1.0);
+    return clampedF0 +
+      (max(vec3(1.0 - clampedRoughness), clampedF0) - clampedF0) *
+      pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 } 
 
 // Screen-space ambient occlusion describes the visibility of indirect light.
@@ -165,16 +370,10 @@ float CalculateSpecularOcclusion(float ambientOcclusion, float cosLo, float roug
   return clamp(pow(nDotV + ao, exponent) - 1.0 + ao, 0.0, 1.0);
 }
 
-// A bounded direct-lighting contribution turns screen-space AO into a useful
-// contact shadow even in scenes where analytic lights dominate the IBL.
-// Keep the strength bounded so emissive lighting and authored light shadows
-// remain the primary sources of contrast.
-float CalculateDirectLightingOcclusion(float ambientOcclusion)
+float CalculateSpecularEnvironmentLod(int mipLevelCount, float roughness)
 {
-  return mix(
-    1.0,
-    clamp(ambientOcclusion, 0.0, 1.0),
-    SCREEN_SPACE_AO_DIRECT_LIGHTING_STRENGTH);
+  const int maximumMipLevel = max(mipLevelCount - 1, 0);
+  return clamp(roughness, 0.0, 1.0) * float(maximumMipLevel);
 }
 
 vec4 GaussianBlur_Evsm(sampler2D textureSampler, vec2 uv, vec2 texelSize, ivec2 radius)
@@ -579,25 +778,13 @@ float CalculateDirectionalShadow(
 vec3 OffsetDirectionalShadowReceiver(
   vec3 worldPosition,
   vec3 surfaceNormal,
-  vec3 surfaceToLightDirection,
-  float receiverBiasScale)
+  vec3 surfaceToLightDirection)
 {
   const vec3 normal = normalize(surfaceNormal);
   const vec3 toLight = normalize(surfaceToLightDirection);
   const float cosTheta = clamp(dot(normal, toLight), 0.0f, 1.0f);
   const float sinTheta = sqrt(max(1.0f - cosTheta * cosTheta, 0.0f));
   return worldPosition +
-    receiverBiasScale * (
-      toLight * SHADOW_RECEIVER_LIGHT_OFFSET +
-      normal * (SHADOW_RECEIVER_NORMAL_OFFSET * sinTheta));
-}
-
-float GetDirectionalShadowReceiverBiasScale(
-  uint shadowType,
-  float configuredBias)
-{
-  // The quality setting is explicitly a PCF bias. Preserve the established
-  // receiver offset for the EVSM near cascade while making PCF receivers,
-  // including Landscape, follow the active profile.
-  return shadowType == SHADOW_TYPE_PCF ? configuredBias : 1.0f;
+    toLight * SHADOW_RECEIVER_LIGHT_OFFSET +
+    normal * (SHADOW_RECEIVER_NORMAL_OFFSET * sinTheta);
 }

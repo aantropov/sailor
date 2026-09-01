@@ -2,7 +2,6 @@
 includes:
 - Shaders/Constants.glsl
 - Shaders/Math.glsl
-- Shaders/Lighting.glsl
 
 defines:
 - ALPHA_CUTOUT
@@ -11,16 +10,6 @@ glslCommon: |
   #extension GL_ARB_separate_shader_objects : enable
 
 glslVertex: |
-  struct LightData
-  {
-      vec3 worldPosition;
-      vec3 direction;
-      vec3 intensity;
-      vec3 attenuation;
-      vec4 bounds;
-      int type;
-  };
-  
   struct PerInstanceData
   {
       mat4 model;
@@ -60,11 +49,6 @@ glslVertex: |
       float currentTime;
       float deltaTime;
   } previousFrame;
-  
-  layout(std140, set = 1, binding = 0) readonly buffer LightDataSSBO
-  {
-      LightData instance[];
-  } light;
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {

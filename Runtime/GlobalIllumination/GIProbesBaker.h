@@ -24,6 +24,17 @@ namespace Sailor
 	{
 	public:
 		virtual ~IGIProbeBakeRaySampler() = default;
+		// The default keeps the deterministic uniform-sphere sequence. HDR-aware
+		// samplers may replace individual directions and must return the PDF of
+		// the complete direction mixture used by the bake.
+		virtual bool SamplePrimaryDirection(
+			const glm::vec3& uniformDirection,
+			uint32_t sampleIndex,
+			uint32_t sampleCount,
+			uint32_t randomSeed,
+			glm::vec3& outDirection,
+			float& outPdf,
+			std::string& outDiagnostic) const;
 		// Bake may call Sample concurrently when the request uses more than one
 		// thread. Implementations must treat their prepared scene as immutable.
 		virtual bool Sample(

@@ -116,15 +116,25 @@ glslFragment: |
     material.metallic = 0.0;
     material.ao = texture(g_aoSampler, viewportUv).r;
 
-    const vec3 geometricNormal = normalize(vin.normal);
-    vec3 normal = geometricNormal;
+    vec3 geometricNormal;
+    vec3 normal;
+    mat3 tangentBasis;
+    ResolveFragmentSurfaceGeometry(
+      vin.worldPosition,
+      -viewDirection,
+      vin.normal,
+      vin.tangentBasis,
+      geometricNormal,
+      normal,
+      tangentBasis);
 
     const ForwardPbrMaterial forwardMaterial = ForwardPbrMaterial(
       material.albedo.xyz,
       material.metallic,
       material.roughness,
       material.ao,
-      1.0);
+      1.0,
+      1.5);
 
     // Angle between surface normal and outgoing light direction.
     float cosLo = max(0.0, dot(normal, -viewDirection));
@@ -173,15 +183,12 @@ glslFragment: |
           light.instance[index],
           index,
           forwardMaterial,
-          F0,
           -viewDirection,
           cosLo,
           normal,
+          geometricNormal,
           vin.worldPosition);
       }
-      outColor.xyz = indirectLighting +
-        (outColor.xyz - indirectLighting) *
-        CalculateDirectLightingOcclusion(material.ao);
     }
 
     outColor.a = material.albedo.a;

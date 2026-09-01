@@ -282,9 +282,9 @@ glm::vec3 GlobalIlluminationLandscapeTestScene::GetEveningLightDirection()
 		std::cos(sunAngleRadians)));
 }
 
-glm::vec3 GlobalIlluminationLandscapeTestScene::GetEveningLightIntensity()
+glm::vec3 GlobalIlluminationLandscapeTestScene::GetEveningSunIlluminance()
 {
-	return glm::vec3(24.0f, 12.0f, 5.0f);
+	return glm::vec3(24000.0f, 12000.0f, 5000.0f);
 }
 
 glm::vec3 GlobalIlluminationLandscapeTestScene::GetReceiverEvidencePoint()

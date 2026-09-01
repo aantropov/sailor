@@ -1,13 +1,7 @@
-includes:
-- Shaders/Constants.glsl
-- Shaders/Math.glsl
-- Shaders/Lighting.glsl
-
 defines: []
 glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable
-  #extension GL_EXT_shader_atomic_float : enable
 
 glslCompute: |  
   // The code below taken from the next source: https://bruop.github.io/exposure/
@@ -16,21 +10,25 @@ glslCompute: |
   	 uint data[];
   } histogram;  
   
-  layout(set = 0, binding = 1, r16f) uniform image2D s_texColor;
+  layout(set = 0, binding = 1, r32f) uniform image2D s_texColor;
   
   layout(push_constant) uniform Constants
   {
   	float minLog2Luminance;
     float log2LuminanceRange;
-    float numPixels;
-    float timeCoeff;
+    float lowPercentile;
+    float highPercentile;
+    float minEV100;
+    float maxEV100;
+    float deltaTime;
+    float speedUp;
+    float speedDown;
+    float padding0;
+    float padding1;
+    float padding2;
   } PushConstants;
   
   #define GROUP_SIZE 256
-  
-  #define EPSILON 0.005
-  // Taken from RTR vol 4 pg. 278
-  #define RGB_TO_LUM vec3(0.2125, 0.7154, 0.0721)
   
   // Shared histogram buffer used for storing intermediate sums for each work group
   shared uint histogramShared[GROUP_SIZE];
@@ -38,41 +36,84 @@ glslCompute: |
   layout(local_size_x = GROUP_SIZE, local_size_y = 1, local_size_z = 1) in; 
   void main() 
   {
-    // Get the count from the histogram buffer
     uint countForThisBin = histogram.data[gl_LocalInvocationIndex];
-    histogramShared[gl_LocalInvocationIndex] = countForThisBin * gl_LocalInvocationIndex;
+    histogramShared[gl_LocalInvocationIndex] = countForThisBin;
     
     barrier();
     
     // Reset the count stored in the buffer in anticipation of the next pass
     histogram.data[gl_LocalInvocationIndex] = 0;
     
-    // This loop will perform a weighted count of the luminance range
-    for (uint cutoff = (GROUP_SIZE >> 1); cutoff > 0; cutoff >>= 1) 
+    // A tiny number of black pixels or highlights such as the sun disk must not
+    // steer exposure for the whole frame. Process the 256-bin histogram once
+    // and average only the configured percentile interval.
+    if (all(equal(gl_GlobalInvocationID.xy, uvec2(0))))
     {
-        if (uint(gl_LocalInvocationIndex) < cutoff) 
+        uint nonBlackCount = 0;
+        for(uint index = 1; index < GROUP_SIZE; ++index)
         {
-            histogramShared[gl_LocalInvocationIndex] += histogramShared[gl_LocalInvocationIndex + cutoff];
+            nonBlackCount += histogramShared[index];
         }
-    
-        barrier();
-    }
-    
-    // We only need to calculate this once, so only a single thread is needed.
-    if (gl_GlobalInvocationID.xy == vec2(0,0)) 
-    {
-        // Here we take our weighted sum and divide it by the number of pixels
-        // that had luminance greater than zero (since the index == 0, we can
-        // use countForThisBin to find the number of black pixels)
-        float weightedLogAverage = (histogramShared[0] / max(PushConstants.numPixels - float(countForThisBin), 1.0)) - 1.0;
-    
-        // Map from our histogram space to actual luminance
-        float weightedAvgLum = exp2(((weightedLogAverage / 254.0) * PushConstants.log2LuminanceRange) + PushConstants.minLog2Luminance);
-    
-        // The new stored value will be interpolated using the last frames value
-        // to prevent sudden shifts in the exposure.
+
+        // EV100 = log2(8 * luminance) for ISO 100 reflected-light metering.
+        // Clamping the target EV bounds how far a dark view may lift the night
+        // sky and keeps physically authored daylight values inside the meter.
+        const float minLuminance = exp2(PushConstants.minEV100) / 8.0f;
+        const float maxLuminance = exp2(PushConstants.maxEV100) / 8.0f;
+        float weightedAvgLum = minLuminance;
+        if(nonBlackCount > 0)
+        {
+            const float lowRank = float(nonBlackCount) *
+              clamp(PushConstants.lowPercentile, 0.0f, 1.0f);
+            const float highRank = float(nonBlackCount) *
+              clamp(PushConstants.highPercentile, 0.0f, 1.0f);
+            float cumulative = 0.0f;
+            float includedCount = 0.0f;
+            float weightedBins = 0.0f;
+            for(uint index = 1; index < GROUP_SIZE; ++index)
+            {
+                const float count = float(histogramShared[index]);
+                const float nextCumulative = cumulative + count;
+                const float included = max(
+                  min(nextCumulative, highRank) - max(cumulative, lowRank),
+                  0.0f);
+                includedCount += included;
+                weightedBins += included * float(index);
+                cumulative = nextCumulative;
+            }
+
+            const float weightedLogAverage =
+              weightedBins / max(includedCount, 1.0f) - 1.0f;
+            weightedAvgLum = exp2(
+              (weightedLogAverage / 254.0f) *
+                PushConstants.log2LuminanceRange +
+              PushConstants.minLog2Luminance);
+        }
+
+        weightedAvgLum = clamp(
+          weightedAvgLum,
+          min(minLuminance, maxLuminance),
+          max(minLuminance, maxLuminance));
+
         float lumLastFrame = imageLoad(s_texColor, ivec2(0, 0)).x;
-        float adaptedLum = lumLastFrame + (weightedAvgLum - lumLastFrame) * PushConstants.timeCoeff;
+        float adaptedLum = weightedAvgLum;
+        if(lumLastFrame > 0.0f &&
+           !isnan(lumLastFrame) && !isinf(lumLastFrame))
+        {
+            const float lastLogLuminance = log2(lumLastFrame);
+            const float targetLogLuminance = log2(weightedAvgLum);
+            const float adaptationSpeed = targetLogLuminance > lastLogLuminance
+              ? PushConstants.speedUp
+              : PushConstants.speedDown;
+            const float timeCoeff = clamp(
+              1.0f - exp2(-PushConstants.deltaTime * adaptationSpeed),
+              0.0f,
+              1.0f);
+            adaptedLum = exp2(mix(
+              lastLogLuminance,
+              targetLogLuminance,
+              timeCoeff));
+        }
         imageStore(s_texColor, ivec2(0, 0), vec4(adaptedLum, 0.0, 0.0, 0.0));
     }
   } 

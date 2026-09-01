@@ -115,7 +115,7 @@ void ShadowVisualTestSetupComponent::SpawnLights()
 			glm::vec3(0.0f, 1.0f, 0.0f)));
 		auto light = gameObject->AddComponent<LightComponent>();
 		light->SetLightType(ELightType::Directional);
-		light->SetIntensity(glm::vec3(4.0f));
+		light->SetIntensity(glm::vec3(4000.0f));
 		light->SetShadowType(RHI::EShadowType::PCF);
 	}
 
@@ -125,8 +125,7 @@ void ShadowVisualTestSetupComponent::SpawnLights()
 		gameObject->GetTransformComponent().SetPosition(glm::vec4(-38.0f, 30.0f, 34.0f, 1.0f));
 		auto light = gameObject->AddComponent<LightComponent>();
 		light->SetLightType(ELightType::Point);
-		light->SetIntensity(glm::vec3(8.0f, 4.8f, 2.8f));
-		light->SetAttenuation(glm::vec3(1.0f, 0.0f, 0.0f));
+		light->SetIntensity(glm::vec3(30000.0f, 18000.0f, 10500.0f));
 		light->SetRadius(220.0f);
 		light->SetShadowType(RHI::EShadowType::PCF);
 		light->SetShadowQuality(ELightShadowQuality::Medium);
@@ -144,8 +143,7 @@ void ShadowVisualTestSetupComponent::SpawnLights()
 			glm::vec3(0.0f, 1.0f, 0.0f)));
 		auto light = gameObject->AddComponent<LightComponent>();
 		light->SetLightType(ELightType::Spot);
-		light->SetIntensity(glm::vec3(4.0f, 6.0f, 10.0f));
-		light->SetAttenuation(glm::vec3(1.0f, 0.0f, 0.0f));
+		light->SetIntensity(glm::vec3(20000.0f, 30000.0f, 50000.0f));
 		light->SetRadius(220.0f);
 		light->SetCutOff(glm::vec2(32.0f, 52.0f));
 		light->SetShadowType(RHI::EShadowType::PCF);
@@ -159,7 +157,7 @@ void ShadowVisualTestSetupComponent::EnsureSky()
 	auto skyObject = GetWorld()->Instantiate("ShadowTestSky");
 	auto sky = skyObject->AddComponent<SkyComponent>();
 	sky->SetAmbient(0.0f);
-	sky->SetSunIntensity(0.0f);
+	sky->SetCloudScatteringScale(0.0f);
 	sky->SetCloudsCoverage(0.0f);
 }
 

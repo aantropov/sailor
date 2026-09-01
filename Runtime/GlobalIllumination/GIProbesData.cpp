@@ -101,6 +101,31 @@ uint64_t Sailor::ComputeGIProbesLayoutHash(
 	return hash;
 }
 
+float Sailor::CalculateGIProbeVisibilityMaxDistance(
+	const GIProbesData& data,
+	const GIProbeBrick& brick) noexcept
+{
+	const glm::uvec3 cellCounts = glm::max(
+		brick.m_probeCounts,
+		glm::uvec3(2u)) - glm::uvec3(1u);
+	const glm::vec3 cellExtent =
+		(brick.m_max - brick.m_min) / glm::vec3(cellCounts);
+	float cellDiagonal = glm::length(cellExtent);
+	if (!std::isfinite(cellDiagonal) || cellDiagonal <= 0.0f)
+	{
+		cellDiagonal = data.m_bakeSettings.m_maxRayDistance;
+	}
+
+	const float relocationAndSamplingMargin =
+		data.m_bakeSettings.m_minProbeSpacing * 0.45f +
+		data.m_bakeSettings.m_normalBias +
+		data.m_bakeSettings.m_viewBias;
+	return glm::clamp(
+		cellDiagonal + relocationAndSamplingMargin,
+		(std::min)(0.001f, data.m_bakeSettings.m_maxRayDistance),
+		data.m_bakeSettings.m_maxRayDistance);
+}
+
 bool GIProbesData::Validate(std::string& outDiagnostic) const
 {
 	outDiagnostic.clear();

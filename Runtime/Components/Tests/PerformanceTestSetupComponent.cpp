@@ -268,9 +268,8 @@ void PerformanceTestSetupComponent::SpawnLights()
 
 					auto light = lightGo->AddComponent<LightComponent>();
 					light->SetLightType(ELightType::Point);
-					light->SetIntensity(palette[(x + y * lightGrid + z * lightGrid * lightGrid) % (sizeof(palette) / sizeof(palette[0]))] * 45.0f);
+					light->SetIntensity(palette[(x + y * lightGrid + z * lightGrid * lightGrid) % (sizeof(palette) / sizeof(palette[0]))] * 20000.0f);
 					light->SetRadius(450.0f);
-					light->SetAttenuation(glm::vec3(1.0f, 0.030f, 0.0015f));
 					light->SetShadowType(RHI::EShadowType::None);
 				}
 			}
@@ -283,7 +282,7 @@ void PerformanceTestSetupComponent::SpawnLights()
 	transform.SetRotation(glm::quat(glm::vec3(-0.8f, 0.6f, 0.0f)));
 	auto dirLight = dirLightGo->AddComponent<LightComponent>();
 	dirLight->SetLightType(ELightType::Directional);
-	dirLight->SetIntensity(glm::vec3(m_directionalLightIntensity));
+	dirLight->SetIntensity(glm::vec3(m_directionalLightIlluminance));
 	dirLight->SetShadowType(RHI::EShadowType::PCF);
 }
 
