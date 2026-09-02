@@ -247,8 +247,8 @@ namespace
 		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK:
 			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationFallback;
 			return true;
-		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_CLIPMAP_CASCADES:
-			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationClipmapCascades;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_SUBDIVISIONS:
+			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationSubdivisions;
 			return true;
 		case sailor::editor::v1::EDITOR_RENDER_MODE_UNSPECIFIED:
 		default:
@@ -283,8 +283,8 @@ namespace
 			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY;
 		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationFallback:
 			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK;
-		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationClipmapCascades:
-			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_CLIPMAP_CASCADES;
+		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationSubdivisions:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_SUBDIVISIONS;
 		case Sailor::RHI::ESceneViewRenderMode::Lit:
 		default:
 			return sailor::editor::v1::EDITOR_RENDER_MODE_LIT;
@@ -361,34 +361,16 @@ namespace
 	{
 		switch (protocolMode)
 		{
-		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_REALTIME:
-			outMode = Sailor::EGlobalIlluminationMode::Realtime;
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_NO_GI:
+			outMode = Sailor::EGlobalIlluminationMode::NoGI;
 			return true;
-		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED:
-			outMode = Sailor::EGlobalIlluminationMode::RealtimeAndBaked;
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_RUNTIME:
+			outMode = Sailor::EGlobalIlluminationMode::Runtime;
 			return true;
-		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_BAKED_ONLY:
-			outMode = Sailor::EGlobalIlluminationMode::BakedOnly;
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_BAKED:
+			outMode = Sailor::EGlobalIlluminationMode::Baked;
 			return true;
 		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_UNSPECIFIED:
-		default:
-			return false;
-		}
-	}
-
-	bool TryGetGlobalIlluminationProbeSource(
-		sailor::editor::v1::GlobalIlluminationProbeSource protocolSource,
-		Sailor::EGlobalIlluminationProbeSource& outSource)
-	{
-		switch (protocolSource)
-		{
-		case sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_SOURCE_BAKED_ASSETS:
-			outSource = Sailor::EGlobalIlluminationProbeSource::BakedAssets;
-			return true;
-		case sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_SOURCE_RUNTIME_EXPERIMENTAL:
-			outSource = Sailor::EGlobalIlluminationProbeSource::RuntimeExperimental;
-			return true;
-		case sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_SOURCE_UNSPECIFIED:
 		default:
 			return false;
 		}
@@ -400,13 +382,13 @@ namespace
 	{
 		switch (mode)
 		{
-		case Sailor::EGlobalIlluminationMode::Realtime:
-			return sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_REALTIME;
-		case Sailor::EGlobalIlluminationMode::BakedOnly:
-			return sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_BAKED_ONLY;
-		case Sailor::EGlobalIlluminationMode::RealtimeAndBaked:
+		case Sailor::EGlobalIlluminationMode::NoGI:
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_NO_GI;
+		case Sailor::EGlobalIlluminationMode::Runtime:
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_RUNTIME;
+		case Sailor::EGlobalIlluminationMode::Baked:
 		default:
-			return sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED;
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_BAKED;
 		}
 	}
 
@@ -417,16 +399,6 @@ namespace
 		return mode == Sailor::EGlobalIlluminationProbeMode::Additive
 			? sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_MODE_ADDITIVE
 			: sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_MODE_BLEND;
-	}
-
-	sailor::editor::v1::GlobalIlluminationProbeSource
-		ToProtocolGlobalIlluminationProbeSource(
-			Sailor::EGlobalIlluminationProbeSource source)
-	{
-		return source ==
-			Sailor::EGlobalIlluminationProbeSource::RuntimeExperimental
-			? sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_SOURCE_RUNTIME_EXPERIMENTAL
-			: sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_SOURCE_BAKED_ASSETS;
 	}
 
 	sailor::editor::v1::RuntimeGIProbesLifecycle
@@ -1530,32 +1502,15 @@ namespace
 				settings.include_emissive();
 			nativeRequest.m_settings.m_bIncludeDirectLighting =
 				settings.include_direct_lighting();
-			nativeRequest.m_bAutoBounds = bake.auto_bounds();
 			nativeRequest.m_bOverwrite = bake.overwrite();
 			nativeRequest.m_threadCount = bake.has_thread_count() ?
 				bake.thread_count() : 1u;
 
-			if ((bake.has_volume_min() && !IsFiniteVector4(bake.volume_min())) ||
-				(bake.has_volume_max() && !IsFiniteVector4(bake.volume_max())) ||
-				(bake.has_fallback_environment() &&
-					!IsFiniteVector4(bake.fallback_environment())))
+			if (bake.has_fallback_environment() &&
+				!IsFiniteVector4(bake.fallback_environment()))
 			{
 				SetError(response, "The GI probe bake vectors must be finite.");
 				break;
-			}
-			if (bake.has_volume_min())
-			{
-				nativeRequest.m_volumeMin = {
-					bake.volume_min().x(),
-					bake.volume_min().y(),
-					bake.volume_min().z() };
-			}
-			if (bake.has_volume_max())
-			{
-				nativeRequest.m_volumeMax = {
-					bake.volume_max().x(),
-					bake.volume_max().y(),
-					bake.volume_max().z() };
 			}
 			if (bake.has_fallback_environment())
 			{
@@ -1637,13 +1592,6 @@ namespace
 			{
 				bValid = false;
 				diagnostic = "The Global Illumination mode is invalid.";
-			}
-			if (bValid && !TryGetGlobalIlluminationProbeSource(
-					protocolSettings.probe_source(),
-					nativeSettings.m_probeSource))
-			{
-				bValid = false;
-				diagnostic = "The Global Illumination probe source is invalid.";
 			}
 			if (bValid && !protocolSettings.has_runtime_probes())
 			{
@@ -1745,8 +1693,6 @@ namespace
 			result->set_mode(
 				ToProtocolGlobalIlluminationMode(state.m_mode));
 			result->set_enabled(state.m_bEnabled);
-			result->set_probe_source(
-				ToProtocolGlobalIlluminationProbeSource(state.m_probeSource));
 			SetProtocolRuntimeGIProbesSettings(
 				*result->mutable_runtime_probes(),
 				state.m_runtimeSettings);
@@ -1755,7 +1701,6 @@ namespace
 				state.m_runtimeStatus.m_lifecycle));
 			runtime->set_enabled(state.m_runtimeStatus.m_bEnabled);
 			runtime->set_paused(state.m_runtimeStatus.m_bPaused);
-			runtime->set_throttled(state.m_runtimeStatus.m_bThrottled);
 			runtime->set_preview_enabled(state.m_bRuntimePreviewEnabled);
 			runtime->set_preview_budget(
 				ToProtocolRuntimeGIProbesPreviewBudget(
@@ -1771,23 +1716,11 @@ namespace
 				state.m_runtimeStatus.m_activeProbeCount);
 			runtime->set_ready_probe_count(
 				state.m_runtimeStatus.m_readyProbeCount);
-			runtime->set_dirty_probe_count(
-				state.m_runtimeStatus.m_dirtyProbeCount);
-			runtime->set_queued_probe_count(
-				state.m_runtimeStatus.m_queuedProbeCount);
 			runtime->set_worker_count(state.m_runtimeStatus.m_workerCount);
-			runtime->set_traced_ray_count(
-				state.m_runtimeStatus.m_tracedRayCount);
 			runtime->set_published_bytes(
 				state.m_runtimeStatus.m_publishedBytes);
 			runtime->set_coverage(state.m_runtimeStatus.m_coverage);
 			runtime->set_refinement(state.m_runtimeStatus.m_refinement);
-			runtime->set_rays_per_second(
-				state.m_runtimeStatus.m_raysPerSecond);
-			runtime->set_worker_cpu_milliseconds(
-				state.m_runtimeStatus.m_workerCpuMilliseconds);
-			runtime->set_last_publication_milliseconds(
-				state.m_runtimeStatus.m_lastPublicationMilliseconds);
 			runtime->set_diagnostic(state.m_runtimeStatus.m_diagnostic);
 			for (const Sailor::GlobalIlluminationProbeState& probe :
 				state.m_probes)

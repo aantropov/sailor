@@ -22,8 +22,8 @@ public sealed class SceneViewportInteractionTests
         SceneViewRenderMode.GlobalIlluminationAssetIdentity)]
     [InlineData("gi-fallback", SceneViewRenderMode.GlobalIlluminationFallback)]
     [InlineData(
-        "gi-clipmap-cascades",
-        SceneViewRenderMode.GlobalIlluminationClipmapCascades)]
+        "gi-subdivisions",
+        SceneViewRenderMode.GlobalIlluminationSubdivisions)]
     public void RenderModeName_ParsesMcpValues(
         string value,
         SceneViewRenderMode expected)

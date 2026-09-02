@@ -28,22 +28,10 @@ namespace Sailor
 
 	enum class EGlobalIlluminationMode : uint8_t
 	{
-		Realtime = 0,
-		RealtimeAndBaked,
-		BakedOnly
+		NoGI = 0,
+		Runtime,
+		Baked
 	};
-
-	enum class EGlobalIlluminationProbeSource : uint8_t
-	{
-		BakedAssets = 0,
-		RuntimeExperimental
-	};
-
-	constexpr bool UsesBakedGlobalIllumination(
-		EGlobalIlluminationMode mode) noexcept
-	{
-		return mode != EGlobalIlluminationMode::Realtime;
-	}
 
 	struct SAILOR_SHARED_API GlobalIlluminationProbeBinding final
 	{
@@ -57,9 +45,7 @@ namespace Sailor
 	struct SAILOR_SHARED_API GISettings final
 	{
 		EGlobalIlluminationMode m_mode =
-			EGlobalIlluminationMode::RealtimeAndBaked;
-		EGlobalIlluminationProbeSource m_probeSource =
-			EGlobalIlluminationProbeSource::BakedAssets;
+			EGlobalIlluminationMode::Baked;
 		RuntimeGIProbesSettings m_runtimeProbes{};
 		TMap<std::string, GlobalIlluminationProbeBinding> m_probes{};
 

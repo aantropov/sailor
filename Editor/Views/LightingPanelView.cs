@@ -39,24 +39,9 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
 
     static readonly GlobalIlluminationModeOption[] GlobalIlluminationModes =
     [
-        new(GlobalIlluminationRuntimeMode.Realtime, "Realtime"),
-        new(GlobalIlluminationRuntimeMode.RealtimeAndBaked, "Realtime + Baked"),
-        new(GlobalIlluminationRuntimeMode.BakedOnly, "Baked Indirect")
-    ];
-
-    sealed record ProbeSourceOption(
-        GlobalIlluminationProbeSourceKind Value,
-        string DisplayName)
-    {
-        public override string ToString() => DisplayName;
-    }
-
-    static readonly ProbeSourceOption[] ProbeSources =
-    [
-        new(GlobalIlluminationProbeSourceKind.BakedAssets, "Baked Assets"),
-        new(
-            GlobalIlluminationProbeSourceKind.RuntimeExperimental,
-            "Runtime Experimental")
+        new(GlobalIlluminationRuntimeMode.NoGI, "No GI"),
+        new(GlobalIlluminationRuntimeMode.Runtime, "Runtime"),
+        new(GlobalIlluminationRuntimeMode.Baked, "Baked")
     ];
 
     sealed record RuntimeBudgetOption(
@@ -115,9 +100,9 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             SceneViewRenderMode.GlobalIlluminationFallback,
             "Fallback"),
         new(
-            RuntimeGIProbesEditorDebugView.ClipmapCascades,
-            SceneViewRenderMode.GlobalIlluminationClipmapCascades,
-            "Clipmap Cascades")
+            RuntimeGIProbesEditorDebugView.Subdivisions,
+            SceneViewRenderMode.GlobalIlluminationSubdivisions,
+            "Subdivisions")
     ];
 
     sealed partial class BindingDraft : ObservableObject
@@ -182,19 +167,15 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     Entry? normalBiasEntry;
     Entry? viewBiasEntry;
     Entry? maxDistanceEntry;
-    Entry? boundsMinEntry;
-    Entry? boundsMaxEntry;
     Entry? environmentEntry;
     CheckBox? includeSky;
     CheckBox? includeEmissive;
     CheckBox? includeDirect;
-    CheckBox? autoBounds;
     CheckBox? overwrite;
     Picker? bakedMode;
     Entry? bakedWeight;
     CheckBox? bakedPreload;
     Picker? globalIlluminationMode;
-    Picker? probeSource;
     Entry? runtimeBouncesEntry;
     Entry? runtimeSpacingEntry;
     Entry? runtimeNormalBiasEntry;
@@ -204,9 +185,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     CheckBox? runtimeIncludeEmissive;
     CheckBox? runtimeIncludeDirect;
     GlobalIlluminationRuntimeMode selectedGlobalIlluminationMode =
-        GlobalIlluminationRuntimeMode.RealtimeAndBaked;
-    GlobalIlluminationProbeSourceKind selectedProbeSource =
-        GlobalIlluminationProbeSourceKind.BakedAssets;
+        GlobalIlluminationRuntimeMode.Baked;
     RuntimeGIProbesRuntimeState? lastRuntimeGIState;
     bool subscribed;
     bool polling;
@@ -373,27 +352,17 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         selectedGlobalIlluminationMode =
             worldService.Current.GlobalIllumination.Mode switch
             {
-                ViewModels.GlobalIlluminationMode.Realtime =>
-                    GlobalIlluminationRuntimeMode.Realtime,
-                ViewModels.GlobalIlluminationMode.BakedOnly =>
-                    GlobalIlluminationRuntimeMode.BakedOnly,
-                _ => GlobalIlluminationRuntimeMode.RealtimeAndBaked
+                ViewModels.GlobalIlluminationMode.NoGI =>
+                    GlobalIlluminationRuntimeMode.NoGI,
+                ViewModels.GlobalIlluminationMode.Runtime =>
+                    GlobalIlluminationRuntimeMode.Runtime,
+                _ => GlobalIlluminationRuntimeMode.Baked
             };
         if (globalIlluminationMode is not null)
         {
             globalIlluminationMode.SelectedItem =
                 GlobalIlluminationModes.Single(option =>
                     option.Value == selectedGlobalIlluminationMode);
-        }
-        selectedProbeSource =
-            worldService.Current.GlobalIllumination.ProbeSource ==
-                ViewModels.GlobalIlluminationProbeSource.RuntimeExperimental
-                ? GlobalIlluminationProbeSourceKind.RuntimeExperimental
-                : GlobalIlluminationProbeSourceKind.BakedAssets;
-        if (probeSource is not null)
-        {
-            probeSource.SelectedItem = ProbeSources.Single(option =>
-                option.Value == selectedProbeSource);
         }
         bindings.Clear();
         foreach (var pair in worldService.Current.GlobalIllumination.Probes
@@ -430,28 +399,13 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 GlobalIlluminationModeOption selected)
             {
                 selectedGlobalIlluminationMode = selected.Value;
-            }
-        };
-        card.Children.Add(Labeled("GI mode", globalIlluminationMode));
-        probeSource = new Picker
-        {
-            ItemsSource = ProbeSources,
-            SelectedItem = ProbeSources.Single(option =>
-                option.Value == selectedProbeSource),
-            HorizontalOptions = LayoutOptions.Fill
-        };
-        probeSource.SelectedIndexChanged += (_, _) =>
-        {
-            if (probeSource.SelectedItem is ProbeSourceOption selected)
-            {
-                selectedProbeSource = selected.Value;
                 UpdateProviderVisibility();
             }
         };
-        card.Children.Add(Labeled("Probe source", probeSource));
+        card.Children.Add(Labeled("GI mode", globalIlluminationMode));
         card.Children.Add(new Label
         {
-            Text = "Realtime uses the live SkyComponent cubemaps. Baked modes use probes for diffuse indirect lighting and directional environment-specular occlusion, with the same live cubemaps as fallback. Direct lights stay realtime.",
+            Text = "No GI uses environment fallback only. Runtime traces one automatically sized scene-wide probe grid. Baked uses .probes assets. Direct lights stay realtime.",
             FontSize = 11,
             TextColor = Color.FromArgb("#929AA5"),
             LineBreakMode = LineBreakMode.WordWrap
@@ -621,7 +575,6 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             var descriptors = BuildBindingDescriptors();
             if (!await engineService.SetGISettingsAsync(
                     selectedGlobalIlluminationMode,
-                    selectedProbeSource,
                     BuildRuntimeSettingsDescriptor(),
                     descriptors))
             {
@@ -825,12 +778,14 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
 
     void UpdateProviderVisibility()
     {
-        var runtime = selectedProbeSource ==
-            GlobalIlluminationProbeSourceKind.RuntimeExperimental;
+        var runtime = selectedGlobalIlluminationMode ==
+            GlobalIlluminationRuntimeMode.Runtime;
+        var baked = selectedGlobalIlluminationMode ==
+            GlobalIlluminationRuntimeMode.Baked;
         if (bakedBindingsContent is not null)
-            bakedBindingsContent.IsVisible = !runtime;
+            bakedBindingsContent.IsVisible = baked;
         if (bakeCard is not null)
-            bakeCard.IsVisible = !runtime;
+            bakeCard.IsVisible = baked;
         if (runtimeCard is not null)
             runtimeCard.IsVisible = runtime;
     }
@@ -908,14 +863,8 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         card.Children.Add(Labeled("Include emissive", includeEmissive));
         card.Children.Add(Labeled("Include direct lighting", includeDirect));
 
-        autoBounds = new CheckBox { IsChecked = true };
-        boundsMinEntry = TextEntry("-10, -10, -10");
-        boundsMaxEntry = TextEntry("10, 10, 10");
         environmentEntry = TextEntry("0.03, 0.03, 0.03");
         overwrite = new CheckBox();
-        card.Children.Add(Labeled("Automatic bounds", autoBounds));
-        card.Children.Add(Labeled("Manual bounds min", boundsMinEntry));
-        card.Children.Add(Labeled("Manual bounds max", boundsMaxEntry));
         card.Children.Add(Labeled("Fallback environment", environmentEntry));
         card.Children.Add(Labeled("Overwrite existing file", overwrite));
 
@@ -957,11 +906,11 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         bakeStatusGate.BeginLaunch();
         try
         {
-            if (selectedProbeSource !=
-                GlobalIlluminationProbeSourceKind.BakedAssets)
+            if (selectedGlobalIlluminationMode !=
+                GlobalIlluminationRuntimeMode.Baked)
             {
                 throw new InvalidOperationException(
-                    "Select Baked Assets before starting a probe bake.");
+                    "Select Baked GI mode before starting a probe bake.");
             }
             if (!IsCurrentWorld() || worldService.CurrentWorldAsset?.FileId is null)
                 throw new InvalidOperationException("Open and save the target level before baking.");
@@ -1012,9 +961,6 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 stateName,
                 settings,
                 LayoutSource: reuseLayout ? layoutSource.Value : null,
-                AutoBounds: autoBounds!.IsChecked,
-                VolumeMin: ReadVector(boundsMinEntry!, "Manual bounds min"),
-                VolumeMax: ReadVector(boundsMaxEntry!, "Manual bounds max"),
                 FallbackEnvironment: ReadVector(
                     environmentEntry!,
                     "Fallback environment"),
@@ -1245,7 +1191,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
 
             var activationRequired =
                 targetWeight > 0.0f &&
-                selectedGlobalIlluminationMode != GlobalIlluminationRuntimeMode.Realtime &&
+                selectedGlobalIlluminationMode == GlobalIlluminationRuntimeMode.Baked &&
                 baseline.Enabled;
             if (activationRequired)
             {
@@ -1340,7 +1286,6 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             RestoreBindingDrafts(previousBindings);
             if (!await engineService.SetGISettingsAsync(
                     previousMode,
-                    selectedProbeSource,
                     BuildRuntimeSettingsDescriptor(),
                     BuildBindingDescriptors()))
             {
@@ -1451,27 +1396,18 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             var prefix = string.IsNullOrWhiteSpace(successPrefix)
                 ? string.Empty
                 : $"{successPrefix} {DateTime.Now:HH:mm:ss}: ";
-            var runtimeDetails = state.ProbeSource ==
-                GlobalIlluminationProbeSourceKind.RuntimeExperimental
+            var runtimeDetails = state.Mode ==
+                GlobalIlluminationRuntimeMode.Runtime
                 ? $" Runtime {state.RuntimeState.Lifecycle}; " +
-                    $"{state.RuntimeState.ReadyProbeCount}/{state.RuntimeState.ActiveProbeCount} ready " +
-                    $"of {state.RuntimeState.Capacity}; " +
-                    $"{state.RuntimeState.DirtyProbeCount} dirty, " +
-                    $"{state.RuntimeState.QueuedProbeCount} queued; " +
+                    $"{state.RuntimeState.ReadyProbeCount}/{state.RuntimeState.ActiveProbeCount} ready; " +
                     $"coverage {state.RuntimeState.Coverage:P0}, " +
                     $"refinement {state.RuntimeState.Refinement:P0}; " +
                     $"{state.RuntimeState.WorkerCount} worker(s), " +
-                    $"{state.RuntimeState.PreviewBudget} budget, " +
-                    $"{state.RuntimeState.RaysPerSecond / 1000.0f:0.0}K rays/s; " +
-                    $"CPU {state.RuntimeState.WorkerCpuMilliseconds:0.0} ms; " +
-                    $"publish {state.RuntimeState.LastPublicationMilliseconds:0.00} ms / " +
-                    $"{state.RuntimeState.PublishedBytes / 1024.0:0.0} KiB; " +
-                    $"scene {state.RuntimeState.SceneGeneration}, " +
-                    $"lighting {state.RuntimeState.LightingGeneration}. " +
+                    $"{state.RuntimeState.PreviewBudget} budget. " +
                     state.RuntimeState.Diagnostic
                 : string.Empty;
             SetRuntimeStatus(
-                $"{prefix}{state.Mode}; {state.ProbeSource}; profile GI {(state.Enabled ? "enabled" : "disabled")}; budget {state.MaxProbeStatesPerSnapshot}; {probes}. {state.Diagnostic}{runtimeDetails}",
+                $"{prefix}{state.Mode}; profile GI {(state.Enabled ? "enabled" : "disabled")}; budget {state.MaxProbeStatesPerSnapshot}; {probes}. {state.Diagnostic}{runtimeDetails}",
                 state.Probes.Any(probe =>
                     probe.Residency == GlobalIlluminationResidency.Failed) ||
                     state.RuntimeState.Lifecycle ==

@@ -1,7 +1,6 @@
 name: GlobalIlluminationDayEveningNight
 globalIllumination:
-  mode: RealtimeAndBaked
-  probeSource: BakedAssets
+  mode: Baked
   runtimeProbes:
     version: 1
     includeSky: true

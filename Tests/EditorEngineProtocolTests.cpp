@@ -1179,7 +1179,7 @@ namespace
 		static_assert(
 			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK == 12);
 		static_assert(
-			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_CLIPMAP_CASCADES == 13);
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_SUBDIVISIONS == 13);
 		static_assert(
 			sailor::editor::v1::ProtocolRequest::
 				kSetRuntimeGiProbesPreviewBudgetFieldNumber ==
@@ -1189,7 +1189,7 @@ namespace
 				kBudgetFieldNumber == 1);
 		static_assert(
 			sailor::editor::v1::RuntimeGIProbesState::
-				kPreviewBudgetFieldNumber == 23);
+				kPreviewBudgetFieldNumber == 16);
 		static_assert(
 			sailor::editor::v1::RUNTIME_GI_PROBES_PREVIEW_BUDGET_ECO == 1);
 		static_assert(

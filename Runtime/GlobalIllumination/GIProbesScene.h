@@ -57,11 +57,10 @@ namespace Sailor
 	struct SAILOR_SHARED_API GIProbesPreparedScene final
 	{
 		TSharedPtr<Raytracing::GIProbesPathTracer> m_sampler{};
-		Raytracing::PathTracer::ScenePreparationStats m_stats{};
 		GIProbesBakeSettings m_effectiveSettings{};
+		Math::AABB m_worldBounds{};
 		uint64_t m_geometryHash = 0u;
 		uint64_t m_lightingHash = 0u;
-		uint64_t m_sourceWorldHash = 0u;
 		GIProbesSceneRevision m_observedRevision{};
 	};
 

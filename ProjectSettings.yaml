@@ -26,14 +26,13 @@ graphics:
         version: 1
         enabled: false
         maxActiveProbes: 16384
-        clipmapCascadeCount: 1
         spacingMultiplier: 1
         initialSamplesPerProbe: 16
         targetSamplesPerProbe: 64
         workerCount: 2
         cpuDutyFraction: 0.5
         cpuBudgetMilliseconds: 4
-        maxPublicationsPerSecond: 2
+        maxPublicationsPerSecond: 8
         initialPublicationCoverage: 0.125
         maxDirtyUploadBytesPerFrame: 2097152
     High:
@@ -60,14 +59,13 @@ graphics:
         version: 1
         enabled: false
         maxActiveProbes: 8192
-        clipmapCascadeCount: 1
         spacingMultiplier: 1
         initialSamplesPerProbe: 16
         targetSamplesPerProbe: 64
         workerCount: 1
         cpuDutyFraction: 0.25
         cpuBudgetMilliseconds: 4
-        maxPublicationsPerSecond: 2
+        maxPublicationsPerSecond: 8
         initialPublicationCoverage: 0.125
         maxDirtyUploadBytesPerFrame: 2097152
     Medium:
@@ -93,14 +91,13 @@ graphics:
         version: 1
         enabled: false
         maxActiveProbes: 4096
-        clipmapCascadeCount: 1
         spacingMultiplier: 1
         initialSamplesPerProbe: 16
         targetSamplesPerProbe: 64
         workerCount: 1
         cpuDutyFraction: 0.2
         cpuBudgetMilliseconds: 4
-        maxPublicationsPerSecond: 2
+        maxPublicationsPerSecond: 6
         initialPublicationCoverage: 0.125
         maxDirtyUploadBytesPerFrame: 2097152
     Low:
@@ -125,14 +122,13 @@ graphics:
         version: 1
         enabled: false
         maxActiveProbes: 2048
-        clipmapCascadeCount: 1
         spacingMultiplier: 1
         initialSamplesPerProbe: 16
         targetSamplesPerProbe: 32
         workerCount: 1
         cpuDutyFraction: 0.15
         cpuBudgetMilliseconds: 4
-        maxPublicationsPerSecond: 2
+        maxPublicationsPerSecond: 4
         initialPublicationCoverage: 0.125
         maxDirtyUploadBytesPerFrame: 2097152
     VeryLow:
@@ -156,9 +152,8 @@ graphics:
         version: 1
         enabled: false
         maxActiveProbes: 2048
-        clipmapCascadeCount: 1
         spacingMultiplier: 1
-        initialSamplesPerProbe: 8
+        initialSamplesPerProbe: 16
         targetSamplesPerProbe: 16
         workerCount: 1
         cpuDutyFraction: 0.1

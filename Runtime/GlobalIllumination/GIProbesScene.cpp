@@ -34,6 +34,14 @@ namespace
 		uint64_t m_contentHash = 0u;
 	};
 
+	struct ObservedSky final
+	{
+		SkyParameters m_parameters{};
+		float m_indirectIntensity = 1.0f;
+		uint32_t m_componentCount = 0u;
+		std::string m_selectedName{};
+	};
+
 	template<typename T>
 	void HashValue(uint64_t& hash, const T& value) noexcept
 	{
@@ -153,6 +161,22 @@ namespace
 		HashValue(hash, settings.m_bIncludeDirectLighting);
 	}
 
+	void InitializeSceneHashes(
+		const GIProbesSceneCaptureRequest& request,
+		const std::string& worldName,
+		uint64_t& outGeometryHash,
+		uint64_t& outLightingHash) noexcept
+	{
+		outGeometryHash = 1469598103934665603ull;
+		outLightingHash = 1469598103934665603ull;
+		HashString(outGeometryHash, request.m_sourceIdentity);
+		HashString(outGeometryHash, worldName);
+		HashString(outLightingHash, request.m_sourceIdentity);
+		HashString(outLightingHash, worldName);
+		HashGeometrySettings(outGeometryHash, request.m_settings);
+		HashLightingSettings(outLightingHash, request.m_settings);
+	}
+
 	void HashSkyParameters(
 		uint64_t& hash,
 		const SkyParameters& sky) noexcept
@@ -195,12 +219,9 @@ namespace
 		}
 	}
 
-	bool ResolveObservedSky(
-		World* world,
-		SkyParameters& outParameters,
-		float& outIndirectIntensity) noexcept
+	ObservedSky ResolveObservedSky(World* world)
 	{
-		bool bFound = false;
+		ObservedSky result;
 		std::string selectedInstanceId;
 		for (const GameObjectPtr& gameObject : world->GetGameObjects())
 		{
@@ -213,17 +234,19 @@ namespace
 			{
 				continue;
 			}
+			++result.m_componentCount;
 			const std::string instanceId =
 				gameObject->GetInstanceId().ToString();
-			if (!bFound || instanceId < selectedInstanceId)
+			if (result.m_componentCount == 1u ||
+				instanceId < selectedInstanceId)
 			{
-				outParameters = sky->GetSkyParameters();
-				outIndirectIntensity = sky->GetGiIndirectIntensity();
+				result.m_parameters = sky->GetSkyParameters();
+				result.m_indirectIntensity = sky->GetGiIndirectIntensity();
+				result.m_selectedName = gameObject->GetName();
 				selectedInstanceId = instanceId;
-				bFound = true;
 			}
 		}
-		return bFound;
+		return result;
 	}
 
 	bool IsFiniteMatrix(const glm::mat4& matrix) noexcept
@@ -386,14 +409,13 @@ bool Sailor::ObserveGIProbesSceneRevision(
 		return false;
 	}
 
-	uint64_t geometry = 1469598103934665603ull;
-	uint64_t lighting = 1469598103934665603ull;
-	HashString(geometry, request.m_sourceIdentity);
-	HashString(geometry, world->GetName());
-	HashString(lighting, request.m_sourceIdentity);
-	HashString(lighting, world->GetName());
-	HashGeometrySettings(geometry, request.m_settings);
-	HashLightingSettings(lighting, request.m_settings);
+	uint64_t geometry = 0u;
+	uint64_t lighting = 0u;
+	InitializeSceneHashes(
+		request,
+		world->GetName(),
+		geometry,
+		lighting);
 	if (const auto* meshes = world->GetECS<StaticMeshRendererECS>())
 	{
 		HashValue(
@@ -416,17 +438,13 @@ bool Sailor::ObserveGIProbesSceneRevision(
 	HashVec3(lighting, glm::max(request.m_fallbackEnvironment, glm::vec3(0.0f)));
 	if (request.m_settings.m_bIncludeSky)
 	{
-		SkyParameters sky;
-		float indirectIntensity = 1.0f;
-		const bool bHasSky = ResolveObservedSky(
-			world,
-			sky,
-			indirectIntensity);
+		const ObservedSky sky = ResolveObservedSky(world);
+		const bool bHasSky = sky.m_componentCount > 0u;
 		HashValue(lighting, bHasSky);
 		if (bHasSky)
 		{
-			HashSkyParameters(lighting, sky);
-			HashValue(lighting, indirectIntensity);
+			HashSkyParameters(lighting, sky.m_parameters);
+			HashValue(lighting, sky.m_indirectIntensity);
 		}
 	}
 	outRevision.m_geometry = geometry;
@@ -480,41 +498,19 @@ bool Sailor::CaptureGIProbesScene(
 
 	if (request.m_settings.m_bIncludeSky)
 	{
-		std::string selectedSkyInstanceId;
-		std::string selectedSkyName;
-		uint32_t skyComponentCount = 0u;
-		for (const GameObjectPtr& gameObject : world->GetGameObjects())
+		const ObservedSky sky = ResolveObservedSky(world);
+		if (sky.m_componentCount > 0u)
 		{
-			if (!gameObject)
-			{
-				continue;
-			}
-			const auto sky = gameObject->GetComponent<SkyComponent>();
-			if (!sky)
-			{
-				continue;
-			}
-
-			++skyComponentCount;
-			const std::string instanceId =
-				gameObject->GetInstanceId().ToString();
-			if (!outScene.m_bHasSkyEnvironment ||
-				instanceId < selectedSkyInstanceId)
-			{
-				outScene.m_skyParameters = sky->GetSkyParameters();
-				outScene.m_skyIndirectIntensity =
-					sky->GetGiIndirectIntensity();
-				outScene.m_bHasSkyEnvironment = true;
-				selectedSkyInstanceId = instanceId;
-				selectedSkyName = gameObject->GetName();
-			}
+			outScene.m_skyParameters = sky.m_parameters;
+			outScene.m_skyIndirectIntensity = sky.m_indirectIntensity;
+			outScene.m_bHasSkyEnvironment = true;
 		}
-		if (skyComponentCount > 1u)
+		if (sky.m_componentCount > 1u)
 		{
 			ReportWarning(
 				warning,
 				"multiple SkyComponents are present; GI tracing uses '" +
-					selectedSkyName + "'");
+					sky.m_selectedName + "'");
 		}
 	}
 
@@ -547,14 +543,13 @@ bool Sailor::CaptureGIProbesScene(
 			return lhs.m_instanceId < rhs.m_instanceId;
 		});
 
-	uint64_t geometryHash = 1469598103934665603ull;
-	uint64_t lightingHash = 1469598103934665603ull;
-	HashString(geometryHash, request.m_sourceIdentity);
-	HashString(geometryHash, world->GetName());
-	HashString(lightingHash, request.m_sourceIdentity);
-	HashString(lightingHash, world->GetName());
-	HashGeometrySettings(geometryHash, request.m_settings);
-	HashLightingSettings(lightingHash, request.m_settings);
+	uint64_t geometryHash = 0u;
+	uint64_t lightingHash = 0u;
+	InitializeSceneHashes(
+		request,
+		world->GetName(),
+		geometryHash,
+		lightingHash);
 	TMap<std::string, FrozenModelGeometry> frozenModelGeometry;
 	for (MeshCandidate& candidate : candidates)
 	{
@@ -763,17 +758,7 @@ bool Sailor::CaptureGIProbesScene(
 	{
 		lighting->GetGlobalIlluminationBakeLightProxies(outScene.m_lights);
 	}
-	for (const Raytracing::LightProxy& light : outScene.m_lights)
-	{
-		HashValue(lightingHash, static_cast<uint32_t>(light.m_type));
-		HashVec3(lightingHash, light.m_worldPosition);
-		HashVec3(lightingHash, light.m_direction);
-		HashVec3(lightingHash, light.m_intensity);
-		HashValue(lightingHash, light.m_indirectLightingIntensity);
-		HashVec3(lightingHash, light.m_bounds);
-		HashVec2(lightingHash, light.m_cutOff);
-		HashValue(lightingHash, light.m_bCastShadows);
-	}
+	HashLightProxies(lightingHash, outScene.m_lights);
 	HashVec3(lightingHash, outScene.m_fallbackEnvironment);
 	HashValue(lightingHash, outScene.m_bHasSkyEnvironment);
 	if (outScene.m_bHasSkyEnvironment)
@@ -908,12 +893,10 @@ bool Sailor::PrepareGIProbesScene(
 	}
 
 	outPreparedScene.m_sampler = std::move(sampler);
-	outPreparedScene.m_stats =
-		outPreparedScene.m_sampler->GetLastScenePreparationStats();
 	outPreparedScene.m_effectiveSettings = effectiveSettings;
+	outPreparedScene.m_worldBounds = scene.m_worldBounds;
 	outPreparedScene.m_geometryHash = scene.m_geometryHash;
 	outPreparedScene.m_lightingHash = scene.m_lightingHash;
-	outPreparedScene.m_sourceWorldHash = scene.m_sourceWorldHash;
 	outPreparedScene.m_observedRevision = scene.m_observedRevision;
 	outDiagnostic = "prepared immutable CPU GI ray-tracing scene";
 	return true;

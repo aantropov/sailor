@@ -18,7 +18,7 @@ namespace Sailor::RHI
 		GlobalIlluminationResidency,
 		GlobalIlluminationAssetIdentity,
 		GlobalIlluminationFallback,
-		GlobalIlluminationClipmapCascades
+		GlobalIlluminationSubdivisions
 	};
 
 	constexpr bool IsSceneViewDebugVisualization(

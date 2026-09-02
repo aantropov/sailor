@@ -202,8 +202,8 @@ namespace
 			return EGlobalIlluminationDebugVisualization::AssetIdentity;
 		case ESceneViewRenderMode::GlobalIlluminationFallback:
 			return EGlobalIlluminationDebugVisualization::Fallback;
-		case ESceneViewRenderMode::GlobalIlluminationClipmapCascades:
-			return EGlobalIlluminationDebugVisualization::ClipmapCascades;
+		case ESceneViewRenderMode::GlobalIlluminationSubdivisions:
+			return EGlobalIlluminationDebugVisualization::Subdivisions;
 		default:
 			return EGlobalIlluminationDebugVisualization::Lit;
 		}

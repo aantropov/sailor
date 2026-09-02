@@ -1,6 +1,8 @@
 #include "Scheduler.h"
 #if defined(_WIN32)
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <pthread/qos.h>
 #endif
 #include <fcntl.h>
 #include <algorithm>
@@ -132,6 +134,14 @@ void WorkerThread::Process()
 		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 #endif
 	}
+	else if (m_threadType == EThreadType::GI)
+	{
+#if defined(_WIN32)
+		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#elif defined(__APPLE__)
+		pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+#endif
+	}
 
 	Scheduler* scheduler = App::GetSubmodule<Tasks::Scheduler>();
 
@@ -200,7 +210,11 @@ void Scheduler::Initialize()
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numRHIThreads = RHIThreadsNum;
-	const unsigned numReservedThreads = 6u + numRHIThreads;
+	constexpr unsigned MaxGIThreads = 16u;
+	const unsigned numGIThreads = (std::max)(
+		1u,
+		(std::min)(MaxGIThreads, coresCount));
+	const unsigned numReservedThreads = 8u + numRHIThreads;
 	const unsigned numThreads = coresCount > numReservedThreads
 		? coresCount - numReservedThreads
 		: 1u;
@@ -226,6 +240,18 @@ void Scheduler::Initialize()
 
 		m_threadTypes[newThread->GetThreadId()] = EThreadType::Worker;
 
+		m_workerThreads.Emplace(newThread);
+	}
+
+	for (uint32_t i = 0; i < numGIThreads; i++)
+	{
+		const std::string threadName = std::string("GI Thread ") + std::to_string(i);
+		WorkerThread* newThread = new WorkerThread(threadName, EThreadType::GI,
+			m_refreshCondVar[(uint32_t)EThreadType::GI],
+			m_queueMutex[(uint32_t)EThreadType::GI],
+			m_pSharedTaskQueue[(uint32_t)EThreadType::GI]);
+
+		m_threadTypes[newThread->GetThreadId()] = EThreadType::GI;
 		m_workerThreads.Emplace(newThread);
 	}
 
@@ -308,6 +334,7 @@ Scheduler::~Scheduler()
 	NotifyWorkerThread(EThreadType::Background, true);
 	NotifyWorkerThread(EThreadType::Physics, true);
 	NotifyWorkerThread(EThreadType::Audio, true);
+	NotifyWorkerThread(EThreadType::GI, true);
 
 	for (auto& worker : m_workerThreads)
 	{

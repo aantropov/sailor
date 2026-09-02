@@ -325,7 +325,7 @@ namespace
 			scene.m_volumeMin = scene.m_layoutSource->m_volumeMin;
 			scene.m_volumeMax = scene.m_layoutSource->m_volumeMax;
 		}
-		else if (request.m_bAutoBounds)
+		else
 		{
 			const float padding = (std::max)(
 				request.m_settings.m_minProbeSpacing,
@@ -334,11 +334,6 @@ namespace
 				scene.m_snapshot->m_worldBounds.m_min - glm::vec3(padding);
 			scene.m_volumeMax =
 				scene.m_snapshot->m_worldBounds.m_max + glm::vec3(padding);
-		}
-		else
-		{
-			scene.m_volumeMin = request.m_volumeMin;
-			scene.m_volumeMax = request.m_volumeMax;
 		}
 		return true;
 	}

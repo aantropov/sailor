@@ -11,15 +11,9 @@ public enum GlobalIlluminationProbeMode
 
 public enum GlobalIlluminationMode
 {
-    Realtime = 0,
-    RealtimeAndBaked,
-    BakedOnly
-}
-
-public enum GlobalIlluminationProbeSource
-{
-    BakedAssets = 0,
-    RuntimeExperimental
+    NoGI = 0,
+    Runtime,
+    Baked
 }
 
 public sealed class RuntimeGIProbesSettings
@@ -61,9 +55,7 @@ public sealed partial class GlobalIlluminationProbeBinding : ObservableObject
 public sealed class GISettings
 {
     public GlobalIlluminationMode Mode { get; set; } =
-        GlobalIlluminationMode.RealtimeAndBaked;
-    public GlobalIlluminationProbeSource ProbeSource { get; set; } =
-        GlobalIlluminationProbeSource.BakedAssets;
+        GlobalIlluminationMode.Baked;
     public RuntimeGIProbesSettings RuntimeProbes { get; set; } = new();
     public Dictionary<string, GlobalIlluminationProbeBinding> Probes { get; set; } = [];
 }

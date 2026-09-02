@@ -3028,9 +3028,6 @@ namespace SailorEditor.Services
                 StateName = request.StateName ?? string.Empty,
                 LayoutSourceFileId = request.LayoutSource?.Value ?? string.Empty,
                 Settings = protocolSettings,
-                AutoBounds = request.AutoBounds,
-                VolumeMin = ToProtocolVector(request.VolumeMin),
-                VolumeMax = ToProtocolVector(request.VolumeMax),
                 FallbackEnvironment = ToProtocolVector(
                     request.FallbackEnvironment),
                 Overwrite = request.Overwrite,
@@ -3084,7 +3081,6 @@ namespace SailorEditor.Services
 
         public async Task<bool> SetGISettingsAsync(
             GlobalIlluminationRuntimeMode mode,
-            GlobalIlluminationProbeSourceKind probeSource,
             RuntimeGIProbesSettingsDescriptor runtimeSettings,
             IReadOnlyCollection<GlobalIlluminationBindingDescriptor> bindings,
             CancellationToken cancellationToken = default)
@@ -3094,8 +3090,6 @@ namespace SailorEditor.Services
             var protocolSettings = new SetGISettingsRequest
             {
                 Mode = ToProtocolGlobalIlluminationRuntimeMode(mode),
-                ProbeSource = ToProtocolGlobalIlluminationProbeSource(
-                    probeSource),
                 RuntimeProbes = new Protocol.Generated.RuntimeGIProbesSettings
                 {
                     Version = runtimeSettings.Version,
@@ -3166,8 +3160,6 @@ namespace SailorEditor.Services
                 protocolState.MaxProbeStatesPerSnapshot,
                 FromProtocolGlobalIlluminationRuntimeMode(protocolState.Mode),
                 protocolState.Enabled,
-                FromProtocolGlobalIlluminationProbeSource(
-                    protocolState.ProbeSource),
                 new RuntimeGIProbesSettingsDescriptor(
                     runtimeSettings.Version,
                     runtimeSettings.IncludeSky,
@@ -3183,7 +3175,6 @@ namespace SailorEditor.Services
                         runtimeState.Lifecycle),
                     runtimeState.Enabled,
                     runtimeState.Paused,
-                    runtimeState.Throttled,
                     runtimeState.PreviewEnabled,
                     FromProtocolRuntimeGIProbesPreviewBudget(
                         runtimeState.PreviewBudget),
@@ -3193,16 +3184,10 @@ namespace SailorEditor.Services
                     runtimeState.Capacity,
                     runtimeState.ActiveProbeCount,
                     runtimeState.ReadyProbeCount,
-                    runtimeState.DirtyProbeCount,
-                    runtimeState.QueuedProbeCount,
                     runtimeState.WorkerCount,
-                    runtimeState.TracedRayCount,
                     runtimeState.PublishedBytes,
                     runtimeState.Coverage,
                     runtimeState.Refinement,
-                    runtimeState.RaysPerSecond,
-                    runtimeState.WorkerCpuMilliseconds,
-                    runtimeState.LastPublicationMilliseconds,
                     runtimeState.Diagnostic),
                 protocolState.Probes.Select(
                     static probe => new GlobalIlluminationProbeRuntimeState(
@@ -3315,12 +3300,12 @@ namespace SailorEditor.Services
             ToProtocolGlobalIlluminationRuntimeMode(
                 GlobalIlluminationRuntimeMode mode) => mode switch
         {
-            GlobalIlluminationRuntimeMode.Realtime =>
-                Protocol.Generated.GlobalIlluminationMode.Realtime,
-            GlobalIlluminationRuntimeMode.RealtimeAndBaked =>
-                Protocol.Generated.GlobalIlluminationMode.RealtimeAndBaked,
-            GlobalIlluminationRuntimeMode.BakedOnly =>
-                Protocol.Generated.GlobalIlluminationMode.BakedOnly,
+            GlobalIlluminationRuntimeMode.NoGI =>
+                Protocol.Generated.GlobalIlluminationMode.NoGi,
+            GlobalIlluminationRuntimeMode.Runtime =>
+                Protocol.Generated.GlobalIlluminationMode.Runtime,
+            GlobalIlluminationRuntimeMode.Baked =>
+                Protocol.Generated.GlobalIlluminationMode.Baked,
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
 
@@ -3328,41 +3313,17 @@ namespace SailorEditor.Services
             FromProtocolGlobalIlluminationRuntimeMode(
                 Protocol.Generated.GlobalIlluminationMode mode) => mode switch
         {
-            Protocol.Generated.GlobalIlluminationMode.Realtime =>
-                GlobalIlluminationRuntimeMode.Realtime,
-            Protocol.Generated.GlobalIlluminationMode.RealtimeAndBaked =>
-                GlobalIlluminationRuntimeMode.RealtimeAndBaked,
-            Protocol.Generated.GlobalIlluminationMode.BakedOnly =>
-                GlobalIlluminationRuntimeMode.BakedOnly,
+            Protocol.Generated.GlobalIlluminationMode.NoGi =>
+                GlobalIlluminationRuntimeMode.NoGI,
+            Protocol.Generated.GlobalIlluminationMode.Runtime =>
+                GlobalIlluminationRuntimeMode.Runtime,
+            Protocol.Generated.GlobalIlluminationMode.Baked =>
+                GlobalIlluminationRuntimeMode.Baked,
             Protocol.Generated.GlobalIlluminationMode.Unspecified =>
-                GlobalIlluminationRuntimeMode.RealtimeAndBaked,
+                GlobalIlluminationRuntimeMode.Baked,
             _ => throw new InvalidDataException(
                 $"Unknown Global Illumination runtime mode: {mode}.")
         };
-
-        static Protocol.Generated.GlobalIlluminationProbeSource
-            ToProtocolGlobalIlluminationProbeSource(
-                GlobalIlluminationProbeSourceKind source) => source switch
-        {
-            GlobalIlluminationProbeSourceKind.BakedAssets =>
-                Protocol.Generated.GlobalIlluminationProbeSource.BakedAssets,
-            GlobalIlluminationProbeSourceKind.RuntimeExperimental =>
-                Protocol.Generated.GlobalIlluminationProbeSource.RuntimeExperimental,
-            _ => throw new ArgumentOutOfRangeException(nameof(source))
-        };
-
-        static GlobalIlluminationProbeSourceKind
-            FromProtocolGlobalIlluminationProbeSource(
-                Protocol.Generated.GlobalIlluminationProbeSource source) =>
-            source switch
-            {
-                Protocol.Generated.GlobalIlluminationProbeSource.BakedAssets =>
-                    GlobalIlluminationProbeSourceKind.BakedAssets,
-                Protocol.Generated.GlobalIlluminationProbeSource.RuntimeExperimental =>
-                    GlobalIlluminationProbeSourceKind.RuntimeExperimental,
-                _ => throw new InvalidDataException(
-                    $"Unknown Global Illumination probe source: {source}.")
-            };
 
         static RuntimeGIProbesLifecycleState
             FromProtocolRuntimeGIProbesLifecycle(
@@ -3452,8 +3413,8 @@ namespace SailorEditor.Services
                     EditorRenderMode.GlobalIlluminationAssetIdentity,
                 SceneViewRenderMode.GlobalIlluminationFallback =>
                     EditorRenderMode.GlobalIlluminationFallback,
-                SceneViewRenderMode.GlobalIlluminationClipmapCascades =>
-                    EditorRenderMode.GlobalIlluminationClipmapCascades,
+                SceneViewRenderMode.GlobalIlluminationSubdivisions =>
+                    EditorRenderMode.GlobalIlluminationSubdivisions,
                 _ => throw new ArgumentOutOfRangeException(nameof(mode))
             };
 
@@ -3481,8 +3442,8 @@ namespace SailorEditor.Services
                     SceneViewRenderMode.GlobalIlluminationAssetIdentity,
                 EditorRenderMode.GlobalIlluminationFallback =>
                     SceneViewRenderMode.GlobalIlluminationFallback,
-                EditorRenderMode.GlobalIlluminationClipmapCascades =>
-                    SceneViewRenderMode.GlobalIlluminationClipmapCascades,
+                EditorRenderMode.GlobalIlluminationSubdivisions =>
+                    SceneViewRenderMode.GlobalIlluminationSubdivisions,
                 _ => throw new ArgumentOutOfRangeException(nameof(mode))
             };
 

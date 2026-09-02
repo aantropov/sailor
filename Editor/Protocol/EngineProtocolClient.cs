@@ -1658,7 +1658,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             EditorRenderMode.GlobalIlluminationResidency or
             EditorRenderMode.GlobalIlluminationAssetIdentity or
             EditorRenderMode.GlobalIlluminationFallback or
-            EditorRenderMode.GlobalIlluminationClipmapCascades
+            EditorRenderMode.GlobalIlluminationSubdivisions
             ? mode
             : throw new ArgumentOutOfRangeException(
                 nameof(mode),

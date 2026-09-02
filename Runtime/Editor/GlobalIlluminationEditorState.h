@@ -12,9 +12,7 @@ namespace Sailor
 	{
 		uint32_t m_maxProbeStatesPerSnapshot = 0u;
 		EGlobalIlluminationMode m_mode =
-			EGlobalIlluminationMode::RealtimeAndBaked;
-		EGlobalIlluminationProbeSource m_probeSource =
-			EGlobalIlluminationProbeSource::BakedAssets;
+			EGlobalIlluminationMode::Baked;
 		RuntimeGIProbesSettings m_runtimeSettings{};
 		RuntimeGIProbesStatus m_runtimeStatus{};
 		bool m_bRuntimePreviewEnabled = false;

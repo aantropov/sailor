@@ -1208,7 +1208,7 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor, EThreadType::Physics, EThreadType::Audio });
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
 		s_pInstance->m_pendingAssetReloadTask.Clear();
 	}
 

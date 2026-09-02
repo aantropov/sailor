@@ -73,7 +73,7 @@ namespace Sailor::Settings
 		Visibility,
 		Residency,
 		Fallback,
-		ClipmapCascades
+		Subdivisions
 	};
 
 	enum class EGraphicsSettingsLoadStatus : uint8_t

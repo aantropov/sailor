@@ -544,7 +544,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			pathTracerEcs->CopySceneView(rhiSceneView);
 		}
 		rhiSceneView->m_globalIlluminationMode =
-			EGlobalIlluminationMode::RealtimeAndBaked;
+			EGlobalIlluminationMode::Baked;
 		rhiSceneView->m_bGlobalIlluminationEnabled = true;
 		rhiSceneView->m_globalIllumination.Clear();
 		if (auto* globalIlluminationEcs = world->GetECS<GlobalIlluminationECS>())
@@ -555,8 +555,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				globalIlluminationEcs->IsEnabled();
 			rhiSceneView->m_globalIllumination =
 				rhiSceneView->m_bGlobalIlluminationEnabled &&
-				UsesBakedGlobalIllumination(
-					rhiSceneView->m_globalIlluminationMode)
+				rhiSceneView->m_globalIlluminationMode !=
+					EGlobalIlluminationMode::NoGI
 					? globalIlluminationEcs->GetActiveSnapshot()
 					: RHIGlobalIlluminationSnapshotPtr{};
 		}

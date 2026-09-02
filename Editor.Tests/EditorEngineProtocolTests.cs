@@ -141,14 +141,17 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal(12, (int)EditorRenderMode.GlobalIlluminationFallback);
         Assert.Equal(
             13,
-            (int)EditorRenderMode.GlobalIlluminationClipmapCascades);
-        Assert.Equal(1, (int)GlobalIlluminationMode.Realtime);
-        Assert.Equal(2, (int)GlobalIlluminationMode.RealtimeAndBaked);
-        Assert.Equal(3, (int)GlobalIlluminationMode.BakedOnly);
+            (int)EditorRenderMode.GlobalIlluminationSubdivisions);
+        Assert.Equal(1, (int)GlobalIlluminationMode.NoGi);
+        Assert.Equal(2, (int)GlobalIlluminationMode.Runtime);
+        Assert.Equal(3, (int)GlobalIlluminationMode.Baked);
         Assert.Equal(2, SetGISettingsRequest.ModeFieldNumber);
+        Assert.Equal(3, SetGISettingsRequest.RuntimeProbesFieldNumber);
         Assert.Equal(6, GlobalIlluminationStateResult.ModeFieldNumber);
         Assert.Equal(7, GlobalIlluminationStateResult.EnabledFieldNumber);
-        Assert.Equal(23, RuntimeGIProbesState.PreviewBudgetFieldNumber);
+        Assert.Equal(8, GlobalIlluminationStateResult.RuntimeProbesFieldNumber);
+        Assert.Equal(9, GlobalIlluminationStateResult.RuntimeStateFieldNumber);
+        Assert.Equal(16, RuntimeGIProbesState.PreviewBudgetFieldNumber);
         Assert.Equal(1, (int)RuntimeGIProbesPreviewBudget.Eco);
         Assert.Equal(2, (int)RuntimeGIProbesPreviewBudget.Balanced);
     }

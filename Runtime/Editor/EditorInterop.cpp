@@ -37,6 +37,21 @@ namespace
 		SAILOR_LOG_ERROR("Failed to serialize editor type metadata: %s", message);
 	}
 
+	GlobalIlluminationECS* ResolveEditorGlobalIllumination(
+		std::string* outDiagnostic = nullptr)
+	{
+		auto* editor = App::GetSubmodule<Editor>();
+		auto* world = editor ? editor->GetWorld() : nullptr;
+		auto* globalIllumination = world
+			? world->GetECS<GlobalIlluminationECS>()
+			: nullptr;
+		if (!globalIllumination && outDiagnostic)
+		{
+			*outDiagnostic = "Global Illumination ECS is unavailable";
+		}
+		return globalIllumination;
+	}
+
 	bool TryParseOptionalParent(const std::string& value, InstanceId& outParent)
 	{
 		outParent = InstanceId::Invalid;
@@ -643,11 +658,7 @@ bool App::GetEditorGlobalIlluminationState(
 		false,
 		[&outState]()
 		{
-			const auto* editor = GetSubmodule<Editor>();
-			auto* world = editor ? editor->GetWorld() : nullptr;
-			auto* globalIllumination = world
-				? world->GetECS<GlobalIlluminationECS>()
-				: nullptr;
+			auto* globalIllumination = ResolveEditorGlobalIllumination();
 			if (!globalIllumination)
 			{
 				return false;
@@ -655,8 +666,6 @@ bool App::GetEditorGlobalIlluminationState(
 			outState.m_maxProbeStatesPerSnapshot =
 				globalIllumination->GetMaxProbeStatesPerSnapshot();
 			outState.m_mode = globalIllumination->GetWorldSettings().m_mode;
-			outState.m_probeSource =
-				globalIllumination->GetWorldSettings().m_probeSource;
 			outState.m_runtimeSettings =
 				globalIllumination->GetWorldSettings().m_runtimeProbes;
 			outState.m_runtimeStatus =
@@ -684,14 +693,10 @@ bool App::SetEditorRuntimeGIProbesPreviewEnabled(
 		false,
 		[bEnabled, &outDiagnostic]()
 		{
-			auto* editor = GetSubmodule<Editor>();
-			auto* world = editor ? editor->GetWorld() : nullptr;
-			auto* globalIllumination = world
-				? world->GetECS<GlobalIlluminationECS>()
-				: nullptr;
+			auto* globalIllumination = ResolveEditorGlobalIllumination(
+				&outDiagnostic);
 			if (!globalIllumination)
 			{
-				outDiagnostic = "Global Illumination ECS is unavailable";
 				return false;
 			}
 			return globalIllumination->SetRuntimeGIProbesPreviewEnabled(
@@ -708,14 +713,10 @@ bool App::SetEditorRuntimeGIProbesPaused(
 		false,
 		[bPaused, &outDiagnostic]()
 		{
-			auto* editor = GetSubmodule<Editor>();
-			auto* world = editor ? editor->GetWorld() : nullptr;
-			auto* globalIllumination = world
-				? world->GetECS<GlobalIlluminationECS>()
-				: nullptr;
+			auto* globalIllumination = ResolveEditorGlobalIllumination(
+				&outDiagnostic);
 			if (!globalIllumination)
 			{
-				outDiagnostic = "Global Illumination ECS is unavailable";
 				return false;
 			}
 			return globalIllumination->SetRuntimeGIProbesPaused(
@@ -732,14 +733,10 @@ bool App::SetEditorRuntimeGIProbesBudget(
 		false,
 		[budget, &outDiagnostic]()
 		{
-			auto* editor = GetSubmodule<Editor>();
-			auto* world = editor ? editor->GetWorld() : nullptr;
-			auto* globalIllumination = world
-				? world->GetECS<GlobalIlluminationECS>()
-				: nullptr;
+			auto* globalIllumination = ResolveEditorGlobalIllumination(
+				&outDiagnostic);
 			if (!globalIllumination)
 			{
-				outDiagnostic = "Global Illumination ECS is unavailable";
 				return false;
 			}
 			return globalIllumination->SetRuntimeGIProbesEditorBudget(
@@ -754,14 +751,10 @@ bool App::RestartEditorRuntimeGIProbes(std::string& outDiagnostic)
 		false,
 		[&outDiagnostic]()
 		{
-			auto* editor = GetSubmodule<Editor>();
-			auto* world = editor ? editor->GetWorld() : nullptr;
-			auto* globalIllumination = world
-				? world->GetECS<GlobalIlluminationECS>()
-				: nullptr;
+			auto* globalIllumination = ResolveEditorGlobalIllumination(
+				&outDiagnostic);
 			if (!globalIllumination)
 			{
-				outDiagnostic = "Global Illumination ECS is unavailable";
 				return false;
 			}
 			return globalIllumination->RestartRuntimeGIProbes(outDiagnostic);
@@ -774,14 +767,10 @@ bool App::RebuildEditorRuntimeGIProbesScene(std::string& outDiagnostic)
 		false,
 		[&outDiagnostic]()
 		{
-			auto* editor = GetSubmodule<Editor>();
-			auto* world = editor ? editor->GetWorld() : nullptr;
-			auto* globalIllumination = world
-				? world->GetECS<GlobalIlluminationECS>()
-				: nullptr;
+			auto* globalIllumination = ResolveEditorGlobalIllumination(
+				&outDiagnostic);
 			if (!globalIllumination)
 			{
-				outDiagnostic = "Global Illumination ECS is unavailable";
 				return false;
 			}
 			return globalIllumination->RebuildRuntimeGIProbesScene(

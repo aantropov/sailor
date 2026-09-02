@@ -58,7 +58,7 @@ namespace Sailor::RHI
 		uint32_t m_stateCount = 0u;
 		uint32_t m_qualityBudget = 0u;
 		EGlobalIlluminationMode m_mode =
-			EGlobalIlluminationMode::RealtimeAndBaked;
+			EGlobalIlluminationMode::Baked;
 		bool m_bEnabled = true;
 		bool m_bActive = false;
 	};
@@ -74,7 +74,7 @@ namespace Sailor::RHI
 		Residency,
 		AssetIdentity,
 		Fallback,
-		ClipmapCascades
+		Subdivisions
 	};
 
 	struct alignas(16) RHIGlobalIlluminationGpuHeader final

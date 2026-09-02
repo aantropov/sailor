@@ -53,7 +53,7 @@ public enum RuntimeGIProbesEditorDebugView
     Visibility,
     Residency,
     Fallback,
-    ClipmapCascades
+    Subdivisions
 }
 
 public sealed record RuntimeGIProbesQualitySettings
@@ -63,14 +63,13 @@ public sealed record RuntimeGIProbesQualitySettings
     public int Version { get; init; } = CurrentVersion;
     public bool Enabled { get; init; }
     public int MaxActiveProbes { get; init; } = 8192;
-    public int ClipmapCascadeCount { get; init; } = 1;
     public double SpacingMultiplier { get; init; } = 1.0;
     public int InitialSamplesPerProbe { get; init; } = 16;
     public int TargetSamplesPerProbe { get; init; } = 64;
-    public int WorkerCount { get; init; } = 1;
+    public int WorkerCount { get; init; } = 2;
     public double CpuDutyFraction { get; init; } = 0.25;
     public double CpuBudgetMilliseconds { get; init; } = 4.0;
-    public double MaxPublicationsPerSecond { get; init; } = 2.0;
+    public double MaxPublicationsPerSecond { get; init; } = 8.0;
     public double InitialPublicationCoverage { get; init; } = 0.125;
     public int MaxDirtyUploadBytesPerFrame { get; init; } = 2 * 1024 * 1024;
 }
@@ -184,7 +183,6 @@ public static class GraphicsSettingsDefaults
             RuntimeGIProbes = new RuntimeGIProbesQualitySettings
             {
                 MaxActiveProbes = 16384,
-                WorkerCount = 2,
                 CpuDutyFraction = 0.5
             }
         },
@@ -225,7 +223,8 @@ public static class GraphicsSettingsDefaults
             RuntimeGIProbes = new RuntimeGIProbesQualitySettings
             {
                 MaxActiveProbes = 4096,
-                CpuDutyFraction = 0.2
+                CpuDutyFraction = 0.2,
+                MaxPublicationsPerSecond = 6.0
             }
         },
         Low = new GraphicsQualityPresetSettings
@@ -248,7 +247,8 @@ public static class GraphicsSettingsDefaults
             {
                 MaxActiveProbes = 2048,
                 TargetSamplesPerProbe = 32,
-                CpuDutyFraction = 0.15
+                CpuDutyFraction = 0.15,
+                MaxPublicationsPerSecond = 4.0
             }
         },
         VeryLow = new GraphicsQualityPresetSettings
@@ -270,9 +270,10 @@ public static class GraphicsSettingsDefaults
             RuntimeGIProbes = new RuntimeGIProbesQualitySettings
             {
                 MaxActiveProbes = 2048,
-                InitialSamplesPerProbe = 8,
+                InitialSamplesPerProbe = 16,
                 TargetSamplesPerProbe = 16,
-                CpuDutyFraction = 0.1
+                CpuDutyFraction = 0.1,
+                MaxPublicationsPerSecond = 2.0
             }
         }
     };
@@ -530,25 +531,22 @@ public static class GraphicsSettingsValidator
         }
         if (settings.Version != RuntimeGIProbesQualitySettings.CurrentVersion)
             AddRangeIssue(issues, $"{path}.version", "Runtime GI settings version", "1 and 1");
-        if (settings.ClipmapCascadeCount is < 1 or > 4)
-            AddRangeIssue(issues, $"{path}.clipmapCascadeCount", "Runtime GI cascade count", "1 and 4");
-        else if (settings.MaxActiveProbes < settings.ClipmapCascadeCount * 8 ||
-            settings.MaxActiveProbes > 32768)
+        if (settings.MaxActiveProbes is < 8 or > 32768)
         {
             issues.Add(new GraphicsSettingsValidationIssue(
                 $"{path}.maxActiveProbes",
-                "Runtime GI probe capacity must hold at least eight probes per clipmap cascade and at most 32768 probes."));
+                "Runtime GI probe capacity must be between 8 and 32768 probes."));
         }
-        if (settings.InitialSamplesPerProbe < 1 ||
+        if (settings.InitialSamplesPerProbe < 16 ||
             settings.InitialSamplesPerProbe > settings.TargetSamplesPerProbe ||
             settings.TargetSamplesPerProbe > 65536)
         {
             issues.Add(new GraphicsSettingsValidationIssue(
                 $"{path}.initialSamplesPerProbe",
-                "Runtime GI sample thresholds must satisfy 1 <= initial <= target <= 65536."));
+                "Runtime GI sample thresholds must satisfy 16 <= initial <= target <= 65536."));
         }
-        if (settings.WorkerCount is < 1 or > 2)
-            AddRangeIssue(issues, $"{path}.workerCount", "Runtime GI worker count", "1 and 2");
+        if (settings.WorkerCount is < 1 or > 16)
+            AddRangeIssue(issues, $"{path}.workerCount", "Runtime GI worker count", "1 and 16");
         if (settings.MaxDirtyUploadBytesPerFrame <= 0)
             issues.Add(new GraphicsSettingsValidationIssue(
                 $"{path}.maxDirtyUploadBytesPerFrame",
@@ -937,7 +935,6 @@ public static class GraphicsSettingsYamlCodec
             Version = ReadInt(runtime, "version", $"{path}.version", issues),
             Enabled = ReadBool(runtime, "enabled", $"{path}.enabled", issues),
             MaxActiveProbes = ReadInt(runtime, "maxActiveProbes", $"{path}.maxActiveProbes", issues),
-            ClipmapCascadeCount = ReadInt(runtime, "clipmapCascadeCount", $"{path}.clipmapCascadeCount", issues),
             SpacingMultiplier = ReadDouble(runtime, "spacingMultiplier", $"{path}.spacingMultiplier", issues),
             InitialSamplesPerProbe = ReadInt(runtime, "initialSamplesPerProbe", $"{path}.initialSamplesPerProbe", issues),
             TargetSamplesPerProbe = ReadInt(runtime, "targetSamplesPerProbe", $"{path}.targetSamplesPerProbe", issues),
@@ -983,7 +980,6 @@ public static class GraphicsSettingsYamlCodec
         SetScalar(runtime, "version", settings.RuntimeGIProbes.Version);
         SetScalar(runtime, "enabled", settings.RuntimeGIProbes.Enabled);
         SetScalar(runtime, "maxActiveProbes", settings.RuntimeGIProbes.MaxActiveProbes);
-        SetScalar(runtime, "clipmapCascadeCount", settings.RuntimeGIProbes.ClipmapCascadeCount);
         SetScalar(runtime, "spacingMultiplier", settings.RuntimeGIProbes.SpacingMultiplier);
         SetScalar(runtime, "initialSamplesPerProbe", settings.RuntimeGIProbes.InitialSamplesPerProbe);
         SetScalar(runtime, "targetSamplesPerProbe", settings.RuntimeGIProbes.TargetSamplesPerProbe);

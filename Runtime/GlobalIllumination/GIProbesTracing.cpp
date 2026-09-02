@@ -13,16 +13,48 @@ namespace
 	constexpr uint32_t MaxProbeRelocationIterations = 4u;
 	constexpr float MaxValidBackfaceRatio = 0.25f;
 
-	const std::array<glm::vec3, GIProbeVisibilityDirectionCount>
-		VisibilityDirections
+	uint32_t MixGIProbeRandomSeed(
+		uint32_t baseSeed,
+		uint32_t probeSeed,
+		uint32_t sampleIndex,
+		uint32_t stream) noexcept
 	{
-		glm::vec3(1.0f, 0.0f, 0.0f),
-		glm::vec3(-1.0f, 0.0f, 0.0f),
-		glm::vec3(0.0f, 1.0f, 0.0f),
-		glm::vec3(0.0f, -1.0f, 0.0f),
-		glm::vec3(0.0f, 0.0f, 1.0f),
-		glm::vec3(0.0f, 0.0f, -1.0f)
-	};
+		uint32_t value = baseSeed ^ 0x9e3779b9u;
+		value ^= probeSeed * 0x85ebca6bu + 0xc2b2ae35u;
+		value ^= sampleIndex * 0x27d4eb2du + stream * 0x165667b1u;
+		value ^= value >> 16u;
+		value *= 0x7feb352du;
+		value ^= value >> 15u;
+		value *= 0x846ca68bu;
+		value ^= value >> 16u;
+		return value != 0u ? value : 0x6d2b79f5u;
+	}
+
+	glm::vec3 GenerateGIProbeFibonacciDirection(
+		uint32_t index,
+		uint32_t count,
+		uint32_t seed,
+		uint32_t probeSeed) noexcept
+	{
+		if (count == 0u)
+		{
+			return glm::vec3(0.0f, 1.0f, 0.0f);
+		}
+		const float offset = 2.0f / static_cast<float>(count);
+		const float y = static_cast<float>(index) * offset - 1.0f +
+			offset * 0.5f;
+		const float radius = std::sqrt((std::max)(0.0f, 1.0f - y * y));
+		const uint32_t rotationBits =
+			seed * 747796405u + probeSeed * 2891336453u;
+		const float rotation = static_cast<float>(rotationBits & 0x00ffffffu) /
+			16777216.0f * 2.0f * Pi;
+		const float phi = static_cast<float>(index) * 2.39996322972865332f +
+			rotation;
+		return glm::vec3(
+			std::cos(phi) * radius,
+			y,
+			std::sin(phi) * radius);
+	}
 
 	bool IsFinite(const glm::vec3& value) noexcept
 	{
@@ -83,7 +115,7 @@ namespace
 			GIProbeBakeRaySample sample;
 			if (!sampler.SampleVisibility(
 					position,
-					VisibilityDirections[directionIndex],
+					GIProbeVisibilityDirections[directionIndex],
 					request.m_settings.m_maxRayDistance,
 					MixGIProbeRandomSeed(
 						request.m_settings.m_randomSeed,
@@ -294,56 +326,7 @@ namespace
 				1.0f;
 		}
 	}
-}
 
-void GIProbeIrradianceAccumulator::Reset() noexcept
-{
-	m_weightedCoefficients = {};
-	m_sampleCount = 0u;
-	m_sequenceSampleCount = 0u;
-}
-
-uint32_t Sailor::MixGIProbeRandomSeed(
-	uint32_t baseSeed,
-	uint32_t probeSeed,
-	uint32_t sampleIndex,
-	uint32_t stream) noexcept
-{
-	uint32_t value = baseSeed ^ 0x9e3779b9u;
-	value ^= probeSeed * 0x85ebca6bu + 0xc2b2ae35u;
-	value ^= sampleIndex * 0x27d4eb2du + stream * 0x165667b1u;
-	value ^= value >> 16u;
-	value *= 0x7feb352du;
-	value ^= value >> 15u;
-	value *= 0x846ca68bu;
-	value ^= value >> 16u;
-	return value != 0u ? value : 0x6d2b79f5u;
-}
-
-glm::vec3 Sailor::GenerateGIProbeFibonacciDirection(
-	uint32_t index,
-	uint32_t count,
-	uint32_t seed,
-	uint32_t probeSeed) noexcept
-{
-	if (count == 0u)
-	{
-		return glm::vec3(0.0f, 1.0f, 0.0f);
-	}
-	const float offset = 2.0f / static_cast<float>(count);
-	const float y = static_cast<float>(index) * offset - 1.0f +
-		offset * 0.5f;
-	const float radius = std::sqrt((std::max)(0.0f, 1.0f - y * y));
-	const uint32_t rotationBits =
-		seed * 747796405u + probeSeed * 2891336453u;
-	const float rotation = static_cast<float>(rotationBits & 0x00ffffffu) /
-		16777216.0f * 2.0f * Pi;
-	const float phi = static_cast<float>(index) * 2.39996322972865332f +
-		rotation;
-	return glm::vec3(
-		std::cos(phi) * radius,
-		y,
-		std::sin(phi) * radius);
 }
 
 bool Sailor::TraceGIProbeTransport(

@@ -151,15 +151,16 @@ namespace Sailor
 		void TickRuntimeProvider(float deltaTime);
 		bool BeginRuntimeScenePreparation(std::string& outDiagnostic);
 		void ConsumeRuntimeScenePreparation(
-			const glm::vec3& cameraPosition);
+			const glm::vec3& priorityPosition);
 		bool StartRuntimeSolver(
-			const glm::vec3& cameraPosition,
+			const glm::vec3& priorityPosition,
 			std::string& outDiagnostic);
 		RuntimeGIProbesQualitySettings ResolveRuntimeQualitySettings() const noexcept;
 		void PublishRuntimeSnapshotIfNeeded();
 		void StopRuntimeProvider(bool bClearSnapshot);
+		bool HasRuntimeProviderState() const;
 		bool ShouldRunRuntimeProvider() const noexcept;
-		bool TryGetRuntimeCameraPosition(glm::vec3& outPosition) const;
+		bool TryGetRuntimePriorityPosition(glm::vec3& outPosition) const;
 		bool StartLoad(
 			const std::string& name,
 			RuntimeBinding& binding,
@@ -193,9 +194,7 @@ namespace Sailor
 		RuntimeGIProbesQualitySettings m_runtimeObservedQuality{};
 		uint64_t m_runtimeScenePreparationRequestId = 0u;
 		uint64_t m_runtimePublishedRevision = 0u;
-		glm::vec3 m_runtimeAnchorCamera{};
 		std::string m_runtimePreparationDiagnostic{};
-		bool m_bRuntimeAnchorValid = false;
 		bool m_bRuntimeObservedQualityValid = false;
 		bool m_bRuntimePreviewEnabled = false;
 		Settings::ERuntimeGIProbesEditorBudget m_runtimeEditorBudget{};

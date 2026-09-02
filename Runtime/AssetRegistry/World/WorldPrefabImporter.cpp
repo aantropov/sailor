@@ -131,7 +131,7 @@ YAML::Node WorldPrefab::Serialize() const
 	::Serialize(outData, "name", m_name);
 	if (!m_globalIllumination.m_probes.IsEmpty() ||
 		m_globalIllumination.m_mode !=
-			EGlobalIlluminationMode::RealtimeAndBaked)
+			EGlobalIlluminationMode::Baked)
 	{
 		outData["globalIllumination"] = m_globalIllumination.Serialize();
 	}

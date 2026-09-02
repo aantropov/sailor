@@ -50,7 +50,10 @@ namespace Sailor
 
 		// Serialized audio backend work. All miniaudio calls are confined to
 		// this dedicated thread and never block game or render updates.
-		Audio = 7
+		Audio = 7,
+
+		// Bounded runtime probe tracing on a dedicated utility-priority pool.
+		GI = 8
 	};
 
 	namespace Tasks

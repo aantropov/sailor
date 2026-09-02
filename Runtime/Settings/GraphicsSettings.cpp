@@ -670,10 +670,10 @@ namespace
 				outDiagnostic) ||
 			!ReadUint32(
 				runtimeGI,
-				"clipmapCascadeCount",
+				"initialSamplesPerProbe",
 				source,
-				runtimeGIPath + ".clipmapCascadeCount",
-				outProfile.m_runtimeGIProbes.m_clipmapCascadeCount,
+				runtimeGIPath + ".initialSamplesPerProbe",
+				outProfile.m_runtimeGIProbes.m_initialSamplesPerProbe,
 				outDiagnostic) ||
 			!ReadConvertedScalar(
 				runtimeGI,
@@ -682,13 +682,6 @@ namespace
 				runtimeGIPath + ".spacingMultiplier",
 				"a finite number",
 				outProfile.m_runtimeGIProbes.m_spacingMultiplier,
-				outDiagnostic) ||
-			!ReadUint32(
-				runtimeGI,
-				"initialSamplesPerProbe",
-				source,
-				runtimeGIPath + ".initialSamplesPerProbe",
-				outProfile.m_runtimeGIProbes.m_initialSamplesPerProbe,
 				outDiagnostic) ||
 			!ReadUint32(
 				runtimeGI,
@@ -913,26 +906,26 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 	auto& ultraRuntime =
 		m_presets[QualityIndex(EGraphicsQuality::Ultra)].m_runtimeGIProbes;
 	ultraRuntime.m_maxActiveProbes = 16384u;
-	ultraRuntime.m_workerCount = 2u;
 	ultraRuntime.m_cpuDutyFraction = 0.5f;
-	auto& highRuntime =
-		m_presets[QualityIndex(EGraphicsQuality::High)].m_runtimeGIProbes;
-	highRuntime.m_maxActiveProbes = 8192u;
 	auto& mediumRuntime =
 		m_presets[QualityIndex(EGraphicsQuality::Medium)].m_runtimeGIProbes;
 	mediumRuntime.m_maxActiveProbes = 4096u;
 	mediumRuntime.m_cpuDutyFraction = 0.2f;
+	mediumRuntime.m_maxPublicationsPerSecond = 6.0f;
 	auto& lowRuntime =
 		m_presets[QualityIndex(EGraphicsQuality::Low)].m_runtimeGIProbes;
 	lowRuntime.m_maxActiveProbes = 2048u;
 	lowRuntime.m_targetSamplesPerProbe = 32u;
 	lowRuntime.m_cpuDutyFraction = 0.15f;
+	lowRuntime.m_maxPublicationsPerSecond = 4.0f;
 	auto& veryLowRuntime =
 		m_presets[QualityIndex(EGraphicsQuality::VeryLow)].m_runtimeGIProbes;
 	veryLowRuntime.m_maxActiveProbes = 2048u;
-	veryLowRuntime.m_initialSamplesPerProbe = 8u;
+	veryLowRuntime.m_initialSamplesPerProbe =
+		RuntimeGIProbesInitialSamplesPerProbe;
 	veryLowRuntime.m_targetSamplesPerProbe = 16u;
 	veryLowRuntime.m_cpuDutyFraction = 0.1f;
+	veryLowRuntime.m_maxPublicationsPerSecond = 2.0f;
 }
 
 bool Sailor::Settings::GraphicsQualityProfile::IsShadowCascadeActive(

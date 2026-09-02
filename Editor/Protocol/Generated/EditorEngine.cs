@@ -182,238 +182,223 @@ namespace SailorEditor.Protocol.Generated {
             "X3Byb2JlX3NwYWNpbmcYBSABKAISEwoLbm9ybWFsX2JpYXMYBiABKAISEQoJ",
             "dmlld19iaWFzGAcgASgCEhgKEG1heF9yYXlfZGlzdGFuY2UYCCABKAISEwoL",
             "aW5jbHVkZV9za3kYCSABKAgSGAoQaW5jbHVkZV9lbWlzc2l2ZRgKIAEoCBIf",
-            "ChdpbmNsdWRlX2RpcmVjdF9saWdodGluZxgLIAEoCEoECAwQDSKmAwoYU3Rh",
+            "ChdpbmNsdWRlX2RpcmVjdF9saWdodGluZxgLIAEoCEoECAwQDSKzAgoYU3Rh",
             "cnRHSVByb2Jlc0Jha2VSZXF1ZXN0EhUKDXdvcmxkX2ZpbGVfaWQYASABKAkS",
             "GwoTb3V0cHV0X3ZpcnR1YWxfcGF0aBgCIAEoCRISCgpzdGF0ZV9uYW1lGAMg",
             "ASgJEh0KFWxheW91dF9zb3VyY2VfZmlsZV9pZBgEIAEoCRI4CghzZXR0aW5n",
             "cxgFIAEoCzImLnNhaWxvci5lZGl0b3IudjEuR0lQcm9iZXNCYWtlU2V0dGlu",
-            "Z3MSEwoLYXV0b19ib3VuZHMYBiABKAgSLQoKdm9sdW1lX21pbhgHIAEoCzIZ",
-            "LnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBItCgp2b2x1bWVfbWF4GAggASgL",
-            "Mhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EjcKFGZhbGxiYWNrX2Vudmly",
-            "b25tZW50GAkgASgLMhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EhEKCW92",
-            "ZXJ3cml0ZRgKIAEoCBIZCgx0aHJlYWRfY291bnQYCyABKA1IAIgBAUIPCg1f",
-            "dGhyZWFkX2NvdW50ItcCChhHSVByb2Jlc0Jha2VTdGF0dXNSZXN1bHQSMgoF",
-            "c3RhdGUYASABKA4yIy5zYWlsb3IuZWRpdG9yLnYxLkdJUHJvYmVzQmFrZVN0",
-            "YXRlEhAKCHByb2dyZXNzGAIgASgCEhgKEGNvbXBsZXRlZF9wcm9iZXMYAyAB",
-            "KA0SFAoMdG90YWxfcHJvYmVzGAQgASgNEhMKC2JyaWNrX2NvdW50GAUgASgN",
-            "EhMKC3Byb2JlX2NvdW50GAYgASgNEhcKD2VsYXBzZWRfc2Vjb25kcxgHIAEo",
-            "AhITCgtsYXlvdXRfaGFzaBgIIAEoBBIWCg50cmFuc3BvcnRfaGFzaBgJIAEo",
-            "BBIVCg1saWdodGluZ19oYXNoGAogASgEEg0KBXN0YWdlGAsgASgJEhsKE291",
-            "dHB1dF92aXJ0dWFsX3BhdGgYDCABKAkSEgoKZGlhZ25vc3RpYxgNIAEoCSKr",
-            "AQoeR2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVCaW5kaW5nEgwKBG5hbWUYASAB",
-            "KAkSFQoNYXNzZXRfZmlsZV9pZBgCIAEoCRI7CgRtb2RlGAMgASgOMi0uc2Fp",
-            "bG9yLmVkaXRvci52MS5HbG9iYWxJbGx1bWluYXRpb25Qcm9iZU1vZGUSFgoO",
-            "aW5pdGlhbF93ZWlnaHQYBCABKAISDwoHcHJlbG9hZBgFIAEoCCKoAgoUU2V0",
-            "R0lTZXR0aW5nc1JlcXVlc3QSQAoGcHJvYmVzGAEgAygLMjAuc2FpbG9yLmVk",
-            "aXRvci52MS5HbG9iYWxJbGx1bWluYXRpb25Qcm9iZUJpbmRpbmcSOwoEbW9k",
-            "ZRgCIAEoDjIoLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9u",
-            "TW9kZUgAiAEBEkUKDHByb2JlX3NvdXJjZRgDIAEoDjIvLnNhaWxvci5lZGl0",
-            "b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVTb3VyY2USQQoOcnVudGlt",
-            "ZV9wcm9iZXMYBCABKAsyKS5zYWlsb3IuZWRpdG9yLnYxLlJ1bnRpbWVHSVBy",
-            "b2Jlc1NldHRpbmdzQgcKBV9tb2RlIoMCChxHbG9iYWxJbGx1bWluYXRpb25Q",
-            "cm9iZVN0YXRlEgwKBG5hbWUYASABKAkSFQoNYXNzZXRfZmlsZV9pZBgCIAEo",
-            "CRI7CgRtb2RlGAMgASgOMi0uc2FpbG9yLmVkaXRvci52MS5HbG9iYWxJbGx1",
-            "bWluYXRpb25Qcm9iZU1vZGUSDgoGd2VpZ2h0GAQgASgCEkUKCXJlc2lkZW5j",
-            "eRgFIAEoDjIyLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9u",
-            "UHJvYmVSZXNpZGVuY3kSFgoOYXNzZXRfcmV2aXNpb24YBiABKAQSEgoKZGlh",
-            "Z25vc3RpYxgHIAEoCSLrAwodR2xvYmFsSWxsdW1pbmF0aW9uU3RhdGVSZXN1",
-            "bHQSJQodbWF4X3Byb2JlX3N0YXRlc19wZXJfc25hcHNob3QYASABKA0SPgoG",
-            "cHJvYmVzGAIgAygLMi4uc2FpbG9yLmVkaXRvci52MS5HbG9iYWxJbGx1bWlu",
-            "YXRpb25Qcm9iZVN0YXRlEhIKCmRpYWdub3N0aWMYAyABKAkSGQoRY29tcG9z",
-            "aXRpb25fY291bnQYBCABKAQSIgoacmVqZWN0ZWRfY29tcG9zaXRpb25fY291",
-            "bnQYBSABKAQSNgoEbW9kZRgGIAEoDjIoLnNhaWxvci5lZGl0b3IudjEuR2xv",
-            "YmFsSWxsdW1pbmF0aW9uTW9kZRIPCgdlbmFibGVkGAcgASgIEkUKDHByb2Jl",
-            "X3NvdXJjZRgIIAEoDjIvLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1p",
-            "bmF0aW9uUHJvYmVTb3VyY2USQQoOcnVudGltZV9wcm9iZXMYCSABKAsyKS5z",
-            "YWlsb3IuZWRpdG9yLnYxLlJ1bnRpbWVHSVByb2Jlc1NldHRpbmdzEj0KDXJ1",
-            "bnRpbWVfc3RhdGUYCiABKAsyJi5zYWlsb3IuZWRpdG9yLnYxLlJ1bnRpbWVH",
-            "SVByb2Jlc1N0YXRlIpkBChVSZW1vdGVWaWV3cG9ydFJlcXVlc3QSEwoLdmll",
-            "d3BvcnRfaWQYASABKAQSFAoMd2luZG93X3Bvc194GAIgASgNEhQKDHdpbmRv",
-            "d19wb3NfeRgDIAEoDRINCgV3aWR0aBgEIAEoDRIOCgZoZWlnaHQYBSABKA0S",
-            "DwoHdmlzaWJsZRgGIAEoCBIPCgdmb2N1c2VkGAcgASgIImUKGVJlbW90ZVZp",
-            "ZXdwb3J0SG9zdFJlcXVlc3QSEwoLdmlld3BvcnRfaWQYASABKAQSGAoQaG9z",
-            "dF9oYW5kbGVfa2luZBgCIAEoDRIZChFob3N0X2hhbmRsZV92YWx1ZRgDIAEo",
-            "BCL8AQoaUmVtb3RlVmlld3BvcnRJbnB1dFJlcXVlc3QSEwoLdmlld3BvcnRf",
-            "aWQYASABKAQSDAoEa2luZBgCIAEoDRIRCglwb2ludGVyX3gYAyABKAISEQoJ",
-            "cG9pbnRlcl95GAQgASgCEhUKDXdoZWVsX2RlbHRhX3gYBSABKAISFQoNd2hl",
-            "ZWxfZGVsdGFfeRgGIAEoAhIQCghrZXlfY29kZRgHIAEoDRIOCgZidXR0b24Y",
-            "CCABKA0SEQoJbW9kaWZpZXJzGAkgASgNEg8KB3ByZXNzZWQYCiABKAgSDwoH",
-            "Zm9jdXNlZBgLIAEoCBIQCghjYXB0dXJlZBgMIAEoCCJDCh5NYW5hZ2VkTXV0",
-            "YXRpb25SZXZpc2lvblJlcXVlc3QSDAoEa2luZBgBIAEoDRITCgtpbnN0YW5j",
-            "ZV9pZBgCIAEoCSJAChNVcGRhdGVPYmplY3RSZXF1ZXN0EhMKC2luc3RhbmNl",
-            "X2lkGAEgASgJEhQKDHlhbWxfY2hhbmdlcxgCIAEoCSJmChVSZXBhcmVudE9i",
-            "amVjdFJlcXVlc3QSEwoLaW5zdGFuY2VfaWQYASABKAkSGgoScGFyZW50X2lu",
-            "c3RhbmNlX2lkGAIgASgJEhwKFGtlZXBfd29ybGRfdHJhbnNmb3JtGAMgASgI",
-            "IlQKF0NyZWF0ZUdhbWVPYmplY3RSZXF1ZXN0EhoKEnBhcmVudF9pbnN0YW5j",
-            "ZV9pZBgBIAEoCRIdChVwcmVmZXJyZWRfaW5zdGFuY2VfaWQYAiABKAkiZgoT",
-            "QWRkQ29tcG9uZW50UmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIbChNj",
-            "b21wb25lbnRfdHlwZV9uYW1lGAIgASgJEh0KFXByZWZlcnJlZF9pbnN0YW5j",
-            "ZV9pZBgDIAEoCSLmAQoYQW5pbWF0b3JQYXJhbWV0ZXJSZXF1ZXN0EhMKC2lu",
-            "c3RhbmNlX2lkGAEgASgJEgwKBG5hbWUYAiABKAkSFQoLZmxvYXRfdmFsdWUY",
-            "AyABKAJIABITCglpbnRfdmFsdWUYBCABKBFIABIUCgpib29sX3ZhbHVlGAUg",
-            "ASgISAASKgoHdHJpZ2dlchgGIAEoCzIXLnNhaWxvci5lZGl0b3IudjEuRW1w",
-            "dHlIABIwCg1yZXNldF90cmlnZ2VyGAcgASgLMhcuc2FpbG9yLmVkaXRvci52",
-            "MS5FbXB0eUgAQgcKBXZhbHVlIkcKGEluc3RhbnRpYXRlUHJlZmFiUmVxdWVz",
-            "dBIPCgdmaWxlX2lkGAEgASgJEhoKEnBhcmVudF9pbnN0YW5jZV9pZBgCIAEo",
-            "CSJwCiBJbnN0YW50aWF0ZVByZWZhYkZyb21ZYW1sUmVxdWVzdBITCgtwcmVm",
-            "YWJfeWFtbBgBIAEoCRIaChJwYXJlbnRfaW5zdGFuY2VfaWQYAiABKAkSGwoT",
-            "c3RyaWN0X2luc3RhbmNlX2lkcxgDIAEoCCJVChJWaWV3cG9ydFJheVJlcXVl",
-            "c3QSEwoLdmlld3BvcnRfaWQYASABKAQSFAoMbm9ybWFsaXplZF94GAIgASgC",
-            "EhQKDG5vcm1hbGl6ZWRfeRgDIAEoAiKgAQogSW5zdGFudGlhdGVQcmVmYWJJ",
-            "bnN0YW5jZVJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCRIaChJwYXJlbnRfaW5z",
-            "dGFuY2VfaWQYAiABKAkSHAoUYXBwbHlfd29ybGRfcG9zaXRpb24YAyABKAgS",
-            "MQoOd29ybGRfcG9zaXRpb24YBCABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZl",
-            "Y3RvcjQiQQoVVmlld3BvcnRPYmplY3RSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lk",
-            "GAEgASgEEhMKC2luc3RhbmNlX2lkGAIgASgJIjkKEVByZWZhYkxpbmtSZXF1",
-            "ZXN0EhMKC2luc3RhbmNlX2lkGAEgASgJEg8KB2ZpbGVfaWQYAiABKAkiqQEK",
-            "GFZpZXdwb3J0VG9vbFN0YXRlUmVxdWVzdBITCgt2aWV3cG9ydF9pZBgBIAEo",
-            "BBI/CglvcGVyYXRpb24YAiABKA4yLC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdw",
-            "b3J0VHJhbnNmb3JtT3BlcmF0aW9uEjcKBXNwYWNlGAMgASgOMiguc2FpbG9y",
-            "LmVkaXRvci52MS5WaWV3cG9ydFRyYW5zZm9ybVNwYWNlIigKEFNlbGVjdGlv",
-            "blJlcXVlc3QSFAoMaW5zdGFuY2VfaWRzGAEgAygJIiUKFVNob3dNYWluV2lu",
-            "ZG93UmVxdWVzdBIMCgRzaG93GAEgASgIIogBChxSZW5kZXJQYXRoVHJhY2Vk",
-            "SW1hZ2VSZXF1ZXN0EhMKC291dHB1dF9wYXRoGAEgASgJEhMKC2luc3RhbmNl",
-            "X2lkGAIgASgJEg4KBmhlaWdodBgDIAEoDRIZChFzYW1wbGVzX3Blcl9waXhl",
-            "bBgEIAEoDRITCgttYXhfYm91bmNlcxgFIAEoDSIbCgpCb29sUmVzdWx0Eg0K",
-            "BXZhbHVlGAEgASgIIhwKC0ludDMyUmVzdWx0Eg0KBXZhbHVlGAEgASgFIh0K",
-            "DFVJbnQzMlJlc3VsdBINCgV2YWx1ZRgBIAEoDSIdCgxVSW50NjRSZXN1bHQS",
-            "DQoFdmFsdWUYASABKAQiMAoMU3RyaW5nUmVzdWx0EhEKCWhhc192YWx1ZRgB",
-            "IAEoCBINCgV2YWx1ZRgCIAEoCSIiChBTdHJpbmdMaXN0UmVzdWx0Eg4KBnZh",
-            "bHVlcxgBIAMoCSKEAQoWQXNzZXRSZWxvYWRTdGF0ZVJlc3VsdBIRCglhdmFp",
-            "bGFibGUYASABKAgSGgoScmVxdWVzdF9nZW5lcmF0aW9uGAIgASgEEhwKFGNv",
-            "bXBsZXRlZF9nZW5lcmF0aW9uGAMgASgEEh0KFXN1Y2Nlc3NmdWxfZ2VuZXJh",
-            "dGlvbhgEIAEoBCI6ChBJbnN0YW5jZUlkUmVzdWx0EhEKCXN1Y2NlZWRlZBgB",
-            "IAEoCBITCgtpbnN0YW5jZV9pZBgCIAEoCSI5Cg1WZWN0b3I0UmVzdWx0EigK",
-            "BXZhbHVlGAEgASgLMhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0IpMBChdW",
-            "aWV3cG9ydFRvb2xTdGF0ZVJlc3VsdBI/CglvcGVyYXRpb24YASABKA4yLC5z",
-            "YWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0VHJhbnNmb3JtT3BlcmF0aW9uEjcK",
-            "BXNwYWNlGAIgASgOMiguc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRyYW5z",
-            "Zm9ybVNwYWNlIqgCChNBbmltYXRvclN0YXRlUmVzdWx0EhYKDmhhc19jb250",
-            "cm9sbGVyGAEgASgIEhsKE2NvbnRyb2xsZXJfcmV2aXNpb24YAiABKAQSFwoP",
-            "YWN0aXZlX3N0YXRlX2lkGAMgASgEEhkKEWFjdGl2ZV9zdGF0ZV9uYW1lGAQg",
-            "ASgJEhkKEWFjdGl2ZV9zdGF0ZV90aW1lGAUgASgCEhUKDXRyYW5zaXRpb25p",
-            "bmcYBiABKAgSHAoUZGVzdGluYXRpb25fc3RhdGVfaWQYByABKAQSHgoWZGVz",
-            "dGluYXRpb25fc3RhdGVfbmFtZRgIIAEoCRIeChZkZXN0aW5hdGlvbl9zdGF0",
-            "ZV90aW1lGAkgASgCEhgKEHRyYW5zaXRpb25fYWxwaGEYCiABKAIiNQoHVmVj",
-            "dG9yNBIJCgF4GAEgASgCEgkKAXkYAiABKAISCQoBehgDIAEoAhIJCgF3GAQg",
-            "ASgCIjYKFlZpZXdwb3J0U2VsZWN0aW9uRXZlbnQSHAoUc2VsZWN0ZWRfaW5z",
-            "dGFuY2VfaWQYASABKAki1gMKFlZpZXdwb3J0VHJhbnNmb3JtRXZlbnQSEwoL",
-            "aW5zdGFuY2VfaWQYASABKAkSPwoJb3BlcmF0aW9uGAIgASgOMiwuc2FpbG9y",
-            "LmVkaXRvci52MS5WaWV3cG9ydFRyYW5zZm9ybU9wZXJhdGlvbhI3CgVzcGFj",
-            "ZRgDIAEoDjIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1T",
-            "cGFjZRIyCg9iZWZvcmVfcG9zaXRpb24YBCABKAsyGS5zYWlsb3IuZWRpdG9y",
-            "LnYxLlZlY3RvcjQSMgoPYmVmb3JlX3JvdGF0aW9uGAUgASgLMhkuc2FpbG9y",
-            "LmVkaXRvci52MS5WZWN0b3I0Ei8KDGJlZm9yZV9zY2FsZRgGIAEoCzIZLnNh",
-            "aWxvci5lZGl0b3IudjEuVmVjdG9yNBIxCg5hZnRlcl9wb3NpdGlvbhgHIAEo",
-            "CzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBIxCg5hZnRlcl9yb3RhdGlv",
-            "bhgIIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBIuCgthZnRlcl9z",
-            "Y2FsZRgJIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNCJVChZWaWV3",
-            "cG9ydEFzc2V0RHJvcEV2ZW50Eg8KB2ZpbGVfaWQYASABKAkSFAoMbm9ybWFs",
-            "aXplZF94GAIgASgCEhQKDG5vcm1hbGl6ZWRfeRgDIAEoAiItChlWaWV3cG9y",
-            "dFRvb2xTaG9ydGN1dEV2ZW50EhAKCGtleV9jb2RlGAEgASgNItkCCg1WaWV3",
-            "cG9ydEV2ZW50EhAKCHJldmlzaW9uGAEgASgEEiEKGW1hbmFnZWRfbXV0YXRp",
-            "b25fcmV2aXNpb24YAiABKAQSPQoJc2VsZWN0aW9uGAogASgLMiguc2FpbG9y",
-            "LmVkaXRvci52MS5WaWV3cG9ydFNlbGVjdGlvbkV2ZW50SAASPQoJdHJhbnNm",
-            "b3JtGAsgASgLMiguc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRyYW5zZm9y",
-            "bUV2ZW50SAASPgoKYXNzZXRfZHJvcBgMIAEoCzIoLnNhaWxvci5lZGl0b3Iu",
-            "djEuVmlld3BvcnRBc3NldERyb3BFdmVudEgAEkQKDXRvb2xfc2hvcnRjdXQY",
-            "DSABKAsyKy5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0VG9vbFNob3J0Y3V0",
-            "RXZlbnRIAEIJCgdwYXlsb2FkSgQIAxAKIksKGFZpZXdwb3J0RXZlbnRCYXRj",
-            "aFJlc3VsdBIvCgZldmVudHMYASADKAsyHy5zYWlsb3IuZWRpdG9yLnYxLlZp",
-            "ZXdwb3J0RXZlbnQi7QEKF1J1bnRpbWVHSVByb2Jlc1NldHRpbmdzEg8KB3Zl",
-            "cnNpb24YASABKA0SEwoLaW5jbHVkZV9za3kYAiABKAgSGAoQaW5jbHVkZV9l",
-            "bWlzc2l2ZRgDIAEoCBIfChdpbmNsdWRlX2RpcmVjdF9saWdodGluZxgEIAEo",
-            "CBIUCgxib3VuY2VfY291bnQYBSABKA0SGQoRbWluX3Byb2JlX3NwYWNpbmcY",
-            "BiABKAISEwoLbm9ybWFsX2JpYXMYByABKAISEQoJdmlld19iaWFzGAggASgC",
-            "EhgKEG1heF9yYXlfZGlzdGFuY2UYCSABKAIiMAodUnVudGltZUdJUHJvYmVz",
-            "UHJldmlld1JlcXVlc3QSDwoHZW5hYmxlZBgBIAEoCCItChtSdW50aW1lR0lQ",
-            "cm9iZXNQYXVzZVJlcXVlc3QSDgoGcGF1c2VkGAEgASgIIqEFChRSdW50aW1l",
-            "R0lQcm9iZXNTdGF0ZRI9CglsaWZlY3ljbGUYASABKA4yKi5zYWlsb3IuZWRp",
-            "dG9yLnYxLlJ1bnRpbWVHSVByb2Jlc0xpZmVjeWNsZRIPCgdlbmFibGVkGAIg",
-            "ASgIEg4KBnBhdXNlZBgDIAEoCBIRCgl0aHJvdHRsZWQYBCABKAgSFwoPcHJl",
-            "dmlld19lbmFibGVkGAUgASgIEhgKEHNjZW5lX2dlbmVyYXRpb24YBiABKAQS",
-            "GwoTbGlnaHRpbmdfZ2VuZXJhdGlvbhgHIAEoBBIaChJwdWJsaXNoZWRfcmV2",
-            "aXNpb24YCCABKAQSEAoIY2FwYWNpdHkYCSABKA0SGgoSYWN0aXZlX3Byb2Jl",
-            "X2NvdW50GAogASgNEhkKEXJlYWR5X3Byb2JlX2NvdW50GAsgASgNEhkKEWRp",
-            "cnR5X3Byb2JlX2NvdW50GAwgASgNEhoKEnF1ZXVlZF9wcm9iZV9jb3VudBgN",
-            "IAEoDRIUCgx3b3JrZXJfY291bnQYDiABKA0SGAoQdHJhY2VkX3JheV9jb3Vu",
-            "dBgPIAEoBBIXCg9wdWJsaXNoZWRfYnl0ZXMYECABKAQSEAoIY292ZXJhZ2UY",
-            "ESABKAISEgoKcmVmaW5lbWVudBgSIAEoAhIXCg9yYXlzX3Blcl9zZWNvbmQY",
-            "EyABKAISHwoXd29ya2VyX2NwdV9taWxsaXNlY29uZHMYFCABKAISJQodbGFz",
-            "dF9wdWJsaWNhdGlvbl9taWxsaXNlY29uZHMYFSABKAISEgoKZGlhZ25vc3Rp",
-            "YxgWIAEoCRJGCg5wcmV2aWV3X2J1ZGdldBgXIAEoDjIuLnNhaWxvci5lZGl0",
-            "b3IudjEuUnVudGltZUdJUHJvYmVzUHJldmlld0J1ZGdldCJlCiNSdW50aW1l",
-            "R0lQcm9iZXNQcmV2aWV3QnVkZ2V0UmVxdWVzdBI+CgZidWRnZXQYASABKA4y",
-            "Li5zYWlsb3IuZWRpdG9yLnYxLlJ1bnRpbWVHSVByb2Jlc1ByZXZpZXdCdWRn",
-            "ZXQq8AEKGlZpZXdwb3J0VHJhbnNmb3JtT3BlcmF0aW9uEiwKKFZJRVdQT1JU",
-            "X1RSQU5TRk9STV9PUEVSQVRJT05fVU5TUEVDSUZJRUQQABInCiNWSUVXUE9S",
-            "VF9UUkFOU0ZPUk1fT1BFUkFUSU9OX1NFTEVDVBABEioKJlZJRVdQT1JUX1RS",
-            "QU5TRk9STV9PUEVSQVRJT05fVFJBTlNMQVRFEAISJwojVklFV1BPUlRfVFJB",
-            "TlNGT1JNX09QRVJBVElPTl9ST1RBVEUQAxImCiJWSUVXUE9SVF9UUkFOU0ZP",
-            "Uk1fT1BFUkFUSU9OX1NDQUxFEAQqigEKFlZpZXdwb3J0VHJhbnNmb3JtU3Bh",
-            "Y2USKAokVklFV1BPUlRfVFJBTlNGT1JNX1NQQUNFX1VOU1BFQ0lGSUVEEAAS",
-            "IgoeVklFV1BPUlRfVFJBTlNGT1JNX1NQQUNFX1dPUkxEEAESIgoeVklFV1BP",
-            "UlRfVFJBTlNGT1JNX1NQQUNFX0xPQ0FMEAIqpAEKD0VkaXRvclN0YXRzTW9k",
-            "ZRIhCh1FRElUT1JfU1RBVFNfTU9ERV9VTlNQRUNJRklFRBAAEhoKFkVESVRP",
-            "Ul9TVEFUU19NT0RFX05PTkUQARIiCh5FRElUT1JfU1RBVFNfTU9ERV9SRU5E",
-            "RVJfU1RBVFMQAhIuCipFRElUT1JfU1RBVFNfTU9ERV9SRU5ERVJfU1RBVFNf",
-            "QU5EX1FVRVJJRVMQAyqnBQoQRWRpdG9yUmVuZGVyTW9kZRIiCh5FRElUT1Jf",
-            "UkVOREVSX01PREVfVU5TUEVDSUZJRUQQABIaChZFRElUT1JfUkVOREVSX01P",
-            "REVfTElUEAESKAokRURJVE9SX1JFTkRFUl9NT0RFX0FNQklFTlRfT0NDTFVT",
-            "SU9OEAISHwobRURJVE9SX1JFTkRFUl9NT0RFX0NBU0NBREVTEAMSIgoeRURJ",
-            "VE9SX1JFTkRFUl9NT0RFX0xJR0hUX1RJTEVTEAQSLworRURJVE9SX1JFTkRF",
-            "Ul9NT0RFX0dMT0JBTF9JTExVTUlOQVRJT05fT05MWRAFEjEKLUVESVRPUl9S",
-            "RU5ERVJfTU9ERV9HTE9CQUxfSUxMVU1JTkFUSU9OX1BST0JFUxAGEjEKLUVE",
-            "SVRPUl9SRU5ERVJfTU9ERV9HTE9CQUxfSUxMVU1JTkFUSU9OX0JSSUNLUxAH",
-            "EjMKL0VESVRPUl9SRU5ERVJfTU9ERV9HTE9CQUxfSUxMVU1JTkFUSU9OX1ZB",
-            "TElESVRZEAgSNQoxRURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9JTExVTUlO",
-            "QVRJT05fVklTSUJJTElUWRAJEjQKMEVESVRPUl9SRU5ERVJfTU9ERV9HTE9C",
-            "QUxfSUxMVU1JTkFUSU9OX1JFU0lERU5DWRAKEjkKNUVESVRPUl9SRU5ERVJf",
-            "TU9ERV9HTE9CQUxfSUxMVU1JTkFUSU9OX0FTU0VUX0lERU5USVRZEAsSMwov",
-            "RURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9JTExVTUlOQVRJT05fRkFMTEJB",
-            "Q0sQDBI7CjdFRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5BVElP",
-            "Tl9DTElQTUFQX0NBU0NBREVTEA0qpwIKEUdJUHJvYmVzQmFrZVN0YXRlEiQK",
-            "IEdJX1BST0JFU19CQUtFX1NUQVRFX1VOU1BFQ0lGSUVEEAASHQoZR0lfUFJP",
-            "QkVTX0JBS0VfU1RBVEVfSURMRRABEiIKHkdJX1BST0JFU19CQUtFX1NUQVRF",
-            "X1BSRVBBUklORxACEh8KG0dJX1BST0JFU19CQUtFX1NUQVRFX0JBS0lORxAD",
-            "Eh8KG0dJX1BST0JFU19CQUtFX1NUQVRFX1NBVklORxAEEiIKHkdJX1BST0JF",
-            "U19CQUtFX1NUQVRFX1NVQ0NFRURFRBAFEh8KG0dJX1BST0JFU19CQUtFX1NU",
-            "QVRFX0ZBSUxFRBAGEiIKHkdJX1BST0JFU19CQUtFX1NUQVRFX0NBTkNFTExF",
-            "RBAHKqQBChtHbG9iYWxJbGx1bWluYXRpb25Qcm9iZU1vZGUSLgoqR0xPQkFM",
-            "X0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX1VOU1BFQ0lGSUVEEAASKAokR0xP",
-            "QkFMX0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX0JMRU5EEAESKwonR0xPQkFM",
-            "X0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX0FERElUSVZFEAIqwwEKFkdsb2Jh",
-            "bElsbHVtaW5hdGlvbk1vZGUSKAokR0xPQkFMX0lMTFVNSU5BVElPTl9NT0RF",
-            "X1VOU1BFQ0lGSUVEEAASJQohR0xPQkFMX0lMTFVNSU5BVElPTl9NT0RFX1JF",
-            "QUxUSU1FEAESLworR0xPQkFMX0lMTFVNSU5BVElPTl9NT0RFX1JFQUxUSU1F",
-            "X0FORF9CQUtFRBACEicKI0dMT0JBTF9JTExVTUlOQVRJT05fTU9ERV9CQUtF",
-            "RF9PTkxZEAMqvwEKHUdsb2JhbElsbHVtaW5hdGlvblByb2JlU291cmNlEjAK",
-            "LEdMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVfU09VUkNFX1VOU1BFQ0lGSUVE",
-            "EAASMQotR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9TT1VSQ0VfQkFLRURf",
-            "QVNTRVRTEAESOQo1R0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9TT1VSQ0Vf",
-            "UlVOVElNRV9FWFBFUklNRU5UQUwQAirtAgoYUnVudGltZUdJUHJvYmVzTGlm",
-            "ZWN5Y2xlEisKJ1JVTlRJTUVfR0lfUFJPQkVTX0xJRkVDWUNMRV9VTlNQRUNJ",
-            "RklFRBAAEigKJFJVTlRJTUVfR0lfUFJPQkVTX0xJRkVDWUNMRV9ESVNBQkxF",
-            "RBABEi8KK1JVTlRJTUVfR0lfUFJPQkVTX0xJRkVDWUNMRV9QUkVQQVJJTkdf",
-            "U0NFTkUQAhInCiNSVU5USU1FX0dJX1BST0JFU19MSUZFQ1lDTEVfVFJBQ0lO",
-            "RxADEiUKIVJVTlRJTUVfR0lfUFJPQkVTX0xJRkVDWUNMRV9SRUFEWRAEEiYK",
-            "IlJVTlRJTUVfR0lfUFJPQkVTX0xJRkVDWUNMRV9QQVVTRUQQBRIpCiVSVU5U",
-            "SU1FX0dJX1BST0JFU19MSUZFQ1lDTEVfVEhST1RUTEVEEAYSJgoiUlVOVElN",
-            "RV9HSV9QUk9CRVNfTElGRUNZQ0xFX0ZBSUxFRBAHKqkBChxSdW50aW1lR0lQ",
-            "cm9iZXNQcmV2aWV3QnVkZ2V0EjAKLFJVTlRJTUVfR0lfUFJPQkVTX1BSRVZJ",
-            "RVdfQlVER0VUX1VOU1BFQ0lGSUVEEAASKAokUlVOVElNRV9HSV9QUk9CRVNf",
-            "UFJFVklFV19CVURHRVRfRUNPEAESLQopUlVOVElNRV9HSV9QUk9CRVNfUFJF",
-            "VklFV19CVURHRVRfQkFMQU5DRUQQAiqcAgogR2xvYmFsSWxsdW1pbmF0aW9u",
-            "UHJvYmVSZXNpZGVuY3kSMwovR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9S",
-            "RVNJREVOQ1lfVU5TUEVDSUZJRUQQABIwCixHTE9CQUxfSUxMVU1JTkFUSU9O",
-            "X1BST0JFX1JFU0lERU5DWV9VTkxPQURFRBABEi8KK0dMT0JBTF9JTExVTUlO",
-            "QVRJT05fUFJPQkVfUkVTSURFTkNZX0xPQURJTkcQAhIwCixHTE9CQUxfSUxM",
-            "VU1JTkFUSU9OX1BST0JFX1JFU0lERU5DWV9SRVNJREVOVBADEi4KKkdMT0JB",
-            "TF9JTExVTUlOQVRJT05fUFJPQkVfUkVTSURFTkNZX0ZBSUxFRBAEQiKqAh9T",
-            "YWlsb3JFZGl0b3IuUHJvdG9jb2wuR2VuZXJhdGVkYgZwcm90bzM="));
+            "Z3MSNwoUZmFsbGJhY2tfZW52aXJvbm1lbnQYBiABKAsyGS5zYWlsb3IuZWRp",
+            "dG9yLnYxLlZlY3RvcjQSEQoJb3ZlcndyaXRlGAcgASgIEhkKDHRocmVhZF9j",
+            "b3VudBgIIAEoDUgAiAEBQg8KDV90aHJlYWRfY291bnQi1wIKGEdJUHJvYmVz",
+            "QmFrZVN0YXR1c1Jlc3VsdBIyCgVzdGF0ZRgBIAEoDjIjLnNhaWxvci5lZGl0",
+            "b3IudjEuR0lQcm9iZXNCYWtlU3RhdGUSEAoIcHJvZ3Jlc3MYAiABKAISGAoQ",
+            "Y29tcGxldGVkX3Byb2JlcxgDIAEoDRIUCgx0b3RhbF9wcm9iZXMYBCABKA0S",
+            "EwoLYnJpY2tfY291bnQYBSABKA0SEwoLcHJvYmVfY291bnQYBiABKA0SFwoP",
+            "ZWxhcHNlZF9zZWNvbmRzGAcgASgCEhMKC2xheW91dF9oYXNoGAggASgEEhYK",
+            "DnRyYW5zcG9ydF9oYXNoGAkgASgEEhUKDWxpZ2h0aW5nX2hhc2gYCiABKAQS",
+            "DQoFc3RhZ2UYCyABKAkSGwoTb3V0cHV0X3ZpcnR1YWxfcGF0aBgMIAEoCRIS",
+            "CgpkaWFnbm9zdGljGA0gASgJIqsBCh5HbG9iYWxJbGx1bWluYXRpb25Qcm9i",
+            "ZUJpbmRpbmcSDAoEbmFtZRgBIAEoCRIVCg1hc3NldF9maWxlX2lkGAIgASgJ",
+            "EjsKBG1vZGUYAyABKA4yLS5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVt",
+            "aW5hdGlvblByb2JlTW9kZRIWCg5pbml0aWFsX3dlaWdodBgEIAEoAhIPCgdw",
+            "cmVsb2FkGAUgASgIIuEBChRTZXRHSVNldHRpbmdzUmVxdWVzdBJACgZwcm9i",
+            "ZXMYASADKAsyMC5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlv",
+            "blByb2JlQmluZGluZxI7CgRtb2RlGAIgASgOMiguc2FpbG9yLmVkaXRvci52",
+            "MS5HbG9iYWxJbGx1bWluYXRpb25Nb2RlSACIAQESQQoOcnVudGltZV9wcm9i",
+            "ZXMYAyABKAsyKS5zYWlsb3IuZWRpdG9yLnYxLlJ1bnRpbWVHSVByb2Jlc1Nl",
+            "dHRpbmdzQgcKBV9tb2RlIoMCChxHbG9iYWxJbGx1bWluYXRpb25Qcm9iZVN0",
+            "YXRlEgwKBG5hbWUYASABKAkSFQoNYXNzZXRfZmlsZV9pZBgCIAEoCRI7CgRt",
+            "b2RlGAMgASgOMi0uc2FpbG9yLmVkaXRvci52MS5HbG9iYWxJbGx1bWluYXRp",
+            "b25Qcm9iZU1vZGUSDgoGd2VpZ2h0GAQgASgCEkUKCXJlc2lkZW5jeRgFIAEo",
+            "DjIyLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVS",
+            "ZXNpZGVuY3kSFgoOYXNzZXRfcmV2aXNpb24YBiABKAQSEgoKZGlhZ25vc3Rp",
+            "YxgHIAEoCSKkAwodR2xvYmFsSWxsdW1pbmF0aW9uU3RhdGVSZXN1bHQSJQod",
+            "bWF4X3Byb2JlX3N0YXRlc19wZXJfc25hcHNob3QYASABKA0SPgoGcHJvYmVz",
+            "GAIgAygLMi4uc2FpbG9yLmVkaXRvci52MS5HbG9iYWxJbGx1bWluYXRpb25Q",
+            "cm9iZVN0YXRlEhIKCmRpYWdub3N0aWMYAyABKAkSGQoRY29tcG9zaXRpb25f",
+            "Y291bnQYBCABKAQSIgoacmVqZWN0ZWRfY29tcG9zaXRpb25fY291bnQYBSAB",
+            "KAQSNgoEbW9kZRgGIAEoDjIoLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxs",
+            "dW1pbmF0aW9uTW9kZRIPCgdlbmFibGVkGAcgASgIEkEKDnJ1bnRpbWVfcHJv",
+            "YmVzGAggASgLMikuc2FpbG9yLmVkaXRvci52MS5SdW50aW1lR0lQcm9iZXNT",
+            "ZXR0aW5ncxI9Cg1ydW50aW1lX3N0YXRlGAkgASgLMiYuc2FpbG9yLmVkaXRv",
+            "ci52MS5SdW50aW1lR0lQcm9iZXNTdGF0ZSKZAQoVUmVtb3RlVmlld3BvcnRS",
+            "ZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhQKDHdpbmRvd19wb3NfeBgC",
+            "IAEoDRIUCgx3aW5kb3dfcG9zX3kYAyABKA0SDQoFd2lkdGgYBCABKA0SDgoG",
+            "aGVpZ2h0GAUgASgNEg8KB3Zpc2libGUYBiABKAgSDwoHZm9jdXNlZBgHIAEo",
+            "CCJlChlSZW1vdGVWaWV3cG9ydEhvc3RSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lk",
+            "GAEgASgEEhgKEGhvc3RfaGFuZGxlX2tpbmQYAiABKA0SGQoRaG9zdF9oYW5k",
+            "bGVfdmFsdWUYAyABKAQi/AEKGlJlbW90ZVZpZXdwb3J0SW5wdXRSZXF1ZXN0",
+            "EhMKC3ZpZXdwb3J0X2lkGAEgASgEEgwKBGtpbmQYAiABKA0SEQoJcG9pbnRl",
+            "cl94GAMgASgCEhEKCXBvaW50ZXJfeRgEIAEoAhIVCg13aGVlbF9kZWx0YV94",
+            "GAUgASgCEhUKDXdoZWVsX2RlbHRhX3kYBiABKAISEAoIa2V5X2NvZGUYByAB",
+            "KA0SDgoGYnV0dG9uGAggASgNEhEKCW1vZGlmaWVycxgJIAEoDRIPCgdwcmVz",
+            "c2VkGAogASgIEg8KB2ZvY3VzZWQYCyABKAgSEAoIY2FwdHVyZWQYDCABKAgi",
+            "QwoeTWFuYWdlZE11dGF0aW9uUmV2aXNpb25SZXF1ZXN0EgwKBGtpbmQYASAB",
+            "KA0SEwoLaW5zdGFuY2VfaWQYAiABKAkiQAoTVXBkYXRlT2JqZWN0UmVxdWVz",
+            "dBITCgtpbnN0YW5jZV9pZBgBIAEoCRIUCgx5YW1sX2NoYW5nZXMYAiABKAki",
+            "ZgoVUmVwYXJlbnRPYmplY3RSZXF1ZXN0EhMKC2luc3RhbmNlX2lkGAEgASgJ",
+            "EhoKEnBhcmVudF9pbnN0YW5jZV9pZBgCIAEoCRIcChRrZWVwX3dvcmxkX3Ry",
+            "YW5zZm9ybRgDIAEoCCJUChdDcmVhdGVHYW1lT2JqZWN0UmVxdWVzdBIaChJw",
+            "YXJlbnRfaW5zdGFuY2VfaWQYASABKAkSHQoVcHJlZmVycmVkX2luc3RhbmNl",
+            "X2lkGAIgASgJImYKE0FkZENvbXBvbmVudFJlcXVlc3QSEwoLaW5zdGFuY2Vf",
+            "aWQYASABKAkSGwoTY29tcG9uZW50X3R5cGVfbmFtZRgCIAEoCRIdChVwcmVm",
+            "ZXJyZWRfaW5zdGFuY2VfaWQYAyABKAki5gEKGEFuaW1hdG9yUGFyYW1ldGVy",
+            "UmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEhUK",
+            "C2Zsb2F0X3ZhbHVlGAMgASgCSAASEwoJaW50X3ZhbHVlGAQgASgRSAASFAoK",
+            "Ym9vbF92YWx1ZRgFIAEoCEgAEioKB3RyaWdnZXIYBiABKAsyFy5zYWlsb3Iu",
+            "ZWRpdG9yLnYxLkVtcHR5SAASMAoNcmVzZXRfdHJpZ2dlchgHIAEoCzIXLnNh",
+            "aWxvci5lZGl0b3IudjEuRW1wdHlIAEIHCgV2YWx1ZSJHChhJbnN0YW50aWF0",
+            "ZVByZWZhYlJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCRIaChJwYXJlbnRfaW5z",
+            "dGFuY2VfaWQYAiABKAkicAogSW5zdGFudGlhdGVQcmVmYWJGcm9tWWFtbFJl",
+            "cXVlc3QSEwoLcHJlZmFiX3lhbWwYASABKAkSGgoScGFyZW50X2luc3RhbmNl",
+            "X2lkGAIgASgJEhsKE3N0cmljdF9pbnN0YW5jZV9pZHMYAyABKAgiVQoSVmll",
+            "d3BvcnRSYXlSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhQKDG5vcm1h",
+            "bGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kYAyABKAIioAEKIEluc3Rh",
+            "bnRpYXRlUHJlZmFiSW5zdGFuY2VSZXF1ZXN0Eg8KB2ZpbGVfaWQYASABKAkS",
+            "GgoScGFyZW50X2luc3RhbmNlX2lkGAIgASgJEhwKFGFwcGx5X3dvcmxkX3Bv",
+            "c2l0aW9uGAMgASgIEjEKDndvcmxkX3Bvc2l0aW9uGAQgASgLMhkuc2FpbG9y",
+            "LmVkaXRvci52MS5WZWN0b3I0IkEKFVZpZXdwb3J0T2JqZWN0UmVxdWVzdBIT",
+            "Cgt2aWV3cG9ydF9pZBgBIAEoBBITCgtpbnN0YW5jZV9pZBgCIAEoCSI5ChFQ",
+            "cmVmYWJMaW5rUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIPCgdmaWxl",
+            "X2lkGAIgASgJIqkBChhWaWV3cG9ydFRvb2xTdGF0ZVJlcXVlc3QSEwoLdmll",
+            "d3BvcnRfaWQYASABKAQSPwoJb3BlcmF0aW9uGAIgASgOMiwuc2FpbG9yLmVk",
+            "aXRvci52MS5WaWV3cG9ydFRyYW5zZm9ybU9wZXJhdGlvbhI3CgVzcGFjZRgD",
+            "IAEoDjIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1TcGFj",
+            "ZSIoChBTZWxlY3Rpb25SZXF1ZXN0EhQKDGluc3RhbmNlX2lkcxgBIAMoCSIl",
+            "ChVTaG93TWFpbldpbmRvd1JlcXVlc3QSDAoEc2hvdxgBIAEoCCKIAQocUmVu",
+            "ZGVyUGF0aFRyYWNlZEltYWdlUmVxdWVzdBITCgtvdXRwdXRfcGF0aBgBIAEo",
+            "CRITCgtpbnN0YW5jZV9pZBgCIAEoCRIOCgZoZWlnaHQYAyABKA0SGQoRc2Ft",
+            "cGxlc19wZXJfcGl4ZWwYBCABKA0SEwoLbWF4X2JvdW5jZXMYBSABKA0iGwoK",
+            "Qm9vbFJlc3VsdBINCgV2YWx1ZRgBIAEoCCIcCgtJbnQzMlJlc3VsdBINCgV2",
+            "YWx1ZRgBIAEoBSIdCgxVSW50MzJSZXN1bHQSDQoFdmFsdWUYASABKA0iHQoM",
+            "VUludDY0UmVzdWx0Eg0KBXZhbHVlGAEgASgEIjAKDFN0cmluZ1Jlc3VsdBIR",
+            "CgloYXNfdmFsdWUYASABKAgSDQoFdmFsdWUYAiABKAkiIgoQU3RyaW5nTGlz",
+            "dFJlc3VsdBIOCgZ2YWx1ZXMYASADKAkihAEKFkFzc2V0UmVsb2FkU3RhdGVS",
+            "ZXN1bHQSEQoJYXZhaWxhYmxlGAEgASgIEhoKEnJlcXVlc3RfZ2VuZXJhdGlv",
+            "bhgCIAEoBBIcChRjb21wbGV0ZWRfZ2VuZXJhdGlvbhgDIAEoBBIdChVzdWNj",
+            "ZXNzZnVsX2dlbmVyYXRpb24YBCABKAQiOgoQSW5zdGFuY2VJZFJlc3VsdBIR",
+            "CglzdWNjZWVkZWQYASABKAgSEwoLaW5zdGFuY2VfaWQYAiABKAkiOQoNVmVj",
+            "dG9yNFJlc3VsdBIoCgV2YWx1ZRgBIAEoCzIZLnNhaWxvci5lZGl0b3IudjEu",
+            "VmVjdG9yNCKTAQoXVmlld3BvcnRUb29sU3RhdGVSZXN1bHQSPwoJb3BlcmF0",
+            "aW9uGAEgASgOMiwuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRyYW5zZm9y",
+            "bU9wZXJhdGlvbhI3CgVzcGFjZRgCIAEoDjIoLnNhaWxvci5lZGl0b3IudjEu",
+            "Vmlld3BvcnRUcmFuc2Zvcm1TcGFjZSKoAgoTQW5pbWF0b3JTdGF0ZVJlc3Vs",
+            "dBIWCg5oYXNfY29udHJvbGxlchgBIAEoCBIbChNjb250cm9sbGVyX3Jldmlz",
+            "aW9uGAIgASgEEhcKD2FjdGl2ZV9zdGF0ZV9pZBgDIAEoBBIZChFhY3RpdmVf",
+            "c3RhdGVfbmFtZRgEIAEoCRIZChFhY3RpdmVfc3RhdGVfdGltZRgFIAEoAhIV",
+            "Cg10cmFuc2l0aW9uaW5nGAYgASgIEhwKFGRlc3RpbmF0aW9uX3N0YXRlX2lk",
+            "GAcgASgEEh4KFmRlc3RpbmF0aW9uX3N0YXRlX25hbWUYCCABKAkSHgoWZGVz",
+            "dGluYXRpb25fc3RhdGVfdGltZRgJIAEoAhIYChB0cmFuc2l0aW9uX2FscGhh",
+            "GAogASgCIjUKB1ZlY3RvcjQSCQoBeBgBIAEoAhIJCgF5GAIgASgCEgkKAXoY",
+            "AyABKAISCQoBdxgEIAEoAiI2ChZWaWV3cG9ydFNlbGVjdGlvbkV2ZW50EhwK",
+            "FHNlbGVjdGVkX2luc3RhbmNlX2lkGAEgASgJItYDChZWaWV3cG9ydFRyYW5z",
+            "Zm9ybUV2ZW50EhMKC2luc3RhbmNlX2lkGAEgASgJEj8KCW9wZXJhdGlvbhgC",
+            "IAEoDjIsLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1PcGVy",
+            "YXRpb24SNwoFc3BhY2UYAyABKA4yKC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdw",
+            "b3J0VHJhbnNmb3JtU3BhY2USMgoPYmVmb3JlX3Bvc2l0aW9uGAQgASgLMhku",
+            "c2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EjIKD2JlZm9yZV9yb3RhdGlvbhgF",
+            "IAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBIvCgxiZWZvcmVfc2Nh",
+            "bGUYBiABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSMQoOYWZ0ZXJf",
+            "cG9zaXRpb24YByABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSMQoO",
+            "YWZ0ZXJfcm90YXRpb24YCCABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3Rv",
+            "cjQSLgoLYWZ0ZXJfc2NhbGUYCSABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZl",
+            "Y3RvcjQiVQoWVmlld3BvcnRBc3NldERyb3BFdmVudBIPCgdmaWxlX2lkGAEg",
+            "ASgJEhQKDG5vcm1hbGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kYAyAB",
+            "KAIiLQoZVmlld3BvcnRUb29sU2hvcnRjdXRFdmVudBIQCghrZXlfY29kZRgB",
+            "IAEoDSLZAgoNVmlld3BvcnRFdmVudBIQCghyZXZpc2lvbhgBIAEoBBIhChlt",
+            "YW5hZ2VkX211dGF0aW9uX3JldmlzaW9uGAIgASgEEj0KCXNlbGVjdGlvbhgK",
+            "IAEoCzIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRTZWxlY3Rpb25FdmVu",
+            "dEgAEj0KCXRyYW5zZm9ybRgLIAEoCzIoLnNhaWxvci5lZGl0b3IudjEuVmll",
+            "d3BvcnRUcmFuc2Zvcm1FdmVudEgAEj4KCmFzc2V0X2Ryb3AYDCABKAsyKC5z",
+            "YWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0QXNzZXREcm9wRXZlbnRIABJECg10",
+            "b29sX3Nob3J0Y3V0GA0gASgLMisuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9y",
+            "dFRvb2xTaG9ydGN1dEV2ZW50SABCCQoHcGF5bG9hZEoECAMQCiJLChhWaWV3",
+            "cG9ydEV2ZW50QmF0Y2hSZXN1bHQSLwoGZXZlbnRzGAEgAygLMh8uc2FpbG9y",
+            "LmVkaXRvci52MS5WaWV3cG9ydEV2ZW50Iu0BChdSdW50aW1lR0lQcm9iZXNT",
+            "ZXR0aW5ncxIPCgd2ZXJzaW9uGAEgASgNEhMKC2luY2x1ZGVfc2t5GAIgASgI",
+            "EhgKEGluY2x1ZGVfZW1pc3NpdmUYAyABKAgSHwoXaW5jbHVkZV9kaXJlY3Rf",
+            "bGlnaHRpbmcYBCABKAgSFAoMYm91bmNlX2NvdW50GAUgASgNEhkKEW1pbl9w",
+            "cm9iZV9zcGFjaW5nGAYgASgCEhMKC25vcm1hbF9iaWFzGAcgASgCEhEKCXZp",
+            "ZXdfYmlhcxgIIAEoAhIYChBtYXhfcmF5X2Rpc3RhbmNlGAkgASgCIjAKHVJ1",
+            "bnRpbWVHSVByb2Jlc1ByZXZpZXdSZXF1ZXN0Eg8KB2VuYWJsZWQYASABKAgi",
+            "LQobUnVudGltZUdJUHJvYmVzUGF1c2VSZXF1ZXN0Eg4KBnBhdXNlZBgBIAEo",
+            "CCLcAwoUUnVudGltZUdJUHJvYmVzU3RhdGUSPQoJbGlmZWN5Y2xlGAEgASgO",
+            "Miouc2FpbG9yLmVkaXRvci52MS5SdW50aW1lR0lQcm9iZXNMaWZlY3ljbGUS",
+            "DwoHZW5hYmxlZBgCIAEoCBIOCgZwYXVzZWQYAyABKAgSFwoPcHJldmlld19l",
+            "bmFibGVkGAQgASgIEhgKEHNjZW5lX2dlbmVyYXRpb24YBSABKAQSGwoTbGln",
+            "aHRpbmdfZ2VuZXJhdGlvbhgGIAEoBBIaChJwdWJsaXNoZWRfcmV2aXNpb24Y",
+            "ByABKAQSEAoIY2FwYWNpdHkYCCABKA0SGgoSYWN0aXZlX3Byb2JlX2NvdW50",
+            "GAkgASgNEhkKEXJlYWR5X3Byb2JlX2NvdW50GAogASgNEhQKDHdvcmtlcl9j",
+            "b3VudBgLIAEoDRIXCg9wdWJsaXNoZWRfYnl0ZXMYDCABKAQSEAoIY292ZXJh",
+            "Z2UYDSABKAISEgoKcmVmaW5lbWVudBgOIAEoAhISCgpkaWFnbm9zdGljGA8g",
+            "ASgJEkYKDnByZXZpZXdfYnVkZ2V0GBAgASgOMi4uc2FpbG9yLmVkaXRvci52",
+            "MS5SdW50aW1lR0lQcm9iZXNQcmV2aWV3QnVkZ2V0ImUKI1J1bnRpbWVHSVBy",
+            "b2Jlc1ByZXZpZXdCdWRnZXRSZXF1ZXN0Ej4KBmJ1ZGdldBgBIAEoDjIuLnNh",
+            "aWxvci5lZGl0b3IudjEuUnVudGltZUdJUHJvYmVzUHJldmlld0J1ZGdldCrw",
+            "AQoaVmlld3BvcnRUcmFuc2Zvcm1PcGVyYXRpb24SLAooVklFV1BPUlRfVFJB",
+            "TlNGT1JNX09QRVJBVElPTl9VTlNQRUNJRklFRBAAEicKI1ZJRVdQT1JUX1RS",
+            "QU5TRk9STV9PUEVSQVRJT05fU0VMRUNUEAESKgomVklFV1BPUlRfVFJBTlNG",
+            "T1JNX09QRVJBVElPTl9UUkFOU0xBVEUQAhInCiNWSUVXUE9SVF9UUkFOU0ZP",
+            "Uk1fT1BFUkFUSU9OX1JPVEFURRADEiYKIlZJRVdQT1JUX1RSQU5TRk9STV9P",
+            "UEVSQVRJT05fU0NBTEUQBCqKAQoWVmlld3BvcnRUcmFuc2Zvcm1TcGFjZRIo",
+            "CiRWSUVXUE9SVF9UUkFOU0ZPUk1fU1BBQ0VfVU5TUEVDSUZJRUQQABIiCh5W",
+            "SUVXUE9SVF9UUkFOU0ZPUk1fU1BBQ0VfV09STEQQARIiCh5WSUVXUE9SVF9U",
+            "UkFOU0ZPUk1fU1BBQ0VfTE9DQUwQAiqkAQoPRWRpdG9yU3RhdHNNb2RlEiEK",
+            "HUVESVRPUl9TVEFUU19NT0RFX1VOU1BFQ0lGSUVEEAASGgoWRURJVE9SX1NU",
+            "QVRTX01PREVfTk9ORRABEiIKHkVESVRPUl9TVEFUU19NT0RFX1JFTkRFUl9T",
+            "VEFUUxACEi4KKkVESVRPUl9TVEFUU19NT0RFX1JFTkRFUl9TVEFUU19BTkRf",
+            "UVVFUklFUxADKqMFChBFZGl0b3JSZW5kZXJNb2RlEiIKHkVESVRPUl9SRU5E",
+            "RVJfTU9ERV9VTlNQRUNJRklFRBAAEhoKFkVESVRPUl9SRU5ERVJfTU9ERV9M",
+            "SVQQARIoCiRFRElUT1JfUkVOREVSX01PREVfQU1CSUVOVF9PQ0NMVVNJT04Q",
+            "AhIfChtFRElUT1JfUkVOREVSX01PREVfQ0FTQ0FERVMQAxIiCh5FRElUT1Jf",
+            "UkVOREVSX01PREVfTElHSFRfVElMRVMQBBIvCitFRElUT1JfUkVOREVSX01P",
+            "REVfR0xPQkFMX0lMTFVNSU5BVElPTl9PTkxZEAUSMQotRURJVE9SX1JFTkRF",
+            "Ul9NT0RFX0dMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVTEAYSMQotRURJVE9S",
+            "X1JFTkRFUl9NT0RFX0dMT0JBTF9JTExVTUlOQVRJT05fQlJJQ0tTEAcSMwov",
+            "RURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9JTExVTUlOQVRJT05fVkFMSURJ",
+            "VFkQCBI1CjFFRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5BVElP",
+            "Tl9WSVNJQklMSVRZEAkSNAowRURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9J",
+            "TExVTUlOQVRJT05fUkVTSURFTkNZEAoSOQo1RURJVE9SX1JFTkRFUl9NT0RF",
+            "X0dMT0JBTF9JTExVTUlOQVRJT05fQVNTRVRfSURFTlRJVFkQCxIzCi9FRElU",
+            "T1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5BVElPTl9GQUxMQkFDSxAM",
+            "EjcKM0VESVRPUl9SRU5ERVJfTU9ERV9HTE9CQUxfSUxMVU1JTkFUSU9OX1NV",
+            "QkRJVklTSU9OUxANKqcCChFHSVByb2Jlc0Jha2VTdGF0ZRIkCiBHSV9QUk9C",
+            "RVNfQkFLRV9TVEFURV9VTlNQRUNJRklFRBAAEh0KGUdJX1BST0JFU19CQUtF",
+            "X1NUQVRFX0lETEUQARIiCh5HSV9QUk9CRVNfQkFLRV9TVEFURV9QUkVQQVJJ",
+            "TkcQAhIfChtHSV9QUk9CRVNfQkFLRV9TVEFURV9CQUtJTkcQAxIfChtHSV9Q",
+            "Uk9CRVNfQkFLRV9TVEFURV9TQVZJTkcQBBIiCh5HSV9QUk9CRVNfQkFLRV9T",
+            "VEFURV9TVUNDRUVERUQQBRIfChtHSV9QUk9CRVNfQkFLRV9TVEFURV9GQUlM",
+            "RUQQBhIiCh5HSV9QUk9CRVNfQkFLRV9TVEFURV9DQU5DRUxMRUQQByqkAQob",
+            "R2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVNb2RlEi4KKkdMT0JBTF9JTExVTUlO",
+            "QVRJT05fUFJPQkVfTU9ERV9VTlNQRUNJRklFRBAAEigKJEdMT0JBTF9JTExV",
+            "TUlOQVRJT05fUFJPQkVfTU9ERV9CTEVORBABEisKJ0dMT0JBTF9JTExVTUlO",
+            "QVRJT05fUFJPQkVfTU9ERV9BRERJVElWRRACKrABChZHbG9iYWxJbGx1bWlu",
+            "YXRpb25Nb2RlEigKJEdMT0JBTF9JTExVTUlOQVRJT05fTU9ERV9VTlNQRUNJ",
+            "RklFRBAAEiIKHkdMT0JBTF9JTExVTUlOQVRJT05fTU9ERV9OT19HSRABEiQK",
+            "IEdMT0JBTF9JTExVTUlOQVRJT05fTU9ERV9SVU5USU1FEAISIgoeR0xPQkFM",
+            "X0lMTFVNSU5BVElPTl9NT0RFX0JBS0VEEAMq7QIKGFJ1bnRpbWVHSVByb2Jl",
+            "c0xpZmVjeWNsZRIrCidSVU5USU1FX0dJX1BST0JFU19MSUZFQ1lDTEVfVU5T",
+            "UEVDSUZJRUQQABIoCiRSVU5USU1FX0dJX1BST0JFU19MSUZFQ1lDTEVfRElT",
+            "QUJMRUQQARIvCitSVU5USU1FX0dJX1BST0JFU19MSUZFQ1lDTEVfUFJFUEFS",
+            "SU5HX1NDRU5FEAISJwojUlVOVElNRV9HSV9QUk9CRVNfTElGRUNZQ0xFX1RS",
+            "QUNJTkcQAxIlCiFSVU5USU1FX0dJX1BST0JFU19MSUZFQ1lDTEVfUkVBRFkQ",
+            "BBImCiJSVU5USU1FX0dJX1BST0JFU19MSUZFQ1lDTEVfUEFVU0VEEAUSKQol",
+            "UlVOVElNRV9HSV9QUk9CRVNfTElGRUNZQ0xFX1RIUk9UVExFRBAGEiYKIlJV",
+            "TlRJTUVfR0lfUFJPQkVTX0xJRkVDWUNMRV9GQUlMRUQQByqpAQocUnVudGlt",
+            "ZUdJUHJvYmVzUHJldmlld0J1ZGdldBIwCixSVU5USU1FX0dJX1BST0JFU19Q",
+            "UkVWSUVXX0JVREdFVF9VTlNQRUNJRklFRBAAEigKJFJVTlRJTUVfR0lfUFJP",
+            "QkVTX1BSRVZJRVdfQlVER0VUX0VDTxABEi0KKVJVTlRJTUVfR0lfUFJPQkVT",
+            "X1BSRVZJRVdfQlVER0VUX0JBTEFOQ0VEEAIqnAIKIEdsb2JhbElsbHVtaW5h",
+            "dGlvblByb2JlUmVzaWRlbmN5EjMKL0dMT0JBTF9JTExVTUlOQVRJT05fUFJP",
+            "QkVfUkVTSURFTkNZX1VOU1BFQ0lGSUVEEAASMAosR0xPQkFMX0lMTFVNSU5B",
+            "VElPTl9QUk9CRV9SRVNJREVOQ1lfVU5MT0FERUQQARIvCitHTE9CQUxfSUxM",
+            "VU1JTkFUSU9OX1BST0JFX1JFU0lERU5DWV9MT0FESU5HEAISMAosR0xPQkFM",
+            "X0lMTFVNSU5BVElPTl9QUk9CRV9SRVNJREVOQ1lfUkVTSURFTlQQAxIuCipH",
+            "TE9CQUxfSUxMVU1JTkFUSU9OX1BST0JFX1JFU0lERU5DWV9GQUlMRUQQBEIi",
+            "qgIfU2FpbG9yRWRpdG9yLlByb3RvY29sLkdlbmVyYXRlZGIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
-          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::SailorEditor.Protocol.Generated.ViewportTransformOperation), typeof(global::SailorEditor.Protocol.Generated.ViewportTransformSpace), typeof(global::SailorEditor.Protocol.Generated.EditorStatsMode), typeof(global::SailorEditor.Protocol.Generated.EditorRenderMode), typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeState), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource), typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesLifecycle), typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency), }, null, new pbr::GeneratedClrTypeInfo[] {
+          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::SailorEditor.Protocol.Generated.ViewportTransformOperation), typeof(global::SailorEditor.Protocol.Generated.ViewportTransformSpace), typeof(global::SailorEditor.Protocol.Generated.EditorStatsMode), typeof(global::SailorEditor.Protocol.Generated.EditorRenderMode), typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeState), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationMode), typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesLifecycle), typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.Empty), global::SailorEditor.Protocol.Generated.Empty.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolRequest), global::SailorEditor.Protocol.Generated.ProtocolRequest.Parser, new[]{ "ProtocolVersion", "RequestId", "Initialize", "Start", "Stop", "Shutdown", "RequestAssetReload", "GetAssetReloadState", "GetExitCode", "GetMessages", "SerializeCurrentWorld", "SerializeEditorTypes", "SerializeWorkspaceCacheIdentity", "LoadEditorWorld", "CreateEditorWorld", "SetViewport", "SetEditorRenderTargetSize", "UpsertRemoteViewport", "DestroyRemoteViewport", "GetRemoteViewportState", "GetRemoteViewportDiagnostics", "RetryRemoteViewport", "SetRemoteViewportMacHostHandle", "SendRemoteViewportInput", "PullEditorViewportEvents", "GetEditorManagedMutationRevision", "UpdateObject", "ReparentObject", "CreateGameObject", "DestroyObject", "ResetComponentToDefaults", "AddComponent", "RemoveComponent", "InstantiatePrefab", "InstantiatePrefabFromYaml", "SetEditorSelection", "ShowMainWindow", "RenderPathTracedImage", "SerializeEngineTypes", "IsEngineMainThreadReady", "IsEngineRunning", "TraceViewportRay", "InstantiatePrefabInstance", "FocusEditorCamera", "SetPrefabLink", "BreakPrefabLink", "SetViewportToolState", "GetViewportToolState", "UpdateAsset", "CreateModelInstance", "SetAnimatorParameter", "GetAnimatorState", "SetEditorSimulation", "GetEditorSimulationState", "PreviewAudioAsset", "SetEditorStatsMode", "SetEditorRenderMode", "GetEditorRenderMode", "StartGiProbesBake", "GetGiProbesBakeStatus", "CancelGiProbesBake", "SetGiSettings", "GetGlobalIlluminationState", "SetRuntimeGiProbesPreview", "SetRuntimeGiProbesPaused", "RestartRuntimeGiProbes", "RebuildRuntimeGiProbesScene", "SetRuntimeGiProbesPreviewBudget" }, new[]{ "Command" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolResponse), global::SailorEditor.Protocol.Generated.ProtocolResponse.Parser, new[]{ "ProtocolVersion", "RequestId", "Success", "Error", "SupportsStrictInstanceIds", "EmptyResult", "BoolResult", "Int32Result", "Uint32Result", "Uint64Result", "StringResult", "StringListResult", "AssetReloadStateResult", "InstanceIdResult", "ViewportEventBatchResult", "Vector4Result", "ViewportToolStateResult", "AnimatorStateResult", "EditorRenderModeResult", "GiProbesBakeStatusResult", "GlobalIlluminationStateResult" }, new[]{ "Result" }, null, null, null),
@@ -430,12 +415,12 @@ namespace SailorEditor.Protocol.Generated {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.EditorRenderModeRequest), global::SailorEditor.Protocol.Generated.EditorRenderModeRequest.Parser, new[]{ "Mode" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.EditorRenderModeResult), global::SailorEditor.Protocol.Generated.EditorRenderModeResult.Parser, new[]{ "Mode" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeSettings), global::SailorEditor.Protocol.Generated.GIProbesBakeSettings.Parser, new[]{ "RaysPerProbe", "BounceCount", "RandomSeed", "MaxSubdivisionLevel", "MinProbeSpacing", "NormalBias", "ViewBias", "MaxRayDistance", "IncludeSky", "IncludeEmissive", "IncludeDirectLighting" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest), global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest.Parser, new[]{ "WorldFileId", "OutputVirtualPath", "StateName", "LayoutSourceFileId", "Settings", "AutoBounds", "VolumeMin", "VolumeMax", "FallbackEnvironment", "Overwrite", "ThreadCount" }, new[]{ "ThreadCount" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest), global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest.Parser, new[]{ "WorldFileId", "OutputVirtualPath", "StateName", "LayoutSourceFileId", "Settings", "FallbackEnvironment", "Overwrite", "ThreadCount" }, new[]{ "ThreadCount" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult), global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult.Parser, new[]{ "State", "Progress", "CompletedProbes", "TotalProbes", "BrickCount", "ProbeCount", "ElapsedSeconds", "LayoutHash", "TransportHash", "LightingHash", "Stage", "OutputVirtualPath", "Diagnostic" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding), global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding.Parser, new[]{ "Name", "AssetFileId", "Mode", "InitialWeight", "Preload" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.SetGISettingsRequest), global::SailorEditor.Protocol.Generated.SetGISettingsRequest.Parser, new[]{ "Probes", "Mode", "ProbeSource", "RuntimeProbes" }, new[]{ "Mode" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.SetGISettingsRequest), global::SailorEditor.Protocol.Generated.SetGISettingsRequest.Parser, new[]{ "Probes", "Mode", "RuntimeProbes" }, new[]{ "Mode" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState), global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState.Parser, new[]{ "Name", "AssetFileId", "Mode", "Weight", "Residency", "AssetRevision", "Diagnostic" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult), global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult.Parser, new[]{ "MaxProbeStatesPerSnapshot", "Probes", "Diagnostic", "CompositionCount", "RejectedCompositionCount", "Mode", "Enabled", "ProbeSource", "RuntimeProbes", "RuntimeState" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult), global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult.Parser, new[]{ "MaxProbeStatesPerSnapshot", "Probes", "Diagnostic", "CompositionCount", "RejectedCompositionCount", "Mode", "Enabled", "RuntimeProbes", "RuntimeState" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RemoteViewportRequest), global::SailorEditor.Protocol.Generated.RemoteViewportRequest.Parser, new[]{ "ViewportId", "WindowPosX", "WindowPosY", "Width", "Height", "Visible", "Focused" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RemoteViewportHostRequest), global::SailorEditor.Protocol.Generated.RemoteViewportHostRequest.Parser, new[]{ "ViewportId", "HostHandleKind", "HostHandleValue" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RemoteViewportInputRequest), global::SailorEditor.Protocol.Generated.RemoteViewportInputRequest.Parser, new[]{ "ViewportId", "Kind", "PointerX", "PointerY", "WheelDeltaX", "WheelDeltaY", "KeyCode", "Button", "Modifiers", "Pressed", "Focused", "Captured" }, null, null, null, null),
@@ -476,7 +461,7 @@ namespace SailorEditor.Protocol.Generated {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesSettings), global::SailorEditor.Protocol.Generated.RuntimeGIProbesSettings.Parser, new[]{ "Version", "IncludeSky", "IncludeEmissive", "IncludeDirectLighting", "BounceCount", "MinProbeSpacing", "NormalBias", "ViewBias", "MaxRayDistance" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewRequest), global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewRequest.Parser, new[]{ "Enabled" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesPauseRequest), global::SailorEditor.Protocol.Generated.RuntimeGIProbesPauseRequest.Parser, new[]{ "Paused" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesState), global::SailorEditor.Protocol.Generated.RuntimeGIProbesState.Parser, new[]{ "Lifecycle", "Enabled", "Paused", "Throttled", "PreviewEnabled", "SceneGeneration", "LightingGeneration", "PublishedRevision", "Capacity", "ActiveProbeCount", "ReadyProbeCount", "DirtyProbeCount", "QueuedProbeCount", "WorkerCount", "TracedRayCount", "PublishedBytes", "Coverage", "Refinement", "RaysPerSecond", "WorkerCpuMilliseconds", "LastPublicationMilliseconds", "Diagnostic", "PreviewBudget" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesState), global::SailorEditor.Protocol.Generated.RuntimeGIProbesState.Parser, new[]{ "Lifecycle", "Enabled", "Paused", "PreviewEnabled", "SceneGeneration", "LightingGeneration", "PublishedRevision", "Capacity", "ActiveProbeCount", "ReadyProbeCount", "WorkerCount", "PublishedBytes", "Coverage", "Refinement", "Diagnostic", "PreviewBudget" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudgetRequest), global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudgetRequest.Parser, new[]{ "Budget" }, null, null, null, null)
           }));
     }
@@ -519,7 +504,7 @@ namespace SailorEditor.Protocol.Generated {
     [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_RESIDENCY")] GlobalIlluminationResidency = 10,
     [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY")] GlobalIlluminationAssetIdentity = 11,
     [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK")] GlobalIlluminationFallback = 12,
-    [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_CLIPMAP_CASCADES")] GlobalIlluminationClipmapCascades = 13,
+    [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_SUBDIVISIONS")] GlobalIlluminationSubdivisions = 13,
   }
 
   public enum GIProbesBakeState {
@@ -541,15 +526,9 @@ namespace SailorEditor.Protocol.Generated {
 
   public enum GlobalIlluminationMode {
     [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_UNSPECIFIED")] Unspecified = 0,
-    [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_REALTIME")] Realtime = 1,
-    [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED")] RealtimeAndBaked = 2,
-    [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_BAKED_ONLY")] BakedOnly = 3,
-  }
-
-  public enum GlobalIlluminationProbeSource {
-    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_SOURCE_UNSPECIFIED")] Unspecified = 0,
-    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_SOURCE_BAKED_ASSETS")] BakedAssets = 1,
-    [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_SOURCE_RUNTIME_EXPERIMENTAL")] RuntimeExperimental = 2,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_NO_GI")] NoGi = 1,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_RUNTIME")] Runtime = 2,
+    [pbr::OriginalName("GLOBAL_ILLUMINATION_MODE_BAKED")] Baked = 3,
   }
 
   public enum RuntimeGIProbesLifecycle {
@@ -9076,9 +9055,6 @@ namespace SailorEditor.Protocol.Generated {
       stateName_ = other.stateName_;
       layoutSourceFileId_ = other.layoutSourceFileId_;
       settings_ = other.settings_ != null ? other.settings_.Clone() : null;
-      autoBounds_ = other.autoBounds_;
-      volumeMin_ = other.volumeMin_ != null ? other.volumeMin_.Clone() : null;
-      volumeMax_ = other.volumeMax_ != null ? other.volumeMax_.Clone() : null;
       fallbackEnvironment_ = other.fallbackEnvironment_ != null ? other.fallbackEnvironment_.Clone() : null;
       overwrite_ = other.overwrite_;
       threadCount_ = other.threadCount_;
@@ -9151,44 +9127,8 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
-    /// <summary>Field number for the "auto_bounds" field.</summary>
-    public const int AutoBoundsFieldNumber = 6;
-    private bool autoBounds_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool AutoBounds {
-      get { return autoBounds_; }
-      set {
-        autoBounds_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "volume_min" field.</summary>
-    public const int VolumeMinFieldNumber = 7;
-    private global::SailorEditor.Protocol.Generated.Vector4 volumeMin_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.Vector4 VolumeMin {
-      get { return volumeMin_; }
-      set {
-        volumeMin_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "volume_max" field.</summary>
-    public const int VolumeMaxFieldNumber = 8;
-    private global::SailorEditor.Protocol.Generated.Vector4 volumeMax_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.Vector4 VolumeMax {
-      get { return volumeMax_; }
-      set {
-        volumeMax_ = value;
-      }
-    }
-
     /// <summary>Field number for the "fallback_environment" field.</summary>
-    public const int FallbackEnvironmentFieldNumber = 9;
+    public const int FallbackEnvironmentFieldNumber = 6;
     private global::SailorEditor.Protocol.Generated.Vector4 fallbackEnvironment_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -9200,7 +9140,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "overwrite" field.</summary>
-    public const int OverwriteFieldNumber = 10;
+    public const int OverwriteFieldNumber = 7;
     private bool overwrite_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -9212,7 +9152,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "thread_count" field.</summary>
-    public const int ThreadCountFieldNumber = 11;
+    public const int ThreadCountFieldNumber = 8;
     private readonly static uint ThreadCountDefaultValue = 0;
 
     private uint threadCount_;
@@ -9258,9 +9198,6 @@ namespace SailorEditor.Protocol.Generated {
       if (StateName != other.StateName) return false;
       if (LayoutSourceFileId != other.LayoutSourceFileId) return false;
       if (!object.Equals(Settings, other.Settings)) return false;
-      if (AutoBounds != other.AutoBounds) return false;
-      if (!object.Equals(VolumeMin, other.VolumeMin)) return false;
-      if (!object.Equals(VolumeMax, other.VolumeMax)) return false;
       if (!object.Equals(FallbackEnvironment, other.FallbackEnvironment)) return false;
       if (Overwrite != other.Overwrite) return false;
       if (ThreadCount != other.ThreadCount) return false;
@@ -9276,9 +9213,6 @@ namespace SailorEditor.Protocol.Generated {
       if (StateName.Length != 0) hash ^= StateName.GetHashCode();
       if (LayoutSourceFileId.Length != 0) hash ^= LayoutSourceFileId.GetHashCode();
       if (settings_ != null) hash ^= Settings.GetHashCode();
-      if (AutoBounds != false) hash ^= AutoBounds.GetHashCode();
-      if (volumeMin_ != null) hash ^= VolumeMin.GetHashCode();
-      if (volumeMax_ != null) hash ^= VolumeMax.GetHashCode();
       if (fallbackEnvironment_ != null) hash ^= FallbackEnvironment.GetHashCode();
       if (Overwrite != false) hash ^= Overwrite.GetHashCode();
       if (HasThreadCount) hash ^= ThreadCount.GetHashCode();
@@ -9320,28 +9254,16 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(42);
         output.WriteMessage(Settings);
       }
-      if (AutoBounds != false) {
-        output.WriteRawTag(48);
-        output.WriteBool(AutoBounds);
-      }
-      if (volumeMin_ != null) {
-        output.WriteRawTag(58);
-        output.WriteMessage(VolumeMin);
-      }
-      if (volumeMax_ != null) {
-        output.WriteRawTag(66);
-        output.WriteMessage(VolumeMax);
-      }
       if (fallbackEnvironment_ != null) {
-        output.WriteRawTag(74);
+        output.WriteRawTag(50);
         output.WriteMessage(FallbackEnvironment);
       }
       if (Overwrite != false) {
-        output.WriteRawTag(80);
+        output.WriteRawTag(56);
         output.WriteBool(Overwrite);
       }
       if (HasThreadCount) {
-        output.WriteRawTag(88);
+        output.WriteRawTag(64);
         output.WriteUInt32(ThreadCount);
       }
       if (_unknownFields != null) {
@@ -9374,28 +9296,16 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(42);
         output.WriteMessage(Settings);
       }
-      if (AutoBounds != false) {
-        output.WriteRawTag(48);
-        output.WriteBool(AutoBounds);
-      }
-      if (volumeMin_ != null) {
-        output.WriteRawTag(58);
-        output.WriteMessage(VolumeMin);
-      }
-      if (volumeMax_ != null) {
-        output.WriteRawTag(66);
-        output.WriteMessage(VolumeMax);
-      }
       if (fallbackEnvironment_ != null) {
-        output.WriteRawTag(74);
+        output.WriteRawTag(50);
         output.WriteMessage(FallbackEnvironment);
       }
       if (Overwrite != false) {
-        output.WriteRawTag(80);
+        output.WriteRawTag(56);
         output.WriteBool(Overwrite);
       }
       if (HasThreadCount) {
-        output.WriteRawTag(88);
+        output.WriteRawTag(64);
         output.WriteUInt32(ThreadCount);
       }
       if (_unknownFields != null) {
@@ -9422,15 +9332,6 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (settings_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Settings);
-      }
-      if (AutoBounds != false) {
-        size += 1 + 1;
-      }
-      if (volumeMin_ != null) {
-        size += 1 + pb::CodedOutputStream.ComputeMessageSize(VolumeMin);
-      }
-      if (volumeMax_ != null) {
-        size += 1 + pb::CodedOutputStream.ComputeMessageSize(VolumeMax);
       }
       if (fallbackEnvironment_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(FallbackEnvironment);
@@ -9470,21 +9371,6 @@ namespace SailorEditor.Protocol.Generated {
           Settings = new global::SailorEditor.Protocol.Generated.GIProbesBakeSettings();
         }
         Settings.MergeFrom(other.Settings);
-      }
-      if (other.AutoBounds != false) {
-        AutoBounds = other.AutoBounds;
-      }
-      if (other.volumeMin_ != null) {
-        if (volumeMin_ == null) {
-          VolumeMin = new global::SailorEditor.Protocol.Generated.Vector4();
-        }
-        VolumeMin.MergeFrom(other.VolumeMin);
-      }
-      if (other.volumeMax_ != null) {
-        if (volumeMax_ == null) {
-          VolumeMax = new global::SailorEditor.Protocol.Generated.Vector4();
-        }
-        VolumeMax.MergeFrom(other.VolumeMax);
       }
       if (other.fallbackEnvironment_ != null) {
         if (fallbackEnvironment_ == null) {
@@ -9540,36 +9426,18 @@ namespace SailorEditor.Protocol.Generated {
             input.ReadMessage(Settings);
             break;
           }
-          case 48: {
-            AutoBounds = input.ReadBool();
-            break;
-          }
-          case 58: {
-            if (volumeMin_ == null) {
-              VolumeMin = new global::SailorEditor.Protocol.Generated.Vector4();
-            }
-            input.ReadMessage(VolumeMin);
-            break;
-          }
-          case 66: {
-            if (volumeMax_ == null) {
-              VolumeMax = new global::SailorEditor.Protocol.Generated.Vector4();
-            }
-            input.ReadMessage(VolumeMax);
-            break;
-          }
-          case 74: {
+          case 50: {
             if (fallbackEnvironment_ == null) {
               FallbackEnvironment = new global::SailorEditor.Protocol.Generated.Vector4();
             }
             input.ReadMessage(FallbackEnvironment);
             break;
           }
-          case 80: {
+          case 56: {
             Overwrite = input.ReadBool();
             break;
           }
-          case 88: {
+          case 64: {
             ThreadCount = input.ReadUInt32();
             break;
           }
@@ -9615,36 +9483,18 @@ namespace SailorEditor.Protocol.Generated {
             input.ReadMessage(Settings);
             break;
           }
-          case 48: {
-            AutoBounds = input.ReadBool();
-            break;
-          }
-          case 58: {
-            if (volumeMin_ == null) {
-              VolumeMin = new global::SailorEditor.Protocol.Generated.Vector4();
-            }
-            input.ReadMessage(VolumeMin);
-            break;
-          }
-          case 66: {
-            if (volumeMax_ == null) {
-              VolumeMax = new global::SailorEditor.Protocol.Generated.Vector4();
-            }
-            input.ReadMessage(VolumeMax);
-            break;
-          }
-          case 74: {
+          case 50: {
             if (fallbackEnvironment_ == null) {
               FallbackEnvironment = new global::SailorEditor.Protocol.Generated.Vector4();
             }
             input.ReadMessage(FallbackEnvironment);
             break;
           }
-          case 80: {
+          case 56: {
             Overwrite = input.ReadBool();
             break;
           }
-          case 88: {
+          case 64: {
             ThreadCount = input.ReadUInt32();
             break;
           }
@@ -10682,7 +10532,6 @@ namespace SailorEditor.Protocol.Generated {
       _hasBits0 = other._hasBits0;
       probes_ = other.probes_.Clone();
       mode_ = other.mode_;
-      probeSource_ = other.probeSource_;
       runtimeProbes_ = other.runtimeProbes_ != null ? other.runtimeProbes_.Clone() : null;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
@@ -10731,20 +10580,8 @@ namespace SailorEditor.Protocol.Generated {
       _hasBits0 &= ~1;
     }
 
-    /// <summary>Field number for the "probe_source" field.</summary>
-    public const int ProbeSourceFieldNumber = 3;
-    private global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource probeSource_ = global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource ProbeSource {
-      get { return probeSource_; }
-      set {
-        probeSource_ = value;
-      }
-    }
-
     /// <summary>Field number for the "runtime_probes" field.</summary>
-    public const int RuntimeProbesFieldNumber = 4;
+    public const int RuntimeProbesFieldNumber = 3;
     private global::SailorEditor.Protocol.Generated.RuntimeGIProbesSettings runtimeProbes_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -10772,7 +10609,6 @@ namespace SailorEditor.Protocol.Generated {
       }
       if(!probes_.Equals(other.probes_)) return false;
       if (Mode != other.Mode) return false;
-      if (ProbeSource != other.ProbeSource) return false;
       if (!object.Equals(RuntimeProbes, other.RuntimeProbes)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -10783,7 +10619,6 @@ namespace SailorEditor.Protocol.Generated {
       int hash = 1;
       hash ^= probes_.GetHashCode();
       if (HasMode) hash ^= Mode.GetHashCode();
-      if (ProbeSource != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified) hash ^= ProbeSource.GetHashCode();
       if (runtimeProbes_ != null) hash ^= RuntimeProbes.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -10808,12 +10643,8 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(16);
         output.WriteEnum((int) Mode);
       }
-      if (ProbeSource != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified) {
-        output.WriteRawTag(24);
-        output.WriteEnum((int) ProbeSource);
-      }
       if (runtimeProbes_ != null) {
-        output.WriteRawTag(34);
+        output.WriteRawTag(26);
         output.WriteMessage(RuntimeProbes);
       }
       if (_unknownFields != null) {
@@ -10831,12 +10662,8 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(16);
         output.WriteEnum((int) Mode);
       }
-      if (ProbeSource != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified) {
-        output.WriteRawTag(24);
-        output.WriteEnum((int) ProbeSource);
-      }
       if (runtimeProbes_ != null) {
-        output.WriteRawTag(34);
+        output.WriteRawTag(26);
         output.WriteMessage(RuntimeProbes);
       }
       if (_unknownFields != null) {
@@ -10852,9 +10679,6 @@ namespace SailorEditor.Protocol.Generated {
       size += probes_.CalculateSize(_repeated_probes_codec);
       if (HasMode) {
         size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Mode);
-      }
-      if (ProbeSource != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified) {
-        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) ProbeSource);
       }
       if (runtimeProbes_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(RuntimeProbes);
@@ -10874,9 +10698,6 @@ namespace SailorEditor.Protocol.Generated {
       probes_.Add(other.probes_);
       if (other.HasMode) {
         Mode = other.Mode;
-      }
-      if (other.ProbeSource != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified) {
-        ProbeSource = other.ProbeSource;
       }
       if (other.runtimeProbes_ != null) {
         if (runtimeProbes_ == null) {
@@ -10911,11 +10732,7 @@ namespace SailorEditor.Protocol.Generated {
             Mode = (global::SailorEditor.Protocol.Generated.GlobalIlluminationMode) input.ReadEnum();
             break;
           }
-          case 24: {
-            ProbeSource = (global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource) input.ReadEnum();
-            break;
-          }
-          case 34: {
+          case 26: {
             if (runtimeProbes_ == null) {
               RuntimeProbes = new global::SailorEditor.Protocol.Generated.RuntimeGIProbesSettings();
             }
@@ -10949,11 +10766,7 @@ namespace SailorEditor.Protocol.Generated {
             Mode = (global::SailorEditor.Protocol.Generated.GlobalIlluminationMode) input.ReadEnum();
             break;
           }
-          case 24: {
-            ProbeSource = (global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource) input.ReadEnum();
-            break;
-          }
-          case 34: {
+          case 26: {
             if (runtimeProbes_ == null) {
               RuntimeProbes = new global::SailorEditor.Protocol.Generated.RuntimeGIProbesSettings();
             }
@@ -11429,7 +11242,6 @@ namespace SailorEditor.Protocol.Generated {
       rejectedCompositionCount_ = other.rejectedCompositionCount_;
       mode_ = other.mode_;
       enabled_ = other.enabled_;
-      probeSource_ = other.probeSource_;
       runtimeProbes_ = other.runtimeProbes_ != null ? other.runtimeProbes_.Clone() : null;
       runtimeState_ = other.runtimeState_ != null ? other.runtimeState_.Clone() : null;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
@@ -11524,20 +11336,8 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
-    /// <summary>Field number for the "probe_source" field.</summary>
-    public const int ProbeSourceFieldNumber = 8;
-    private global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource probeSource_ = global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource ProbeSource {
-      get { return probeSource_; }
-      set {
-        probeSource_ = value;
-      }
-    }
-
     /// <summary>Field number for the "runtime_probes" field.</summary>
-    public const int RuntimeProbesFieldNumber = 9;
+    public const int RuntimeProbesFieldNumber = 8;
     private global::SailorEditor.Protocol.Generated.RuntimeGIProbesSettings runtimeProbes_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -11549,7 +11349,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "runtime_state" field.</summary>
-    public const int RuntimeStateFieldNumber = 10;
+    public const int RuntimeStateFieldNumber = 9;
     private global::SailorEditor.Protocol.Generated.RuntimeGIProbesState runtimeState_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -11582,7 +11382,6 @@ namespace SailorEditor.Protocol.Generated {
       if (RejectedCompositionCount != other.RejectedCompositionCount) return false;
       if (Mode != other.Mode) return false;
       if (Enabled != other.Enabled) return false;
-      if (ProbeSource != other.ProbeSource) return false;
       if (!object.Equals(RuntimeProbes, other.RuntimeProbes)) return false;
       if (!object.Equals(RuntimeState, other.RuntimeState)) return false;
       return Equals(_unknownFields, other._unknownFields);
@@ -11599,7 +11398,6 @@ namespace SailorEditor.Protocol.Generated {
       if (RejectedCompositionCount != 0UL) hash ^= RejectedCompositionCount.GetHashCode();
       if (Mode != global::SailorEditor.Protocol.Generated.GlobalIlluminationMode.Unspecified) hash ^= Mode.GetHashCode();
       if (Enabled != false) hash ^= Enabled.GetHashCode();
-      if (ProbeSource != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified) hash ^= ProbeSource.GetHashCode();
       if (runtimeProbes_ != null) hash ^= RuntimeProbes.GetHashCode();
       if (runtimeState_ != null) hash ^= RuntimeState.GetHashCode();
       if (_unknownFields != null) {
@@ -11645,16 +11443,12 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(56);
         output.WriteBool(Enabled);
       }
-      if (ProbeSource != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified) {
-        output.WriteRawTag(64);
-        output.WriteEnum((int) ProbeSource);
-      }
       if (runtimeProbes_ != null) {
-        output.WriteRawTag(74);
+        output.WriteRawTag(66);
         output.WriteMessage(RuntimeProbes);
       }
       if (runtimeState_ != null) {
-        output.WriteRawTag(82);
+        output.WriteRawTag(74);
         output.WriteMessage(RuntimeState);
       }
       if (_unknownFields != null) {
@@ -11692,16 +11486,12 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(56);
         output.WriteBool(Enabled);
       }
-      if (ProbeSource != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified) {
-        output.WriteRawTag(64);
-        output.WriteEnum((int) ProbeSource);
-      }
       if (runtimeProbes_ != null) {
-        output.WriteRawTag(74);
+        output.WriteRawTag(66);
         output.WriteMessage(RuntimeProbes);
       }
       if (runtimeState_ != null) {
-        output.WriteRawTag(82);
+        output.WriteRawTag(74);
         output.WriteMessage(RuntimeState);
       }
       if (_unknownFields != null) {
@@ -11732,9 +11522,6 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (Enabled != false) {
         size += 1 + 1;
-      }
-      if (ProbeSource != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified) {
-        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) ProbeSource);
       }
       if (runtimeProbes_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(RuntimeProbes);
@@ -11772,9 +11559,6 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (other.Enabled != false) {
         Enabled = other.Enabled;
-      }
-      if (other.ProbeSource != global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource.Unspecified) {
-        ProbeSource = other.ProbeSource;
       }
       if (other.runtimeProbes_ != null) {
         if (runtimeProbes_ == null) {
@@ -11835,18 +11619,14 @@ namespace SailorEditor.Protocol.Generated {
             Enabled = input.ReadBool();
             break;
           }
-          case 64: {
-            ProbeSource = (global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource) input.ReadEnum();
-            break;
-          }
-          case 74: {
+          case 66: {
             if (runtimeProbes_ == null) {
               RuntimeProbes = new global::SailorEditor.Protocol.Generated.RuntimeGIProbesSettings();
             }
             input.ReadMessage(RuntimeProbes);
             break;
           }
-          case 82: {
+          case 74: {
             if (runtimeState_ == null) {
               RuntimeState = new global::SailorEditor.Protocol.Generated.RuntimeGIProbesState();
             }
@@ -11900,18 +11680,14 @@ namespace SailorEditor.Protocol.Generated {
             Enabled = input.ReadBool();
             break;
           }
-          case 64: {
-            ProbeSource = (global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeSource) input.ReadEnum();
-            break;
-          }
-          case 74: {
+          case 66: {
             if (runtimeProbes_ == null) {
               RuntimeProbes = new global::SailorEditor.Protocol.Generated.RuntimeGIProbesSettings();
             }
             input.ReadMessage(RuntimeProbes);
             break;
           }
-          case 82: {
+          case 74: {
             if (runtimeState_ == null) {
               RuntimeState = new global::SailorEditor.Protocol.Generated.RuntimeGIProbesState();
             }
@@ -23416,7 +23192,6 @@ namespace SailorEditor.Protocol.Generated {
       lifecycle_ = other.lifecycle_;
       enabled_ = other.enabled_;
       paused_ = other.paused_;
-      throttled_ = other.throttled_;
       previewEnabled_ = other.previewEnabled_;
       sceneGeneration_ = other.sceneGeneration_;
       lightingGeneration_ = other.lightingGeneration_;
@@ -23424,16 +23199,10 @@ namespace SailorEditor.Protocol.Generated {
       capacity_ = other.capacity_;
       activeProbeCount_ = other.activeProbeCount_;
       readyProbeCount_ = other.readyProbeCount_;
-      dirtyProbeCount_ = other.dirtyProbeCount_;
-      queuedProbeCount_ = other.queuedProbeCount_;
       workerCount_ = other.workerCount_;
-      tracedRayCount_ = other.tracedRayCount_;
       publishedBytes_ = other.publishedBytes_;
       coverage_ = other.coverage_;
       refinement_ = other.refinement_;
-      raysPerSecond_ = other.raysPerSecond_;
-      workerCpuMilliseconds_ = other.workerCpuMilliseconds_;
-      lastPublicationMilliseconds_ = other.lastPublicationMilliseconds_;
       diagnostic_ = other.diagnostic_;
       previewBudget_ = other.previewBudget_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
@@ -23481,20 +23250,8 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
-    /// <summary>Field number for the "throttled" field.</summary>
-    public const int ThrottledFieldNumber = 4;
-    private bool throttled_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Throttled {
-      get { return throttled_; }
-      set {
-        throttled_ = value;
-      }
-    }
-
     /// <summary>Field number for the "preview_enabled" field.</summary>
-    public const int PreviewEnabledFieldNumber = 5;
+    public const int PreviewEnabledFieldNumber = 4;
     private bool previewEnabled_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23506,7 +23263,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "scene_generation" field.</summary>
-    public const int SceneGenerationFieldNumber = 6;
+    public const int SceneGenerationFieldNumber = 5;
     private ulong sceneGeneration_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23518,7 +23275,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "lighting_generation" field.</summary>
-    public const int LightingGenerationFieldNumber = 7;
+    public const int LightingGenerationFieldNumber = 6;
     private ulong lightingGeneration_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23530,7 +23287,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "published_revision" field.</summary>
-    public const int PublishedRevisionFieldNumber = 8;
+    public const int PublishedRevisionFieldNumber = 7;
     private ulong publishedRevision_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23542,7 +23299,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "capacity" field.</summary>
-    public const int CapacityFieldNumber = 9;
+    public const int CapacityFieldNumber = 8;
     private uint capacity_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23554,7 +23311,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "active_probe_count" field.</summary>
-    public const int ActiveProbeCountFieldNumber = 10;
+    public const int ActiveProbeCountFieldNumber = 9;
     private uint activeProbeCount_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23566,7 +23323,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "ready_probe_count" field.</summary>
-    public const int ReadyProbeCountFieldNumber = 11;
+    public const int ReadyProbeCountFieldNumber = 10;
     private uint readyProbeCount_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23577,32 +23334,8 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
-    /// <summary>Field number for the "dirty_probe_count" field.</summary>
-    public const int DirtyProbeCountFieldNumber = 12;
-    private uint dirtyProbeCount_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public uint DirtyProbeCount {
-      get { return dirtyProbeCount_; }
-      set {
-        dirtyProbeCount_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "queued_probe_count" field.</summary>
-    public const int QueuedProbeCountFieldNumber = 13;
-    private uint queuedProbeCount_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public uint QueuedProbeCount {
-      get { return queuedProbeCount_; }
-      set {
-        queuedProbeCount_ = value;
-      }
-    }
-
     /// <summary>Field number for the "worker_count" field.</summary>
-    public const int WorkerCountFieldNumber = 14;
+    public const int WorkerCountFieldNumber = 11;
     private uint workerCount_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23613,20 +23346,8 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
-    /// <summary>Field number for the "traced_ray_count" field.</summary>
-    public const int TracedRayCountFieldNumber = 15;
-    private ulong tracedRayCount_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public ulong TracedRayCount {
-      get { return tracedRayCount_; }
-      set {
-        tracedRayCount_ = value;
-      }
-    }
-
     /// <summary>Field number for the "published_bytes" field.</summary>
-    public const int PublishedBytesFieldNumber = 16;
+    public const int PublishedBytesFieldNumber = 12;
     private ulong publishedBytes_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23638,7 +23359,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "coverage" field.</summary>
-    public const int CoverageFieldNumber = 17;
+    public const int CoverageFieldNumber = 13;
     private float coverage_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23650,7 +23371,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "refinement" field.</summary>
-    public const int RefinementFieldNumber = 18;
+    public const int RefinementFieldNumber = 14;
     private float refinement_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23661,44 +23382,8 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
-    /// <summary>Field number for the "rays_per_second" field.</summary>
-    public const int RaysPerSecondFieldNumber = 19;
-    private float raysPerSecond_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public float RaysPerSecond {
-      get { return raysPerSecond_; }
-      set {
-        raysPerSecond_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "worker_cpu_milliseconds" field.</summary>
-    public const int WorkerCpuMillisecondsFieldNumber = 20;
-    private float workerCpuMilliseconds_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public float WorkerCpuMilliseconds {
-      get { return workerCpuMilliseconds_; }
-      set {
-        workerCpuMilliseconds_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "last_publication_milliseconds" field.</summary>
-    public const int LastPublicationMillisecondsFieldNumber = 21;
-    private float lastPublicationMilliseconds_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public float LastPublicationMilliseconds {
-      get { return lastPublicationMilliseconds_; }
-      set {
-        lastPublicationMilliseconds_ = value;
-      }
-    }
-
     /// <summary>Field number for the "diagnostic" field.</summary>
-    public const int DiagnosticFieldNumber = 22;
+    public const int DiagnosticFieldNumber = 15;
     private string diagnostic_ = "";
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23710,7 +23395,7 @@ namespace SailorEditor.Protocol.Generated {
     }
 
     /// <summary>Field number for the "preview_budget" field.</summary>
-    public const int PreviewBudgetFieldNumber = 23;
+    public const int PreviewBudgetFieldNumber = 16;
     private global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget previewBudget_ = global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget.Unspecified;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -23739,7 +23424,6 @@ namespace SailorEditor.Protocol.Generated {
       if (Lifecycle != other.Lifecycle) return false;
       if (Enabled != other.Enabled) return false;
       if (Paused != other.Paused) return false;
-      if (Throttled != other.Throttled) return false;
       if (PreviewEnabled != other.PreviewEnabled) return false;
       if (SceneGeneration != other.SceneGeneration) return false;
       if (LightingGeneration != other.LightingGeneration) return false;
@@ -23747,16 +23431,10 @@ namespace SailorEditor.Protocol.Generated {
       if (Capacity != other.Capacity) return false;
       if (ActiveProbeCount != other.ActiveProbeCount) return false;
       if (ReadyProbeCount != other.ReadyProbeCount) return false;
-      if (DirtyProbeCount != other.DirtyProbeCount) return false;
-      if (QueuedProbeCount != other.QueuedProbeCount) return false;
       if (WorkerCount != other.WorkerCount) return false;
-      if (TracedRayCount != other.TracedRayCount) return false;
       if (PublishedBytes != other.PublishedBytes) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Coverage, other.Coverage)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Refinement, other.Refinement)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(RaysPerSecond, other.RaysPerSecond)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(WorkerCpuMilliseconds, other.WorkerCpuMilliseconds)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(LastPublicationMilliseconds, other.LastPublicationMilliseconds)) return false;
       if (Diagnostic != other.Diagnostic) return false;
       if (PreviewBudget != other.PreviewBudget) return false;
       return Equals(_unknownFields, other._unknownFields);
@@ -23769,7 +23447,6 @@ namespace SailorEditor.Protocol.Generated {
       if (Lifecycle != global::SailorEditor.Protocol.Generated.RuntimeGIProbesLifecycle.Unspecified) hash ^= Lifecycle.GetHashCode();
       if (Enabled != false) hash ^= Enabled.GetHashCode();
       if (Paused != false) hash ^= Paused.GetHashCode();
-      if (Throttled != false) hash ^= Throttled.GetHashCode();
       if (PreviewEnabled != false) hash ^= PreviewEnabled.GetHashCode();
       if (SceneGeneration != 0UL) hash ^= SceneGeneration.GetHashCode();
       if (LightingGeneration != 0UL) hash ^= LightingGeneration.GetHashCode();
@@ -23777,16 +23454,10 @@ namespace SailorEditor.Protocol.Generated {
       if (Capacity != 0) hash ^= Capacity.GetHashCode();
       if (ActiveProbeCount != 0) hash ^= ActiveProbeCount.GetHashCode();
       if (ReadyProbeCount != 0) hash ^= ReadyProbeCount.GetHashCode();
-      if (DirtyProbeCount != 0) hash ^= DirtyProbeCount.GetHashCode();
-      if (QueuedProbeCount != 0) hash ^= QueuedProbeCount.GetHashCode();
       if (WorkerCount != 0) hash ^= WorkerCount.GetHashCode();
-      if (TracedRayCount != 0UL) hash ^= TracedRayCount.GetHashCode();
       if (PublishedBytes != 0UL) hash ^= PublishedBytes.GetHashCode();
       if (Coverage != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Coverage);
       if (Refinement != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Refinement);
-      if (RaysPerSecond != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(RaysPerSecond);
-      if (WorkerCpuMilliseconds != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(WorkerCpuMilliseconds);
-      if (LastPublicationMilliseconds != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(LastPublicationMilliseconds);
       if (Diagnostic.Length != 0) hash ^= Diagnostic.GetHashCode();
       if (PreviewBudget != global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget.Unspecified) hash ^= PreviewBudget.GetHashCode();
       if (_unknownFields != null) {
@@ -23819,84 +23490,56 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(24);
         output.WriteBool(Paused);
       }
-      if (Throttled != false) {
-        output.WriteRawTag(32);
-        output.WriteBool(Throttled);
-      }
       if (PreviewEnabled != false) {
-        output.WriteRawTag(40);
+        output.WriteRawTag(32);
         output.WriteBool(PreviewEnabled);
       }
       if (SceneGeneration != 0UL) {
-        output.WriteRawTag(48);
+        output.WriteRawTag(40);
         output.WriteUInt64(SceneGeneration);
       }
       if (LightingGeneration != 0UL) {
-        output.WriteRawTag(56);
+        output.WriteRawTag(48);
         output.WriteUInt64(LightingGeneration);
       }
       if (PublishedRevision != 0UL) {
-        output.WriteRawTag(64);
+        output.WriteRawTag(56);
         output.WriteUInt64(PublishedRevision);
       }
       if (Capacity != 0) {
-        output.WriteRawTag(72);
+        output.WriteRawTag(64);
         output.WriteUInt32(Capacity);
       }
       if (ActiveProbeCount != 0) {
-        output.WriteRawTag(80);
+        output.WriteRawTag(72);
         output.WriteUInt32(ActiveProbeCount);
       }
       if (ReadyProbeCount != 0) {
-        output.WriteRawTag(88);
+        output.WriteRawTag(80);
         output.WriteUInt32(ReadyProbeCount);
       }
-      if (DirtyProbeCount != 0) {
-        output.WriteRawTag(96);
-        output.WriteUInt32(DirtyProbeCount);
-      }
-      if (QueuedProbeCount != 0) {
-        output.WriteRawTag(104);
-        output.WriteUInt32(QueuedProbeCount);
-      }
       if (WorkerCount != 0) {
-        output.WriteRawTag(112);
+        output.WriteRawTag(88);
         output.WriteUInt32(WorkerCount);
       }
-      if (TracedRayCount != 0UL) {
-        output.WriteRawTag(120);
-        output.WriteUInt64(TracedRayCount);
-      }
       if (PublishedBytes != 0UL) {
-        output.WriteRawTag(128, 1);
+        output.WriteRawTag(96);
         output.WriteUInt64(PublishedBytes);
       }
       if (Coverage != 0F) {
-        output.WriteRawTag(141, 1);
+        output.WriteRawTag(109);
         output.WriteFloat(Coverage);
       }
       if (Refinement != 0F) {
-        output.WriteRawTag(149, 1);
+        output.WriteRawTag(117);
         output.WriteFloat(Refinement);
       }
-      if (RaysPerSecond != 0F) {
-        output.WriteRawTag(157, 1);
-        output.WriteFloat(RaysPerSecond);
-      }
-      if (WorkerCpuMilliseconds != 0F) {
-        output.WriteRawTag(165, 1);
-        output.WriteFloat(WorkerCpuMilliseconds);
-      }
-      if (LastPublicationMilliseconds != 0F) {
-        output.WriteRawTag(173, 1);
-        output.WriteFloat(LastPublicationMilliseconds);
-      }
       if (Diagnostic.Length != 0) {
-        output.WriteRawTag(178, 1);
+        output.WriteRawTag(122);
         output.WriteString(Diagnostic);
       }
       if (PreviewBudget != global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget.Unspecified) {
-        output.WriteRawTag(184, 1);
+        output.WriteRawTag(128, 1);
         output.WriteEnum((int) PreviewBudget);
       }
       if (_unknownFields != null) {
@@ -23921,84 +23564,56 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(24);
         output.WriteBool(Paused);
       }
-      if (Throttled != false) {
-        output.WriteRawTag(32);
-        output.WriteBool(Throttled);
-      }
       if (PreviewEnabled != false) {
-        output.WriteRawTag(40);
+        output.WriteRawTag(32);
         output.WriteBool(PreviewEnabled);
       }
       if (SceneGeneration != 0UL) {
-        output.WriteRawTag(48);
+        output.WriteRawTag(40);
         output.WriteUInt64(SceneGeneration);
       }
       if (LightingGeneration != 0UL) {
-        output.WriteRawTag(56);
+        output.WriteRawTag(48);
         output.WriteUInt64(LightingGeneration);
       }
       if (PublishedRevision != 0UL) {
-        output.WriteRawTag(64);
+        output.WriteRawTag(56);
         output.WriteUInt64(PublishedRevision);
       }
       if (Capacity != 0) {
-        output.WriteRawTag(72);
+        output.WriteRawTag(64);
         output.WriteUInt32(Capacity);
       }
       if (ActiveProbeCount != 0) {
-        output.WriteRawTag(80);
+        output.WriteRawTag(72);
         output.WriteUInt32(ActiveProbeCount);
       }
       if (ReadyProbeCount != 0) {
-        output.WriteRawTag(88);
+        output.WriteRawTag(80);
         output.WriteUInt32(ReadyProbeCount);
       }
-      if (DirtyProbeCount != 0) {
-        output.WriteRawTag(96);
-        output.WriteUInt32(DirtyProbeCount);
-      }
-      if (QueuedProbeCount != 0) {
-        output.WriteRawTag(104);
-        output.WriteUInt32(QueuedProbeCount);
-      }
       if (WorkerCount != 0) {
-        output.WriteRawTag(112);
+        output.WriteRawTag(88);
         output.WriteUInt32(WorkerCount);
       }
-      if (TracedRayCount != 0UL) {
-        output.WriteRawTag(120);
-        output.WriteUInt64(TracedRayCount);
-      }
       if (PublishedBytes != 0UL) {
-        output.WriteRawTag(128, 1);
+        output.WriteRawTag(96);
         output.WriteUInt64(PublishedBytes);
       }
       if (Coverage != 0F) {
-        output.WriteRawTag(141, 1);
+        output.WriteRawTag(109);
         output.WriteFloat(Coverage);
       }
       if (Refinement != 0F) {
-        output.WriteRawTag(149, 1);
+        output.WriteRawTag(117);
         output.WriteFloat(Refinement);
       }
-      if (RaysPerSecond != 0F) {
-        output.WriteRawTag(157, 1);
-        output.WriteFloat(RaysPerSecond);
-      }
-      if (WorkerCpuMilliseconds != 0F) {
-        output.WriteRawTag(165, 1);
-        output.WriteFloat(WorkerCpuMilliseconds);
-      }
-      if (LastPublicationMilliseconds != 0F) {
-        output.WriteRawTag(173, 1);
-        output.WriteFloat(LastPublicationMilliseconds);
-      }
       if (Diagnostic.Length != 0) {
-        output.WriteRawTag(178, 1);
+        output.WriteRawTag(122);
         output.WriteString(Diagnostic);
       }
       if (PreviewBudget != global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget.Unspecified) {
-        output.WriteRawTag(184, 1);
+        output.WriteRawTag(128, 1);
         output.WriteEnum((int) PreviewBudget);
       }
       if (_unknownFields != null) {
@@ -24018,9 +23633,6 @@ namespace SailorEditor.Protocol.Generated {
         size += 1 + 1;
       }
       if (Paused != false) {
-        size += 1 + 1;
-      }
-      if (Throttled != false) {
         size += 1 + 1;
       }
       if (PreviewEnabled != false) {
@@ -24044,38 +23656,20 @@ namespace SailorEditor.Protocol.Generated {
       if (ReadyProbeCount != 0) {
         size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ReadyProbeCount);
       }
-      if (DirtyProbeCount != 0) {
-        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(DirtyProbeCount);
-      }
-      if (QueuedProbeCount != 0) {
-        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(QueuedProbeCount);
-      }
       if (WorkerCount != 0) {
         size += 1 + pb::CodedOutputStream.ComputeUInt32Size(WorkerCount);
       }
-      if (TracedRayCount != 0UL) {
-        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(TracedRayCount);
-      }
       if (PublishedBytes != 0UL) {
-        size += 2 + pb::CodedOutputStream.ComputeUInt64Size(PublishedBytes);
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(PublishedBytes);
       }
       if (Coverage != 0F) {
-        size += 2 + 4;
+        size += 1 + 4;
       }
       if (Refinement != 0F) {
-        size += 2 + 4;
-      }
-      if (RaysPerSecond != 0F) {
-        size += 2 + 4;
-      }
-      if (WorkerCpuMilliseconds != 0F) {
-        size += 2 + 4;
-      }
-      if (LastPublicationMilliseconds != 0F) {
-        size += 2 + 4;
+        size += 1 + 4;
       }
       if (Diagnostic.Length != 0) {
-        size += 2 + pb::CodedOutputStream.ComputeStringSize(Diagnostic);
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Diagnostic);
       }
       if (PreviewBudget != global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget.Unspecified) {
         size += 2 + pb::CodedOutputStream.ComputeEnumSize((int) PreviewBudget);
@@ -24101,9 +23695,6 @@ namespace SailorEditor.Protocol.Generated {
       if (other.Paused != false) {
         Paused = other.Paused;
       }
-      if (other.Throttled != false) {
-        Throttled = other.Throttled;
-      }
       if (other.PreviewEnabled != false) {
         PreviewEnabled = other.PreviewEnabled;
       }
@@ -24125,17 +23716,8 @@ namespace SailorEditor.Protocol.Generated {
       if (other.ReadyProbeCount != 0) {
         ReadyProbeCount = other.ReadyProbeCount;
       }
-      if (other.DirtyProbeCount != 0) {
-        DirtyProbeCount = other.DirtyProbeCount;
-      }
-      if (other.QueuedProbeCount != 0) {
-        QueuedProbeCount = other.QueuedProbeCount;
-      }
       if (other.WorkerCount != 0) {
         WorkerCount = other.WorkerCount;
-      }
-      if (other.TracedRayCount != 0UL) {
-        TracedRayCount = other.TracedRayCount;
       }
       if (other.PublishedBytes != 0UL) {
         PublishedBytes = other.PublishedBytes;
@@ -24145,15 +23727,6 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (other.Refinement != 0F) {
         Refinement = other.Refinement;
-      }
-      if (other.RaysPerSecond != 0F) {
-        RaysPerSecond = other.RaysPerSecond;
-      }
-      if (other.WorkerCpuMilliseconds != 0F) {
-        WorkerCpuMilliseconds = other.WorkerCpuMilliseconds;
-      }
-      if (other.LastPublicationMilliseconds != 0F) {
-        LastPublicationMilliseconds = other.LastPublicationMilliseconds;
       }
       if (other.Diagnostic.Length != 0) {
         Diagnostic = other.Diagnostic;
@@ -24193,82 +23766,54 @@ namespace SailorEditor.Protocol.Generated {
             break;
           }
           case 32: {
-            Throttled = input.ReadBool();
-            break;
-          }
-          case 40: {
             PreviewEnabled = input.ReadBool();
             break;
           }
-          case 48: {
+          case 40: {
             SceneGeneration = input.ReadUInt64();
             break;
           }
-          case 56: {
+          case 48: {
             LightingGeneration = input.ReadUInt64();
             break;
           }
-          case 64: {
+          case 56: {
             PublishedRevision = input.ReadUInt64();
             break;
           }
-          case 72: {
+          case 64: {
             Capacity = input.ReadUInt32();
             break;
           }
-          case 80: {
+          case 72: {
             ActiveProbeCount = input.ReadUInt32();
             break;
           }
-          case 88: {
+          case 80: {
             ReadyProbeCount = input.ReadUInt32();
             break;
           }
-          case 96: {
-            DirtyProbeCount = input.ReadUInt32();
-            break;
-          }
-          case 104: {
-            QueuedProbeCount = input.ReadUInt32();
-            break;
-          }
-          case 112: {
+          case 88: {
             WorkerCount = input.ReadUInt32();
             break;
           }
-          case 120: {
-            TracedRayCount = input.ReadUInt64();
-            break;
-          }
-          case 128: {
+          case 96: {
             PublishedBytes = input.ReadUInt64();
             break;
           }
-          case 141: {
+          case 109: {
             Coverage = input.ReadFloat();
             break;
           }
-          case 149: {
+          case 117: {
             Refinement = input.ReadFloat();
             break;
           }
-          case 157: {
-            RaysPerSecond = input.ReadFloat();
-            break;
-          }
-          case 165: {
-            WorkerCpuMilliseconds = input.ReadFloat();
-            break;
-          }
-          case 173: {
-            LastPublicationMilliseconds = input.ReadFloat();
-            break;
-          }
-          case 178: {
+          case 122: {
             Diagnostic = input.ReadString();
             break;
           }
-          case 184: {
+          case 128: {
             PreviewBudget = (global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget) input.ReadEnum();
             break;
           }
@@ -24304,82 +23849,54 @@ namespace SailorEditor.Protocol.Generated {
             break;
           }
           case 32: {
-            Throttled = input.ReadBool();
-            break;
-          }
-          case 40: {
             PreviewEnabled = input.ReadBool();
             break;
           }
-          case 48: {
+          case 40: {
             SceneGeneration = input.ReadUInt64();
             break;
           }
-          case 56: {
+          case 48: {
             LightingGeneration = input.ReadUInt64();
             break;
           }
-          case 64: {
+          case 56: {
             PublishedRevision = input.ReadUInt64();
             break;
           }
-          case 72: {
+          case 64: {
             Capacity = input.ReadUInt32();
             break;
           }
-          case 80: {
+          case 72: {
             ActiveProbeCount = input.ReadUInt32();
             break;
           }
-          case 88: {
+          case 80: {
             ReadyProbeCount = input.ReadUInt32();
             break;
           }
-          case 96: {
-            DirtyProbeCount = input.ReadUInt32();
-            break;
-          }
-          case 104: {
-            QueuedProbeCount = input.ReadUInt32();
-            break;
-          }
-          case 112: {
+          case 88: {
             WorkerCount = input.ReadUInt32();
             break;
           }
-          case 120: {
-            TracedRayCount = input.ReadUInt64();
-            break;
-          }
-          case 128: {
+          case 96: {
             PublishedBytes = input.ReadUInt64();
             break;
           }
-          case 141: {
+          case 109: {
             Coverage = input.ReadFloat();
             break;
           }
-          case 149: {
+          case 117: {
             Refinement = input.ReadFloat();
             break;
           }
-          case 157: {
-            RaysPerSecond = input.ReadFloat();
-            break;
-          }
-          case 165: {
-            WorkerCpuMilliseconds = input.ReadFloat();
-            break;
-          }
-          case 173: {
-            LastPublicationMilliseconds = input.ReadFloat();
-            break;
-          }
-          case 178: {
+          case 122: {
             Diagnostic = input.ReadString();
             break;
           }
-          case 184: {
+          case 128: {
             PreviewBudget = (global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget) input.ReadEnum();
             break;
           }

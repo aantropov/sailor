@@ -220,7 +220,7 @@ glslCompute: |
     const bool bResolveEnabled = GlobalIlluminationDebugUsesProbeData() ||
       (globalIlluminationHeader.settings.x != 0u &&
         globalIlluminationHeader.settings.y !=
-          GLOBAL_ILLUMINATION_MODE_REALTIME);
+          GLOBAL_ILLUMINATION_MODE_NO_GI);
     if(!bResolveEnabled)
     {
       return false;

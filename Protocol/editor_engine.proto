@@ -196,12 +196,9 @@ message StartGIProbesBakeRequest {
 	string state_name = 3;
 	string layout_source_file_id = 4;
 	GIProbesBakeSettings settings = 5;
-	bool auto_bounds = 6;
-	Vector4 volume_min = 7;
-	Vector4 volume_max = 8;
-	Vector4 fallback_environment = 9;
-	bool overwrite = 10;
-	optional uint32 thread_count = 11;
+	Vector4 fallback_environment = 6;
+	bool overwrite = 7;
+	optional uint32 thread_count = 8;
 }
 
 message GIProbesBakeStatusResult {
@@ -231,8 +228,7 @@ message GlobalIlluminationProbeBinding {
 message SetGISettingsRequest {
 	repeated GlobalIlluminationProbeBinding probes = 1;
 	optional GlobalIlluminationMode mode = 2;
-	GlobalIlluminationProbeSource probe_source = 3;
-	RuntimeGIProbesSettings runtime_probes = 4;
+	RuntimeGIProbesSettings runtime_probes = 3;
 }
 
 message GlobalIlluminationProbeState {
@@ -253,9 +249,8 @@ message GlobalIlluminationStateResult {
 	uint64 rejected_composition_count = 5;
 	GlobalIlluminationMode mode = 6;
 	bool enabled = 7;
-	GlobalIlluminationProbeSource probe_source = 8;
-	RuntimeGIProbesSettings runtime_probes = 9;
-	RuntimeGIProbesState runtime_state = 10;
+	RuntimeGIProbesSettings runtime_probes = 8;
+	RuntimeGIProbesState runtime_state = 9;
 }
 
 message RemoteViewportRequest {
@@ -479,7 +474,7 @@ enum EditorRenderMode {
 	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_RESIDENCY = 10;
 	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY = 11;
 	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK = 12;
-	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_CLIPMAP_CASCADES = 13;
+	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_SUBDIVISIONS = 13;
 }
 
 enum GIProbesBakeState {
@@ -501,15 +496,9 @@ enum GlobalIlluminationProbeMode {
 
 enum GlobalIlluminationMode {
 	GLOBAL_ILLUMINATION_MODE_UNSPECIFIED = 0;
-	GLOBAL_ILLUMINATION_MODE_REALTIME = 1;
-	GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED = 2;
-	GLOBAL_ILLUMINATION_MODE_BAKED_ONLY = 3;
-}
-
-enum GlobalIlluminationProbeSource {
-	GLOBAL_ILLUMINATION_PROBE_SOURCE_UNSPECIFIED = 0;
-	GLOBAL_ILLUMINATION_PROBE_SOURCE_BAKED_ASSETS = 1;
-	GLOBAL_ILLUMINATION_PROBE_SOURCE_RUNTIME_EXPERIMENTAL = 2;
+	GLOBAL_ILLUMINATION_MODE_NO_GI = 1;
+	GLOBAL_ILLUMINATION_MODE_RUNTIME = 2;
+	GLOBAL_ILLUMINATION_MODE_BAKED = 3;
 }
 
 enum RuntimeGIProbesLifecycle {
@@ -612,26 +601,19 @@ message RuntimeGIProbesState {
 	RuntimeGIProbesLifecycle lifecycle = 1;
 	bool enabled = 2;
 	bool paused = 3;
-	bool throttled = 4;
-	bool preview_enabled = 5;
-	uint64 scene_generation = 6;
-	uint64 lighting_generation = 7;
-	uint64 published_revision = 8;
-	uint32 capacity = 9;
-	uint32 active_probe_count = 10;
-	uint32 ready_probe_count = 11;
-	uint32 dirty_probe_count = 12;
-	uint32 queued_probe_count = 13;
-	uint32 worker_count = 14;
-	uint64 traced_ray_count = 15;
-	uint64 published_bytes = 16;
-	float coverage = 17;
-	float refinement = 18;
-	float rays_per_second = 19;
-	float worker_cpu_milliseconds = 20;
-	float last_publication_milliseconds = 21;
-	string diagnostic = 22;
-	RuntimeGIProbesPreviewBudget preview_budget = 23;
+	bool preview_enabled = 4;
+	uint64 scene_generation = 5;
+	uint64 lighting_generation = 6;
+	uint64 published_revision = 7;
+	uint32 capacity = 8;
+	uint32 active_probe_count = 9;
+	uint32 ready_probe_count = 10;
+	uint32 worker_count = 11;
+	uint64 published_bytes = 12;
+	float coverage = 13;
+	float refinement = 14;
+	string diagnostic = 15;
+	RuntimeGIProbesPreviewBudget preview_budget = 16;
 }
 
 message RuntimeGIProbesPreviewBudgetRequest {

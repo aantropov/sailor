@@ -46,8 +46,6 @@ YAML::Node GISettings::Serialize() const
 	YAML::Node globalIllumination(YAML::NodeType::Map);
 	YAML::Node probes(YAML::NodeType::Map);
 	globalIllumination["mode"] = std::string(magic_enum::enum_name(m_mode));
-	globalIllumination["probeSource"] = std::string(
-		magic_enum::enum_name(m_probeSource));
 	YAML::Node runtimeProbes(YAML::NodeType::Map);
 	runtimeProbes["version"] = m_runtimeProbes.m_version;
 	runtimeProbes["includeSky"] = m_runtimeProbes.m_bIncludeSky;
@@ -133,27 +131,10 @@ bool GISettings::Deserialize(
 			magic_enum::enum_cast<EGlobalIlluminationMode>(globalMode);
 		if (!parsedGlobalMode)
 		{
-			outDiagnostic = "globalIllumination.mode must be Realtime, RealtimeAndBaked, or BakedOnly";
+			outDiagnostic = "globalIllumination.mode must be NoGI, Runtime, or Baked";
 			return false;
 		}
 		parsedSettings.m_mode = *parsedGlobalMode;
-		const YAML::Node probeSourceNode = Utils::FindYamlMapField(
-			giNode,
-			"probeSource");
-		if (!probeSourceNode || !probeSourceNode.IsScalar())
-		{
-			outDiagnostic = "globalIllumination.probeSource is required";
-			return false;
-		}
-		const auto parsedProbeSource =
-			magic_enum::enum_cast<EGlobalIlluminationProbeSource>(
-				probeSourceNode.as<std::string>());
-		if (!parsedProbeSource)
-		{
-			outDiagnostic = "globalIllumination.probeSource must be BakedAssets or RuntimeExperimental";
-			return false;
-		}
-		parsedSettings.m_probeSource = *parsedProbeSource;
 
 		const YAML::Node runtimeNode = Utils::FindYamlMapField(
 			giNode,

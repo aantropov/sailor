@@ -15,8 +15,6 @@ namespace Sailor
 			m_weightedCoefficients{};
 		uint32_t m_sampleCount = 0u;
 		uint32_t m_sequenceSampleCount = 0u;
-
-		void Reset() noexcept;
 	};
 
 	struct SAILOR_SHARED_API GIProbeTraceRequest final
@@ -26,18 +24,6 @@ namespace Sailor
 		glm::vec3 m_volumeMax{};
 		const std::atomic<bool>* m_cancel = nullptr;
 	};
-
-	SAILOR_SHARED_API uint32_t MixGIProbeRandomSeed(
-		uint32_t baseSeed,
-		uint32_t probeSeed,
-		uint32_t sampleIndex,
-		uint32_t stream) noexcept;
-
-	SAILOR_SHARED_API glm::vec3 GenerateGIProbeFibonacciDirection(
-		uint32_t index,
-		uint32_t count,
-		uint32_t seed,
-		uint32_t probeSeed) noexcept;
 
 	SAILOR_SHARED_API bool TraceGIProbeTransport(
 		const GIProbeTraceRequest& request,

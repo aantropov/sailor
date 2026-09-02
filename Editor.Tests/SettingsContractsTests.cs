@@ -38,11 +38,10 @@ public class SettingsContractsTests
         {
             Enabled = true,
             MaxActiveProbes = 4096,
-            ClipmapCascadeCount = 3,
             SpacingMultiplier = 1.5,
-            InitialSamplesPerProbe = 8,
+            InitialSamplesPerProbe = 16,
             TargetSamplesPerProbe = 32,
-            WorkerCount = 1,
+            WorkerCount = 16,
             CpuDutyFraction = 0.2,
             CpuBudgetMilliseconds = 2.0,
             MaxPublicationsPerSecond = 1.0,
@@ -84,7 +83,7 @@ public class SettingsContractsTests
                 RuntimeGIProbesPreviewEnabled = true,
                 RuntimeGIProbesBudget = RuntimeGIProbesEditorBudget.Balanced,
                 RuntimeGIProbesDebugView =
-                    RuntimeGIProbesEditorDebugView.ClipmapCascades
+                    RuntimeGIProbesEditorDebugView.Subdivisions
             }
         };
 
@@ -102,7 +101,7 @@ public class SettingsContractsTests
             RuntimeGIProbesEditorBudget.Balanced,
             parsed.Graphics.RuntimeGIProbesBudget);
         Assert.Equal(
-            RuntimeGIProbesEditorDebugView.ClipmapCascades,
+            RuntimeGIProbesEditorDebugView.Subdivisions,
             parsed.Graphics.RuntimeGIProbesDebugView);
     }
 }

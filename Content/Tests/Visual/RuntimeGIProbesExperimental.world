@@ -1,7 +1,6 @@
 name: RuntimeGIProbesExperimental
 globalIllumination:
-  mode: RealtimeAndBaked
-  probeSource: RuntimeExperimental
+  mode: Runtime
   runtimeProbes:
     version: 1
     includeSky: true

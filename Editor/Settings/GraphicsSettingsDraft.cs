@@ -5,7 +5,6 @@ namespace SailorEditor.Settings;
 public sealed record RuntimeGIProbesQualityDraft(
     bool Enabled,
     string MaxActiveProbes,
-    string ClipmapCascadeCount,
     string SpacingMultiplier,
     string InitialSamplesPerProbe,
     string TargetSamplesPerProbe,
@@ -20,7 +19,6 @@ public sealed record RuntimeGIProbesQualityDraft(
         RuntimeGIProbesQualitySettings settings) => new(
             settings.Enabled,
             settings.MaxActiveProbes.ToString(CultureInfo.InvariantCulture),
-            settings.ClipmapCascadeCount.ToString(CultureInfo.InvariantCulture),
             settings.SpacingMultiplier.ToString("0.####", CultureInfo.InvariantCulture),
             settings.InitialSamplesPerProbe.ToString(CultureInfo.InvariantCulture),
             settings.TargetSamplesPerProbe.ToString(CultureInfo.InvariantCulture),
@@ -133,7 +131,6 @@ public sealed record GraphicsQualityPresetDraft(
             out var maxGiProbeStatesPerSnapshot);
         var runtimePath = $"{path}.runtimeGIProbes";
         valid &= TryParseInt(RuntimeGIProbes.MaxActiveProbes, $"{runtimePath}.maxActiveProbes", "Runtime GI probe capacity", issues, out var runtimeMaxActiveProbes);
-        valid &= TryParseInt(RuntimeGIProbes.ClipmapCascadeCount, $"{runtimePath}.clipmapCascadeCount", "Runtime GI cascade count", issues, out var runtimeCascadeCount);
         valid &= TryParseDouble(RuntimeGIProbes.SpacingMultiplier, $"{runtimePath}.spacingMultiplier", "Runtime GI spacing multiplier", issues, out var runtimeSpacingMultiplier);
         valid &= TryParseInt(RuntimeGIProbes.InitialSamplesPerProbe, $"{runtimePath}.initialSamplesPerProbe", "Runtime GI initial samples", issues, out var runtimeInitialSamples);
         valid &= TryParseInt(RuntimeGIProbes.TargetSamplesPerProbe, $"{runtimePath}.targetSamplesPerProbe", "Runtime GI target samples", issues, out var runtimeTargetSamples);
@@ -165,7 +162,6 @@ public sealed record GraphicsQualityPresetDraft(
             {
                 Enabled = RuntimeGIProbes.Enabled,
                 MaxActiveProbes = runtimeMaxActiveProbes,
-                ClipmapCascadeCount = runtimeCascadeCount,
                 SpacingMultiplier = runtimeSpacingMultiplier,
                 InitialSamplesPerProbe = runtimeInitialSamples,
                 TargetSamplesPerProbe = runtimeTargetSamples,

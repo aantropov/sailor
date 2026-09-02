@@ -378,7 +378,7 @@ enum EditorRenderMode : int {
   EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_RESIDENCY = 10,
   EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY = 11,
   EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK = 12,
-  EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_CLIPMAP_CASCADES = 13,
+  EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_SUBDIVISIONS = 13,
   EditorRenderMode_INT_MIN_SENTINEL_DO_NOT_USE_ =
       std::numeric_limits<::int32_t>::min(),
   EditorRenderMode_INT_MAX_SENTINEL_DO_NOT_USE_ =
@@ -484,9 +484,9 @@ inline bool GlobalIlluminationProbeMode_Parse(absl::string_view name, GlobalIllu
 }
 enum GlobalIlluminationMode : int {
   GLOBAL_ILLUMINATION_MODE_UNSPECIFIED = 0,
-  GLOBAL_ILLUMINATION_MODE_REALTIME = 1,
-  GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED = 2,
-  GLOBAL_ILLUMINATION_MODE_BAKED_ONLY = 3,
+  GLOBAL_ILLUMINATION_MODE_NO_GI = 1,
+  GLOBAL_ILLUMINATION_MODE_RUNTIME = 2,
+  GLOBAL_ILLUMINATION_MODE_BAKED = 3,
   GlobalIlluminationMode_INT_MIN_SENTINEL_DO_NOT_USE_ =
       std::numeric_limits<::int32_t>::min(),
   GlobalIlluminationMode_INT_MAX_SENTINEL_DO_NOT_USE_ =
@@ -516,40 +516,6 @@ inline const std::string& GlobalIlluminationMode_Name(GlobalIlluminationMode val
 inline bool GlobalIlluminationMode_Parse(absl::string_view name, GlobalIlluminationMode* value) {
   return ::google::protobuf::internal::ParseNamedEnum<GlobalIlluminationMode>(
       GlobalIlluminationMode_descriptor(), name, value);
-}
-enum GlobalIlluminationProbeSource : int {
-  GLOBAL_ILLUMINATION_PROBE_SOURCE_UNSPECIFIED = 0,
-  GLOBAL_ILLUMINATION_PROBE_SOURCE_BAKED_ASSETS = 1,
-  GLOBAL_ILLUMINATION_PROBE_SOURCE_RUNTIME_EXPERIMENTAL = 2,
-  GlobalIlluminationProbeSource_INT_MIN_SENTINEL_DO_NOT_USE_ =
-      std::numeric_limits<::int32_t>::min(),
-  GlobalIlluminationProbeSource_INT_MAX_SENTINEL_DO_NOT_USE_ =
-      std::numeric_limits<::int32_t>::max(),
-};
-
-bool GlobalIlluminationProbeSource_IsValid(int value);
-extern const uint32_t GlobalIlluminationProbeSource_internal_data_[];
-constexpr GlobalIlluminationProbeSource GlobalIlluminationProbeSource_MIN = static_cast<GlobalIlluminationProbeSource>(0);
-constexpr GlobalIlluminationProbeSource GlobalIlluminationProbeSource_MAX = static_cast<GlobalIlluminationProbeSource>(2);
-constexpr int GlobalIlluminationProbeSource_ARRAYSIZE = 2 + 1;
-const ::google::protobuf::EnumDescriptor*
-GlobalIlluminationProbeSource_descriptor();
-template <typename T>
-const std::string& GlobalIlluminationProbeSource_Name(T value) {
-  static_assert(std::is_same<T, GlobalIlluminationProbeSource>::value ||
-                    std::is_integral<T>::value,
-                "Incorrect type passed to GlobalIlluminationProbeSource_Name().");
-  return GlobalIlluminationProbeSource_Name(static_cast<GlobalIlluminationProbeSource>(value));
-}
-template <>
-inline const std::string& GlobalIlluminationProbeSource_Name(GlobalIlluminationProbeSource value) {
-  return ::google::protobuf::internal::NameOfDenseEnum<GlobalIlluminationProbeSource_descriptor,
-                                                 0, 2>(
-      static_cast<int>(value));
-}
-inline bool GlobalIlluminationProbeSource_Parse(absl::string_view name, GlobalIlluminationProbeSource* value) {
-  return ::google::protobuf::internal::ParseNamedEnum<GlobalIlluminationProbeSource>(
-      GlobalIlluminationProbeSource_descriptor(), name, value);
 }
 enum RuntimeGIProbesLifecycle : int {
   RUNTIME_GI_PROBES_LIFECYCLE_UNSPECIFIED = 0,
@@ -4496,31 +4462,24 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
 
   // accessors -------------------------------------------------------
   enum : int {
-    kDiagnosticFieldNumber = 22,
+    kDiagnosticFieldNumber = 15,
     kLifecycleFieldNumber = 1,
     kEnabledFieldNumber = 2,
     kPausedFieldNumber = 3,
-    kThrottledFieldNumber = 4,
-    kPreviewEnabledFieldNumber = 5,
-    kSceneGenerationFieldNumber = 6,
-    kLightingGenerationFieldNumber = 7,
-    kPublishedRevisionFieldNumber = 8,
-    kCapacityFieldNumber = 9,
-    kActiveProbeCountFieldNumber = 10,
-    kReadyProbeCountFieldNumber = 11,
-    kDirtyProbeCountFieldNumber = 12,
-    kQueuedProbeCountFieldNumber = 13,
-    kWorkerCountFieldNumber = 14,
-    kTracedRayCountFieldNumber = 15,
-    kPublishedBytesFieldNumber = 16,
-    kCoverageFieldNumber = 17,
-    kRefinementFieldNumber = 18,
-    kRaysPerSecondFieldNumber = 19,
-    kWorkerCpuMillisecondsFieldNumber = 20,
-    kLastPublicationMillisecondsFieldNumber = 21,
-    kPreviewBudgetFieldNumber = 23,
+    kPreviewEnabledFieldNumber = 4,
+    kSceneGenerationFieldNumber = 5,
+    kLightingGenerationFieldNumber = 6,
+    kPublishedRevisionFieldNumber = 7,
+    kCapacityFieldNumber = 8,
+    kActiveProbeCountFieldNumber = 9,
+    kReadyProbeCountFieldNumber = 10,
+    kWorkerCountFieldNumber = 11,
+    kPublishedBytesFieldNumber = 12,
+    kCoverageFieldNumber = 13,
+    kRefinementFieldNumber = 14,
+    kPreviewBudgetFieldNumber = 16,
   };
-  // string diagnostic = 22;
+  // string diagnostic = 15;
   void clear_diagnostic() ;
   const std::string& diagnostic() const;
   template <typename Arg_ = const std::string&, typename... Args_>
@@ -4566,17 +4525,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_paused(bool value);
 
   public:
-  // bool throttled = 4;
-  void clear_throttled() ;
-  bool throttled() const;
-  void set_throttled(bool value);
-
-  private:
-  bool _internal_throttled() const;
-  void _internal_set_throttled(bool value);
-
-  public:
-  // bool preview_enabled = 5;
+  // bool preview_enabled = 4;
   void clear_preview_enabled() ;
   bool preview_enabled() const;
   void set_preview_enabled(bool value);
@@ -4586,7 +4535,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_preview_enabled(bool value);
 
   public:
-  // uint64 scene_generation = 6;
+  // uint64 scene_generation = 5;
   void clear_scene_generation() ;
   ::uint64_t scene_generation() const;
   void set_scene_generation(::uint64_t value);
@@ -4596,7 +4545,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_scene_generation(::uint64_t value);
 
   public:
-  // uint64 lighting_generation = 7;
+  // uint64 lighting_generation = 6;
   void clear_lighting_generation() ;
   ::uint64_t lighting_generation() const;
   void set_lighting_generation(::uint64_t value);
@@ -4606,7 +4555,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_lighting_generation(::uint64_t value);
 
   public:
-  // uint64 published_revision = 8;
+  // uint64 published_revision = 7;
   void clear_published_revision() ;
   ::uint64_t published_revision() const;
   void set_published_revision(::uint64_t value);
@@ -4616,7 +4565,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_published_revision(::uint64_t value);
 
   public:
-  // uint32 capacity = 9;
+  // uint32 capacity = 8;
   void clear_capacity() ;
   ::uint32_t capacity() const;
   void set_capacity(::uint32_t value);
@@ -4626,7 +4575,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_capacity(::uint32_t value);
 
   public:
-  // uint32 active_probe_count = 10;
+  // uint32 active_probe_count = 9;
   void clear_active_probe_count() ;
   ::uint32_t active_probe_count() const;
   void set_active_probe_count(::uint32_t value);
@@ -4636,7 +4585,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_active_probe_count(::uint32_t value);
 
   public:
-  // uint32 ready_probe_count = 11;
+  // uint32 ready_probe_count = 10;
   void clear_ready_probe_count() ;
   ::uint32_t ready_probe_count() const;
   void set_ready_probe_count(::uint32_t value);
@@ -4646,27 +4595,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_ready_probe_count(::uint32_t value);
 
   public:
-  // uint32 dirty_probe_count = 12;
-  void clear_dirty_probe_count() ;
-  ::uint32_t dirty_probe_count() const;
-  void set_dirty_probe_count(::uint32_t value);
-
-  private:
-  ::uint32_t _internal_dirty_probe_count() const;
-  void _internal_set_dirty_probe_count(::uint32_t value);
-
-  public:
-  // uint32 queued_probe_count = 13;
-  void clear_queued_probe_count() ;
-  ::uint32_t queued_probe_count() const;
-  void set_queued_probe_count(::uint32_t value);
-
-  private:
-  ::uint32_t _internal_queued_probe_count() const;
-  void _internal_set_queued_probe_count(::uint32_t value);
-
-  public:
-  // uint32 worker_count = 14;
+  // uint32 worker_count = 11;
   void clear_worker_count() ;
   ::uint32_t worker_count() const;
   void set_worker_count(::uint32_t value);
@@ -4676,17 +4605,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_worker_count(::uint32_t value);
 
   public:
-  // uint64 traced_ray_count = 15;
-  void clear_traced_ray_count() ;
-  ::uint64_t traced_ray_count() const;
-  void set_traced_ray_count(::uint64_t value);
-
-  private:
-  ::uint64_t _internal_traced_ray_count() const;
-  void _internal_set_traced_ray_count(::uint64_t value);
-
-  public:
-  // uint64 published_bytes = 16;
+  // uint64 published_bytes = 12;
   void clear_published_bytes() ;
   ::uint64_t published_bytes() const;
   void set_published_bytes(::uint64_t value);
@@ -4696,7 +4615,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_published_bytes(::uint64_t value);
 
   public:
-  // float coverage = 17;
+  // float coverage = 13;
   void clear_coverage() ;
   float coverage() const;
   void set_coverage(float value);
@@ -4706,7 +4625,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_coverage(float value);
 
   public:
-  // float refinement = 18;
+  // float refinement = 14;
   void clear_refinement() ;
   float refinement() const;
   void set_refinement(float value);
@@ -4716,37 +4635,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   void _internal_set_refinement(float value);
 
   public:
-  // float rays_per_second = 19;
-  void clear_rays_per_second() ;
-  float rays_per_second() const;
-  void set_rays_per_second(float value);
-
-  private:
-  float _internal_rays_per_second() const;
-  void _internal_set_rays_per_second(float value);
-
-  public:
-  // float worker_cpu_milliseconds = 20;
-  void clear_worker_cpu_milliseconds() ;
-  float worker_cpu_milliseconds() const;
-  void set_worker_cpu_milliseconds(float value);
-
-  private:
-  float _internal_worker_cpu_milliseconds() const;
-  void _internal_set_worker_cpu_milliseconds(float value);
-
-  public:
-  // float last_publication_milliseconds = 21;
-  void clear_last_publication_milliseconds() ;
-  float last_publication_milliseconds() const;
-  void set_last_publication_milliseconds(float value);
-
-  private:
-  float _internal_last_publication_milliseconds() const;
-  void _internal_set_last_publication_milliseconds(float value);
-
-  public:
-  // .sailor.editor.v1.RuntimeGIProbesPreviewBudget preview_budget = 23;
+  // .sailor.editor.v1.RuntimeGIProbesPreviewBudget preview_budget = 16;
   void clear_preview_budget() ;
   ::sailor::editor::v1::RuntimeGIProbesPreviewBudget preview_budget() const;
   void set_preview_budget(::sailor::editor::v1::RuntimeGIProbesPreviewBudget value);
@@ -4761,7 +4650,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      5, 23, 0,
+      4, 16, 0,
       72, 2>
       _table_;
 
@@ -4783,7 +4672,6 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
     int lifecycle_;
     bool enabled_;
     bool paused_;
-    bool throttled_;
     bool preview_enabled_;
     ::uint64_t scene_generation_;
     ::uint64_t lighting_generation_;
@@ -4791,16 +4679,10 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
     ::uint32_t capacity_;
     ::uint32_t active_probe_count_;
     ::uint32_t ready_probe_count_;
-    ::uint32_t dirty_probe_count_;
-    ::uint32_t queued_probe_count_;
     ::uint32_t worker_count_;
-    ::uint64_t traced_ray_count_;
     ::uint64_t published_bytes_;
     float coverage_;
     float refinement_;
-    float rays_per_second_;
-    float worker_cpu_milliseconds_;
-    float last_publication_milliseconds_;
     int preview_budget_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     PROTOBUF_TSAN_DECLARE_MEMBER
@@ -12923,12 +12805,9 @@ class StartGIProbesBakeRequest final : public ::google::protobuf::Message
     kStateNameFieldNumber = 3,
     kLayoutSourceFileIdFieldNumber = 4,
     kSettingsFieldNumber = 5,
-    kVolumeMinFieldNumber = 7,
-    kVolumeMaxFieldNumber = 8,
-    kFallbackEnvironmentFieldNumber = 9,
-    kAutoBoundsFieldNumber = 6,
-    kOverwriteFieldNumber = 10,
-    kThreadCountFieldNumber = 11,
+    kFallbackEnvironmentFieldNumber = 6,
+    kOverwriteFieldNumber = 7,
+    kThreadCountFieldNumber = 8,
   };
   // string world_file_id = 1;
   void clear_world_file_id() ;
@@ -13009,37 +12888,7 @@ class StartGIProbesBakeRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::GIProbesBakeSettings* _internal_mutable_settings();
 
   public:
-  // .sailor.editor.v1.Vector4 volume_min = 7;
-  bool has_volume_min() const;
-  void clear_volume_min() ;
-  const ::sailor::editor::v1::Vector4& volume_min() const;
-  PROTOBUF_NODISCARD ::sailor::editor::v1::Vector4* release_volume_min();
-  ::sailor::editor::v1::Vector4* mutable_volume_min();
-  void set_allocated_volume_min(::sailor::editor::v1::Vector4* value);
-  void unsafe_arena_set_allocated_volume_min(::sailor::editor::v1::Vector4* value);
-  ::sailor::editor::v1::Vector4* unsafe_arena_release_volume_min();
-
-  private:
-  const ::sailor::editor::v1::Vector4& _internal_volume_min() const;
-  ::sailor::editor::v1::Vector4* _internal_mutable_volume_min();
-
-  public:
-  // .sailor.editor.v1.Vector4 volume_max = 8;
-  bool has_volume_max() const;
-  void clear_volume_max() ;
-  const ::sailor::editor::v1::Vector4& volume_max() const;
-  PROTOBUF_NODISCARD ::sailor::editor::v1::Vector4* release_volume_max();
-  ::sailor::editor::v1::Vector4* mutable_volume_max();
-  void set_allocated_volume_max(::sailor::editor::v1::Vector4* value);
-  void unsafe_arena_set_allocated_volume_max(::sailor::editor::v1::Vector4* value);
-  ::sailor::editor::v1::Vector4* unsafe_arena_release_volume_max();
-
-  private:
-  const ::sailor::editor::v1::Vector4& _internal_volume_max() const;
-  ::sailor::editor::v1::Vector4* _internal_mutable_volume_max();
-
-  public:
-  // .sailor.editor.v1.Vector4 fallback_environment = 9;
+  // .sailor.editor.v1.Vector4 fallback_environment = 6;
   bool has_fallback_environment() const;
   void clear_fallback_environment() ;
   const ::sailor::editor::v1::Vector4& fallback_environment() const;
@@ -13054,17 +12903,7 @@ class StartGIProbesBakeRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::Vector4* _internal_mutable_fallback_environment();
 
   public:
-  // bool auto_bounds = 6;
-  void clear_auto_bounds() ;
-  bool auto_bounds() const;
-  void set_auto_bounds(bool value);
-
-  private:
-  bool _internal_auto_bounds() const;
-  void _internal_set_auto_bounds(bool value);
-
-  public:
-  // bool overwrite = 10;
+  // bool overwrite = 7;
   void clear_overwrite() ;
   bool overwrite() const;
   void set_overwrite(bool value);
@@ -13074,7 +12913,7 @@ class StartGIProbesBakeRequest final : public ::google::protobuf::Message
   void _internal_set_overwrite(bool value);
 
   public:
-  // optional uint32 thread_count = 11;
+  // optional uint32 thread_count = 8;
   bool has_thread_count() const;
   void clear_thread_count() ;
   ::uint32_t thread_count() const;
@@ -13090,7 +12929,7 @@ class StartGIProbesBakeRequest final : public ::google::protobuf::Message
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      4, 11, 4,
+      3, 8, 2,
       121, 2>
       _table_;
 
@@ -13115,10 +12954,7 @@ class StartGIProbesBakeRequest final : public ::google::protobuf::Message
     ::google::protobuf::internal::ArenaStringPtr state_name_;
     ::google::protobuf::internal::ArenaStringPtr layout_source_file_id_;
     ::sailor::editor::v1::GIProbesBakeSettings* settings_;
-    ::sailor::editor::v1::Vector4* volume_min_;
-    ::sailor::editor::v1::Vector4* volume_max_;
     ::sailor::editor::v1::Vector4* fallback_environment_;
-    bool auto_bounds_;
     bool overwrite_;
     ::uint32_t thread_count_;
     PROTOBUF_TSAN_DECLARE_MEMBER
@@ -13275,9 +13111,8 @@ class SetGISettingsRequest final : public ::google::protobuf::Message
   // accessors -------------------------------------------------------
   enum : int {
     kProbesFieldNumber = 1,
-    kRuntimeProbesFieldNumber = 4,
+    kRuntimeProbesFieldNumber = 3,
     kModeFieldNumber = 2,
-    kProbeSourceFieldNumber = 3,
   };
   // repeated .sailor.editor.v1.GlobalIlluminationProbeBinding probes = 1;
   int probes_size() const;
@@ -13296,7 +13131,7 @@ class SetGISettingsRequest final : public ::google::protobuf::Message
   const ::sailor::editor::v1::GlobalIlluminationProbeBinding& probes(int index) const;
   ::sailor::editor::v1::GlobalIlluminationProbeBinding* add_probes();
   const ::google::protobuf::RepeatedPtrField<::sailor::editor::v1::GlobalIlluminationProbeBinding>& probes() const;
-  // .sailor.editor.v1.RuntimeGIProbesSettings runtime_probes = 4;
+  // .sailor.editor.v1.RuntimeGIProbesSettings runtime_probes = 3;
   bool has_runtime_probes() const;
   void clear_runtime_probes() ;
   const ::sailor::editor::v1::RuntimeGIProbesSettings& runtime_probes() const;
@@ -13322,22 +13157,12 @@ class SetGISettingsRequest final : public ::google::protobuf::Message
   void _internal_set_mode(::sailor::editor::v1::GlobalIlluminationMode value);
 
   public:
-  // .sailor.editor.v1.GlobalIlluminationProbeSource probe_source = 3;
-  void clear_probe_source() ;
-  ::sailor::editor::v1::GlobalIlluminationProbeSource probe_source() const;
-  void set_probe_source(::sailor::editor::v1::GlobalIlluminationProbeSource value);
-
-  private:
-  ::sailor::editor::v1::GlobalIlluminationProbeSource _internal_probe_source() const;
-  void _internal_set_probe_source(::sailor::editor::v1::GlobalIlluminationProbeSource value);
-
-  public:
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.SetGISettingsRequest)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      2, 4, 2,
+      2, 3, 2,
       0, 2>
       _table_;
 
@@ -13360,7 +13185,6 @@ class SetGISettingsRequest final : public ::google::protobuf::Message
     ::google::protobuf::RepeatedPtrField< ::sailor::editor::v1::GlobalIlluminationProbeBinding > probes_;
     ::sailor::editor::v1::RuntimeGIProbesSettings* runtime_probes_;
     int mode_;
-    int probe_source_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -13760,14 +13584,13 @@ class GlobalIlluminationStateResult final : public ::google::protobuf::Message
   enum : int {
     kProbesFieldNumber = 2,
     kDiagnosticFieldNumber = 3,
-    kRuntimeProbesFieldNumber = 9,
-    kRuntimeStateFieldNumber = 10,
+    kRuntimeProbesFieldNumber = 8,
+    kRuntimeStateFieldNumber = 9,
     kMaxProbeStatesPerSnapshotFieldNumber = 1,
     kModeFieldNumber = 6,
     kCompositionCountFieldNumber = 4,
     kRejectedCompositionCountFieldNumber = 5,
     kEnabledFieldNumber = 7,
-    kProbeSourceFieldNumber = 8,
   };
   // repeated .sailor.editor.v1.GlobalIlluminationProbeState probes = 2;
   int probes_size() const;
@@ -13802,7 +13625,7 @@ class GlobalIlluminationStateResult final : public ::google::protobuf::Message
   std::string* _internal_mutable_diagnostic();
 
   public:
-  // .sailor.editor.v1.RuntimeGIProbesSettings runtime_probes = 9;
+  // .sailor.editor.v1.RuntimeGIProbesSettings runtime_probes = 8;
   bool has_runtime_probes() const;
   void clear_runtime_probes() ;
   const ::sailor::editor::v1::RuntimeGIProbesSettings& runtime_probes() const;
@@ -13817,7 +13640,7 @@ class GlobalIlluminationStateResult final : public ::google::protobuf::Message
   ::sailor::editor::v1::RuntimeGIProbesSettings* _internal_mutable_runtime_probes();
 
   public:
-  // .sailor.editor.v1.RuntimeGIProbesState runtime_state = 10;
+  // .sailor.editor.v1.RuntimeGIProbesState runtime_state = 9;
   bool has_runtime_state() const;
   void clear_runtime_state() ;
   const ::sailor::editor::v1::RuntimeGIProbesState& runtime_state() const;
@@ -13882,22 +13705,12 @@ class GlobalIlluminationStateResult final : public ::google::protobuf::Message
   void _internal_set_enabled(bool value);
 
   public:
-  // .sailor.editor.v1.GlobalIlluminationProbeSource probe_source = 8;
-  void clear_probe_source() ;
-  ::sailor::editor::v1::GlobalIlluminationProbeSource probe_source() const;
-  void set_probe_source(::sailor::editor::v1::GlobalIlluminationProbeSource value);
-
-  private:
-  ::sailor::editor::v1::GlobalIlluminationProbeSource _internal_probe_source() const;
-  void _internal_set_probe_source(::sailor::editor::v1::GlobalIlluminationProbeSource value);
-
-  public:
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.GlobalIlluminationStateResult)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      4, 10, 3,
+      4, 9, 3,
       73, 2>
       _table_;
 
@@ -13926,7 +13739,6 @@ class GlobalIlluminationStateResult final : public ::google::protobuf::Message
     ::uint64_t composition_count_;
     ::uint64_t rejected_composition_count_;
     bool enabled_;
-    int probe_source_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -25443,230 +25255,16 @@ inline void StartGIProbesBakeRequest::set_allocated_settings(::sailor::editor::v
   // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.StartGIProbesBakeRequest.settings)
 }
 
-// bool auto_bounds = 6;
-inline void StartGIProbesBakeRequest::clear_auto_bounds() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.auto_bounds_ = false;
-}
-inline bool StartGIProbesBakeRequest::auto_bounds() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.StartGIProbesBakeRequest.auto_bounds)
-  return _internal_auto_bounds();
-}
-inline void StartGIProbesBakeRequest::set_auto_bounds(bool value) {
-  _internal_set_auto_bounds(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.StartGIProbesBakeRequest.auto_bounds)
-}
-inline bool StartGIProbesBakeRequest::_internal_auto_bounds() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.auto_bounds_;
-}
-inline void StartGIProbesBakeRequest::_internal_set_auto_bounds(bool value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.auto_bounds_ = value;
-}
-
-// .sailor.editor.v1.Vector4 volume_min = 7;
-inline bool StartGIProbesBakeRequest::has_volume_min() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000002u) != 0;
-  PROTOBUF_ASSUME(!value || _impl_.volume_min_ != nullptr);
-  return value;
-}
-inline void StartGIProbesBakeRequest::clear_volume_min() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.volume_min_ != nullptr) _impl_.volume_min_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000002u;
-}
-inline const ::sailor::editor::v1::Vector4& StartGIProbesBakeRequest::_internal_volume_min() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::sailor::editor::v1::Vector4* p = _impl_.volume_min_;
-  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
-}
-inline const ::sailor::editor::v1::Vector4& StartGIProbesBakeRequest::volume_min() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.StartGIProbesBakeRequest.volume_min)
-  return _internal_volume_min();
-}
-inline void StartGIProbesBakeRequest::unsafe_arena_set_allocated_volume_min(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.volume_min_);
-  }
-  _impl_.volume_min_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000002u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000002u;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.StartGIProbesBakeRequest.volume_min)
-}
-inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::release_volume_min() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  _impl_._has_bits_[0] &= ~0x00000002u;
-  ::sailor::editor::v1::Vector4* released = _impl_.volume_min_;
-  _impl_.volume_min_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::unsafe_arena_release_volume_min() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.StartGIProbesBakeRequest.volume_min)
-
-  _impl_._has_bits_[0] &= ~0x00000002u;
-  ::sailor::editor::v1::Vector4* temp = _impl_.volume_min_;
-  _impl_.volume_min_ = nullptr;
-  return temp;
-}
-inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::_internal_mutable_volume_min() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.volume_min_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
-    _impl_.volume_min_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
-  }
-  return _impl_.volume_min_;
-}
-inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::mutable_volume_min() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000002u;
-  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_volume_min();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.StartGIProbesBakeRequest.volume_min)
-  return _msg;
-}
-inline void StartGIProbesBakeRequest::set_allocated_volume_min(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete (_impl_.volume_min_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    _impl_._has_bits_[0] |= 0x00000002u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000002u;
-  }
-
-  _impl_.volume_min_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.StartGIProbesBakeRequest.volume_min)
-}
-
-// .sailor.editor.v1.Vector4 volume_max = 8;
-inline bool StartGIProbesBakeRequest::has_volume_max() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000004u) != 0;
-  PROTOBUF_ASSUME(!value || _impl_.volume_max_ != nullptr);
-  return value;
-}
-inline void StartGIProbesBakeRequest::clear_volume_max() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.volume_max_ != nullptr) _impl_.volume_max_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000004u;
-}
-inline const ::sailor::editor::v1::Vector4& StartGIProbesBakeRequest::_internal_volume_max() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::sailor::editor::v1::Vector4* p = _impl_.volume_max_;
-  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
-}
-inline const ::sailor::editor::v1::Vector4& StartGIProbesBakeRequest::volume_max() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.StartGIProbesBakeRequest.volume_max)
-  return _internal_volume_max();
-}
-inline void StartGIProbesBakeRequest::unsafe_arena_set_allocated_volume_max(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.volume_max_);
-  }
-  _impl_.volume_max_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000004u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000004u;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.StartGIProbesBakeRequest.volume_max)
-}
-inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::release_volume_max() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  _impl_._has_bits_[0] &= ~0x00000004u;
-  ::sailor::editor::v1::Vector4* released = _impl_.volume_max_;
-  _impl_.volume_max_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::unsafe_arena_release_volume_max() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.StartGIProbesBakeRequest.volume_max)
-
-  _impl_._has_bits_[0] &= ~0x00000004u;
-  ::sailor::editor::v1::Vector4* temp = _impl_.volume_max_;
-  _impl_.volume_max_ = nullptr;
-  return temp;
-}
-inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::_internal_mutable_volume_max() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.volume_max_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
-    _impl_.volume_max_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
-  }
-  return _impl_.volume_max_;
-}
-inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::mutable_volume_max() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000004u;
-  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_volume_max();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.StartGIProbesBakeRequest.volume_max)
-  return _msg;
-}
-inline void StartGIProbesBakeRequest::set_allocated_volume_max(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete (_impl_.volume_max_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    _impl_._has_bits_[0] |= 0x00000004u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000004u;
-  }
-
-  _impl_.volume_max_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.StartGIProbesBakeRequest.volume_max)
-}
-
-// .sailor.editor.v1.Vector4 fallback_environment = 9;
+// .sailor.editor.v1.Vector4 fallback_environment = 6;
 inline bool StartGIProbesBakeRequest::has_fallback_environment() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000008u) != 0;
+  bool value = (_impl_._has_bits_[0] & 0x00000002u) != 0;
   PROTOBUF_ASSUME(!value || _impl_.fallback_environment_ != nullptr);
   return value;
 }
 inline void StartGIProbesBakeRequest::clear_fallback_environment() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.fallback_environment_ != nullptr) _impl_.fallback_environment_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000008u;
+  _impl_._has_bits_[0] &= ~0x00000002u;
 }
 inline const ::sailor::editor::v1::Vector4& StartGIProbesBakeRequest::_internal_fallback_environment() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -25684,16 +25282,16 @@ inline void StartGIProbesBakeRequest::unsafe_arena_set_allocated_fallback_enviro
   }
   _impl_.fallback_environment_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
   if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000008u;
+    _impl_._has_bits_[0] |= 0x00000002u;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000008u;
+    _impl_._has_bits_[0] &= ~0x00000002u;
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.StartGIProbesBakeRequest.fallback_environment)
 }
 inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::release_fallback_environment() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  _impl_._has_bits_[0] &= ~0x00000008u;
+  _impl_._has_bits_[0] &= ~0x00000002u;
   ::sailor::editor::v1::Vector4* released = _impl_.fallback_environment_;
   _impl_.fallback_environment_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -25713,7 +25311,7 @@ inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::unsafe_arena_rel
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:sailor.editor.v1.StartGIProbesBakeRequest.fallback_environment)
 
-  _impl_._has_bits_[0] &= ~0x00000008u;
+  _impl_._has_bits_[0] &= ~0x00000002u;
   ::sailor::editor::v1::Vector4* temp = _impl_.fallback_environment_;
   _impl_.fallback_environment_ = nullptr;
   return temp;
@@ -25727,7 +25325,7 @@ inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::_internal_mutabl
   return _impl_.fallback_environment_;
 }
 inline ::sailor::editor::v1::Vector4* StartGIProbesBakeRequest::mutable_fallback_environment() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000008u;
+  _impl_._has_bits_[0] |= 0x00000002u;
   ::sailor::editor::v1::Vector4* _msg = _internal_mutable_fallback_environment();
   // @@protoc_insertion_point(field_mutable:sailor.editor.v1.StartGIProbesBakeRequest.fallback_environment)
   return _msg;
@@ -25744,16 +25342,16 @@ inline void StartGIProbesBakeRequest::set_allocated_fallback_environment(::sailo
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    _impl_._has_bits_[0] |= 0x00000008u;
+    _impl_._has_bits_[0] |= 0x00000002u;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000008u;
+    _impl_._has_bits_[0] &= ~0x00000002u;
   }
 
   _impl_.fallback_environment_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
   // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.StartGIProbesBakeRequest.fallback_environment)
 }
 
-// bool overwrite = 10;
+// bool overwrite = 7;
 inline void StartGIProbesBakeRequest::clear_overwrite() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.overwrite_ = false;
@@ -25775,15 +25373,15 @@ inline void StartGIProbesBakeRequest::_internal_set_overwrite(bool value) {
   _impl_.overwrite_ = value;
 }
 
-// optional uint32 thread_count = 11;
+// optional uint32 thread_count = 8;
 inline bool StartGIProbesBakeRequest::has_thread_count() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000010u) != 0;
+  bool value = (_impl_._has_bits_[0] & 0x00000004u) != 0;
   return value;
 }
 inline void StartGIProbesBakeRequest::clear_thread_count() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.thread_count_ = 0u;
-  _impl_._has_bits_[0] &= ~0x00000010u;
+  _impl_._has_bits_[0] &= ~0x00000004u;
 }
 inline ::uint32_t StartGIProbesBakeRequest::thread_count() const {
   // @@protoc_insertion_point(field_get:sailor.editor.v1.StartGIProbesBakeRequest.thread_count)
@@ -25791,7 +25389,7 @@ inline ::uint32_t StartGIProbesBakeRequest::thread_count() const {
 }
 inline void StartGIProbesBakeRequest::set_thread_count(::uint32_t value) {
   _internal_set_thread_count(value);
-  _impl_._has_bits_[0] |= 0x00000010u;
+  _impl_._has_bits_[0] |= 0x00000004u;
   // @@protoc_insertion_point(field_set:sailor.editor.v1.StartGIProbesBakeRequest.thread_count)
 }
 inline ::uint32_t StartGIProbesBakeRequest::_internal_thread_count() const {
@@ -26418,29 +26016,7 @@ inline void SetGISettingsRequest::_internal_set_mode(::sailor::editor::v1::Globa
   _impl_.mode_ = value;
 }
 
-// .sailor.editor.v1.GlobalIlluminationProbeSource probe_source = 3;
-inline void SetGISettingsRequest::clear_probe_source() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.probe_source_ = 0;
-}
-inline ::sailor::editor::v1::GlobalIlluminationProbeSource SetGISettingsRequest::probe_source() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.SetGISettingsRequest.probe_source)
-  return _internal_probe_source();
-}
-inline void SetGISettingsRequest::set_probe_source(::sailor::editor::v1::GlobalIlluminationProbeSource value) {
-  _internal_set_probe_source(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.SetGISettingsRequest.probe_source)
-}
-inline ::sailor::editor::v1::GlobalIlluminationProbeSource SetGISettingsRequest::_internal_probe_source() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return static_cast<::sailor::editor::v1::GlobalIlluminationProbeSource>(_impl_.probe_source_);
-}
-inline void SetGISettingsRequest::_internal_set_probe_source(::sailor::editor::v1::GlobalIlluminationProbeSource value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.probe_source_ = value;
-}
-
-// .sailor.editor.v1.RuntimeGIProbesSettings runtime_probes = 4;
+// .sailor.editor.v1.RuntimeGIProbesSettings runtime_probes = 3;
 inline bool SetGISettingsRequest::has_runtime_probes() const {
   bool value = (_impl_._has_bits_[0] & 0x00000001u) != 0;
   PROTOBUF_ASSUME(!value || _impl_.runtime_probes_ != nullptr);
@@ -26983,29 +26559,7 @@ inline void GlobalIlluminationStateResult::_internal_set_enabled(bool value) {
   _impl_.enabled_ = value;
 }
 
-// .sailor.editor.v1.GlobalIlluminationProbeSource probe_source = 8;
-inline void GlobalIlluminationStateResult::clear_probe_source() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.probe_source_ = 0;
-}
-inline ::sailor::editor::v1::GlobalIlluminationProbeSource GlobalIlluminationStateResult::probe_source() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.GlobalIlluminationStateResult.probe_source)
-  return _internal_probe_source();
-}
-inline void GlobalIlluminationStateResult::set_probe_source(::sailor::editor::v1::GlobalIlluminationProbeSource value) {
-  _internal_set_probe_source(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.GlobalIlluminationStateResult.probe_source)
-}
-inline ::sailor::editor::v1::GlobalIlluminationProbeSource GlobalIlluminationStateResult::_internal_probe_source() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return static_cast<::sailor::editor::v1::GlobalIlluminationProbeSource>(_impl_.probe_source_);
-}
-inline void GlobalIlluminationStateResult::_internal_set_probe_source(::sailor::editor::v1::GlobalIlluminationProbeSource value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.probe_source_ = value;
-}
-
-// .sailor.editor.v1.RuntimeGIProbesSettings runtime_probes = 9;
+// .sailor.editor.v1.RuntimeGIProbesSettings runtime_probes = 8;
 inline bool GlobalIlluminationStateResult::has_runtime_probes() const {
   bool value = (_impl_._has_bits_[0] & 0x00000001u) != 0;
   PROTOBUF_ASSUME(!value || _impl_.runtime_probes_ != nullptr);
@@ -27101,7 +26655,7 @@ inline void GlobalIlluminationStateResult::set_allocated_runtime_probes(::sailor
   // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.GlobalIlluminationStateResult.runtime_probes)
 }
 
-// .sailor.editor.v1.RuntimeGIProbesState runtime_state = 10;
+// .sailor.editor.v1.RuntimeGIProbesState runtime_state = 9;
 inline bool GlobalIlluminationStateResult::has_runtime_state() const {
   bool value = (_impl_._has_bits_[0] & 0x00000002u) != 0;
   PROTOBUF_ASSUME(!value || _impl_.runtime_state_ != nullptr);
@@ -32141,29 +31695,7 @@ inline void RuntimeGIProbesState::_internal_set_paused(bool value) {
   _impl_.paused_ = value;
 }
 
-// bool throttled = 4;
-inline void RuntimeGIProbesState::clear_throttled() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.throttled_ = false;
-}
-inline bool RuntimeGIProbesState::throttled() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.RuntimeGIProbesState.throttled)
-  return _internal_throttled();
-}
-inline void RuntimeGIProbesState::set_throttled(bool value) {
-  _internal_set_throttled(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.RuntimeGIProbesState.throttled)
-}
-inline bool RuntimeGIProbesState::_internal_throttled() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.throttled_;
-}
-inline void RuntimeGIProbesState::_internal_set_throttled(bool value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.throttled_ = value;
-}
-
-// bool preview_enabled = 5;
+// bool preview_enabled = 4;
 inline void RuntimeGIProbesState::clear_preview_enabled() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.preview_enabled_ = false;
@@ -32185,7 +31717,7 @@ inline void RuntimeGIProbesState::_internal_set_preview_enabled(bool value) {
   _impl_.preview_enabled_ = value;
 }
 
-// uint64 scene_generation = 6;
+// uint64 scene_generation = 5;
 inline void RuntimeGIProbesState::clear_scene_generation() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.scene_generation_ = ::uint64_t{0u};
@@ -32207,7 +31739,7 @@ inline void RuntimeGIProbesState::_internal_set_scene_generation(::uint64_t valu
   _impl_.scene_generation_ = value;
 }
 
-// uint64 lighting_generation = 7;
+// uint64 lighting_generation = 6;
 inline void RuntimeGIProbesState::clear_lighting_generation() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.lighting_generation_ = ::uint64_t{0u};
@@ -32229,7 +31761,7 @@ inline void RuntimeGIProbesState::_internal_set_lighting_generation(::uint64_t v
   _impl_.lighting_generation_ = value;
 }
 
-// uint64 published_revision = 8;
+// uint64 published_revision = 7;
 inline void RuntimeGIProbesState::clear_published_revision() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.published_revision_ = ::uint64_t{0u};
@@ -32251,7 +31783,7 @@ inline void RuntimeGIProbesState::_internal_set_published_revision(::uint64_t va
   _impl_.published_revision_ = value;
 }
 
-// uint32 capacity = 9;
+// uint32 capacity = 8;
 inline void RuntimeGIProbesState::clear_capacity() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.capacity_ = 0u;
@@ -32273,7 +31805,7 @@ inline void RuntimeGIProbesState::_internal_set_capacity(::uint32_t value) {
   _impl_.capacity_ = value;
 }
 
-// uint32 active_probe_count = 10;
+// uint32 active_probe_count = 9;
 inline void RuntimeGIProbesState::clear_active_probe_count() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.active_probe_count_ = 0u;
@@ -32295,7 +31827,7 @@ inline void RuntimeGIProbesState::_internal_set_active_probe_count(::uint32_t va
   _impl_.active_probe_count_ = value;
 }
 
-// uint32 ready_probe_count = 11;
+// uint32 ready_probe_count = 10;
 inline void RuntimeGIProbesState::clear_ready_probe_count() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.ready_probe_count_ = 0u;
@@ -32317,51 +31849,7 @@ inline void RuntimeGIProbesState::_internal_set_ready_probe_count(::uint32_t val
   _impl_.ready_probe_count_ = value;
 }
 
-// uint32 dirty_probe_count = 12;
-inline void RuntimeGIProbesState::clear_dirty_probe_count() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.dirty_probe_count_ = 0u;
-}
-inline ::uint32_t RuntimeGIProbesState::dirty_probe_count() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.RuntimeGIProbesState.dirty_probe_count)
-  return _internal_dirty_probe_count();
-}
-inline void RuntimeGIProbesState::set_dirty_probe_count(::uint32_t value) {
-  _internal_set_dirty_probe_count(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.RuntimeGIProbesState.dirty_probe_count)
-}
-inline ::uint32_t RuntimeGIProbesState::_internal_dirty_probe_count() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.dirty_probe_count_;
-}
-inline void RuntimeGIProbesState::_internal_set_dirty_probe_count(::uint32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.dirty_probe_count_ = value;
-}
-
-// uint32 queued_probe_count = 13;
-inline void RuntimeGIProbesState::clear_queued_probe_count() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.queued_probe_count_ = 0u;
-}
-inline ::uint32_t RuntimeGIProbesState::queued_probe_count() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.RuntimeGIProbesState.queued_probe_count)
-  return _internal_queued_probe_count();
-}
-inline void RuntimeGIProbesState::set_queued_probe_count(::uint32_t value) {
-  _internal_set_queued_probe_count(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.RuntimeGIProbesState.queued_probe_count)
-}
-inline ::uint32_t RuntimeGIProbesState::_internal_queued_probe_count() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.queued_probe_count_;
-}
-inline void RuntimeGIProbesState::_internal_set_queued_probe_count(::uint32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.queued_probe_count_ = value;
-}
-
-// uint32 worker_count = 14;
+// uint32 worker_count = 11;
 inline void RuntimeGIProbesState::clear_worker_count() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.worker_count_ = 0u;
@@ -32383,29 +31871,7 @@ inline void RuntimeGIProbesState::_internal_set_worker_count(::uint32_t value) {
   _impl_.worker_count_ = value;
 }
 
-// uint64 traced_ray_count = 15;
-inline void RuntimeGIProbesState::clear_traced_ray_count() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.traced_ray_count_ = ::uint64_t{0u};
-}
-inline ::uint64_t RuntimeGIProbesState::traced_ray_count() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.RuntimeGIProbesState.traced_ray_count)
-  return _internal_traced_ray_count();
-}
-inline void RuntimeGIProbesState::set_traced_ray_count(::uint64_t value) {
-  _internal_set_traced_ray_count(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.RuntimeGIProbesState.traced_ray_count)
-}
-inline ::uint64_t RuntimeGIProbesState::_internal_traced_ray_count() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.traced_ray_count_;
-}
-inline void RuntimeGIProbesState::_internal_set_traced_ray_count(::uint64_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.traced_ray_count_ = value;
-}
-
-// uint64 published_bytes = 16;
+// uint64 published_bytes = 12;
 inline void RuntimeGIProbesState::clear_published_bytes() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.published_bytes_ = ::uint64_t{0u};
@@ -32427,7 +31893,7 @@ inline void RuntimeGIProbesState::_internal_set_published_bytes(::uint64_t value
   _impl_.published_bytes_ = value;
 }
 
-// float coverage = 17;
+// float coverage = 13;
 inline void RuntimeGIProbesState::clear_coverage() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.coverage_ = 0;
@@ -32449,7 +31915,7 @@ inline void RuntimeGIProbesState::_internal_set_coverage(float value) {
   _impl_.coverage_ = value;
 }
 
-// float refinement = 18;
+// float refinement = 14;
 inline void RuntimeGIProbesState::clear_refinement() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.refinement_ = 0;
@@ -32471,73 +31937,7 @@ inline void RuntimeGIProbesState::_internal_set_refinement(float value) {
   _impl_.refinement_ = value;
 }
 
-// float rays_per_second = 19;
-inline void RuntimeGIProbesState::clear_rays_per_second() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.rays_per_second_ = 0;
-}
-inline float RuntimeGIProbesState::rays_per_second() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.RuntimeGIProbesState.rays_per_second)
-  return _internal_rays_per_second();
-}
-inline void RuntimeGIProbesState::set_rays_per_second(float value) {
-  _internal_set_rays_per_second(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.RuntimeGIProbesState.rays_per_second)
-}
-inline float RuntimeGIProbesState::_internal_rays_per_second() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.rays_per_second_;
-}
-inline void RuntimeGIProbesState::_internal_set_rays_per_second(float value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.rays_per_second_ = value;
-}
-
-// float worker_cpu_milliseconds = 20;
-inline void RuntimeGIProbesState::clear_worker_cpu_milliseconds() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.worker_cpu_milliseconds_ = 0;
-}
-inline float RuntimeGIProbesState::worker_cpu_milliseconds() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.RuntimeGIProbesState.worker_cpu_milliseconds)
-  return _internal_worker_cpu_milliseconds();
-}
-inline void RuntimeGIProbesState::set_worker_cpu_milliseconds(float value) {
-  _internal_set_worker_cpu_milliseconds(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.RuntimeGIProbesState.worker_cpu_milliseconds)
-}
-inline float RuntimeGIProbesState::_internal_worker_cpu_milliseconds() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.worker_cpu_milliseconds_;
-}
-inline void RuntimeGIProbesState::_internal_set_worker_cpu_milliseconds(float value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.worker_cpu_milliseconds_ = value;
-}
-
-// float last_publication_milliseconds = 21;
-inline void RuntimeGIProbesState::clear_last_publication_milliseconds() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.last_publication_milliseconds_ = 0;
-}
-inline float RuntimeGIProbesState::last_publication_milliseconds() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.RuntimeGIProbesState.last_publication_milliseconds)
-  return _internal_last_publication_milliseconds();
-}
-inline void RuntimeGIProbesState::set_last_publication_milliseconds(float value) {
-  _internal_set_last_publication_milliseconds(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.RuntimeGIProbesState.last_publication_milliseconds)
-}
-inline float RuntimeGIProbesState::_internal_last_publication_milliseconds() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.last_publication_milliseconds_;
-}
-inline void RuntimeGIProbesState::_internal_set_last_publication_milliseconds(float value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.last_publication_milliseconds_ = value;
-}
-
-// string diagnostic = 22;
+// string diagnostic = 15;
 inline void RuntimeGIProbesState::clear_diagnostic() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.diagnostic_.ClearToEmpty();
@@ -32585,7 +31985,7 @@ inline void RuntimeGIProbesState::set_allocated_diagnostic(std::string* value) {
   // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.RuntimeGIProbesState.diagnostic)
 }
 
-// .sailor.editor.v1.RuntimeGIProbesPreviewBudget preview_budget = 23;
+// .sailor.editor.v1.RuntimeGIProbesPreviewBudget preview_budget = 16;
 inline void RuntimeGIProbesState::clear_preview_budget() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.preview_budget_ = 0;
@@ -32687,12 +32087,6 @@ struct is_proto_enum<::sailor::editor::v1::GlobalIlluminationMode> : std::true_t
 template <>
 inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::GlobalIlluminationMode>() {
   return ::sailor::editor::v1::GlobalIlluminationMode_descriptor();
-}
-template <>
-struct is_proto_enum<::sailor::editor::v1::GlobalIlluminationProbeSource> : std::true_type {};
-template <>
-inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::GlobalIlluminationProbeSource>() {
-  return ::sailor::editor::v1::GlobalIlluminationProbeSource_descriptor();
 }
 template <>
 struct is_proto_enum<::sailor::editor::v1::RuntimeGIProbesLifecycle> : std::true_type {};

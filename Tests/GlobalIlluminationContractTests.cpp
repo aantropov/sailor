@@ -1377,6 +1377,7 @@ namespace
 			GIProbeBakeRaySample& outSample,
 			std::string&) const override
 		{
+			m_sampleCount.fetch_add(1u, std::memory_order_relaxed);
 			const bool bPositiveXAxis = direction.x > 0.9999f &&
 				std::abs(direction.y) < 0.0001f &&
 				std::abs(direction.z) < 0.0001f;
@@ -1385,6 +1386,14 @@ namespace
 			outSample.m_bHit = bPositiveXAxis;
 			return true;
 		}
+
+		uint64_t GetSampleCount() const noexcept
+		{
+			return m_sampleCount.load(std::memory_order_relaxed);
+		}
+
+	private:
+		mutable std::atomic<uint64_t> m_sampleCount{ 0u };
 	};
 
 	class ObliqueNearWallBakeRaySampler final :
@@ -2102,9 +2111,7 @@ namespace
 	void TestWorldBindingRoundTripAndModes()
 	{
 		GISettings source;
-		source.m_mode = EGlobalIlluminationMode::BakedOnly;
-		source.m_probeSource =
-			EGlobalIlluminationProbeSource::RuntimeExperimental;
+		source.m_mode = EGlobalIlluminationMode::Baked;
 		source.m_runtimeProbes.m_bounceCount = 2u;
 		source.m_runtimeProbes.m_minProbeSpacing = 2.5f;
 		source.m_runtimeProbes.m_normalBias = 0.075f;
@@ -2129,9 +2136,7 @@ namespace
 		std::string diagnostic;
 		Require(parsed.Deserialize(root, diagnostic),
 			"world GI settings should round-trip: " + diagnostic);
-		Require(parsed.m_mode == EGlobalIlluminationMode::BakedOnly &&
-			parsed.m_probeSource ==
-				EGlobalIlluminationProbeSource::RuntimeExperimental &&
+		Require(parsed.m_mode == EGlobalIlluminationMode::Baked &&
 			parsed.m_runtimeProbes.m_version == 1u &&
 			parsed.m_runtimeProbes.m_bounceCount == 2u &&
 			IsNear(parsed.m_runtimeProbes.m_minProbeSpacing, 2.5f) &&
@@ -2149,18 +2154,16 @@ namespace
 		incompleteRoot["globalIllumination"].remove("mode");
 		Require(!parsed.Deserialize(incompleteRoot, diagnostic) &&
 			diagnostic.find("mode is required") != std::string::npos &&
-			parsed.m_mode == EGlobalIlluminationMode::BakedOnly &&
-			parsed.m_probeSource ==
-				EGlobalIlluminationProbeSource::RuntimeExperimental &&
+			parsed.m_mode == EGlobalIlluminationMode::Baked &&
 			parsed.m_probes.Num() == 2u,
 			"invalid world GI settings must preserve the previous complete value");
 
 		root["globalIllumination"]["mode"] = "ReflectionsOnly";
 		Require(!parsed.Deserialize(root, diagnostic) &&
-			diagnostic.find("RealtimeAndBaked") != std::string::npos &&
-			parsed.m_mode == EGlobalIlluminationMode::BakedOnly,
+			diagnostic.find("Runtime") != std::string::npos &&
+			parsed.m_mode == EGlobalIlluminationMode::Baked,
 			"unknown world GI modes must fail atomically");
-		root["globalIllumination"]["mode"] = "BakedOnly";
+		root["globalIllumination"]["mode"] = "Baked";
 
 		root["globalIllumination"]["probes"]["Lamps"]["mode"] = "Multiply";
 		Require(!parsed.Deserialize(root, diagnostic) &&
@@ -2379,7 +2382,7 @@ components:
 		std::string diagnostic;
 		Require(globalIllumination.Deserialize(world, diagnostic) &&
 			globalIllumination.m_mode ==
-				EGlobalIlluminationMode::RealtimeAndBaked &&
+				EGlobalIlluminationMode::Baked &&
 			globalIllumination.m_probes.IsEmpty(),
 			"the reusable GI quality lab must not check in local baked states: " +
 				diagnostic);
@@ -2758,7 +2761,7 @@ components:
 			RHI::BuildGlobalIlluminationGpuHeader(
 				&snapshot,
 				RHI::EGlobalIlluminationDebugVisualization::IndirectOnly,
-				EGlobalIlluminationMode::BakedOnly,
+				EGlobalIlluminationMode::Baked,
 				false);
 		Require(header.m_counts == glm::uvec4(1u, 1u, 1u, 8u) &&
 			header.m_stateAndDebug.x == 2u &&
@@ -2769,7 +2772,7 @@ components:
 			IsNear(header.m_volumeMin.w, day->m_bakeSettings.m_normalBias) &&
 			IsNear(header.m_volumeMax.w, day->m_bakeSettings.m_viewBias) &&
 			header.m_settings.y == static_cast<uint32_t>(
-				EGlobalIlluminationMode::BakedOnly) &&
+				EGlobalIlluminationMode::Baked) &&
 			header.m_stateAndDebug.z == static_cast<uint32_t>(
 				RHI::EGlobalIlluminationDebugVisualization::IndirectOnly),
 			"GPU header must expose resident counts and the selected GI debug mode");
@@ -3335,7 +3338,9 @@ components:
 	{
 		RuntimeGIProbesStartRequest request;
 		request.m_sampler = sampler;
-		request.m_cameraPosition = glm::vec3(0.0f);
+		request.m_priorityPosition = glm::vec3(0.0f);
+		request.m_geometryBounds.m_min = glm::vec3(-0.1f, -0.1f, -2.1f);
+		request.m_geometryBounds.m_max = glm::vec3(0.1f, 0.1f, -1.9f);
 		request.m_geometryGeneration = geometryGeneration;
 		request.m_lightingGeneration = lightingGeneration;
 		request.m_randomSeed = 9187u;
@@ -3344,9 +3349,8 @@ components:
 		request.m_worldSettings.m_maxRayDistance = 10.0f;
 		request.m_qualitySettings.m_bEnabled = true;
 		request.m_qualitySettings.m_maxActiveProbes = 8u;
-		request.m_qualitySettings.m_clipmapCascadeCount = 1u;
-		request.m_qualitySettings.m_initialSamplesPerProbe = 2u;
-		request.m_qualitySettings.m_targetSamplesPerProbe = 4u;
+		request.m_qualitySettings.m_initialSamplesPerProbe = 16u;
+		request.m_qualitySettings.m_targetSamplesPerProbe = 32u;
 		request.m_qualitySettings.m_workerCount = 1u;
 		request.m_qualitySettings.m_cpuDutyFraction = 1.0f;
 		request.m_qualitySettings.m_cpuBudgetMilliseconds = 4.0f;
@@ -3388,6 +3392,21 @@ components:
 			11u,
 			21u);
 		std::string diagnostic;
+		RuntimeGIProbesQualitySettings workerLimit =
+			request.m_qualitySettings;
+		workerLimit.m_workerCount = 16u;
+		Require(workerLimit.Validate(diagnostic),
+			"runtime GI must accept up to sixteen low-priority workers: " +
+				diagnostic);
+		workerLimit.m_workerCount = 17u;
+		Require(!workerLimit.Validate(diagnostic),
+			"runtime GI must reject worker counts above sixteen");
+		RuntimeGIProbesStartRequest missingGeometryRequest = request;
+		missingGeometryRequest.m_geometryBounds = {};
+		Require(!service.Start(missingGeometryRequest, diagnostic) &&
+			diagnostic.find("prepared-scene geometry bounds") !=
+				std::string::npos,
+			"runtime placement must reject a request without prepared geometry bounds");
 		Require(service.Start(request, diagnostic),
 			"the bounded runtime GI service should accept a prepared sampler: " +
 				diagnostic);
@@ -3500,7 +3519,7 @@ components:
 			"disabling the experimental provider must stop publishing transient data");
 	}
 
-	void TestRuntimeGIProbesClipmapReuseAndBudgets()
+	void TestRuntimeGIProbesFixedGridReuseAndBudgets()
 	{
 		RuntimeGIProbesService service;
 		auto constantSampler =
@@ -3511,13 +3530,14 @@ components:
 			31u,
 			41u);
 		request.m_qualitySettings.m_maxActiveProbes = 64u;
-		request.m_qualitySettings.m_clipmapCascadeCount = 2u;
-		request.m_qualitySettings.m_initialSamplesPerProbe = 1u;
-		request.m_qualitySettings.m_targetSamplesPerProbe = 2u;
+		request.m_qualitySettings.m_initialSamplesPerProbe = 16u;
+		request.m_qualitySettings.m_targetSamplesPerProbe = 32u;
 		request.m_qualitySettings.m_maxDirtyUploadBytesPerFrame = 64u * 1024u;
+		request.m_geometryBounds.m_min = glm::vec3(-0.1f, -0.1f, -9.0f);
+		request.m_geometryBounds.m_max = glm::vec3(0.6f, 0.1f, -2.0f);
 		std::string diagnostic;
 		Require(service.Start(request, diagnostic),
-			"the runtime clipmap should start: " + diagnostic);
+			"the runtime scene grid should start: " + diagnostic);
 		Require(WaitForRuntimeGIProbes(
 				service,
 				[](const RuntimeGIProbesStatus& status)
@@ -3526,38 +3546,42 @@ components:
 						ERuntimeGIProbesLifecycle::Ready &&
 						status.m_publishedRevision > 0u;
 				}),
-			"the two-cascade runtime clipmap should converge within the test budget");
+			"the runtime scene grid should converge within the test budget");
 
 		const GIProbesDataPtr firstPublished = service.GetPublishedData();
 		Require(firstPublished && firstPublished->Validate(diagnostic),
-			"the converged runtime clipmap must satisfy the probe payload contract: " +
+			"the converged runtime grid must satisfy the probe payload contract: " +
 				diagnostic);
-		Require(firstPublished->m_bricks.Num() == 2u &&
-			firstPublished->m_bakeSettings.m_maxSubdivisionLevel == 1u &&
-			firstPublished->m_bricks[0].m_subdivisionLevel == 1u &&
-			firstPublished->m_bricks[1].m_subdivisionLevel == 0u &&
+		Require(firstPublished->m_bricks.Num() == 1u &&
+			firstPublished->m_bakeSettings.m_maxSubdivisionLevel == 0u &&
+			firstPublished->m_bricks[0].m_subdivisionLevel == 0u &&
+			firstPublished->m_probes.Num() <=
+				request.m_qualitySettings.m_maxActiveProbes,
+			"runtime GI must use one fixed scene-wide grid within its capacity");
+		const GIProbeBrick& fixedGrid = firstPublished->m_bricks[0];
+		Require(glm::all(glm::lessThanEqual(
+				fixedGrid.m_min,
+				request.m_geometryBounds.m_min)) &&
 			glm::all(glm::greaterThanEqual(
-				firstPublished->m_bricks[1].m_max -
-					firstPublished->m_bricks[1].m_min,
-				firstPublished->m_bricks[0].m_max -
-					firstPublished->m_bricks[0].m_min)),
-			"runtime cascades must nest a fine near-camera grid inside wider coverage");
+				fixedGrid.m_max,
+				request.m_geometryBounds.m_max)),
+			"the automatically sized runtime grid must cover all prepared geometry bounds");
 
 		const uint64_t visibilityBeforeMove =
 			constantSampler->GetVisibilitySampleCount();
 		service.SetWorkAllowed(false);
 		RuntimeGIProbesStartRequest movedRequest = request;
-		movedRequest.m_cameraPosition.x += 1.25f;
+		movedRequest.m_priorityPosition.x += 12.25f;
+		movedRequest.m_qualitySettings.m_cpuBudgetMilliseconds = 0.000001f;
 		Require(service.Start(movedRequest, diagnostic),
-			"moving the runtime clipmap should start a replacement generation: " +
+			"changing the priority camera should start a compatible generation: " +
 				diagnostic);
 		const RuntimeGIProbesStatus movedStatus = service.GetStatus();
-		Require(movedStatus.m_readyProbeCount > 0u &&
-			movedStatus.m_readyProbeCount < movedStatus.m_activeProbeCount &&
-			service.GetPublishedData().GetRawPtr() ==
-				firstPublished.GetRawPtr(),
-			"camera movement must recycle overlapping logical cells while retaining the last publication");
+		Require(movedStatus.m_readyProbeCount == movedStatus.m_activeProbeCount &&
+			IsNear(movedStatus.m_refinement, 1.0f),
+			"camera motion must preserve and reuse every fixed-grid probe");
 		service.SetWorkAllowed(true);
+		service.Tick(0.0f);
 		Require(WaitForRuntimeGIProbes(
 				service,
 				[](const RuntimeGIProbesStatus& status)
@@ -3565,13 +3589,11 @@ components:
 					return status.m_lifecycle ==
 						ERuntimeGIProbesLifecycle::Ready;
 				}),
-			"the moved runtime clipmap should fill only newly exposed cells");
+			"the camera-independent runtime grid should remain converged");
 		const uint64_t visibilityAfterMove =
 			constantSampler->GetVisibilitySampleCount();
-		Require(visibilityAfterMove > visibilityBeforeMove &&
-			visibilityAfterMove - visibilityBeforeMove <
-				static_cast<uint64_t>(service.GetStatus().m_activeProbeCount) * 70u,
-			"camera movement must not retrace transport for every overlapping cell");
+		Require(visibilityAfterMove == visibilityBeforeMove,
+			"camera movement must not retrace a stable geometry-clipped layout");
 
 		service.SetWorkAllowed(false);
 		const uint64_t visibilityBeforeLightingChange =
@@ -3580,6 +3602,8 @@ components:
 			constantSampler->GetIrradianceSampleCount();
 		RuntimeGIProbesStartRequest relitRequest = movedRequest;
 		++relitRequest.m_lightingGeneration;
+		relitRequest.m_qualitySettings.m_cpuBudgetMilliseconds =
+			request.m_qualitySettings.m_cpuBudgetMilliseconds;
 		Require(service.Start(relitRequest, diagnostic),
 			"a lighting-only generation should restart irradiance: " + diagnostic);
 		Require(service.GetStatus().m_readyProbeCount == 0u,
@@ -3612,7 +3636,7 @@ components:
 				RuntimeGIProbesHardMaxActiveProbes &&
 			service.GetStatus().m_activeProbeCount <=
 				service.GetStatus().m_capacity,
-			"the effective cache must remain inside both probe and publication limits");
+			"the automatically sized grid must remain inside both probe and publication limits");
 		Require(WaitForRuntimeGIProbes(
 				service,
 				[](const RuntimeGIProbesStatus& status)
@@ -3621,7 +3645,7 @@ components:
 						ERuntimeGIProbesLifecycle::Ready &&
 						status.m_publishedRevision > 0u;
 				}),
-			"the publication-limited cache should still converge");
+			"the publication-limited grid should still converge");
 		Require(service.GetStatus().m_publishedBytes <=
 				boundedRequest.m_qualitySettings.m_maxDirtyUploadBytesPerFrame,
 			"a runtime snapshot must never exceed its configured publication budget");
@@ -3629,8 +3653,288 @@ components:
 		service.Disable();
 		boundedRequest.m_qualitySettings.m_maxDirtyUploadBytesPerFrame = 1u;
 		Require(!service.Start(boundedRequest, diagnostic) &&
-			diagnostic.find("minimum eight probes") != std::string::npos,
+			diagnostic.find("minimum eight-probe grid") != std::string::npos,
 			"an impossible publication budget must be rejected before workers start");
+	}
+
+	void TestRuntimeGIProbesIgnoreCameraMotion()
+	{
+		RuntimeGIProbesService service;
+		auto constantSampler =
+			TSharedPtr<ConstantBakeRaySampler>::Make(glm::vec3(0.25f));
+		TSharedPtr<IGIProbeBakeRaySampler> sampler = constantSampler;
+		RuntimeGIProbesStartRequest initialRequest = MakeRuntimeGIProbesRequest(
+			sampler,
+			51u,
+			61u);
+		initialRequest.m_qualitySettings.m_maxActiveProbes = 64u;
+		initialRequest.m_qualitySettings.m_initialSamplesPerProbe = 16u;
+		initialRequest.m_qualitySettings.m_targetSamplesPerProbe = 16u;
+		initialRequest.m_qualitySettings.m_maxDirtyUploadBytesPerFrame =
+			64u * 1024u;
+		initialRequest.m_geometryBounds.m_min =
+			glm::vec3(-0.1f, -0.1f, -64.0f);
+		initialRequest.m_geometryBounds.m_max =
+			glm::vec3(0.1f, 0.1f, 576.0f);
+		std::string diagnostic;
+		Require(service.Start(initialRequest, diagnostic),
+			"the initial runtime priority should start: " + diagnostic);
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_lifecycle ==
+						ERuntimeGIProbesLifecycle::Ready;
+				}),
+			"the initial runtime grid should converge");
+		const RuntimeGIProbesStatus initialStatus = service.GetStatus();
+		const GIProbesDataPtr initialData = service.GetPublishedData();
+		Require(initialData && initialData->m_bricks.Num() == 1u &&
+			initialStatus.m_readyProbeCount == initialStatus.m_activeProbeCount,
+			"the fixed runtime grid must converge before camera motion");
+
+		RuntimeGIProbesStartRequest movedRequest = initialRequest;
+		movedRequest.m_priorityPosition.z += 512.0f;
+		const uint64_t visibilityBeforeMove =
+			constantSampler->GetVisibilitySampleCount();
+		const uint64_t irradianceBeforeMove =
+			constantSampler->GetIrradianceSampleCount();
+		Require(service.Start(movedRequest, diagnostic),
+			"the moved runtime priority should start: " + diagnostic);
+		const RuntimeGIProbesStatus movedStatus = service.GetStatus();
+		Require(movedStatus.m_readyProbeCount ==
+				movedStatus.m_activeProbeCount &&
+			IsNear(movedStatus.m_refinement, 1.0f) &&
+			constantSampler->GetVisibilitySampleCount() == visibilityBeforeMove &&
+			constantSampler->GetIrradianceSampleCount() == irradianceBeforeMove,
+			"moving the camera must neither replace nor retrace the scene-wide grid");
+
+		service.SetWorkAllowed(false);
+		const uint64_t visibilityBeforeReturn =
+			constantSampler->GetVisibilitySampleCount();
+		const uint64_t irradianceBeforeReturn =
+			constantSampler->GetIrradianceSampleCount();
+		Require(service.Start(initialRequest, diagnostic),
+			"returning to the initial runtime priority should start: " + diagnostic);
+		const RuntimeGIProbesStatus returnedStatus = service.GetStatus();
+		Require(returnedStatus.m_readyProbeCount ==
+				returnedStatus.m_activeProbeCount &&
+			IsNear(returnedStatus.m_refinement, 1.0f) &&
+			constantSampler->GetVisibilitySampleCount() ==
+				visibilityBeforeReturn &&
+			constantSampler->GetIrradianceSampleCount() ==
+				irradianceBeforeReturn,
+			"camera motion must preserve every converged probe without retracing");
+		service.Disable();
+	}
+
+	void TestRuntimeGIProbesProgressiveSamplingPublication()
+	{
+		RuntimeGIProbesService service;
+		auto constantSampler =
+			TSharedPtr<ConstantBakeRaySampler>::Make(glm::vec3(0.25f));
+		TSharedPtr<IGIProbeBakeRaySampler> sampler = constantSampler;
+		RuntimeGIProbesStartRequest request = MakeRuntimeGIProbesRequest(
+			sampler,
+			111u,
+			121u);
+		request.m_qualitySettings.m_maxActiveProbes = 64u;
+		request.m_qualitySettings.m_initialSamplesPerProbe = 16u;
+		request.m_qualitySettings.m_targetSamplesPerProbe = 32u;
+		request.m_qualitySettings.m_workerCount = 1u;
+		request.m_qualitySettings.m_cpuBudgetMilliseconds = 4.0f;
+		request.m_qualitySettings.m_maxPublicationsPerSecond = 60.0f;
+		request.m_qualitySettings.m_initialPublicationCoverage = 0.125f;
+		request.m_qualitySettings.m_maxDirtyUploadBytesPerFrame = 64u * 1024u;
+		request.m_geometryBounds.m_min = glm::vec3(-0.1f, -0.1f, -9.0f);
+		request.m_geometryBounds.m_max = glm::vec3(0.6f, 0.1f, -2.0f);
+		std::string diagnostic;
+		Require(service.Start(request, diagnostic),
+			"the progressive runtime GI fixture should start: " + diagnostic);
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_publishedRevision > 0u;
+				}),
+			"runtime GI should publish probes after their initial sample pass");
+
+		const RuntimeGIProbesStatus initialStatus = service.GetStatus();
+		const GIProbesDataPtr initialPublication = service.GetPublishedData();
+		Require(initialPublication && initialPublication->m_bricks.Num() == 1u &&
+			initialStatus.m_readyProbeCount < initialStatus.m_activeProbeCount,
+			"the fixed grid may publish completed 16-sample probes before all probes warm");
+		bool bHasReadyProbe = false;
+		bool bHasPendingProbe = false;
+		for (const GIProbe& probe : initialPublication->m_probes)
+		{
+			const bool bValid = (probe.m_flags &
+				static_cast<uint32_t>(EGIProbeFlag::Valid)) != 0u;
+			bHasReadyProbe |= bValid;
+			bHasPendingProbe |= !bValid;
+		}
+		Require(bHasReadyProbe && bHasPendingProbe,
+			"initial publication must preserve both completed probes and fallback cells");
+
+		const uint64_t initialRevision = initialStatus.m_publishedRevision;
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[initialRevision](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_lifecycle ==
+						ERuntimeGIProbesLifecycle::Ready &&
+						status.m_publishedRevision > initialRevision;
+				}),
+			"runtime probes should refine from 16 samples to the target without changing layout");
+		service.Disable();
+	}
+
+	void TestRuntimeGIProbesRetainRelocationAcrossCameraMotion()
+	{
+		RuntimeGIProbesService service;
+		auto boundarySampler = TSharedPtr<BoundaryRelocationSampler>::Make();
+		TSharedPtr<IGIProbeBakeRaySampler> sampler = boundarySampler;
+		RuntimeGIProbesStartRequest request = MakeRuntimeGIProbesRequest(
+			sampler,
+			91u,
+			101u);
+		request.m_geometryBounds.m_min = glm::vec3(-10.0f, -0.1f, -8.0f);
+		request.m_geometryBounds.m_max = glm::vec3(10.0f, 0.1f, -1.0f);
+		request.m_qualitySettings.m_maxActiveProbes = 256u;
+		request.m_qualitySettings.m_initialSamplesPerProbe = 16u;
+		request.m_qualitySettings.m_targetSamplesPerProbe = 16u;
+		request.m_qualitySettings.m_maxDirtyUploadBytesPerFrame =
+			128u * 1024u;
+		std::string diagnostic;
+		Require(service.Start(request, diagnostic),
+			"the relocation-boundary runtime view should start: " + diagnostic);
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_lifecycle ==
+						ERuntimeGIProbesLifecycle::Ready &&
+						status.m_publishedRevision > 0u;
+				}),
+			"the relocation-boundary runtime view should publish");
+
+		const GIProbesDataPtr firstPublished = service.GetPublishedData();
+		Require(firstPublished && firstPublished->m_bricks.Num() == 1u,
+			"the relocation-boundary fixture should publish one runtime brick");
+		bool bFoundRelocation = false;
+		for (const GIProbe& probe : firstPublished->m_probes)
+		{
+			bFoundRelocation |= (probe.m_flags & static_cast<uint32_t>(
+				EGIProbeFlag::Relocated)) != 0u;
+			Require(glm::all(glm::greaterThanEqual(
+					probe.m_position,
+					firstPublished->m_volumeMin)) &&
+				glm::all(glm::lessThanEqual(
+					probe.m_position,
+					firstPublished->m_volumeMax)),
+				"relocated runtime probes must stay inside the fixed grid");
+		}
+		Require(bFoundRelocation,
+			"the fixture must produce at least one relocated runtime probe");
+
+		const uint64_t firstRevision =
+			service.GetStatus().m_publishedRevision;
+		const uint64_t samplesBeforeMove = boundarySampler->GetSampleCount();
+		RuntimeGIProbesStartRequest movedRequest = request;
+		movedRequest.m_priorityPosition.x += 1.0f;
+		Require(service.Start(movedRequest, diagnostic),
+			"the moved relocation-boundary view should start: " + diagnostic);
+		Require(WaitForRuntimeGIProbes(
+				service,
+				[firstRevision](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_lifecycle ==
+						ERuntimeGIProbesLifecycle::Failed ||
+						status.m_publishedRevision > firstRevision;
+				}),
+			"the moved relocation-boundary view should finish its replacement");
+		const RuntimeGIProbesStatus movedStatus = service.GetStatus();
+		const GIProbesDataPtr movedPublished = service.GetPublishedData();
+		Require(movedStatus.m_lifecycle !=
+				ERuntimeGIProbesLifecycle::Failed &&
+			movedStatus.m_publishedRevision > firstRevision &&
+			movedPublished && movedPublished->Validate(diagnostic) &&
+			boundarySampler->GetSampleCount() == samplesBeforeMove,
+			"camera motion must retain relocated probes without retracing: " +
+				movedStatus.m_diagnostic + " " + diagnostic);
+		service.Disable();
+	}
+
+	void TestRuntimeGIProbesKeepOneGridAcrossManyViews()
+	{
+		RuntimeGIProbesService service;
+		auto constantSampler =
+			TSharedPtr<ConstantBakeRaySampler>::Make(glm::vec3(0.25f));
+		TSharedPtr<IGIProbeBakeRaySampler> sampler = constantSampler;
+		RuntimeGIProbesStartRequest request = MakeRuntimeGIProbesRequest(
+			sampler,
+			71u,
+			81u);
+		request.m_qualitySettings.m_initialSamplesPerProbe = 16u;
+		request.m_qualitySettings.m_targetSamplesPerProbe = 16u;
+		request.m_qualitySettings.m_maxDirtyUploadBytesPerFrame =
+			64u * 1024u;
+		request.m_geometryBounds.m_min =
+			glm::vec3(4000.0f, -0.1f, -64.0f);
+		request.m_geometryBounds.m_max =
+			glm::vec3(66000.0f, 0.1f, -1.0f);
+		std::string diagnostic;
+		const auto convergeAt = [&service, &request, &diagnostic](float x)
+		{
+			request.m_priorityPosition.x = x;
+			Require(service.Start(request, diagnostic),
+				"a runtime priority view should start: " + diagnostic);
+			Require(WaitForRuntimeGIProbes(
+					service,
+					[](const RuntimeGIProbesStatus& status)
+					{
+						return status.m_lifecycle ==
+							ERuntimeGIProbesLifecycle::Ready;
+					}),
+				"the fixed runtime grid should stay converged");
+		};
+
+		convergeAt(4096.0f);
+		const RuntimeGIProbesStartRequest oldestRequest = request;
+		const uint64_t visibilityAfterInitialGrid =
+			constantSampler->GetVisibilitySampleCount();
+		const uint64_t irradianceAfterInitialGrid =
+			constantSampler->GetIrradianceSampleCount();
+		for (uint32_t viewIndex = 1u; viewIndex < 16u; ++viewIndex)
+		{
+			convergeAt(4096.0f * static_cast<float>(viewIndex + 1u));
+		}
+		const RuntimeGIProbesStatus filledStatus = service.GetStatus();
+		Require(filledStatus.m_readyProbeCount ==
+				filledStatus.m_activeProbeCount &&
+			constantSampler->GetVisibilitySampleCount() ==
+				visibilityAfterInitialGrid &&
+			constantSampler->GetIrradianceSampleCount() ==
+				irradianceAfterInitialGrid,
+			"many camera positions must keep the same converged scene-wide grid");
+
+		service.SetWorkAllowed(false);
+		const uint64_t visibilityBeforeReturn =
+			constantSampler->GetVisibilitySampleCount();
+		const uint64_t irradianceBeforeReturn =
+			constantSampler->GetIrradianceSampleCount();
+		Require(service.Start(oldestRequest, diagnostic),
+			"the original priority view should restart: " + diagnostic);
+		const RuntimeGIProbesStatus returnedStatus = service.GetStatus();
+		Require(returnedStatus.m_readyProbeCount ==
+				returnedStatus.m_activeProbeCount &&
+			IsNear(returnedStatus.m_refinement, 1.0f) &&
+			constantSampler->GetVisibilitySampleCount() ==
+				visibilityBeforeReturn &&
+			constantSampler->GetIrradianceSampleCount() ==
+				irradianceBeforeReturn,
+			"returning to an earlier view must not retrace the fixed grid");
+		service.Disable();
 	}
 
 	void TestDeterministicBakeSeedsAndReusedLayoutValidation()
@@ -5947,7 +6251,8 @@ components:
 		triangles->Add(makeTriangle(1.0f, 0u));
 		triangles->Add(makeTriangle(0.5f, 1u));
 		triangles->Add(makeTriangle(0.0f, 2u));
-		auto blas = TSharedPtr<Raytracing::BVH>::Make(2u);
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(
+			static_cast<uint32_t>(triangles->Num()));
 		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
 			*blas,
 			*triangles);
@@ -6044,8 +6349,20 @@ int main(int argc, char** argv)
 			"RuntimeGIProbesServiceLifecycleAndPublication",
 			TestRuntimeGIProbesServiceLifecycleAndPublication);
 		RunTest(
-			"RuntimeGIProbesClipmapReuseAndBudgets",
-			TestRuntimeGIProbesClipmapReuseAndBudgets);
+			"RuntimeGIProbesFixedGridReuseAndBudgets",
+			TestRuntimeGIProbesFixedGridReuseAndBudgets);
+		RunTest(
+			"RuntimeGIProbesIgnoreCameraMotion",
+			TestRuntimeGIProbesIgnoreCameraMotion);
+		RunTest(
+			"RuntimeGIProbesProgressiveSamplingPublication",
+			TestRuntimeGIProbesProgressiveSamplingPublication);
+		RunTest(
+			"RuntimeGIProbesRetainRelocationAcrossCameraMotion",
+			TestRuntimeGIProbesRetainRelocationAcrossCameraMotion);
+		RunTest(
+			"RuntimeGIProbesKeepOneGridAcrossManyViews",
+			TestRuntimeGIProbesKeepOneGridAcrossManyViews);
 		RunTest(
 			"AnisotropicAdaptiveSubdivisionHonorsSpacing",
 			TestAnisotropicAdaptiveSubdivisionHonorsSpacing);

@@ -1044,7 +1044,7 @@ void RHISceneView::Clear()
 	m_cpuBoneMatrices.Clear();
 	m_animationRevision = 0ull;
 	m_globalIlluminationMode =
-		EGlobalIlluminationMode::RealtimeAndBaked;
+		EGlobalIlluminationMode::Baked;
 	m_bGlobalIlluminationEnabled = true;
 	m_globalIllumination.Clear();
 
@@ -1099,7 +1099,7 @@ void RHISceneViewSnapshot::ResetForReuse()
 	m_cpuBoneMatrices.Clear();
 	m_animationRevision = 0ull;
 	m_globalIlluminationMode =
-		EGlobalIlluminationMode::RealtimeAndBaked;
+		EGlobalIlluminationMode::Baked;
 	m_bGlobalIlluminationEnabled = true;
 	m_globalIllumination.Clear();
 	m_debugDrawSecondaryCmdList.Clear();

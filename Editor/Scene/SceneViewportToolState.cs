@@ -14,7 +14,7 @@ public enum SceneViewRenderMode
     GlobalIlluminationResidency,
     GlobalIlluminationAssetIdentity,
     GlobalIlluminationFallback,
-    GlobalIlluminationClipmapCascades
+    GlobalIlluminationSubdivisions
 }
 
 public static class SceneViewRenderModeNames
@@ -33,7 +33,7 @@ public static class SceneViewRenderModeNames
         "global_illumination_residency",
         "global_illumination_asset_identity",
         "global_illumination_fallback",
-        "global_illumination_clipmap_cascades"
+        "global_illumination_subdivisions"
     ];
 
     public static string ToExternalName(SceneViewRenderMode mode) => mode switch
@@ -58,8 +58,8 @@ public static class SceneViewRenderModeNames
             "global_illumination_asset_identity",
         SceneViewRenderMode.GlobalIlluminationFallback =>
             "global_illumination_fallback",
-        SceneViewRenderMode.GlobalIlluminationClipmapCascades =>
-            "global_illumination_clipmap_cascades",
+        SceneViewRenderMode.GlobalIlluminationSubdivisions =>
+            "global_illumination_subdivisions",
         _ => throw new ArgumentOutOfRangeException(nameof(mode))
     };
 
@@ -96,9 +96,9 @@ public static class SceneViewRenderModeNames
                 SceneViewRenderMode.GlobalIlluminationAssetIdentity,
             "globalilluminationfallback" or "gifallback" =>
                 SceneViewRenderMode.GlobalIlluminationFallback,
-            "globalilluminationclipmapcascades" or "giclipmapcascades" or
-                "gicascades" =>
-                SceneViewRenderMode.GlobalIlluminationClipmapCascades,
+            "globalilluminationsubdivisions" or "gisubdivisions" or
+                "subdivisions" =>
+                SceneViewRenderMode.GlobalIlluminationSubdivisions,
             _ => default
         };
         return normalized is "lit" or "ambientocclusion" or "ao" or
@@ -111,8 +111,8 @@ public static class SceneViewRenderModeNames
             "globalilluminationresidency" or "giresidency" or
             "globalilluminationassetidentity" or "giassetidentity" or
             "globalilluminationfallback" or "gifallback" or
-            "globalilluminationclipmapcascades" or "giclipmapcascades" or
-            "gicascades";
+            "globalilluminationsubdivisions" or "gisubdivisions" or
+            "subdivisions";
     }
 }
 

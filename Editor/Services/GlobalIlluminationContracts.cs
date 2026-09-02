@@ -40,9 +40,6 @@ public sealed record GIProbesBakeRequest(
     string StateName,
     GIProbesBakeSettings Settings,
     FileId? LayoutSource = null,
-    bool AutoBounds = true,
-    Vector3 VolumeMin = default,
-    Vector3 VolumeMax = default,
     Vector3 FallbackEnvironment = default,
     bool Overwrite = false,
     uint ThreadCount = 1)
@@ -79,15 +76,9 @@ public enum GlobalIlluminationCompositionMode
 
 public enum GlobalIlluminationRuntimeMode
 {
-    Realtime = 0,
-    RealtimeAndBaked,
-    BakedOnly
-}
-
-public enum GlobalIlluminationProbeSourceKind
-{
-    BakedAssets = 0,
-    RuntimeExperimental
+    NoGI = 0,
+    Runtime,
+    Baked
 }
 
 public sealed record RuntimeGIProbesSettingsDescriptor(
@@ -240,7 +231,7 @@ public static class GIProbesBakeBindingPolicy
                     : target.Diagnostic);
         }
         if (current.CompositionCount <= baseline.CompositionCount ||
-            current.Mode == GlobalIlluminationRuntimeMode.Realtime ||
+            current.Mode != GlobalIlluminationRuntimeMode.Baked ||
             !current.Enabled ||
             target is null ||
             !string.Equals(
@@ -284,7 +275,6 @@ public sealed record RuntimeGIProbesRuntimeState(
     RuntimeGIProbesLifecycleState Lifecycle,
     bool Enabled,
     bool Paused,
-    bool Throttled,
     bool PreviewEnabled,
     RuntimeGIProbesEditorBudget PreviewBudget,
     ulong SceneGeneration,
@@ -293,16 +283,10 @@ public sealed record RuntimeGIProbesRuntimeState(
     uint Capacity,
     uint ActiveProbeCount,
     uint ReadyProbeCount,
-    uint DirtyProbeCount,
-    uint QueuedProbeCount,
     uint WorkerCount,
-    ulong TracedRayCount,
     ulong PublishedBytes,
     float Coverage,
     float Refinement,
-    float RaysPerSecond,
-    float WorkerCpuMilliseconds,
-    float LastPublicationMilliseconds,
     string Diagnostic);
 
 public sealed record GlobalIlluminationProbeRuntimeState(
@@ -318,7 +302,6 @@ public sealed record GlobalIlluminationRuntimeState(
     uint MaxProbeStatesPerSnapshot,
     GlobalIlluminationRuntimeMode Mode,
     bool Enabled,
-    GlobalIlluminationProbeSourceKind ProbeSource,
     RuntimeGIProbesSettingsDescriptor RuntimeSettings,
     RuntimeGIProbesRuntimeState RuntimeState,
     IReadOnlyList<GlobalIlluminationProbeRuntimeState> Probes,

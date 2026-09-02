@@ -274,7 +274,7 @@ public sealed class EngineProtocolClientTests
     [InlineData(EditorRenderMode.GlobalIlluminationResidency)]
     [InlineData(EditorRenderMode.GlobalIlluminationAssetIdentity)]
     [InlineData(EditorRenderMode.GlobalIlluminationFallback)]
-    [InlineData(EditorRenderMode.GlobalIlluminationClipmapCascades)]
+    [InlineData(EditorRenderMode.GlobalIlluminationSubdivisions)]
     public async Task SetEditorRenderModeAsync_SendsExplicitTypedMode(
         EditorRenderMode mode)
     {

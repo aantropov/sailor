@@ -926,7 +926,6 @@ public sealed class SettingsPanelView : ContentView
         readonly Entry _maxGiProbeStatesPerSnapshot;
         readonly Switch _runtimeGIEnabled;
         readonly Entry _runtimeGIMaxActiveProbes;
-        readonly Entry _runtimeGICascadeCount;
         readonly Entry _runtimeGISpacingMultiplier;
         readonly Entry _runtimeGIInitialSamples;
         readonly Entry _runtimeGITargetSamples;
@@ -1000,8 +999,6 @@ public sealed class SettingsPanelView : ContentView
             _runtimeGIEnabled.Toggled += (_, _) => _changed();
             _runtimeGIMaxActiveProbes = CreateEntry(
                 draft.RuntimeGIProbes.MaxActiveProbes);
-            _runtimeGICascadeCount = CreateEntry(
-                draft.RuntimeGIProbes.ClipmapCascadeCount);
             _runtimeGISpacingMultiplier = CreateEntry(
                 draft.RuntimeGIProbes.SpacingMultiplier);
             _runtimeGIInitialSamples = CreateEntry(
@@ -1046,7 +1043,6 @@ public sealed class SettingsPanelView : ContentView
                 new RuntimeGIProbesQualityDraft(
                     _runtimeGIEnabled.IsToggled,
                     _runtimeGIMaxActiveProbes.Text ?? string.Empty,
-                    _runtimeGICascadeCount.Text ?? string.Empty,
                     _runtimeGISpacingMultiplier.Text ?? string.Empty,
                     _runtimeGIInitialSamples.Text ?? string.Empty,
                     _runtimeGITargetSamples.Text ?? string.Empty,
@@ -1089,12 +1085,11 @@ public sealed class SettingsPanelView : ContentView
                         "Experimental Runtime GI",
                         "Allow runtime probe solving in game builds for this quality preset",
                         _runtimeGIEnabled),
-                    CreatePresetField("Runtime GI Capacity", "Active probes, 8–32768", _runtimeGIMaxActiveProbes),
-                    CreatePresetField("Runtime GI Cascades", "Camera-local clipmap cascades, 1–4", _runtimeGICascadeCount),
+                    CreatePresetField("Runtime GI Probe Capacity", "Maximum probes in the scene-wide grid, 8–32768", _runtimeGIMaxActiveProbes),
                     CreatePresetField("Runtime GI Spacing", "Multiplier over world probe spacing, 0.25–16", _runtimeGISpacingMultiplier),
                     CreatePresetField("Runtime GI Initial Samples", "Samples required for initial publication", _runtimeGIInitialSamples),
                     CreatePresetField("Runtime GI Target Samples", "Progressive refinement target, up to 65536", _runtimeGITargetSamples),
-                    CreatePresetField("Runtime GI Workers", "Low-priority CPU workers, 1–2", _runtimeGIWorkerCount),
+                    CreatePresetField("Runtime GI Workers", "Low-priority CPU workers, 1–16", _runtimeGIWorkerCount),
                     CreatePresetField("Runtime GI CPU Duty", "Per-worker duty fraction, 0–1", _runtimeGICpuDutyFraction),
                     CreatePresetField("Runtime GI CPU Budget", "CPU milliseconds per 60 Hz frame, 0–100", _runtimeGICpuBudgetMilliseconds),
                     CreatePresetField("Runtime GI Publications / Second", "Snapshot publication throttle, 0–60", _runtimeGIMaxPublicationsPerSecond),
@@ -1221,7 +1216,6 @@ public sealed class SettingsPanelView : ContentView
                 out var maxGiProbeStatesPerSnapshot);
             var runtimePath = $"{path}.runtimeGIProbes";
             valid &= TryParseInt(_runtimeGIMaxActiveProbes.Text, $"{runtimePath}.maxActiveProbes", "Runtime GI probe capacity", issues, out var runtimeMaxActiveProbes);
-            valid &= TryParseInt(_runtimeGICascadeCount.Text, $"{runtimePath}.clipmapCascadeCount", "Runtime GI cascade count", issues, out var runtimeCascadeCount);
             valid &= TryParseDouble(_runtimeGISpacingMultiplier.Text, $"{runtimePath}.spacingMultiplier", "Runtime GI spacing multiplier", issues, out var runtimeSpacingMultiplier);
             valid &= TryParseInt(_runtimeGIInitialSamples.Text, $"{runtimePath}.initialSamplesPerProbe", "Runtime GI initial samples", issues, out var runtimeInitialSamples);
             valid &= TryParseInt(_runtimeGITargetSamples.Text, $"{runtimePath}.targetSamplesPerProbe", "Runtime GI target samples", issues, out var runtimeTargetSamples);
@@ -1264,7 +1258,6 @@ public sealed class SettingsPanelView : ContentView
                 {
                     Enabled = _runtimeGIEnabled.IsToggled,
                     MaxActiveProbes = runtimeMaxActiveProbes,
-                    ClipmapCascadeCount = runtimeCascadeCount,
                     SpacingMultiplier = runtimeSpacingMultiplier,
                     InitialSamplesPerProbe = runtimeInitialSamples,
                     TargetSamplesPerProbe = runtimeTargetSamples,

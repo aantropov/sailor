@@ -6,6 +6,27 @@
 
 using namespace Sailor;
 
+GIProbesBakeSettings Sailor::ResolveRuntimeGIProbesBakeSettings(
+	const RuntimeGIProbesSettings& settings,
+	const RuntimeGIProbesQualitySettings& quality,
+	uint32_t randomSeed) noexcept
+{
+	GIProbesBakeSettings result;
+	result.m_raysPerProbe = quality.m_targetSamplesPerProbe;
+	result.m_bounceCount = settings.m_bounceCount;
+	result.m_randomSeed = randomSeed;
+	result.m_maxSubdivisionLevel = 0u;
+	result.m_minProbeSpacing = settings.m_minProbeSpacing *
+		quality.m_spacingMultiplier;
+	result.m_normalBias = settings.m_normalBias;
+	result.m_viewBias = settings.m_viewBias;
+	result.m_maxRayDistance = settings.m_maxRayDistance;
+	result.m_bIncludeSky = settings.m_bIncludeSky;
+	result.m_bIncludeEmissive = settings.m_bIncludeEmissive;
+	result.m_bIncludeDirectLighting = settings.m_bIncludeDirectLighting;
+	return result;
+}
+
 bool RuntimeGIProbesSettings::Validate(
 	std::string& outDiagnostic) const noexcept
 {
@@ -30,7 +51,8 @@ bool RuntimeGIProbesSettings::Validate(
 		!std::isfinite(m_maxRayDistance) ||
 		m_maxRayDistance <= 0.0f)
 	{
-		outDiagnostic = "runtime GI probes authored distances must be finite and non-negative";
+		outDiagnostic =
+			"runtime GI probe spacing and ray distance must be positive; biases must be non-negative";
 		return false;
 	}
 	return true;
@@ -45,29 +67,25 @@ bool RuntimeGIProbesQualitySettings::Validate(
 		outDiagnostic = "runtime GI probes quality settings version must be 1";
 		return false;
 	}
-	if (m_clipmapCascadeCount == 0u || m_clipmapCascadeCount > 4u)
-	{
-		outDiagnostic = "runtime GI probes clipmap cascade count must be between 1 and 4";
-		return false;
-	}
-	if (m_maxActiveProbes < m_clipmapCascadeCount * 8u ||
+	if (m_maxActiveProbes < 8u ||
 		m_maxActiveProbes > RuntimeGIProbesHardMaxActiveProbes)
 	{
 		outDiagnostic =
-			"runtime GI probes capacity must hold at least eight probes per clipmap cascade and at most 32768 probes";
+			"runtime GI probes capacity must be between 8 and 32768 probes";
 		return false;
 	}
-	if (m_initialSamplesPerProbe == 0u ||
+	if (m_initialSamplesPerProbe < RuntimeGIProbesInitialSamplesPerProbe ||
 		m_initialSamplesPerProbe > m_targetSamplesPerProbe ||
 		m_targetSamplesPerProbe > GIProbesMaxRaysPerProbe)
 	{
-		outDiagnostic = "runtime GI probes sample thresholds are invalid";
+		outDiagnostic =
+			"runtime GI probe samples must satisfy 16 <= initial <= target <= 65536";
 		return false;
 	}
 	if (m_workerCount == 0u ||
 		m_workerCount > RuntimeGIProbesHardMaxWorkerCount)
 	{
-		outDiagnostic = "runtime GI probes worker count must be 1 or 2";
+		outDiagnostic = "runtime GI probes worker count must be between 1 and 16";
 		return false;
 	}
 	if (m_maxDirtyUploadBytesPerFrame == 0u)

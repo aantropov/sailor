@@ -708,8 +708,8 @@ namespace SailorEditor.Views
                     SceneViewRenderMode.GlobalIlluminationFallback,
                     "GI Fallback"),
                 new(
-                    SceneViewRenderMode.GlobalIlluminationClipmapCascades,
-                    "GI Clipmap Cascades")
+                    SceneViewRenderMode.GlobalIlluminationSubdivisions,
+                    "GI Subdivisions")
             ];
 
         void UpdateRestartEngineButton(EngineLifecycleState state)
