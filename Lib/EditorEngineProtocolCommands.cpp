@@ -131,7 +131,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			}
 			else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE &&
 					 reflection->HasField(message, field) &&
-					 TryFindEmbeddedNull(reflection->GetMessage(message, field), outFieldName))
+					 TryFindEmbeddedNull((reflection->GetMessage)(message, field), outFieldName))
 			{
 				return true;
 			}
