@@ -706,7 +706,10 @@ namespace SailorEditor.Views
                     "GI Asset Identity"),
                 new(
                     SceneViewRenderMode.GlobalIlluminationFallback,
-                    "GI Fallback")
+                    "GI Fallback"),
+                new(
+                    SceneViewRenderMode.GlobalIlluminationSubdivisions,
+                    "GI Subdivisions")
             ];
 
         void UpdateRestartEngineButton(EngineLifecycleState state)

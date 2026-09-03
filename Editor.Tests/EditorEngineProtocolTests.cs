@@ -125,6 +125,13 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal(66, ProtocolRequest.GetEditorRenderModeFieldNumber);
         Assert.Equal(70, ProtocolRequest.SetGiSettingsFieldNumber);
         Assert.Equal(71, ProtocolRequest.GetGlobalIlluminationStateFieldNumber);
+        Assert.Equal(72, ProtocolRequest.SetRuntimeGiProbesPreviewFieldNumber);
+        Assert.Equal(73, ProtocolRequest.SetRuntimeGiProbesPausedFieldNumber);
+        Assert.Equal(74, ProtocolRequest.RestartRuntimeGiProbesFieldNumber);
+        Assert.Equal(75, ProtocolRequest.RebuildRuntimeGiProbesSceneFieldNumber);
+        Assert.Equal(
+            76,
+            ProtocolRequest.SetRuntimeGiProbesPreviewBudgetFieldNumber);
         Assert.Equal(10, ProtocolResponse.EmptyResultFieldNumber);
         Assert.Equal(19, ProtocolResponse.ViewportEventBatchResultFieldNumber);
         Assert.Equal(
@@ -132,12 +139,21 @@ public sealed class EditorEngineProtocolTests
             ProtocolResponse.EditorRenderModeResultFieldNumber);
         Assert.Equal(5, (int)EditorRenderMode.GlobalIlluminationOnly);
         Assert.Equal(12, (int)EditorRenderMode.GlobalIlluminationFallback);
-        Assert.Equal(1, (int)GlobalIlluminationMode.Realtime);
-        Assert.Equal(2, (int)GlobalIlluminationMode.RealtimeAndBaked);
-        Assert.Equal(3, (int)GlobalIlluminationMode.BakedOnly);
+        Assert.Equal(
+            13,
+            (int)EditorRenderMode.GlobalIlluminationSubdivisions);
+        Assert.Equal(1, (int)GlobalIlluminationMode.NoGi);
+        Assert.Equal(2, (int)GlobalIlluminationMode.Runtime);
+        Assert.Equal(3, (int)GlobalIlluminationMode.Baked);
         Assert.Equal(2, SetGISettingsRequest.ModeFieldNumber);
+        Assert.Equal(3, SetGISettingsRequest.RuntimeProbesFieldNumber);
         Assert.Equal(6, GlobalIlluminationStateResult.ModeFieldNumber);
         Assert.Equal(7, GlobalIlluminationStateResult.EnabledFieldNumber);
+        Assert.Equal(8, GlobalIlluminationStateResult.RuntimeProbesFieldNumber);
+        Assert.Equal(9, GlobalIlluminationStateResult.RuntimeStateFieldNumber);
+        Assert.Equal(16, RuntimeGIProbesState.PreviewBudgetFieldNumber);
+        Assert.Equal(1, (int)RuntimeGIProbesPreviewBudget.Eco);
+        Assert.Equal(2, (int)RuntimeGIProbesPreviewBudget.Balanced);
     }
 
 }

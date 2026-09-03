@@ -1,6 +1,16 @@
 name: GlobalIlluminationDayEveningNight
 globalIllumination:
-  mode: RealtimeAndBaked
+  mode: Baked
+  runtimeProbes:
+    version: 1
+    includeSky: true
+    includeEmissive: true
+    includeDirectLighting: true
+    bounceCount: 3
+    minProbeSpacing: 1
+    normalBias: 0.05
+    viewBias: 0.05
+    maxRayDistance: 1000
   probes:
     Day:
       asset:

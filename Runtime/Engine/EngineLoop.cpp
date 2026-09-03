@@ -75,14 +75,15 @@ namespace
 
 		char text[2048];
 		const char* globalIlluminationStatus =
-			!globalIlluminationStats.m_bEnabled
+			!globalIlluminationStats.m_bEnabled ||
+			globalIlluminationStats.m_mode == EGlobalIlluminationMode::NoGI
 				? "disabled"
-				: globalIlluminationStats.m_mode ==
-					EGlobalIlluminationMode::Realtime
-					? "realtime"
-					: globalIlluminationStats.m_bActive
-						? "baked"
-						: "fallback";
+				: globalIlluminationStats.m_bActive
+					? globalIlluminationStats.m_mode ==
+						EGlobalIlluminationMode::Runtime
+						? "runtime"
+						: "baked"
+					: "fallback";
 		const std::string globalIlluminationModeName(
 			magic_enum::enum_name(globalIlluminationStats.m_mode));
 		std::snprintf(

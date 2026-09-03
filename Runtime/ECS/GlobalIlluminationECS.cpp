@@ -1,11 +1,12 @@
 #include "ECS/GlobalIlluminationECS.h"
 
 #include "AssetRegistry/AssetRegistry.h"
-#include "Core/LogMacros.h"
+#include "ECS/CameraECS.h"
 #include "Engine/World.h"
 #include "RHI/DebugContext.h"
 #include "Sailor.h"
 #include "Settings/GraphicsSettings.h"
+#include "Tasks/Tasks.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,10 +15,17 @@ using namespace Sailor;
 
 void GlobalIlluminationECS::BeginPlay()
 {
+	if (App::IsEditorMode())
+	{
+		const auto& editorSettings = App::GetEditorGraphicsSettings();
+		m_bRuntimePreviewEnabled =
+			editorSettings.m_bRuntimeGIProbesPreviewEnabled;
+		m_runtimeEditorBudget = editorSettings.m_runtimeGIProbesBudget;
+	}
 	InitializeFromWorld();
 }
 
-Tasks::ITaskPtr GlobalIlluminationECS::Tick(float)
+Tasks::ITaskPtr GlobalIlluminationECS::Tick(float deltaTime)
 {
 	InitializeFromWorld();
 	const bool bEnabled = IsEnabled();
@@ -37,18 +45,30 @@ Tasks::ITaskPtr GlobalIlluminationECS::Tick(float)
 			ClearActiveSnapshot();
 		}
 	}
-	if (!bEnabled || !UsesBakedGlobalIllumination(m_worldSettings.m_mode))
+	if (!bEnabled ||
+		m_worldSettings.m_mode == EGlobalIlluminationMode::NoGI)
 	{
+		if (HasRuntimeProviderState())
+		{
+			StopRuntimeProvider(true);
+		}
 		return nullptr;
 	}
-	RefreshResidency();
-	RecomposeIfNeeded();
+	if (m_worldSettings.m_mode == EGlobalIlluminationMode::Runtime)
+	{
+		TickRuntimeProvider(deltaTime);
+	}
+	else
+	{
+		TickBakedProvider();
+	}
 	DrawDebugVisualization();
 	return nullptr;
 }
 
 void GlobalIlluminationECS::EndPlay()
 {
+	StopRuntimeProvider(true);
 	if (GIProbesImporter* importer =
 		App::GetSubmodule<GIProbesImporter>())
 	{
@@ -90,6 +110,11 @@ bool GlobalIlluminationECS::ApplyWorldSettings(
 		return false;
 	}
 
+	const EGlobalIlluminationMode previousMode = m_worldSettings.m_mode;
+	const bool bRuntimeSettingsChanged =
+		m_worldSettings.m_runtimeProbes != settings.m_runtimeProbes;
+	const bool bUseBakedAssets =
+		settings.m_mode == EGlobalIlluminationMode::Baked;
 	TMap<std::string, RuntimeBinding> nextBindings;
 	for (const auto& entry : settings.m_probes)
 	{
@@ -102,8 +127,8 @@ bool GlobalIlluminationECS::ApplyWorldSettings(
 		binding.m_bPreload = source.m_bPreload;
 
 		RuntimeBinding* existing = nullptr;
-		const bool bNeedsResident = source.m_bPreload ||
-			source.m_initialWeight > 0.0f;
+		const bool bNeedsResident = bUseBakedAssets && (source.m_bPreload ||
+			source.m_initialWeight > 0.0f);
 		if (bNeedsResident && m_bindings.Find(name, existing) &&
 			existing->m_assetId == source.m_asset)
 		{
@@ -141,10 +166,34 @@ bool GlobalIlluminationECS::ApplyWorldSettings(
 	m_worldSettings = settings;
 	m_bInitialized = true;
 	m_bCompositionDirty = true;
+	if (settings.m_mode == EGlobalIlluminationMode::Runtime)
+	{
+		if (previousMode != settings.m_mode || bRuntimeSettingsChanged)
+		{
+			m_bRuntimeSceneRebuildRequested = true;
+			m_bRuntimePreparationFailed = false;
+			m_runtimePreparationRetrySeconds = 0.0f;
+			m_runtimePreparationDiagnostic.clear();
+		}
+		if (previousMode != settings.m_mode)
+		{
+			ClearActiveSnapshot();
+			m_runtimePublishedRevision = 0u;
+		}
+	}
+	else if (previousMode == EGlobalIlluminationMode::Runtime)
+	{
+		StopRuntimeProvider(true);
+	}
+	else if (settings.m_mode == EGlobalIlluminationMode::NoGI &&
+		previousMode != settings.m_mode)
+	{
+		ClearActiveSnapshot();
+	}
 	for (const auto& entry : m_bindings)
 	{
 		RuntimeBinding& binding = *entry.m_second;
-		if (IsEnabled() && UsesBakedGlobalIllumination(settings.m_mode) &&
+		if (bUseBakedAssets && IsEnabled() &&
 			(binding.m_bPreload || binding.m_weight > 0.0f) &&
 			!binding.m_asset)
 		{
@@ -210,7 +259,8 @@ bool GlobalIlluminationECS::SetProbeWeights(
 		}
 		binding.m_weight = *entry.m_second;
 		m_bCompositionDirty = true;
-		if (binding.m_weight > 0.0f && !binding.m_asset)
+		if (m_worldSettings.m_mode == EGlobalIlluminationMode::Baked &&
+			binding.m_weight > 0.0f && !binding.m_asset)
 		{
 			std::string loadDiagnostic;
 			StartLoad(entry.m_first, binding, loadDiagnostic);
@@ -247,6 +297,12 @@ bool GlobalIlluminationECS::PreloadProbe(
 	std::string& outDiagnostic)
 {
 	InitializeFromWorld();
+	if (m_worldSettings.m_mode != EGlobalIlluminationMode::Baked)
+	{
+		outDiagnostic =
+			"baked probe assets are inactive outside Baked GI mode";
+		return false;
+	}
 	if (!m_bindings.ContainsKey(name))
 	{
 		outDiagnostic = "unknown global-illumination probe state '" + name + "'";
@@ -348,6 +404,163 @@ std::string GlobalIlluminationECS::GetDiagnostic() const
 	return diagnostic;
 }
 
+RuntimeGIProbesStatus GlobalIlluminationECS::GetRuntimeGIProbesStatus() const
+{
+	RuntimeGIProbesStatus status = m_runtimeProbes.GetStatus();
+	if (m_runtimeScenePreparationTask &&
+		!m_runtimeScenePreparationTask->IsFinished())
+	{
+		status.m_bEnabled = true;
+		status.m_lifecycle = ERuntimeGIProbesLifecycle::PreparingScene;
+		status.m_diagnostic = m_runtimePreparationDiagnostic.empty() ?
+			"preparing an immutable runtime GI scene" :
+			m_runtimePreparationDiagnostic;
+	}
+	else if (m_bRuntimePreparationFailed)
+	{
+		status.m_lifecycle = ERuntimeGIProbesLifecycle::Failed;
+		status.m_diagnostic = m_runtimePreparationDiagnostic;
+	}
+	return status;
+}
+
+bool GlobalIlluminationECS::SetRuntimeGIProbesPreviewEnabled(
+	bool bEnabled,
+	std::string& outDiagnostic)
+{
+	if (bEnabled &&
+		m_worldSettings.m_mode != EGlobalIlluminationMode::Runtime)
+	{
+		outDiagnostic =
+			"select Runtime GI mode before enabling preview";
+		return false;
+	}
+	if (m_bRuntimePreviewEnabled == bEnabled)
+	{
+		outDiagnostic = bEnabled ?
+			"runtime GI preview is already enabled" :
+			"runtime GI preview is already disabled";
+		return true;
+	}
+	m_bRuntimePreviewEnabled = bEnabled;
+	if (bEnabled)
+	{
+		m_bRuntimeSceneRebuildRequested = true;
+		m_bRuntimePreparationFailed = false;
+		m_runtimePreparationRetrySeconds = 0.0f;
+		outDiagnostic = "enabled experimental runtime GI preview";
+	}
+	else
+	{
+		StopRuntimeProvider(true);
+		outDiagnostic = "disabled experimental runtime GI preview";
+	}
+	return true;
+}
+
+bool GlobalIlluminationECS::SetRuntimeGIProbesPaused(
+	bool bPaused,
+	std::string& outDiagnostic)
+{
+	const RuntimeGIProbesStatus status = m_runtimeProbes.GetStatus();
+	if (!status.m_bEnabled)
+	{
+		outDiagnostic = "experimental runtime GI probes are not running";
+		return false;
+	}
+	m_runtimeProbes.SetPaused(bPaused);
+	outDiagnostic = bPaused ?
+		"paused experimental runtime GI probes" :
+		"resumed experimental runtime GI probes";
+	return true;
+}
+
+bool GlobalIlluminationECS::SetRuntimeGIProbesEditorBudget(
+	Settings::ERuntimeGIProbesEditorBudget budget,
+	std::string& outDiagnostic)
+{
+	if (m_runtimeEditorBudget == budget)
+	{
+		outDiagnostic = "runtime GI preview budget is already active";
+		return true;
+	}
+	m_runtimeEditorBudget = budget;
+	if (!m_runtimePreparedScene || !m_runtimeProbes.GetStatus().m_bEnabled)
+	{
+		outDiagnostic = "updated runtime GI preview budget";
+		return true;
+	}
+	glm::vec3 priorityPosition;
+	if (!TryGetRuntimePriorityPosition(priorityPosition))
+	{
+		outDiagnostic =
+			"updated runtime GI preview budget; solver is waiting for an active camera";
+		return true;
+	}
+	const bool bStarted = StartRuntimeSolver(priorityPosition, outDiagnostic);
+	if (bStarted)
+	{
+		m_runtimeObservedQuality = ResolveRuntimeQualitySettings();
+		m_bRuntimeObservedQualityValid = true;
+	}
+	return bStarted;
+}
+
+bool GlobalIlluminationECS::RestartRuntimeGIProbes(
+	std::string& outDiagnostic)
+{
+	glm::vec3 priorityPosition;
+	if (!ShouldRunRuntimeProvider())
+	{
+		outDiagnostic =
+			"runtime GI probes are disabled by mode, preview, or quality settings";
+		return false;
+	}
+	if (!m_runtimePreparedScene)
+	{
+		m_bRuntimeSceneRebuildRequested = true;
+		outDiagnostic =
+			"runtime GI scene is not prepared; requested a scene rebuild";
+		return true;
+	}
+	if (!TryGetRuntimePriorityPosition(priorityPosition))
+	{
+		outDiagnostic = "runtime GI probes require an active camera";
+		return false;
+	}
+	return StartRuntimeSolver(priorityPosition, outDiagnostic);
+}
+
+bool GlobalIlluminationECS::RebuildRuntimeGIProbesScene(
+	std::string& outDiagnostic)
+{
+	if (m_worldSettings.m_mode != EGlobalIlluminationMode::Runtime)
+	{
+		outDiagnostic =
+			"select Runtime GI mode before rebuilding its scene snapshot";
+		return false;
+	}
+	if (m_runtimeScenePreparationCancel)
+	{
+		m_runtimeScenePreparationCancel->store(
+			true,
+			std::memory_order_release);
+	}
+	m_bRuntimeSceneRebuildRequested = true;
+	m_bRuntimePreparationFailed = false;
+	m_runtimePreparationRetrySeconds = 0.0f;
+	m_runtimePreparationDiagnostic =
+		"runtime GI scene rebuild was requested";
+	outDiagnostic = m_runtimePreparationDiagnostic;
+	return true;
+}
+
+void GlobalIlluminationECS::SetRuntimeGIProbesWorkAllowed(
+	bool bAllowed) noexcept
+{
+	m_runtimeProbes.SetWorkAllowed(bAllowed);
+}
+
 void GlobalIlluminationECS::InitializeFromWorld()
 {
 	if (m_bInitialized || !GetWorld())
@@ -369,7 +582,8 @@ void GlobalIlluminationECS::InitializeFromWorld()
 	{
 		const std::string& name = entry.m_first;
 		RuntimeBinding& binding = *entry.m_second;
-		if (IsEnabled() && UsesBakedGlobalIllumination(m_worldSettings.m_mode) &&
+		if (m_worldSettings.m_mode == EGlobalIlluminationMode::Baked &&
+			IsEnabled() &&
 			(binding.m_bPreload || binding.m_weight > 0.0f))
 		{
 			std::string loadDiagnostic;
@@ -386,6 +600,434 @@ void GlobalIlluminationECS::InitializeFromWorld()
 			" active global-illumination probe states, but the quality budget is " +
 			std::to_string(budget) + "; environment irradiance fallback remains active");
 	}
+}
+
+void GlobalIlluminationECS::TickBakedProvider()
+{
+	if (HasRuntimeProviderState())
+	{
+		StopRuntimeProvider(true);
+	}
+	RefreshResidency();
+	RecomposeIfNeeded();
+}
+
+void GlobalIlluminationECS::TickRuntimeProvider(float deltaTime)
+{
+	if (!ShouldRunRuntimeProvider())
+	{
+		if (HasRuntimeProviderState())
+		{
+			StopRuntimeProvider(true);
+		}
+		SetDiagnostic(App::IsEditorMode() && !m_bRuntimePreviewEnabled ?
+			"experimental runtime GI preview is disabled in the editor" :
+			"experimental runtime GI probes are disabled by the active quality profile");
+		return;
+	}
+
+	glm::vec3 priorityPosition;
+	if (!TryGetRuntimePriorityPosition(priorityPosition))
+	{
+		SetDiagnostic(
+			"experimental runtime GI probes are waiting for an active camera");
+		return;
+	}
+	const RuntimeGIProbesQualitySettings quality =
+		ResolveRuntimeQualitySettings();
+	if (!m_bRuntimeObservedQualityValid)
+	{
+		m_runtimeObservedQuality = quality;
+		m_bRuntimeObservedQualityValid = true;
+	}
+	else if (m_runtimeObservedQuality != quality)
+	{
+		m_runtimeObservedQuality = quality;
+		if (m_runtimePreparedScene &&
+			!m_runtimeScenePreparationTask)
+		{
+			std::string diagnostic;
+			if (!StartRuntimeSolver(priorityPosition, diagnostic))
+			{
+				SetDiagnostic(diagnostic);
+			}
+		}
+	}
+
+	ConsumeRuntimeScenePreparation(priorityPosition);
+	m_runtimePreparationRetrySeconds = (std::max)(
+		0.0f,
+		m_runtimePreparationRetrySeconds - (std::max)(deltaTime, 0.0f));
+	if (m_bRuntimeSceneRebuildRequested &&
+		!m_runtimeScenePreparationTask &&
+		m_runtimePreparationRetrySeconds <= 0.0f)
+	{
+		std::string diagnostic;
+		if (!BeginRuntimeScenePreparation(diagnostic))
+		{
+			m_bRuntimePreparationFailed = true;
+			m_runtimePreparationDiagnostic = diagnostic;
+			SetDiagnostic(diagnostic);
+			m_runtimePreparationRetrySeconds = 0.5f;
+		}
+	}
+
+	if (m_runtimePreparedScene &&
+		!m_runtimeScenePreparationTask &&
+		!m_bRuntimeSceneRebuildRequested)
+	{
+		m_runtimeRevisionPollSeconds += (std::max)(deltaTime, 0.0f);
+		if (m_runtimeRevisionPollSeconds >= 0.5f)
+		{
+			m_runtimeRevisionPollSeconds = 0.0f;
+			GIProbesSceneCaptureRequest request;
+			request.m_settings = ResolveRuntimeGIProbesBakeSettings(
+				m_worldSettings.m_runtimeProbes,
+				quality,
+				0u);
+			request.m_sourceIdentity = GetWorld()->GetName();
+			GIProbesSceneRevision revision;
+			std::string observationDiagnostic;
+			if (ObserveGIProbesSceneRevision(
+					GetWorld(),
+					request,
+					revision,
+					observationDiagnostic) &&
+				revision != m_runtimePreparedScene->m_observedRevision)
+			{
+				m_bRuntimeSceneRebuildRequested = true;
+				m_runtimePreparationDiagnostic =
+					"runtime GI contributors changed; preparing the next scene generation";
+			}
+		}
+	}
+
+	m_runtimeProbes.Tick(deltaTime);
+	PublishRuntimeSnapshotIfNeeded();
+}
+
+bool GlobalIlluminationECS::BeginRuntimeScenePreparation(
+	std::string& outDiagnostic)
+{
+	if (!GetWorld())
+	{
+		outDiagnostic = "runtime GI scene capture requires an active world";
+		return false;
+	}
+	if (m_runtimeScenePreparationTask &&
+		!m_runtimeScenePreparationTask->IsFinished())
+	{
+		outDiagnostic = "runtime GI scene preparation is already in progress";
+		return true;
+	}
+
+	const RuntimeGIProbesQualitySettings quality =
+		ResolveRuntimeQualitySettings();
+	const GIProbesBakeSettings bakeSettings = ResolveRuntimeGIProbesBakeSettings(
+		m_worldSettings.m_runtimeProbes,
+		quality,
+		0u);
+	GIProbesSceneCaptureRequest captureRequest;
+	captureRequest.m_settings = bakeSettings;
+	captureRequest.m_sourceIdentity = GetWorld()->GetName();
+	GIProbesSceneSnapshot snapshot;
+	TVector<std::string> warnings;
+	if (!CaptureGIProbesScene(
+			GetWorld(),
+			captureRequest,
+			snapshot,
+			outDiagnostic,
+			[&warnings](const std::string& warning)
+			{
+				warnings.Add(warning);
+			}))
+	{
+		return false;
+	}
+	const size_t captureWarningCount = warnings.Num();
+
+	if (m_runtimeScenePreparationCancel)
+	{
+		m_runtimeScenePreparationCancel->store(
+			true,
+			std::memory_order_release);
+	}
+	m_runtimeScenePreparationCancel =
+		TSharedPtr<std::atomic<bool>>::Make(false);
+	const auto cancel = m_runtimeScenePreparationCancel;
+	const auto immutableSnapshot =
+		GIProbesSceneSnapshotPtr::Make(std::move(snapshot));
+	const uint64_t requestId = ++m_runtimeScenePreparationRequestId;
+	m_runtimeScenePreparationTask =
+		Tasks::CreateTask<RuntimeScenePreparationResult>(
+			"GlobalIlluminationECS:Prepare Runtime GI Scene",
+			[immutableSnapshot, bakeSettings, cancel, requestId,
+				captureWarningCount]()
+			{
+				RuntimeScenePreparationResult result;
+				result.m_requestId = requestId;
+				GIProbesPreparedScene preparedScene;
+				TVector<std::string> preparationWarnings;
+				const bool bPrepared = PrepareGIProbesScene(
+					*immutableSnapshot,
+					bakeSettings,
+					cancel.GetRawPtr(),
+					preparedScene,
+					result.m_diagnostic,
+					{},
+					[&preparationWarnings](const std::string& warning)
+					{
+						preparationWarnings.Add(warning);
+					});
+				const size_t warningCount = captureWarningCount +
+					preparationWarnings.Num();
+				if (warningCount > 0u)
+				{
+					const std::string warningDiagnostic =
+						std::to_string(warningCount) +
+						" contributor warnings were reported";
+					result.m_diagnostic = result.m_diagnostic.empty() ?
+						warningDiagnostic :
+						result.m_diagnostic + "; " + warningDiagnostic;
+				}
+				if (bPrepared)
+				{
+					result.m_scene = GIProbesPreparedScenePtr::Make(
+						std::move(preparedScene));
+				}
+				return result;
+			},
+			EThreadType::Background);
+	m_runtimeScenePreparationTask->Run();
+	m_bRuntimeSceneRebuildRequested = false;
+	m_bRuntimePreparationFailed = false;
+	m_runtimePreparationDiagnostic =
+		"preparing an immutable runtime GI scene";
+	outDiagnostic = m_runtimePreparationDiagnostic;
+	return true;
+}
+
+void GlobalIlluminationECS::ConsumeRuntimeScenePreparation(
+	const glm::vec3& priorityPosition)
+{
+	if (!m_runtimeScenePreparationTask ||
+		!m_runtimeScenePreparationTask->IsFinished())
+	{
+		return;
+	}
+	RuntimeScenePreparationResult result =
+		m_runtimeScenePreparationTask->GetResult();
+	m_runtimeScenePreparationTask.Clear();
+	m_runtimeScenePreparationCancel.Clear();
+	if (result.m_requestId != m_runtimeScenePreparationRequestId)
+	{
+		return;
+	}
+	if (!result.m_scene)
+	{
+		m_bRuntimePreparationFailed = true;
+		m_runtimePreparationDiagnostic = result.m_diagnostic.empty() ?
+			"runtime GI scene preparation failed" :
+			std::move(result.m_diagnostic);
+		SetDiagnostic(m_runtimePreparationDiagnostic);
+		return;
+	}
+	const RuntimeGIProbesQualitySettings quality =
+		ResolveRuntimeQualitySettings();
+	GIProbesSceneCaptureRequest observationRequest;
+	observationRequest.m_settings = ResolveRuntimeGIProbesBakeSettings(
+		m_worldSettings.m_runtimeProbes,
+		quality,
+		0u);
+	observationRequest.m_sourceIdentity = GetWorld() ?
+		GetWorld()->GetName() : std::string();
+	GIProbesSceneRevision currentRevision;
+	std::string observationDiagnostic;
+	if (!ObserveGIProbesSceneRevision(
+			GetWorld(),
+			observationRequest,
+			currentRevision,
+			observationDiagnostic) ||
+		currentRevision != result.m_scene->m_observedRevision)
+	{
+		m_bRuntimeSceneRebuildRequested = true;
+		m_runtimePreparationRetrySeconds = 0.1f;
+		m_runtimePreparationDiagnostic = observationDiagnostic.empty() ?
+			"GI contributors changed during scene preparation; retrying" :
+			std::move(observationDiagnostic);
+		SetDiagnostic(m_runtimePreparationDiagnostic);
+		return;
+	}
+
+	m_runtimePreparedScene = std::move(result.m_scene);
+	m_bRuntimePreparationFailed = false;
+	m_runtimePreparationDiagnostic = std::move(result.m_diagnostic);
+	std::string startDiagnostic;
+	if (!StartRuntimeSolver(priorityPosition, startDiagnostic))
+	{
+		m_bRuntimePreparationFailed = true;
+		m_runtimePreparationDiagnostic = std::move(startDiagnostic);
+		SetDiagnostic(m_runtimePreparationDiagnostic);
+	}
+}
+
+bool GlobalIlluminationECS::StartRuntimeSolver(
+	const glm::vec3& priorityPosition,
+	std::string& outDiagnostic)
+{
+	if (!m_runtimePreparedScene || !m_runtimePreparedScene->m_sampler)
+	{
+		outDiagnostic = "runtime GI scene has no prepared ray sampler";
+		return false;
+	}
+	RuntimeGIProbesStartRequest request;
+	request.m_worldSettings = m_worldSettings.m_runtimeProbes;
+	request.m_qualitySettings = ResolveRuntimeQualitySettings();
+	request.m_sampler = m_runtimePreparedScene->m_sampler;
+	request.m_priorityPosition = priorityPosition;
+	request.m_geometryBounds = m_runtimePreparedScene->m_worldBounds;
+	request.m_geometryGeneration =
+		m_runtimePreparedScene->m_geometryHash;
+	request.m_lightingGeneration =
+		m_runtimePreparedScene->m_lightingHash;
+	request.m_randomSeed = static_cast<uint32_t>(
+		m_runtimePreparedScene->m_geometryHash ^
+		(m_runtimePreparedScene->m_geometryHash >> 32u));
+	if (!m_runtimeProbes.Start(request, outDiagnostic))
+	{
+		return false;
+	}
+	SetDiagnostic(outDiagnostic);
+	return true;
+}
+
+void GlobalIlluminationECS::PublishRuntimeSnapshotIfNeeded()
+{
+	const RuntimeGIProbesStatus status = m_runtimeProbes.GetStatus();
+	if (status.m_publishedRevision == 0u ||
+		status.m_publishedRevision == m_runtimePublishedRevision)
+	{
+		return;
+	}
+	GIProbesDataPtr data = m_runtimeProbes.GetPublishedData();
+	if (!data)
+	{
+		return;
+	}
+
+	GlobalIlluminationSnapshotPtr snapshot =
+		GlobalIlluminationSnapshotPtr::Make();
+	snapshot->m_generation = ++m_generation;
+	snapshot->m_lightingHash = data->m_lightingHash;
+	snapshot->m_layout = data;
+	RHI::RHIGlobalIlluminationState state;
+	state.m_name = data->m_stateName;
+	state.m_data = data;
+	state.m_effectiveWeight = 1.0f;
+	state.m_mode = EGlobalIlluminationProbeMode::Blend;
+	snapshot->m_states.Add(std::move(state));
+	snapshot->m_qualityBudget = 1u;
+	m_snapshotLock.Lock();
+	m_activeSnapshot = std::move(snapshot);
+	m_diagnostic = status.m_diagnostic;
+	m_snapshotLock.Unlock();
+	m_runtimePublishedRevision = status.m_publishedRevision;
+	m_compositionCount.fetch_add(1u, std::memory_order_release);
+}
+
+void GlobalIlluminationECS::StopRuntimeProvider(bool bClearSnapshot)
+{
+	if (m_runtimeScenePreparationCancel)
+	{
+		m_runtimeScenePreparationCancel->store(
+			true,
+			std::memory_order_release);
+	}
+	m_runtimeScenePreparationTask.Clear();
+	m_runtimeScenePreparationCancel.Clear();
+	m_runtimePreparedScene.Clear();
+	m_runtimeProbes.Disable();
+	m_runtimePublishedRevision = 0u;
+	m_bRuntimeObservedQualityValid = false;
+	m_bRuntimeSceneRebuildRequested = true;
+	m_bRuntimePreparationFailed = false;
+	m_runtimeRevisionPollSeconds = 0.0f;
+	m_runtimePreparationRetrySeconds = 0.0f;
+	m_runtimePreparationDiagnostic.clear();
+	if (bClearSnapshot)
+	{
+		ClearActiveSnapshot();
+	}
+}
+
+bool GlobalIlluminationECS::HasRuntimeProviderState() const
+{
+	return m_runtimeScenePreparationTask ||
+		m_runtimeScenePreparationCancel ||
+		m_runtimePreparedScene ||
+		m_runtimeProbes.GetStatus().m_bEnabled ||
+		m_runtimePublishedRevision != 0u ||
+		m_bRuntimeObservedQualityValid ||
+		m_bRuntimePreparationFailed;
+}
+
+bool GlobalIlluminationECS::ShouldRunRuntimeProvider() const noexcept
+{
+	const auto& quality =
+		App::GetActiveGraphicsSettings().m_runtimeGIProbes;
+	return m_worldSettings.m_mode == EGlobalIlluminationMode::Runtime &&
+		(App::IsEditorMode() ? m_bRuntimePreviewEnabled : quality.m_bEnabled) &&
+		GetMaxProbeStatesPerSnapshot() > 0u;
+}
+
+RuntimeGIProbesQualitySettings
+GlobalIlluminationECS::ResolveRuntimeQualitySettings() const noexcept
+{
+	RuntimeGIProbesQualitySettings quality =
+		App::GetActiveGraphicsSettings().m_runtimeGIProbes;
+	if (!App::IsEditorMode())
+	{
+		return quality;
+	}
+	quality.m_bEnabled = true;
+	if (m_runtimeEditorBudget ==
+		Settings::ERuntimeGIProbesEditorBudget::Eco)
+	{
+		quality.m_maxActiveProbes = (std::min)(
+			quality.m_maxActiveProbes,
+			2048u);
+		quality.m_workerCount = 1u;
+		quality.m_cpuDutyFraction = (std::min)(
+			quality.m_cpuDutyFraction,
+			0.1f);
+		quality.m_cpuBudgetMilliseconds = (std::min)(
+			quality.m_cpuBudgetMilliseconds,
+			2.0f);
+		quality.m_maxPublicationsPerSecond = (std::min)(
+			quality.m_maxPublicationsPerSecond,
+			1.0f);
+	}
+	return quality;
+}
+
+bool GlobalIlluminationECS::TryGetRuntimePriorityPosition(
+	glm::vec3& outPosition) const
+{
+	CameraECS* camera = GetWorld() ? GetWorld()->GetECS<CameraECS>() : nullptr;
+	if (!camera)
+	{
+		return false;
+	}
+	Math::Transform transform;
+	CameraData cameraData;
+	if (!camera->TryGetActiveCamera(transform, cameraData))
+	{
+		return false;
+	}
+	outPosition = glm::vec3(transform.m_position);
+	return std::isfinite(outPosition.x) &&
+		std::isfinite(outPosition.y) &&
+		std::isfinite(outPosition.z);
 }
 
 bool GlobalIlluminationECS::StartLoad(
@@ -656,14 +1298,6 @@ void GlobalIlluminationECS::DrawDebugVisualization() const
 		layout.m_bakeSettings.m_minProbeSpacing * 0.08f,
 		0.02f,
 		0.25f);
-	static constexpr glm::vec3 VisibilityDirections[] = {
-		glm::vec3(1.0f, 0.0f, 0.0f),
-		glm::vec3(-1.0f, 0.0f, 0.0f),
-		glm::vec3(0.0f, 1.0f, 0.0f),
-		glm::vec3(0.0f, -1.0f, 0.0f),
-		glm::vec3(0.0f, 0.0f, 1.0f),
-		glm::vec3(0.0f, 0.0f, -1.0f)
-	};
 	for (size_t probeIndex = 0u;
 		probeIndex < layout.m_probes.Num();
 		probeIndex += stride)
@@ -704,7 +1338,8 @@ void GlobalIlluminationECS::DrawDebugVisualization() const
 					1.0f);
 				debugContext->DrawLine(
 					probe.m_position,
-					probe.m_position + VisibilityDirections[directionIndex] * length,
+					probe.m_position +
+						GIProbeVisibilityDirections[directionIndex] * length,
 					glm::mix(
 						glm::vec4(0.05f, 0.9f, 1.0f, 1.0f),
 						glm::vec4(1.0f, 0.2f, 0.05f, 1.0f),

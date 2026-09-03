@@ -21,6 +21,16 @@ namespace Sailor
 	inline constexpr uint32_t GIProbeSphericalHarmonicsOrder = 2u;
 	inline constexpr uint32_t GIProbeSphericalHarmonicsCoefficientCount = 9u;
 	inline constexpr uint32_t GIProbeVisibilityDirectionCount = 6u;
+	inline const std::array<glm::vec3, GIProbeVisibilityDirectionCount>
+		GIProbeVisibilityDirections
+	{
+		glm::vec3(1.0f, 0.0f, 0.0f),
+		glm::vec3(-1.0f, 0.0f, 0.0f),
+		glm::vec3(0.0f, 1.0f, 0.0f),
+		glm::vec3(0.0f, -1.0f, 0.0f),
+		glm::vec3(0.0f, 0.0f, 1.0f),
+		glm::vec3(0.0f, 0.0f, -1.0f)
+	};
 	inline constexpr uint32_t GIProbeBlockedDirectionShift = 8u;
 	inline constexpr uint32_t GIProbeBlockedDirectionMask =
 		((1u << GIProbeVisibilityDirectionCount) - 1u) <<

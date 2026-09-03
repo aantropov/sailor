@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ECS/GlobalIlluminationECS.h"
+#include "Settings/GraphicsSettings.h"
 
 #include <cstdint>
 #include <string>
@@ -11,7 +12,12 @@ namespace Sailor
 	{
 		uint32_t m_maxProbeStatesPerSnapshot = 0u;
 		EGlobalIlluminationMode m_mode =
-			EGlobalIlluminationMode::RealtimeAndBaked;
+			EGlobalIlluminationMode::Baked;
+		RuntimeGIProbesSettings m_runtimeSettings{};
+		RuntimeGIProbesStatus m_runtimeStatus{};
+		bool m_bRuntimePreviewEnabled = false;
+		Settings::ERuntimeGIProbesEditorBudget m_runtimeEditorBudget =
+			Settings::ERuntimeGIProbesEditorBudget::Eco;
 		bool m_bEnabled = true;
 		TVector<GlobalIlluminationProbeState> m_probes{};
 		std::string m_diagnostic{};

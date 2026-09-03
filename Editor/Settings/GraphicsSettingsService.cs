@@ -232,7 +232,18 @@ public sealed class GraphicsSettingsService
                 editor.Graphics.SelectedQuality;
             statsChanged = current.Editor.Graphics.StatsMode !=
                 editor.Graphics.StatsMode;
-            var editorChanged = selectedQualityChanged || statsChanged;
+            var runtimeGIPreviewChanged =
+                current.Editor.Graphics.RuntimeGIProbesPreviewEnabled !=
+                editor.Graphics.RuntimeGIProbesPreviewEnabled;
+            var runtimeGIBudgetChanged =
+                current.Editor.Graphics.RuntimeGIProbesBudget !=
+                editor.Graphics.RuntimeGIProbesBudget;
+            var runtimeGIDebugViewChanged =
+                current.Editor.Graphics.RuntimeGIProbesDebugView !=
+                editor.Graphics.RuntimeGIProbesDebugView;
+            var editorChanged = selectedQualityChanged || statsChanged ||
+                runtimeGIPreviewChanged || runtimeGIBudgetChanged ||
+                runtimeGIDebugViewChanged;
             qualityChanged = projectChanged || selectedQualityChanged;
 
             GraphicsSettingsSnapshot? persisted = null;
@@ -388,6 +399,61 @@ public sealed class GraphicsSettingsService
                     Graphics = editor.Graphics with
                     {
                         StatsMode = statsMode
+                    }
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<GraphicsSettingsApplyResult>
+        SetRuntimeGIProbesPreviewEnabledAsync(
+            bool enabled,
+            CancellationToken cancellationToken = default)
+    {
+        return await ApplyLatestEditorChangeAsync(
+                editor => editor with
+                {
+                    Graphics = editor.Graphics with
+                    {
+                        RuntimeGIProbesPreviewEnabled = enabled
+                    }
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<GraphicsSettingsApplyResult>
+        SetRuntimeGIProbesBudgetAsync(
+            RuntimeGIProbesEditorBudget budget,
+            CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(budget))
+            throw new ArgumentOutOfRangeException(nameof(budget));
+        return await ApplyLatestEditorChangeAsync(
+                editor => editor with
+                {
+                    Graphics = editor.Graphics with
+                    {
+                        RuntimeGIProbesBudget = budget
+                    }
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<GraphicsSettingsApplyResult>
+        SetRuntimeGIProbesDebugViewAsync(
+            RuntimeGIProbesEditorDebugView debugView,
+            CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(debugView))
+            throw new ArgumentOutOfRangeException(nameof(debugView));
+        return await ApplyLatestEditorChangeAsync(
+                editor => editor with
+                {
+                    Graphics = editor.Graphics with
+                    {
+                        RuntimeGIProbesDebugView = debugView
                     }
                 },
                 cancellationToken)
@@ -852,7 +918,13 @@ static class GraphicsSettingsEquality
         WorkspaceEditorSettingsDocument right)
         => left.SettingsVersion == right.SettingsVersion &&
             left.Graphics.SelectedQuality == right.Graphics.SelectedQuality &&
-            left.Graphics.StatsMode == right.Graphics.StatsMode;
+            left.Graphics.StatsMode == right.Graphics.StatsMode &&
+            left.Graphics.RuntimeGIProbesPreviewEnabled ==
+                right.Graphics.RuntimeGIProbesPreviewEnabled &&
+            left.Graphics.RuntimeGIProbesBudget ==
+                right.Graphics.RuntimeGIProbesBudget &&
+            left.Graphics.RuntimeGIProbesDebugView ==
+                right.Graphics.RuntimeGIProbesDebugView;
 
     static bool PresetEquals(
         GraphicsQualityPresetSettings left,
@@ -874,5 +946,6 @@ static class GraphicsSettingsEquality
             left.LodBias == right.LodBias &&
             left.EnableGlobalIllumination == right.EnableGlobalIllumination &&
             left.MaxGiProbeStatesPerSnapshot ==
-                right.MaxGiProbeStatesPerSnapshot;
+                right.MaxGiProbeStatesPerSnapshot &&
+            left.RuntimeGIProbes == right.RuntimeGIProbes;
 }

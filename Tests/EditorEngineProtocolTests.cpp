@@ -74,6 +74,7 @@ namespace
 	constexpr uint32_t c_setEditorStatsModeCommandField = 64;
 	constexpr uint32_t c_setEditorRenderModeCommandField = 65;
 	constexpr uint32_t c_getEditorRenderModeCommandField = 66;
+	constexpr uint32_t c_setRuntimeGIProbesPreviewBudgetCommandField = 76;
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -1177,6 +1178,22 @@ namespace
 			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY == 11);
 		static_assert(
 			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK == 12);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_SUBDIVISIONS == 13);
+		static_assert(
+			sailor::editor::v1::ProtocolRequest::
+				kSetRuntimeGiProbesPreviewBudgetFieldNumber ==
+			c_setRuntimeGIProbesPreviewBudgetCommandField);
+		static_assert(
+			sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest::
+				kBudgetFieldNumber == 1);
+		static_assert(
+			sailor::editor::v1::RuntimeGIProbesState::
+				kPreviewBudgetFieldNumber == 16);
+		static_assert(
+			sailor::editor::v1::RUNTIME_GI_PROBES_PREVIEW_BUDGET_ECO == 1);
+		static_assert(
+			sailor::editor::v1::RUNTIME_GI_PROBES_PREVIEW_BUDGET_BALANCED == 2);
 
 		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
 		std::string admissionError;

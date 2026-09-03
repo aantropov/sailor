@@ -4,6 +4,7 @@
 #include "Containers/Map.h"
 #include "Core/Defines.h"
 #include "Engine/Types.h"
+#include "GlobalIllumination/RuntimeGIProbesSettings.h"
 
 #include <cstdint>
 #include <string>
@@ -27,16 +28,10 @@ namespace Sailor
 
 	enum class EGlobalIlluminationMode : uint8_t
 	{
-		Realtime = 0,
-		RealtimeAndBaked,
-		BakedOnly
+		NoGI = 0,
+		Runtime,
+		Baked
 	};
-
-	constexpr bool UsesBakedGlobalIllumination(
-		EGlobalIlluminationMode mode) noexcept
-	{
-		return mode != EGlobalIlluminationMode::Realtime;
-	}
 
 	struct SAILOR_SHARED_API GlobalIlluminationProbeBinding final
 	{
@@ -50,7 +45,8 @@ namespace Sailor
 	struct SAILOR_SHARED_API GISettings final
 	{
 		EGlobalIlluminationMode m_mode =
-			EGlobalIlluminationMode::RealtimeAndBaked;
+			EGlobalIlluminationMode::Baked;
+		RuntimeGIProbesSettings m_runtimeProbes{};
 		TMap<std::string, GlobalIlluminationProbeBinding> m_probes{};
 
 		bool Validate(std::string& outDiagnostic) const noexcept;

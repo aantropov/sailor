@@ -924,6 +924,17 @@ public sealed class SettingsPanelView : ContentView
         readonly Entry _lodBias;
         readonly Switch _enableGlobalIllumination;
         readonly Entry _maxGiProbeStatesPerSnapshot;
+        readonly Switch _runtimeGIEnabled;
+        readonly Entry _runtimeGIMaxActiveProbes;
+        readonly Entry _runtimeGISpacingMultiplier;
+        readonly Entry _runtimeGIInitialSamples;
+        readonly Entry _runtimeGITargetSamples;
+        readonly Entry _runtimeGIWorkerCount;
+        readonly Entry _runtimeGICpuDutyFraction;
+        readonly Entry _runtimeGICpuBudgetMilliseconds;
+        readonly Entry _runtimeGIMaxPublicationsPerSecond;
+        readonly Entry _runtimeGIInitialPublicationCoverage;
+        readonly Entry _runtimeGIMaxDirtyUploadBytesPerFrame;
 
         public GraphicsPresetEditor(
             GraphicsQualityLevel quality,
@@ -978,6 +989,34 @@ public sealed class SettingsPanelView : ContentView
             _enableGlobalIllumination.Toggled += (_, _) => _changed();
             _maxGiProbeStatesPerSnapshot = CreateEntry(
                 draft.MaxGiProbeStatesPerSnapshot);
+            _runtimeGIEnabled = new Switch
+            {
+                IsToggled = draft.RuntimeGIProbes.Enabled,
+                Scale = 0.8,
+                HeightRequest = 30,
+                HorizontalOptions = LayoutOptions.End
+            };
+            _runtimeGIEnabled.Toggled += (_, _) => _changed();
+            _runtimeGIMaxActiveProbes = CreateEntry(
+                draft.RuntimeGIProbes.MaxActiveProbes);
+            _runtimeGISpacingMultiplier = CreateEntry(
+                draft.RuntimeGIProbes.SpacingMultiplier);
+            _runtimeGIInitialSamples = CreateEntry(
+                draft.RuntimeGIProbes.InitialSamplesPerProbe);
+            _runtimeGITargetSamples = CreateEntry(
+                draft.RuntimeGIProbes.TargetSamplesPerProbe);
+            _runtimeGIWorkerCount = CreateEntry(
+                draft.RuntimeGIProbes.WorkerCount);
+            _runtimeGICpuDutyFraction = CreateEntry(
+                draft.RuntimeGIProbes.CpuDutyFraction);
+            _runtimeGICpuBudgetMilliseconds = CreateEntry(
+                draft.RuntimeGIProbes.CpuBudgetMilliseconds);
+            _runtimeGIMaxPublicationsPerSecond = CreateEntry(
+                draft.RuntimeGIProbes.MaxPublicationsPerSecond);
+            _runtimeGIInitialPublicationCoverage = CreateEntry(
+                draft.RuntimeGIProbes.InitialPublicationCoverage);
+            _runtimeGIMaxDirtyUploadBytesPerFrame = CreateEntry(
+                draft.RuntimeGIProbes.MaxDirtyUploadBytesPerFrame);
         }
 
         public GraphicsQualityLevel Quality { get; }
@@ -1000,7 +1039,19 @@ public sealed class SettingsPanelView : ContentView
                 _vegetationInstanceBudget.Text ?? string.Empty,
                 _lodBias.Text ?? string.Empty,
                 _enableGlobalIllumination.IsToggled,
-                _maxGiProbeStatesPerSnapshot.Text ?? string.Empty);
+                _maxGiProbeStatesPerSnapshot.Text ?? string.Empty,
+                new RuntimeGIProbesQualityDraft(
+                    _runtimeGIEnabled.IsToggled,
+                    _runtimeGIMaxActiveProbes.Text ?? string.Empty,
+                    _runtimeGISpacingMultiplier.Text ?? string.Empty,
+                    _runtimeGIInitialSamples.Text ?? string.Empty,
+                    _runtimeGITargetSamples.Text ?? string.Empty,
+                    _runtimeGIWorkerCount.Text ?? string.Empty,
+                    _runtimeGICpuDutyFraction.Text ?? string.Empty,
+                    _runtimeGICpuBudgetMilliseconds.Text ?? string.Empty,
+                    _runtimeGIMaxPublicationsPerSecond.Text ?? string.Empty,
+                    _runtimeGIInitialPublicationCoverage.Text ?? string.Empty,
+                    _runtimeGIMaxDirtyUploadBytesPerFrame.Text ?? string.Empty));
 
         public View CreateView(bool initiallyExpanded, bool isActive)
         {
@@ -1029,7 +1080,21 @@ public sealed class SettingsPanelView : ContentView
                     CreatePresetField(
                         "GI Probe States / Snapshot",
                         "Maximum simultaneous Blend + Additive baked states, 0 disables probe GI",
-                        _maxGiProbeStatesPerSnapshot)
+                        _maxGiProbeStatesPerSnapshot),
+                    CreatePresetField(
+                        "Experimental Runtime GI",
+                        "Allow runtime probe solving in game builds for this quality preset",
+                        _runtimeGIEnabled),
+                    CreatePresetField("Runtime GI Probe Capacity", "Maximum probes in the scene-wide grid, 8–32768", _runtimeGIMaxActiveProbes),
+                    CreatePresetField("Runtime GI Spacing", "Multiplier over world probe spacing, 0.25–16", _runtimeGISpacingMultiplier),
+                    CreatePresetField("Runtime GI Initial Samples", "Samples required for initial publication", _runtimeGIInitialSamples),
+                    CreatePresetField("Runtime GI Target Samples", "Progressive refinement target, up to 65536", _runtimeGITargetSamples),
+                    CreatePresetField("Runtime GI Workers", "Low-priority CPU workers, 1–16", _runtimeGIWorkerCount),
+                    CreatePresetField("Runtime GI CPU Duty", "Per-worker duty fraction, 0–1", _runtimeGICpuDutyFraction),
+                    CreatePresetField("Runtime GI CPU Budget", "CPU milliseconds per 60 Hz frame, 0–100", _runtimeGICpuBudgetMilliseconds),
+                    CreatePresetField("Runtime GI Publications / Second", "Snapshot publication throttle, 0–60", _runtimeGIMaxPublicationsPerSecond),
+                    CreatePresetField("Runtime GI Initial Coverage", "Coverage before first publication, 0–1", _runtimeGIInitialPublicationCoverage),
+                    CreatePresetField("Runtime GI Upload Budget", "Maximum dirty bytes published per frame", _runtimeGIMaxDirtyUploadBytesPerFrame)
                 }
             };
 
@@ -1149,6 +1214,17 @@ public sealed class SettingsPanelView : ContentView
                 "Maximum GI probe states per snapshot",
                 issues,
                 out var maxGiProbeStatesPerSnapshot);
+            var runtimePath = $"{path}.runtimeGIProbes";
+            valid &= TryParseInt(_runtimeGIMaxActiveProbes.Text, $"{runtimePath}.maxActiveProbes", "Runtime GI probe capacity", issues, out var runtimeMaxActiveProbes);
+            valid &= TryParseDouble(_runtimeGISpacingMultiplier.Text, $"{runtimePath}.spacingMultiplier", "Runtime GI spacing multiplier", issues, out var runtimeSpacingMultiplier);
+            valid &= TryParseInt(_runtimeGIInitialSamples.Text, $"{runtimePath}.initialSamplesPerProbe", "Runtime GI initial samples", issues, out var runtimeInitialSamples);
+            valid &= TryParseInt(_runtimeGITargetSamples.Text, $"{runtimePath}.targetSamplesPerProbe", "Runtime GI target samples", issues, out var runtimeTargetSamples);
+            valid &= TryParseInt(_runtimeGIWorkerCount.Text, $"{runtimePath}.workerCount", "Runtime GI worker count", issues, out var runtimeWorkerCount);
+            valid &= TryParseDouble(_runtimeGICpuDutyFraction.Text, $"{runtimePath}.cpuDutyFraction", "Runtime GI CPU duty fraction", issues, out var runtimeCpuDuty);
+            valid &= TryParseDouble(_runtimeGICpuBudgetMilliseconds.Text, $"{runtimePath}.cpuBudgetMilliseconds", "Runtime GI CPU budget", issues, out var runtimeCpuBudget);
+            valid &= TryParseDouble(_runtimeGIMaxPublicationsPerSecond.Text, $"{runtimePath}.maxPublicationsPerSecond", "Runtime GI publication rate", issues, out var runtimePublicationRate);
+            valid &= TryParseDouble(_runtimeGIInitialPublicationCoverage.Text, $"{runtimePath}.initialPublicationCoverage", "Runtime GI initial coverage", issues, out var runtimeInitialCoverage);
+            valid &= TryParseInt(_runtimeGIMaxDirtyUploadBytesPerFrame.Text, $"{runtimePath}.maxDirtyUploadBytesPerFrame", "Runtime GI upload budget", issues, out var runtimeUploadBudget);
 
             var msaaSamples = _msaaSamples.SelectedItem is int msaa
                 ? msaa
@@ -1177,7 +1253,21 @@ public sealed class SettingsPanelView : ContentView
                 VegetationInstanceBudget = vegetationInstanceBudget,
                 LodBias = lodBias,
                 EnableGlobalIllumination = _enableGlobalIllumination.IsToggled,
-                MaxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot
+                MaxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot,
+                RuntimeGIProbes = new RuntimeGIProbesQualitySettings
+                {
+                    Enabled = _runtimeGIEnabled.IsToggled,
+                    MaxActiveProbes = runtimeMaxActiveProbes,
+                    SpacingMultiplier = runtimeSpacingMultiplier,
+                    InitialSamplesPerProbe = runtimeInitialSamples,
+                    TargetSamplesPerProbe = runtimeTargetSamples,
+                    WorkerCount = runtimeWorkerCount,
+                    CpuDutyFraction = runtimeCpuDuty,
+                    CpuBudgetMilliseconds = runtimeCpuBudget,
+                    MaxPublicationsPerSecond = runtimePublicationRate,
+                    InitialPublicationCoverage = runtimeInitialCoverage,
+                    MaxDirtyUploadBytesPerFrame = runtimeUploadBudget
+                }
             };
             return valid;
         }

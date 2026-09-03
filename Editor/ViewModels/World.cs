@@ -113,7 +113,7 @@ public class WorldYamlConverter : IYamlTypeConverter
         if (world.GlobalIllumination is { } globalIllumination &&
             (globalIllumination.Probes.Count > 0 ||
                 globalIllumination.Mode !=
-                    GlobalIlluminationMode.RealtimeAndBaked))
+                    GlobalIlluminationMode.Baked))
         {
             emitter.Emit(new Scalar(null, "globalIllumination"));
             string globalIlluminationYaml = serializer.Serialize(world.GlobalIllumination);

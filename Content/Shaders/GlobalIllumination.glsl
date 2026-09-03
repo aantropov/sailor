@@ -17,10 +17,11 @@ const uint GLOBAL_ILLUMINATION_DEBUG_VISIBILITY = 5u;
 const uint GLOBAL_ILLUMINATION_DEBUG_RESIDENCY = 6u;
 const uint GLOBAL_ILLUMINATION_DEBUG_ASSET_IDENTITY = 7u;
 const uint GLOBAL_ILLUMINATION_DEBUG_FALLBACK = 8u;
+const uint GLOBAL_ILLUMINATION_DEBUG_SUBDIVISIONS = 9u;
 
-const uint GLOBAL_ILLUMINATION_MODE_REALTIME = 0u;
-const uint GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED = 1u;
-const uint GLOBAL_ILLUMINATION_MODE_BAKED_ONLY = 2u;
+const uint GLOBAL_ILLUMINATION_MODE_NO_GI = 0u;
+const uint GLOBAL_ILLUMINATION_MODE_RUNTIME = 1u;
+const uint GLOBAL_ILLUMINATION_MODE_BAKED = 2u;
 const float GLOBAL_ILLUMINATION_SURFACE_PLANE_TOLERANCE = 0.0001;
 const float GLOBAL_ILLUMINATION_NEIGHBOR_SUPPORT_SCALE = 0.5;
 const float GLOBAL_ILLUMINATION_MINIMUM_RECEIVER_COVERAGE = 0.5;
@@ -126,6 +127,7 @@ struct GlobalIlluminationSampleDebug
 {
   bool usedGIProbes;
   uint brickIndex;
+  uint subdivision;
   uint dominantProbeIndex;
   float averageValidity;
   float averageVisibility;
@@ -137,6 +139,7 @@ void InitializeGlobalIlluminationSampleDebug(
 {
   debugInfo.usedGIProbes = false;
   debugInfo.brickIndex = 0u;
+  debugInfo.subdivision = 0u;
   debugInfo.dominantProbeIndex = 0u;
   debugInfo.averageValidity = 0.0;
   debugInfo.averageVisibility = 0.0;
@@ -869,6 +872,10 @@ bool SampleGlobalIlluminationFromProbeCell(
   {
     debugInfo.brickIndex = probeCell.brickIndex;
   }
+  if(debugMode == GLOBAL_ILLUMINATION_DEBUG_SUBDIVISIONS)
+  {
+    debugInfo.subdivision = probeCell.subdivision;
+  }
   const vec3 extent = probeCell.boundsMax - probeCell.boundsMin;
   const uvec3 probeCounts = probeCell.probeCounts;
 
@@ -1109,6 +1116,13 @@ vec3 ApplyGlobalIlluminationDebug(
     return debugInfo.usedGIProbes
       ? vec3(0.1, 0.8, 0.2)
       : vec3(0.9, 0.05, 0.7);
+  }
+  if(mode == GLOBAL_ILLUMINATION_DEBUG_SUBDIVISIONS)
+  {
+    const float hue = fract(float(debugInfo.subdivision) * 0.38196601125);
+    return debugInfo.usedGIProbes
+      ? GlobalIlluminationHueToRgb(hue)
+      : vec3(0.02);
   }
   return indirectLighting;
 }
@@ -1457,7 +1471,7 @@ bool TryResolveGlobalIlluminationDiffuseIrradiance(
   }
   const uint mode = globalIlluminationHeader.settings.y;
   if(!bDebugUsesProbeData &&
-    mode == GLOBAL_ILLUMINATION_MODE_REALTIME)
+    mode == GLOBAL_ILLUMINATION_MODE_NO_GI)
   {
     return false;
   }

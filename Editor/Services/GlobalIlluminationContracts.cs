@@ -1,4 +1,5 @@
 using SailorEngine;
+using SailorEditor.Settings;
 using System.Globalization;
 using System.Numerics;
 
@@ -39,9 +40,6 @@ public sealed record GIProbesBakeRequest(
     string StateName,
     GIProbesBakeSettings Settings,
     FileId? LayoutSource = null,
-    bool AutoBounds = true,
-    Vector3 VolumeMin = default,
-    Vector3 VolumeMax = default,
     Vector3 FallbackEnvironment = default,
     bool Overwrite = false,
     uint ThreadCount = 1)
@@ -78,9 +76,24 @@ public enum GlobalIlluminationCompositionMode
 
 public enum GlobalIlluminationRuntimeMode
 {
-    Realtime = 0,
-    RealtimeAndBaked,
-    BakedOnly
+    NoGI = 0,
+    Runtime,
+    Baked
+}
+
+public sealed record RuntimeGIProbesSettingsDescriptor(
+    uint Version = 1,
+    bool IncludeSky = true,
+    bool IncludeEmissive = true,
+    bool IncludeDirectLighting = true,
+    uint BounceCount = 3,
+    float MinProbeSpacing = 1.0f,
+    float NormalBias = 0.05f,
+    float ViewBias = 0.05f,
+    float MaxRayDistance = 1000.0f)
+{
+    public const uint CurrentVersion = 1;
+    public const uint MaximumBounceCount = 64;
 }
 
 public sealed record GlobalIlluminationBindingDescriptor(
@@ -218,7 +231,7 @@ public static class GIProbesBakeBindingPolicy
                     : target.Diagnostic);
         }
         if (current.CompositionCount <= baseline.CompositionCount ||
-            current.Mode == GlobalIlluminationRuntimeMode.Realtime ||
+            current.Mode != GlobalIlluminationRuntimeMode.Baked ||
             !current.Enabled ||
             target is null ||
             !string.Equals(
@@ -247,6 +260,35 @@ public enum GlobalIlluminationResidency
     Failed
 }
 
+public enum RuntimeGIProbesLifecycleState
+{
+    Disabled = 0,
+    PreparingScene,
+    Tracing,
+    Ready,
+    Paused,
+    Throttled,
+    Failed
+}
+
+public sealed record RuntimeGIProbesRuntimeState(
+    RuntimeGIProbesLifecycleState Lifecycle,
+    bool Enabled,
+    bool Paused,
+    bool PreviewEnabled,
+    RuntimeGIProbesEditorBudget PreviewBudget,
+    ulong SceneGeneration,
+    ulong LightingGeneration,
+    ulong PublishedRevision,
+    uint Capacity,
+    uint ActiveProbeCount,
+    uint ReadyProbeCount,
+    uint WorkerCount,
+    ulong PublishedBytes,
+    float Coverage,
+    float Refinement,
+    string Diagnostic);
+
 public sealed record GlobalIlluminationProbeRuntimeState(
     string Name,
     FileId Asset,
@@ -260,6 +302,8 @@ public sealed record GlobalIlluminationRuntimeState(
     uint MaxProbeStatesPerSnapshot,
     GlobalIlluminationRuntimeMode Mode,
     bool Enabled,
+    RuntimeGIProbesSettingsDescriptor RuntimeSettings,
+    RuntimeGIProbesRuntimeState RuntimeState,
     IReadOnlyList<GlobalIlluminationProbeRuntimeState> Probes,
     string Diagnostic,
     ulong CompositionCount,

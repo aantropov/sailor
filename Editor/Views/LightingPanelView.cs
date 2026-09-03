@@ -1,7 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Content;
 using SailorEditor.Helpers;
+using SailorEditor.Scene;
 using SailorEditor.Services;
+using SailorEditor.Settings;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
@@ -37,9 +39,70 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
 
     static readonly GlobalIlluminationModeOption[] GlobalIlluminationModes =
     [
-        new(GlobalIlluminationRuntimeMode.Realtime, "Realtime"),
-        new(GlobalIlluminationRuntimeMode.RealtimeAndBaked, "Realtime + Baked"),
-        new(GlobalIlluminationRuntimeMode.BakedOnly, "Baked Indirect")
+        new(GlobalIlluminationRuntimeMode.NoGI, "No GI"),
+        new(GlobalIlluminationRuntimeMode.Runtime, "Runtime"),
+        new(GlobalIlluminationRuntimeMode.Baked, "Baked")
+    ];
+
+    sealed record RuntimeBudgetOption(
+        RuntimeGIProbesEditorBudget Value,
+        string DisplayName)
+    {
+        public override string ToString() => DisplayName;
+    }
+
+    static readonly RuntimeBudgetOption[] RuntimeBudgets =
+    [
+        new(RuntimeGIProbesEditorBudget.Eco, "Eco"),
+        new(RuntimeGIProbesEditorBudget.Balanced, "Balanced")
+    ];
+
+    sealed record RuntimeDebugViewOption(
+        RuntimeGIProbesEditorDebugView Value,
+        SceneViewRenderMode RenderMode,
+        string DisplayName)
+    {
+        public override string ToString() => DisplayName;
+    }
+
+    static readonly RuntimeDebugViewOption[] RuntimeDebugViews =
+    [
+        new(
+            RuntimeGIProbesEditorDebugView.Lit,
+            SceneViewRenderMode.Lit,
+            "Lit"),
+        new(
+            RuntimeGIProbesEditorDebugView.IndirectOnly,
+            SceneViewRenderMode.GlobalIlluminationOnly,
+            "Indirect Only"),
+        new(
+            RuntimeGIProbesEditorDebugView.Probes,
+            SceneViewRenderMode.GlobalIlluminationProbes,
+            "Probes"),
+        new(
+            RuntimeGIProbesEditorDebugView.Bricks,
+            SceneViewRenderMode.GlobalIlluminationBricks,
+            "Bricks"),
+        new(
+            RuntimeGIProbesEditorDebugView.Validity,
+            SceneViewRenderMode.GlobalIlluminationValidity,
+            "Validity"),
+        new(
+            RuntimeGIProbesEditorDebugView.Visibility,
+            SceneViewRenderMode.GlobalIlluminationVisibility,
+            "Visibility"),
+        new(
+            RuntimeGIProbesEditorDebugView.Residency,
+            SceneViewRenderMode.GlobalIlluminationResidency,
+            "Residency"),
+        new(
+            RuntimeGIProbesEditorDebugView.Fallback,
+            SceneViewRenderMode.GlobalIlluminationFallback,
+            "Fallback"),
+        new(
+            RuntimeGIProbesEditorDebugView.Subdivisions,
+            SceneViewRenderMode.GlobalIlluminationSubdivisions,
+            "Subdivisions")
     ];
 
     sealed partial class BindingDraft : ObservableObject
@@ -70,6 +133,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     readonly EngineService engineService;
     readonly WorldService worldService;
     readonly AssetsService assetsService;
+    readonly GraphicsSettingsService graphicsSettingsService;
     readonly List<BindingDraft> bindings = [];
     readonly Observable<FileId> layoutSource = new(new FileId());
     readonly GIProbesBakeStatusGate bakeStatusGate = new();
@@ -78,6 +142,15 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     WorldFile? worldFile;
     VerticalStackLayout? bindingsHost;
     Label? runtimeStatus;
+    ProgressBar? runtimeProgress;
+    ProgressBar? runtimeRefinementProgress;
+    Button? runtimePreviewButton;
+    Button? runtimePauseButton;
+    Picker? runtimeBudget;
+    Picker? runtimeDebugView;
+    View? bakedBindingsContent;
+    View? bakeCard;
+    View? runtimeCard;
     Label? bakeStatus;
     ProgressBar? bakeProgress;
     Button? bakeNewButton;
@@ -94,25 +167,32 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     Entry? normalBiasEntry;
     Entry? viewBiasEntry;
     Entry? maxDistanceEntry;
-    Entry? boundsMinEntry;
-    Entry? boundsMaxEntry;
     Entry? environmentEntry;
     CheckBox? includeSky;
     CheckBox? includeEmissive;
     CheckBox? includeDirect;
-    CheckBox? autoBounds;
     CheckBox? overwrite;
     Picker? bakedMode;
     Entry? bakedWeight;
     CheckBox? bakedPreload;
     Picker? globalIlluminationMode;
+    Entry? runtimeBouncesEntry;
+    Entry? runtimeSpacingEntry;
+    Entry? runtimeNormalBiasEntry;
+    Entry? runtimeViewBiasEntry;
+    Entry? runtimeMaxDistanceEntry;
+    CheckBox? runtimeIncludeSky;
+    CheckBox? runtimeIncludeEmissive;
+    CheckBox? runtimeIncludeDirect;
     GlobalIlluminationRuntimeMode selectedGlobalIlluminationMode =
-        GlobalIlluminationRuntimeMode.RealtimeAndBaked;
+        GlobalIlluminationRuntimeMode.Baked;
+    RuntimeGIProbesRuntimeState? lastRuntimeGIState;
     bool subscribed;
     bool polling;
     bool handledSuccess;
     bool bakeUiOperationActive;
     bool bakeLaunchPending;
+    bool updatingRuntimeControls;
 
     public GlobalIlluminationEditorPanel()
     {
@@ -121,6 +201,8 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         engineService = MauiProgram.GetService<EngineService>();
         worldService = MauiProgram.GetService<WorldService>();
         assetsService = MauiProgram.GetService<AssetsService>();
+        graphicsSettingsService =
+            MauiProgram.GetService<GraphicsSettingsService>();
         statusTimer = Dispatcher.CreateTimer();
         statusTimer.Interval = TimeSpan.FromMilliseconds(300);
         statusTimer.Tick += PollStatus;
@@ -135,16 +217,24 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         {
             worldService.OnUpdateWorldAction += OnWorldUpdated;
             assetsService.Changed += OnAssetsChanged;
+            engineService.OnEditorRenderModeChanged +=
+                OnEditorRenderModeChanged;
+            graphicsSettingsService.SettingsChanged +=
+                OnGraphicsSettingsChanged;
             subscribed = true;
             SynchronizeWorld(refreshBindings: false);
             statusTimer.Start();
-            if (IsCurrentWorld())
-                _ = RefreshRuntimeStateAsync();
+            _ = RefreshRuntimeStateAsync();
+            _ = RefreshRuntimeEditorControlsAsync();
         }
         else if (Handler is null && subscribed)
         {
             worldService.OnUpdateWorldAction -= OnWorldUpdated;
             assetsService.Changed -= OnAssetsChanged;
+            engineService.OnEditorRenderModeChanged -=
+                OnEditorRenderModeChanged;
+            graphicsSettingsService.SettingsChanged -=
+                OnGraphicsSettingsChanged;
             subscribed = false;
             statusTimer.Stop();
         }
@@ -174,7 +264,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         }
 
         worldFile = activeWorld;
-        if (refreshBindings && IsCurrentWorld())
+        if (refreshBindings)
         {
             LoadBindings();
             RebuildBindingRows();
@@ -212,6 +302,15 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         Children.Clear();
         bindingsHost = null;
         runtimeStatus = null;
+        runtimeProgress = null;
+        runtimeRefinementProgress = null;
+        runtimePreviewButton = null;
+        runtimePauseButton = null;
+        runtimeBudget = null;
+        runtimeDebugView = null;
+        bakedBindingsContent = null;
+        bakeCard = null;
+        runtimeCard = null;
         bakeStatus = null;
         bakeProgress = null;
         Children.Add(Section("Global Illumination"));
@@ -219,13 +318,10 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         {
             Children.Add(new Label
             {
-                Text = "Open or save a level to edit and bake its probe states.",
+                Text = "Runtime preview works for the active unsaved level. Save it before baking probe assets.",
                 FontSize = 12,
                 TextColor = Color.FromArgb("#D4A72C")
             });
-            if (Handler is not null)
-                statusTimer.Start();
-            return;
         }
 
         LoadBindings();
@@ -236,7 +332,14 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             LineBreakMode = LineBreakMode.WordWrap
         };
         Children.Add(BuildBindingsCard());
-        Children.Add(BuildBakeCard());
+        runtimeCard = BuildRuntimeCard();
+        Children.Add(runtimeCard);
+        if (IsCurrentWorld())
+        {
+            bakeCard = BuildBakeCard();
+            Children.Add(bakeCard);
+        }
+        UpdateProviderVisibility();
         if (Handler is not null)
         {
             statusTimer.Start();
@@ -249,11 +352,11 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         selectedGlobalIlluminationMode =
             worldService.Current.GlobalIllumination.Mode switch
             {
-                ViewModels.GlobalIlluminationMode.Realtime =>
-                    GlobalIlluminationRuntimeMode.Realtime,
-                ViewModels.GlobalIlluminationMode.BakedOnly =>
-                    GlobalIlluminationRuntimeMode.BakedOnly,
-                _ => GlobalIlluminationRuntimeMode.RealtimeAndBaked
+                ViewModels.GlobalIlluminationMode.NoGI =>
+                    GlobalIlluminationRuntimeMode.NoGI,
+                ViewModels.GlobalIlluminationMode.Runtime =>
+                    GlobalIlluminationRuntimeMode.Runtime,
+                _ => GlobalIlluminationRuntimeMode.Baked
             };
         if (globalIlluminationMode is not null)
         {
@@ -296,16 +399,19 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 GlobalIlluminationModeOption selected)
             {
                 selectedGlobalIlluminationMode = selected.Value;
+                UpdateProviderVisibility();
             }
         };
         card.Children.Add(Labeled("GI mode", globalIlluminationMode));
         card.Children.Add(new Label
         {
-            Text = "Realtime uses the live SkyComponent cubemaps. Baked modes use probes for diffuse indirect lighting and directional environment-specular occlusion, with the same live cubemaps as fallback. Direct lights stay realtime.",
+            Text = "No GI uses environment fallback only. Runtime traces one automatically sized scene-wide probe grid. Baked uses .probes assets. Direct lights stay realtime.",
             FontSize = 11,
             TextColor = Color.FromArgb("#929AA5"),
             LineBreakMode = LineBreakMode.WordWrap
         });
+        var bakedContent = new VerticalStackLayout { Spacing = 8 };
+        bakedBindingsContent = bakedContent;
         var header = new Grid
         {
             ColumnDefinitions =
@@ -331,8 +437,8 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             RebuildBindingRows();
         };
         header.Add(add, 1);
-        card.Children.Add(header);
-        card.Children.Add(new Label
+        bakedContent.Children.Add(header);
+        bakedContent.Children.Add(new Label
         {
             Text = "Each asset is one baked state. Blend states form a normalized base; Additive states are accumulated with raw weights.",
             FontSize = 11,
@@ -340,7 +446,8 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             LineBreakMode = LineBreakMode.WordWrap
         });
         bindingsHost = new VerticalStackLayout { Spacing = 8 };
-        card.Children.Add(bindingsHost);
+        bakedContent.Children.Add(bindingsHost);
+        card.Children.Add(bakedContent);
         RebuildBindingRows();
 
         var actions = new HorizontalStackLayout { Spacing = 6 };
@@ -468,6 +575,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             var descriptors = BuildBindingDescriptors();
             if (!await engineService.SetGISettingsAsync(
                     selectedGlobalIlluminationMode,
+                    BuildRuntimeSettingsDescriptor(),
                     descriptors))
             {
                 SetRuntimeStatus("Global Illumination ECS rejected the level bindings.", true);
@@ -490,6 +598,196 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             SetRuntimeStatus(exception.Message, true);
             return false;
         }
+    }
+
+    RuntimeGIProbesSettingsDescriptor BuildRuntimeSettingsDescriptor() => new(
+        RuntimeGIProbesSettingsDescriptor.CurrentVersion,
+        runtimeIncludeSky?.IsChecked ?? true,
+        runtimeIncludeEmissive?.IsChecked ?? true,
+        runtimeIncludeDirect?.IsChecked ?? true,
+        ReadUInt(
+            runtimeBouncesEntry!,
+            "Runtime indirect bounces",
+            positive: true,
+            maximum: RuntimeGIProbesSettingsDescriptor.MaximumBounceCount),
+        ReadFloat(
+            runtimeSpacingEntry!,
+            "Runtime minimum probe spacing",
+            positive: true),
+        ReadFloat(runtimeNormalBiasEntry!, "Runtime normal bias", positive: false),
+        ReadFloat(runtimeViewBiasEntry!, "Runtime view bias", positive: false),
+        ReadFloat(
+            runtimeMaxDistanceEntry!,
+            "Runtime maximum ray distance",
+            positive: true));
+
+    View BuildRuntimeCard()
+    {
+        var settings = worldService.Current.GlobalIllumination.RuntimeProbes ??
+            new ViewModels.RuntimeGIProbesSettings();
+        var card = Card();
+        card.Children.Add(new Label
+        {
+            Text = "Experimental Runtime Probes",
+            FontAttributes = FontAttributes.Bold
+        });
+        card.Children.Add(new Label
+        {
+            Text = "Builds a transient camera-local probe cache from Static and Stationary contributors. Preview is explicitly opt-in and never writes .probes assets.",
+            FontSize = 11,
+            TextColor = Color.FromArgb("#929AA5"),
+            LineBreakMode = LineBreakMode.WordWrap
+        });
+        runtimeBouncesEntry = UIntEntry(settings.BounceCount);
+        runtimeSpacingEntry = FloatEntry(settings.MinProbeSpacing);
+        runtimeNormalBiasEntry = FloatEntry(settings.NormalBias);
+        runtimeViewBiasEntry = FloatEntry(settings.ViewBias);
+        runtimeMaxDistanceEntry = FloatEntry(settings.MaxRayDistance);
+        runtimeIncludeSky = new CheckBox { IsChecked = settings.IncludeSky };
+        runtimeIncludeEmissive = new CheckBox
+        {
+            IsChecked = settings.IncludeEmissive
+        };
+        runtimeIncludeDirect = new CheckBox
+        {
+            IsChecked = settings.IncludeDirectLighting
+        };
+        card.Children.Add(Labeled("Indirect bounces", runtimeBouncesEntry));
+        card.Children.Add(Labeled("Minimum probe spacing", runtimeSpacingEntry));
+        card.Children.Add(Labeled("Normal bias", runtimeNormalBiasEntry));
+        card.Children.Add(Labeled("View bias", runtimeViewBiasEntry));
+        card.Children.Add(Labeled("Maximum ray distance", runtimeMaxDistanceEntry));
+        card.Children.Add(Labeled("Include sky", runtimeIncludeSky));
+        card.Children.Add(Labeled("Include emissive", runtimeIncludeEmissive));
+        card.Children.Add(Labeled("Include direct lighting", runtimeIncludeDirect));
+        card.Children.Add(new Label
+        {
+            Text = "Camera source: focused Scene viewport",
+            FontSize = 11,
+            TextColor = Color.FromArgb("#929AA5")
+        });
+
+        var editorGraphics = graphicsSettingsService.Current?.Editor.Graphics ??
+            GraphicsSettingsDefaults.Editor.Graphics;
+        runtimeBudget = new Picker
+        {
+            ItemsSource = RuntimeBudgets,
+            SelectedItem = RuntimeBudgets.Single(option =>
+                option.Value == editorGraphics.RuntimeGIProbesBudget),
+            HorizontalOptions = LayoutOptions.Fill
+        };
+        runtimeBudget.SelectedIndexChanged += async (_, _) =>
+        {
+            if (updatingRuntimeControls ||
+                runtimeBudget.SelectedItem is not RuntimeBudgetOption selected)
+            {
+                return;
+            }
+            await ExecuteRuntimeCommandAsync(
+                async () =>
+                {
+                    if (!await engineService.SetRuntimeGIProbesPreviewBudgetAsync(
+                            selected.Value))
+                    {
+                        return false;
+                    }
+                    await graphicsSettingsService.SetRuntimeGIProbesBudgetAsync(
+                        selected.Value);
+                    return true;
+                },
+                "The engine rejected the Runtime GI preview budget.");
+        };
+        card.Children.Add(Labeled("Preview budget", runtimeBudget));
+
+        runtimeDebugView = new Picker
+        {
+            ItemsSource = RuntimeDebugViews,
+            SelectedItem = RuntimeDebugViews.Single(option =>
+                option.Value == editorGraphics.RuntimeGIProbesDebugView),
+            HorizontalOptions = LayoutOptions.Fill
+        };
+        runtimeDebugView.SelectedIndexChanged += async (_, _) =>
+        {
+            if (updatingRuntimeControls ||
+                runtimeDebugView.SelectedItem is not RuntimeDebugViewOption selected)
+            {
+                return;
+            }
+            await ExecuteRuntimeCommandAsync(
+                async () =>
+                {
+                    if (!await engineService.SetEditorRenderModeAsync(
+                            selected.RenderMode))
+                    {
+                        return false;
+                    }
+                    await graphicsSettingsService.SetRuntimeGIProbesDebugViewAsync(
+                        selected.Value);
+                    return true;
+                },
+                "The engine rejected the Runtime GI debug view.");
+        };
+        card.Children.Add(Labeled("Debug view", runtimeDebugView));
+
+        var actions = new HorizontalStackLayout { Spacing = 6 };
+        runtimePreviewButton = ActionButton("Enable Preview", async () =>
+        {
+            var enabled = !(lastRuntimeGIState?.PreviewEnabled ?? false);
+            await ExecuteRuntimeCommandAsync(
+                async () =>
+                {
+                    if (!await engineService.SetRuntimeGIProbesPreviewAsync(
+                            enabled))
+                    {
+                        return false;
+                    }
+                    await graphicsSettingsService
+                        .SetRuntimeGIProbesPreviewEnabledAsync(enabled);
+                    return true;
+                },
+                "The engine rejected the Runtime GI preview state.");
+        });
+        runtimePauseButton = ActionButton("Pause", async () =>
+        {
+            var paused = !(lastRuntimeGIState?.Paused ?? false);
+            await ExecuteRuntimeCommandAsync(
+                () => engineService.SetRuntimeGIProbesPausedAsync(paused),
+                "The engine rejected the Runtime GI pause state.");
+        });
+        actions.Children.Add(runtimePreviewButton);
+        actions.Children.Add(runtimePauseButton);
+        actions.Children.Add(ActionButton("Restart", async () =>
+        {
+            await ExecuteRuntimeCommandAsync(
+                () => engineService.RestartRuntimeGIProbesAsync(),
+                "The engine rejected the Runtime GI restart request.");
+        }));
+        actions.Children.Add(ActionButton("Rebuild Scene", async () =>
+        {
+            await ExecuteRuntimeCommandAsync(
+                () => engineService.RebuildRuntimeGIProbesSceneAsync(),
+                "The engine rejected the Runtime GI scene rebuild request.");
+        }));
+        card.Children.Add(actions);
+        runtimeProgress = new ProgressBar { Progress = 0.0 };
+        runtimeRefinementProgress = new ProgressBar { Progress = 0.0 };
+        card.Children.Add(Labeled("Coverage", runtimeProgress));
+        card.Children.Add(Labeled("Refinement", runtimeRefinementProgress));
+        return card;
+    }
+
+    void UpdateProviderVisibility()
+    {
+        var runtime = selectedGlobalIlluminationMode ==
+            GlobalIlluminationRuntimeMode.Runtime;
+        var baked = selectedGlobalIlluminationMode ==
+            GlobalIlluminationRuntimeMode.Baked;
+        if (bakedBindingsContent is not null)
+            bakedBindingsContent.IsVisible = baked;
+        if (bakeCard is not null)
+            bakeCard.IsVisible = baked;
+        if (runtimeCard is not null)
+            runtimeCard.IsVisible = runtime;
     }
 
     View BuildBakeCard()
@@ -565,14 +863,8 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         card.Children.Add(Labeled("Include emissive", includeEmissive));
         card.Children.Add(Labeled("Include direct lighting", includeDirect));
 
-        autoBounds = new CheckBox { IsChecked = true };
-        boundsMinEntry = TextEntry("-10, -10, -10");
-        boundsMaxEntry = TextEntry("10, 10, 10");
         environmentEntry = TextEntry("0.03, 0.03, 0.03");
         overwrite = new CheckBox();
-        card.Children.Add(Labeled("Automatic bounds", autoBounds));
-        card.Children.Add(Labeled("Manual bounds min", boundsMinEntry));
-        card.Children.Add(Labeled("Manual bounds max", boundsMaxEntry));
         card.Children.Add(Labeled("Fallback environment", environmentEntry));
         card.Children.Add(Labeled("Overwrite existing file", overwrite));
 
@@ -614,6 +906,12 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         bakeStatusGate.BeginLaunch();
         try
         {
+            if (selectedGlobalIlluminationMode !=
+                GlobalIlluminationRuntimeMode.Baked)
+            {
+                throw new InvalidOperationException(
+                    "Select Baked GI mode before starting a probe bake.");
+            }
             if (!IsCurrentWorld() || worldService.CurrentWorldAsset?.FileId is null)
                 throw new InvalidOperationException("Open and save the target level before baking.");
             if (reuseLayout && (layoutSource.Value is null || layoutSource.Value.IsEmpty()))
@@ -663,9 +961,6 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 stateName,
                 settings,
                 LayoutSource: reuseLayout ? layoutSource.Value : null,
-                AutoBounds: autoBounds!.IsChecked,
-                VolumeMin: ReadVector(boundsMinEntry!, "Manual bounds min"),
-                VolumeMax: ReadVector(boundsMaxEntry!, "Manual bounds max"),
                 FallbackEnvironment: ReadVector(
                     environmentEntry!,
                     "Fallback environment"),
@@ -729,11 +1024,14 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     async Task PollStatusAsync()
     {
         SynchronizeWorld(refreshBindings: false);
-        if (polling || !IsCurrentWorld())
+        if (polling)
             return;
         polling = true;
         try
         {
+            await RefreshRuntimeStateAsync();
+            if (!IsCurrentWorld())
+                return;
             var status = await engineService.GetGIProbesBakeStatusAsync();
             if (status is null)
                 return;
@@ -893,7 +1191,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
 
             var activationRequired =
                 targetWeight > 0.0f &&
-                selectedGlobalIlluminationMode != GlobalIlluminationRuntimeMode.Realtime &&
+                selectedGlobalIlluminationMode == GlobalIlluminationRuntimeMode.Baked &&
                 baseline.Enabled;
             if (activationRequired)
             {
@@ -988,6 +1286,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             RestoreBindingDrafts(previousBindings);
             if (!await engineService.SetGISettingsAsync(
                     previousMode,
+                    BuildRuntimeSettingsDescriptor(),
                     BuildBindingDescriptors()))
             {
                 return "the Global Illumination ECS rejected the previous bindings";
@@ -1059,6 +1358,35 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                     true);
                 return;
             }
+            lastRuntimeGIState = state.RuntimeState;
+            if (runtimeProgress is not null)
+            {
+                runtimeProgress.Progress = Math.Clamp(
+                    state.RuntimeState.Coverage,
+                    0.0f,
+                    1.0f);
+            }
+            if (runtimeRefinementProgress is not null)
+            {
+                runtimeRefinementProgress.Progress = Math.Clamp(
+                    state.RuntimeState.Refinement,
+                    0.0f,
+                    1.0f);
+            }
+            UpdateRuntimeBudgetPicker(state.RuntimeState.PreviewBudget);
+            if (runtimePreviewButton is not null)
+            {
+                runtimePreviewButton.Text = state.RuntimeState.PreviewEnabled
+                    ? "Disable Preview"
+                    : "Enable Preview";
+            }
+            if (runtimePauseButton is not null)
+            {
+                runtimePauseButton.Text = state.RuntimeState.Paused
+                    ? "Resume"
+                    : "Pause";
+                runtimePauseButton.IsEnabled = state.RuntimeState.Enabled;
+            }
             var probes = state.Probes.Count == 0
                 ? "no states"
                 : string.Join(
@@ -1068,13 +1396,131 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             var prefix = string.IsNullOrWhiteSpace(successPrefix)
                 ? string.Empty
                 : $"{successPrefix} {DateTime.Now:HH:mm:ss}: ";
+            var runtimeDetails = state.Mode ==
+                GlobalIlluminationRuntimeMode.Runtime
+                ? $" Runtime {state.RuntimeState.Lifecycle}; " +
+                    $"{state.RuntimeState.ReadyProbeCount}/{state.RuntimeState.ActiveProbeCount} ready; " +
+                    $"coverage {state.RuntimeState.Coverage:P0}, " +
+                    $"refinement {state.RuntimeState.Refinement:P0}; " +
+                    $"{state.RuntimeState.WorkerCount} worker(s), " +
+                    $"{state.RuntimeState.PreviewBudget} budget. " +
+                    state.RuntimeState.Diagnostic
+                : string.Empty;
             SetRuntimeStatus(
-                $"{prefix}{state.Mode}; profile GI {(state.Enabled ? "enabled" : "disabled")}; budget {state.MaxProbeStatesPerSnapshot}; {probes}. {state.Diagnostic}",
-                state.Probes.Any(probe => probe.Residency == GlobalIlluminationResidency.Failed));
+                $"{prefix}{state.Mode}; profile GI {(state.Enabled ? "enabled" : "disabled")}; budget {state.MaxProbeStatesPerSnapshot}; {probes}. {state.Diagnostic}{runtimeDetails}",
+                state.Probes.Any(probe =>
+                    probe.Residency == GlobalIlluminationResidency.Failed) ||
+                    state.RuntimeState.Lifecycle ==
+                        RuntimeGIProbesLifecycleState.Failed);
         }
         catch (Exception exception)
         {
             SetRuntimeStatus(exception.Message, true);
+        }
+    }
+
+    async Task ExecuteRuntimeCommandAsync(
+        Func<Task<bool>> command,
+        string rejectionDiagnostic)
+    {
+        try
+        {
+            if (!await command())
+            {
+                SetRuntimeStatus(rejectionDiagnostic, true);
+                return;
+            }
+            await RefreshRuntimeStateAsync();
+        }
+        catch (Exception exception)
+        {
+            SetRuntimeStatus(exception.Message, true);
+        }
+    }
+
+    async Task RefreshRuntimeEditorControlsAsync()
+    {
+        try
+        {
+            var snapshot = await graphicsSettingsService.EnsureLoadedAsync();
+            Dispatcher.Dispatch(() => UpdateRuntimeEditorControls(
+                snapshot.Editor.Graphics));
+            var renderMode = await engineService.GetEditorRenderModeAsync();
+            if (renderMode.HasValue)
+            {
+                Dispatcher.Dispatch(() =>
+                    UpdateRuntimeDebugViewPicker(renderMode.Value));
+            }
+        }
+        catch (Exception exception)
+        {
+            SetRuntimeStatus(exception.Message, true);
+        }
+    }
+
+    void OnGraphicsSettingsChanged(
+        object? sender,
+        GraphicsSettingsSnapshot snapshot) =>
+        Dispatcher.Dispatch(() =>
+            UpdateRuntimeEditorControls(snapshot.Editor.Graphics));
+
+    void OnEditorRenderModeChanged(SceneViewRenderMode mode) =>
+        Dispatcher.Dispatch(() => UpdateRuntimeDebugViewPicker(mode));
+
+    void UpdateRuntimeEditorControls(EditorGraphicsSettings settings)
+    {
+        updatingRuntimeControls = true;
+        try
+        {
+            if (runtimeBudget is not null)
+            {
+                runtimeBudget.SelectedItem = RuntimeBudgets.Single(option =>
+                    option.Value == settings.RuntimeGIProbesBudget);
+            }
+            if (runtimeDebugView is not null)
+            {
+                runtimeDebugView.SelectedItem = RuntimeDebugViews.Single(option =>
+                    option.Value == settings.RuntimeGIProbesDebugView);
+            }
+        }
+        finally
+        {
+            updatingRuntimeControls = false;
+        }
+    }
+
+    void UpdateRuntimeBudgetPicker(RuntimeGIProbesEditorBudget budget)
+    {
+        if (runtimeBudget is null)
+            return;
+        updatingRuntimeControls = true;
+        try
+        {
+            runtimeBudget.SelectedItem = RuntimeBudgets.Single(option =>
+                option.Value == budget);
+        }
+        finally
+        {
+            updatingRuntimeControls = false;
+        }
+    }
+
+    void UpdateRuntimeDebugViewPicker(SceneViewRenderMode mode)
+    {
+        if (runtimeDebugView is null)
+            return;
+        var option = RuntimeDebugViews.FirstOrDefault(candidate =>
+            candidate.RenderMode == mode);
+        if (option is null)
+            return;
+        updatingRuntimeControls = true;
+        try
+        {
+            runtimeDebugView.SelectedItem = option;
+        }
+        finally
+        {
+            updatingRuntimeControls = false;
         }
     }
 

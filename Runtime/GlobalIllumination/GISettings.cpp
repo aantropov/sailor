@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <type_traits>
 
 using namespace Sailor;
 
@@ -10,6 +11,10 @@ bool GISettings::Validate(
 	std::string& outDiagnostic) const noexcept
 {
 	outDiagnostic.clear();
+	if (!m_runtimeProbes.Validate(outDiagnostic))
+	{
+		return false;
+	}
 	for (const auto& entry : m_probes)
 	{
 		const std::string& name = entry.m_first;
@@ -41,6 +46,18 @@ YAML::Node GISettings::Serialize() const
 	YAML::Node globalIllumination(YAML::NodeType::Map);
 	YAML::Node probes(YAML::NodeType::Map);
 	globalIllumination["mode"] = std::string(magic_enum::enum_name(m_mode));
+	YAML::Node runtimeProbes(YAML::NodeType::Map);
+	runtimeProbes["version"] = m_runtimeProbes.m_version;
+	runtimeProbes["includeSky"] = m_runtimeProbes.m_bIncludeSky;
+	runtimeProbes["includeEmissive"] = m_runtimeProbes.m_bIncludeEmissive;
+	runtimeProbes["includeDirectLighting"] =
+		m_runtimeProbes.m_bIncludeDirectLighting;
+	runtimeProbes["bounceCount"] = m_runtimeProbes.m_bounceCount;
+	runtimeProbes["minProbeSpacing"] = m_runtimeProbes.m_minProbeSpacing;
+	runtimeProbes["normalBias"] = m_runtimeProbes.m_normalBias;
+	runtimeProbes["viewBias"] = m_runtimeProbes.m_viewBias;
+	runtimeProbes["maxRayDistance"] = m_runtimeProbes.m_maxRayDistance;
+	globalIllumination["runtimeProbes"] = runtimeProbes;
 
 	struct SortedBinding final
 	{
@@ -86,8 +103,7 @@ bool GISettings::Deserialize(
 	const YAML::Node& worldRoot,
 	std::string& outDiagnostic) noexcept
 {
-	m_mode = EGlobalIlluminationMode::RealtimeAndBaked;
-	m_probes.Clear();
+	GISettings parsedSettings;
 	outDiagnostic.clear();
 
 	auto deserialize = [&]() -> bool
@@ -115,10 +131,65 @@ bool GISettings::Deserialize(
 			magic_enum::enum_cast<EGlobalIlluminationMode>(globalMode);
 		if (!parsedGlobalMode)
 		{
-			outDiagnostic = "globalIllumination.mode must be Realtime, RealtimeAndBaked, or BakedOnly";
+			outDiagnostic = "globalIllumination.mode must be NoGI, Runtime, or Baked";
 			return false;
 		}
-		m_mode = *parsedGlobalMode;
+		parsedSettings.m_mode = *parsedGlobalMode;
+
+		const YAML::Node runtimeNode = Utils::FindYamlMapField(
+			giNode,
+			"runtimeProbes");
+		if (!runtimeNode || !runtimeNode.IsMap())
+		{
+			outDiagnostic = "globalIllumination.runtimeProbes is required and must be a map";
+			return false;
+		}
+		const auto readRuntimeScalar = [&runtimeNode,
+			&outDiagnostic](const char* fieldName, auto& outValue) -> bool
+		{
+			const YAML::Node value = Utils::FindYamlMapField(
+				runtimeNode,
+				fieldName);
+			if (!value || !value.IsScalar())
+			{
+				outDiagnostic = std::string("globalIllumination.runtimeProbes.") +
+					fieldName + " is required and must be a scalar";
+				return false;
+			}
+			outValue = value.as<std::decay_t<decltype(outValue)>>();
+			return true;
+		};
+		if (!readRuntimeScalar(
+				"version",
+				parsedSettings.m_runtimeProbes.m_version) ||
+			!readRuntimeScalar(
+				"includeSky",
+				parsedSettings.m_runtimeProbes.m_bIncludeSky) ||
+			!readRuntimeScalar(
+				"includeEmissive",
+				parsedSettings.m_runtimeProbes.m_bIncludeEmissive) ||
+			!readRuntimeScalar(
+				"includeDirectLighting",
+				parsedSettings.m_runtimeProbes.m_bIncludeDirectLighting) ||
+			!readRuntimeScalar(
+				"bounceCount",
+				parsedSettings.m_runtimeProbes.m_bounceCount) ||
+			!readRuntimeScalar(
+				"minProbeSpacing",
+				parsedSettings.m_runtimeProbes.m_minProbeSpacing) ||
+			!readRuntimeScalar(
+				"normalBias",
+				parsedSettings.m_runtimeProbes.m_normalBias) ||
+			!readRuntimeScalar(
+				"viewBias",
+				parsedSettings.m_runtimeProbes.m_viewBias) ||
+			!readRuntimeScalar(
+				"maxRayDistance",
+				parsedSettings.m_runtimeProbes.m_maxRayDistance) ||
+			!parsedSettings.m_runtimeProbes.Validate(outDiagnostic))
+		{
+			return false;
+		}
 		const YAML::Node probesNode = Utils::FindYamlMapField(giNode, "probes");
 		if (!probesNode)
 		{
@@ -179,24 +250,27 @@ bool GISettings::Deserialize(
 			binding.m_bPreload = preloadNode
 				? preloadNode.as<bool>()
 				: false;
-			if (!m_probes.Insert(name, std::move(binding)))
+			if (!parsedSettings.m_probes.Insert(name, std::move(binding)))
 			{
 				outDiagnostic = "global-illumination probe binding names must be unique";
 				return false;
 			}
 		}
-		return Validate(outDiagnostic);
+		return parsedSettings.Validate(outDiagnostic);
 	};
 
 	bool bResult = false;
 	std::string yamlDiagnostic;
 	if (!External::TryInvokeYaml(deserialize, bResult, yamlDiagnostic))
 	{
-		m_mode = EGlobalIlluminationMode::RealtimeAndBaked;
-		m_probes.Clear();
 		outDiagnostic = std::string("cannot parse globalIllumination settings: ") +
 			yamlDiagnostic;
 		return false;
 	}
-	return bResult;
+	if (!bResult)
+	{
+		return false;
+	}
+	*this = std::move(parsedSettings);
+	return true;
 }

@@ -13,7 +13,8 @@ public enum SceneViewRenderMode
     GlobalIlluminationVisibility,
     GlobalIlluminationResidency,
     GlobalIlluminationAssetIdentity,
-    GlobalIlluminationFallback
+    GlobalIlluminationFallback,
+    GlobalIlluminationSubdivisions
 }
 
 public static class SceneViewRenderModeNames
@@ -31,7 +32,8 @@ public static class SceneViewRenderModeNames
         "global_illumination_visibility",
         "global_illumination_residency",
         "global_illumination_asset_identity",
-        "global_illumination_fallback"
+        "global_illumination_fallback",
+        "global_illumination_subdivisions"
     ];
 
     public static string ToExternalName(SceneViewRenderMode mode) => mode switch
@@ -56,6 +58,8 @@ public static class SceneViewRenderModeNames
             "global_illumination_asset_identity",
         SceneViewRenderMode.GlobalIlluminationFallback =>
             "global_illumination_fallback",
+        SceneViewRenderMode.GlobalIlluminationSubdivisions =>
+            "global_illumination_subdivisions",
         _ => throw new ArgumentOutOfRangeException(nameof(mode))
     };
 
@@ -92,6 +96,9 @@ public static class SceneViewRenderModeNames
                 SceneViewRenderMode.GlobalIlluminationAssetIdentity,
             "globalilluminationfallback" or "gifallback" =>
                 SceneViewRenderMode.GlobalIlluminationFallback,
+            "globalilluminationsubdivisions" or "gisubdivisions" or
+                "subdivisions" =>
+                SceneViewRenderMode.GlobalIlluminationSubdivisions,
             _ => default
         };
         return normalized is "lit" or "ambientocclusion" or "ao" or
@@ -103,7 +110,9 @@ public static class SceneViewRenderModeNames
             "globalilluminationvisibility" or "givisibility" or
             "globalilluminationresidency" or "giresidency" or
             "globalilluminationassetidentity" or "giassetidentity" or
-            "globalilluminationfallback" or "gifallback";
+            "globalilluminationfallback" or "gifallback" or
+            "globalilluminationsubdivisions" or "gisubdivisions" or
+            "subdivisions";
     }
 }
 

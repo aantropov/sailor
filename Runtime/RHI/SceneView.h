@@ -413,7 +413,7 @@ namespace Sailor::RHI
 		TSharedPtr<TVector<glm::mat4>> m_cpuBoneMatrices{};
 		uint64_t m_animationRevision = 0ull;
 		EGlobalIlluminationMode m_globalIlluminationMode =
-			EGlobalIlluminationMode::RealtimeAndBaked;
+			EGlobalIlluminationMode::Baked;
 		bool m_bGlobalIlluminationEnabled = true;
 		RHIGlobalIlluminationSnapshotPtr m_globalIllumination{};
 
@@ -462,7 +462,7 @@ namespace Sailor::RHI
 		TSharedPtr<TVector<glm::mat4>> m_cpuBoneMatrices{};
 		uint64_t m_animationRevision = 0ull;
 		EGlobalIlluminationMode m_globalIlluminationMode =
-			EGlobalIlluminationMode::RealtimeAndBaked;
+			EGlobalIlluminationMode::Baked;
 		bool m_bGlobalIlluminationEnabled = true;
 		RHIGlobalIlluminationSnapshotPtr m_globalIllumination{};
 

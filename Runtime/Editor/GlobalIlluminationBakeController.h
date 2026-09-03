@@ -43,10 +43,7 @@ namespace Sailor
 		FileId m_layoutSource{};
 		GIProbesBakeSettings m_settings{};
 		uint32_t m_threadCount = 1u;
-		glm::vec3 m_volumeMin{};
-		glm::vec3 m_volumeMax{};
 		glm::vec3 m_fallbackEnvironment{ 0.03f };
-		bool m_bAutoBounds = true;
 		bool m_bOverwrite = false;
 	};
 

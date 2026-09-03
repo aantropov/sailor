@@ -307,7 +307,7 @@ namespace
 		auto firstGlobalIllumination =
 			RHIGlobalIlluminationSnapshotPtr::Make();
 		firstGlobalIllumination->m_generation = 41u;
-		view.m_globalIlluminationMode = EGlobalIlluminationMode::BakedOnly;
+		view.m_globalIlluminationMode = EGlobalIlluminationMode::Baked;
 		view.m_bGlobalIlluminationEnabled = false;
 		view.m_globalIllumination = firstGlobalIllumination;
 		view.PrepareSnapshots();
@@ -316,16 +316,16 @@ namespace
 			view.m_snapshots[0].m_submissionContext == context &&
 			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades &&
 			view.m_snapshots[0].m_globalIlluminationMode ==
-				EGlobalIlluminationMode::BakedOnly &&
+				EGlobalIlluminationMode::Baked &&
 			!view.m_snapshots[0].m_bGlobalIlluminationEnabled,
 			"preparing a camera snapshot must retain the acquired flight submission context");
 		view.m_renderMode = ESceneViewRenderMode::AmbientOcclusion;
-		view.m_globalIlluminationMode = EGlobalIlluminationMode::Realtime;
+		view.m_globalIlluminationMode = EGlobalIlluminationMode::NoGI;
 		view.m_bGlobalIlluminationEnabled = true;
 		Require(
 			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades &&
 			view.m_snapshots[0].m_globalIlluminationMode ==
-				EGlobalIlluminationMode::BakedOnly &&
+				EGlobalIlluminationMode::Baked &&
 			!view.m_snapshots[0].m_bGlobalIlluminationEnabled,
 			"a prepared frame snapshot must keep its render and GI modes when the next frame changes");
 		auto secondGlobalIllumination =
@@ -356,7 +356,9 @@ namespace
 			IsSceneViewDebugVisualization(
 				ESceneViewRenderMode::GlobalIlluminationOnly) &&
 			IsSceneViewDebugVisualization(
-				ESceneViewRenderMode::GlobalIlluminationFallback),
+				ESceneViewRenderMode::GlobalIlluminationFallback) &&
+			IsSceneViewDebugVisualization(
+				ESceneViewRenderMode::GlobalIlluminationSubdivisions),
 			"CPU path-traced Lit composition must yield to every Scene View debug visualization");
 	}
 

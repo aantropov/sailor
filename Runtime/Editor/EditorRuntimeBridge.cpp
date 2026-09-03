@@ -6,6 +6,8 @@
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Core/Reflection.h"
 #include "ECS/ECS.h"
+#include "ECS/GlobalIlluminationECS.h"
+#include "Engine/World.h"
 #include "Engine/InstanceId.h"
 #include "FrameGraph/EditorReadbackNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
@@ -950,6 +952,51 @@ void Sailor::EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()
 		}
 
 		DispatchEditorInputToRuntime(input);
+	}
+}
+
+void Sailor::EditorRuntime::UpdateRuntimeGIWorkAllowanceOnEngineThread()
+{
+	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	if (!scheduler || !scheduler->IsMainThread())
+	{
+		return;
+	}
+
+	TVector<TSharedPtr<RemoteViewportBinding>> bindings{};
+	{
+		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
+		bindings.Reserve(g_remoteViewportBindings.Num());
+		for (const auto& bindingEntry : g_remoteViewportBindings)
+		{
+			const auto& binding = *bindingEntry.m_second;
+			if (binding)
+			{
+				bindings.Add(binding);
+			}
+		}
+	}
+
+	bool bHasVisibleViewport = false;
+	for (const auto& binding : bindings)
+	{
+		std::lock_guard bindingLock(binding->m_mutex);
+		if (binding->m_created && binding->m_visible)
+		{
+			bHasVisibleViewport = true;
+			break;
+		}
+	}
+
+	auto* editor = App::GetSubmodule<Editor>();
+	auto* world = editor ? editor->GetWorld() : nullptr;
+	auto* globalIllumination = world
+		? world->GetECS<GlobalIlluminationECS>()
+		: nullptr;
+	if (globalIllumination)
+	{
+		globalIllumination->SetRuntimeGIProbesWorkAllowed(
+			bHasVisibleViewport);
 	}
 }
 

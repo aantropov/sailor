@@ -1,4 +1,5 @@
 using SailorEditor.Services;
+using SailorEditor.Settings;
 using SailorEngine;
 
 namespace SailorEditor.Tests;
@@ -107,8 +108,26 @@ public sealed class GIProbesBakeBindingPolicyTests
         IReadOnlyList<GlobalIlluminationProbeRuntimeState>? probes = null,
         string diagnostic = "") => new(
             MaxProbeStatesPerSnapshot: 4,
-            Mode: GlobalIlluminationRuntimeMode.RealtimeAndBaked,
+            Mode: GlobalIlluminationRuntimeMode.Baked,
             Enabled: true,
+            RuntimeSettings: new RuntimeGIProbesSettingsDescriptor(),
+            RuntimeState: new RuntimeGIProbesRuntimeState(
+                Lifecycle: RuntimeGIProbesLifecycleState.Disabled,
+                Enabled: false,
+                Paused: false,
+                PreviewEnabled: false,
+                PreviewBudget: RuntimeGIProbesEditorBudget.Eco,
+                SceneGeneration: 0,
+                LightingGeneration: 0,
+                PublishedRevision: 0,
+                Capacity: 0,
+                ActiveProbeCount: 0,
+                ReadyProbeCount: 0,
+                WorkerCount: 0,
+                PublishedBytes: 0,
+                Coverage: 0,
+                Refinement: 0,
+                Diagnostic: string.Empty),
             Probes: probes ?? [],
             Diagnostic: diagnostic,
             CompositionCount: compositions,
