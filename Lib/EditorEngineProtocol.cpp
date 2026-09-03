@@ -13,10 +13,6 @@
 #include <stdexcept>
 #include <string>
 
-#if defined(GetMessage)
-#undef GetMessage
-#endif
-
 bool Sailor::Protocol::DispatchEditorEngineProtocolOperationOnEditorThread(void*,
 	const EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation,
 	void* operationContext)
