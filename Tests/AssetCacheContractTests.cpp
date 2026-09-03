@@ -751,6 +751,8 @@ namespace
 		TempDirectory directory("canonical-uuid-scan");
 		const Workspace::WorkspaceContext workspaceContext =
 			CreateWorkspaceContext(directory);
+		const FileId portableId =
+			MakeFileId("7810180E-F1BB-4C88-9C9B-28ED9B086974");
 		WriteFile(
 			workspaceContext.GetContent() / "Portable.raw",
 			"portable-source");
@@ -760,19 +762,24 @@ namespace
 			"filename: Portable.raw\n"
 			"testValue: 9\n");
 
-		TargetedUpdateAssetInfoHandler handler;
-		AssetRegistry registry(workspaceContext);
-		RegisterTargetedUpdateHandler(registry, handler);
-		Require(registry.ScanContentFolder() &&
-			registry.CompleteScanProcessing(),
-			"a Windows-style braced UUID must survive staged metadata loading");
+		{
+			TargetedUpdateAssetInfoHandler handler;
+			AssetRegistry registry(workspaceContext);
+			RegisterTargetedUpdateHandler(registry, handler);
+			Require(registry.ScanContentFolder() &&
+				registry.CompleteScanProcessing(),
+				"a Windows-style braced UUID must survive staged metadata loading");
 
-		const FileId portableId =
-			MakeFileId("7810180E-F1BB-4C88-9C9B-28ED9B086974");
-		AssetInfoPtr assetInfo = registry.GetAssetInfoPtr(portableId);
-		Require(assetInfo != nullptr &&
-			assetInfo->GetFileId().ToString() == portableId.ToString(),
-			"the staged registry must publish the canonical cross-platform UUID");
+			AssetInfoPtr assetInfo = registry.GetAssetInfoPtr(portableId);
+			Require(assetInfo != nullptr &&
+				assetInfo->GetFileId().ToString() == portableId.ToString(),
+				"the staged registry must publish the canonical cross-platform UUID");
+		}
+
+		AssetCache reloadedCache;
+		reloadedCache.Initialize(workspaceContext);
+		Require(reloadedCache.Contains(portableId),
+			"the canonical UUID must remain resolvable after reloading the asset cache");
 	}
 
 	void TestPayloadRoundTrip()

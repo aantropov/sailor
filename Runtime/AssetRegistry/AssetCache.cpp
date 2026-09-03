@@ -171,7 +171,14 @@ bool AssetCache::AssetCacheData::Entry::Validate(
 YAML::Node AssetCache::AssetCacheData::Serialize() const
 {
 	YAML::Node result(YAML::NodeType::Map);
-	SERIALIZE_PROPERTY(result, m_assets);
+	YAML::Node assets(YAML::NodeType::Map);
+	for (const auto& asset : m_assets)
+	{
+		assets.force_insert(
+			asset.m_first.ToString(),
+			asset.m_second.Serialize());
+	}
+	result["assets"] = assets;
 	return result;
 }
 
@@ -377,11 +384,24 @@ void AssetCache::LoadCache()
 
 bool AssetCache::WriteCacheLocked(std::string& outDiagnostic) noexcept
 {
+	std::string payload;
+	std::string serializationDiagnostic;
+	if (!External::GuardYamlExceptions(
+		[&]()
+		{
+			payload = SerializeAssetCachePayload(m_cache);
+		},
+		serializationDiagnostic))
+	{
+		outDiagnostic = "Cannot serialize asset cache: " + serializationDiagnostic;
+		return false;
+	}
+
 	std::string envelope;
 	const auto identity = GetConfiguredIdentity();
 	if (!Workspace::SerializeWorkspaceCacheEnvelope(
 		identity,
-		SerializeAssetCachePayload(m_cache),
+		payload,
 		envelope,
 		outDiagnostic))
 	{
