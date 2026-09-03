@@ -159,7 +159,9 @@ namespace Sailor::AssetRegistryInternal
 					}
 
 					outFileId = fileId.as<std::string>();
-					outFileId = FileId(outFileId).ToString();
+					FileId canonicalFileId;
+					canonicalFileId.Deserialize(YAML::Node(outFileId));
+					outFileId = canonicalFileId.ToString();
 					outFilename = filename.as<std::string>();
 					YAML::Node assetInfoType(YAML::NodeType::Undefined);
 					for (const auto& field : metadata)
@@ -201,7 +203,9 @@ namespace Sailor::AssetRegistryInternal
 
 	FileId ParseFileId(const std::string& value)
 	{
-		return FileId(value);
+		FileId fileId;
+		fileId.Deserialize(YAML::Node(value));
+		return fileId;
 	}
 
 	void DeleteAssetInfos(TMap<FileId, AssetInfoPtr>& assetInfos)
