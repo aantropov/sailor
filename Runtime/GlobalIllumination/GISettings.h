@@ -40,6 +40,12 @@ namespace Sailor
 			EGlobalIlluminationProbeMode::Blend;
 		float m_initialWeight = 0.0f;
 		bool m_bPreload = false;
+
+		YAML::Node Serialize() const;
+		bool Deserialize(
+			const YAML::Node& inData,
+			const std::string& name,
+			std::string& outDiagnostic);
 	};
 
 	struct SAILOR_SHARED_API GISettings final

@@ -1,6 +1,8 @@
 #include "GlobalIllumination/RuntimeGIProbesService.h"
 
+#include "Containers/Hash.h"
 #include "GlobalIllumination/GIProbesTracing.h"
+#include "Math/Math.h"
 #include "Sailor.h"
 #include "Tasks/Tasks.h"
 
@@ -19,13 +21,6 @@ using namespace Sailor;
 namespace
 {
 	constexpr uint32_t IrradianceBatchSize = 16u;
-
-	bool IsFinite(const glm::vec3& value) noexcept
-	{
-		return std::isfinite(value.x) &&
-			std::isfinite(value.y) &&
-			std::isfinite(value.z);
-	}
 
 	struct ProbeGridBounds final
 	{
@@ -53,17 +48,16 @@ namespace
 		const RuntimeProbeCellKey& key,
 		uint32_t randomSeed) noexcept
 	{
-		uint32_t hash = randomSeed ^ 0x9e3779b9u;
-		auto mix = [&hash](uint32_t value)
-		{
-			hash ^= value + 0x9e3779b9u + (hash << 6u) + (hash >> 2u);
-		};
-		mix(static_cast<uint32_t>(key.m_worldCell.x));
-		mix(static_cast<uint32_t>(key.m_worldCell.y));
-		mix(static_cast<uint32_t>(key.m_worldCell.z));
-		mix(static_cast<uint32_t>(key.m_geometryGeneration));
-		mix(static_cast<uint32_t>(key.m_geometryGeneration >> 32u));
-		return hash != 0u ? hash : 0x6d2b79f5u;
+		uint64_t hash = Fnv1aOffsetBasis;
+		HashValues(
+			hash,
+			randomSeed,
+			key.m_worldCell.x,
+			key.m_worldCell.y,
+			key.m_worldCell.z,
+			key.m_geometryGeneration);
+		const uint32_t folded = static_cast<uint32_t>(hash ^ (hash >> 32u));
+		return folded != 0u ? folded : 0x6d2b79f5u;
 	}
 
 	bool TryResolveProbeGrid(
@@ -79,7 +73,7 @@ namespace
 
 		const glm::vec3 snappedMin =
 			(glm::floor(bounds.m_min / spacing - 0.5f) + 0.5f) * spacing;
-		if (!IsFinite(snappedMin))
+		if (!Math::AllFinite(snappedMin))
 		{
 			return false;
 		}
@@ -119,7 +113,7 @@ namespace
 
 		const glm::vec3 gridMax = snappedMin +
 			glm::vec3(counts - glm::uvec3(1u)) * spacing;
-		if (!IsFinite(gridMax))
+		if (!Math::AllFinite(gridMax))
 		{
 			return false;
 		}
@@ -448,7 +442,7 @@ struct RuntimeGIProbesService::Impl final
 		std::string& outDiagnostic)
 	{
 		outDiagnostic.clear();
-		if (!IsFinite(request.m_priorityPosition))
+		if (!Math::AllFinite(request.m_priorityPosition))
 		{
 			outDiagnostic =
 				"runtime GI probes require a finite priority position";
@@ -607,7 +601,7 @@ struct RuntimeGIProbesService::Impl final
 					glm::vec3(next.m_data->m_bakeSettings.m_minProbeSpacing *
 						0.0001f)));
 			const bool bPreviousProbeFitsTraceVolume = previousProbe &&
-				IsFinite(previousProbe->m_probe.m_position) &&
+				Math::AllFinite(previousProbe->m_probe.m_position) &&
 				glm::all(glm::greaterThanEqual(
 					previousProbe->m_probe.m_position,
 					brick.m_min)) &&
@@ -1100,8 +1094,10 @@ struct RuntimeGIProbesService::Impl final
 				"runtime GI probes are refining with environment fallback for missing cells";
 		working.m_layoutHash = ComputeGIProbesLayoutHash(working);
 		working.m_transportHash =
-			(m_generation->m_request.m_geometryGeneration << 1u) ^
-			m_generation->m_readyCount ^ 0x9e3779b97f4a7c15ull;
+			m_generation->m_request.m_geometryGeneration;
+		HashCombine(
+			working.m_transportHash,
+			m_generation->m_readyCount);
 		working.m_lightingHash =
 			(m_generation->m_request.m_lightingGeneration << 32u) ^
 			m_nextPublishedRevision;

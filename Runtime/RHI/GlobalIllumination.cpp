@@ -1,5 +1,7 @@
 #include "RHI/GlobalIllumination.h"
 
+#include "Containers/Hash.h"
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -17,30 +19,6 @@ namespace
 	constexpr uint32_t LeafBit = 0x80000000u;
 	constexpr float MaxHalfFloat = 65504.0f;
 	constexpr float PackedCoefficientHeadroom = 60000.0f;
-
-	void HashU32(uint64_t& hash, uint32_t value) noexcept
-	{
-		for (uint32_t shift = 0u; shift < 32u; shift += 8u)
-		{
-			hash ^= static_cast<uint8_t>((value >> shift) & 0xffu);
-			hash *= 1099511628211ull;
-		}
-	}
-
-	void HashU64(uint64_t& hash, uint64_t value) noexcept
-	{
-		HashU32(hash, static_cast<uint32_t>(value));
-		HashU32(hash, static_cast<uint32_t>(value >> 32u));
-	}
-
-	void HashString(uint64_t& hash, const std::string& value) noexcept
-	{
-		for (const char character : value)
-		{
-			hash ^= static_cast<uint8_t>(character);
-			hash *= 1099511628211ull;
-		}
-	}
 
 	float EncodeUint(uint32_t value) noexcept
 	{
@@ -241,30 +219,30 @@ uint64_t Sailor::RHI::ComputeGlobalIlluminationLayoutSignature(
 	{
 		return 0u;
 	}
-	uint64_t hash = 1469598103934665603ull;
-	HashU64(hash, snapshot.m_layout->m_layoutHash);
-	HashU64(hash, snapshot.m_layout->m_transportHash);
-	HashU64(
+	uint64_t hash = Fnv1aOffsetBasis;
+	HashValue(hash, snapshot.m_layout->m_layoutHash);
+	HashValue(hash, snapshot.m_layout->m_transportHash);
+	HashValue(
 		hash,
 		static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
 			snapshot.m_layout.GetRawPtr())));
-	HashU64(hash, snapshot.m_layout->m_bricks.Num());
-	HashU64(hash, snapshot.m_layout->m_probes.Num());
+	HashValue(hash, static_cast<uint64_t>(snapshot.m_layout->m_bricks.Num()));
+	HashValue(hash, static_cast<uint64_t>(snapshot.m_layout->m_probes.Num()));
 	return hash;
 }
 
 uint64_t Sailor::RHI::ComputeGlobalIlluminationCoefficientSignature(
 	const RHIGlobalIlluminationSnapshot& snapshot) noexcept
 {
-	uint64_t hash = 1469598103934665603ull;
-	HashU64(hash, snapshot.m_states.Num());
+	uint64_t hash = Fnv1aOffsetBasis;
+	HashValue(hash, static_cast<uint64_t>(snapshot.m_states.Num()));
 	for (const RHIGlobalIlluminationState& state : snapshot.m_states)
 	{
-		HashU64(
+		HashValue(
 			hash,
 			static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
 				state.m_data.GetRawPtr())));
-		HashU64(hash, state.m_data ? state.m_data->m_lightingHash : 0u);
+		HashValue(hash, state.m_data ? state.m_data->m_lightingHash : 0u);
 	}
 	return hash;
 }
@@ -272,16 +250,20 @@ uint64_t Sailor::RHI::ComputeGlobalIlluminationCoefficientSignature(
 uint64_t Sailor::RHI::ComputeGlobalIlluminationStateSignature(
 	const RHIGlobalIlluminationSnapshot& snapshot) noexcept
 {
-	uint64_t hash = 1469598103934665603ull;
-	HashU64(hash, snapshot.m_generation);
-	HashU64(hash, snapshot.m_lightingHash);
-	HashU32(hash, snapshot.m_qualityBudget);
+	uint64_t hash = Fnv1aOffsetBasis;
+	HashValues(
+		hash,
+		snapshot.m_generation,
+		snapshot.m_lightingHash,
+		snapshot.m_qualityBudget);
 	for (const RHIGlobalIlluminationState& state : snapshot.m_states)
 	{
 		HashString(hash, state.m_name);
-		HashU64(hash, state.m_asset.GetHash());
-		HashU32(hash, std::bit_cast<uint32_t>(state.m_effectiveWeight));
-		HashU32(hash, static_cast<uint32_t>(state.m_mode));
+		HashValues(
+			hash,
+			static_cast<uint64_t>(state.m_asset.GetHash()),
+			std::bit_cast<uint32_t>(state.m_effectiveWeight),
+			static_cast<uint32_t>(state.m_mode));
 	}
 	return hash;
 }
@@ -652,9 +634,11 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuStates(
 				outDiagnostic = "global-illumination state metadata is invalid";
 				return false;
 			}
-			uint64_t assetHash = 1469598103934665603ull;
+			uint64_t assetHash = Fnv1aOffsetBasis;
 			HashString(assetHash, source.m_name);
-			HashU64(assetHash, source.m_asset.GetHash());
+			HashValue(
+				assetHash,
+				static_cast<uint64_t>(source.m_asset.GetHash()));
 			const float debugHue = static_cast<float>(assetHash & 0x00ffffffu) /
 				static_cast<float>(0x00ffffffu);
 			RHIGlobalIlluminationGpuState state;

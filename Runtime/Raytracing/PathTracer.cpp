@@ -979,7 +979,7 @@ namespace
 
 	size_t ComputeMaterialsSignature(const TVector<MaterialPtr>& materials)
 	{
-		size_t hash = 1469598103934665603ull;
+		size_t hash = Fnv1aOffsetBasis;
 		for (const auto& material : materials)
 		{
 			size_t value = material ? material.GetHash() : 0;
@@ -987,7 +987,7 @@ namespace
 			{
 				HashCombine(value, material->GetContentRevision());
 			}
-			hash ^= value + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+			HashCombine(hash, value);
 		}
 		return hash;
 	}

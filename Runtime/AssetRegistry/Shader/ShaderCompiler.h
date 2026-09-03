@@ -115,8 +115,8 @@ namespace Sailor
 		const bool bShouldAutoCompileAllPermutations = false;
 
 	public:
-		// Bump whenever generated shader source or compiled artifact semantics change.
-		static constexpr uint32_t CacheProducerVersion = 8;
+		// Keep pre-release generated shader artifacts at version 1.
+		static constexpr uint32_t CacheProducerVersion = 1;
 
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 

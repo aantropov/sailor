@@ -8,9 +8,9 @@
 #include <iterator>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <string>
-#include <type_traits>
 
 #include <nlohmann/json.hpp>
 
@@ -23,8 +23,10 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/GeneratedModelAssetMetadata.h"
+#include "AssetRegistry/Model/ModelLodCache.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "ModelAssetInfo.h"
+#include "Core/StringHash.h"
 #include "Core/Utils.h"
 #include "YamlExceptionBoundary.h"
 #include "Math/Math.h"
@@ -61,298 +63,7 @@ namespace
 		4ull * 1024ull * 1024ull;
 	constexpr int32_t MaxFingerprintTextureDimension = 256;
 	constexpr int32_t FingerprintImageDimension = 256;
-	constexpr uint32_t ModelLodCacheVersion = 3u;
 	constexpr uint32_t MaxGeneratedModelLods = 8u;
-	constexpr uint64_t MaxModelLodCacheBytes = 1024ull * 1024ull * 1024ull;
-	constexpr std::array<char, 8> ModelLodCacheMagic = {
-		'S', 'A', 'I', 'L', 'L', 'O', 'D', '\0'
-	};
-
-	struct ModelLodCacheHeader
-	{
-		std::array<char, 8> m_magic{};
-		uint32_t m_version = ModelLodCacheVersion;
-		uint32_t m_vertexStride = 0u;
-		uint32_t m_meshCount = 0u;
-		uint32_t m_lodLevel = 0u;
-		int64_t m_sourceModificationTime = 0;
-		uint64_t m_sourceSize = 0u;
-		uint64_t m_sourceContentHash = 0u;
-		float m_unitScale = 1.0f;
-		float m_reductionFactor = 0.5f;
-		uint32_t m_bBatchByMaterial = 0u;
-		uint32_t m_bFlipTexcoordY = 0u;
-	};
-
-	struct ModelLodCacheMeshHeader
-	{
-		uint64_t m_vertexCount = 0u;
-		uint64_t m_indexCount = 0u;
-	};
-
-	std::filesystem::path GetModelLodCachePath(
-		const FileId& fileId,
-		uint32_t lodLevel)
-	{
-		const std::filesystem::path filename =
-			ModelImporter::GetLodCacheFilename(fileId, lodLevel);
-		if (filename.empty())
-		{
-			return {};
-		}
-
-		return std::filesystem::path(AssetRegistry::GetCacheFolder()) /
-			"Lods" /
-			filename;
-	}
-
-	template<typename T>
-	void AppendModelLodCacheBytes(std::string& output, const T& value)
-	{
-		static_assert(std::is_trivially_copyable_v<T>);
-		output.append(
-			reinterpret_cast<const char*>(&value),
-			sizeof(T));
-	}
-
-	void AppendModelLodCacheRange(
-		std::string& output,
-		const void* data,
-		size_t size)
-	{
-		if (data != nullptr && size > 0u)
-		{
-			output.append(static_cast<const char*>(data), size);
-		}
-	}
-
-	template<typename T>
-	bool ReadModelLodCacheValue(
-		const std::string& input,
-		size_t& offset,
-		T& value)
-	{
-		static_assert(std::is_trivially_copyable_v<T>);
-		if (offset > input.size() || sizeof(T) > input.size() - offset)
-		{
-			return false;
-		}
-
-		std::memcpy(&value, input.data() + offset, sizeof(T));
-		offset += sizeof(T);
-		return true;
-	}
-
-	bool ReadModelLodCacheRange(
-		const std::string& input,
-		size_t& offset,
-		void* data,
-		size_t size)
-	{
-		if (offset > input.size() || size > input.size() - offset ||
-			(data == nullptr && size > 0u))
-		{
-			return false;
-		}
-
-		if (size > 0u)
-		{
-			std::memcpy(data, input.data() + offset, size);
-		}
-		offset += size;
-		return true;
-	}
-
-	bool IsModelLodCacheHeaderCurrent(
-		const ModelLodCacheHeader& header,
-		const ModelAssetInfo& assetInfo,
-		const FileRevision& sourceRevision,
-		uint32_t lodLevel,
-		size_t meshCount)
-	{
-		return header.m_magic == ModelLodCacheMagic &&
-			header.m_version == ModelLodCacheVersion &&
-			header.m_vertexStride == sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) &&
-			header.m_meshCount == meshCount &&
-			header.m_lodLevel == lodLevel &&
-			header.m_sourceModificationTime == sourceRevision.m_modificationTimeNanoseconds &&
-			header.m_sourceSize == sourceRevision.m_fileSize &&
-			header.m_sourceContentHash == sourceRevision.m_contentHash &&
-			header.m_unitScale == assetInfo.GetUnitScale() &&
-			header.m_reductionFactor == assetInfo.GetLodReductionFactor() &&
-			header.m_bBatchByMaterial == static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial()) &&
-			header.m_bFlipTexcoordY == static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY());
-	}
-
-	bool LoadModelLodCache(
-		const ModelAssetInfo& assetInfo,
-		const FileRevision& sourceRevision,
-		uint32_t lodLevel,
-		TVector<ModelImporter::MeshContext>& meshes)
-	{
-		const std::filesystem::path path = GetModelLodCachePath(
-			assetInfo.GetFileId(),
-			lodLevel);
-		std::error_code error;
-		const uint64_t fileSize = path.empty() ? 0u :
-			std::filesystem::file_size(path, error);
-		if (error || fileSize < sizeof(ModelLodCacheHeader) ||
-			fileSize > MaxModelLodCacheBytes)
-		{
-			return false;
-		}
-
-		std::ifstream input(path, std::ios::binary);
-		std::string bytes{
-			std::istreambuf_iterator<char>(input),
-			std::istreambuf_iterator<char>() };
-		if (input.bad() || bytes.size() != fileSize)
-		{
-			return false;
-		}
-
-		size_t offset = 0u;
-		ModelLodCacheHeader header{};
-		if (!ReadModelLodCacheValue(bytes, offset, header) ||
-			!IsModelLodCacheHeaderCurrent(
-				header,
-				assetInfo,
-				sourceRevision,
-				lodLevel,
-				meshes.Num()))
-		{
-			return false;
-		}
-
-		TVector<ModelImporter::MeshContext::LodGeometry> loaded;
-		loaded.Resize(meshes.Num());
-		for (size_t meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
-		{
-			ModelLodCacheMeshHeader meshHeader{};
-			if (!ReadModelLodCacheValue(bytes, offset, meshHeader) ||
-				meshHeader.m_vertexCount > std::numeric_limits<uint32_t>::max() ||
-				meshHeader.m_indexCount > std::numeric_limits<uint32_t>::max())
-			{
-				return false;
-			}
-
-			const uint64_t vertexBytes = meshHeader.m_vertexCount *
-				sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
-			const uint64_t indexBytes = meshHeader.m_indexCount * sizeof(uint32_t);
-			if (vertexBytes > MaxModelLodCacheBytes ||
-				indexBytes > MaxModelLodCacheBytes ||
-				vertexBytes + indexBytes > MaxModelLodCacheBytes)
-			{
-				return false;
-			}
-
-			auto& lod = loaded[meshIndex];
-			lod.m_vertices.Resize(static_cast<size_t>(meshHeader.m_vertexCount));
-			lod.m_indices.Resize(static_cast<size_t>(meshHeader.m_indexCount));
-			if (!ReadModelLodCacheRange(
-					bytes,
-					offset,
-					lod.m_vertices.GetData(),
-					static_cast<size_t>(vertexBytes)) ||
-				!ReadModelLodCacheRange(
-					bytes,
-					offset,
-					lod.m_indices.GetData(),
-					static_cast<size_t>(indexBytes)))
-			{
-				return false;
-			}
-
-			for (uint32_t index : lod.m_indices)
-			{
-				if (index >= lod.m_vertices.Num())
-				{
-					return false;
-				}
-			}
-		}
-
-		if (offset != bytes.size())
-		{
-			return false;
-		}
-
-		const size_t lodIndex = static_cast<size_t>(lodLevel - 1u);
-		for (size_t meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
-		{
-			meshes[meshIndex].lods.Resize((std::max)(
-				meshes[meshIndex].lods.Num(),
-				lodIndex + 1u));
-			meshes[meshIndex].lods[lodIndex] = std::move(loaded[meshIndex]);
-		}
-		return true;
-	}
-
-	void SaveModelLodCache(
-		const ModelAssetInfo& assetInfo,
-		const FileRevision& sourceRevision,
-		uint32_t lodLevel,
-		const TVector<ModelImporter::MeshContext>& meshes)
-	{
-		ModelLodCacheHeader header{};
-		header.m_magic = ModelLodCacheMagic;
-		header.m_vertexStride = sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
-		header.m_meshCount = static_cast<uint32_t>(meshes.Num());
-		header.m_lodLevel = lodLevel;
-		header.m_sourceModificationTime = sourceRevision.m_modificationTimeNanoseconds;
-		header.m_sourceSize = sourceRevision.m_fileSize;
-		header.m_sourceContentHash = sourceRevision.m_contentHash;
-		header.m_unitScale = assetInfo.GetUnitScale();
-		header.m_reductionFactor = assetInfo.GetLodReductionFactor();
-		header.m_bBatchByMaterial = static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial());
-		header.m_bFlipTexcoordY = static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY());
-
-		std::string bytes;
-		AppendModelLodCacheBytes(bytes, header);
-		const size_t lodIndex = static_cast<size_t>(lodLevel - 1u);
-		for (const auto& mesh : meshes)
-		{
-			const auto* lod = lodIndex < mesh.lods.Num() ?
-				&mesh.lods[lodIndex] : nullptr;
-			ModelLodCacheMeshHeader meshHeader{};
-			meshHeader.m_vertexCount = lod ? lod->m_vertices.Num() : 0u;
-			meshHeader.m_indexCount = lod ? lod->m_indices.Num() : 0u;
-			AppendModelLodCacheBytes(bytes, meshHeader);
-			if (lod)
-			{
-				AppendModelLodCacheRange(
-					bytes,
-					lod->m_vertices.GetData(),
-					lod->m_vertices.Num() * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4));
-				AppendModelLodCacheRange(
-					bytes,
-					lod->m_indices.GetData(),
-					lod->m_indices.Num() * sizeof(uint32_t));
-			}
-		}
-
-		if (bytes.size() > MaxModelLodCacheBytes)
-		{
-			return;
-		}
-
-		std::string diagnostic;
-		const std::filesystem::path path = GetModelLodCachePath(
-			assetInfo.GetFileId(),
-			lodLevel);
-		if (!path.empty() &&
-			!Workspace::AtomicReplaceWorkspaceCacheBinary(
-				path,
-				bytes.data(),
-				bytes.size(),
-				diagnostic))
-		{
-			SAILOR_LOG(
-				"Cannot save model LOD cache %s: %s",
-				path.string().c_str(),
-				diagnostic.c_str());
-		}
-	}
 
 	bool TryNormalizeLodDirection(
 		const glm::vec3& value,
@@ -566,7 +277,7 @@ namespace
 
 		for (uint32_t lodLevel = 1u; lodLevel <= numLods; ++lodLevel)
 		{
-			if (LoadModelLodCache(
+			if (ModelLodCache::Load(
 					assetInfo,
 					sourceRevision,
 					lodLevel,
@@ -584,7 +295,7 @@ namespace
 				mesh.lods.Resize((std::max)(mesh.lods.Num(), lodIndex + 1u));
 				mesh.lods[lodIndex] = GenerateModelLod(mesh, targetRatio);
 			}
-			SaveModelLodCache(
+			ModelLodCache::Save(
 				assetInfo,
 				sourceRevision,
 				lodLevel,
@@ -592,67 +303,94 @@ namespace
 		}
 	}
 
-	bool IsFiniteGltfMatrix(const glm::mat4& matrix)
-	{
-		for (int32_t column = 0; column < 4; ++column)
-		{
-			if (!Math::AllFinite(matrix[column]))
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	bool IsFiniteGltfMatrix(const glm::mat3& matrix)
-	{
-		for (int32_t column = 0; column < 3; ++column)
-		{
-			if (!Math::AllFinite(matrix[column]))
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	struct FingerprintRequest
+	struct FingerprintRequest final
 	{
 		uint64_t m_generation = 0;
 		FileRevision m_sourceRevision{};
+
+		bool operator==(const FingerprintRequest& rhs) const noexcept
+		{
+			return m_generation == rhs.m_generation &&
+				m_sourceRevision == rhs.m_sourceRevision;
+		}
 	};
 
-	struct FingerprintTaskChain
+	class FingerprintRequests final
 	{
+	public:
+		template<typename Invalidate>
+		FingerprintRequest Begin(
+			const FileId& fileId,
+			const FileRevision& sourceRevision,
+			Invalidate&& invalidate)
+		{
+			const std::lock_guard<std::mutex> lock(m_mutex);
+			FingerprintRequest request{ ++m_nextGeneration, sourceRevision };
+			m_requests[fileId] = request;
+			invalidate();
+			return request;
+		}
+
+		bool IsCurrent(
+			const FileId& fileId,
+			const FingerprintRequest& request)
+		{
+			const std::lock_guard<std::mutex> lock(m_mutex);
+			return IsCurrentLocked(fileId, request);
+		}
+
+		void Complete(
+			const FileId& fileId,
+			const FingerprintRequest& request)
+		{
+			const std::lock_guard<std::mutex> lock(m_mutex);
+			if (IsCurrentLocked(fileId, request))
+			{
+				m_requests.Remove(fileId);
+			}
+		}
+
+		template<typename Action>
+		bool PublishIfCurrent(
+			const FileId& fileId,
+			const FingerprintRequest& request,
+			Action&& action)
+		{
+			const std::lock_guard<std::mutex> lock(m_mutex);
+			return IsCurrentLocked(fileId, request) && action();
+		}
+
+	private:
+		bool IsCurrentLocked(
+			const FileId& fileId,
+			const FingerprintRequest& request)
+		{
+			FingerprintRequest* current = nullptr;
+			return m_requests.Find(fileId, current) &&
+				current != nullptr && *current == request;
+		}
+
 		std::mutex m_mutex;
-		uint64_t m_nextRequestGeneration = 0;
+		uint64_t m_nextGeneration = 0;
 		TMap<FileId, FingerprintRequest> m_requests;
 	};
 
-	struct ActiveFingerprintRequest
+	FingerprintRequests& GetFingerprintRequests()
 	{
-		uint64_t m_generation = 0;
-		FileRevision m_sourceRevision{};
-		bool m_bValid = false;
-	};
+		static FingerprintRequests requests;
+		return requests;
+	}
 
-	thread_local ActiveFingerprintRequest g_activeFingerprintRequest;
+	thread_local std::optional<FingerprintRequest> g_activeFingerprintRequest;
 
 	class ActiveFingerprintRequestScope final
 	{
 	public:
-		ActiveFingerprintRequestScope(
-			uint64_t generation,
-			const FileRevision& sourceRevision) :
+		explicit ActiveFingerprintRequestScope(
+			const FingerprintRequest& request) :
 			m_previous(g_activeFingerprintRequest)
 		{
-			g_activeFingerprintRequest = {
-				generation,
-				sourceRevision,
-				true
-			};
+			g_activeFingerprintRequest = request;
 		}
 
 		~ActiveFingerprintRequestScope()
@@ -661,14 +399,8 @@ namespace
 		}
 
 	private:
-		ActiveFingerprintRequest m_previous{};
+		std::optional<FingerprintRequest> m_previous;
 	};
-
-	FingerprintTaskChain& GetFingerprintTaskChain()
-	{
-		static FingerprintTaskChain taskChain;
-		return taskChain;
-	}
 
 	class StbiImageData final
 	{
@@ -720,20 +452,6 @@ namespace
 		return std::filesystem::path(AssetRegistry::GetCacheFolder()) /
 			"Fingerprints" /
 			filename;
-	}
-
-	bool IsFingerprintRequestCurrent(
-		const FileId& fileId,
-		uint64_t generation,
-		const FileRevision& sourceRevision)
-	{
-		FingerprintTaskChain& taskChain = GetFingerprintTaskChain();
-		const std::lock_guard<std::mutex> lock(taskChain.m_mutex);
-		FingerprintRequest* request = nullptr;
-		return taskChain.m_requests.Find(fileId, request) &&
-			request != nullptr &&
-			request->m_generation == generation &&
-			request->m_sourceRevision == sourceRevision;
 	}
 
 	struct EncodedFingerprint
@@ -2881,7 +2599,7 @@ bool GltfImporterUtils::TryComposeNodeMatrix(
 			}
 		}
 
-		return IsFiniteGltfMatrix(outMatrix);
+		return Math::AllFinite(outMatrix);
 	}
 
 	if ((!node.translation.empty() && node.translation.size() != 3) ||
@@ -2931,7 +2649,7 @@ bool GltfImporterUtils::TryComposeNodeMatrix(
 	outMatrix = glm::translate(glm::mat4(1.0f), translation) *
 		glm::mat4_cast(rotation) *
 		glm::scale(glm::mat4(1.0f), scale);
-	return IsFiniteGltfMatrix(outMatrix);
+	return Math::AllFinite(outMatrix);
 }
 
 bool GltfImporterUtils::IsMaterialUsedBySkinnedMesh(
@@ -3050,8 +2768,8 @@ bool GltfImporterUtils::CollectSceneNodes(
 				scaledLocalMatrix[3].z *= unitScale;
 				const glm::mat4 worldMatrix =
 					pending.m_parentWorldMatrix * scaledLocalMatrix;
-				if (!IsFiniteGltfMatrix(scaledLocalMatrix) ||
-					!IsFiniteGltfMatrix(worldMatrix))
+				if (!Math::AllFinite(scaledLocalMatrix) ||
+					!Math::AllFinite(worldMatrix))
 				{
 					return false;
 				}
@@ -3495,7 +3213,7 @@ bool Model::BuildBLASData(
 		{
 			const glm::mat3 inverseTranspose =
 				glm::transpose(glm::inverse(linearMatrix));
-			if (IsFiniteGltfMatrix(inverseTranspose))
+			if (Math::AllFinite(inverseTranspose))
 			{
 				normalMatrix = inverseTranspose;
 			}
@@ -3924,25 +3642,20 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 		return;
 	}
 
-	FingerprintTaskChain& taskChain = GetFingerprintTaskChain();
-	uint64_t generation = 0;
-	{
-		const std::lock_guard<std::mutex> lock(taskChain.m_mutex);
-		generation = ++taskChain.m_nextRequestGeneration;
-		taskChain.m_requests[fileId] = {
-			generation,
-			sourceRevision
-		};
-
-		std::error_code removeError;
-		std::filesystem::remove(outputPath, removeError);
-		if (removeError)
+	std::error_code removeError;
+	const FingerprintRequest request = GetFingerprintRequests().Begin(
+		fileId,
+		sourceRevision,
+		[&]()
 		{
-			SAILOR_LOG_ERROR(
-				"Cannot invalidate previous model fingerprint '%s': %s",
-				outputPath.string().c_str(),
-				removeError.message().c_str());
-		}
+			std::filesystem::remove(outputPath, removeError);
+		});
+	if (removeError)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot invalidate previous model fingerprint '%s': %s",
+			outputPath.string().c_str(),
+			removeError.message().c_str());
 	}
 
 	Tasks::CreateTask(
@@ -3954,18 +3667,13 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 			bShouldBatchByMaterial,
 			bFlipTexcoordY,
 			outputPath,
-			generation,
-			sourceRevision
+			request
 		]()
 		{
-			if (IsFingerprintRequestCurrent(
-				fileId,
-				generation,
-				sourceRevision))
+			FingerprintRequests& requests = GetFingerprintRequests();
+			if (requests.IsCurrent(fileId, request))
 			{
-				const ActiveFingerprintRequestScope requestScope(
-					generation,
-					sourceRevision);
+				const ActiveFingerprintRequestScope requestScope(request);
 				GenerateFingerprint(
 					fileId,
 					assetFilepath,
@@ -3974,21 +3682,7 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 					bFlipTexcoordY,
 					outputPath.string());
 			}
-
-			FingerprintTaskChain& completedTaskChain =
-				GetFingerprintTaskChain();
-			const std::lock_guard<std::mutex> completedLock(
-				completedTaskChain.m_mutex);
-			FingerprintRequest* completedRequest = nullptr;
-			if (completedTaskChain.m_requests.Find(
-				fileId,
-				completedRequest) &&
-				completedRequest != nullptr &&
-				completedRequest->m_generation == generation &&
-				completedRequest->m_sourceRevision == sourceRevision)
-			{
-				completedTaskChain.m_requests.Remove(fileId);
-			}
+			requests.Complete(fileId, request);
 		},
 		EThreadType::Background)->Run();
 }
@@ -4239,7 +3933,7 @@ bool ModelImporter::GenerateFingerprint(
 				RHI::ECullMode::Back,
 			alphaModeSettings.m_blendMode,
 			RHI::EFillMode::Fill,
-			GetHash(alphaModeSettings.m_renderQueue)));
+			StringHash::Runtime(alphaModeSettings.m_renderQueue).GetHash()));
 
 		const auto& pbr = sourceMaterial.pbrMetallicRoughness;
 		material->SetUniform(
@@ -4473,7 +4167,7 @@ bool ModelImporter::GenerateFingerprint(
 		return false;
 	}
 
-	if (!g_activeFingerprintRequest.m_bValid)
+	if (!g_activeFingerprintRequest)
 	{
 		SAILOR_LOG_ERROR(
 			"Cannot publish a model fingerprint without request context: %s",
@@ -4486,7 +4180,7 @@ bool ModelImporter::GenerateFingerprint(
 		assetFilepath,
 		currentSourceRevision) ||
 		currentSourceRevision !=
-			g_activeFingerprintRequest.m_sourceRevision)
+			g_activeFingerprintRequest->m_sourceRevision)
 	{
 		SAILOR_LOG(
 			"Discarded stale model fingerprint: %s",
@@ -4494,33 +4188,32 @@ bool ModelImporter::GenerateFingerprint(
 		return false;
 	}
 
-	FingerprintTaskChain& taskChain = GetFingerprintTaskChain();
-	const std::lock_guard<std::mutex> lock(taskChain.m_mutex);
-	FingerprintRequest* request = nullptr;
-	if (!taskChain.m_requests.Find(fileId, request) ||
-		request == nullptr ||
-		request->m_generation !=
-			g_activeFingerprintRequest.m_generation ||
-		request->m_sourceRevision !=
-			g_activeFingerprintRequest.m_sourceRevision)
-	{
-		SAILOR_LOG(
-			"Discarded superseded model fingerprint: %s",
-			assetFilepath.c_str());
-		return false;
-	}
-
 	std::string diagnostic;
-	if (!Workspace::AtomicReplaceWorkspaceCacheBinary(
-		std::filesystem::path(outputPath),
-		encoded.m_bytes.GetData(),
-		static_cast<uint64_t>(encoded.m_bytes.Num()),
-		diagnostic))
+	if (!GetFingerprintRequests().PublishIfCurrent(
+			fileId,
+			*g_activeFingerprintRequest,
+			[&]()
+			{
+				return Workspace::AtomicReplaceWorkspaceCacheBinary(
+					std::filesystem::path(outputPath),
+					encoded.m_bytes.GetData(),
+					static_cast<uint64_t>(encoded.m_bytes.Num()),
+					diagnostic);
+			}))
 	{
-		SAILOR_LOG_ERROR(
-			"Cannot atomically publish model fingerprint '%s': %s",
-			outputPath.c_str(),
-			diagnostic.c_str());
+		if (diagnostic.empty())
+		{
+			SAILOR_LOG(
+				"Discarded superseded model fingerprint: %s",
+				assetFilepath.c_str());
+		}
+		else
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot atomically publish model fingerprint '%s': %s",
+				outputPath.c_str(),
+				diagnostic.c_str());
+		}
 		return false;
 	}
 
@@ -5122,7 +4815,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			material.doubleSided ? RHI::ECullMode::None : RHI::ECullMode::Back,
 			alphaModeSettings.m_blendMode,
 			RHI::EFillMode::Fill,
-			GetHash(data.m_renderQueue));
+			StringHash::Runtime(data.m_renderQueue).GetHash());
 
 		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard_glTF.shader");
 		for (const auto& sampler : data.m_samplers)
@@ -6232,15 +5925,12 @@ bool ModelImporter::ImportModel(
 						ReadAccessorFloat(inverseBindView, i, component);
 				}
 
-				for (int32_t column = 0; column < 4; ++column)
+				if (!Math::AllFinite(parsedInverseBind[i]))
 				{
-					if (!Math::AllFinite(parsedInverseBind[i][column]))
-					{
-						SAILOR_LOG_ERROR(
-							"Cannot import non-finite inverse-bind matrix: %s",
-							assetFilepath.c_str());
-						return false;
-					}
+					SAILOR_LOG_ERROR(
+						"Cannot import non-finite inverse-bind matrix: %s",
+						assetFilepath.c_str());
+					return false;
 				}
 			}
 		}
@@ -6360,7 +6050,7 @@ bool ModelImporter::ImportModel(
 		{
 			const glm::mat3 inverseTranspose =
 				glm::transpose(glm::inverse(directionTransform));
-			if (IsFiniteGltfMatrix(inverseTranspose))
+			if (Math::AllFinite(inverseTranspose))
 			{
 				normalTransform = inverseTranspose;
 			}

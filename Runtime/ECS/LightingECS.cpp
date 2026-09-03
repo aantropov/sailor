@@ -36,22 +36,6 @@ namespace
 		return snapshot;
 	}
 
-	bool AreMatricesExactlyEqual(const glm::mat4& lhs, const glm::mat4& rhs)
-	{
-		for (glm::length_t column = 0; column < lhs.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < lhs[column].length(); ++row)
-			{
-				if (lhs[column][row] != rhs[column][row])
-				{
-					return false;
-		}
-			}
-		}
-
-		return true;
-	}
-
 	void ResolveShadowCasterUpdatePolicy(
 		const TVector<RHI::RHIVisibleShadowCaster>& casters,
 		bool& outContainsDynamicCasters,
@@ -117,7 +101,7 @@ bool CSMLightState::CanReuse(
 {
 	if (m_componentIndex != componentIndex ||
 		m_shadowType != shadowType ||
-		!AreMatricesExactlyEqual(m_lightMatrix, lightMatrix) ||
+		!Math::AreExactlyEqual(m_lightMatrix, lightMatrix) ||
 		!m_submissionToken ||
 		(!m_submissionToken->IsSuccessful() &&
 			(!m_submissionToken->IsPending() ||

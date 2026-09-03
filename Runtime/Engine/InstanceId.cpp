@@ -1,4 +1,5 @@
 #include "Engine/InstanceId.h"
+#include "Containers/Hash.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -6,8 +7,6 @@
 #include <combaseapi.h>
 #endif
 #include <random>
-#include <iomanip>
-#include <sstream>
 #include <string_view>
 
 using namespace Sailor;
@@ -60,6 +59,11 @@ namespace
 
 const InstanceId InstanceId::Invalid = InstanceId();
 
+InstanceId::InstanceId(std::string_view value)
+{
+	Assign(value);
+}
+
 YAML::Node InstanceId::Serialize() const
 {
 	YAML::Node outData;
@@ -97,23 +101,41 @@ bool InstanceId::operator==(const InstanceId& rhs) const
 
 InstanceId InstanceId::GenerateNewInstanceId()
 {
-	InstanceId newInstanceId;
-
 	std::random_device rd;
 	std::mt19937_64 gen(rd());
 	std::uniform_int_distribution<uint64_t> dis;
-
-	uint64_t randomNumber = dis(gen);
+	const uint64_t randomNumber = dis(gen);
 	const uint16_t randomSuffix = static_cast<uint16_t>(dis(gen));
+	return FromHash(randomNumber, randomSuffix);
+}
 
-	std::stringstream ss;
-	ss << std::uppercase << std::hex << std::setfill('0')
-		<< std::setw(16) << randomNumber
-		<< std::setw(4) << randomSuffix;
+InstanceId InstanceId::GenerateDeterministic(
+	std::initializer_list<std::string_view> values,
+	uint32_t variant)
+{
+	uint64_t hash = Fnv1aOffsetBasis;
+	for (const std::string_view value : values)
+	{
+		HashString(hash, value);
+		HashString(hash, "|");
+	}
+	HashString(hash, std::to_string(variant));
 
-	newInstanceId.Assign(ss.str());
+	uint64_t suffix = hash;
+	HashString(suffix, "|suffix");
+	return FromHash(hash, static_cast<uint16_t>(suffix));
+}
 
-	return newInstanceId;
+InstanceId InstanceId::FromHash(uint64_t hash, uint16_t suffix)
+{
+	char value[21]{};
+	std::snprintf(
+		value,
+		sizeof(value),
+		"%016llX%04X",
+		static_cast<unsigned long long>(hash),
+		static_cast<unsigned int>(suffix));
+	return InstanceId(value);
 }
 
 InstanceId InstanceId::GenerateNewComponentId(const InstanceId& gameObjectId)

@@ -6,6 +6,7 @@
 #include "FrameGraph/DepthPrepassNode.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/ShadowPrepassNode.h"
+#include "Core/StringHash.h"
 #include "Raytracing/MaterialUtils.h"
 #include "RHI/Buffer.h"
 #include "RHI/Material.h"
@@ -869,7 +870,7 @@ namespace
 			RHI::ECullMode::Back,
 			RHI::EBlendMode::None,
 			RHI::EFillMode::Fill,
-			GetHash(std::string("Transparent"))));
+			"Transparent"_h.GetHash()));
 		Require(material->GetContentRevision() > revision,
 			"changing render state must advance the material content revision");
 		Require(material->GetRenderMetadataRevision() > renderMetadataRevision,

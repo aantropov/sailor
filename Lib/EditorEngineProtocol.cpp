@@ -64,8 +64,6 @@ namespace
 {
 	using Sailor::Protocol::EEditorEngineTransportStatus;
 	using Sailor::Protocol::EditorEngineProtocolMaxPayloadSize;
-	using Sailor::Protocol::EditorEngineProtocolLatestVersion;
-	using Sailor::Protocol::EditorEngineProtocolStrictInstanceIdsVersion;
 	using Sailor::Protocol::EditorEngineProtocolVersion;
 	using sailor::editor::v1::EditorRenderMode;
 	using sailor::editor::v1::ProtocolRequest;
@@ -301,16 +299,8 @@ namespace
 		{
 			return !bRequired;
 		}
-		try
-		{
-			outFileId.Deserialize(YAML::Node(value));
-			return static_cast<bool>(outFileId);
-		}
-		catch (...)
-		{
-			outFileId = {};
-			return false;
-		}
+		outFileId = Sailor::FileId(value);
+		return static_cast<bool>(outFileId);
 	}
 
 	sailor::editor::v1::GIProbesBakeState ToProtocolBakeState(
@@ -2452,24 +2442,11 @@ int32_t Sailor::Protocol::InvokeEditorEngineProtocol(
 	}
 
 	ProtocolResponse response;
-	const bool bUsesStrictInstanceIdsVersion =
-		request.protocol_version() ==
-			EditorEngineProtocolStrictInstanceIdsVersion;
-	response.set_protocol_version(
-		bUsesStrictInstanceIdsVersion
-			? EditorEngineProtocolStrictInstanceIdsVersion
-			: request.protocol_version() == EditorEngineProtocolVersion
-				? EditorEngineProtocolVersion
-				: EditorEngineProtocolLatestVersion);
+	response.set_protocol_version(EditorEngineProtocolVersion);
 	response.set_request_id(request.request_id());
 	response.set_supports_strict_instance_ids(true);
 
-	const bool bRequestsStrictInstanceIds =
-		request.command_case() ==
-			ProtocolRequest::kInstantiatePrefabFromYaml &&
-		request.instantiate_prefab_from_yaml().strict_instance_ids();
-	if (request.protocol_version() != EditorEngineProtocolVersion &&
-		!bUsesStrictInstanceIdsVersion)
+	if (request.protocol_version() != EditorEngineProtocolVersion)
 	{
 		SetError(
 			response,
@@ -2477,30 +2454,7 @@ int32_t Sailor::Protocol::InvokeEditorEngineProtocol(
 			std::to_string(request.protocol_version()) +
 			"; expected " +
 			std::to_string(EditorEngineProtocolVersion) +
-			" or " +
-			std::to_string(
-				EditorEngineProtocolStrictInstanceIdsVersion) +
 			".");
-	}
-	else if (bRequestsStrictInstanceIds &&
-		!bUsesStrictInstanceIdsVersion)
-	{
-		SetError(
-			response,
-			"Strict instance-id restoration requires protocol version " +
-			std::to_string(
-				EditorEngineProtocolStrictInstanceIdsVersion) +
-			".");
-	}
-	else if (bUsesStrictInstanceIdsVersion &&
-		!bRequestsStrictInstanceIds)
-	{
-		SetError(
-			response,
-			"Protocol version " +
-			std::to_string(
-				EditorEngineProtocolStrictInstanceIdsVersion) +
-			" is reserved for strict instance-id restoration.");
 	}
 	else if (request.request_id() == 0)
 	{

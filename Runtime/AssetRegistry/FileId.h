@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <string_view>
 #include "Core/JsonSerializable.h"
 #include "Core/YamlSerializable.h"
 #include "Sailor.h"
@@ -25,6 +26,7 @@ namespace Sailor
 		const std::string& ToString() const;
 
 		FileId() = default;
+		explicit FileId(std::string_view value);
 		FileId(const FileId& inFileId) = default;
 		FileId(FileId&& inFileId) noexcept = default;
 
@@ -44,6 +46,8 @@ namespace Sailor
 		size_t GetHash() const { return m_fileId.GetHash(); }
 
 	protected:
+
+		void Assign(std::string_view value);
 
 		StringHash m_fileId = "NullFileId"_h;
 	};

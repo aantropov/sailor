@@ -212,7 +212,7 @@ internal sealed record GIProbesBinaryMetadata(
 
     static ulong CalculateRemainingChecksum(Stream stream)
     {
-        const ulong OffsetBasis = 1469598103934665603;
+        const ulong OffsetBasis = 14695981039346656037;
         const ulong Prime = 1099511628211;
         Span<byte> buffer = stackalloc byte[8192];
         ulong hash = OffsetBasis;

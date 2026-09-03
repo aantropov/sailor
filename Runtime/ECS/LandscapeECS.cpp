@@ -6,6 +6,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "Components/LandscapeComponent.h"
+#include "Core/StringHash.h"
 #include "ECS/CameraECS.h"
 #include "ECS/TransformECS.h"
 #include "ECS/PhysicsECS.h"
@@ -553,8 +554,8 @@ namespace
 			return;
 		}
 
-		const size_t opaqueQueueTag = GetHash(std::string("Opaque"));
-		const size_t maskedQueueTag = GetHash(std::string("Masked"));
+		const size_t opaqueQueueTag = "Opaque"_h.GetHash();
+		const size_t maskedQueueTag = "Masked"_h.GetHash();
 		const size_t renderQueueTag = material->GetRenderState().GetTag();
 		if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
 		{
@@ -623,7 +624,7 @@ namespace
 		glm::vec4 baseColorFactor{ 1.0f };
 		float alphaCutoff = 0.5f;
 		uint32_t baseColorSampler = 0u;
-		if (material->GetRenderState().GetTag() != GetHash(std::string("Masked")))
+		if (material->GetRenderState().GetTag() != "Masked"_h.GetHash())
 		{
 			proxy.m_baseColorFactors.Add(baseColorFactor);
 			proxy.m_alphaCutoffs.Add(alphaCutoff);
@@ -915,7 +916,7 @@ namespace
 	uint64_t CalculateVegetationMaterialRenderMetadataRevision(
 		const LandscapeVegetationProfile& profile)
 	{
-		size_t result = 1469598103934665603ull;
+		size_t result = Fnv1aOffsetBasis;
 		if (profile.m_materialFileId)
 		{
 			HashCombine(
@@ -1270,7 +1271,7 @@ namespace
 					static_cast<double>((std::numeric_limits<int64_t>::max)())));
 			};
 
-		size_t result = 1469598103934665603ull;
+		size_t result = Fnv1aOffsetBasis;
 		HashCombine(result, cameraPositions.Num());
 		for (const glm::vec3& worldPosition : cameraPositions)
 		{
@@ -2817,9 +2818,9 @@ void LandscapeECS::PublishSceneVersion()
 	version->m_shadowCastersRevision = m_shadowCastersRevision;
 	version->m_scene = m_rhiScene;
 	TSet<size_t> activeProducerKeys;
-	size_t staticSpatialHash = 1469598103934665603ull;
-	size_t stationarySpatialHash = 1099511628211ull;
-	size_t dynamicSpatialHash = 1099511628211ull;
+	size_t staticSpatialHash = Fnv1aOffsetBasis;
+	size_t stationarySpatialHash = Fnv1aOffsetBasis;
+	size_t dynamicSpatialHash = Fnv1aOffsetBasis;
 	bool bHasStaticSpatialEntries = false;
 	bool bHasStationarySpatialEntries = false;
 	bool bHasDynamicSpatialEntries = false;
@@ -3266,10 +3267,10 @@ uint64_t LandscapeECS::GetGlobalIlluminationContributorRevision()
 	const RHI::RHISceneVersion& version =
 		*m_publishedSceneVersion->m_sceneVersion;
 	uint64_t revision = version.m_staticRevision;
-	revision ^= version.m_stationaryRevision + 0x9e3779b97f4a7c15ull +
-		(revision << 6u) + (revision >> 2u);
-	revision ^= version.m_materialRevision + 0x9e3779b97f4a7c15ull +
-		(revision << 6u) + (revision >> 2u);
+	HashCombine(
+		revision,
+		version.m_stationaryRevision,
+		version.m_materialRevision);
 	return revision;
 }
 

@@ -1,6 +1,7 @@
 #include "Types.h"
 #include "Mesh.h"
 #include "DebugContext.h"
+#include "Core/StringHash.h"
 #include "CommandList.h"
 #include "VertexDescription.h"
 #include "FrameGraph/ShadowPrepassNode.h"
@@ -258,7 +259,7 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 
 	if (!m_material)
 	{
-		RenderState renderState = RHI::RenderState(true, true, 0.0f, true, ECullMode::Back, EBlendMode::None, EFillMode::Line, GetHash(std::string("Debug")), true);
+		RenderState renderState = RHI::RenderState(true, true, 0.0f, true, ECullMode::Back, EBlendMode::None, EFillMode::Line, "Debug"_h.GetHash(), true);
 
 		auto shaderFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;

@@ -9,6 +9,7 @@
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "Core/LogMacros.h"
 #include "Engine/World.h"
+#include "Math/Math.h"
 #include "Tasks/Scheduler.h"
 #include "YamlExceptionBoundary.h"
 
@@ -75,13 +76,6 @@ namespace
 				status.m_stage = "Cancelled";
 				status.m_diagnostic = std::move(diagnostic);
 			});
-	}
-
-	bool IsFinite(const glm::vec3& value)
-	{
-		return std::isfinite(value.x) &&
-			std::isfinite(value.y) &&
-			std::isfinite(value.z);
 	}
 
 	bool IsProbesPath(const std::string& value)
@@ -254,7 +248,7 @@ namespace
 			outDiagnostic = "GI probe state name cannot be empty";
 			return false;
 		}
-		if (!IsFinite(request.m_fallbackEnvironment))
+		if (!Math::AllFinite(request.m_fallbackEnvironment))
 		{
 			outDiagnostic =
 				"the GI probe fallback environment must contain finite values";

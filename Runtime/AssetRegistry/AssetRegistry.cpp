@@ -217,9 +217,7 @@ namespace
 					}
 
 					outFileId = fileId.as<std::string>();
-					FileId canonicalFileId;
-					canonicalFileId.Deserialize(YAML::Node(outFileId));
-					outFileId = canonicalFileId.ToString();
+					outFileId = FileId(outFileId).ToString();
 					outFilename = filename.as<std::string>();
 					YAML::Node assetInfoType(YAML::NodeType::Undefined);
 					for (const auto& field : metadata)
@@ -261,9 +259,7 @@ namespace
 
 	FileId ParseFileId(const std::string& value)
 	{
-		FileId result;
-		result.Deserialize(YAML::Node(value));
-		return result;
+		return FileId(value);
 	}
 
 	void DeleteAssetInfos(TMap<FileId, AssetInfoPtr>& assetInfos)
@@ -814,7 +810,7 @@ bool AssetRegistry::ScanContentFolder()
 	if (g_bUseLazyAssetInfoLoading)
 	{
 		std::lock_guard<std::mutex> cacheLock(m_assetCache.m_cacheMutex);
-		bHasLazyIndex = m_assetCache.m_cache.m_data.Num() > 0;
+		bHasLazyIndex = m_assetCache.m_cache.m_assets.Num() > 0;
 	}
 	if (bHasLazyIndex)
 	{
@@ -1508,8 +1504,8 @@ bool AssetRegistry::ScanContentFolderLazy()
 	TVector<std::pair<FileId, LazyAssetInfoRecord>> cachedRecords;
 	{
 		std::lock_guard<std::mutex> cacheLock(m_assetCache.m_cacheMutex);
-		cachedRecords.Reserve(m_assetCache.m_cache.m_data.Num());
-		for (const auto& cached : m_assetCache.m_cache.m_data)
+		cachedRecords.Reserve(m_assetCache.m_cache.m_assets.Num());
+		for (const auto& cached : m_assetCache.m_cache.m_assets)
 		{
 			const AssetCache::AssetCacheData::Entry& entry = cached.m_second;
 			cachedRecords.Emplace(

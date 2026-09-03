@@ -20,9 +20,6 @@ namespace Sailor::Protocol
 	};
 
 	constexpr uint32_t EditorEngineProtocolVersion = 1u;
-	constexpr uint32_t EditorEngineProtocolStrictInstanceIdsVersion = 2u;
-	constexpr uint32_t EditorEngineProtocolLatestVersion =
-		EditorEngineProtocolStrictInstanceIdsVersion;
 	constexpr uint32_t EditorEngineProtocolMaxPayloadSize =
 		64u * 1024u * 1024u;
 

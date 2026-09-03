@@ -3,6 +3,7 @@
 
 #include "Containers/Hash.h"
 #include "Core/Utils.h"
+#include "Math/Math.h"
 
 #include <algorithm>
 #include <array>
@@ -20,51 +21,15 @@ namespace
 	constexpr uint32_t MaxBakeBrickCount = 1024u * 1024u;
 	constexpr uint32_t MaxBakeProbeCount = 16u * 1024u * 1024u;
 
-	bool IsFinite(const glm::vec3& value) noexcept
-	{
-		return std::isfinite(value.x) &&
-			std::isfinite(value.y) &&
-			std::isfinite(value.z);
-	}
-
 	bool IsCancelled(const GIProbesBakeRequest& request) noexcept
 	{
 		return request.m_cancel &&
 			request.m_cancel->load(std::memory_order_acquire);
 	}
 
-	void HashBytes(uint64_t& hash, const void* data, size_t size) noexcept
-	{
-		const uint8_t* bytes = static_cast<const uint8_t*>(data);
-		for (size_t index = 0u; index < size; ++index)
-		{
-			hash ^= bytes[index];
-			hash *= 1099511628211ull;
-		}
-	}
-
-	template<typename T>
-	void HashValue(uint64_t& hash, const T& value) noexcept
-	{
-		HashBytes(hash, &value, sizeof(value));
-	}
-
-	void HashVec2(uint64_t& hash, const glm::vec2& value) noexcept
-	{
-		HashValue(hash, value.x);
-		HashValue(hash, value.y);
-	}
-
-	void HashVec3(uint64_t& hash, const glm::vec3& value) noexcept
-	{
-		HashValue(hash, value.x);
-		HashValue(hash, value.y);
-		HashValue(hash, value.z);
-	}
-
 	uint64_t ComputeTransportHash(const GIProbesData& data) noexcept
 	{
-		uint64_t hash = 1469598103934665603ull;
+		uint64_t hash = Fnv1aOffsetBasis;
 		HashValue(hash, data.m_layoutHash);
 		HashValue(hash, data.m_bakeSettings.m_maxSubdivisionLevel);
 		HashValue(hash, data.m_bakeSettings.m_minProbeSpacing);
@@ -73,12 +38,16 @@ namespace
 		HashValue(hash, data.m_bakeSettings.m_maxRayDistance);
 		for (const GIProbe& probe : data.m_probes)
 		{
-			HashVec3(hash, probe.m_relocationOffset);
+			HashValues(
+				hash,
+				probe.m_relocationOffset.x,
+				probe.m_relocationOffset.y,
+				probe.m_relocationOffset.z);
 			HashValue(hash, probe.m_validity);
 			HashValue(hash, probe.m_flags);
 			for (const glm::vec2& moments : probe.m_visibility)
 			{
-				HashVec2(hash, moments);
+				HashValues(hash, moments.x, moments.y);
 			}
 			for (const float environmentVisibility :
 				probe.m_environmentVisibility)
@@ -91,7 +60,7 @@ namespace
 
 	uint64_t ComputeLightingHash(const GIProbesData& data) noexcept
 	{
-		uint64_t hash = 1469598103934665603ull;
+		uint64_t hash = Fnv1aOffsetBasis;
 		HashValue(hash, data.m_layoutHash);
 		HashValue(hash, data.m_bakeSettings.m_raysPerProbe);
 		HashValue(hash, data.m_bakeSettings.m_bounceCount);
@@ -101,7 +70,11 @@ namespace
 		{
 			for (const glm::vec3& coefficient : probe.m_irradiance)
 			{
-				HashVec3(hash, coefficient);
+				HashValues(
+					hash,
+					coefficient.x,
+					coefficient.y,
+					coefficient.z);
 			}
 		}
 		return hash;
@@ -676,9 +649,9 @@ namespace
 		}
 		const glm::vec3 volumeExtent =
 			request.m_volumeMax - request.m_volumeMin;
-		if (!IsFinite(request.m_volumeMin) ||
-			!IsFinite(request.m_volumeMax) ||
-			!IsFinite(volumeExtent) ||
+		if (!Math::AllFinite(request.m_volumeMin) ||
+			!Math::AllFinite(request.m_volumeMax) ||
+			!Math::AllFinite(volumeExtent) ||
 			glm::any(glm::lessThanEqual(
 				request.m_volumeMax,
 				request.m_volumeMin)))

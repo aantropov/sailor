@@ -51,7 +51,6 @@ internal readonly record struct EngineProtocolAnimatorState(
 internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
 {
     internal const uint ProtocolVersion = 1;
-    internal const uint StrictInstanceIdsProtocolVersion = 2;
     internal const uint MaxPayloadSize = 64u * 1024u * 1024u;
     const int CapabilityUnknown = -1;
     const int CapabilityUnsupported = 0;
@@ -1272,7 +1271,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             prefabYaml,
             parentInstanceId,
             strictInstanceIds: false,
-            protocolVersion: ProtocolVersion,
             cancellationToken: cancellationToken);
 
     public async Task<EngineProtocolCreationResult> InstantiatePrefabFromYamlStrictAsync(
@@ -1297,7 +1295,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 prefabYaml,
                 parentInstanceId,
                 strictInstanceIds: true,
-                protocolVersion: StrictInstanceIdsProtocolVersion,
                 cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
@@ -1306,7 +1303,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         string prefabYaml,
         string parentInstanceId,
         bool strictInstanceIds,
-        uint protocolVersion,
         CancellationToken cancellationToken)
         => ReadCreation(
             await SendAsync(
@@ -1324,8 +1320,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                                 StrictInstanceIds = strictInstanceIds
                             }
                     },
-                    cancellationToken,
-                    protocolVersion)
+                    cancellationToken)
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.InstantiatePrefabFromYaml));
 

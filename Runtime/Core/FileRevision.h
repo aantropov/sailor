@@ -5,6 +5,11 @@
 #include <cstdint>
 #include <string>
 
+namespace YAML
+{
+	class Node;
+}
+
 namespace Sailor
 {
 	struct FileRevision final
@@ -24,6 +29,9 @@ namespace Sailor
 		{
 			return !(*this == rhs);
 		}
+
+		SAILOR_API YAML::Node Serialize() const;
+		SAILOR_API void Deserialize(const YAML::Node& inData);
 	};
 
 	namespace Utils

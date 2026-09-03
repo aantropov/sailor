@@ -1,4 +1,5 @@
 #include "GlobalIllumination/GIProbesTracing.h"
+#include "Math/Math.h"
 
 #include <algorithm>
 #include <cmath>
@@ -54,13 +55,6 @@ namespace
 			std::cos(phi) * radius,
 			y,
 			std::sin(phi) * radius);
-	}
-
-	bool IsFinite(const glm::vec3& value) noexcept
-	{
-		return std::isfinite(value.x) &&
-			std::isfinite(value.y) &&
-			std::isfinite(value.z);
 	}
 
 	bool IsCancelled(
@@ -338,12 +332,12 @@ bool Sailor::TraceGIProbeTransport(
 	std::string& outDiagnostic)
 {
 	outDiagnostic.clear();
-	if (!IsFinite(request.m_volumeMin) ||
-		!IsFinite(request.m_volumeMax) ||
+	if (!Math::AllFinite(request.m_volumeMin) ||
+		!Math::AllFinite(request.m_volumeMax) ||
 		glm::any(glm::lessThanEqual(
 			request.m_volumeMax,
 			request.m_volumeMin)) ||
-		!IsFinite(probe.m_position) ||
+		!Math::AllFinite(probe.m_position) ||
 		!std::isfinite(request.m_settings.m_minProbeSpacing) ||
 		request.m_settings.m_minProbeSpacing <= 0.0f ||
 		!std::isfinite(request.m_settings.m_maxRayDistance) ||
@@ -521,7 +515,7 @@ bool Sailor::AccumulateGIProbeIrradianceRange(
 			"GI probe irradiance ranges must be accumulated once in sequence order";
 		return false;
 	}
-	if (!IsFinite(position) ||
+	if (!Math::AllFinite(position) ||
 		!std::isfinite(request.m_settings.m_maxRayDistance) ||
 		request.m_settings.m_maxRayDistance <= 0.0f)
 	{
@@ -568,7 +562,7 @@ bool Sailor::AccumulateGIProbeIrradianceRange(
 			return false;
 		}
 		const float directionLength = glm::length(direction);
-		if (!IsFinite(direction) ||
+		if (!Math::AllFinite(direction) ||
 			!std::isfinite(directionLength) ||
 			directionLength <= 1e-6f ||
 			!std::isfinite(directionPdf) ||
@@ -596,7 +590,7 @@ bool Sailor::AccumulateGIProbeIrradianceRange(
 			return false;
 		}
 
-		const glm::vec3 radiance = IsFinite(sample.m_radiance) ?
+		const glm::vec3 radiance = Math::AllFinite(sample.m_radiance) ?
 			glm::max(sample.m_radiance, glm::vec3(0.0f)) :
 			glm::vec3(0.0f);
 		const float projectionScale = 1.0f /
@@ -643,7 +637,7 @@ bool Sailor::ResolveGIProbeIrradiance(
 		const glm::vec3 value =
 			accumulator.m_weightedCoefficients[coefficientIndex] *
 			partialSequenceScale;
-		if (!IsFinite(value))
+		if (!Math::AllFinite(value))
 		{
 			outDiagnostic =
 				"GI probe irradiance accumulator resolved to a non-finite value";

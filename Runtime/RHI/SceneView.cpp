@@ -1,4 +1,5 @@
 ﻿#include "SceneView.h"
+#include "Core/StringHash.h"
 #include "ECS/CameraECS.h"
 #include "ECS/TransformECS.h"
 #include "ECS/StaticMeshRendererECS.h"
@@ -32,10 +33,7 @@ namespace
 		}
 
 		const glm::mat4 inverseWorld = glm::inverse(referenceWorld);
-		if (!Math::AllFinite(inverseWorld[0]) ||
-			!Math::AllFinite(inverseWorld[1]) ||
-			!Math::AllFinite(inverseWorld[2]) ||
-			!Math::AllFinite(inverseWorld[3]))
+		if (!Math::AllFinite(inverseWorld))
 		{
 			return false;
 		}
@@ -115,7 +113,7 @@ namespace
 	void CalculateProxyResourceRevisions(RHISceneProxyResource& resource)
 	{
 		const auto& proxy = resource.m_proxy;
-		size_t geometryRevision = 1469598103934665603ull;
+		size_t geometryRevision = Fnv1aOffsetBasis;
 		HashCombine(
 			geometryRevision,
 			proxy.m_meshes.Num(),
@@ -205,7 +203,7 @@ namespace
 		}
 		resource.m_mainRevision = mainRevision;
 
-		const size_t maskedQueue = GetHash(std::string("Masked"));
+		const size_t maskedQueue = "Masked"_h.GetHash();
 		size_t depthRevision = geometryRevision;
 		auto hashDepthMaterial = [&](const RHIMaterialPtr& material,
 			size_t renderQueue,
@@ -757,16 +755,9 @@ float Sailor::RHI::CalculateScreenCoverage(
 	const glm::mat4& viewMatrix,
 	const glm::mat4& projectionMatrix)
 {
-	const auto isMatrixFinite = [](const glm::mat4& matrix)
-		{
-			return Math::AllFinite(matrix[0]) &&
-				Math::AllFinite(matrix[1]) &&
-				Math::AllFinite(matrix[2]) &&
-				Math::AllFinite(matrix[3]);
-		};
 	if (!worldBounds.IsValid() ||
-		!isMatrixFinite(viewMatrix) ||
-		!isMatrixFinite(projectionMatrix))
+		!Math::AllFinite(viewMatrix) ||
+		!Math::AllFinite(projectionMatrix))
 	{
 		return 0.0f;
 	}
@@ -1108,7 +1099,7 @@ void RHISceneViewSnapshot::ResetForReuse()
 
 uint64_t RHISceneViewSnapshot::GetMobilityRevision(EMobilityType mobility) const
 {
-	size_t result = 1469598103934665603ull;
+	size_t result = Fnv1aOffsetBasis;
 	HashCombine(result, static_cast<uint32_t>(mobility));
 	if (!m_sceneVersions)
 	{
@@ -1158,8 +1149,10 @@ void RHISceneView::AddSceneVersion(RHISpatialSceneVersionPtr sceneVersion)
 		return;
 	}
 
-	m_sceneRevision = m_sceneRevision * 1099511628211ull ^ sceneVersion->m_revision;
-	m_shadowCastersRevision = m_shadowCastersRevision * 1099511628211ull ^ sceneVersion->m_shadowCastersRevision;
+	HashCombine(m_sceneRevision, sceneVersion->m_revision);
+	HashCombine(
+		m_shadowCastersRevision,
+		sceneVersion->m_shadowCastersRevision);
 	m_bHasCustomDepthShadowCasters |= sceneVersion->m_bHasCustomDepthShadowCasters;
 	if (sceneVersion->m_sceneVersion)
 	{

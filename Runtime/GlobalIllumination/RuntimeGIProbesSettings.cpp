@@ -1,10 +1,39 @@
 #include "GlobalIllumination/RuntimeGIProbesSettings.h"
 
+#include "Core/YamlSerializable.h"
 #include "GlobalIllumination/GIProbesData.h"
 
 #include <cmath>
 
 using namespace Sailor;
+
+YAML::Node RuntimeGIProbesSettings::Serialize() const
+{
+	YAML::Node result(YAML::NodeType::Map);
+	SERIALIZE_PROPERTY(result, m_version);
+	::Serialize(result, "includeSky", m_bIncludeSky);
+	::Serialize(result, "includeEmissive", m_bIncludeEmissive);
+	::Serialize(result, "includeDirectLighting", m_bIncludeDirectLighting);
+	SERIALIZE_PROPERTY(result, m_bounceCount);
+	SERIALIZE_PROPERTY(result, m_minProbeSpacing);
+	SERIALIZE_PROPERTY(result, m_normalBias);
+	SERIALIZE_PROPERTY(result, m_viewBias);
+	SERIALIZE_PROPERTY(result, m_maxRayDistance);
+	return result;
+}
+
+bool RuntimeGIProbesSettings::Deserialize(const YAML::Node& inData)
+{
+	return DESERIALIZE_PROPERTY(inData, m_version) &&
+		::Deserialize(inData, "includeSky", m_bIncludeSky) &&
+		::Deserialize(inData, "includeEmissive", m_bIncludeEmissive) &&
+		::Deserialize(inData, "includeDirectLighting", m_bIncludeDirectLighting) &&
+		DESERIALIZE_PROPERTY(inData, m_bounceCount) &&
+		DESERIALIZE_PROPERTY(inData, m_minProbeSpacing) &&
+		DESERIALIZE_PROPERTY(inData, m_normalBias) &&
+		DESERIALIZE_PROPERTY(inData, m_viewBias) &&
+		DESERIALIZE_PROPERTY(inData, m_maxRayDistance);
+}
 
 GIProbesBakeSettings Sailor::ResolveRuntimeGIProbesBakeSettings(
 	const RuntimeGIProbesSettings& settings,

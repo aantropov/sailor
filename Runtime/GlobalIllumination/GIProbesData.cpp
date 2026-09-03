@@ -1,6 +1,7 @@
 #include "GlobalIllumination/GIProbesData.h"
 
 #include "Containers/Hash.h"
+#include "Math/Math.h"
 
 #include <cmath>
 #include <limits>
@@ -12,40 +13,6 @@ namespace
 	constexpr uint32_t MaxProbeCount = 16u * 1024u * 1024u;
 	constexpr uint32_t MaxBrickCount = 1024u * 1024u;
 
-	bool IsFinite(const glm::vec2& value) noexcept
-	{
-		return std::isfinite(value.x) && std::isfinite(value.y);
-	}
-
-	bool IsFinite(const glm::vec3& value) noexcept
-	{
-		return std::isfinite(value.x) &&
-			std::isfinite(value.y) &&
-			std::isfinite(value.z);
-	}
-
-	void HashBytes(uint64_t& hash, const void* data, size_t size) noexcept
-	{
-		const uint8_t* bytes = static_cast<const uint8_t*>(data);
-		for (size_t index = 0u; index < size; ++index)
-		{
-			hash ^= bytes[index];
-			hash *= 1099511628211ull;
-		}
-	}
-
-	template<typename T>
-	void HashValue(uint64_t& hash, const T& value) noexcept
-	{
-		HashBytes(hash, &value, sizeof(value));
-	}
-
-	void HashVec3(uint64_t& hash, const glm::vec3& value) noexcept
-	{
-		HashValue(hash, value.x);
-		HashValue(hash, value.y);
-		HashValue(hash, value.z);
-	}
 }
 
 uint64_t Sailor::ComputeGIProbesRepresentationHash(
@@ -53,7 +20,7 @@ uint64_t Sailor::ComputeGIProbesRepresentationHash(
 	uint32_t shOrder,
 	EGIProbesCompression compression) noexcept
 {
-	uint64_t hash = 1469598103934665603ull;
+	uint64_t hash = Fnv1aOffsetBasis;
 	HashValue(hash, formatVersion);
 	HashValue(hash, shOrder);
 	const uint32_t compressionValue = static_cast<uint32_t>(compression);
@@ -73,9 +40,15 @@ uint64_t Sailor::ComputeGIProbesRepresentationHash(
 uint64_t Sailor::ComputeGIProbesLayoutHash(
 	const GIProbesData& data) noexcept
 {
-	uint64_t hash = 1469598103934665603ull;
-	HashVec3(hash, data.m_volumeMin);
-	HashVec3(hash, data.m_volumeMax);
+	uint64_t hash = Fnv1aOffsetBasis;
+	HashValues(
+		hash,
+		data.m_volumeMin.x,
+		data.m_volumeMin.y,
+		data.m_volumeMin.z,
+		data.m_volumeMax.x,
+		data.m_volumeMax.y,
+		data.m_volumeMax.z);
 	const uint32_t numBricks = static_cast<uint32_t>(data.m_bricks.Num());
 	const uint32_t numProbes = static_cast<uint32_t>(data.m_probes.Num());
 	HashValue(hash, numBricks);
@@ -83,8 +56,14 @@ uint64_t Sailor::ComputeGIProbesLayoutHash(
 
 	for (const GIProbeBrick& brick : data.m_bricks)
 	{
-		HashVec3(hash, brick.m_min);
-		HashVec3(hash, brick.m_max);
+		HashValues(
+			hash,
+			brick.m_min.x,
+			brick.m_min.y,
+			brick.m_min.z,
+			brick.m_max.x,
+			brick.m_max.y,
+			brick.m_max.z);
 		HashValue(hash, brick.m_subdivisionLevel);
 		HashValue(hash, brick.m_firstProbeIndex);
 		HashValue(hash, brick.m_probeCount);
@@ -95,7 +74,11 @@ uint64_t Sailor::ComputeGIProbesLayoutHash(
 
 	for (const GIProbe& probe : data.m_probes)
 	{
-		HashVec3(hash, probe.m_position);
+		HashValues(
+			hash,
+			probe.m_position.x,
+			probe.m_position.y,
+			probe.m_position.z);
 	}
 
 	return hash;
@@ -175,8 +158,8 @@ bool GIProbesData::Validate(std::string& outDiagnostic) const
 		outDiagnostic = "brick count is zero or exceeds the supported limit";
 		return false;
 	}
-	if (!IsFinite(m_volumeMin) ||
-		!IsFinite(m_volumeMax) ||
+	if (!Math::AllFinite(m_volumeMin) ||
+		!Math::AllFinite(m_volumeMax) ||
 		glm::any(glm::lessThanEqual(m_volumeMax, m_volumeMin)))
 	{
 		outDiagnostic = "the GI probe data has invalid bounds";
@@ -206,8 +189,8 @@ bool GIProbesData::Validate(std::string& outDiagnostic) const
 	uint64_t coveredProbeCount = 0u;
 	for (const GIProbeBrick& brick : m_bricks)
 	{
-		if (!IsFinite(brick.m_min) ||
-			!IsFinite(brick.m_max) ||
+		if (!Math::AllFinite(brick.m_min) ||
+			!Math::AllFinite(brick.m_max) ||
 			glm::any(glm::lessThanEqual(brick.m_max, brick.m_min)) ||
 			glm::any(glm::lessThan(brick.m_min, m_volumeMin)) ||
 			glm::any(glm::greaterThan(brick.m_max, m_volumeMax)) ||
@@ -261,8 +244,8 @@ bool GIProbesData::Validate(std::string& outDiagnostic) const
 			EGIProbeFlag::Valid |
 			EGIProbeFlag::Relocated |
 			GIProbeBlockedDirectionMask;
-		if (!IsFinite(probe.m_position) ||
-			!IsFinite(probe.m_relocationOffset) ||
+		if (!Math::AllFinite(probe.m_position) ||
+			!Math::AllFinite(probe.m_relocationOffset) ||
 			glm::any(glm::lessThan(probe.m_position, m_volumeMin)) ||
 			glm::any(glm::greaterThan(probe.m_position, m_volumeMax)) ||
 			!std::isfinite(probe.m_validity) ||
@@ -276,7 +259,7 @@ bool GIProbesData::Validate(std::string& outDiagnostic) const
 		}
 		for (const glm::vec3& coefficient : probe.m_irradiance)
 		{
-			if (!IsFinite(coefficient))
+			if (!Math::AllFinite(coefficient))
 			{
 				outDiagnostic = "a probe has a non-finite irradiance coefficient";
 				return false;
@@ -284,7 +267,7 @@ bool GIProbesData::Validate(std::string& outDiagnostic) const
 		}
 		for (const glm::vec2& visibility : probe.m_visibility)
 		{
-			if (!IsFinite(visibility) ||
+			if (!Math::AllFinite(visibility) ||
 				visibility.x < 0.0f ||
 				visibility.y < 0.0f)
 			{

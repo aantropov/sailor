@@ -487,7 +487,7 @@ namespace
 			std::filesystem::path(sourcePath).filename().string() + ".asset";
 		entry.m_metadataRevision = MakeRevision();
 		entry.m_assetInfoType = "Sailor::AssetInfo";
-		result.m_data.Insert(fileId, std::move(entry));
+		result.m_assets.Insert(fileId, std::move(entry));
 		return result;
 	}
 
@@ -799,8 +799,8 @@ namespace
 		Require(
 			TestAssetCache::TryDeserializeAssetCachePayload(payload, loaded, diagnostic),
 			"current asset payload should load: " + diagnostic);
-		Require(loaded.m_data.ContainsKey(fileId), "round-tripped payload should retain its file id");
-		const auto entry = loaded.m_data[fileId];
+		Require(loaded.m_assets.ContainsKey(fileId), "round-tripped payload should retain its file id");
+		const auto entry = loaded.m_assets[fileId];
 		Require(entry.m_fileId == fileId, "round-tripped entry identity should match its map key");
 		Require(entry.m_assetImportTime == 40, "round-tripped asset import time should be preserved");
 		Require(!entry.m_sourcePath.empty(), "round-tripped source path should be normalized");
@@ -824,7 +824,7 @@ namespace
 		Require(
 			TestAssetCache::TryDeserializeAssetCachePayload(payload, loaded, diagnostic),
 			"deterministic empty asset payload should load: " + diagnostic);
-		Require(loaded.m_data.Num() == 0, "empty asset payload should remain empty");
+		Require(loaded.m_assets.Num() == 0, "empty asset payload should remain empty");
 	}
 
 	void TestPreV1PayloadIsRejected()
@@ -877,7 +877,7 @@ namespace
 			!TestAssetCache::TryDeserializeAssetCachePayload(corruptPayload, destination, diagnostic),
 			"empty sourcePath should reject the complete payload");
 		Require(!diagnostic.empty(), "corrupt asset payload should return an actionable diagnostic");
-		Require(destination.m_data.Num() == 1 && destination.m_data.ContainsKey(retainedId),
+		Require(destination.m_assets.Num() == 1 && destination.m_assets.ContainsKey(retainedId),
 			"failed payload validation must not partially replace existing state");
 	}
 
@@ -949,7 +949,7 @@ namespace
 			throw std::runtime_error("Asset cache direct Deserialize should never throw.");
 		}
 
-		Require(destination.m_data.Num() == 0, "corrupt direct deserialize payload should not leave stale data");
+		Require(destination.m_assets.Num() == 0, "corrupt direct deserialize payload should not leave stale data");
 	}
 
 	void TestEntryDeserializeDoesNotThrow()
@@ -2042,9 +2042,9 @@ namespace
 			"the rejected changed-source completion must remain invalid after cache reload");
 	}
 
-	void TestRuntimeMetadataFieldsAreRejectedTransactionally()
+	void TestRuntimeMetadataFieldsAreIgnored()
 	{
-		const FileId retainedId = MakeFileId("{ASSET-CACHE-STRICT-RETAINED}");
+		const FileId parsedId = MakeFileId("{ASSET-CACHE-STRICT}");
 		const std::string prefix =
 			"assetCache:\n"
 			"  assets:\n"
@@ -2062,7 +2062,7 @@ namespace
 			"        fileSize: 2\n"
 			"        contentHash: 3\n"
 			"      assetInfoType: Sailor::MaterialAssetInfo\n";
-		const std::string invalidPayloads[] =
+		const std::string payloads[] =
 		{
 			prefix + "      metadataLoadTime: 2\n",
 			prefix + "      metadataPath: '/workspace/Content/Test.mat.asset'\n",
@@ -2073,18 +2073,23 @@ namespace
 				"      unexpectedField: 3\n"
 		};
 
-		for (const std::string& payload : invalidPayloads)
+		for (const std::string& payload : payloads)
 		{
 			auto destination = MakeCache(
-				retainedId.ToString(),
+				"{ASSET-CACHE-RETAINED}",
 				"/workspace/Content/Retained.mat",
 				6);
 			std::string diagnostic;
-			Require(!TestAssetCache::TryDeserializeAssetCachePayload(payload, destination, diagnostic),
-				"runtime metadata fields and other unknown fields must be rejected");
-			Require(!diagnostic.empty(), "strict persisted schema validation should return a diagnostic");
-			Require(destination.m_data.Num() == 1 && destination.m_data.ContainsKey(retainedId),
-				"strict schema validation failures must not partially publish state");
+			Require(TestAssetCache::TryDeserializeAssetCachePayload(payload, destination, diagnostic),
+				"engine-generated cache payloads should ignore fields unknown to the current reader");
+			Require(diagnostic.empty(), "ignored cache fields should not produce diagnostics");
+			Require(destination.m_assets.Num() == 1 && destination.m_assets.ContainsKey(parsedId),
+				"a valid decoded cache should replace the previous snapshot atomically");
+			const std::string serialized = TestAssetCache::SerializeAssetCachePayload(destination);
+			Require(serialized.find("metadataLoadTime") == std::string::npos &&
+				serialized.find("metadataPath") == std::string::npos &&
+				serialized.find("unexpectedField") == std::string::npos,
+				"runtime-only and unknown fields should not be written back to the cache");
 		}
 	}
 
@@ -2186,7 +2191,7 @@ int main()
 		TestSynchronousFailedCompletionFailsScan();
 		TestSourceMutationRejectsCompletionAndFailsScan();
 		TestAssetImportCacheAndRuntimeMetadataExpiration();
-		TestRuntimeMetadataFieldsAreRejectedTransactionally();
+		TestRuntimeMetadataFieldsAreIgnored();
 		TestIoFailurePreservesTheExistingCacheFile();
 		TestAssetProcessingTokenRejectsStaleCompletion();
 		std::cout << "Asset cache contract tests passed.\n";

@@ -4,8 +4,8 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderDependencyFingerprint.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "Containers/Hash.h"
 #include "Core/Utils.h"
-#include "Core/YamlUtils.h"
 #include "Sailor.h"
 #include "YamlExceptionBoundary.h"
 
@@ -17,31 +17,11 @@
 #include <limits>
 #include <random>
 #include <sstream>
-#include <unordered_set>
 
 using namespace Sailor;
 
 namespace
 {
-	constexpr const char* ShaderCacheKind = "shader-cache";
-	constexpr uint32_t ShaderCachePayloadVersion = 3;
-	constexpr uint64_t FnvOffsetBasis = 14695981039346656037ull;
-	constexpr uint64_t FnvPrime = 1099511628211ull;
-
-	std::string GetShaderCacheProducerIdentity()
-	{
-		return "shader-compiler-v" + std::to_string(ShaderCompiler::CacheProducerVersion);
-	}
-
-	Workspace::WorkspaceCacheIdentity MakeExpectedIdentity()
-	{
-		return Workspace::MakeWorkspaceCacheIdentity(
-			ShaderCacheKind,
-			GetShaderCacheProducerIdentity(),
-			ShaderCachePayloadVersion,
-			App::GetWorkspaceContext());
-	}
-
 	std::string NormalizeDependencyPath(const std::filesystem::path& path)
 	{
 		std::error_code error;
@@ -103,48 +83,6 @@ namespace
 			diagnostic += " ";
 		}
 		diagnostic += suffix;
-	}
-
-	bool ValidateExactFields(
-		const YAML::Node& node,
-		std::initializer_list<const char*> expectedFields,
-		const std::string& context,
-		std::string& outDiagnostic)
-	{
-		TVector<std::string> requiredFields;
-		requiredFields.Reserve(expectedFields.size());
-		for (const char* field : expectedFields)
-		{
-			requiredFields.Add(field);
-		}
-
-		const Utils::YamlMapValidationResult validation =
-			Utils::ValidateYamlMapFields(node, requiredFields);
-		switch (validation.m_error)
-		{
-		case Utils::EYamlMapValidationError::None:
-			return true;
-		case Utils::EYamlMapValidationError::ExpectedMap:
-			outDiagnostic = context + " must be a YAML map.";
-			break;
-		case Utils::EYamlMapValidationError::NonScalarKey:
-			outDiagnostic = context + " contains a non-scalar field name.";
-			break;
-		case Utils::EYamlMapValidationError::EmptyKey:
-		case Utils::EYamlMapValidationError::UnknownField:
-			outDiagnostic = context + " contains unknown field '" +
-				validation.m_fieldName + "'.";
-			break;
-		case Utils::EYamlMapValidationError::DuplicateKey:
-			outDiagnostic = context + " contains duplicate field '" +
-				validation.m_fieldName + "'.";
-			break;
-		case Utils::EYamlMapValidationError::MissingField:
-			outDiagnostic = context + " is missing required field '" +
-				validation.m_fieldName + "'.";
-			break;
-		}
-		return false;
 	}
 
 	bool PathsEqual(const std::filesystem::path& lhs, const std::filesystem::path& rhs)
@@ -331,11 +269,6 @@ namespace
 		return true;
 	}
 
-	bool IsMetadataStructurallyValid(const ShaderCache::ArtifactMetadata& metadata)
-	{
-		return metadata.m_byteLength != 0 || metadata.m_checksum == 0;
-	}
-
 	bool ShouldResetCache(Workspace::EWorkspaceCacheLoadStatus status) noexcept
 	{
 		return status == Workspace::EWorkspaceCacheLoadStatus::Missing ||
@@ -355,6 +288,20 @@ ShaderCache::ShaderCache(const IShaderSourceStateProvider* sourceStateProvider) 
 
 ShaderCache::~ShaderCache() = default;
 
+std::string ShaderCache::GetCacheProducerIdentity()
+{
+	return "shader-compiler-v" + std::to_string(ShaderCompiler::CacheProducerVersion);
+}
+
+Workspace::WorkspaceCacheIdentity ShaderCache::MakeExpectedIdentity()
+{
+	return Workspace::MakeWorkspaceCacheIdentity(
+		CacheKind,
+		GetCacheProducerIdentity(),
+		PayloadVersion,
+		App::GetWorkspaceContext());
+}
+
 ShaderCache::ArtifactMetadata::ArtifactMetadata() = default;
 
 ShaderCache::ArtifactMetadata::~ArtifactMetadata() = default;
@@ -362,116 +309,233 @@ ShaderCache::ArtifactMetadata::~ArtifactMetadata() = default;
 YAML::Node ShaderCache::ArtifactMetadata::Serialize() const
 {
 	YAML::Node result(YAML::NodeType::Map);
-	result["byteLength"] = m_byteLength;
-	result["checksum"] = m_checksum;
+	SERIALIZE_PROPERTY(result, m_byteLength);
+	SERIALIZE_PROPERTY(result, m_checksum);
 	return result;
 }
 
 void ShaderCache::ArtifactMetadata::Deserialize(const YAML::Node& inData)
 {
+	*this = {};
 	std::string yamlDiagnostic;
 	if (!Sailor::External::GuardYamlExceptions(
 		[&]()
 		{
-			m_byteLength = inData["byteLength"].as<uint64_t>();
-			m_checksum = inData["checksum"].as<uint64_t>();
+			DESERIALIZE_PROPERTY(inData, m_byteLength);
+			DESERIALIZE_PROPERTY(inData, m_checksum);
 		},
 		yamlDiagnostic))
 	{
-		m_byteLength = 0;
-		m_checksum = 0;
+		*this = {};
 	}
+}
+
+bool ShaderCache::ArtifactMetadata::Validate(
+	const std::string& context,
+	std::string& outDiagnostic) const
+{
+	if (!IsPresent() && m_checksum != 0)
+	{
+		outDiagnostic = context + " has a checksum for an absent artifact.";
+		return false;
+	}
+	if (IsPresent() && m_byteLength % sizeof(uint32_t) != 0)
+	{
+		outDiagnostic = context + " byteLength is not aligned to uint32 SPIR-V words.";
+		return false;
+	}
+	return true;
 }
 
 YAML::Node ShaderCache::ArtifactSet::Serialize() const
 {
 	YAML::Node result(YAML::NodeType::Map);
-	result["vertex"] = m_vertex.Serialize();
-	result["fragment"] = m_fragment.Serialize();
-	result["compute"] = m_compute.Serialize();
+	SERIALIZE_PROPERTY(result, m_vertex);
+	SERIALIZE_PROPERTY(result, m_fragment);
+	SERIALIZE_PROPERTY(result, m_compute);
 	return result;
 }
 
 void ShaderCache::ArtifactSet::Deserialize(const YAML::Node& inData)
 {
+	*this = {};
 	std::string yamlDiagnostic;
 	if (!Sailor::External::GuardYamlExceptions(
 		[&]()
 		{
-			m_vertex.Deserialize(inData["vertex"]);
-			m_fragment.Deserialize(inData["fragment"]);
-			m_compute.Deserialize(inData["compute"]);
+			DESERIALIZE_PROPERTY(inData, m_vertex);
+			DESERIALIZE_PROPERTY(inData, m_fragment);
+			DESERIALIZE_PROPERTY(inData, m_compute);
 		},
 		yamlDiagnostic))
 	{
-		m_vertex = {};
-		m_fragment = {};
-		m_compute = {};
+		*this = {};
 	}
 }
 
 YAML::Node ShaderCache::ShaderCacheData::Entry::Serialize() const
 {
 	YAML::Node result(YAML::NodeType::Map);
-	result["fileId"] = m_fileId;
-	result["timestamp"] = m_timestamp;
-	result["sourceFingerprint"] = m_sourceFingerprint;
-	result["permutation"] = m_permutation;
-	result["generation"] = m_generation;
-	result["regular"] = m_regular.Serialize();
-	result["debug"] = m_debug.Serialize();
+	SERIALIZE_PROPERTY(result, m_fileId);
+	SERIALIZE_PROPERTY(result, m_timestamp);
+	SERIALIZE_PROPERTY(result, m_sourceFingerprint);
+	SERIALIZE_PROPERTY(result, m_permutation);
+	SERIALIZE_PROPERTY(result, m_generation);
+	SERIALIZE_PROPERTY(result, m_regular);
+	SERIALIZE_PROPERTY(result, m_debug);
 	return result;
 }
 
 void ShaderCache::ShaderCacheData::Entry::Deserialize(const YAML::Node& inData)
 {
+	*this = {};
 	std::string yamlDiagnostic;
 	if (!Sailor::External::GuardYamlExceptions(
 		[&]()
 		{
-			m_fileId = inData["fileId"].as<FileId>();
-			m_timestamp = inData["timestamp"].as<std::time_t>();
-			m_sourceFingerprint = inData["sourceFingerprint"].as<uint64_t>();
-			m_permutation = inData["permutation"].as<uint32_t>();
-			m_generation = inData["generation"].as<std::string>();
-			m_regular.Deserialize(inData["regular"]);
-			m_debug.Deserialize(inData["debug"]);
+			DESERIALIZE_PROPERTY(inData, m_fileId);
+			DESERIALIZE_PROPERTY(inData, m_timestamp);
+			DESERIALIZE_PROPERTY(inData, m_sourceFingerprint);
+			DESERIALIZE_PROPERTY(inData, m_permutation);
+			DESERIALIZE_PROPERTY(inData, m_generation);
+			DESERIALIZE_PROPERTY(inData, m_regular);
+			DESERIALIZE_PROPERTY(inData, m_debug);
 		},
 		yamlDiagnostic))
 	{
-		*this = Entry();
+		*this = {};
 	}
+}
+
+bool ShaderCache::ShaderCacheData::Entry::Validate(
+	const FileId& key,
+	std::string& outDiagnostic) const
+{
+	const std::string context = "Shader cache entry '" + key.ToString() + "'";
+	if (!m_fileId || m_fileId != key)
+	{
+		outDiagnostic = context + " has a mismatched fileId field.";
+		return false;
+	}
+	if (!IsValidGeneration(m_generation))
+	{
+		outDiagnostic = context + " has an invalid immutable artifact generation.";
+		return false;
+	}
+	if (!m_regular.m_vertex.Validate(context + " regular vertex artifact", outDiagnostic) ||
+		!m_regular.m_fragment.Validate(context + " regular fragment artifact", outDiagnostic) ||
+		!m_regular.m_compute.Validate(context + " regular compute artifact", outDiagnostic) ||
+		!m_debug.m_vertex.Validate(context + " debug vertex artifact", outDiagnostic) ||
+		!m_debug.m_fragment.Validate(context + " debug fragment artifact", outDiagnostic) ||
+		!m_debug.m_compute.Validate(context + " debug compute artifact", outDiagnostic))
+	{
+		return false;
+	}
+	if (!IsValidArtifactSet(m_regular, false))
+	{
+		outDiagnostic = context + " regular artifacts must contain a vertex/fragment pair or compute artifact.";
+		return false;
+	}
+	if (!IsValidArtifactSet(m_debug, false))
+	{
+		outDiagnostic = context + " debug artifacts must contain a vertex/fragment pair or compute artifact.";
+		return false;
+	}
+	if (!HasMatchingArtifactTopology(m_regular, m_debug))
+	{
+		outDiagnostic = context + " regular and debug artifacts must contain identical shader stages.";
+		return false;
+	}
+	return true;
 }
 
 YAML::Node ShaderCache::ShaderCacheData::Serialize() const
 {
 	YAML::Node result(YAML::NodeType::Map);
-	YAML::Node entries(YAML::NodeType::Map);
-	for (const auto& fileEntries : m_data)
-	{
-		YAML::Node serializedEntries(YAML::NodeType::Sequence);
-		for (const Entry& entry : *fileEntries.m_second)
-		{
-			serializedEntries.push_back(entry.Serialize());
-		}
-		entries[fileEntries.m_first] = serializedEntries;
-	}
-	result["entries"] = entries;
+	SERIALIZE_PROPERTY(result, m_entries);
 	return result;
 }
 
 void ShaderCache::ShaderCacheData::Deserialize(const YAML::Node& inData)
 {
-	std::string yamlDiagnostic;
-	if (!Sailor::External::GuardYamlExceptions(
-		[&]()
-		{
-			m_data = inData["entries"].as<TMap<FileId, TVector<Entry>>>();
-		},
-		yamlDiagnostic))
+	ShaderCacheData candidate;
+	std::string diagnostic;
+	if (TryDeserialize(inData, candidate, diagnostic))
 	{
-		m_data.Clear();
+		m_entries = std::move(candidate.m_entries);
 	}
+	else
+	{
+		m_entries.Clear();
+	}
+}
+
+bool ShaderCache::ShaderCacheData::DeserializeProperties(const YAML::Node& inData)
+{
+	return DESERIALIZE_PROPERTY(inData, m_entries);
+}
+
+bool ShaderCache::ShaderCacheData::Validate(std::string& outDiagnostic) const
+{
+	for (const auto& fileEntries : m_entries)
+	{
+		const FileId& fileId = fileEntries.m_first;
+		const TVector<Entry>& entries = *fileEntries.m_second;
+		if (!fileId || entries.IsEmpty())
+		{
+			outDiagnostic = "Shader cache entries require a valid file id and at least one permutation.";
+			return false;
+		}
+
+		TSet<uint32_t> permutations;
+		for (const Entry& entry : entries)
+		{
+			if (!permutations.Insert(entry.m_permutation))
+			{
+				outDiagnostic = "Shader cache entry '" + fileId.ToString() +
+					"' duplicates permutation " + std::to_string(entry.m_permutation) + ".";
+				return false;
+			}
+			if (!entry.Validate(fileId, outDiagnostic))
+			{
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+bool ShaderCache::ShaderCacheData::TryDeserialize(
+	const YAML::Node& inData,
+	ShaderCacheData& outData,
+	std::string& outDiagnostic) noexcept
+{
+	auto deserialize = [&]() -> bool
+	{
+		ShaderCacheData candidate;
+		if (!candidate.DeserializeProperties(inData) ||
+			!candidate.Validate(outDiagnostic))
+		{
+			if (outDiagnostic.empty())
+			{
+				outDiagnostic = "Shader cache payload is missing required data.";
+			}
+			return false;
+		}
+
+		outData.m_entries = std::move(candidate.m_entries);
+		outDiagnostic.clear();
+		return true;
+	};
+
+	bool bResult = false;
+	std::string yamlDiagnostic;
+	if (!Sailor::External::TryInvokeYaml(deserialize, bResult, yamlDiagnostic))
+	{
+		outDiagnostic = "Shader cache data contains invalid YAML values: " + yamlDiagnostic;
+		return false;
+	}
+	return bResult;
 }
 
 std::string ShaderCache::SerializeShaderCachePayload(const ShaderCacheData& cache)
@@ -488,182 +552,14 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 {
 	auto deserialize = [&]() -> bool
 	{
-	const YAML::Node root = YAML::Load(payload);
-	if (!ValidateExactFields(root, { "shaderCache" }, "Shader cache payload root", outDiagnostic))
-	{
-		return false;
-	}
-
-	const YAML::Node shaderCache = Utils::FindYamlMapField(root, "shaderCache");
-	if (!ValidateExactFields(shaderCache, { "entries" }, "Shader cache payload", outDiagnostic))
-	{
-		return false;
-	}
-
-	const YAML::Node entriesNode = Utils::FindYamlMapField(shaderCache, "entries");
-	if (!entriesNode.IsMap())
-	{
-		outDiagnostic = "Shader cache field 'entries' must be a YAML map, including when empty.";
-		return false;
-	}
-
-	auto parseMetadata = [&](const YAML::Node& node,
-		ArtifactMetadata& outMetadata,
-		const std::string& context) -> bool
-	{
-		if (!ValidateExactFields(node, { "byteLength", "checksum" }, context, outDiagnostic))
+		const YAML::Node root = YAML::Load(payload);
+		const YAML::Node shaderCache = root["shaderCache"];
+		if (!shaderCache)
 		{
+			outDiagnostic = "Shader cache payload is missing 'shaderCache'.";
 			return false;
 		}
-		const YAML::Node byteLength = Utils::FindYamlMapField(node, "byteLength");
-		const YAML::Node checksum = Utils::FindYamlMapField(node, "checksum");
-		if (!byteLength.IsScalar() || !checksum.IsScalar())
-		{
-			outDiagnostic = context + " fields must be unsigned integer scalars.";
-			return false;
-		}
-		outMetadata.m_byteLength = byteLength.as<uint64_t>();
-		outMetadata.m_checksum = checksum.as<uint64_t>();
-		if (!IsMetadataStructurallyValid(outMetadata))
-		{
-			outDiagnostic = context + " has a checksum for an absent artifact.";
-			return false;
-		}
-		if (outMetadata.IsPresent() && outMetadata.m_byteLength % sizeof(uint32_t) != 0)
-		{
-			outDiagnostic = context + " byteLength is not aligned to uint32 SPIR-V words.";
-			return false;
-		}
-		return true;
-	};
-
-	auto parseSet = [&](const YAML::Node& node,
-		ArtifactSet& outSet,
-		const std::string& context) -> bool
-	{
-		if (!ValidateExactFields(node, { "vertex", "fragment", "compute" }, context, outDiagnostic))
-		{
-			return false;
-		}
-		return parseMetadata(Utils::FindYamlMapField(node, "vertex"), outSet.m_vertex, context + " vertex artifact") &&
-			parseMetadata(Utils::FindYamlMapField(node, "fragment"), outSet.m_fragment, context + " fragment artifact") &&
-			parseMetadata(Utils::FindYamlMapField(node, "compute"), outSet.m_compute, context + " compute artifact");
-	};
-
-	ShaderCacheData candidate;
-	TSet<std::string> fileIds;
-	for (const auto& serializedFileEntries : entriesNode)
-	{
-		if (!serializedFileEntries.first.IsScalar())
-		{
-			outDiagnostic = "Shader cache contains a non-scalar file id.";
-			return false;
-		}
-
-		const std::string serializedFileId = serializedFileEntries.first.Scalar();
-		if (!fileIds.Insert(serializedFileId))
-		{
-			outDiagnostic = "Shader cache contains duplicate file id '" + serializedFileId + "'.";
-			return false;
-		}
-
-		const FileId fileId = serializedFileEntries.first.as<FileId>();
-		if (!fileId)
-		{
-			outDiagnostic = "Shader cache contains invalid file id '" + serializedFileId + "'.";
-			return false;
-		}
-
-		const YAML::Node entrySequence = serializedFileEntries.second;
-		if (!entrySequence.IsSequence() || entrySequence.size() == 0)
-		{
-			outDiagnostic = "Shader cache file id '" + serializedFileId +
-				"' must contain a non-empty entry sequence.";
-			return false;
-		}
-
-		TVector<ShaderCacheData::Entry> entries;
-		entries.Reserve(entrySequence.size());
-		TSet<uint32_t> permutations;
-		for (size_t index = 0; index < entrySequence.size(); ++index)
-		{
-			const std::string context = "Shader cache entry '" + serializedFileId +
-				"' at index " + std::to_string(index);
-			const YAML::Node entryNode = entrySequence[index];
-			if (!ValidateExactFields(
-				entryNode,
-				{ "fileId", "timestamp", "sourceFingerprint", "permutation", "generation", "regular", "debug" },
-				context,
-				outDiagnostic))
-			{
-				return false;
-			}
-
-			const YAML::Node entryFileId = Utils::FindYamlMapField(entryNode, "fileId");
-			const YAML::Node timestamp = Utils::FindYamlMapField(entryNode, "timestamp");
-			const YAML::Node sourceFingerprint = Utils::FindYamlMapField(entryNode, "sourceFingerprint");
-			const YAML::Node permutation = Utils::FindYamlMapField(entryNode, "permutation");
-			const YAML::Node generation = Utils::FindYamlMapField(entryNode, "generation");
-			if (!entryFileId.IsScalar() || !timestamp.IsScalar() ||
-				!sourceFingerprint.IsScalar() || !permutation.IsScalar() || !generation.IsScalar())
-			{
-				outDiagnostic = context + " contains a non-scalar identity or timestamp field.";
-				return false;
-			}
-
-			ShaderCacheData::Entry entry;
-			entry.m_fileId = entryFileId.as<FileId>();
-			entry.m_timestamp = timestamp.as<std::time_t>();
-			entry.m_sourceFingerprint = sourceFingerprint.as<uint64_t>();
-			entry.m_permutation = permutation.as<uint32_t>();
-			entry.m_generation = generation.as<std::string>();
-			if (!entry.m_fileId || entry.m_fileId != fileId)
-			{
-				outDiagnostic = context + " has a mismatched fileId field.";
-				return false;
-			}
-			if (!permutations.Insert(entry.m_permutation))
-			{
-				outDiagnostic = context + " duplicates permutation " +
-					std::to_string(entry.m_permutation) + ".";
-				return false;
-			}
-			if (!IsValidGeneration(entry.m_generation))
-			{
-				outDiagnostic = context + " has an invalid immutable artifact generation.";
-				return false;
-			}
-
-			if (!parseSet(Utils::FindYamlMapField(entryNode, "regular"), entry.m_regular, context + " regular artifacts") ||
-				!parseSet(Utils::FindYamlMapField(entryNode, "debug"), entry.m_debug, context + " debug artifacts"))
-			{
-				return false;
-			}
-			if (!IsValidArtifactSet(entry.m_regular, false))
-			{
-				outDiagnostic = context + " regular artifacts must contain a vertex/fragment pair or compute artifact.";
-				return false;
-			}
-			if (!IsValidArtifactSet(entry.m_debug, false))
-			{
-				outDiagnostic = context + " debug artifacts must contain a vertex/fragment pair or compute artifact.";
-				return false;
-			}
-			if (!HasMatchingArtifactTopology(entry.m_regular, entry.m_debug))
-			{
-				outDiagnostic = context + " regular and debug artifacts must contain identical shader stages.";
-				return false;
-			}
-
-			entries.Add(std::move(entry));
-		}
-
-		candidate.m_data.Insert(fileId, std::move(entries));
-	}
-
-	outData.m_data = std::move(candidate.m_data);
-	outDiagnostic.clear();
-	return true;
+		return ShaderCacheData::TryDeserialize(shaderCache, outData, outDiagnostic);
 	};
 
 	bool bResult = false;
@@ -742,14 +638,7 @@ uint64_t ShaderCache::CalculateArtifactChecksum(const void* data, uint64_t size)
 		return 0;
 	}
 
-	uint64_t checksum = FnvOffsetBasis;
-	const auto* bytes = static_cast<const uint8_t*>(data);
-	for (uint64_t index = 0; index < size; ++index)
-	{
-		checksum ^= bytes[index];
-		checksum *= FnvPrime;
-	}
-	return checksum;
+	return HashBytes(data, static_cast<size_t>(size));
 }
 
 ShaderCache::ArtifactMetadata ShaderCache::DescribeArtifact(const void* data, uint64_t size) noexcept
@@ -773,9 +662,9 @@ bool ShaderCache::ReadArtifactBytes(
 	bool& outIoFailure) noexcept
 {
 	outIoFailure = false;
-	if (!IsMetadataStructurallyValid(metadata))
+	if (!metadata.Validate("Artifact metadata", outDiagnostic))
 	{
-		outDiagnostic = "Artifact metadata is internally inconsistent for '" + path.generic_string() + "'.";
+		outDiagnostic += " Path: '" + path.generic_string() + "'.";
 		return false;
 	}
 	if (!metadata.IsPresent())
@@ -1188,8 +1077,8 @@ void ShaderCache::LoadCache()
 	}
 	if (m_bPreserveStorageAfterLoadFailure)
 	{
-		m_cache.m_data.Clear();
-		m_committedCache.m_data.Clear();
+		m_cache.m_entries.Clear();
+		m_committedCache.m_entries.Clear();
 		m_bIsDirty = false;
 		m_bHasCommittedSnapshot = false;
 		m_lastSaveDiagnostic.clear();
@@ -1202,8 +1091,8 @@ void ShaderCache::LoadCache()
 	}
 	if (!ShouldResetCache(loadResult.m_status))
 	{
-		m_cache.m_data.Clear();
-		m_committedCache.m_data.Clear();
+		m_cache.m_entries.Clear();
+		m_committedCache.m_entries.Clear();
 		m_bIsDirty = false;
 		m_bPreserveStorageAfterLoadFailure = true;
 		m_bHasCommittedSnapshot = false;
@@ -1271,8 +1160,8 @@ bool ShaderCache::CommitCandidateLocked(
 
 void ShaderCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loadResult)
 {
-	m_cache.m_data.Clear();
-	m_committedCache.m_data.Clear();
+	m_cache.m_entries.Clear();
+	m_committedCache.m_entries.Clear();
 	m_quarantinedEntries.Clear();
 	m_bIsDirty = true;
 	m_bPreserveStorageAfterLoadFailure = false;
@@ -1317,8 +1206,8 @@ void ShaderCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult lo
 
 void ShaderCache::EnterStorageQuarantineLocked(std::string diagnostic)
 {
-	m_cache.m_data.Clear();
-	m_committedCache.m_data.Clear();
+	m_cache.m_entries.Clear();
+	m_committedCache.m_entries.Clear();
 	m_bIsDirty = false;
 	m_bPreserveStorageAfterLoadFailure = true;
 	m_bHasCommittedSnapshot = false;
@@ -1488,7 +1377,7 @@ bool ShaderCache::ValidateAllArtifactsLocked(
 	bool& outIoFailure) const
 {
 	outIoFailure = false;
-	for (const auto& fileEntries : candidate.m_data)
+	for (const auto& fileEntries : candidate.m_entries)
 	{
 		for (const ShaderCacheData::Entry& entry : *fileEntries.m_second)
 		{
@@ -1967,7 +1856,7 @@ bool ShaderCache::CacheCompleteSpirvLocked(
 		return false;
 	}
 
-	auto& entries = m_cache.m_data[uid];
+	auto& entries = m_cache.m_entries[uid];
 	auto existing = std::find_if(
 		std::begin(entries),
 		std::end(entries),
@@ -2123,7 +2012,7 @@ bool ShaderCache::GetSpirvCode(
 		return true;
 	}
 
-	auto& entries = m_cache.m_data[uid];
+	auto& entries = m_cache.m_entries[uid];
 	auto entry = std::find_if(
 		std::cbegin(entries),
 		std::cend(entries),
@@ -2190,7 +2079,7 @@ bool ShaderCache::GetSpirvCode(
 bool ShaderCache::Contains(const FileId& uid) const
 {
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	return m_cache.m_data.ContainsKey(uid) ||
+	return m_cache.m_entries.ContainsKey(uid) ||
 		m_quarantinedEntries.ContainsIf([&](const QuarantinedEntry& entry)
 			{
 				return entry.m_fileId == uid;
@@ -2213,12 +2102,12 @@ bool ShaderCache::IsExpiredLocked(const FileId& uid, uint32_t permutation)
 			quarantined->m_sourceFingerprint == 0 ||
 			quarantined->m_sourceFingerprint != sourceState.m_fingerprint;
 	}
-	if (!m_cache.m_data.ContainsKey(uid))
+	if (!m_cache.m_entries.ContainsKey(uid))
 	{
 		return true;
 	}
 
-	const auto& entries = m_cache.m_data[uid];
+	const auto& entries = m_cache.m_entries[uid];
 	const size_t index = entries.FindIf([permutation](const ShaderCacheData::Entry& entry)
 		{
 			return entry.m_permutation == permutation;
@@ -2291,7 +2180,7 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(
 	}
 
 	TSet<std::string> whitelist;
-	for (const auto& fileEntries : committedSnapshot.m_data)
+	for (const auto& fileEntries : committedSnapshot.m_entries)
 	{
 		for (const ShaderCacheData::Entry& entry : *fileEntries.m_second)
 		{
@@ -2388,14 +2277,14 @@ bool ShaderCache::RemoveLocked(
 		outDiagnostic.clear();
 		return true;
 	}
-	if (!m_cache.m_data.ContainsKey(uid))
+	if (!m_cache.m_entries.ContainsKey(uid))
 	{
 		outDiagnostic.clear();
 		return true;
 	}
 
 	ShaderCacheData candidate = m_cache;
-	candidate.m_data.Remove(uid);
+	candidate.m_entries.Remove(uid);
 	if (!CommitCandidateLocked(std::move(candidate), outDiagnostic, failurePoint))
 	{
 		return false;
@@ -2430,9 +2319,9 @@ void ShaderCache::Invalidate(const FileId& uid)
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	bool bInvalidated = false;
-	if (m_cache.m_data.ContainsKey(uid))
+	if (m_cache.m_entries.ContainsKey(uid))
 	{
-		for (ShaderCacheData::Entry& entry : m_cache.m_data[uid])
+		for (ShaderCacheData::Entry& entry : m_cache.m_entries[uid])
 		{
 			// Keep the last durable generation as a fallback while forcing an exact
 			// dependency comparison to reject it until a successful replacement exists.
@@ -2477,7 +2366,7 @@ bool ShaderCache::ClearExpiredLocked(
 
 	TVector<ShaderCacheData::Entry> expired;
 	const ShaderCacheData inspectedCache = m_cache;
-	for (const auto& fileEntries : inspectedCache.m_data)
+	for (const auto& fileEntries : inspectedCache.m_entries)
 	{
 		for (const ShaderCacheData::Entry& entry : *fileEntries.m_second)
 		{
@@ -2495,16 +2384,16 @@ bool ShaderCache::ClearExpiredLocked(
 	ShaderCacheData candidate = m_cache;
 	for (const ShaderCacheData::Entry& entry : expired)
 	{
-		auto mapEntry = candidate.m_data.Find(entry.m_fileId);
-		if (mapEntry == candidate.m_data.end())
+		auto mapEntry = candidate.m_entries.Find(entry.m_fileId);
+		if (mapEntry == candidate.m_entries.end())
 		{
 			continue;
 		}
-		auto& entries = candidate.m_data[entry.m_fileId];
+		auto& entries = candidate.m_entries[entry.m_fileId];
 		entries.Remove(entry);
 		if (entries.Num() == 0)
 		{
-			candidate.m_data.Remove(entry.m_fileId);
+			candidate.m_entries.Remove(entry.m_fileId);
 		}
 	}
 
@@ -2546,8 +2435,8 @@ void ShaderCache::ClearExpired()
 void ShaderCache::ClearAll()
 {
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	m_cache.m_data.Clear();
-	m_committedCache.m_data.Clear();
+	m_cache.m_entries.Clear();
+	m_committedCache.m_entries.Clear();
 	m_quarantinedEntries.Clear();
 	m_bPreserveStorageAfterLoadFailure = false;
 	m_bHasCommittedSnapshot = false;
@@ -2624,9 +2513,9 @@ bool ShaderCacheTestAccess::Configure(
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
 	cache.m_cacheRoot = canonicalRoot;
 	cache.m_identityOverride = Workspace::MakeWorkspaceCacheIdentity(
-		ShaderCacheKind,
-		GetShaderCacheProducerIdentity(),
-		ShaderCachePayloadVersion,
+		ShaderCache::CacheKind,
+		ShaderCache::GetCacheProducerIdentity(),
+		ShaderCache::PayloadVersion,
 		"shader-cache-tests",
 		canonicalRoot.parent_path());
 	std::string diagnostic;
@@ -2644,11 +2533,11 @@ std::string ShaderCacheTestAccess::GetGeneration(
 	uint32_t permutation)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	if (!cache.m_cache.m_data.ContainsKey(uid))
+	if (!cache.m_cache.m_entries.ContainsKey(uid))
 	{
 		return {};
 	}
-	const auto& entries = cache.m_cache.m_data[uid];
+	const auto& entries = cache.m_cache.m_entries[uid];
 	const size_t index = entries.FindIf([permutation](const ShaderCache::ShaderCacheData::Entry& entry)
 		{
 			return entry.m_permutation == permutation;
@@ -2664,11 +2553,11 @@ std::filesystem::path ShaderCacheTestAccess::GetArtifactPath(
 	bool bIsDebug)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	if (!cache.m_cache.m_data.ContainsKey(uid))
+	if (!cache.m_cache.m_entries.ContainsKey(uid))
 	{
 		return {};
 	}
-	const auto& entries = cache.m_cache.m_data[uid];
+	const auto& entries = cache.m_cache.m_entries[uid];
 	const size_t index = entries.FindIf([permutation](const ShaderCache::ShaderCacheData::Entry& entry)
 		{
 			return entry.m_permutation == permutation;
@@ -2760,11 +2649,21 @@ void ShaderCacheTestAccess::FailNextArtifactSweep(ShaderCache& cache)
 	cache.m_bArtifactSweepFailureForTests = true;
 }
 
+std::string ShaderCacheTestAccess::PayloadWithUnknownFields(const ShaderCache& cache)
+{
+	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
+	YAML::Node payload = YAML::Load(
+		ShaderCache::SerializeShaderCachePayload(cache.m_cache));
+	payload["runtimeMetadata"] = "ignored";
+	payload["shaderCache"]["runtimeMetadata"] = "ignored";
+	return YAML::Dump(payload);
+}
+
 std::string ShaderCacheTestAccess::PayloadWithMissingDebug(const ShaderCache& cache)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
 	ShaderCache::ShaderCacheData candidate = cache.m_cache;
-	for (auto fileEntries : candidate.m_data)
+	for (auto fileEntries : candidate.m_entries)
 	{
 		for (ShaderCache::ShaderCacheData::Entry& entry : *fileEntries.m_second)
 		{
@@ -2778,7 +2677,7 @@ std::string ShaderCacheTestAccess::PayloadWithMismatchedDebugTopology(const Shad
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
 	ShaderCache::ShaderCacheData candidate = cache.m_cache;
-	for (auto fileEntries : candidate.m_data)
+	for (auto fileEntries : candidate.m_entries)
 	{
 		for (ShaderCache::ShaderCacheData::Entry& entry : *fileEntries.m_second)
 		{

@@ -1,4 +1,5 @@
 #include "RHIFrameGraph.h"
+#include "Containers/Hash.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/GraphicsDriver.h"
@@ -155,30 +156,16 @@ namespace
 	template<typename T>
 	uint64_t HashSubmissionValues(const TVector<T>& values)
 	{
-		uint64_t result = 1469598103934665603ull;
-		const auto* bytes = reinterpret_cast<const uint8_t*>(values.GetData());
 		const size_t numBytes = values.Num() * sizeof(T);
-		for (size_t index = 0u; index < numBytes; ++index)
-		{
-			result ^= bytes[index];
-			result *= 1099511628211ull;
-		}
-		result ^= values.Num();
-		result *= 1099511628211ull;
+		uint64_t result = HashBytes(values.GetData(), numBytes);
+		HashValue(result, values.Num());
 		return result;
 	}
 
 	template<typename T>
 	uint64_t HashSubmissionValue(const T& value)
 	{
-		uint64_t result = 1469598103934665603ull;
-		const auto* bytes = reinterpret_cast<const uint8_t*>(&value);
-		for (size_t index = 0u; index < sizeof(T); ++index)
-		{
-			result ^= bytes[index];
-			result *= 1099511628211ull;
-		}
-		return result;
+		return HashBytes(&value, sizeof(T));
 	}
 
 	EGlobalIlluminationDebugVisualization ResolveGlobalIlluminationDebug(

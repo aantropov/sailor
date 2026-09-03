@@ -5,6 +5,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "MaterialAssetInfo.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "Core/StringHash.h"
 #include "Math/Math.h"
 #include "Core/Utils.h"
 #include "YamlExceptionBoundary.h"
@@ -657,7 +658,7 @@ void MaterialAsset::Deserialize(const YAML::Node& outData)
 	NormalizeStandardGltfMaterial(*m_pData);
 
 	m_pData->m_renderQueue = renderQueue;
-	const size_t tag = GetHash(renderQueue);
+	const size_t tag = StringHash::Runtime(renderQueue).GetHash();
 	m_pData->m_renderState = RHI::RenderState(bEnableDepthTest, bEnableZWrite, depthBias, bCustomDepthShader, cullMode, blendMode, fillMode, tag, bSupportMultisampling);
 }
 

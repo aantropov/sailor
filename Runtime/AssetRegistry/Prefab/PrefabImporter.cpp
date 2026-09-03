@@ -89,6 +89,17 @@ void Prefab::ReflectedGameObject::Deserialize(const YAML::Node& inData)
 	DESERIALIZE_PROPERTY(inData, m_components);
 }
 
+void Prefab::SerializeLinkedProperties(
+	YAML::Node& outData,
+	const FileId& sourceFileId) const
+{
+	::Serialize(outData, "fileId", sourceFileId);
+	::Serialize(outData, "parentInstanceId", m_linkedParentInstanceId);
+	::Serialize(outData, "instanceIds", m_linkedInstanceIds);
+	SERIALIZE_PROPERTY(outData, m_gameObjectOverrides);
+	SERIALIZE_PROPERTY(outData, m_componentOverrides);
+}
+
 YAML::Node Prefab::Serialize() const
 {
 	YAML::Node outData;
@@ -103,17 +114,7 @@ YAML::Node Prefab::Serialize() const
 	if (m_bLinkedPrefabSnapshotRecord)
 	{
 		::Serialize(outData, "linkedPrefabSnapshot", true);
-		::Serialize(outData, "fileId", m_linkedSnapshotSourceFileId);
-		::Serialize(outData, "parentInstanceId", m_linkedParentInstanceId);
-		::Serialize(outData, "instanceIds", m_linkedInstanceIds);
-		::Serialize(
-			outData,
-			"gameObjectOverrides",
-			m_gameObjectOverrides);
-		::Serialize(
-			outData,
-			"componentOverrides",
-			m_componentOverrides);
+		SerializeLinkedProperties(outData, m_linkedSnapshotSourceFileId);
 	}
 
 	return outData;
@@ -167,14 +168,8 @@ void Prefab::Deserialize(const YAML::Node& inData)
 			inData,
 			"instanceIds",
 			m_linkedInstanceIds);
-		::Deserialize(
-			inData,
-			"gameObjectOverrides",
-			m_gameObjectOverrides);
-		::Deserialize(
-			inData,
-			"componentOverrides",
-			m_componentOverrides);
+		DESERIALIZE_PROPERTY(inData, m_gameObjectOverrides);
+		DESERIALIZE_PROPERTY(inData, m_componentOverrides);
 	}
 }
 

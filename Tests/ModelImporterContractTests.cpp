@@ -2,6 +2,7 @@
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Core/Utils.h"
+#include "Core/StringHash.h"
 #include "Raytracing/MaterialUtils.h"
 #include "Raytracing/PathTracer.h"
 #include "Components/MeshRendererComponent.h"
@@ -499,7 +500,7 @@ namespace
 		Require(materialAsset.GetRenderQueue() == "Transparent",
 			"material deserialization must retain its authored render queue");
 		Require(materialAsset.GetRenderState().GetTag() ==
-			GetHash(std::string("Transparent")),
+			"Transparent"_h.GetHash(),
 			"material render state tag must match the retained render queue");
 	}
 

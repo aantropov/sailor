@@ -4,6 +4,7 @@
 #include "ECS/TransformECS.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "FrameGraph/SkyNode.h"
+#include "Math/Math.h"
 #include "RHI/Renderer.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
 #include <glm/gtx/quaternion.hpp>
@@ -52,10 +53,6 @@ namespace
 			: localMatrix;
 	}
 
-	bool IsFinite(const glm::vec3& value)
-	{
-		return Math::AllFinite(value);
-	}
 }
 
 SkyComponent::SkyComponent()
@@ -139,9 +136,9 @@ void SkyComponent::Apply()
 		localPosition = glm::vec3(inverseParent * glm::vec4(worldPosition, 1.0f));
 	}
 
-	if (!IsFinite(localDirection) ||
-		!IsFinite(localUp) ||
-		!IsFinite(localPosition))
+	if (!Math::AllFinite(localDirection) ||
+		!Math::AllFinite(localUp) ||
+		!Math::AllFinite(localPosition))
 	{
 		return;
 	}

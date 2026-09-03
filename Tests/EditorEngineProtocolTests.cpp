@@ -37,7 +37,6 @@ extern "C"
 namespace
 {
 	using Sailor::Protocol::EEditorEngineTransportStatus;
-	using Sailor::Protocol::EditorEngineProtocolStrictInstanceIdsVersion;
 	using Sailor::Protocol::EditorEngineProtocolMaxPayloadSize;
 	using Sailor::Protocol::EditorEngineProtocolVersion;
 
@@ -900,13 +899,13 @@ namespace
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(
 				MakeRequest(
-					EditorEngineProtocolStrictInstanceIdsVersion + 1u,
+					EditorEngineProtocolVersion + 1u,
 					17,
 					c_getExitCodeCommandField),
 				buffer);
 			Require(
 				response.m_protocolVersion ==
-					EditorEngineProtocolStrictInstanceIdsVersion &&
+					EditorEngineProtocolVersion &&
 				response.m_requestId == 17 &&
 				!response.m_success &&
 				response.m_error.find("version") != std::string::npos &&
@@ -985,45 +984,6 @@ namespace
 			1u);
 
 		{
-			TProtocolBuffer buffer;
-			const auto response = RequireProtocolResponse(
-				MakeRequest(
-					EditorEngineProtocolVersion,
-					24,
-					c_instantiatePrefabFromYamlCommandField,
-					strictInstantiateRequest),
-				buffer);
-			Require(
-				response.m_protocolVersion ==
-					EditorEngineProtocolVersion &&
-				response.m_requestId == 24 &&
-				!response.m_success &&
-				response.m_error.find("Strict instance-id") !=
-					std::string::npos &&
-				response.m_supportsStrictInstanceIds,
-				"v1 strict restore must fail closed while advertising the compatible host capability");
-		}
-
-		{
-			TProtocolBuffer buffer;
-			const auto response = RequireProtocolResponse(
-				MakeRequest(
-					EditorEngineProtocolStrictInstanceIdsVersion,
-					25,
-					c_getExitCodeCommandField),
-				buffer);
-			Require(
-				response.m_protocolVersion ==
-					EditorEngineProtocolStrictInstanceIdsVersion &&
-				response.m_requestId == 25 &&
-				!response.m_success &&
-				response.m_error.find("reserved") !=
-					std::string::npos &&
-				response.m_supportsStrictInstanceIds,
-				"the strict protocol version must reject ordinary v1 commands");
-		}
-
-		{
 			Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
 			std::string admissionError;
 			Require(
@@ -1037,7 +997,7 @@ namespace
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(
 				MakeRequest(
-					EditorEngineProtocolStrictInstanceIdsVersion,
+					EditorEngineProtocolVersion,
 					26,
 					c_instantiatePrefabFromYamlCommandField,
 					strictInstantiateRequest),
@@ -1045,13 +1005,13 @@ namespace
 				dependencies);
 			Require(
 				response.m_protocolVersion ==
-					EditorEngineProtocolStrictInstanceIdsVersion &&
+					EditorEngineProtocolVersion &&
 				response.m_requestId == 26 &&
 				response.m_success &&
 				response.m_resultField == c_instanceIdResultField &&
 				!response.m_boolResult &&
 				response.m_supportsStrictInstanceIds,
-				"a capability-compatible host must dispatch a version-gated strict restore request");
+				"a capable host must dispatch strict restoration through protocol v1");
 		}
 	}
 

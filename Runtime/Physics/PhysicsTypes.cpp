@@ -8,21 +8,6 @@ using namespace Sailor;
 
 namespace
 {
-	bool IsFiniteMatrix(const glm::mat4& matrix)
-	{
-		for (glm::length_t column = 0; column < matrix.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < matrix[column].length(); ++row)
-			{
-				if (!std::isfinite(matrix[column][row]))
-				{
-					return false;
-				}
-			}
-		}
-		return true;
-	}
-
 	glm::quat NormalizeRotation(const glm::quat& rotation)
 	{
 		const glm::vec4 raw(
@@ -53,7 +38,7 @@ bool Physics::TryConvertWorldPoseToLocal(
 		worldRotation.y,
 		worldRotation.z,
 		worldRotation.w);
-	if (!IsFiniteMatrix(parentWorldMatrix) ||
+	if (!Math::AllFinite(parentWorldMatrix) ||
 		!Math::AllFinite(worldPosition) ||
 		!Math::AllFinite(worldRotationVector))
 	{
@@ -76,7 +61,7 @@ bool Physics::TryConvertWorldPoseToLocal(
 	}
 
 	const glm::mat4 inverseParent = glm::inverse(parentWorldMatrix);
-	if (!IsFiniteMatrix(inverseParent))
+	if (!Math::AllFinite(inverseParent))
 	{
 		return false;
 	}

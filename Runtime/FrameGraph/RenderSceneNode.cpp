@@ -11,6 +11,7 @@
 #include "RHI/Buffer.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "Core/StringHash.h"
 #include "Core/SpinLock.h"
 
 #include <cmath>
@@ -380,7 +381,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 	SAILOR_PROFILE_FUNCTION();
 
 	const std::string QueueTag = GetString("Tag");
-	const size_t QueueTagHash = GetHash(QueueTag);
+	const size_t QueueTagHash = StringHash::Runtime(QueueTag).GetHash();
 	const bool bBackToFront = GetSortingOrder() == RHI::ESortingOrder::BackToFront;
 	std::string virtualizeInstancePayloadsSetting;
 	const bool bVirtualizeInstancePayloads =
@@ -411,7 +412,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 				requestedTextures.Reset();
 			}
 
-			constexpr size_t PayloadRevisionSeed = 1469598103934665603ull;
+			constexpr size_t PayloadRevisionSeed = Fnv1aOffsetBasis;
 			std::array<size_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
 				payloadRevisions{};
 			std::array<uint32_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
