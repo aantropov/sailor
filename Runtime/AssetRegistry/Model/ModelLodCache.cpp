@@ -7,17 +7,21 @@
 #include "Workspace/WorkspaceCacheContract.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <limits>
-#include <string_view>
 
 using namespace Sailor;
 
 namespace
 {
+	constexpr uint32_t Version = 1u;
+	constexpr uint64_t MaxBytes = 1024ull * 1024ull * 1024ull;
+	constexpr std::array<char, 8> Magic = {'S', 'A', 'I', 'L', 'L', 'O', 'D', '\0'};
+
 	struct Header final
 	{
 		std::array<char, 8> m_magic{};
@@ -40,73 +44,55 @@ namespace
 		uint64_t m_indexCount = 0u;
 	};
 
-	class BinaryWriter final
+	template <IsTriviallyCopyable Type> void Append(std::string& bytes, const Type& value)
 	{
-	public:
-		template<IsTriviallyCopyable Type>
-		void Write(const Type& value)
-		{
-			Write(&value, sizeof(Type));
-		}
+		bytes.append(reinterpret_cast<const char*>(&value), sizeof(Type));
+	}
 
-		void Write(const void* data, size_t size)
-		{
-			if (size != 0u)
-			{
-				m_bytes.append(static_cast<const char*>(data), size);
-			}
-		}
-
-		const std::string& GetBytes() const noexcept { return m_bytes; }
-
-	private:
-		std::string m_bytes;
-	};
-
-	class BinaryReader final
+	void Append(std::string& bytes, const void* data, size_t size)
 	{
-	public:
-		explicit BinaryReader(std::string_view bytes) : m_bytes(bytes) {}
-
-		template<IsTriviallyCopyable Type>
-		bool Read(Type& value)
+		if (size > 0u)
 		{
-			return Read(&value, sizeof(Type));
+			bytes.append(static_cast<const char*>(data), size);
+		}
+	}
+
+	template <IsTriviallyCopyable Type> bool Read(const std::string& bytes, size_t& offset, Type& value)
+	{
+		if (offset > bytes.size() || sizeof(Type) > bytes.size() - offset)
+		{
+			return false;
 		}
 
-		bool Read(void* data, size_t size)
+		std::memcpy(&value, bytes.data() + offset, sizeof(Type));
+		offset += sizeof(Type);
+		return true;
+	}
+
+	bool Read(const std::string& bytes, size_t& offset, void* data, size_t size)
+	{
+		if (offset > bytes.size() || size > bytes.size() - offset || (data == nullptr && size > 0u))
 		{
-			if (size > m_bytes.size() - m_offset)
-			{
-				return false;
-			}
-			if (size != 0u)
-			{
-				std::memcpy(data, m_bytes.data() + m_offset, size);
-			}
-			m_offset += size;
-			return true;
+			return false;
 		}
 
-		bool IsComplete() const noexcept { return m_offset == m_bytes.size(); }
-
-	private:
-		std::string_view m_bytes;
-		size_t m_offset = 0u;
-	};
+		if (size > 0u)
+		{
+			std::memcpy(data, bytes.data() + offset, size);
+		}
+		offset += size;
+		return true;
+	}
 
 	std::filesystem::path GetPath(const FileId& fileId, uint32_t lodLevel)
 	{
-		const std::filesystem::path filename =
-			ModelImporter::GetLodCacheFilename(fileId, lodLevel);
-		return filename.empty()
-			? std::filesystem::path{}
-			: std::filesystem::path(AssetRegistry::GetCacheFolder()) / "Lods" / filename;
+		const std::filesystem::path filename = ModelImporter::GetLodCacheFilename(fileId, lodLevel);
+		return filename.empty() ? std::filesystem::path{}
+								: std::filesystem::path(AssetRegistry::GetCacheFolder()) / "Lods" / filename;
 	}
 }
 
-bool ModelLodCache::Load(
-	const ModelAssetInfo& assetInfo,
+bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 	const FileRevision& sourceRevision,
 	uint32_t lodLevel,
 	TVector<ModelImporter::MeshContext>& meshes)
@@ -120,26 +106,20 @@ bool ModelLodCache::Load(
 	}
 
 	std::ifstream input(path, std::ios::binary);
-	const std::string bytes{
-		std::istreambuf_iterator<char>(input),
-		std::istreambuf_iterator<char>() };
+	const std::string bytes{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 	if (input.bad() || bytes.size() != fileSize)
 	{
 		return false;
 	}
 
-	BinaryReader reader(bytes);
+	size_t offset = 0u;
 	Header header{};
-	if (!reader.Read(header) ||
-		header.m_magic != Magic ||
-		header.m_version != Version ||
-		header.m_vertexStride != sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) ||
-		header.m_meshCount != meshes.Num() ||
+	if (!Read(bytes, offset, header) || header.m_magic != Magic || header.m_version != Version ||
+		header.m_vertexStride != sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) || header.m_meshCount != meshes.Num() ||
 		header.m_lodLevel != lodLevel ||
 		header.m_sourceModificationTime != sourceRevision.m_modificationTimeNanoseconds ||
 		header.m_sourceSize != sourceRevision.m_fileSize ||
-		header.m_sourceContentHash != sourceRevision.m_contentHash ||
-		header.m_unitScale != assetInfo.GetUnitScale() ||
+		header.m_sourceContentHash != sourceRevision.m_contentHash || header.m_unitScale != assetInfo.GetUnitScale() ||
 		header.m_reductionFactor != assetInfo.GetLodReductionFactor() ||
 		header.m_bBatchByMaterial != static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial()) ||
 		header.m_bFlipTexcoordY != static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY()))
@@ -152,15 +132,13 @@ bool ModelLodCache::Load(
 	for (auto& lod : loaded)
 	{
 		MeshHeader meshHeader{};
-		if (!reader.Read(meshHeader) ||
-			meshHeader.m_vertexCount > std::numeric_limits<uint32_t>::max() ||
+		if (!Read(bytes, offset, meshHeader) || meshHeader.m_vertexCount > std::numeric_limits<uint32_t>::max() ||
 			meshHeader.m_indexCount > std::numeric_limits<uint32_t>::max())
 		{
 			return false;
 		}
 
-		const uint64_t vertexBytes = meshHeader.m_vertexCount *
-			sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
+		const uint64_t vertexBytes = meshHeader.m_vertexCount * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
 		const uint64_t indexBytes = meshHeader.m_indexCount * sizeof(uint32_t);
 		if (vertexBytes + indexBytes > MaxBytes)
 		{
@@ -169,8 +147,8 @@ bool ModelLodCache::Load(
 
 		lod.m_vertices.Resize(static_cast<size_t>(meshHeader.m_vertexCount));
 		lod.m_indices.Resize(static_cast<size_t>(meshHeader.m_indexCount));
-		if (!reader.Read(lod.m_vertices.GetData(), static_cast<size_t>(vertexBytes)) ||
-			!reader.Read(lod.m_indices.GetData(), static_cast<size_t>(indexBytes)))
+		if (!Read(bytes, offset, lod.m_vertices.GetData(), static_cast<size_t>(vertexBytes)) ||
+			!Read(bytes, offset, lod.m_indices.GetData(), static_cast<size_t>(indexBytes)))
 		{
 			return false;
 		}
@@ -183,7 +161,7 @@ bool ModelLodCache::Load(
 		}
 	}
 
-	if (!reader.IsComplete())
+	if (offset != bytes.size())
 	{
 		return false;
 	}
@@ -191,16 +169,13 @@ bool ModelLodCache::Load(
 	const size_t lodIndex = static_cast<size_t>(lodLevel - 1u);
 	for (size_t meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
 	{
-		meshes[meshIndex].lods.Resize((std::max)(
-			meshes[meshIndex].lods.Num(),
-			lodIndex + 1u));
+		meshes[meshIndex].lods.Resize((std::max)(meshes[meshIndex].lods.Num(), lodIndex + 1u));
 		meshes[meshIndex].lods[lodIndex] = std::move(loaded[meshIndex]);
 	}
 	return true;
 }
 
-void ModelLodCache::Save(
-	const ModelAssetInfo& assetInfo,
+void Sailor::ModelLodCache::Save(const ModelAssetInfo& assetInfo,
 	const FileRevision& sourceRevision,
 	uint32_t lodLevel,
 	const TVector<ModelImporter::MeshContext>& meshes)
@@ -219,29 +194,21 @@ void ModelLodCache::Save(
 	header.m_bBatchByMaterial = static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial());
 	header.m_bFlipTexcoordY = static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY());
 
-	BinaryWriter writer;
-	writer.Write(header);
+	std::string bytes;
+	Append(bytes, header);
 	const size_t lodIndex = static_cast<size_t>(lodLevel - 1u);
 	for (const auto& mesh : meshes)
 	{
 		const auto* lod = lodIndex < mesh.lods.Num() ? &mesh.lods[lodIndex] : nullptr;
-		const MeshHeader meshHeader{
-			lod ? lod->m_vertices.Num() : 0u,
-			lod ? lod->m_indices.Num() : 0u
-		};
-		writer.Write(meshHeader);
+		const MeshHeader meshHeader{lod ? lod->m_vertices.Num() : 0u, lod ? lod->m_indices.Num() : 0u};
+		Append(bytes, meshHeader);
 		if (lod)
 		{
-			writer.Write(
-				lod->m_vertices.GetData(),
-				lod->m_vertices.Num() * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4));
-			writer.Write(
-				lod->m_indices.GetData(),
-				lod->m_indices.Num() * sizeof(uint32_t));
+			Append(bytes, lod->m_vertices.GetData(), lod->m_vertices.Num() * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4));
+			Append(bytes, lod->m_indices.GetData(), lod->m_indices.Num() * sizeof(uint32_t));
 		}
 	}
 
-	const std::string& bytes = writer.GetBytes();
 	if (bytes.size() > MaxBytes)
 	{
 		return;
@@ -249,16 +216,8 @@ void ModelLodCache::Save(
 
 	const std::filesystem::path path = GetPath(assetInfo.GetFileId(), lodLevel);
 	std::string diagnostic;
-	if (!path.empty() &&
-		!Workspace::AtomicReplaceWorkspaceCacheBinary(
-			path,
-			bytes.data(),
-			bytes.size(),
-			diagnostic))
+	if (!path.empty() && !Workspace::AtomicReplaceWorkspaceCacheBinary(path, bytes.data(), bytes.size(), diagnostic))
 	{
-		SAILOR_LOG(
-			"Cannot save model LOD cache %s: %s",
-			path.string().c_str(),
-			diagnostic.c_str());
+		SAILOR_LOG("Cannot save model LOD cache %s: %s", path.string().c_str(), diagnostic.c_str());
 	}
 }
