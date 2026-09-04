@@ -1,10 +1,8 @@
 const float EVSM_C1 = 40.0f;
 const float EVSM_C2 = 40.0f;
-// Offset the receiver before projecting it into a cascade. Applying bias after
-// projection makes the effective surface offset depend on that cascade's depth
-// range and precision, which exposes the split as a band.
-const float SHADOW_RECEIVER_LIGHT_OFFSET = 0.005f;
-const float SHADOW_RECEIVER_NORMAL_OFFSET = 0.02f;
+const float EVSM_RECEIVER_LIGHT_OFFSET = 0.005f;
+const float EVSM_RECEIVER_NORMAL_OFFSET = 0.02f;
+const float PCF_DEPTH_QUANTIZATION = 1.0f / 65535.0f;
 const uint SHADOW_TYPE_NONE = 0u;
 const uint SHADOW_TYPE_PCF = 1u;
 const uint SHADOW_TYPE_EVSM = 2u;
@@ -461,10 +459,15 @@ float LuminanceCzm(vec3 rgb)
     return dot(rgb, w);
 }
 
-float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth)
+float ManualPCF(
+  sampler2D shadowMap,
+  vec3 projCoords,
+  float currentDepth,
+  vec2 receiverDepthGradient)
 {
    float shadow = 0.0;
-   vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+   const ivec2 mapSize = textureSize(shadowMap, 0);
+   const vec2 texelSize = 1.0 / vec2(mapSize);
    int samples = 16; // Number of samples
    float radius = 2.0; // Radius of the kernel
 
@@ -495,8 +498,13 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth)
            continue;
        }
 
-       const float pcfDepth = texture(shadowMap, sampleUv).r;
-       shadow += currentDepth > pcfDepth ? 1.0 : 0.0;
+       const ivec2 texel = clamp(ivec2(floor(sampleUv * vec2(mapSize))),
+         ivec2(0), mapSize - ivec2(1));
+       const vec2 texelCenterUv = (vec2(texel) + 0.5f) * texelSize;
+       const float receiverDepth = currentDepth +
+         dot(receiverDepthGradient, texelCenterUv - projCoords.xy);
+       const float pcfDepth = texelFetch(shadowMap, texel, 0).r;
+       shadow += pcfDepth == 0.0f || receiverDepth > pcfDepth ? 1.0 : 0.0;
    }
 
    shadow /= float(samples);
@@ -711,7 +719,11 @@ float Chebyshev(vec2 moments, float currentDepth, float minVariance, float linst
     return ReduceLightBleed(variance / (variance + d * d), linstep);
 }
 
-float ShadowCalculation_Pcf(sampler2D shadowMap, vec4 fragPosLightSpace, int cascadeLayer)
+float ShadowCalculation_Pcf(
+  sampler2D shadowMap,
+  vec4 fragPosLightSpace,
+  vec2 receiverDepthGradient,
+  float receiverBiasScale)
 {
   vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
   projCoords.xy = projCoords.xy * 0.5 + 0.5;
@@ -724,9 +736,11 @@ float ShadowCalculation_Pcf(sampler2D shadowMap, vec4 fragPosLightSpace, int cas
     return 1.0f;
   }
   
-  const float currentDepth = projCoords.z;
+  // PCF depth is stored in R16_UNORM, independently of the raster depth buffer.
+  const float currentDepth = projCoords.z +
+    receiverBiasScale * PCF_DEPTH_QUANTIZATION;
   
-  float shadow = ManualPCF(shadowMap, projCoords, currentDepth);
+  float shadow = ManualPCF(shadowMap, projCoords, currentDepth, receiverDepthGradient);
   return shadow;  
 }
 
@@ -743,7 +757,7 @@ float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, int ca
     return 1.0f;
   }
   
-  vec4 shadow = texture(shadowMap, projCoords.xy);// > 0.39 ? 1.0f : 0.0f;
+  vec4 shadow = textureLod(shadowMap, projCoords.xy, 0.0f);
   const float currentDepth = exp(EVSM_C1 * projCoords.z);
   const float negCurrentDepth = -exp(-EVSM_C2 * projCoords.z);
   
@@ -753,10 +767,50 @@ float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, int ca
   return clamp(1 - max(posValue, negValue), 0, 1);
 }
 
+vec2 CalculateShadowReceiverDepthGradient(mat4 lightMatrix, vec3 surfaceNormal)
+{
+  const vec3 lightX = vec3(lightMatrix[0][0], lightMatrix[1][0], lightMatrix[2][0]);
+  const vec3 lightY = vec3(lightMatrix[0][1], lightMatrix[1][1], lightMatrix[2][1]);
+  const vec3 lightZ = vec3(lightMatrix[0][2], lightMatrix[1][2], lightMatrix[2][2]);
+  const vec3 normal = normalize(surfaceNormal);
+  const vec3 lightDepthAxis = cross(lightX, lightY);
+  if(abs(dot(normal, normalize(lightDepthAxis))) < 0.001f)
+  {
+    return vec2(0.0f);
+  }
+
+  // Transform the plane normal by the inverse transpose. The common
+  // determinant cancels in the depth gradient, including for scaled parents.
+  const vec3 clipNormal = vec3(
+    dot(cross(lightY, lightZ), normal),
+    dot(cross(lightZ, lightX), normal),
+    dot(lightDepthAxis, normal));
+  // Clip-to-UV scale, with the texture Y axis flipped.
+  return vec2(-2.0f, 2.0f) * clipNormal.xy / clipNormal.z;
+}
+
+vec3 OffsetEvsmShadowReceiver(
+  vec3 worldPosition,
+  vec3 surfaceNormal,
+  vec3 surfaceToLightDirection,
+  float receiverBiasScale)
+{
+  const vec3 normal = normalize(surfaceNormal);
+  const vec3 toLight = normalize(surfaceToLightDirection);
+  const float cosTheta = clamp(dot(normal, toLight), 0.0f, 1.0f);
+  const float sinTheta = sqrt(max(1.0f - cosTheta * cosTheta, 0.0f));
+  return worldPosition + receiverBiasScale * (
+    toLight * EVSM_RECEIVER_LIGHT_OFFSET +
+    normal * (EVSM_RECEIVER_NORMAL_OFFSET * sinTheta));
+}
+
 float CalculateDirectionalShadow(
   uint shadowType,
   sampler2D shadowMap,
-  vec4 fragPosLightSpace,
+  mat4 lightMatrix,
+  vec3 worldPosition,
+  vec3 surfaceNormal,
+  float receiverBiasScale,
   int cascadeLayer)
 {
   if (shadowType == SHADOW_TYPE_NONE)
@@ -766,25 +820,22 @@ float CalculateDirectionalShadow(
 
   if (shadowType == SHADOW_TYPE_EVSM && cascadeLayer == 0)
   {
+    const vec3 lightX = vec3(lightMatrix[0][0], lightMatrix[1][0], lightMatrix[2][0]);
+    const vec3 lightY = vec3(lightMatrix[0][1], lightMatrix[1][1], lightMatrix[2][1]);
+    const vec3 lightZ = vec3(lightMatrix[0][2], lightMatrix[1][2], lightMatrix[2][2]);
+    const vec3 lightDepthAxis = cross(lightX, lightY);
+    const vec3 toLight = normalize(lightDepthAxis) * sign(dot(lightDepthAxis, lightZ));
+    const vec3 receiverPosition = OffsetEvsmShadowReceiver(
+      worldPosition, surfaceNormal, toLight, receiverBiasScale);
     return ShadowCalculation_Evsm(
       shadowMap,
-      fragPosLightSpace,
+      lightMatrix * vec4(receiverPosition, 1.0f),
       cascadeLayer);
   }
 
-  return ShadowCalculation_Pcf(shadowMap, fragPosLightSpace, cascadeLayer);
-}
-
-vec3 OffsetDirectionalShadowReceiver(
-  vec3 worldPosition,
-  vec3 surfaceNormal,
-  vec3 surfaceToLightDirection)
-{
-  const vec3 normal = normalize(surfaceNormal);
-  const vec3 toLight = normalize(surfaceToLightDirection);
-  const float cosTheta = clamp(dot(normal, toLight), 0.0f, 1.0f);
-  const float sinTheta = sqrt(max(1.0f - cosTheta * cosTheta, 0.0f));
-  return worldPosition +
-    toLight * SHADOW_RECEIVER_LIGHT_OFFSET +
-    normal * (SHADOW_RECEIVER_NORMAL_OFFSET * sinTheta);
+  return ShadowCalculation_Pcf(
+    shadowMap,
+    lightMatrix * vec4(worldPosition, 1.0f),
+    CalculateShadowReceiverDepthGradient(lightMatrix, surfaceNormal),
+    receiverBiasScale);
 }
