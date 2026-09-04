@@ -5,6 +5,7 @@
 #include "Math/Math.h"
 #include "Containers/Containers.h"
 
+#include <utility>
 #include <yaml-cpp/yaml.h>
 
 #define SERIALIZE_PROPERTY(yamlNode, variable) Sailor::Serialize(yamlNode, &(#variable)[2], variable)
@@ -79,15 +80,22 @@ namespace Sailor
 	template<typename T>
 	__forceinline bool Deserialize(const YAML::Node& node, const std::string& name, T& variable)
 	{
-		if (node[name])
+		const YAML::Node value = node[name];
+		if (value)
 		{
 			if constexpr (IsEnum<T>)
 			{
-				return DeserializeEnum<T>(node[name], variable);
+				return DeserializeEnum<T>(value, variable);
 			}
 			else
 			{
-				variable = node[name].as<typename std::decay<decltype(variable)>::type>();
+				using TValue = typename std::decay<decltype(variable)>::type;
+				TValue decoded{};
+				if (!YAML::convert<TValue>::decode(value, decoded))
+				{
+					return false;
+				}
+				variable = std::move(decoded);
 			}
 
 			return true;

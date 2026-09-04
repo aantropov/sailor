@@ -86,7 +86,12 @@ InstanceId::InstanceId(const InstanceId& inComponentId, const InstanceId& inGame
 
 void InstanceId::Deserialize(const YAML::Node& inData)
 {
-	Assign(inData.as<std::string>());
+	if (!inData.IsScalar())
+	{
+		*this = InstanceId{};
+		return;
+	}
+	Assign(inData.Scalar());
 }
 
 const std::string& InstanceId::ToString() const

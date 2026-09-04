@@ -11,7 +11,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <filesystem>
 #include <sstream>
 
@@ -123,23 +122,13 @@ YAML::Node AssetCache::AssetCacheData::Entry::Serialize() const
 
 void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 {
-	std::fprintf(stderr, "ACDBG entry begin\n");
-	std::fflush(stderr);
 	*this = Entry{};
-	std::fprintf(stderr, "ACDBG entry reset\n");
-	std::fflush(stderr);
 	std::string yamlDiagnostic;
-	const bool bDecoded = Sailor::External::GuardYamlExceptions(
+	if (!Sailor::External::GuardYamlExceptions(
 		[&]()
 		{
-			std::fprintf(stderr, "ACDBG entry fileId\n");
-			std::fflush(stderr);
 			DESERIALIZE_PROPERTY(inData, m_fileId);
-			std::fprintf(stderr, "ACDBG entry importTime\n");
-			std::fflush(stderr);
 			DESERIALIZE_PROPERTY(inData, m_assetImportTime);
-			std::fprintf(stderr, "ACDBG entry sourcePath\n");
-			std::fflush(stderr);
 			DESERIALIZE_PROPERTY(inData, m_sourcePath);
 			DESERIALIZE_PROPERTY(inData, m_sourceRevision);
 			DESERIALIZE_PROPERTY(inData, m_metadataFilename);
@@ -147,17 +136,10 @@ void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 			DESERIALIZE_PROPERTY(inData, m_assetInfoType);
 			m_sourcePath = NormalizeSourcePath(m_sourcePath);
 		},
-		yamlDiagnostic);
-	std::fprintf(stderr, "ACDBG entry guarded %d\n", bDecoded ? 1 : 0);
-	std::fflush(stderr);
-	if (!bDecoded)
+		yamlDiagnostic))
 	{
 		*this = Entry{};
-		std::fprintf(stderr, "ACDBG entry failure reset\n");
-		std::fflush(stderr);
 	}
-	std::fprintf(stderr, "ACDBG entry complete\n");
-	std::fflush(stderr);
 }
 
 bool AssetCache::AssetCacheData::Entry::Validate(
@@ -202,29 +184,16 @@ YAML::Node AssetCache::AssetCacheData::Serialize() const
 
 void AssetCache::AssetCacheData::Deserialize(const YAML::Node& inData)
 {
-	std::fprintf(stderr, "ACDBG data begin\n");
-	std::fflush(stderr);
 	AssetCacheData candidate;
 	std::string diagnostic;
-	std::fprintf(stderr, "ACDBG data before try\n");
-	std::fflush(stderr);
-	const bool bDecoded = TryDeserialize(inData, candidate, diagnostic);
-	std::fprintf(stderr, "ACDBG data after try %d\n", bDecoded ? 1 : 0);
-	std::fflush(stderr);
-	if (bDecoded)
+	if (TryDeserialize(inData, candidate, diagnostic))
 	{
 		m_assets = std::move(candidate.m_assets);
 	}
 	else
 	{
-		std::fprintf(stderr, "ACDBG data before clear\n");
-		std::fflush(stderr);
 		m_assets.Clear();
-		std::fprintf(stderr, "ACDBG data after clear\n");
-		std::fflush(stderr);
 	}
-	std::fprintf(stderr, "ACDBG data complete\n");
-	std::fflush(stderr);
 }
 
 bool AssetCache::AssetCacheData::DeserializeProperties(
@@ -254,18 +223,9 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 {
 	auto deserialize = [&]() -> bool
 	{
-		std::fprintf(stderr, "ACDBG try candidate begin\n");
-		std::fflush(stderr);
 		AssetCacheData candidate;
-		std::fprintf(stderr, "ACDBG try before properties\n");
-		std::fflush(stderr);
-		const bool bProperties = candidate.DeserializeProperties(inData);
-		std::fprintf(stderr, "ACDBG try after properties %d\n", bProperties ? 1 : 0);
-		std::fflush(stderr);
-		const bool bValid = bProperties && candidate.Validate(outDiagnostic);
-		std::fprintf(stderr, "ACDBG try after validate %d\n", bValid ? 1 : 0);
-		std::fflush(stderr);
-		if (!bValid)
+		if (!candidate.DeserializeProperties(inData) ||
+			!candidate.Validate(outDiagnostic))
 		{
 			if (outDiagnostic.empty())
 			{
@@ -281,12 +241,7 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 
 	bool bResult = false;
 	std::string yamlDiagnostic;
-	std::fprintf(stderr, "ACDBG try before guard\n");
-	std::fflush(stderr);
-	const bool bInvoked = Sailor::External::TryInvokeYaml(deserialize, bResult, yamlDiagnostic);
-	std::fprintf(stderr, "ACDBG try after guard %d result %d\n", bInvoked ? 1 : 0, bResult ? 1 : 0);
-	std::fflush(stderr);
-	if (!bInvoked)
+	if (!Sailor::External::TryInvokeYaml(deserialize, bResult, yamlDiagnostic))
 	{
 		outDiagnostic = "Asset cache data contains invalid YAML values: " + yamlDiagnostic;
 		return false;

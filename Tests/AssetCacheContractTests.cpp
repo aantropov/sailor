@@ -748,7 +748,6 @@ namespace
 
 	void TestScanCanonicalizesUuidMetadataIdentity()
 	{
-		std::cerr << "UUID scan: begin" << std::endl;
 		TempDirectory directory("canonical-uuid-scan");
 		const Workspace::WorkspaceContext workspaceContext =
 			CreateWorkspaceContext(directory);
@@ -766,31 +765,21 @@ namespace
 		{
 			TargetedUpdateAssetInfoHandler handler;
 			AssetRegistry registry(workspaceContext);
-			std::cerr << "UUID scan: registry initialized" << std::endl;
 			RegisterTargetedUpdateHandler(registry, handler);
-			std::cerr << "UUID scan: handler registered" << std::endl;
-			const bool bScanned = registry.ScanContentFolder();
-			std::cerr << "UUID scan: content scanned" << std::endl;
-			const bool bCompleted = bScanned && registry.CompleteScanProcessing();
-			std::cerr << "UUID scan: processing completed" << std::endl;
-			Require(bScanned && bCompleted,
+			Require(registry.ScanContentFolder() &&
+				registry.CompleteScanProcessing(),
 				"a Windows-style braced UUID must survive staged metadata loading");
 
 			AssetInfoPtr assetInfo = registry.GetAssetInfoPtr(portableId);
-			std::cerr << "UUID scan: asset resolved" << std::endl;
 			Require(assetInfo != nullptr &&
 				assetInfo->GetFileId().ToString() == portableId.ToString(),
 				"the staged registry must publish the canonical cross-platform UUID");
-			std::cerr << "UUID scan: registry scope complete" << std::endl;
 		}
-		std::cerr << "UUID scan: registry destroyed" << std::endl;
 
 		AssetCache reloadedCache;
 		reloadedCache.Initialize(workspaceContext);
-		std::cerr << "UUID scan: cache reloaded" << std::endl;
 		Require(reloadedCache.Contains(portableId),
 			"the canonical UUID must remain resolvable after reloading the asset cache");
-		std::cerr << "UUID scan: complete" << std::endl;
 	}
 
 	void TestPayloadRoundTrip()
@@ -2173,51 +2162,45 @@ int main()
 {
 	try
 	{
-		const auto runTest = [](const char* name, auto test)
-		{
-			std::cerr << "Asset cache test: " << name << " begin" << std::endl;
-			test();
-			std::cerr << "Asset cache test: " << name << " complete" << std::endl;
-		};
-		runTest("NewFileIdsUseCrossPlatformGuidFormatting", TestNewFileIdsUseCrossPlatformGuidFormatting);
-		runTest("PayloadRoundTrip", TestPayloadRoundTrip);
-		runTest("EmptyPayloadRoundTrip", TestEmptyPayloadRoundTrip);
-		runTest("PreV1PayloadIsRejected", TestPreV1PayloadIsRejected);
-		runTest("V2EnvelopeIsResetInsteadOfMigrated", TestV2EnvelopeIsResetInsteadOfMigrated);
-		runTest("LazyScanDefersUnchangedMetadataMaterialization", TestLazyScanDefersUnchangedMetadataMaterialization);
-		runTest("LazyScanLoadsOnlyNewSecondaryMetadata", TestLazyScanLoadsOnlyNewSecondaryMetadata);
-		runTest("ScanCanonicalizesUuidMetadataIdentity", TestScanCanonicalizesUuidMetadataIdentity);
-		runTest("CorruptPayloadDoesNotPartiallyPublish", TestCorruptPayloadDoesNotPartiallyPublish);
-		runTest("MismatchedEntryIdentityIsCorrupt", TestMismatchedEntryIdentityIsCorrupt);
-		runTest("DirectDeserializeDoesNotThrowOnCorruptData", TestDirectDeserializeDoesNotThrowOnCorruptData);
-		runTest("EntryDeserializeDoesNotThrow", TestEntryDeserializeDoesNotThrow);
-		runTest("EveryAssetInfoSerializerWritesItsConcreteType", TestEveryAssetInfoSerializerWritesItsConcreteType);
-		runTest("GeneratedGlbMetadataUsesTypedDefaults", TestGeneratedGlbMetadataUsesTypedDefaults);
-		runTest("ImportAndUpdateCallbackContract", TestImportAndUpdateCallbackContract);
-		runTest("ImportNeverOverwritesExistingMetadata", TestImportNeverOverwritesExistingMetadata);
-		runTest("RejectedReloadRestoresTheLiveAsset", TestRejectedReloadRestoresTheLiveAsset);
-		runTest("RawEditDispatchesExpiredUpdateWithoutImport", TestRawEditDispatchesExpiredUpdateWithoutImport);
-		runTest("MetadataEditDispatchesExpiredUpdateWithoutImport", TestMetadataEditDispatchesExpiredUpdateWithoutImport);
-		runTest("ConcurrentMetadataEditDoesNotAdvanceTheWatermark", TestConcurrentMetadataEditDoesNotAdvanceTheWatermark);
-		runTest("UpdateTracksAssetImportStateAndPreservesDirtyState", TestUpdateTracksAssetImportStateAndPreservesDirtyState);
-		runTest("PruneRemovesOnlyEntriesOutsideTheCommittedGeneration", TestPruneRemovesOnlyEntriesOutsideTheCommittedGeneration);
-		runTest("RestoreChangesOnlyAssetImportTime", TestRestoreChangesOnlyAssetImportTime);
-		runTest("RemovingFailedProcessingWatermarkForcesRetry", TestRemovingFailedProcessingWatermarkForcesRetry);
-		runTest("InvalidatedProcessingWatermarkPersistsAcrossCacheInstances", TestInvalidatedProcessingWatermarkPersistsAcrossCacheInstances);
-		runTest("AssetProcessingSuccessAndStaleCompletionContract", TestAssetProcessingSuccessAndStaleCompletionContract);
-		runTest("TargetedAssetUpdateScopeAndFailureContract", TestTargetedAssetUpdateScopeAndFailureContract);
-		runTest("TargetedAssetUpdateCoalescesCurrentProcessing", TestTargetedAssetUpdateCoalescesCurrentProcessing);
-		runTest("ScanSourceRevisionCacheIsPhysicalAndPerScan", TestScanSourceRevisionCacheIsPhysicalAndPerScan);
-		runTest("PostCallbackSourceMismatchInvalidatesPriorWatermark", TestPostCallbackSourceMismatchInvalidatesPriorWatermark);
-		runTest("SourceMutationDuringStagingPreservesPreviousGeneration", TestSourceMutationDuringStagingPreservesPreviousGeneration);
-		runTest("MetadataMutationDuringPreCommitWaitPreservesPreviousGeneration", TestMetadataMutationDuringPreCommitWaitPreservesPreviousGeneration);
-		runTest("RejectedBeginFailsScanAndResetsOnNextScan", TestRejectedBeginFailsScanAndResetsOnNextScan);
-		runTest("SynchronousFailedCompletionFailsScan", TestSynchronousFailedCompletionFailsScan);
-		runTest("SourceMutationRejectsCompletionAndFailsScan", TestSourceMutationRejectsCompletionAndFailsScan);
-		runTest("AssetImportCacheAndRuntimeMetadataExpiration", TestAssetImportCacheAndRuntimeMetadataExpiration);
-		runTest("RuntimeMetadataFieldsAreIgnored", TestRuntimeMetadataFieldsAreIgnored);
-		runTest("IoFailurePreservesTheExistingCacheFile", TestIoFailurePreservesTheExistingCacheFile);
-		runTest("AssetProcessingTokenRejectsStaleCompletion", TestAssetProcessingTokenRejectsStaleCompletion);
+		TestNewFileIdsUseCrossPlatformGuidFormatting();
+		TestPayloadRoundTrip();
+		TestEmptyPayloadRoundTrip();
+		TestPreV1PayloadIsRejected();
+		TestV2EnvelopeIsResetInsteadOfMigrated();
+		TestLazyScanDefersUnchangedMetadataMaterialization();
+		TestLazyScanLoadsOnlyNewSecondaryMetadata();
+		TestScanCanonicalizesUuidMetadataIdentity();
+		TestCorruptPayloadDoesNotPartiallyPublish();
+		TestMismatchedEntryIdentityIsCorrupt();
+		TestDirectDeserializeDoesNotThrowOnCorruptData();
+		TestEntryDeserializeDoesNotThrow();
+		TestEveryAssetInfoSerializerWritesItsConcreteType();
+		TestGeneratedGlbMetadataUsesTypedDefaults();
+		TestImportAndUpdateCallbackContract();
+		TestImportNeverOverwritesExistingMetadata();
+		TestRejectedReloadRestoresTheLiveAsset();
+		TestRawEditDispatchesExpiredUpdateWithoutImport();
+		TestMetadataEditDispatchesExpiredUpdateWithoutImport();
+		TestConcurrentMetadataEditDoesNotAdvanceTheWatermark();
+		TestUpdateTracksAssetImportStateAndPreservesDirtyState();
+		TestPruneRemovesOnlyEntriesOutsideTheCommittedGeneration();
+		TestRestoreChangesOnlyAssetImportTime();
+		TestRemovingFailedProcessingWatermarkForcesRetry();
+		TestInvalidatedProcessingWatermarkPersistsAcrossCacheInstances();
+		TestAssetProcessingSuccessAndStaleCompletionContract();
+		TestTargetedAssetUpdateScopeAndFailureContract();
+		TestTargetedAssetUpdateCoalescesCurrentProcessing();
+		TestScanSourceRevisionCacheIsPhysicalAndPerScan();
+		TestPostCallbackSourceMismatchInvalidatesPriorWatermark();
+		TestSourceMutationDuringStagingPreservesPreviousGeneration();
+		TestMetadataMutationDuringPreCommitWaitPreservesPreviousGeneration();
+		TestRejectedBeginFailsScanAndResetsOnNextScan();
+		TestSynchronousFailedCompletionFailsScan();
+		TestSourceMutationRejectsCompletionAndFailsScan();
+		TestAssetImportCacheAndRuntimeMetadataExpiration();
+		TestRuntimeMetadataFieldsAreIgnored();
+		TestIoFailurePreservesTheExistingCacheFile();
+		TestAssetProcessingTokenRejectsStaleCompletion();
 		std::cout << "Asset cache contract tests passed.\n";
 		return 0;
 	}

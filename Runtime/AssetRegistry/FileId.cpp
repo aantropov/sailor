@@ -63,7 +63,12 @@ YAML::Node FileId::Serialize() const
 
 void FileId::Deserialize(const YAML::Node& inData)
 {
-	Assign(inData.as<std::string>());
+	if (!inData.IsScalar())
+	{
+		*this = FileId{};
+		return;
+	}
+	Assign(inData.Scalar());
 }
 
 void FileId::Assign(std::string_view value)
