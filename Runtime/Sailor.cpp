@@ -1042,8 +1042,7 @@ bool App::UpdateAsset(const char* strFileId)
 				return false;
 			}
 
-			FileId fileId;
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const FileId fileId(fileIdValue);
 			if (!fileId)
 			{
 				return false;

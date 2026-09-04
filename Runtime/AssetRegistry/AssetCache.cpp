@@ -5,7 +5,6 @@
 #include "Containers/ConcurrentMap.h"
 #include "Core/Utils.h"
 #include "Core/YamlSerializable.h"
-#include "Core/YamlUtils.h"
 #include "Sailor.h"
 #include "Tasks/Tasks.h"
 #include "YamlExceptionBoundary.h"
@@ -14,16 +13,11 @@
 #include <cctype>
 #include <filesystem>
 #include <sstream>
-#include <unordered_set>
 
 using namespace Sailor;
 
 namespace
 {
-	constexpr const char* AssetCacheKind = "asset-cache";
-	constexpr const char* AssetCacheProducer = "asset-cache-v1";
-	constexpr uint32_t AssetCachePayloadVersion = 1;
-
 	std::string NormalizeSourcePath(const std::string& sourcePath)
 	{
 		if (sourcePath.empty())
@@ -46,43 +40,6 @@ namespace
 		return result;
 	}
 
-	Workspace::WorkspaceCacheIdentity MakeExpectedIdentity()
-	{
-		return Workspace::MakeWorkspaceCacheIdentity(
-			AssetCacheKind,
-			AssetCacheProducer,
-			AssetCachePayloadVersion,
-			App::GetWorkspaceContext());
-	}
-
-	bool ReadRequiredField(
-		const YAML::Node& map,
-		const char* fieldName,
-		YAML::Node& outField,
-		std::string& outDiagnostic)
-	{
-		if (!map.IsMap())
-		{
-			outDiagnostic = "Asset cache payload field container must be a YAML map.";
-			return false;
-		}
-
-		const size_t matches = Utils::CountYamlMapField(
-			map,
-			fieldName,
-			&outField);
-
-		if (matches != 1)
-		{
-			outDiagnostic = matches == 0
-				? "Asset cache payload is missing required field '" + std::string(fieldName) + "'."
-				: "Asset cache payload contains duplicate field '" + std::string(fieldName) + "'.";
-			return false;
-		}
-
-		return true;
-	}
-
 	void AppendDiagnostic(std::string& diagnostic, const std::string& suffix)
 	{
 		if (suffix.empty())
@@ -97,6 +54,15 @@ namespace
 		diagnostic += suffix;
 	}
 
+}
+
+Workspace::WorkspaceCacheIdentity AssetCache::MakeExpectedIdentity()
+{
+	return Workspace::MakeWorkspaceCacheIdentity(
+		CacheKind,
+		CacheProducer,
+		PayloadVersion,
+		App::GetWorkspaceContext());
 }
 
 std::string AssetCache::SerializeAssetCachePayload(const AssetCacheData& cache)
@@ -117,18 +83,12 @@ bool AssetCache::TryDeserializeAssetCachePayload(
 	auto deserialize = [&]() -> bool
 	{
 		const YAML::Node root = YAML::Load(payload);
-		if (!root.IsMap() || root.size() != 1)
+		const YAML::Node assetCache = root["assetCache"];
+		if (!assetCache)
 		{
-			outDiagnostic = "Asset cache payload root must contain exactly one 'assetCache' map.";
+			outDiagnostic = "Asset cache payload is missing 'assetCache'.";
 			return false;
 		}
-
-		YAML::Node assetCache;
-		if (!ReadRequiredField(root, "assetCache", assetCache, outDiagnostic))
-		{
-			return false;
-		}
-
 		return AssetCacheData::TryDeserialize(assetCache, outData, outDiagnostic);
 	};
 
@@ -150,127 +110,73 @@ std::string AssetCache::GetAssetCacheFilepath()
 YAML::Node AssetCache::AssetCacheData::Entry::Serialize() const
 {
 	YAML::Node result(YAML::NodeType::Map);
-	result["fileId"] = m_fileId;
-	result["assetImportTime"] = m_assetImportTime;
-	result["sourcePath"] = m_sourcePath;
-	YAML::Node sourceRevision(YAML::NodeType::Map);
-	sourceRevision["modificationTimeNanoseconds"] = m_sourceRevision.m_modificationTimeNanoseconds;
-	sourceRevision["fileSize"] = m_sourceRevision.m_fileSize;
-	sourceRevision["contentHash"] = m_sourceRevision.m_contentHash;
-	result["sourceRevision"] = sourceRevision;
-	result["metadataFilename"] = m_metadataFilename;
-	YAML::Node metadataRevision(YAML::NodeType::Map);
-	metadataRevision["modificationTimeNanoseconds"] = m_metadataRevision.m_modificationTimeNanoseconds;
-	metadataRevision["fileSize"] = m_metadataRevision.m_fileSize;
-	metadataRevision["contentHash"] = m_metadataRevision.m_contentHash;
-	result["metadataRevision"] = metadataRevision;
-	result["assetInfoType"] = m_assetInfoType;
+	SERIALIZE_PROPERTY(result, m_fileId);
+	SERIALIZE_PROPERTY(result, m_assetImportTime);
+	SERIALIZE_PROPERTY(result, m_sourcePath);
+	SERIALIZE_PROPERTY(result, m_sourceRevision);
+	SERIALIZE_PROPERTY(result, m_metadataFilename);
+	SERIALIZE_PROPERTY(result, m_metadataRevision);
+	SERIALIZE_PROPERTY(result, m_assetInfoType);
 	return result;
 }
 
 void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 {
-	auto reset = [&]()
-	{
-		m_fileId = FileId();
-		m_assetImportTime = 0;
-		m_sourcePath.clear();
-		m_sourceRevision = {};
-		m_metadataFilename.clear();
-		m_metadataRevision = {};
-		m_assetInfoType.clear();
-	};
-	reset();
-	bool bValid = false;
+	*this = Entry{};
 	std::string yamlDiagnostic;
-	const bool bDeserialized = Sailor::External::GuardYamlExceptions(
+	if (!Sailor::External::GuardYamlExceptions(
 		[&]()
 		{
-			if (!inData.IsMap() || inData.size() != 7)
-			{
-				return;
-			}
-
-			const YAML::Node fileId = inData["fileId"];
-			const YAML::Node assetImportTime = inData["assetImportTime"];
-			const YAML::Node sourcePath = inData["sourcePath"];
-			const YAML::Node sourceRevision = inData["sourceRevision"];
-			if (!fileId || !assetImportTime || !sourcePath || !sourceRevision ||
-				!fileId.IsScalar() || !assetImportTime.IsScalar() || !sourcePath.IsScalar() ||
-				!sourceRevision.IsMap() || sourceRevision.size() != 3)
-			{
-				return;
-			}
-			const YAML::Node modificationTimeNanoseconds = sourceRevision["modificationTimeNanoseconds"];
-			const YAML::Node fileSize = sourceRevision["fileSize"];
-			const YAML::Node contentHash = sourceRevision["contentHash"];
-			if (!modificationTimeNanoseconds || !fileSize || !contentHash ||
-				!modificationTimeNanoseconds.IsScalar() || !fileSize.IsScalar() || !contentHash.IsScalar())
-			{
-				return;
-			}
-
-			std::string decodedSourcePath;
-			if (!Utils::TryDecodeYamlScalar(fileId, m_fileId) ||
-				!Utils::TryDecodeYamlScalar(assetImportTime, m_assetImportTime) ||
-				!Utils::TryDecodeYamlScalar(sourcePath, decodedSourcePath) ||
-				!Utils::TryDecodeYamlScalar(modificationTimeNanoseconds, m_sourceRevision.m_modificationTimeNanoseconds) ||
-				!Utils::TryDecodeYamlScalar(fileSize, m_sourceRevision.m_fileSize) ||
-				!Utils::TryDecodeYamlScalar(contentHash, m_sourceRevision.m_contentHash))
-			{
-				return;
-			}
-			m_sourcePath = NormalizeSourcePath(decodedSourcePath);
-			m_sourceRevision.m_bIsValid = true;
-			const YAML::Node metadataFilename = inData["metadataFilename"];
-			const YAML::Node metadataRevision = inData["metadataRevision"];
-			const YAML::Node assetInfoType = inData["assetInfoType"];
-			if (!metadataFilename.IsScalar() || !metadataRevision.IsMap() ||
-				metadataRevision.size() != 3 || !assetInfoType.IsScalar())
-			{
-				return;
-			}
-			const YAML::Node metadataModificationTime = metadataRevision["modificationTimeNanoseconds"];
-			const YAML::Node metadataFileSize = metadataRevision["fileSize"];
-			const YAML::Node metadataContentHash = metadataRevision["contentHash"];
-			if (!metadataModificationTime.IsScalar() || !metadataFileSize.IsScalar() ||
-				!metadataContentHash.IsScalar())
-			{
-				return;
-			}
-			if (!Utils::TryDecodeYamlScalar(metadataFilename, m_metadataFilename) ||
-				!Utils::TryDecodeYamlScalar(metadataModificationTime, m_metadataRevision.m_modificationTimeNanoseconds) ||
-				!Utils::TryDecodeYamlScalar(metadataFileSize, m_metadataRevision.m_fileSize) ||
-				!Utils::TryDecodeYamlScalar(metadataContentHash, m_metadataRevision.m_contentHash) ||
-				!Utils::TryDecodeYamlScalar(assetInfoType, m_assetInfoType))
-			{
-				return;
-			}
-			m_metadataRevision.m_bIsValid = true;
-			if (m_sourcePath.empty() || m_metadataFilename.empty() ||
-				std::filesystem::path(m_metadataFilename).filename() != m_metadataFilename ||
-				m_assetInfoType.empty() ||
-				!m_fileId || m_assetImportTime <= 0)
-			{
-				return;
-			}
-			bValid = true;
+			DESERIALIZE_PROPERTY(inData, m_fileId);
+			DESERIALIZE_PROPERTY(inData, m_assetImportTime);
+			DESERIALIZE_PROPERTY(inData, m_sourcePath);
+			DESERIALIZE_PROPERTY(inData, m_sourceRevision);
+			DESERIALIZE_PROPERTY(inData, m_metadataFilename);
+			DESERIALIZE_PROPERTY(inData, m_metadataRevision);
+			DESERIALIZE_PROPERTY(inData, m_assetInfoType);
+			m_sourcePath = NormalizeSourcePath(m_sourcePath);
 		},
-		yamlDiagnostic);
-	if (!bDeserialized || !bValid)
+		yamlDiagnostic))
 	{
-		reset();
+		*this = Entry{};
 	}
+}
+
+bool AssetCache::AssetCacheData::Entry::Validate(
+	const FileId& key,
+	std::string& outDiagnostic) const
+{
+	if (!m_fileId || m_fileId != key)
+	{
+		outDiagnostic = "Asset cache entry has a mismatched fileId.";
+		return false;
+	}
+	if (m_assetImportTime <= 0 || m_sourcePath.empty() ||
+		!m_sourceRevision.m_bIsValid)
+	{
+		outDiagnostic = "Asset cache entry has an invalid source watermark.";
+		return false;
+	}
+	if (m_metadataFilename.empty() ||
+		std::filesystem::path(m_metadataFilename).filename() !=
+			m_metadataFilename ||
+		!m_metadataRevision.m_bIsValid || m_assetInfoType.empty())
+	{
+		outDiagnostic = "Asset cache entry has an invalid metadata index.";
+		return false;
+	}
+	return true;
 }
 
 YAML::Node AssetCache::AssetCacheData::Serialize() const
 {
 	YAML::Node result(YAML::NodeType::Map);
 	YAML::Node assets(YAML::NodeType::Map);
-	for (const auto& entry : m_data)
+	for (const auto& asset : m_assets)
 	{
-		// FileIds are unique in m_data, so avoid YAML's linear key lookup for every entry.
-		assets.force_insert(entry.m_first.ToString(), entry.m_second.Serialize());
+		assets.force_insert(
+			asset.m_first.ToString(),
+			asset.m_second.Serialize());
 	}
 	result["assets"] = assets;
 	return result;
@@ -280,13 +186,34 @@ void AssetCache::AssetCacheData::Deserialize(const YAML::Node& inData)
 {
 	AssetCacheData candidate;
 	std::string diagnostic;
-	if (!TryDeserialize(inData, candidate, diagnostic))
+	if (TryDeserialize(inData, candidate, diagnostic))
 	{
-		m_data.Clear();
-		return;
+		m_assets = std::move(candidate.m_assets);
 	}
+	else
+	{
+		m_assets.Clear();
+	}
+}
 
-	m_data = std::move(candidate.m_data);
+bool AssetCache::AssetCacheData::DeserializeProperties(
+	const YAML::Node& inData)
+{
+	return DESERIALIZE_PROPERTY(inData, m_assets);
+}
+
+bool AssetCache::AssetCacheData::Validate(
+	std::string& outDiagnostic) const
+{
+	for (const auto& asset : m_assets)
+	{
+		if (!asset.m_first ||
+			!asset.m_second.Validate(asset.m_first, outDiagnostic))
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 bool AssetCache::AssetCacheData::TryDeserialize(
@@ -296,175 +223,20 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 {
 	auto deserialize = [&]() -> bool
 	{
-	if (!inData.IsMap() || inData.size() != 1)
-	{
-		outDiagnostic = "Asset cache data must contain exactly one 'assets' map.";
-		return false;
-	}
-
-	YAML::Node assets;
-	if (!ReadRequiredField(inData, "assets", assets, outDiagnostic))
-	{
-		return false;
-	}
-	if (!assets.IsMap())
-	{
-		outDiagnostic = "Asset cache field 'assets' must be a YAML map, including when empty.";
-		return false;
-	}
-
-	AssetCacheData candidate;
-	TSet<std::string> fileIds;
-	for (const auto& serializedEntry : assets)
-	{
-		if (!serializedEntry.first.IsScalar())
+		AssetCacheData candidate;
+		if (!candidate.DeserializeProperties(inData) ||
+			!candidate.Validate(outDiagnostic))
 		{
-			outDiagnostic = "Asset cache contains a non-scalar file id.";
+			if (outDiagnostic.empty())
+			{
+				outDiagnostic = "Asset cache payload is missing required data.";
+			}
 			return false;
 		}
 
-		const std::string serializedFileId = serializedEntry.first.Scalar();
-		if (!fileIds.Insert(serializedFileId))
-		{
-			outDiagnostic = "Asset cache contains duplicate file id '" + serializedFileId + "'.";
-			return false;
-		}
-
-		FileId fileId;
-		if (!Utils::TryDecodeYamlScalar(serializedEntry.first, fileId) || !fileId)
-		{
-			outDiagnostic = "Asset cache contains invalid file id '" + serializedFileId + "'.";
-			return false;
-		}
-
-		const YAML::Node entryNode = serializedEntry.second;
-		if (!entryNode.IsMap() || entryNode.size() != 7)
-		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId +
-				"' must contain exactly the asset watermark and lazy metadata index fields.";
-			return false;
-		}
-
-		YAML::Node entryFileId;
-		YAML::Node assetImportTime;
-		YAML::Node sourcePath;
-		YAML::Node sourceRevision;
-		if (!ReadRequiredField(entryNode, "fileId", entryFileId, outDiagnostic) ||
-			!ReadRequiredField(entryNode, "assetImportTime", assetImportTime, outDiagnostic) ||
-			!ReadRequiredField(entryNode, "sourcePath", sourcePath, outDiagnostic) ||
-			!ReadRequiredField(entryNode, "sourceRevision", sourceRevision, outDiagnostic))
-		{
-			return false;
-		}
-		if (!entryFileId.IsScalar() || !assetImportTime.IsScalar() || !sourcePath.IsScalar() ||
-			!sourceRevision.IsMap() || sourceRevision.size() != 3)
-		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId + "' contains an invalid field.";
-			return false;
-		}
-
-		YAML::Node modificationTimeNanoseconds;
-		YAML::Node fileSize;
-		YAML::Node contentHash;
-		if (!ReadRequiredField(
-				sourceRevision,
-				"modificationTimeNanoseconds",
-				modificationTimeNanoseconds,
-				outDiagnostic) ||
-			!ReadRequiredField(sourceRevision, "fileSize", fileSize, outDiagnostic) ||
-			!ReadRequiredField(sourceRevision, "contentHash", contentHash, outDiagnostic))
-		{
-			return false;
-		}
-		if (!modificationTimeNanoseconds.IsScalar() || !fileSize.IsScalar() || !contentHash.IsScalar())
-		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId +
-				"' contains a non-scalar sourceRevision field.";
-			return false;
-		}
-
-		AssetCacheData::Entry entry;
-		std::string serializedSourcePath;
-		if (!Utils::TryDecodeYamlScalar(entryFileId, entry.m_fileId) ||
-			!Utils::TryDecodeYamlScalar(assetImportTime, entry.m_assetImportTime) ||
-			!Utils::TryDecodeYamlScalar(modificationTimeNanoseconds, entry.m_sourceRevision.m_modificationTimeNanoseconds) ||
-			!Utils::TryDecodeYamlScalar(fileSize, entry.m_sourceRevision.m_fileSize) ||
-			!Utils::TryDecodeYamlScalar(contentHash, entry.m_sourceRevision.m_contentHash) ||
-			!Utils::TryDecodeYamlScalar(sourcePath, serializedSourcePath))
-		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId +
-				"' contains an invalid scalar value.";
-			return false;
-		}
-		entry.m_sourceRevision.m_bIsValid = true;
-		if (serializedSourcePath.empty())
-		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty sourcePath.";
-			return false;
-		}
-		entry.m_sourcePath = NormalizeSourcePath(serializedSourcePath);
-		YAML::Node metadataFilename;
-		YAML::Node metadataRevision;
-		YAML::Node assetInfoType;
-		if (!ReadRequiredField(entryNode, "metadataFilename", metadataFilename, outDiagnostic) ||
-			!ReadRequiredField(entryNode, "metadataRevision", metadataRevision, outDiagnostic) ||
-			!ReadRequiredField(entryNode, "assetInfoType", assetInfoType, outDiagnostic) ||
-			!metadataFilename.IsScalar() || !metadataRevision.IsMap() ||
-			metadataRevision.size() != 3 || !assetInfoType.IsScalar())
-		{
-			return false;
-		}
-		YAML::Node metadataModificationTime;
-		YAML::Node metadataFileSize;
-		YAML::Node metadataContentHash;
-		if (!ReadRequiredField(metadataRevision, "modificationTimeNanoseconds", metadataModificationTime, outDiagnostic) ||
-			!ReadRequiredField(metadataRevision, "fileSize", metadataFileSize, outDiagnostic) ||
-			!ReadRequiredField(metadataRevision, "contentHash", metadataContentHash, outDiagnostic) ||
-			!metadataModificationTime.IsScalar() || !metadataFileSize.IsScalar() ||
-			!metadataContentHash.IsScalar())
-		{
-			return false;
-		}
-		if (!Utils::TryDecodeYamlScalar(metadataFilename, entry.m_metadataFilename) ||
-			!Utils::TryDecodeYamlScalar(metadataModificationTime, entry.m_metadataRevision.m_modificationTimeNanoseconds) ||
-			!Utils::TryDecodeYamlScalar(metadataFileSize, entry.m_metadataRevision.m_fileSize) ||
-			!Utils::TryDecodeYamlScalar(metadataContentHash, entry.m_metadataRevision.m_contentHash) ||
-			!Utils::TryDecodeYamlScalar(assetInfoType, entry.m_assetInfoType))
-		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId +
-				"' contains an invalid lazy metadata scalar value.";
-			return false;
-		}
-		entry.m_metadataRevision.m_bIsValid = true;
-		if (entry.m_metadataFilename.empty() ||
-			std::filesystem::path(entry.m_metadataFilename).filename() != entry.m_metadataFilename ||
-			entry.m_assetInfoType.empty())
-		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId +
-				"' contains an incomplete lazy metadata index.";
-			return false;
-		}
-		if (!entry.m_fileId || entry.m_fileId != fileId)
-		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId + "' has a mismatched fileId field.";
-			return false;
-		}
-		if (entry.m_sourcePath.empty())
-		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty sourcePath.";
-			return false;
-		}
-		if (entry.m_assetImportTime <= 0)
-		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId + "' contains an invalid assetImportTime.";
-			return false;
-		}
-		candidate.m_data.Insert(fileId, std::move(entry));
-	}
-
-	outData.m_data = std::move(candidate.m_data);
-	outDiagnostic.clear();
-	return true;
+		outData.m_assets = std::move(candidate.m_assets);
+		outDiagnostic.clear();
+		return true;
 	};
 
 	bool bResult = false;
@@ -507,9 +279,9 @@ void AssetCache::Initialize(
 		std::lock_guard<std::mutex> lock(m_cacheMutex);
 		m_cacheFolder = workspaceContext.GetCache();
 		m_cacheIdentity = Workspace::MakeWorkspaceCacheIdentity(
-			AssetCacheKind,
-			AssetCacheProducer,
-			AssetCachePayloadVersion,
+			CacheKind,
+			CacheProducer,
+			PayloadVersion,
 			workspaceContext);
 		m_bHasStorageContext = true;
 	}
@@ -581,7 +353,7 @@ void AssetCache::LoadCache()
 		std::string diagnostic;
 		if (TryDeserializeAssetCachePayload(loadResult.m_payload, candidate, diagnostic))
 		{
-			m_cache.m_data = std::move(candidate.m_data);
+			m_cache.m_assets = std::move(candidate.m_assets);
 			m_bIsDirty = false;
 			m_bPreserveStorageAfterLoadFailure = false;
 			m_lastSaveDiagnostic.clear();
@@ -595,7 +367,7 @@ void AssetCache::LoadCache()
 	}
 	else if (!ShouldResetCacheFile(loadResult.m_status))
 	{
-		m_cache.m_data.Clear();
+		m_cache.m_assets.Clear();
 		m_bIsDirty = false;
 		m_bPreserveStorageAfterLoadFailure = true;
 		m_lastSaveDiagnostic.clear();
@@ -612,11 +384,24 @@ void AssetCache::LoadCache()
 
 bool AssetCache::WriteCacheLocked(std::string& outDiagnostic) noexcept
 {
+	std::string payload;
+	std::string serializationDiagnostic;
+	if (!External::GuardYamlExceptions(
+		[&]()
+		{
+			payload = SerializeAssetCachePayload(m_cache);
+		},
+		serializationDiagnostic))
+	{
+		outDiagnostic = "Cannot serialize asset cache: " + serializationDiagnostic;
+		return false;
+	}
+
 	std::string envelope;
 	const auto identity = GetConfiguredIdentity();
 	if (!Workspace::SerializeWorkspaceCacheEnvelope(
 		identity,
-		SerializeAssetCachePayload(m_cache),
+		payload,
 		envelope,
 		outDiagnostic))
 	{
@@ -645,7 +430,7 @@ Workspace::WorkspaceCacheIdentity AssetCache::GetConfiguredIdentity() const
 
 void AssetCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loadResult)
 {
-	m_cache.m_data.Clear();
+	m_cache.m_assets.Clear();
 	m_bIsDirty = true;
 	m_bPreserveStorageAfterLoadFailure = false;
 	m_lastLoadResult = std::move(loadResult);
@@ -677,7 +462,7 @@ void AssetCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loa
 void AssetCache::ClearAll()
 {
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	m_cache.m_data.Clear();
+	m_cache.m_assets.Clear();
 	m_bIsDirty = false;
 	m_bPreserveStorageAfterLoadFailure = false;
 
@@ -716,7 +501,7 @@ bool AssetCache::IsDirty() const
 bool AssetCache::Contains(const FileId& uid) const
 {
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	return m_cache.m_data.ContainsKey(uid);
+	return m_cache.m_assets.ContainsKey(uid);
 }
 
 bool AssetCache::Update(const AssetInfo* info)
@@ -776,17 +561,17 @@ bool AssetCache::Update(
 	}
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	auto& entry = m_cache.m_data.At_Lock(id);
+	auto& entry = m_cache.m_assets.At_Lock(id);
 	struct EntryUnlockGuard final
 	{
-		TConcurrentMap<FileId, AssetCacheData::Entry>& m_data;
+		TConcurrentMap<FileId, AssetCacheData::Entry>& m_assets;
 		const FileId& m_id;
 
 		~EntryUnlockGuard() noexcept
 		{
-			m_data.Unlock(m_id);
+			m_assets.Unlock(m_id);
 		}
-	} unlockGuard{ m_cache.m_data, id };
+	} unlockGuard{ m_cache.m_assets, id };
 
 	const bool bChanged = entry.m_fileId != id ||
 		entry.m_assetImportTime != assetImportTime ||
@@ -817,12 +602,12 @@ bool AssetCache::RestoreAssetImportTime(
 
 	const std::string sourcePath = NormalizeSourcePath(info->GetAssetFilepath());
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	if (!m_cache.m_data.ContainsKey(info->GetFileId()))
+	if (!m_cache.m_assets.ContainsKey(info->GetFileId()))
 	{
 		return false;
 	}
 
-	const AssetCacheData::Entry entry = m_cache.m_data[info->GetFileId()];
+	const AssetCacheData::Entry entry = m_cache.m_assets[info->GetFileId()];
 	if (entry.m_sourcePath != sourcePath || entry.m_sourceRevision != sourceRevision)
 	{
 		return false;
@@ -836,7 +621,7 @@ bool AssetCache::Prune(const TSet<FileId>& liveAssetIds)
 {
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	TVector<FileId> staleAssetIds;
-	for (const auto& cachedAsset : m_cache.m_data)
+	for (const auto& cachedAsset : m_cache.m_assets)
 	{
 		if (!liveAssetIds.Contains(cachedAsset.m_first))
 		{
@@ -847,7 +632,7 @@ bool AssetCache::Prune(const TSet<FileId>& liveAssetIds)
 	bool bChanged = false;
 	for (const FileId& staleAssetId : staleAssetIds)
 	{
-		bChanged |= m_cache.m_data.Remove(staleAssetId);
+		bChanged |= m_cache.m_assets.Remove(staleAssetId);
 	}
 	m_bIsDirty |= bChanged;
 	return bChanged;
@@ -856,7 +641,7 @@ bool AssetCache::Prune(const TSet<FileId>& liveAssetIds)
 void AssetCache::Remove(const FileId& uid)
 {
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	m_bIsDirty |= m_cache.m_data.Remove(uid);
+	m_bIsDirty |= m_cache.m_assets.Remove(uid);
 }
 
 bool AssetCache::IsExpired(const AssetInfo* info) const
@@ -875,12 +660,12 @@ bool AssetCache::IsExpired(const AssetInfo* info) const
 	}
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	if (!m_cache.m_data.ContainsKey(fileId))
+	if (!m_cache.m_assets.ContainsKey(fileId))
 	{
 		return true;
 	}
 
-	const AssetCacheData::Entry entry = m_cache.m_data[fileId];
+	const AssetCacheData::Entry entry = m_cache.m_assets[fileId];
 	return entry.m_sourcePath != sourcePath ||
 		entry.m_sourceRevision != sourceRevision;
 }

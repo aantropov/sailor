@@ -1738,8 +1738,7 @@ bool ShaderCompilerTestAccess::CompileGlslToSpirv(
 bool ShaderCompilerTestAccess::ExerciseFailedLoadEvictionAndRetry()
 {
 	constexpr uint32_t permutation = 7;
-	FileId uid;
-	uid.Deserialize(YAML::Node("{SHADER-COMPILER-FAILURE-LIFECYCLE}"));
+	const FileId uid("{SHADER-COMPILER-FAILURE-LIFECYCLE}");
 	TConcurrentMap<FileId, TVector<TPair<uint32_t, uint32_t>>> promises;
 	TConcurrentMap<FileId, TVector<TPair<uint32_t, uint32_t>>> shaders;
 	{

@@ -76,42 +76,9 @@ namespace
 		return worldMatrix;
 	}
 
-	bool IsFiniteMatrix(const glm::mat4& matrix)
-	{
-		for (glm::length_t column = 0; column < matrix.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < matrix[column].length(); ++row)
-			{
-				if (!std::isfinite(matrix[column][row]))
-				{
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
-	bool AreMatricesNear(const glm::mat4& lhs, const glm::mat4& rhs, float tolerance = 0.0001f)
-	{
-		for (glm::length_t column = 0; column < lhs.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < lhs[column].length(); ++row)
-			{
-				const float scale = std::max({ 1.0f, std::abs(lhs[column][row]), std::abs(rhs[column][row]) });
-				if (std::abs(lhs[column][row] - rhs[column][row]) > tolerance * scale)
-				{
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
 	bool TryInvertTransformMatrix(const glm::mat4& matrix, glm::mat4& outInverse)
 	{
-		if (!IsFiniteMatrix(matrix))
+		if (!Math::AllFinite(matrix))
 		{
 			return false;
 		}
@@ -129,13 +96,16 @@ namespace
 		}
 
 		outInverse = glm::inverse(matrix);
-		return IsFiniteMatrix(outInverse) &&
-			AreMatricesNear(matrix * outInverse, glm::identity<glm::mat4>(), 0.001f);
+		return Math::AllFinite(outInverse) &&
+			Math::AreNearlyEqual(
+				matrix * outInverse,
+				glm::identity<glm::mat4>(),
+				0.001f);
 	}
 
 	bool TryMakeExactTransform(const glm::mat4& matrix, Math::Transform& outTransform)
 	{
-		if (!IsFiniteMatrix(matrix))
+		if (!Math::AllFinite(matrix))
 		{
 			return false;
 		}
@@ -153,7 +123,7 @@ namespace
 			return false;
 		}
 
-		return AreMatricesNear(outTransform.Matrix(), matrix);
+		return Math::AreNearlyEqual(outTransform.Matrix(), matrix);
 	}
 
 	bool ResolveParent(World* world, const InstanceId& parentInstanceId, GameObjectPtr& outParent)

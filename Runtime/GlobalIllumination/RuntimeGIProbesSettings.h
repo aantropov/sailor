@@ -5,6 +5,11 @@
 #include <cstdint>
 #include <string>
 
+namespace YAML
+{
+	class Node;
+}
+
 namespace Sailor
 {
 	struct GIProbesBakeSettings;
@@ -27,6 +32,8 @@ namespace Sailor
 		bool m_bIncludeDirectLighting = true;
 
 		bool operator==(const RuntimeGIProbesSettings&) const noexcept = default;
+		YAML::Node Serialize() const;
+		bool Deserialize(const YAML::Node& inData);
 		bool Validate(std::string& outDiagnostic) const noexcept;
 	};
 

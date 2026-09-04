@@ -507,7 +507,7 @@ namespace
 		const std::string payload = ShaderCacheTestAccess::PayloadWithMissingDebug(cache);
 		std::string diagnostic;
 		Require(!ShaderCacheTestAccess::ParsePayload(payload, diagnostic),
-			"payload v2 must reject entries without required debug artifacts");
+			"payload v1 must reject entries without required debug artifacts");
 		Require(diagnostic.find("debug artifacts") != std::string::npos,
 			"missing-debug diagnostic should identify the required debug artifact set");
 
@@ -516,7 +516,7 @@ namespace
 			!ShaderCacheTestAccess::ParsePayload(
 				ShaderCacheTestAccess::PayloadWithMismatchedDebugTopology(cache),
 				diagnostic),
-			"payload v2 must reject different regular/debug shader stage topology");
+			"payload v1 must reject different regular/debug shader stage topology");
 		Require(diagnostic.find("identical shader stages") != std::string::npos,
 			"topology diagnostic should identify the regular/debug stage mismatch");
 
@@ -532,6 +532,24 @@ namespace
 				empty,
 				Words(13)),
 			"live publication must reject different regular/debug shader stage topology");
+	}
+
+	void TestPayloadIgnoresUnknownFields()
+	{
+		TempDirectory directory;
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")),
+			"shader cache test storage should initialize");
+		const FileId uid = MakeFileId("{SHADER-CACHE-UNKNOWN-FIELDS}");
+		Require(PublishComplete(cache, uid, 0, 19),
+			"a complete shader generation should publish");
+
+		std::string diagnostic;
+		Require(
+			ShaderCacheTestAccess::ParsePayload(
+				ShaderCacheTestAccess::PayloadWithUnknownFields(cache),
+				diagnostic),
+			"unknown engine metadata should not invalidate the shader cache: " + diagnostic);
 	}
 
 	void TestFailedGenerationPreservesDurableGeneration()
@@ -1662,6 +1680,7 @@ int main()
 		TestChecksumMismatchIsRejected();
 		TestOwnedArtifactContainment();
 		TestDebugArtifactsAreRequired();
+		TestPayloadIgnoresUnknownFields();
 		TestFailedGenerationPreservesDurableGeneration();
 		TestRemoveCommitsBeforeGarbageCollection();
 		TestExplicitInvalidationSurvivesSameTimestampReload();

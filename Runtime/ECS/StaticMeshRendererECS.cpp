@@ -7,6 +7,7 @@
 #include "RHI/Material.h"
 #include "Components/AnimatorComponent.h"
 #include "Components/MeshRendererComponent.h"
+#include "Core/StringHash.h"
 #include "Settings/GraphicsSettings.h"
 
 #include <algorithm>
@@ -39,7 +40,7 @@ namespace
 	uint64_t CalculateMaterialRenderMetadataSignature(
 		const TVector<MaterialPtr>& materials)
 	{
-		size_t result = 1469598103934665603ull;
+		size_t result = Fnv1aOffsetBasis;
 		HashCombine(result, materials.Num());
 		for (const auto& material : materials)
 		{
@@ -89,22 +90,6 @@ namespace
 		return outWorldBounds.IsValid();
 	}
 
-	bool AreMatricesExactlyEqual(const glm::mat4& lhs, const glm::mat4& rhs)
-	{
-		for (glm::length_t column = 0; column < lhs.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < lhs[column].length(); ++row)
-			{
-				if (lhs[column][row] != rhs[column][row])
-				{
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
 	void GetConservativeOctreeBounds(
 		const Math::AABB& bounds,
 		glm::ivec3& outCenter,
@@ -146,7 +131,7 @@ namespace
 #if defined(__APPLE__)
 				lhsMesh.m_materialTextureSamplers != rhsMesh.m_materialTextureSamplers ||
 #endif
-				!AreMatricesExactlyEqual(lhsMesh.m_worldMatrix, rhsMesh.m_worldMatrix))
+				!Math::AreExactlyEqual(lhsMesh.m_worldMatrix, rhsMesh.m_worldMatrix))
 			{
 				return false;
 			}
@@ -165,8 +150,8 @@ namespace
 		uint32_t skeletonOffset,
 		size_t currentFrame)
 	{
-		const size_t opaqueQueueTag = GetHash(std::string("Opaque"));
-		const size_t maskedQueueTag = GetHash(std::string("Masked"));
+		const size_t opaqueQueueTag = "Opaque"_h.GetHash();
+		const size_t maskedQueueTag = "Masked"_h.GetHash();
 		auto textureImporter = App::GetSubmodule<TextureImporter>();
 
 		auto shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
@@ -448,10 +433,10 @@ uint64_t StaticMeshRendererECS::GetGlobalIlluminationContributorRevision()
 	const RHI::RHISceneVersion& version =
 		*m_publishedSceneVersion->m_sceneVersion;
 	uint64_t revision = version.m_staticRevision;
-	revision ^= version.m_stationaryRevision + 0x9e3779b97f4a7c15ull +
-		(revision << 6u) + (revision >> 2u);
-	revision ^= version.m_materialRevision + 0x9e3779b97f4a7c15ull +
-		(revision << 6u) + (revision >> 2u);
+	HashCombine(
+		revision,
+		version.m_stationaryRevision,
+		version.m_materialRevision);
 	return revision;
 }
 

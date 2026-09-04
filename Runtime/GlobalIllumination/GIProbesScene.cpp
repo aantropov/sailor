@@ -3,6 +3,7 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/SkyComponent.h"
+#include "Containers/Hash.h"
 #include "ECS/LandscapeECS.h"
 #include "ECS/LightingECS.h"
 #include "ECS/StaticMeshRendererECS.h"
@@ -10,6 +11,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "GlobalIllumination/GISettings.h"
+#include "Math/Math.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
 
 #include <algorithm>
@@ -41,26 +43,6 @@ namespace
 		uint32_t m_componentCount = 0u;
 		std::string m_selectedName{};
 	};
-
-	template<typename T>
-	void HashValue(uint64_t& hash, const T& value) noexcept
-	{
-		const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&value);
-		for (size_t index = 0u; index < sizeof(T); ++index)
-		{
-			hash ^= bytes[index];
-			hash *= 1099511628211ull;
-		}
-	}
-
-	void HashString(uint64_t& hash, const std::string& value) noexcept
-	{
-		for (const char character : value)
-		{
-			hash ^= static_cast<uint8_t>(character);
-			hash *= 1099511628211ull;
-		}
-	}
 
 	void HashVec2(uint64_t& hash, const glm::vec2& value) noexcept
 	{
@@ -167,8 +149,8 @@ namespace
 		uint64_t& outGeometryHash,
 		uint64_t& outLightingHash) noexcept
 	{
-		outGeometryHash = 1469598103934665603ull;
-		outLightingHash = 1469598103934665603ull;
+		outGeometryHash = Fnv1aOffsetBasis;
+		outLightingHash = Fnv1aOffsetBasis;
 		HashString(outGeometryHash, request.m_sourceIdentity);
 		HashString(outGeometryHash, worldName);
 		HashString(outLightingHash, request.m_sourceIdentity);
@@ -249,28 +231,6 @@ namespace
 		return result;
 	}
 
-	bool IsFiniteMatrix(const glm::mat4& matrix) noexcept
-	{
-		for (glm::length_t column = 0; column < matrix.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < matrix[column].length(); ++row)
-			{
-				if (!std::isfinite(matrix[column][row]))
-				{
-					return false;
-				}
-			}
-		}
-		return true;
-	}
-
-	bool IsFinite(const glm::vec3& value) noexcept
-	{
-		return std::isfinite(value.x) &&
-			std::isfinite(value.y) &&
-			std::isfinite(value.z);
-	}
-
 	void ReportWarning(
 		const GIProbesSceneWarningCallback& warning,
 		std::string diagnostic)
@@ -332,7 +292,7 @@ namespace
 			outDiagnostic = sourceName + " has invalid local bounds";
 			return false;
 		}
-		outGeometry.m_contentHash = 1469598103934665603ull;
+		outGeometry.m_contentHash = Fnv1aOffsetBasis;
 		HashTriangles(outGeometry.m_contentHash, outGeometry.m_triangles);
 		cache[cacheKey] = outGeometry;
 		return true;
@@ -486,7 +446,7 @@ bool Sailor::CaptureGIProbesScene(
 		outDiagnostic = "a loaded world is required for GI scene capture";
 		return false;
 	}
-	if (!IsFinite(request.m_fallbackEnvironment))
+	if (!Math::AllFinite(request.m_fallbackEnvironment))
 	{
 		outDiagnostic =
 			"the GI fallback environment must contain finite values";
@@ -574,7 +534,7 @@ bool Sailor::CaptureGIProbesScene(
 		const glm::mat4 worldMatrix = candidate.m_gameObject
 			->GetTransformComponent().GetCachedWorldMatrix();
 		const float determinant = glm::determinant(glm::mat3(worldMatrix));
-		if (!IsFiniteMatrix(worldMatrix) ||
+		if (!Math::AllFinite(worldMatrix) ||
 			!std::isfinite(determinant) ||
 			std::abs(determinant) <= 1e-8f)
 		{
@@ -659,7 +619,7 @@ bool Sailor::CaptureGIProbesScene(
 			"GI geometry '" + snapshot.m_sourceId + "'";
 		const float determinant = glm::determinant(
 			glm::mat3(snapshot.m_worldMatrix));
-		if (!IsFiniteMatrix(snapshot.m_worldMatrix) ||
+		if (!Math::AllFinite(snapshot.m_worldMatrix) ||
 			!std::isfinite(determinant) ||
 			std::abs(determinant) <= 1e-8f ||
 			!snapshot.m_worldBounds.IsValid())
@@ -779,7 +739,7 @@ bool Sailor::CaptureGIProbesScene(
 	}
 	outScene.m_geometryHash = geometryHash;
 	outScene.m_lightingHash = lightingHash;
-	outScene.m_sourceWorldHash = 1469598103934665603ull;
+	outScene.m_sourceWorldHash = Fnv1aOffsetBasis;
 	HashValue(outScene.m_sourceWorldHash, geometryHash);
 	HashValue(outScene.m_sourceWorldHash, lightingHash);
 	if (!ObserveGIProbesSceneRevision(

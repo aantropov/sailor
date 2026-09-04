@@ -808,7 +808,7 @@ public sealed class EngineProtocolClientTests
                     ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml,
                     request.CommandCase);
                 Assert.Equal(
-                    EngineProtocolClient.StrictInstanceIdsProtocolVersion,
+                    EngineProtocolClient.ProtocolVersion,
                     request.ProtocolVersion);
                 Assert.True(
                     request.InstantiatePrefabFromYaml.StrictInstanceIds);
@@ -890,7 +890,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public async Task InstantiatePrefabFromYamlAsync_UsesVersionGatedStrictRequest()
+    public async Task InstantiatePrefabFromYamlAsync_UsesV1StrictFlag()
     {
         var requests = new List<ProtocolRequest>();
         var client = CreateClient(request =>
@@ -937,7 +937,7 @@ public sealed class EngineProtocolClientTests
                     ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml,
                     request.CommandCase);
                 Assert.Equal(
-                    EngineProtocolClient.StrictInstanceIdsProtocolVersion,
+                    EngineProtocolClient.ProtocolVersion,
                     request.ProtocolVersion);
                 Assert.Equal(
                     "prefab: undo",
@@ -1000,7 +1000,7 @@ public sealed class EngineProtocolClientTests
                     ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml,
                     request.CommandCase);
                 Assert.Equal(
-                    EngineProtocolClient.StrictInstanceIdsProtocolVersion,
+                    EngineProtocolClient.ProtocolVersion,
                     request.ProtocolVersion);
                 Assert.True(
                     request.InstantiatePrefabFromYaml.StrictInstanceIds);
@@ -1008,7 +1008,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public async Task InstantiatePrefabFromYamlStrictAsync_RejectsOldV1HostWithoutSendingMutation()
+    public async Task InstantiatePrefabFromYamlStrictAsync_RejectsHostWithoutCapability()
     {
         var requests = new List<ProtocolRequest>();
         var client = CreateClient(request =>
@@ -1058,50 +1058,6 @@ public sealed class EngineProtocolClientTests
                 request.CommandCase ==
                     ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml &&
                 request.InstantiatePrefabFromYaml.StrictInstanceIds);
-    }
-
-    [Fact]
-    public async Task InstantiatePrefabFromYamlStrictAsync_RejectsV1ResponseAfterStaleCapability()
-    {
-        var requests = new List<ProtocolRequest>();
-        var client = CreateClient(request =>
-        {
-            requests.Add(request);
-            if (request.CommandCase ==
-                ProtocolRequest.CommandOneofCase.RequestAssetReload)
-            {
-                return Success(
-                    request,
-                    response => response.BoolResult =
-                        new BoolResult { Value = true });
-            }
-
-            return new ProtocolResponse
-            {
-                ProtocolVersion = EngineProtocolClient.ProtocolVersion,
-                RequestId = request.RequestId,
-                Success = true,
-                BoolResult = new BoolResult { Value = true }
-            };
-        });
-
-        Assert.True(await client.RequestAssetReloadAsync());
-        var exception =
-            await Assert.ThrowsAsync<EngineProtocolException>(
-                () => client.InstantiatePrefabFromYamlStrictAsync(
-                    "prefab: undo",
-                    string.Empty));
-
-        Assert.Contains(
-            "protocol version",
-            exception.Message,
-            StringComparison.Ordinal);
-        Assert.Equal(2, requests.Count);
-        Assert.Equal(
-            EngineProtocolClient.StrictInstanceIdsProtocolVersion,
-            requests[1].ProtocolVersion);
-        Assert.True(
-            requests[1].InstantiatePrefabFromYaml.StrictInstanceIds);
     }
 
     [Fact]

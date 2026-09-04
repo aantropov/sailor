@@ -125,14 +125,6 @@ namespace
 			result <= static_cast<uint64_t>((std::numeric_limits<size_t>::max)());
 	}
 
-	bool IsFiniteMatrix(const glm::mat4& matrix)
-	{
-		return Math::AllFinite(matrix[0]) &&
-			Math::AllFinite(matrix[1]) &&
-			Math::AllFinite(matrix[2]) &&
-			Math::AllFinite(matrix[3]);
-	}
-
 	bool IsAffineMatrix(const glm::mat4& matrix)
 	{
 		constexpr float epsilon = 1.0e-5f;
@@ -230,7 +222,7 @@ bool LandscapeVegetationAssetData::Validate(std::string& outDiagnostic) const
 			{
 				return Fail("Landscape vegetation contains unsupported instance flags.", outDiagnostic);
 			}
-			if (!IsFiniteMatrix(instance.m_transform))
+			if (!Math::AllFinite(instance.m_transform))
 			{
 				return Fail("Landscape vegetation contains a non-finite instance matrix.", outDiagnostic);
 			}

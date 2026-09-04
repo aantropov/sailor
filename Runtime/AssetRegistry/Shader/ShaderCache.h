@@ -50,6 +50,9 @@ namespace Sailor
 			uint64_t m_checksum = 0;
 
 			bool IsPresent() const noexcept { return m_byteLength != 0; }
+			bool Validate(
+				const std::string& context,
+				std::string& outDiagnostic) const;
 
 			SAILOR_API virtual YAML::Node Serialize() const override;
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -163,9 +166,9 @@ namespace Sailor
 					std::time_t m_timestamp{};
 					uint64_t m_sourceFingerprint = 0;
 					uint32_t m_permutation = 0;
-				std::string m_generation;
-				ArtifactSet m_regular;
-				ArtifactSet m_debug;
+					std::string m_generation;
+					ArtifactSet m_regular;
+					ArtifactSet m_debug;
 
 				SAILOR_API bool operator==(const Entry& rhs) const
 				{
@@ -174,17 +177,35 @@ namespace Sailor
 
 				SAILOR_API virtual YAML::Node Serialize() const override;
 				SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
+				bool Validate(
+					const FileId& key,
+					std::string& outDiagnostic) const;
 			};
 
-			TMap<FileId, TVector<Entry>> m_data;
+			TMap<FileId, TVector<Entry>> m_entries;
 
 			SAILOR_API virtual YAML::Node Serialize() const override;
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
+
+			static bool TryDeserialize(
+				const YAML::Node& inData,
+				ShaderCacheData& outData,
+				std::string& outDiagnostic) noexcept;
+
+		private:
+			bool DeserializeProperties(const YAML::Node& inData);
+			bool Validate(std::string& outDiagnostic) const;
 		};
 
 		SAILOR_API bool GetTimeStamp(const FileId& uid, time_t& outTimestamp) const;
 
 	private:
+		static constexpr const char* CacheKind = "shader-cache";
+		static constexpr uint32_t PayloadVersion = 1u;
+
+		static std::string GetCacheProducerIdentity();
+		static Workspace::WorkspaceCacheIdentity MakeExpectedIdentity();
+
 		struct QuarantinedEntry final
 		{
 			FileId m_fileId{};
@@ -398,6 +419,7 @@ namespace Sailor
 		SAILOR_API static void FailNextSaveBeforeReplace(ShaderCache& cache);
 		SAILOR_API static void SetArtifactReadIoFailure(ShaderCache& cache, bool bEnabled);
 		SAILOR_API static void FailNextArtifactSweep(ShaderCache& cache);
+		SAILOR_API static std::string PayloadWithUnknownFields(const ShaderCache& cache);
 		SAILOR_API static std::string PayloadWithMissingDebug(const ShaderCache& cache);
 		SAILOR_API static std::string PayloadWithMismatchedDebugTopology(const ShaderCache& cache);
 		SAILOR_API static bool ParsePayload(

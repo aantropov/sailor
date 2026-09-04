@@ -45,13 +45,6 @@ namespace
 		return (std::max)(color.x, (std::max)(color.y, color.z));
 	}
 
-	bool IsFinite(const vec3& value)
-	{
-		return std::isfinite(value.x) &&
-			std::isfinite(value.y) &&
-			std::isfinite(value.z);
-	}
-
 	vec3 ResolveClearcoatNormal(
 		const LightingModel::SampledData& sample,
 		const vec3& worldNormal)
@@ -60,7 +53,7 @@ namespace
 			sample.m_clearcoatNormal,
 			sample.m_clearcoatNormal);
 		return lengthSquared > DirectionEpsilon &&
-			IsFinite(sample.m_clearcoatNormal) ?
+			Math::AllFinite(sample.m_clearcoatNormal) ?
 			sample.m_clearcoatNormal * inversesqrt(lengthSquared) :
 			worldNormal;
 	}
@@ -1295,7 +1288,7 @@ vec3 LightingModel::CalculateRefraction(const vec3& rayDirection, const vec3& wo
 		(eta * cosTheta - sqrt(transmittedCosineSquared)) *
 		worldNormal;
 	const float lengthSquared = dot(result, result);
-	if (lengthSquared <= DirectionEpsilon || !IsFinite(result))
+	if (lengthSquared <= DirectionEpsilon || !Math::AllFinite(result))
 	{
 		return vec3(0.0f);
 	}
@@ -1426,7 +1419,7 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 			outTerm = max(vec3(sample.m_baseColor), vec3(0.0f)) *
 				clamp(sample.m_transmission, 0.0f, 1.0f) *
 				(1.0f - metallic) * upperLayerScaling / outPdf;
-			return IsFinite(outTerm) && outPdf > 0.0f;
+			return Math::AllFinite(outTerm) && outPdf > 0.0f;
 		}
 		inOutDirection = CalculateRefraction(
 			-viewDirection,
@@ -1461,7 +1454,7 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 		inOutDirection,
 		inOutDirection);
 	if (directionLengthSquared <= DirectionEpsilon ||
-		!IsFinite(inOutDirection))
+		!Math::AllFinite(inOutDirection))
 	{
 		return false;
 	}
@@ -1533,7 +1526,7 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 			fromIor,
 			toIor) / outPdf;
 	}
-	if (!IsFinite(outTerm) ||
+	if (!Math::AllFinite(outTerm) ||
 		any(lessThan(outTerm, vec3(0.0f))))
 	{
 		outTerm = vec3(0.0f);

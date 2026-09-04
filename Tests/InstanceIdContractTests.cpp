@@ -69,6 +69,35 @@ namespace
 		}
 	}
 
+	void TestDeterministicIdsAreStableAndCanonical()
+	{
+		const InstanceId first = InstanceId::GenerateDeterministic(
+			{ "prefab", "seed", "source-instance" },
+			3);
+		const InstanceId repeated = InstanceId::GenerateDeterministic(
+			{ "prefab", "seed", "source-instance" },
+			3);
+		const InstanceId nextVariant = InstanceId::GenerateDeterministic(
+			{ "prefab", "seed", "source-instance" },
+			4);
+		const InstanceId reordered = InstanceId::GenerateDeterministic(
+			{ "seed", "prefab", "source-instance" },
+			3);
+
+		Require(first == repeated,
+			"deterministic IDs must be repeatable for identical values and variants");
+		Require(first.ToString() == "CFF187DA35C867E2C68F",
+			"deterministic IDs must preserve the established linked-instance hash");
+		Require(first != nextVariant,
+			"deterministic ID variants must produce distinct collision candidates");
+		Require(first != reordered,
+			"deterministic ID hashing must preserve value order");
+		Require(first.ToString().length() == 20 && IsHexString(first.ToString()),
+			"deterministic IDs must use the canonical game-object ID format");
+		Require(first.IsGameObjectId(),
+			"deterministic IDs must be recognized as game-object IDs");
+	}
+
 	void TestLegacyDirectGameObjectIdsRemainReadable()
 	{
 		const std::string legacyIds[] = {
@@ -407,6 +436,7 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "GeneratedGameObjectIdsUseCanonicalFormat", TestGeneratedGameObjectIdsUseCanonicalFormat },
+		{ "DeterministicIdsAreStableAndCanonical", TestDeterministicIdsAreStableAndCanonical },
 		{ "LegacyDirectGameObjectIdsRemainReadable", TestLegacyDirectGameObjectIdsRemainReadable },
 		{ "MalformedDirectGameObjectIdsAreRejected", TestMalformedDirectGameObjectIdsAreRejected },
 		{ "ComponentIdsResolveLegacyAndCanonicalParents", TestComponentIdsResolveLegacyAndCanonicalParents },

@@ -383,7 +383,7 @@ TextureImporter::TextureSamplersSnapshot TextureImporter::GetTextureSamplersSnap
 uint64_t TextureImporter::CalculateTextureSamplersRevision(
 	const TVector<uint32_t>& requestedIndices) const
 {
-	size_t result = 1469598103934665603ull;
+	size_t result = Fnv1aOffsetBasis;
 	m_textureSamplersLock.Lock();
 	if (!m_textureSamplersBindings)
 	{

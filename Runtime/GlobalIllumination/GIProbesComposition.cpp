@@ -1,5 +1,7 @@
 #include "GlobalIllumination/GIProbesComposition.h"
 
+#include "Containers/Hash.h"
+
 #include <bit>
 #include <cmath>
 
@@ -44,29 +46,6 @@ namespace
 		return true;
 	}
 
-	void HashU32(uint64_t& hash, uint32_t value) noexcept
-	{
-		for (uint32_t shift = 0u; shift < 32u; shift += 8u)
-		{
-			hash ^= static_cast<uint8_t>((value >> shift) & 0xffu);
-			hash *= 1099511628211ull;
-		}
-	}
-
-	void HashU64(uint64_t& hash, uint64_t value) noexcept
-	{
-		HashU32(hash, static_cast<uint32_t>(value));
-		HashU32(hash, static_cast<uint32_t>(value >> 32u));
-	}
-
-	void HashString(uint64_t& hash, const std::string& value) noexcept
-	{
-		for (const char character : value)
-		{
-			hash ^= static_cast<uint8_t>(character);
-			hash *= 1099511628211ull;
-		}
-	}
 }
 
 GIProbesCompositionPlan GIProbesComposer::BuildPlan(
@@ -181,7 +160,7 @@ GIProbesCompositionPlan GIProbesComposer::BuildPlan(
 		result.m_assets.Reserve(active.Num());
 		result.m_effectiveWeights.Reserve(active.Num());
 		result.m_modes.Reserve(active.Num());
-		uint64_t lightingHash = 1469598103934665603ull;
+		uint64_t lightingHash = Fnv1aOffsetBasis;
 		for (const GIProbesCompositionInput* input : active)
 		{
 			const float effectiveWeight =
@@ -196,9 +175,11 @@ GIProbesCompositionPlan GIProbesComposer::BuildPlan(
 			result.m_effectiveWeights.Add(effectiveWeight);
 			result.m_modes.Add(input->m_mode);
 			HashString(lightingHash, input->m_name);
-			HashU64(lightingHash, input->m_data->m_lightingHash);
-			HashU32(lightingHash, static_cast<uint32_t>(input->m_mode));
-			HashU32(lightingHash, std::bit_cast<uint32_t>(effectiveWeight));
+			HashValues(
+				lightingHash,
+				input->m_data->m_lightingHash,
+				static_cast<uint32_t>(input->m_mode),
+				std::bit_cast<uint32_t>(effectiveWeight));
 		}
 
 		result.m_lightingHash = lightingHash;

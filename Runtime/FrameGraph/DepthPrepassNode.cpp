@@ -1,4 +1,5 @@
 #include "DepthPrepassNode.h"
+#include "Core/StringHash.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
@@ -46,7 +47,7 @@ RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader, defines) && pShader->IsReady())
 		{
-			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, cullMode, EBlendMode::None, EFillMode::Fill, GetHash(std::string("DepthOnly")), true);
+			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, cullMode, EBlendMode::None, EFillMode::Fill, "DepthOnly"_h.GetHash(), true);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
 	}
@@ -71,8 +72,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 	SAILOR_PROFILE_FUNCTION();
 
 	const std::string QueueTag = GetString("Tag");
-	const size_t QueueTagHash = GetHash(QueueTag);
-	const bool bMaskedQueue = QueueTagHash == GetHash(std::string("Masked"));
+	const size_t QueueTagHash = StringHash::Runtime(QueueTag).GetHash();
+	const bool bMaskedQueue = QueueTagHash == "Masked"_h.GetHash();
 	std::string virtualizeInstancePayloadsSetting;
 	const bool bVirtualizeInstancePayloads =
 		!TryGetString("VirtualizeInstancePayloads", virtualizeInstancePayloadsSetting) ||
@@ -104,7 +105,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 
 			SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
 
-			constexpr size_t PayloadRevisionSeed = 1469598103934665603ull;
+			constexpr size_t PayloadRevisionSeed = Fnv1aOffsetBasis;
 			std::array<size_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
 				payloadRevisions{};
 			std::array<uint32_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>

@@ -60,7 +60,7 @@ namespace
 			return true;
 		}
 
-		outParent.Deserialize(YAML::Node(value));
+		outParent = InstanceId(value);
 		return outParent.IsGameObjectId();
 	}
 
@@ -72,7 +72,7 @@ namespace
 			return true;
 		}
 
-		outInstanceId.Deserialize(YAML::Node(value));
+		outInstanceId = InstanceId(value);
 		return outInstanceId.IsGameObjectId();
 	}
 
@@ -84,7 +84,7 @@ namespace
 			return true;
 		}
 
-		outInstanceId.Deserialize(YAML::Node(value));
+		outInstanceId = InstanceId(value);
 		return outInstanceId.ComponentId() != InstanceId::Invalid &&
 			outInstanceId.GameObjectId() != InstanceId::Invalid;
 	}
@@ -306,8 +306,7 @@ uint64_t App::GetEditorManagedMutationRevision(uint32_t kind, const char* strIns
 
 			if (kind == c_objectMutationRevisionKind && !instanceId.empty())
 			{
-				InstanceId parsedInstanceId{};
-				parsedInstanceId.Deserialize(YAML::Node(instanceId));
+				const InstanceId parsedInstanceId(instanceId);
 				return editor->GetManagedObjectMutationRevision(parsedInstanceId);
 			}
 
@@ -482,8 +481,7 @@ bool App::LoadEditorWorld(const char* strFileId)
 				return false;
 			}
 
-			FileId fileId;
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const FileId fileId(fileIdValue);
 			auto worldPrefab = assetRegistry->LoadAssetFromFile<WorldPrefab>(fileId);
 			if (!worldPrefab || !worldPrefab->IsReady())
 			{
@@ -581,8 +579,7 @@ bool App::PreviewEditorAudioAsset(const char* strFileId)
 				return false;
 			}
 
-			FileId fileId;
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const FileId fileId(fileIdValue);
 			return fileId && editor->PreviewAudioAsset(fileId);
 		});
 }
@@ -795,8 +792,7 @@ bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return editor->UpdateObject(instanceId, yamlValue);
 		});
 }
@@ -820,8 +816,7 @@ bool App::SetEditorAnimatorParameter(
 		[instanceIdValue, name, valueKind, floatValue, intValue, boolValue]()
 		{
 			auto editor = GetSubmodule<Editor>();
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			auto* animator = FindEditorAnimator(editor, instanceId);
 			if (!animator)
 			{
@@ -883,8 +878,7 @@ bool App::GetEditorAnimatorState(
 			&outTransitionAlpha]()
 		{
 			auto editor = GetSubmodule<Editor>();
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			auto* animator = FindEditorAnimator(editor, instanceId);
 			if (!animator)
 			{
@@ -948,8 +942,7 @@ bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentI
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			InstanceId parentInstanceId;
 			if (!TryParseOptionalParent(parentInstanceIdValue, parentInstanceId))
 			{
@@ -1022,8 +1015,7 @@ bool App::CreateEditorModelInstance(
 	}
 
 	outInstanceId[0] = nullptr;
-	FileId modelFileId;
-	modelFileId.Deserialize(YAML::Node(strModelFileId));
+	const FileId modelFileId(strModelFileId);
 	auto modelImporter = GetSubmodule<ModelImporter>();
 	ModelPtr model;
 	if (!modelFileId ||
@@ -1107,8 +1099,7 @@ bool App::DestroyEditorObject(const char* strInstanceId)
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return editor->DestroyObject(instanceId);
 		});
 }
@@ -1129,8 +1120,7 @@ bool App::ResetEditorComponentToDefaults(const char* strInstanceId)
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return editor->ResetComponentToDefaults(instanceId);
 		});
 }
@@ -1158,8 +1148,7 @@ bool App::AddEditorComponent(
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 
 			InstanceId preferredInstanceId;
 			if (!TryParseOptionalComponentId(preferredInstanceIdValue, preferredInstanceId))
@@ -1194,8 +1183,7 @@ bool App::RemoveEditorComponent(const char* strInstanceId)
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return editor->RemoveComponent(instanceId);
 		});
 }
@@ -1217,8 +1205,7 @@ bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentIn
 				return false;
 			}
 
-			FileId fileId;
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const FileId fileId(fileIdValue);
 			InstanceId parentInstanceId;
 			if (!TryParseOptionalParent(parentInstanceIdValue, parentInstanceId))
 			{
@@ -1263,8 +1250,7 @@ bool App::InstantiateEditorPrefabInstance(
 				return false;
 			}
 
-			FileId fileId{};
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const FileId fileId(fileIdValue);
 			if (!fileId)
 			{
 				return false;
@@ -1447,8 +1433,7 @@ bool App::FocusEditorCamera(const char* strInstanceId)
 				return false;
 			}
 
-			InstanceId instanceId{};
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return instanceId.IsGameObjectId() &&
 				editor->FocusEditorCamera(instanceId);
 		});
@@ -1475,10 +1460,8 @@ bool App::SetEditorPrefabLink(
 				return false;
 			}
 
-			InstanceId instanceId{};
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
-			FileId fileId{};
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const InstanceId instanceId(instanceIdValue);
+			const FileId fileId(fileIdValue);
 			return editor->SetPrefabLink(instanceId, fileId);
 		});
 }
@@ -1501,8 +1484,7 @@ bool App::BreakEditorPrefabLink(const char* strInstanceId)
 				return false;
 			}
 
-			InstanceId instanceId{};
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return editor->BreakPrefabLink(instanceId);
 		});
 }
@@ -1607,11 +1589,7 @@ bool App::RenderPathTracedImage(const char* strOutputPath, const char* strInstan
 				return false;
 			}
 
-			InstanceId instanceId{};
-			if (!instanceIdValue.empty())
-			{
-				instanceId.Deserialize(YAML::Node(instanceIdValue));
-			}
+			const InstanceId instanceId(instanceIdValue);
 
 			const bool bSuccess = editor->RenderPathTracedImage(instanceId, outputPath, height, samplesPerPixel, maxBounces);
 			editor->PushMessage(bSuccess ?

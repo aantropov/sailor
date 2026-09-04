@@ -101,6 +101,10 @@ namespace Sailor
 
 	protected:
 
+		void SerializeLinkedProperties(
+			YAML::Node& outData,
+			const FileId& sourceFileId) const;
+
 		SAILOR_API static void SerializeGameObject(
 			GameObjectPtr root,
 			uint32_t parentIndex,

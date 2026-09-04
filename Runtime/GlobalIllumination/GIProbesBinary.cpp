@@ -1,5 +1,6 @@
 #include "GlobalIllumination/GIProbesBinary.h"
 
+#include "Containers/Hash.h"
 #include "Workspace/WorkspaceCacheContract.h"
 
 #include <algorithm>
@@ -26,13 +27,7 @@ namespace
 
 	uint64_t Checksum(const uint8_t* bytes, size_t size) noexcept
 	{
-		uint64_t hash = 1469598103934665603ull;
-		for (size_t index = 0u; index < size; ++index)
-		{
-			hash ^= bytes[index];
-			hash *= 1099511628211ull;
-		}
-		return hash;
+		return HashBytes(bytes, size);
 	}
 
 	class Writer final

@@ -1,13 +1,15 @@
 ﻿#pragma once
 #include "Core/Defines.h"
+#include "Core/FileRevision.h"
 #include "Containers/Concepts.h"
 #include "Math/Math.h"
 #include "Containers/Containers.h"
 
+#include <utility>
 #include <yaml-cpp/yaml.h>
 
-#define SERIALIZE_PROPERTY(yamlNode, variable) { char const* name = #variable; Sailor::Serialize(yamlNode, name + 2, variable); }
-#define DESERIALIZE_PROPERTY(yamlNode, variable) { char const* name = #variable; Sailor::Deserialize(yamlNode, name + 2, variable); }
+#define SERIALIZE_PROPERTY(yamlNode, variable) Sailor::Serialize(yamlNode, &(#variable)[2], variable)
+#define DESERIALIZE_PROPERTY(yamlNode, variable) Sailor::Deserialize(yamlNode, &(#variable)[2], variable)
 
 namespace Sailor
 {
@@ -19,6 +21,28 @@ namespace Sailor
 		virtual void Deserialize(const YAML::Node& inData) { assert(0); }
 	};
 
+	inline void Serialize(
+		YAML::Node& node,
+		const std::string& name,
+		const FileRevision& revision)
+	{
+		node[name] = revision.Serialize();
+	}
+
+	inline bool Deserialize(
+		const YAML::Node& node,
+		const std::string& name,
+		FileRevision& revision)
+	{
+		if (!node[name])
+		{
+			return false;
+		}
+
+		revision.Deserialize(node[name]);
+		return revision.m_bIsValid;
+	}
+
 	// Cannot move enum to internal YAML convertions, since there is no way to use extra template arg
 	template<typename T>
 	YAML::Node SerializeEnum(typename std::enable_if< std::is_enum<T>::value, T >::type enumeration)
@@ -29,11 +53,15 @@ namespace Sailor
 	}
 
 	template<typename T>
-	void DeserializeEnum(const YAML::Node& j, typename std::enable_if< std::is_enum<T>::value, T >::type& outEnumeration)
+	bool DeserializeEnum(const YAML::Node& j, typename std::enable_if< std::is_enum<T>::value, T >::type& outEnumeration)
 	{
 		auto value = magic_enum::enum_cast<T>(j.as<std::string>());
-		check(value.has_value());
-		outEnumeration = value.value();
+		if (!value)
+		{
+			return false;
+		}
+		outEnumeration = *value;
+		return true;
 	}
 
 	template<typename T>
@@ -52,15 +80,22 @@ namespace Sailor
 	template<typename T>
 	__forceinline bool Deserialize(const YAML::Node& node, const std::string& name, T& variable)
 	{
-		if (node[name])
+		const YAML::Node value = node[name];
+		if (value)
 		{
 			if constexpr (IsEnum<T>)
 			{
-				DeserializeEnum<T>(node[name], variable);
+				return DeserializeEnum<T>(value, variable);
 			}
 			else
 			{
-				variable = node[name].as<typename std::decay<decltype(variable)>::type>();
+				using TValue = typename std::decay<decltype(variable)>::type;
+				TValue decoded{};
+				if (!YAML::convert<TValue>::decode(value, decoded))
+				{
+					return false;
+				}
+				variable = std::move(decoded);
 			}
 
 			return true;
@@ -365,8 +400,7 @@ namespace YAML
 			}
 			else if constexpr (Sailor::IsEnum<T>)
 			{
-				Sailor::DeserializeEnum<T>(node, rhs);
-				return true;
+				return Sailor::DeserializeEnum<T>(node, rhs);
 			}
 			return false;
 		}

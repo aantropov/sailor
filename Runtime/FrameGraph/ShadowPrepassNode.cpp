@@ -1,4 +1,5 @@
 #include "ShadowPrepassNode.h"
+#include "Core/StringHash.h"
 #include "RHI/Batch.hpp"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
@@ -68,7 +69,7 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 				cullMode,
 				EBlendMode::None,
 				EFillMode::Fill,
-				GetHash(std::string("Shadow")),
+				"Shadow"_h.GetHash(),
 				false,
 				EDepthCompare::GreaterOrEqual);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
@@ -146,7 +147,7 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddCustomShadowMaterial(
 		sourceState.GetCullMode(),
 		EBlendMode::None,
 		sourceState.GetFillMode(),
-		GetHash(std::string("Shadow")),
+		"Shadow"_h.GetHash(),
 		false,
 		EDepthCompare::GreaterOrEqual);
 	auto material = RHI::Renderer::GetDriver()->CreateMaterial(
@@ -303,8 +304,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	commands->BeginDebugRegion(commandList, std::string(GetName()), DebugContext::Color_CmdGraphics);
 	{
 		const uint32_t NumShadowPasses = (uint32_t)sceneView.m_shadowMapsToUpdate.Num();
-		const size_t opaqueQueueTag = GetHash(std::string("Opaque"));
-		const size_t maskedQueueTag = GetHash(std::string("Masked"));
+		const size_t opaqueQueueTag = "Opaque"_h.GetHash();
+		const size_t maskedQueueTag = "Masked"_h.GetHash();
 		const size_t staticPayloadIndex =
 			RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(
 				EMobilityType::Static);
@@ -326,7 +327,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				const size_t index =
 					RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
 				size_t cacheSlot = usesPagedArena(index) ?
-					1469598103934665603ull : viewKey;
+					Fnv1aOffsetBasis : viewKey;
 				if (usesPagedArena(index))
 				{
 					HashCombine(cacheSlot, static_cast<uint32_t>(shadowType), index);
@@ -358,7 +359,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				requestedTextures.Reset();
 			}
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[passIndex];
-			size_t viewKey = 1469598103934665603ull;
+			size_t viewKey = Fnv1aOffsetBasis;
 			HashCombine(
 				viewKey,
 				shadowPass.m_lighMatrixIndex,
@@ -376,7 +377,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			for (size_t index = 0u; index < shadowPayloadRevisions[passIndex].size(); ++index)
 			{
 				auto& revision = shadowPayloadRevisions[passIndex][index];
-				revision = 1469598103934665603ull;
+				revision = Fnv1aOffsetBasis;
 				HashCombine(
 					revision,
 					index,
@@ -396,7 +397,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
 					auto& arenaRevision =
 						shadowPayloadRevisions[passIndex][payloadIndex];
-					arenaRevision = 1469598103934665603ull;
+					arenaRevision = Fnv1aOffsetBasis;
 					HashCombine(
 						arenaRevision,
 						payloadIndex,

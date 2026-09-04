@@ -1,11 +1,57 @@
 #include "GlobalIllumination/GISettings.h"
-#include "Core/YamlUtils.h"
+
+#include "Core/YamlSerializable.h"
+#include "YamlExceptionBoundary.h"
 
 #include <algorithm>
 #include <cmath>
-#include <type_traits>
 
 using namespace Sailor;
+
+YAML::Node GlobalIlluminationProbeBinding::Serialize() const
+{
+	YAML::Node result(YAML::NodeType::Map);
+	YAML::Node asset(YAML::NodeType::Map);
+	::Serialize(asset, "fileId", m_asset);
+	result["asset"] = asset;
+	SERIALIZE_PROPERTY(result, m_mode);
+	SERIALIZE_PROPERTY(result, m_initialWeight);
+	if (m_bPreload)
+	{
+		::Serialize(result, "preload", true);
+	}
+	return result;
+}
+
+bool GlobalIlluminationProbeBinding::Deserialize(
+	const YAML::Node& inData,
+	const std::string& name,
+	std::string& outDiagnostic)
+{
+	*this = {};
+	const YAML::Node asset = inData["asset"];
+	if (!asset || !::Deserialize(asset, "fileId", m_asset))
+	{
+		outDiagnostic = "global-illumination probe binding '" + name +
+			"' must reference asset.fileId";
+		return false;
+	}
+	if (!inData["mode"])
+	{
+		outDiagnostic = "global-illumination probe binding '" + name +
+			"' mode is required";
+		return false;
+	}
+	if (!DESERIALIZE_PROPERTY(inData, m_mode))
+	{
+		outDiagnostic = "global-illumination probe binding '" + name +
+			"' mode must be Blend or Additive";
+		return false;
+	}
+	DESERIALIZE_PROPERTY(inData, m_initialWeight);
+	::Deserialize(inData, "preload", m_bPreload);
+	return true;
+}
 
 bool GISettings::Validate(
 	std::string& outDiagnostic) const noexcept
@@ -44,24 +90,12 @@ bool GISettings::Validate(
 YAML::Node GISettings::Serialize() const
 {
 	YAML::Node globalIllumination(YAML::NodeType::Map);
-	YAML::Node probes(YAML::NodeType::Map);
-	globalIllumination["mode"] = std::string(magic_enum::enum_name(m_mode));
-	YAML::Node runtimeProbes(YAML::NodeType::Map);
-	runtimeProbes["version"] = m_runtimeProbes.m_version;
-	runtimeProbes["includeSky"] = m_runtimeProbes.m_bIncludeSky;
-	runtimeProbes["includeEmissive"] = m_runtimeProbes.m_bIncludeEmissive;
-	runtimeProbes["includeDirectLighting"] =
-		m_runtimeProbes.m_bIncludeDirectLighting;
-	runtimeProbes["bounceCount"] = m_runtimeProbes.m_bounceCount;
-	runtimeProbes["minProbeSpacing"] = m_runtimeProbes.m_minProbeSpacing;
-	runtimeProbes["normalBias"] = m_runtimeProbes.m_normalBias;
-	runtimeProbes["viewBias"] = m_runtimeProbes.m_viewBias;
-	runtimeProbes["maxRayDistance"] = m_runtimeProbes.m_maxRayDistance;
-	globalIllumination["runtimeProbes"] = runtimeProbes;
+	SERIALIZE_PROPERTY(globalIllumination, m_mode);
+	globalIllumination["runtimeProbes"] = m_runtimeProbes.Serialize();
 
 	struct SortedBinding final
 	{
-		std::string m_name{};
+		std::string m_name;
 		const GlobalIlluminationProbeBinding* m_binding = nullptr;
 	};
 	TVector<SortedBinding> sortedBindings;
@@ -78,23 +112,11 @@ YAML::Node GISettings::Serialize() const
 			return lhs.m_name < rhs.m_name;
 		});
 
-	for (const SortedBinding& sorted : sortedBindings)
+	YAML::Node probes(YAML::NodeType::Map);
+	for (const SortedBinding& binding : sortedBindings)
 	{
-		const std::string& name = sorted.m_name;
-		const GlobalIlluminationProbeBinding& binding = *sorted.m_binding;
-		YAML::Node bindingNode(YAML::NodeType::Map);
-		YAML::Node assetNode(YAML::NodeType::Map);
-		assetNode["fileId"] = binding.m_asset.Serialize();
-		bindingNode["asset"] = assetNode;
-		bindingNode["mode"] = std::string(magic_enum::enum_name(binding.m_mode));
-		bindingNode["initialWeight"] = binding.m_initialWeight;
-		if (binding.m_bPreload)
-		{
-			bindingNode["preload"] = true;
-		}
-		probes[name] = bindingNode;
+		probes[binding.m_name] = binding.m_binding->Serialize();
 	}
-
 	globalIllumination["probes"] = probes;
 	return globalIllumination;
 }
@@ -108,154 +130,49 @@ bool GISettings::Deserialize(
 
 	auto deserialize = [&]() -> bool
 	{
-		const YAML::Node giNode = Utils::FindYamlMapField(
-			worldRoot,
-			"globalIllumination");
-		if (!giNode)
+		const YAML::Node globalIllumination = worldRoot["globalIllumination"];
+		if (!globalIllumination)
 		{
 			return true;
 		}
-		if (!giNode.IsMap())
-		{
-			outDiagnostic = "globalIllumination must be a map";
-			return false;
-		}
-		const YAML::Node globalModeNode = Utils::FindYamlMapField(giNode, "mode");
-		if (!globalModeNode || !globalModeNode.IsScalar())
+
+		if (!globalIllumination["mode"])
 		{
 			outDiagnostic = "globalIllumination.mode is required";
 			return false;
 		}
-		const std::string globalMode = globalModeNode.as<std::string>();
-		const auto parsedGlobalMode =
-			magic_enum::enum_cast<EGlobalIlluminationMode>(globalMode);
-		if (!parsedGlobalMode)
+		if (!::Deserialize(globalIllumination, "mode", parsedSettings.m_mode))
 		{
 			outDiagnostic = "globalIllumination.mode must be NoGI, Runtime, or Baked";
 			return false;
 		}
-		parsedSettings.m_mode = *parsedGlobalMode;
 
-		const YAML::Node runtimeNode = Utils::FindYamlMapField(
-			giNode,
-			"runtimeProbes");
-		if (!runtimeNode || !runtimeNode.IsMap())
+		const YAML::Node runtimeProbes = globalIllumination["runtimeProbes"];
+		if (!runtimeProbes || !parsedSettings.m_runtimeProbes.Deserialize(runtimeProbes))
 		{
-			outDiagnostic = "globalIllumination.runtimeProbes is required and must be a map";
-			return false;
-		}
-		const auto readRuntimeScalar = [&runtimeNode,
-			&outDiagnostic](const char* fieldName, auto& outValue) -> bool
-		{
-			const YAML::Node value = Utils::FindYamlMapField(
-				runtimeNode,
-				fieldName);
-			if (!value || !value.IsScalar())
-			{
-				outDiagnostic = std::string("globalIllumination.runtimeProbes.") +
-					fieldName + " is required and must be a scalar";
-				return false;
-			}
-			outValue = value.as<std::decay_t<decltype(outValue)>>();
-			return true;
-		};
-		if (!readRuntimeScalar(
-				"version",
-				parsedSettings.m_runtimeProbes.m_version) ||
-			!readRuntimeScalar(
-				"includeSky",
-				parsedSettings.m_runtimeProbes.m_bIncludeSky) ||
-			!readRuntimeScalar(
-				"includeEmissive",
-				parsedSettings.m_runtimeProbes.m_bIncludeEmissive) ||
-			!readRuntimeScalar(
-				"includeDirectLighting",
-				parsedSettings.m_runtimeProbes.m_bIncludeDirectLighting) ||
-			!readRuntimeScalar(
-				"bounceCount",
-				parsedSettings.m_runtimeProbes.m_bounceCount) ||
-			!readRuntimeScalar(
-				"minProbeSpacing",
-				parsedSettings.m_runtimeProbes.m_minProbeSpacing) ||
-			!readRuntimeScalar(
-				"normalBias",
-				parsedSettings.m_runtimeProbes.m_normalBias) ||
-			!readRuntimeScalar(
-				"viewBias",
-				parsedSettings.m_runtimeProbes.m_viewBias) ||
-			!readRuntimeScalar(
-				"maxRayDistance",
-				parsedSettings.m_runtimeProbes.m_maxRayDistance) ||
-			!parsedSettings.m_runtimeProbes.Validate(outDiagnostic))
-		{
-			return false;
-		}
-		const YAML::Node probesNode = Utils::FindYamlMapField(giNode, "probes");
-		if (!probesNode)
-		{
-			return true;
-		}
-		if (!probesNode.IsMap())
-		{
-			outDiagnostic = "globalIllumination.probes must be a name-to-binding map";
+			outDiagnostic = "globalIllumination.runtimeProbes is incomplete";
 			return false;
 		}
 
-		for (const auto& yamlEntry : probesNode)
+		const YAML::Node probes = globalIllumination["probes"];
+		if (probes)
 		{
-			const std::string name = yamlEntry.first.as<std::string>();
-			const YAML::Node bindingNode = yamlEntry.second;
-			if (name.empty() || !bindingNode.IsMap())
+			for (const auto& entry : probes)
 			{
-				outDiagnostic = "a globalIllumination.probes entry has an empty name or invalid binding";
-				return false;
-			}
-			const YAML::Node assetNode = Utils::FindYamlMapField(bindingNode, "asset");
-			const YAML::Node fileIdNode = assetNode && assetNode.IsMap()
-				? Utils::FindYamlMapField(assetNode, "fileId")
-				: YAML::Node();
-			if (!fileIdNode || !fileIdNode.IsScalar())
-			{
-				outDiagnostic = "global-illumination probe binding '" + name +
-					"' must reference asset.fileId";
-				return false;
-			}
-
-			GlobalIlluminationProbeBinding binding;
-			binding.m_asset.Deserialize(fileIdNode);
-			const YAML::Node modeNode = Utils::FindYamlMapField(bindingNode, "mode");
-			if (!modeNode || !modeNode.IsScalar())
-			{
-				outDiagnostic = "global-illumination probe binding '" + name +
-					"' mode is required";
-				return false;
-			}
-			const std::string mode = modeNode.as<std::string>();
-			const auto parsedProbeMode =
-				magic_enum::enum_cast<EGlobalIlluminationProbeMode>(mode);
-			if (!parsedProbeMode)
-			{
-				outDiagnostic = "global-illumination probe binding '" + name +
-					"' mode must be Blend or Additive";
-				return false;
-			}
-			binding.m_mode = *parsedProbeMode;
-			const YAML::Node initialWeightNode = Utils::FindYamlMapField(
-				bindingNode,
-				"initialWeight");
-			binding.m_initialWeight = initialWeightNode
-				? initialWeightNode.as<float>()
-				: 0.0f;
-			const YAML::Node preloadNode = Utils::FindYamlMapField(bindingNode, "preload");
-			binding.m_bPreload = preloadNode
-				? preloadNode.as<bool>()
-				: false;
-			if (!parsedSettings.m_probes.Insert(name, std::move(binding)))
-			{
-				outDiagnostic = "global-illumination probe binding names must be unique";
-				return false;
+				const std::string name = entry.first.as<std::string>();
+				GlobalIlluminationProbeBinding binding;
+				if (!binding.Deserialize(entry.second, name, outDiagnostic))
+				{
+					return false;
+				}
+				if (!parsedSettings.m_probes.Insert(name, std::move(binding)))
+				{
+					outDiagnostic = "global-illumination probe binding names must be unique";
+					return false;
+				}
 			}
 		}
+
 		return parsedSettings.Validate(outDiagnostic);
 	};
 
@@ -263,14 +180,14 @@ bool GISettings::Deserialize(
 	std::string yamlDiagnostic;
 	if (!External::TryInvokeYaml(deserialize, bResult, yamlDiagnostic))
 	{
-		outDiagnostic = std::string("cannot parse globalIllumination settings: ") +
-			yamlDiagnostic;
+		outDiagnostic = "cannot parse globalIllumination settings: " + yamlDiagnostic;
 		return false;
 	}
 	if (!bResult)
 	{
 		return false;
 	}
+
 	*this = std::move(parsedSettings);
 	return true;
 }
