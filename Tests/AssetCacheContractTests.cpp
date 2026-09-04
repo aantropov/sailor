@@ -748,6 +748,7 @@ namespace
 
 	void TestScanCanonicalizesUuidMetadataIdentity()
 	{
+		std::cerr << "UUID scan: begin" << std::endl;
 		TempDirectory directory("canonical-uuid-scan");
 		const Workspace::WorkspaceContext workspaceContext =
 			CreateWorkspaceContext(directory);
@@ -765,21 +766,31 @@ namespace
 		{
 			TargetedUpdateAssetInfoHandler handler;
 			AssetRegistry registry(workspaceContext);
+			std::cerr << "UUID scan: registry initialized" << std::endl;
 			RegisterTargetedUpdateHandler(registry, handler);
-			Require(registry.ScanContentFolder() &&
-				registry.CompleteScanProcessing(),
+			std::cerr << "UUID scan: handler registered" << std::endl;
+			const bool bScanned = registry.ScanContentFolder();
+			std::cerr << "UUID scan: content scanned" << std::endl;
+			const bool bCompleted = bScanned && registry.CompleteScanProcessing();
+			std::cerr << "UUID scan: processing completed" << std::endl;
+			Require(bScanned && bCompleted,
 				"a Windows-style braced UUID must survive staged metadata loading");
 
 			AssetInfoPtr assetInfo = registry.GetAssetInfoPtr(portableId);
+			std::cerr << "UUID scan: asset resolved" << std::endl;
 			Require(assetInfo != nullptr &&
 				assetInfo->GetFileId().ToString() == portableId.ToString(),
 				"the staged registry must publish the canonical cross-platform UUID");
+			std::cerr << "UUID scan: registry scope complete" << std::endl;
 		}
+		std::cerr << "UUID scan: registry destroyed" << std::endl;
 
 		AssetCache reloadedCache;
 		reloadedCache.Initialize(workspaceContext);
+		std::cerr << "UUID scan: cache reloaded" << std::endl;
 		Require(reloadedCache.Contains(portableId),
 			"the canonical UUID must remain resolvable after reloading the asset cache");
+		std::cerr << "UUID scan: complete" << std::endl;
 	}
 
 	void TestPayloadRoundTrip()
