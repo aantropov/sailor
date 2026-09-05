@@ -129,6 +129,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API static VkAccessFlags GetAccessFlags(VkImageLayout layout);
 		SAILOR_API static VkPipelineStageFlags GetPipelineStage(VkImageLayout layout);
+		static VkPipelineStageFlags GetShaderPipelineStages(VkQueueFlags queueFlags)
+		{
+			return ((queueFlags & VK_QUEUE_GRAPHICS_BIT) ? VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT : 0u) |
+				((queueFlags & VK_QUEUE_COMPUTE_BIT) ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : 0u);
+		}
 
 		SAILOR_API uint32_t GetGPUCost() const { return m_gpuCost; }
 		SAILOR_API uint32_t GetNumRecordedCommands() const { return m_numRecordedCommands; }

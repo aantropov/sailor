@@ -1019,14 +1019,8 @@ void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags d
 {
 	const uint32_t queueFamilyIndex = m_commandPool->GetQueueFamilyIndex();
 	const auto& queueFamilies = m_device->GetQueueFamilies();
-	const bool bSupportsGraphics = queueFamilies.m_graphicsFamily.has_value() &&
-		queueFamilyIndex == queueFamilies.m_graphicsFamily.value();
-	const bool bSupportsCompute = queueFamilies.m_computeFamily.has_value() &&
-		queueFamilyIndex == queueFamilies.m_computeFamily.value();
-
 	const VkPipelineStageFlags shaderStages =
-		(bSupportsGraphics ? VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT : 0) |
-		(bSupportsCompute ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : 0);
+		GetShaderPipelineStages(queueFamilies.GetFlags(queueFamilyIndex));
 
 	auto resolvePipelineStages = [shaderStages](VkAccessFlags access, bool bSource)
 		{

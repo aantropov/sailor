@@ -24,8 +24,11 @@ namespace Sailor::Framegraph
 		static const char* m_name;
 
 		ShaderSetPtr m_pComputeDepthHighZShader{};
+		ShaderSetPtr m_pComputeDepthHighZInputShader{};
 		TVector<RHI::RHIShaderBindingSetPtr> m_computeDepthHighZBindings{};
 		RHI::RHIShaderBindingSetPtr m_computePrepassDepthHighZBindings{};
+		RHI::RHIRenderTargetPtr m_boundDepth{};
+		RHI::RHIRenderTargetPtr m_boundPyramid{};
 
 		struct PushConstantsDownscale
 		{

@@ -992,6 +992,7 @@ RHIFrameGraph::GetGlobalIlluminationRenderStats() const
 
 void RHIFrameGraph::Clear()
 {
+	ResetCurrentDepthPyramids();
 	m_motionHistory.Clear();
 	m_samplers.Clear();
 	m_graph.Clear();
@@ -1235,6 +1236,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
 		SAILOR_PROFILE_SCOPE("Process snapshot");
+		ResetCurrentDepthPyramids();
 
 		auto cmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 		auto transferCmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Compute);

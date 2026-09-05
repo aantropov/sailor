@@ -6,6 +6,8 @@
 #include "FrameGraph/DepthPrepassNode.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/ShadowPrepassNode.h"
+#include "FrameGraph/RHIFrameGraph.h"
+#include "RHI/GpuCulling.h"
 #include "Core/StringHash.h"
 #include "Raytracing/MaterialUtils.h"
 #include "RHI/Buffer.h"
@@ -74,6 +76,134 @@ namespace
 		return {};
 	}
 
+	std::string GetFrameGraphAttachment(const YAML::Node& pass, const char* name)
+	{
+		const auto targets = pass["renderTargets"];
+		if (targets && targets.IsSequence())
+		{
+			for (const auto& target : targets)
+			{
+				const auto value = target[name];
+				if (value && value.IsScalar()) return value.as<std::string>();
+			}
+		}
+		return {};
+	}
+
+	void TestCurrentDepthPyramidReadiness()
+	{
+		RHI::RHIFrameGraph graph;
+		auto pyramid = RHI::RHITexturePtr::Make(
+			RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, false);
+		auto replacement = RHI::RHITexturePtr::Make(
+			RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, false);
+		Require(!graph.HasCurrentDepthPyramid(pyramid),
+			"an allocated texture is not evidence of current-view depth production");
+		graph.MarkCurrentDepthPyramid({});
+		Require(!graph.HasCurrentDepthPyramid({}), "missing depth must fail open");
+		graph.MarkCurrentDepthPyramid(pyramid);
+		Require(graph.HasCurrentDepthPyramid(pyramid), "recorded depth must become available");
+		Require(!graph.HasCurrentDepthPyramid(replacement),
+			"a resized or different view target must not inherit readiness");
+		graph.ResetCurrentDepthPyramids();
+		Require(!graph.HasCurrentDepthPyramid(pyramid),
+			"another view or a skipped producer must not reuse stale depth");
+		graph.MarkCurrentDepthPyramid(replacement);
+		graph.Clear();
+		Require(!graph.HasCurrentDepthPyramid(replacement),
+			"clearing the frame graph must invalidate recorded depth");
+	}
+
+	void TestQueueShaderStagesUseCapabilities()
+	{
+		VulkanQueueFamilyIndices queues;
+		queues.m_graphicsFamily = 0u;
+		queues.m_computeFamily = 1u;
+		queues.m_transferFamily = 2u;
+		queues.m_familyFlags = {
+			VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
+			VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
+			VK_QUEUE_TRANSFER_BIT };
+		Require(VulkanCommandBuffer::GetShaderPipelineStages(queues.GetFlags(0u)) ==
+			(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
+			"graphics-list compute writes need compute-stage barriers even with a separate compute queue");
+		Require(VulkanCommandBuffer::GetShaderPipelineStages(queues.GetFlags(1u)) ==
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			"a dedicated compute queue must not receive graphics stages");
+		Require(VulkanCommandBuffer::GetShaderPipelineStages(queues.GetFlags(2u)) == 0u &&
+			VulkanCommandBuffer::GetShaderPipelineStages(queues.GetFlags(99u)) == 0u,
+			"transfer-only and unknown queues must not advertise shader stages");
+	}
+
+	void TestGpuCullingDispatchOrdering()
+	{
+		struct Event
+		{
+			bool m_dispatch = false;
+			RHI::EAccessFlags m_src{};
+			RHI::EAccessFlags m_dst{};
+			uint32_t m_groups{};
+			RHI::GpuCullingPushConstants m_constants{};
+		};
+		struct Recorder
+		{
+			TVector<Event> m_events;
+			void MemoryBarrier(RHI::RHICommandListPtr, RHI::EAccessFlags src, RHI::EAccessFlags dst)
+			{
+				m_events.Add(Event{ false, src, dst, 0u, {} });
+			}
+			void Dispatch(RHI::RHICommandListPtr, RHI::RHIShaderPtr, uint32_t x,
+				uint32_t y, uint32_t z, const TVector<RHI::RHIShaderBindingSetPtr>&,
+				const void* data, size_t size)
+			{
+				Require(y == 1u && z == 1u && size == sizeof(RHI::GpuCullingPushConstants),
+					"culling must dispatch one-dimensional work with the complete push layout");
+				Event event;
+				event.m_dispatch = true;
+				event.m_groups = x;
+				std::memcpy(&event.m_constants, data, size);
+				m_events.Add(event);
+			}
+		};
+
+		for (bool sameList : { false, true })
+		{
+			Recorder recorder;
+			RHI::GpuCullingPushConstants constants{ 513u, 1025u, 17u, 31u, 1059u, 99u, sameList ? 1u : 0u };
+			RHI::RecordGpuCullingDispatches(recorder, {}, {}, {}, constants, 256u, sameList);
+			const auto& events = recorder.m_events;
+			Require(events.Num() == (sameList ? 5u : 4u),
+				"same-list draws need an additional shader-to-draw dependency");
+			Require(!events[0].m_dispatch && events[1].m_dispatch &&
+				!events[2].m_dispatch && events[3].m_dispatch,
+				"uploads must precede culling and culling writes must precede compaction");
+			Require(events[1].m_groups == 5u && events[3].m_groups == 3u,
+				"culling and compaction must cover different instance/batch counts");
+			Require(events[0].m_src == (static_cast<RHI::EAccessFlags>(RHI::EAccessBit::TransferWrite_Bit) |
+					static_cast<RHI::EAccessFlags>(RHI::EAccessBit::HostWrite_Bit)) &&
+				events[0].m_dst == (static_cast<RHI::EAccessFlags>(RHI::EAccessBit::ShaderRead_Bit) |
+					static_cast<RHI::EAccessFlags>(RHI::EAccessBit::ShaderWrite_Bit)) &&
+				events[2].m_src == static_cast<RHI::EAccessFlags>(RHI::EAccessBit::ShaderWrite_Bit) &&
+				events[2].m_dst == events[0].m_dst,
+				"upload and inter-dispatch barriers must expose their actual writes");
+			for (uint32_t phase = 0u; phase != 2u; ++phase)
+			{
+				auto expected = constants;
+				expected.m_phase = phase;
+				Require(std::memcmp(&events[1u + phase * 2u].m_constants, &expected, sizeof(expected)) == 0,
+					"both dispatches must retain flight-local offsets and the requested occlusion mode");
+			}
+			if (sameList)
+			{
+				Require(!events[4].m_dispatch &&
+					events[4].m_src == static_cast<RHI::EAccessFlags>(RHI::EAccessBit::ShaderWrite_Bit) &&
+					events[4].m_dst == (static_cast<RHI::EAccessFlags>(RHI::EAccessBit::ShaderRead_Bit) |
+						static_cast<RHI::EAccessFlags>(RHI::EAccessBit::IndirectCommandRead_Bit)),
+					"compacted indices and indirect counts must be visible before graphics drawing");
+			}
+		}
+	}
+
 	void TestRendererGpuCullingPassContract()
 	{
 		const std::filesystem::path contentRoot =
@@ -93,6 +223,7 @@ namespace
 
 			uint32_t depthPasses = 0u;
 			uint32_t mainPasses = 0u;
+			std::string currentDepthPyramid;
 			for (const YAML::Node& pass : frame)
 			{
 				const YAML::Node nameNode = pass["name"];
@@ -103,6 +234,18 @@ namespace
 
 				const std::string name = nameNode.as<std::string>();
 				const std::string tag = GetFrameGraphSetting(pass, "Tag");
+				if (name == "DepthHighZ")
+				{
+					Require(depthPasses == 2u && mainPasses == 0u,
+						"current-frame Hi-Z must follow both depth contributors and precede main drawing");
+					currentDepthPyramid = GetFrameGraphAttachment(pass, "dst");
+					Require(!currentDepthPyramid.empty(), "Hi-Z must publish a named target");
+				}
+				if (GetFrameGraphSetting(pass, "OcclusionCulling") == "true")
+				{
+					Require(name == "RenderScene" && (tag == "Opaque" || tag == "Masked"),
+						"depth contributors, transparent geometry and viewmodels must not opt into occlusion");
+				}
 				if (name == "DepthPrepass" && (tag == "Opaque" || tag == "Masked"))
 				{
 					++depthPasses;
@@ -116,6 +259,10 @@ namespace
 				else if (name == "RenderScene" && (tag == "Opaque" || tag == "Masked"))
 				{
 					++mainPasses;
+					Require(GetFrameGraphSetting(pass, "OcclusionCulling") == "true" &&
+						!currentDepthPyramid.empty() &&
+						GetFrameGraphAttachment(pass, "depthHighZ") == currentDepthPyramid,
+						"main-pass occlusion must consume the preceding current-frame depth pyramid");
 					Require(GetFrameGraphSetting(pass, "GPUCulling") == "true",
 						std::string(rendererPath) + " must keep GPU culling enabled in " + tag +
 						" main pass");
@@ -957,6 +1104,9 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "RendererGpuCullingPassContract", TestRendererGpuCullingPassContract },
+		{ "CurrentDepthPyramidReadiness", TestCurrentDepthPyramidReadiness },
+		{ "GpuCullingDispatchOrdering", TestGpuCullingDispatchOrdering },
+		{ "QueueShaderStagesUseCapabilities", TestQueueShaderStagesUseCapabilities },
 		{ "MotionMrtFrameGraphContract", TestMotionMrtFrameGraphContract },
 		{ "PcfRasterShadowBiasContract", TestPcfRasterShadowBiasContract },
 		{ "MipExtentUsesVulkanFloorAndClamp", TestMipExtentUsesVulkanFloorAndClamp },

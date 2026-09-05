@@ -95,6 +95,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 		std::optional<uint32_t> m_presentFamily;
 		std::optional<uint32_t> m_transferFamily;
 		std::optional<uint32_t> m_computeFamily;
+		TVector<VkQueueFlags> m_familyFlags;
+
+		VkQueueFlags GetFlags(uint32_t family) const
+		{
+			return family < m_familyFlags.Num() ? m_familyFlags[family] : 0u;
+		}
 
 		SAILOR_API bool IsComplete() const
 		{

@@ -7,6 +7,8 @@
 #include "FrameGraph/LocalReflection.h"
 #include "RHI/GlobalIllumination.h"
 #include "RHI/Lighting.h"
+#include "RHI/GpuCulling.h"
+#include "FrameGraph/DepthPrepassNode.h"
 #include "Workspace/WorkspaceCacheContract.h"
 
 #include <array>
@@ -1478,13 +1480,18 @@ namespace
 			{ "UNCHARTED2" });
 
 		auto compileRuntimeCompute = [&contentRoot](
-			const char* computeShaderPath) -> RHI::ShaderByteCode
+			const char* computeShaderPath,
+			std::initializer_list<const char*> permutationDefines = {}) -> RHI::ShaderByteCode
 			{
 				ShaderAsset computeShader;
 				computeShader.Deserialize(YAML::Load(ReadText(
 					contentRoot / computeShaderPath)));
 				std::string computeSource =
 					computeShader.GetGlslCommonCode() + "\n#define COMPUTE\n";
+				for (const char* define : permutationDefines)
+				{
+					computeSource += std::string("#define ") + define + "\n";
+				}
 				std::string computeDiagnostic;
 				Require(
 					ShaderYamlIncludeResolver::Append(
@@ -1523,6 +1530,32 @@ namespace
 				return computeByteCode;
 			};
 
+		for (bool depthLayout : { false, true })
+		{
+			const auto culling = depthLayout ?
+				compileRuntimeCompute("Shaders/ComputeMeshCulling.shader", { "OCCLUSION_CULLING", "DEPTH_INSTANCE_LAYOUT" }) :
+				compileRuntimeCompute("Shaders/ComputeMeshCulling.shader", { "OCCLUSION_CULLING" });
+			RequireSpirvStorageBufferArrayStride(culling, 1u, 0u,
+				depthLayout ? sizeof(DepthPrepassNode::PerInstanceData) :
+				sizeof(Framegraph::RenderSceneNode::PerInstanceData));
+			RequireSpirvCombinedImageSamplerBinding(culling, 0u, 0u);
+			SpvReflectShaderModule module{};
+			Require(spvReflectCreateShaderModule(culling.Num() * sizeof(uint32_t),
+				culling.GetData(), &module) == SPV_REFLECT_RESULT_SUCCESS, "culling SPIR-V must reflect");
+			const bool valid = module.push_constant_block_count == 1u &&
+				module.push_constant_blocks[0].size == sizeof(RHI::GpuCullingPushConstants) &&
+				module.push_constant_blocks[0].member_count == 7u &&
+				module.push_constant_blocks[0].members[5].offset == offsetof(RHI::GpuCullingPushConstants, m_phase) &&
+				module.push_constant_blocks[0].members[6].offset == offsetof(RHI::GpuCullingPushConstants, m_bEnableOcclusion);
+			spvReflectDestroyShaderModule(&module);
+			Require(valid, "host and compute shader must agree on phase/occlusion push constants");
+		}
+		const auto depthInput = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "DEPTH_INPUT" });
+		RequireSpirvCombinedImageSamplerBinding(depthInput, 0u, 0u);
+		RequireSpirvStorageImageBinding(depthInput, 0u, 1u);
+		const auto depthMips = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader");
+		RequireSpirvStorageImageBinding(depthMips, 0u, 0u);
+		RequireSpirvStorageImageBinding(depthMips, 0u, 1u);
 		const RHI::ShaderByteCode lightCullingByteCode =
 			compileRuntimeCompute("Shaders/ComputeLightCulling.shader");
 		RequireSpirvStorageBufferArrayStride(

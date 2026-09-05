@@ -32,24 +32,33 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 	}
 
 	RHI::RHIRenderTargetPtr highZRenderTarget = GetResolvedAttachment("dst").DynamicCast<RHIRenderTarget>();
-
-	const size_t numMipBindings = highZRenderTarget->GetMipLevels() - 1;
-
-	if (!m_pComputeDepthHighZShader)
-	{
-		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeDepthHighZ.shader"))
-		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeDepthHighZShader);
-		}
-	}
-
-	if (!m_pComputeDepthHighZShader || !m_pComputeDepthHighZShader->IsReady())
+	if (!depthAttachment || !highZRenderTarget || highZRenderTarget->GetMipLevels() == 0u)
 	{
 		return;
 	}
 
-	if (m_computeDepthHighZBindings.Num() == 0)
+	const size_t numMipBindings = highZRenderTarget->GetMipLevels() - 1;
+
+	if (!m_pComputeDepthHighZShader || !m_pComputeDepthHighZInputShader)
 	{
+		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeDepthHighZ.shader"))
+		{
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeDepthHighZShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(
+				shaderInfo->GetFileId(), m_pComputeDepthHighZInputShader, { "DEPTH_INPUT" });
+		}
+	}
+
+	if (!m_pComputeDepthHighZShader || !m_pComputeDepthHighZShader->IsReady() ||
+		!m_pComputeDepthHighZInputShader || !m_pComputeDepthHighZInputShader->IsReady())
+	{
+		return;
+	}
+
+	if (m_boundDepth != depthAttachment || m_boundPyramid != highZRenderTarget ||
+		m_computeDepthHighZBindings.Num() != numMipBindings)
+	{
+		m_computeDepthHighZBindings.Clear();
 		m_computeDepthHighZBindings.Resize(numMipBindings);
 
 		for (uint32_t i = 0; i < highZRenderTarget->GetMipLevels() - 1; ++i)
@@ -58,13 +67,15 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 			auto writeMipLevel = highZRenderTarget->GetMipLayer(i + 1);
 
 			m_computeDepthHighZBindings[i] = driver->CreateShaderBindings();
-			driver->AddSamplerToShaderBindings(m_computeDepthHighZBindings[i], "inputDepth", readMipLevel, 0);
+			driver->AddStorageImageToShaderBindings(m_computeDepthHighZBindings[i], "inputDepth", readMipLevel, 0);
 			driver->AddStorageImageToShaderBindings(m_computeDepthHighZBindings[i], "outputDepth", writeMipLevel, 1);
 		}
 
 		m_computePrepassDepthHighZBindings = driver->CreateShaderBindings();
 		driver->AddSamplerToShaderBindings(m_computePrepassDepthHighZBindings, "inputDepth", depthAttachment->GetDepthAspect(), 0);
 		driver->AddStorageImageToShaderBindings(m_computePrepassDepthHighZBindings, "outputDepth", highZRenderTarget->GetMipLayer(0), 1);
+		m_boundDepth = depthAttachment;
+		m_boundPyramid = highZRenderTarget;
 	}
 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
@@ -84,10 +95,18 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 			PushConstantsDownscale params{};
 			params.m_outputSize = glm::vec2(mipSize.x, mipSize.y);
 
-			commands->ImageMemoryBarrier(commandList, readMipLevel, EImageLayout::ComputeRead);
+			if (bFirst)
+			{
+				commands->ImageMemoryBarrierForComputeSampling(commandList, readMipLevel);
+			}
+			else
+			{
+				commands->ImageMemoryBarrier(commandList, readMipLevel, EImageLayout::ComputeRead);
+			}
 			commands->ImageMemoryBarrier(commandList, writeMipLevel, EImageLayout::ComputeWrite);
 
-			commands->Dispatch(commandList, m_pComputeDepthHighZShader->GetComputeShaderRHI(),
+			commands->Dispatch(commandList,
+				(bFirst ? m_pComputeDepthHighZInputShader : m_pComputeDepthHighZShader)->GetComputeShaderRHI(),
 				(uint32_t)glm::ceil(float(mipSize.x) / 8),
 				(uint32_t)glm::ceil(float(mipSize.y) / 8),
 				1u,
@@ -96,8 +115,13 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 		}
 	}
 	commands->EndDebugRegion(commandList);
+	frameGraph->MarkCurrentDepthPyramid(highZRenderTarget);
 }
 
 void DepthHighZNode::Clear()
 {
+	m_computeDepthHighZBindings.Clear();
+	m_computePrepassDepthHighZBindings.Clear();
+	m_boundDepth.Clear();
+	m_boundPyramid.Clear();
 }

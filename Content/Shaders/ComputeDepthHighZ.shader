@@ -1,6 +1,7 @@
 includes:
 - Shaders/Constants.glsl
-defines: []
+defines:
+- DEPTH_INPUT
 glslCommon: |
   #version 450
   #extension GL_ARB_separate_shader_objects : enable
@@ -8,7 +9,15 @@ glslCommon: |
 glslCompute: |
   // Inspired by https://vkguide.dev/docs/gpudriven/compute_culling/
 
-  layout(set = 0, binding = 0) uniform sampler2D inputDepth;
+  #ifdef DEPTH_INPUT
+    layout(set = 0, binding = 0) uniform sampler2D inputDepth;
+    ivec2 InputSize() { return textureSize(inputDepth, 0); }
+    float ReadDepth(ivec2 pos) { return texelFetch(inputDepth, pos, 0).x; }
+  #else
+    layout(set = 0, binding = 0, r32f) uniform readonly image2D inputDepth;
+    ivec2 InputSize() { return imageSize(inputDepth); }
+    float ReadDepth(ivec2 pos) { return imageLoad(inputDepth, pos).x; }
+  #endif
   layout(set = 0, binding = 1, r32f) uniform writeonly image2D outputDepth;
   
   layout(std430, push_constant) uniform Constants
@@ -29,19 +38,19 @@ glslCompute: |
       return;
     }
 
-    ivec2 inputSize = textureSize(inputDepth, 0);
+    ivec2 inputSize = InputSize();
     ivec2 sourceBegin = (pos * inputSize) / outputSize;
     ivec2 sourceEnd = (((pos + ivec2(1)) * inputSize) + outputSize - ivec2(1)) / outputSize;
     sourceEnd = min(sourceEnd, inputSize);
 
     // Explicitly reduce the complete source footprint. This keeps odd-sized
     // mips conservative instead of dropping the last source row or column.
-    float depth = texelFetch(inputDepth, sourceBegin, 0).x;
+    float depth = ReadDepth(sourceBegin);
     for (int y = sourceBegin.y; y < sourceEnd.y; ++y)
     {
       for (int x = sourceBegin.x; x < sourceEnd.x; ++x)
       {
-        depth = min(depth, texelFetch(inputDepth, ivec2(x, y), 0).x);
+        depth = min(depth, ReadDepth(ivec2(x, y)));
       }
     }
 

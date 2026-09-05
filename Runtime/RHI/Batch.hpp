@@ -8,6 +8,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
 #include "RHI/RenderTarget.h"
+#include "RHI/GpuCulling.h"
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -1296,8 +1297,8 @@ namespace Sailor::RHI
 		PackedDrawPacketMetrics m_metrics{};
 	};
 
-	template<typename TPerInstanceData, typename TShaderBindingsCallback>
-	DrawCallStats RHIRecordPackedDrawPacket(
+	template<typename TPerInstanceData, typename TShaderBindingsCallback, typename TBeforeDrawCallback>
+	DrawCallStats RHIRecordPackedDrawPacketImpl(
 		TPackedDrawPacket<TPerInstanceData>& packet,
 		RHICommandListPtr graphicsCmdList,
 		RHICommandListPtr transferCmdList,
@@ -1306,10 +1307,13 @@ namespace Sailor::RHI
 		RHIBufferPtr& indirectCommandBuffer,
 		glm::ivec4 viewport,
 		glm::uvec4 scissors,
-		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f),
-		RHIShaderPtr computeCullingShader = {},
-		RHIShaderBindingSetPtr* indirectCommandBufferBinding = nullptr,
-		const TVector<RHIShaderBindingSetPtr>& cullingDispatchBindings = {})
+		glm::vec2 depthRange,
+		RHIShaderPtr computeCullingShader,
+		RHIShaderBindingSetPtr* indirectCommandBufferBinding,
+		const TVector<RHIShaderBindingSetPtr>& cullingDispatchBindings,
+		RHICommandListPtr cullingCommandList,
+		bool bEnableOcclusion,
+		TBeforeDrawCallback&& beforeDraw)
 	{
 		SAILOR_PROFILE_FUNCTION();
 		DrawCallStats stats;
@@ -1324,6 +1328,10 @@ namespace Sailor::RHI
 
 		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+		if (!cullingCommandList)
+		{
+			cullingCommandList = transferCmdList;
+		}
 		auto storageBinding = instanceBindings->GetOrAddShaderBinding("data");
 		auto indexBinding = instanceBindings->GetOrAddShaderBinding("indices");
 		const uint32_t firstStorageInstance = storageBinding->GetStorageInstanceIndex();
@@ -1649,60 +1657,21 @@ namespace Sailor::RHI
 
 		if (computeCullingShader)
 		{
-			struct PushConstants
-			{
-				uint32_t m_numBatches = 0u;
-				uint32_t m_numInstances = 0u;
-				uint32_t m_firstInstanceIndex = 0u;
-				uint32_t m_firstStorageInstance = 0u;
-				uint32_t m_firstCandidateInstance = 0u;
-				uint32_t m_phase = 0u;
-				uint32_t m_bEnableOcclusion = 0u;
-			};
-
-			PushConstants constants;
+			GpuCullingPushConstants constants;
 			constants.m_numBatches = static_cast<uint32_t>(groups.Num());
 			constants.m_numInstances = numInstances;
 			constants.m_firstInstanceIndex = firstIndexInstance;
 			constants.m_firstStorageInstance = firstStorageInstance;
 			constants.m_firstCandidateInstance = firstCandidateInstance;
-			commands->BeginDebugRegion(transferCmdList, "GPU Culling", DebugContext::Color_CmdCompute);
-			const EAccessFlags uploadWrites = static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit) |
-				static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit);
-			const EAccessFlags shaderReadWrite = static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit) |
-				static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit);
-			commands->MemoryBarrier(transferCmdList, uploadWrites, shaderReadWrite);
-
-			const uint32_t cullingGroups = (std::max)(1u,
-				(constants.m_numInstances + Renderer::GPUCullingGroupSize - 1u) / Renderer::GPUCullingGroupSize);
-			commands->Dispatch(
-				transferCmdList,
-				computeCullingShader,
-				cullingGroups,
-				1u,
-				1u,
-				cullingDispatchBindings,
-				&constants,
-				sizeof(constants));
-			commands->MemoryBarrier(
-				transferCmdList,
-				static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit),
-				shaderReadWrite);
-
-			constants.m_phase = 1u;
-			const uint32_t compactionGroups = (std::max)(1u,
-				(constants.m_numBatches + Renderer::GPUCullingGroupSize - 1u) / Renderer::GPUCullingGroupSize);
-			commands->Dispatch(
-				transferCmdList,
-				computeCullingShader,
-				compactionGroups,
-				1u,
-				1u,
-				cullingDispatchBindings,
-				&constants,
-				sizeof(constants));
-			commands->EndDebugRegion(transferCmdList);
+			constants.m_bEnableOcclusion = bEnableOcclusion ? 1u : 0u;
+			commands->BeginDebugRegion(cullingCommandList, "GPU Culling", DebugContext::Color_CmdCompute);
+			RecordGpuCullingDispatches(*commands, cullingCommandList, computeCullingShader,
+				cullingDispatchBindings, constants, Renderer::GPUCullingGroupSize,
+				cullingCommandList == graphicsCmdList);
+			commands->EndDebugRegion(cullingCommandList);
 		}
+
+		beforeDraw();
 
 #if defined(_WIN32)
 		constexpr uint32_t MaxMeshesPerIndirectBatch = 16384u;
@@ -1757,6 +1726,74 @@ namespace Sailor::RHI
 		drawBindingSets.Clear(false);
 
 		return stats;
+	}
+
+	template<typename TPerInstanceData, typename TShaderBindingsCallback>
+	DrawCallStats RHIRecordPackedDrawPacket(
+		TPackedDrawPacket<TPerInstanceData>& packet,
+		RHICommandListPtr graphicsCmdList,
+		RHICommandListPtr transferCmdList,
+		TShaderBindingsCallback&& collectShaderBindings,
+		RHIShaderBindingSetPtr instanceBindings,
+		RHIBufferPtr& indirectCommandBuffer,
+		glm::ivec4 viewport,
+		glm::uvec4 scissors,
+		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f),
+		RHIShaderPtr computeCullingShader = {},
+		RHIShaderBindingSetPtr* indirectCommandBufferBinding = nullptr,
+		const TVector<RHIShaderBindingSetPtr>& cullingDispatchBindings = {})
+	{
+		auto beforeDraw = []() {};
+		return RHIRecordPackedDrawPacketImpl(
+			packet,
+			graphicsCmdList,
+			transferCmdList,
+			collectShaderBindings,
+			instanceBindings,
+			indirectCommandBuffer,
+			viewport,
+			scissors,
+			depthRange,
+			computeCullingShader,
+			indirectCommandBufferBinding,
+			cullingDispatchBindings,
+			transferCmdList,
+			false,
+			beforeDraw);
+	}
+
+	template<typename TPerInstanceData, typename TShaderBindingsCallback, typename TBeforeDrawCallback>
+	DrawCallStats RHIRecordPackedDrawPacketWithCurrentDepthOcclusion(
+		TPackedDrawPacket<TPerInstanceData>& packet,
+		RHICommandListPtr graphicsCmdList,
+		RHICommandListPtr transferCmdList,
+		TShaderBindingsCallback&& collectShaderBindings,
+		RHIShaderBindingSetPtr instanceBindings,
+		RHIBufferPtr& indirectCommandBuffer,
+		glm::ivec4 viewport,
+		glm::uvec4 scissors,
+		glm::vec2 depthRange,
+		RHIShaderPtr computeCullingShader,
+		RHIShaderBindingSetPtr* indirectCommandBufferBinding,
+		const TVector<RHIShaderBindingSetPtr>& cullingDispatchBindings,
+		TBeforeDrawCallback&& beforeDraw)
+	{
+		return RHIRecordPackedDrawPacketImpl(
+			packet,
+			graphicsCmdList,
+			transferCmdList,
+			collectShaderBindings,
+			instanceBindings,
+			indirectCommandBuffer,
+			viewport,
+			scissors,
+			depthRange,
+			computeCullingShader,
+			indirectCommandBufferBinding,
+			cullingDispatchBindings,
+			graphicsCmdList,
+			true,
+			beforeDraw);
 	}
 
 };

@@ -511,6 +511,11 @@ VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, V
 
 	TVector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.GetData());
+	indices.m_familyFlags.Reserve(queueFamilyCount);
+	for (const auto& family : queueFamilies)
+	{
+		indices.m_familyFlags.Add(family.queueFlags);
+	}
 
 	int i = 0;
 	for (const auto& queueFamily : queueFamilies)

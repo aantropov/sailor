@@ -36,6 +36,19 @@ namespace Sailor::RHI
 		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name);
 		SAILOR_API glm::ivec2 GetSceneRenderExtent();
 
+		void ResetCurrentDepthPyramids() { m_currentDepthPyramids.Clear(); }
+		void MarkCurrentDepthPyramid(RHI::RHITexturePtr pyramid)
+		{
+			if (pyramid && !m_currentDepthPyramids.Contains(pyramid))
+			{
+				m_currentDepthPyramids.Add(pyramid);
+			}
+		}
+		bool HasCurrentDepthPyramid(RHI::RHITexturePtr pyramid) const
+		{
+			return pyramid && m_currentDepthPyramids.Contains(pyramid);
+		}
+
 		SAILOR_API RHI::RHIMeshPtr GetFullscreenNdcQuad() { return m_postEffectPlane; }
 		SAILOR_API RHI::DrawCallStats GetDrawCallStats() const { return m_drawCallStats; }
 		SAILOR_API const TVector<RHI::GpuTiming>& GetGpuTimings() const { return m_lastFrameGpuStats.m_timings; }
@@ -74,6 +87,8 @@ namespace Sailor::RHI
 		TMap<std::string, RHI::RHISurfacePtr> m_surfaces;
 		TMap<std::string, glm::vec4> m_values;
 		TVector<Framegraph::FrameGraphNodePtr> m_graph;
+		// Cleared for every recorded view, including multiple cameras in one frame.
+		TVector<RHI::RHITexturePtr> m_currentDepthPyramids;
 
 		RHI::RHIMeshPtr m_postEffectPlane;
 
