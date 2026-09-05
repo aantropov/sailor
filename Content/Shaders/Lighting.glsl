@@ -613,7 +613,8 @@ float CalculateLocalPcfShadow(
   const vec2 receiverDepthGradient = tileDepthGradient / max(atlasRect.zw, atlasTexelSize);
   // The atlas stores R16_UNORM color depth. World-space offsets can disappear
   // after that quantization, and they displace shadows differently per triangle.
-  const float receiverDepth = projCoords.z + receiverBiasScale * PCF_DEPTH_QUANTIZATION;
+  const float depthQuantization = 1.0f / 65535.0f;
+  const float receiverDepth = projCoords.z + receiverBiasScale * depthQuantization;
   if(softShadow)
   {
     const vec2 poissonDisk[16] = vec2[](
