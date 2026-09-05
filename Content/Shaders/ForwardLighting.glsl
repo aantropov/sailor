@@ -9,6 +9,7 @@ struct PerInstanceData
   uint isCulled;
   uint padding;
   vec4 bakedVolumeScale;
+  ObjectMotionData motion;
 };
 
 layout(set = 0, binding = 0) uniform FrameData
@@ -112,6 +113,14 @@ layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
 layout(set = 1, binding = 3) uniform samplerCube g_irradianceCubemap;
 layout(set = 1, binding = 4) uniform sampler2D g_brdfSampler;
 layout(set = 1, binding = 5) uniform samplerCube g_envCubemap;
+layout(set = 1, binding = 20) uniform LocalReflectionData
+{
+  vec4 positionBlend;
+  vec4 minEnabled;
+  vec4 boxMax;
+} localReflection;
+layout(set = 1, binding = 21) uniform samplerCube g_localEnvCubemap;
+layout(set = 1, binding = 22) uniform samplerCube g_localSheenEnvCubemap;
 
 layout(std430, set = 1, binding = 6) readonly buffer LightsMatricesSSBO
 {
@@ -252,8 +261,7 @@ float CalculateLocalLightShadow(
   LightData lightData,
   uint lightIndex,
   vec3 worldPosition,
-  vec3 surfaceNormal,
-  vec3 surfaceToLightDirection)
+  vec3 surfaceNormal)
 {
   const uint packedShadowIndex = shadowIndices.instance[lightIndex];
   if(lightData.shadowType == SHADOW_TYPE_NONE ||
@@ -287,8 +295,6 @@ float CalculateLocalLightShadow(
     DecodeShadowAtlasRect(packedAtlasTile),
     worldPosition,
     surfaceNormal,
-    surfaceToLightDirection,
-    length(lightData.worldPosition - worldPosition),
     (packedShadowIndex & SOFT_SHADOW_MAP_BIT) != 0u,
     lightData.shadowBias);
 }
@@ -334,8 +340,7 @@ ForwardLightSample ResolveForwardLightSample(
       lightData,
       lightIndex,
       worldPosition,
-      geometricNormal,
-      result.direction);
+      geometricNormal);
   }
 
   return result;
@@ -411,6 +416,51 @@ vec3 CalculateForwardPbrLighting(
     normal);
 }
 
+float LocalReflectionWeight(vec3 worldPosition)
+{
+  if(localReflection.minEnabled.w < 0.5) return 0.0;
+  vec3 edge = min(worldPosition - localReflection.minEnabled.xyz,
+    localReflection.boxMax.xyz - worldPosition);
+  return smoothstep(0.0, max(localReflection.positionBlend.w, 0.0001),
+    min(edge.x, min(edge.y, edge.z)));
+}
+
+vec3 LocalReflectionDirection(vec3 worldPosition, vec3 direction)
+{
+  // Called only inside the finite influence box. Parallel axes cannot win
+  // the nearest exit, including at the exact box center or on an axis ray.
+  vec3 exitDistance = vec3(1e20);
+  for(int axis = 0; axis < 3; ++axis)
+  {
+    if(abs(direction[axis]) > 1e-6)
+    {
+      float plane = direction[axis] > 0.0
+        ? localReflection.boxMax[axis] : localReflection.minEnabled[axis];
+      exitDistance[axis] = (plane - worldPosition[axis]) / direction[axis];
+    }
+  }
+  float distance = min(exitDistance.x, min(exitDistance.y, exitDistance.z));
+  return worldPosition + direction * distance - localReflection.positionBlend.xyz;
+}
+
+vec3 SampleForwardEnvironment(
+  samplerCube distantMap, samplerCube localMap,
+  vec3 worldPosition, vec3 direction, float roughness,
+  float cosLo, float ambientOcclusion, float environmentVisibility)
+{
+  vec3 distant = textureLod(distantMap, direction,
+    CalculateSpecularEnvironmentLod(textureQueryLevels(distantMap), roughness)).rgb;
+  distant *= CalculateSpecularOcclusion(min(ambientOcclusion, environmentVisibility), cosLo, roughness);
+  float weight = LocalReflectionWeight(worldPosition);
+  if(weight <= 0.0) return distant;
+  vec3 captured = textureLod(localMap, LocalReflectionDirection(worldPosition, direction),
+    CalculateSpecularEnvironmentLod(textureQueryLevels(localMap), roughness)).rgb;
+  // The captured ray already encountered walls/floor. Sky-escape visibility
+  // must not remove their outgoing radiance; material AO still applies.
+  captured *= CalculateSpecularOcclusion(ambientOcclusion, cosLo, roughness);
+  return mix(distant, captured, weight);
+}
+
 vec3 CalculateForwardAmbientLighting(
   ForwardPbrMaterial materialData,
   vec3 F0,
@@ -458,23 +508,16 @@ vec3 CalculateForwardAmbientLighting(
     materialData.ambientOcclusion,
     0.0,
     1.0);
-  vec3 specularIrradiance = textureLod(
-    g_envCubemap,
-    reflectionDirection,
-    CalculateSpecularEnvironmentLod(
-      textureQueryLevels(g_envCubemap),
-      materialData.roughness)).rgb;
+  vec3 specularIrradiance = SampleForwardEnvironment(g_envCubemap, g_localEnvCubemap,
+    worldPosition, reflectionDirection, materialData.roughness,
+    cosLo, ambientOcclusion, environmentVisibility);
   vec2 specularBrdf = texture(
     g_brdfSampler,
     vec2(cosLo, materialData.roughness)).rg;
   vec3 specularIbl =
     (F0 * specularBrdf.x + specularBrdf.y) * specularIrradiance;
-  float specularOcclusion = CalculateSpecularOcclusion(
-    min(ambientOcclusion, environmentVisibility),
-    cosLo,
-    materialData.roughness);
   vec3 indirectLighting = diffuseIbl * ambientOcclusion +
-    specularIbl * specularOcclusion;
+    specularIbl;
   return ApplyGlobalIlluminationDebug(
     indirectLighting,
     globalIlluminationDebug);

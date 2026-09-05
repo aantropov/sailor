@@ -4,6 +4,7 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "Tasks/Tasks.h"
+#include "RHI/MotionHistory.h"
 
 using namespace Sailor::Framegraph;
 
@@ -62,10 +63,11 @@ namespace Sailor::RHI
 			RHISemaphorePtr& outWaitSemaphore);
 
 		SAILOR_API void Clear();
+		SAILOR_API void CompleteMotionHistory(RHI::RHISceneViewPtr sceneView, bool succeeded);
 
 	protected:
 
-		RHI::UboFrameData FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, const RHI::UboFrameData& previousFrame, float deltaTime, float worldTime);
+		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime);
 
 		TMap<std::string, RHI::RHITexturePtr> m_samplers;
 		TMap<std::string, RHI::RHIRenderTargetPtr> m_renderTargets;
@@ -75,9 +77,7 @@ namespace Sailor::RHI
 
 		RHI::RHIMeshPtr m_postEffectPlane;
 
-		// TODO: Store/Handle that per snapshot
-		RHI::UboFrameData m_frameData{};
-		RHI::UboFrameData m_prevFrameData{};
+		TVector<TSharedPtr<RHIMotionHistoryFrame>> m_motionHistory{};
 
 		GpuStats m_lastFrameGpuStats{};
 		RHI::DrawCallStats m_drawCallStats{};

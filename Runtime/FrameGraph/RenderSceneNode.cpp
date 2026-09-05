@@ -31,6 +31,26 @@ const char* RenderSceneNode::m_name = "RenderScene";
 
 namespace
 {
+	RHIObjectMotionData ResolveMeshMotion(const RHISceneViewSnapshot& view,
+		const RHIVisibleSceneProxy& proxy, size_t meshIndex,
+		const RHIInstancedMeshGroup* group = nullptr, size_t instanceIndex = 0u)
+	{
+		RHIVisibleSceneProxy previous;
+		const bool valid = ResolvePreviousMotionProxy(view, proxy, previous);
+		const auto currentModel = group ? proxy.ResolveInstancedMeshWorldMatrix(*group, instanceIndex, meshIndex) : proxy.ResolveMeshWorldMatrix(meshIndex);
+		const auto previousModel = valid ? (group ? previous.ResolveInstancedMeshWorldMatrix(*group, instanceIndex, meshIndex) : previous.ResolveMeshWorldMatrix(meshIndex)) : currentModel;
+		return MakeObjectMotionData(currentModel, previousModel, valid ? previous.GetSkeletonOffset() : 0xFFFFFFFFu, valid);
+	}
+
+	void HashMotionHistory(size_t& revision, const RHISceneViewSnapshot& view, const RHIVisibleSceneProxy& proxy)
+	{
+		RHIVisibleSceneProxy previous;
+		const bool valid = ResolvePreviousMotionProxy(view, proxy, previous);
+		HashCombine(revision, valid);
+		if (valid)
+			HashCombine(revision, std::hash<glm::mat4>{}(previous.GetWorldMatrix()), previous.GetSkeletonOffset());
+	}
+
 	struct SamplerOverride final
 	{
 		const char* m_name;
@@ -449,6 +469,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						QueueTagHash,
 						sceneViewSnapshot.m_submissionContext->GetMaterialRevision(),
 						sceneViewSnapshot.GetMobilityRevision(mobility));
+					HashCombine(payloadRevisions[payloadIndex], sceneViewSnapshot.m_previousMotionFrame ?
+						sceneViewSnapshot.m_previousMotionFrame->m_mobilityRevisions[static_cast<size_t>(mobility)] : 0ull);
 				}
 			}
 			for (const auto& proxy : sceneViewSnapshot.m_proxies)
@@ -517,6 +539,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 							std::hash<glm::mat4>{}(proxy.GetWorldMatrix()),
 							proxy.GetSkeletonOffset(),
 							proxy.GetRenderFlags());
+						HashMotionHistory(payloadRevisions[payloadIndex], sceneViewSnapshot, proxy);
 						for (size_t meshIndex = 0u; meshIndex < source->m_meshes.Num(); ++meshIndex)
 						{
 							if (meshIndex < source->m_renderQueueTags.Num() &&
@@ -643,6 +666,10 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 								proxy.GetSkeletonOffset());
 							if (proxy.m_record)
 							{
+								HashMotionHistory(rangeRevision, sceneViewSnapshot, proxy);
+							}
+							if (proxy.m_record)
+							{
 								HashCombine(
 									rangeRevision, proxy.m_record->m_materialRevision, proxy.m_record->m_renderFlags);
 							}
@@ -708,6 +735,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 								}
 								PerInstanceData data;
 								data.model = proxy.ResolveMeshWorldMatrix(meshIndex);
+								data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex);
+								data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 								data.skeletonOffset = proxy.GetSkeletonOffset();
 								data.materialInstance =
 									materialBinding ? materialBinding->GetStorageInstanceIndex() : 0u;
@@ -762,6 +791,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 										PerInstanceData data;
 										data.model =
 											proxy.ResolveInstancedMeshWorldMatrix(group, instanceIndex, meshIndex);
+										data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex, &group, instanceIndex);
+										data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 										data.skeletonOffset = proxy.GetSkeletonOffset();
 										data.materialInstance =
 											materialBinding ? materialBinding->GetStorageInstanceIndex() : 0u;
@@ -902,6 +933,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						const glm::mat4 meshWorldMatrix = proxy.ResolveMeshWorldMatrix(i);
 						RenderSceneNode::PerInstanceData data;
 						data.model = meshWorldMatrix;
+						data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, i);
+						data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 						data.skeletonOffset = proxy.GetSkeletonOffset();
 						data.materialInstance = shaderBinding.IsValid() ?
 							shaderBinding->GetStorageInstanceIndex() : 0u;
@@ -1054,6 +1087,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 								meshIndex);
 							RenderSceneNode::PerInstanceData data;
 							data.model = meshWorldMatrix;
+							data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex, &group, instanceIndex);
+							data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 							data.skeletonOffset = proxy.GetSkeletonOffset();
 							data.materialInstance = shaderBinding.IsValid() ?
 								shaderBinding->GetStorageInstanceIndex() : 0u;
@@ -1174,6 +1209,9 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	{
 		colorAttachment = colorSurface->GetTarget();
 	}
+	auto motionSurface = GetRHIResource("motionVectors").DynamicCast<RHI::RHISurface>();
+	auto motionAttachment = GetRHIResource("motionVectors").DynamicCast<RHI::RHIRenderTarget>();
+	if (motionSurface) motionAttachment = motionSurface->GetTarget();
 	auto depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
@@ -1346,6 +1384,12 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		std::string(GetName()) + " QueueTag:" + GetString("Tag") + " Packed",
 		DebugContext::Color_CmdGraphics);
 	commands->ImageMemoryBarrier(commandList, colorAttachment, EImageLayout::ColorAttachmentOptimal);
+	if (motionAttachment)
+	{
+		commands->ImageMemoryBarrier(commandList, motionAttachment, EImageLayout::ColorAttachmentOptimal);
+		if (motionSurface && motionSurface->NeedsResolve())
+			commands->ImageMemoryBarrier(commandList, motionSurface->GetResolved(), EImageLayout::ColorAttachmentOptimal);
+	}
 	if (colorSurface && colorSurface->NeedsResolve())
 	{
 		commands->ImageMemoryBarrier(
@@ -1367,6 +1411,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			resources->m_renderPassColorSurfaces;
 		renderPassColorSurfaces.Clear(false);
 		renderPassColorSurfaces.Add(colorSurface);
+		if (motionSurface) renderPassColorSurfaces.Add(motionSurface);
 		commands->BeginRenderPass(
 			commandList,
 			renderPassColorSurfaces,
@@ -1384,6 +1429,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			resources->m_renderPassColorAttachments;
 		renderPassColorAttachments.Clear(false);
 		renderPassColorAttachments.Add(colorAttachment);
+		if (motionAttachment) renderPassColorAttachments.Add(motionAttachment);
 		commands->BeginRenderPass(
 			commandList,
 			renderPassColorAttachments,

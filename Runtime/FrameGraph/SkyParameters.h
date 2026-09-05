@@ -11,11 +11,13 @@ namespace Sailor
 	{
 		glm::ivec3 m_lightDirection{};
 		glm::vec3 m_sunIlluminance{};
+		glm::vec3 m_groundRadiance{};
 		bool m_bUsesLightDirection{};
 
 		bool operator==(const SkyEnvironmentKey& rhs) const
 		{
 			return m_sunIlluminance == rhs.m_sunIlluminance &&
+				m_groundRadiance == rhs.m_groundRadiance &&
 				m_bUsesLightDirection == rhs.m_bUsesLightDirection &&
 				(!m_bUsesLightDirection || m_lightDirection == rhs.m_lightDirection);
 		}
@@ -28,6 +30,7 @@ namespace Sailor
 				m_sunIlluminance.y,
 				m_sunIlluminance.z);
 			HashCombine(hash, m_bUsesLightDirection);
+			HashCombine(hash, m_groundRadiance.x, m_groundRadiance.y, m_groundRadiance.z);
 			if (m_bUsesLightDirection)
 			{
 				HashCombine(hash, m_lightDirection.x, m_lightDirection.y, m_lightDirection.z);
@@ -44,6 +47,9 @@ namespace Sailor
 			glm::vec4(0.0f, -1.0f, 0.0f, 0.0f));
 		// RGB illuminance from the sun on a surface normal to its rays, in lux.
 		glm::vec4 m_sunIlluminance = glm::vec4(120000.0f, 120000.0f, 120000.0f, 0.0f);
+		// Derived Lambertian terrain radiance, shared by raster IBL and probe tracing.
+		// Zero preserves the unconfigured sky's black ground boundary.
+		glm::vec4 m_groundRadiance = glm::vec4(0.0f);
 		float m_cloudsAttenuation1 = 0.3f;
 		float m_cloudsAttenuation2 = 0.06f;
 		float m_cloudsDensity = 0.3f;
@@ -66,6 +72,7 @@ namespace Sailor
 		{
 			return m_lightDirection == rhs.m_lightDirection &&
 				m_sunIlluminance == rhs.m_sunIlluminance &&
+				m_groundRadiance == rhs.m_groundRadiance &&
 				m_cloudsAttenuation1 == rhs.m_cloudsAttenuation1 &&
 				m_cloudsAttenuation2 == rhs.m_cloudsAttenuation2 &&
 				m_cloudsDensity == rhs.m_cloudsDensity &&
@@ -89,6 +96,7 @@ namespace Sailor
 		{
 			SkyEnvironmentKey key;
 			key.m_sunIlluminance = glm::vec3(m_sunIlluminance);
+			key.m_groundRadiance = glm::vec3(m_groundRadiance);
 			key.m_bUsesLightDirection =
 				glm::dot(Math::vec4_Down, m_lightDirection) > -0.85f;
 			if (key.m_bUsesLightDirection)
@@ -102,5 +110,5 @@ namespace Sailor
 	};
 
 	static_assert(std::is_standard_layout_v<SkyParameters>);
-	static_assert(sizeof(SkyParameters) == 100);
+	static_assert(sizeof(SkyParameters) == 116);
 }

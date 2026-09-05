@@ -20,6 +20,7 @@ namespace Sailor::Memory
 		SAILOR_API VulkanBufferMemoryPtr& operator=(const TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanBuffer>& rhs);
 
 		SAILOR_API explicit operator bool() const;
+		bool operator==(const VulkanBufferMemoryPtr& rhs) const = default;
 		SAILOR_API VulkanMemoryPtr operator*();
 
 		size_t GetHash() const 

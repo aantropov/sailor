@@ -51,10 +51,14 @@ static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 	case 0x10: return 'Y';
 	case 0x11: return 'T';
 	case 0x23: return 'P';
+	case 0x25: return 'L';
 	case 0x20: return 'U';
 	case 0x12: return '1';
 	case 0x13: return '2';
 	case 0x14: return '3';
+	case 0x15: return '4';
+	case 0x17: return '5';
+	case 0x16: return '6';
 	case 0x30: return 0x09;
 	case 0x31: return 0x20;
 	case 0x35: return VK_ESCAPE;
@@ -81,6 +85,25 @@ static void SailorConfigureMetalLayer(CAMetalLayer* metalLayer, bool bIsVsyncReq
 	metalLayer.displaySyncEnabled = bIsVsyncRequested ? YES : NO;
 }
 
+static void SailorUpdateMetalDrawableSize(NSWindow* window)
+{
+	NSView* contentView = window.contentView;
+	CAMetalLayer* metalLayer = [contentView.layer isKindOfClass:[CAMetalLayer class]] ? (CAMetalLayer*)contentView.layer : nil;
+	if (!metalLayer)
+	{
+		return;
+	}
+
+	const CGFloat backingScale = std::max<CGFloat>(window.backingScaleFactor, 1.0);
+	metalLayer.contentsScale = backingScale;
+	metalLayer.frame = contentView.bounds;
+	// MoltenVK queries drawableSize for the surface extent. AppKit updating
+	// layer bounds does not resize the pixel buffers after a native resize.
+	metalLayer.drawableSize = CGSizeMake(
+		std::max<CGFloat>(1.0, std::round(contentView.bounds.size.width * backingScale)),
+		std::max<CGFloat>(1.0, std::round(contentView.bounds.size.height * backingScale)));
+}
+
 static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width, int32_t height, bool bIsFullScreen, bool bRunsInsideEditor, bool bIsVsyncRequested)
 {
 	if (bRunsInsideEditor)
@@ -91,15 +114,16 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 			const CGFloat backingScale = std::max<CGFloat>(window.backingScaleFactor, 1.0);
 			const CGFloat logicalWidth = std::max<CGFloat>(1.0, (CGFloat)width / backingScale);
 			const CGFloat logicalHeight = std::max<CGFloat>(1.0, (CGFloat)height / backingScale);
-			contentView.wantsLayer = YES;
 			contentView.frame = NSMakeRect(0.0, 0.0, logicalWidth, logicalHeight);
 			[window setContentSize:NSMakeSize(logicalWidth, logicalHeight)];
 
 			CAMetalLayer* metalLayer = [contentView.layer isKindOfClass:[CAMetalLayer class]] ? (CAMetalLayer*)contentView.layer : nil;
 			if (!metalLayer)
 			{
+				contentView.wantsLayer = NO;
 				metalLayer = [CAMetalLayer layer];
 				contentView.layer = metalLayer;
+				contentView.wantsLayer = YES;
 			}
 
 			SailorConfigureMetalLayer(metalLayer, bIsVsyncRequested);
@@ -112,6 +136,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 	}
 
 	[window setContentSize:NSMakeSize(width, height)];
+	SailorUpdateMetalDrawableSize(window);
 
 	const bool bIsCurrentlyFullScreen = (([window styleMask] & NSWindowStyleMaskFullScreen) != 0);
 	if (bIsFullScreen != bIsCurrentlyFullScreen)
@@ -178,6 +203,14 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 	NSWindow* window = (NSWindow*)notification.object;
 	NSRect contentRect = [window.contentView bounds];
 	self.sailorWindow->ChangeWindowSize((int32_t)contentRect.size.width, (int32_t)contentRect.size.height, false);
+}
+
+- (void)windowDidChangeBackingProperties:(NSNotification*)notification
+{
+	if (self.sailorWindow && !App::IsEditorMode())
+	{
+		SailorUpdateMetalDrawableSize((NSWindow*)notification.object);
+	}
 }
 
 @end
@@ -414,13 +447,16 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 
 		SailorContentView* contentView = [[SailorContentView alloc] initWithFrame:frame];
 		contentView.sailorWindow = this;
-		contentView.wantsLayer = YES;
 		CAMetalLayer* metalLayer = [CAMetalLayer layer];
 		SailorConfigureMetalLayer(metalLayer, bIsVsyncRequested);
+		// The renderer owns this layer's contents. Assign it before enabling
+		// layer hosting so AppKit does not cache an empty NSView drawing over it.
 		contentView.layer = metalLayer;
+		contentView.wantsLayer = YES;
 		metalLayer.contentsScale = [window backingScaleFactor];
 
 		window.contentView = contentView;
+		SailorUpdateMetalDrawableSize(window);
 		window.acceptsMouseMovedEvents = YES;
 		window.title = [NSString stringWithUTF8String:title ? title : "Sailor"];
 		[window makeFirstResponder:contentView];
@@ -672,9 +708,11 @@ void* Window::GetMetalLayer() const
 	CAMetalLayer* metalLayer = [window.contentView.layer isKindOfClass:[CAMetalLayer class]] ? (CAMetalLayer*)window.contentView.layer : nil;
 	if (!metalLayer)
 	{
-		window.contentView.wantsLayer = YES;
+		window.contentView.wantsLayer = NO;
 		metalLayer = [CAMetalLayer layer];
 		window.contentView.layer = metalLayer;
+		window.contentView.wantsLayer = YES;
+		SailorUpdateMetalDrawableSize(window);
 	}
 
 	SailorConfigureMetalLayer(metalLayer, m_bIsVsyncRequested);

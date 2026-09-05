@@ -54,6 +54,7 @@ glslFragment: |
   {
     vec4 lightDirection;
     vec4 sunIlluminance;
+    vec4 groundRadiance;
     float cloudsAttenuation1;
     float cloudsAttenuation2;
     float cloudsDensity;

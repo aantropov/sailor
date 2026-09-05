@@ -16,6 +16,7 @@
 #include "RHI/CommandList.h"
 #include "RHI/VertexDescription.h"
 #include "Sailor.h"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 
@@ -214,8 +215,10 @@ ImGuiApi::ImGuiApi(void* hWnd)
 #endif
 
 	InitInfo initInfo = {};
-	initInfo.MinImageCount = 3;
-	initInfo.ImageCount = 3;
+	// CPU preparation precedes flight acquisition by one frame. PushFrame
+	// waits the oldest flight before another CPU frame can be prepared.
+	initInfo.MinImageCount = std::max(2u, RHI::Renderer::GetDriver()->GetMaxFramesInFlight() + 1u);
+	initInfo.ImageCount = initInfo.MinImageCount;
 
 	ImGui_Init(&initInfo);
 }
@@ -223,6 +226,7 @@ ImGuiApi::ImGuiApi(void* hWnd)
 ImGuiApi::~ImGuiApi()
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_preparedFrames.clear();
 
 #if defined(_WIN32)
 	ImGui_ImplWin32_Shutdown();
@@ -233,6 +237,10 @@ ImGuiApi::~ImGuiApi()
 void ImGuiApi::NewFrame()
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::erase_if(m_preparedFrames, [](const PreparedFramePtr& frame)
+		{
+			return frame.use_count() == 1;
+		});
 
 	Data* bd = ImGui_GetBackendData();
 	IM_ASSERT(bd != nullptr && "Did you call ImGui_Init()?");
@@ -288,18 +296,26 @@ void ImGuiApi::NewFrame()
 	ImGuizmo::BeginFrame();
 }
 
-void ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transferCmdList)
+ImGuiApi::PreparedFramePtr ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transferCmdList)
 {
 	SAILOR_PROFILE_FUNCTION();
 	ImGui::Render();
-	ImGui_UpdateDrawData(ImGui::GetDrawData(), transferCmdList);
+	auto frame = std::make_shared<PreparedFrame>(ImGui::GetDrawData());
+	const Data* bd = ImGui_GetBackendData();
+	frame->Material = bd->Material;
+	frame->ShaderBindings = bd->ShaderBindings;
+	ImGui_UpdateDrawData(*frame, transferCmdList);
+	m_preparedFrames.push_back(frame);
+	return frame;
 }
 
-void ImGuiApi::RenderFrame(RHI::RHICommandListPtr drawCmdList)
+void ImGuiApi::RenderFrame(const PreparedFramePtr& frame, RHI::RHICommandListPtr drawCmdList)
 {
 	SAILOR_PROFILE_FUNCTION();
-
-	ImGui_RenderDrawData(ImGui::GetDrawData(), drawCmdList);
+	if (frame)
+	{
+		ImGui_RenderDrawData(*frame, drawCmdList);
+	}
 }
 
 ImGuiApi::Data* ImGuiApi::ImGui_GetBackendData()
@@ -319,20 +335,19 @@ void ImGuiApi::CreateOrResizeBuffer(RHI::RHIBufferPtr& buffer, size_t newSize)
 		RHI::EBufferUsageBit::BufferTransferDst_Bit | RHI::EBufferUsageBit::VertexBuffer_Bit | RHI::EBufferUsageBit::IndexBuffer_Bit);
 }
 
-void ImGuiApi::ImGui_SetupRenderState(ImDrawData* drawData, RHI::RHICommandListPtr cmdList, const FrameRenderBuffers* rb, int width, int height)
+void ImGuiApi::ImGui_SetupRenderState(const PreparedFrame& frame, RHI::RHICommandListPtr cmdList, int width, int height)
 {
 	SAILOR_PROFILE_FUNCTION();
+	const ImDrawData* drawData = &frame.DrawData.GetDrawData();
 
-	Data* bd = ImGui_GetBackendData();
-
-	RHI::Renderer::GetDriverCommands()->BindMaterial(cmdList, bd->Material);
+	RHI::Renderer::GetDriverCommands()->BindMaterial(cmdList, frame.Material);
 
 	// Bind Vertex And Index Buffer:
 	if (drawData->TotalVtxCount > 0)
 	{
 		const bool bUint16InsteadOfUint32 = sizeof(ImDrawIdx) == 2;
-		RHI::Renderer::GetDriverCommands()->BindVertexBuffer(cmdList, rb->VertexBuffer, 0);
-		RHI::Renderer::GetDriverCommands()->BindIndexBuffer(cmdList, rb->IndexBuffer, 0, bUint16InsteadOfUint32);
+		RHI::Renderer::GetDriverCommands()->BindVertexBuffer(cmdList, frame.VertexBuffer, 0);
+		RHI::Renderer::GetDriverCommands()->BindIndexBuffer(cmdList, frame.IndexBuffer, 0, bUint16InsteadOfUint32);
 	}
 
 	RHI::Renderer::GetDriverCommands()->SetViewport(cmdList,
@@ -352,13 +367,14 @@ void ImGuiApi::ImGui_SetupRenderState(ImDrawData* drawData, RHI::RHICommandListP
 		pushConstants[2] = -1.0f - drawData->DisplayPos.x * pushConstants[0]; // translate x
 		pushConstants[3] = -1.0f - drawData->DisplayPos.y * pushConstants[1]; // translate y
 
-		RHI::Renderer::GetDriverCommands()->PushConstants(cmdList, bd->Material, sizeof(float) * 4, pushConstants);
+		RHI::Renderer::GetDriverCommands()->PushConstants(cmdList, frame.Material, sizeof(float) * 4, pushConstants);
 	}
 }
 
-void ImGuiApi::ImGui_UpdateDrawData(ImDrawData* drawData, RHI::RHICommandListPtr transferCmdList)
+void ImGuiApi::ImGui_UpdateDrawData(PreparedFrame& frame, RHI::RHICommandListPtr transferCmdList)
 {
 	SAILOR_PROFILE_FUNCTION();
+	const ImDrawData* drawData = &frame.DrawData.GetDrawData();
 
 	// Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
 	const int width = (int)(drawData->DisplaySize.x * drawData->FramebufferScale.x);
@@ -376,8 +392,7 @@ void ImGuiApi::ImGui_UpdateDrawData(ImDrawData* drawData, RHI::RHICommandListPtr
 	{
 		wrb->Index = 0;
 		wrb->Count = v->ImageCount;
-		wrb->FrameRenderBuffers = (FrameRenderBuffers*)IM_ALLOC(sizeof(FrameRenderBuffers) * wrb->Count);
-		memset(wrb->FrameRenderBuffers, 0, sizeof(FrameRenderBuffers) * wrb->Count);
+		wrb->FrameRenderBuffers = new FrameRenderBuffers[wrb->Count]{};
 	}
 	IM_ASSERT(wrb->Count == v->ImageCount);
 	wrb->Index = (wrb->Index + 1) % wrb->Count;
@@ -396,6 +411,8 @@ void ImGuiApi::ImGui_UpdateDrawData(ImDrawData* drawData, RHI::RHICommandListPtr
 		{
 			CreateOrResizeBuffer(rb->IndexBuffer, index_size);
 		}
+		frame.VertexBuffer = rb->VertexBuffer;
+		frame.IndexBuffer = rb->IndexBuffer;
 
 		size_t vOffset = 0;
 		size_t iOffset = 0;
@@ -417,11 +434,12 @@ void ImGuiApi::ImGui_UpdateDrawData(ImDrawData* drawData, RHI::RHICommandListPtr
 
 }
 
-void ImGuiApi::ImGui_RenderDrawData(ImDrawData* drawData, RHI::RHICommandListPtr drawCmdList)
+void ImGuiApi::ImGui_RenderDrawData(const PreparedFrame& frame, RHI::RHICommandListPtr drawCmdList)
 {
 	SAILOR_PROFILE_FUNCTION();
+	const ImDrawData* drawData = &frame.DrawData.GetDrawData();
 
-	if (drawData == nullptr)
+	if (!drawData->Valid)
 		return;
 
 	// Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
@@ -431,11 +449,7 @@ void ImGuiApi::ImGui_RenderDrawData(ImDrawData* drawData, RHI::RHICommandListPtr
 	if (width <= 0 || height <= 0)
 		return;
 
-	Data* bd = ImGui_GetBackendData();
-	WindowRenderBuffers* wrb = &bd->MainWindowRenderBuffers;
-	const FrameRenderBuffers* rb = &wrb->FrameRenderBuffers[wrb->Index];
-
-	ImGui_SetupRenderState(drawData, drawCmdList, rb, width, height);
+	ImGui_SetupRenderState(frame, drawCmdList, width, height);
 
 	// Will project scissor/clipping rectangles into framebuffer space
 	ImVec2 clipOff = drawData->DisplayPos;         // (0,0) unless using multi-viewports
@@ -456,7 +470,7 @@ void ImGuiApi::ImGui_RenderDrawData(ImDrawData* drawData, RHI::RHICommandListPtr
 				// User callback, registered via ImDrawList::AddCallback()
 				// (ImDrawCallback_ResetRenderState is a special callback value used by the user to request the renderer to reset render state.)
 				if (pcmd->UserCallback == ImDrawCallback_ResetRenderState)
-					ImGui_SetupRenderState(drawData, drawCmdList, rb, width, height);
+					ImGui_SetupRenderState(frame, drawCmdList, width, height);
 				else
 					pcmd->UserCallback(cmd_list, pcmd);
 			}
@@ -496,7 +510,7 @@ void ImGuiApi::ImGui_RenderDrawData(ImDrawData* drawData, RHI::RHICommandListPtr
 					desc_set[0] = *bd->Material->GetBindings()->m_vulkan.m_descriptorSet;
 				}*/
 
-				RHI::Renderer::GetDriverCommands()->BindShaderBindings(drawCmdList, bd->Material, { bd->ShaderBindings });
+				RHI::Renderer::GetDriverCommands()->BindShaderBindings(drawCmdList, frame.Material, { frame.ShaderBindings });
 				RHI::Renderer::GetDriverCommands()->DrawIndexed(drawCmdList,
 					pcmd->ElemCount,
 					1,
@@ -601,13 +615,7 @@ void ImGuiApi::ImGui_SetMinImageCount(uint32_t min_image_count)
 
 void ImGuiApi::DestroyWindowRenderBuffers(WindowRenderBuffers* buffers)
 {
-	for (uint32_t n = 0; n < buffers->Count; n++)
-	{
-		buffers->FrameRenderBuffers[n].VertexBuffer.Clear();
-		buffers->FrameRenderBuffers[n].IndexBuffer.Clear();
-	}
-
-	IM_FREE(buffers->FrameRenderBuffers);
+	delete[] buffers->FrameRenderBuffers;
 	buffers->FrameRenderBuffers = nullptr;
 	buffers->Index = 0;
 	buffers->Count = 0;

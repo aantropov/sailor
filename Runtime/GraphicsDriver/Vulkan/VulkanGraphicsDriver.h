@@ -297,7 +297,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API virtual void CollectGarbage_RenderThread() override;
 
-		SAILOR_API RHI::RHITexturePtr GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent) override;
+		SAILOR_API RHI::RHITexturePtr GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent, uint32_t attachmentIndex = 0u) override;
 
 		// Vulkan specific
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);

@@ -1,4 +1,6 @@
 ---
+defines:
+- DEBUG_MOTIONS
 includes:
 - Shaders/Constants.glsl
 - Shaders/Math.glsl
@@ -56,56 +58,67 @@ glslFragment: |
   
   layout(set=1, binding=1) uniform sampler2D depthSampler;
   layout(set=1, binding=2) uniform sampler2D colorSampler;
+  layout(set=1, binding=3) uniform sampler2D motionSampler;
   
   layout(location=0) in vec2 fragTexcoord;
   layout(location=0) out vec4 outColor;
  
-  void main() 
+  float ViewDepth(vec2 uv, vec4 motion)
   {
-      float depth = texture(depthSampler, fragTexcoord).r;
-      vec2 ndc = fragTexcoord * 2.0 - 1.0;
-      vec4 clipPos = vec4(ndc, depth, 1.0);
-      
-      vec4 viewPos = inverse(frame.projection) * clipPos;
-      viewPos /= viewPos.w;
+    if(motion.a > 0.0001) return motion.z / motion.a;
+    float depth = textureLod(depthSampler, uv, 0.0).r;
+    vec4 viewPosition = frame.invProjection * vec4(uv * vec2(2.0, -2.0) + vec2(-1.0, 1.0), depth, 1.0);
+    return abs(viewPosition.w) > 0.000001 ? abs(viewPosition.z / viewPosition.w) : 65000.0;
+  }
 
-      const vec4 sourceColor = textureLod(
-        colorSampler,
-        fragTexcoord,
-        0.0);
-      vec3 color = sourceColor.xyz;
-  
-      vec4 worldPos = inverse(frame.view) * viewPos;
+  vec2 CameraVelocity(vec2 uv)
+  {
+    float depth = textureLod(depthSampler, uv, 0.0).r;
+    vec2 ndc = uv * vec2(2.0, -2.0) + vec2(-1.0, 1.0);
+    vec4 viewPosition = frame.invProjection * vec4(ndc, depth, 1.0);
+    // Homogeneous reconstruction also handles sky at infinity without a
+    // division by zero. Camera translation then cannot drag the sky.
+    vec4 oldClip = previousFrame.projection * previousFrame.view * inverse(frame.view) * viewPosition;
+    if(oldClip.w <= 0.00001) return vec2(0.0);
+    return (ndc - oldClip.xy / oldClip.w) * vec2(0.5, -0.5);
+  }
 
-      vec4 previousClipPos = previousFrame.projection * previousFrame.view * worldPos;
-      previousClipPos /= previousClipPos.w;
-      
-      vec2 velocity = (clipPos.xy - previousClipPos.xy) * 0.5 * data.intensity;
-      vec2 velocityPixels = velocity * vec2(frame.viewportSize);
-      float speedPixels = length(velocityPixels);
-      if (speedPixels > data.maxSpeed && speedPixels > 0.0)
-      {
-          velocity *= data.maxSpeed / speedPixels;
-      }
-      
-      if(length(velocity) <= 0.0001)
-      {
-          outColor = sourceColor;
-          return;
-      }
-      
-      int sampleCount = max(1, int(data.samples));
-      for(int i = 1; i < sampleCount; ++i)
-      {
-          float t = float(i) / float(max(1, sampleCount - 1));
-          vec2 texCoord = clamp(fragTexcoord - velocity * t, 0.0, 1.0);
-          vec3 currentColor = textureLod(colorSampler, texCoord, 0.0).xyz;
-          color += currentColor;
-      }
-      
-      color /= float(sampleCount);
-      // Preserve auxiliary HDR metadata from the current pixel. The motion
-      // vector affects RGB reconstruction only; post effects such as bloom
-      // consume the current pixel's classification after this pass.
-      outColor = vec4(color, sourceColor.a);
+  void main()
+  {
+    vec4 source = textureLod(colorSampler, fragTexcoord, 0.0);
+    vec4 motion = textureLod(motionSampler, fragTexcoord, 0.0);
+    vec2 velocity = motion.xy + CameraVelocity(fragTexcoord) * (1.0 - clamp(motion.a, 0.0, 1.0));
+    if(frame.deltaTime <= 0.0 || any(isnan(velocity)) || any(isinf(velocity))) velocity = vec2(0.0);
+  #ifdef DEBUG_MOTIONS
+    outColor = vec4(vec2(0.5) + velocity * 10.0, motion.a, 1.0);
+    return;
+  #endif
+    velocity *= max(data.intensity, 0.0);
+    float speed = length(velocity * vec2(frame.viewportSize));
+    float limit = max(data.maxSpeed, 0.0);
+    if(speed > limit && speed > 0.0) velocity *= limit / speed;
+    speed = min(speed, limit);
+    if(speed < 0.5)
+    {
+      outColor = source;
+      return;
+    }
+    float centerDepth = ViewDepth(fragTexcoord, motion);
+    vec3 color = source.rgb;
+    float weight = 1.0;
+    int sampleCount = clamp(int(data.samples), 1, 32);
+    for(int i = 0; i < sampleCount; ++i)
+    {
+      float t = (float(i) + 0.5) / float(sampleCount) - 0.5;
+      vec2 uv = fragTexcoord + velocity * t;
+      if(any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) continue;
+      vec4 sampleMotion = textureLod(motionSampler, uv, 0.0);
+      float sampleDepth = ViewDepth(uv, sampleMotion);
+      float relativeDepth = abs(sampleDepth - centerDepth) / max(min(centerDepth, sampleDepth), 0.1);
+      float sampleWeight = (1.0 - smoothstep(0.02, 0.10, relativeDepth)) * (1.0 - abs(t));
+      color += textureLod(colorSampler, uv, 0.0).rgb * sampleWeight;
+      weight += sampleWeight;
+    }
+    // Bloom and other HDR consumers keep the current pixel's metadata.
+    outColor = vec4(color / weight, source.a);
   }

@@ -131,6 +131,61 @@ namespace
 		}
 	}
 
+	void TestMotionMrtFrameGraphContract()
+	{
+		for (const char* rendererPath : { "DefaultRenderer.renderer", "EditorRenderer.renderer" })
+		{
+			const auto scalar = [rendererPath](const YAML::Node& node, const char* key)
+			{
+				const auto value = node[key];
+				Require(value && value.IsScalar(), std::string(rendererPath) + ": expected scalar " + key + " in " + YAML::Dump(node));
+				return value.as<std::string>();
+			};
+			const auto renderer = YAML::Load(ReadText(std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content" / rendererPath));
+			YAML::Node main, motion;
+			const YAML::Node targets = renderer["renderTargets"];
+			Require(targets && targets.IsSequence() && targets.size() > 0u, std::string(rendererPath) + ": expected render targets at " + SAILOR_TEST_SOURCE_DIR);
+			for (const YAML::Node& target : targets)
+			{
+				if (scalar(target, "name") == "Main") main.reset(target);
+				if (scalar(target, "name") == "MotionVectors") motion.reset(target);
+			}
+			Require(main.IsMap() && motion.IsMap() && scalar(motion, "format") == "R16G16B16A16_SFLOAT",
+				std::string(rendererPath) + ": motion MRT must have signed floating-point velocity, depth and coverage channels; Main=" + YAML::Dump(main) + "; MotionVectors=" + YAML::Dump(motion));
+			Require(scalar(main, "width") == scalar(motion, "width") &&
+				scalar(main, "height") == scalar(motion, "height") &&
+				main["bIsSurface"].as<bool>() == motion["bIsSurface"].as<bool>(),
+				"colour and motion attachments must share render extent and MSAA surface policy");
+			const auto resource = [](const YAML::Node& pass, const char* key)
+			{
+				for (const auto& entry : pass["renderTargets"])
+					if (const auto value = entry[key]; value && value.IsScalar()) return value.as<std::string>();
+				return std::string{};
+			};
+			bool cleared = false, consumed = false;
+			uint32_t producers = 0u;
+			for (const auto& pass : renderer["frame"])
+			{
+				const auto name = scalar(pass, "name");
+				if (name == "Clear" && resource(pass, "target") == "MotionVectors") cleared = true;
+				if (name == "DepthPrepass") Require(resource(pass, "motionVectors").empty(), "depth prepasses must not render motion geometry");
+				const auto tag = GetFrameGraphSetting(pass, "Tag");
+				if (name == "RenderScene" && (tag == "Opaque" || tag == "Masked" || tag == "Transparent"))
+				{
+					Require(cleared && !consumed && resource(pass, "color") == "Main" && resource(pass, "motionVectors") == "MotionVectors",
+						"each ordinary scene pass must produce colour and motion together after clearing and before blur");
+					++producers;
+				}
+				if (GetFrameGraphSetting(pass, "shader") == "Shaders/MotionBlur.shader")
+				{
+					Require(producers == 3u && resource(pass, "motionSampler") == "MotionVectors", "blur must consume all three MRT scene queues");
+					consumed = true;
+				}
+			}
+			Require(consumed && producers == 3u, "renderer must expose a complete per-object motion pipeline");
+		}
+	}
+
 	void TestPcfRasterShadowBiasContract()
 	{
 		constexpr float configuredBias = 1.25f;
@@ -763,15 +818,15 @@ namespace
 			reinterpret_cast<const uint8_t*>(&shadowInstance.baseColorAlpha) -
 			reinterpret_cast<const uint8_t*>(&shadowInstance));
 
-		Require(sizeof(renderInstance) == 112u &&
+		Require(sizeof(renderInstance) == 192u &&
 			sizeof(depthInstance) == 96u &&
-			sizeof(customDepthInstance) == 112u &&
+			sizeof(customDepthInstance) == 192u &&
 			sizeof(shadowInstance) == 128u &&
 			renderScaleOffset == 96u &&
 			customDepthScaleOffset == 96u &&
 			shadowScaleOffset == 96u &&
 			shadowAlphaOffset == 112u &&
-			renderScaleOffset + sizeof(vec4) == sizeof(renderInstance),
+			renderScaleOffset + sizeof(vec4) + sizeof(RHI::RHIObjectMotionData) == sizeof(renderInstance),
 			"main, ordinary depth, custom depth, and shadow passes must keep their independent std430 instance layouts");
 
 		RHI::RHIMesh mesh;
@@ -902,6 +957,7 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "RendererGpuCullingPassContract", TestRendererGpuCullingPassContract },
+		{ "MotionMrtFrameGraphContract", TestMotionMrtFrameGraphContract },
 		{ "PcfRasterShadowBiasContract", TestPcfRasterShadowBiasContract },
 		{ "MipExtentUsesVulkanFloorAndClamp", TestMipExtentUsesVulkanFloorAndClamp },
 		{ "PackedDrawMobilityPayloadVirtualization", TestPackedDrawMobilityPayloadVirtualization },

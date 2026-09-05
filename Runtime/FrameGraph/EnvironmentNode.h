@@ -6,6 +6,10 @@
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/SkyNode.h"
+#include "FrameGraph/LocalReflection.h"
+#include <memory>
+#include <atomic>
+#include <mutex>
 
 namespace Sailor::Framegraph
 {
@@ -28,7 +32,24 @@ namespace Sailor::Framegraph
 
 		SAILOR_API void MarkDirty() { m_bIsDirty = true; };
 
+		// CPU producers hand off owned pixels. Only Process touches GPU resources.
+		SAILOR_SHARED_API bool SetLocalReflection(LocalReflectionImage image);
+		SAILOR_SHARED_API void ResetLocalReflection();
+		bool IsLocalReflectionReady() const { return m_localReflectionReady.load(); }
+		uint32_t GetLocalReflectionSamples() const { return m_localReflectionSamples.load(); }
+		// Render-thread access, alongside the matching frame-graph samplers.
+		LocalReflectionParameters GetLocalReflectionParameters() const { return m_localParameters; }
+
 	protected:
+		void ProcessLocalReflection(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr commandList);
+		std::mutex m_localReflectionLock;
+		std::shared_ptr<const LocalReflectionImage> m_pendingLocalReflection;
+		std::shared_ptr<const LocalReflectionImage> m_uploadLocalReflection;
+		uint64_t m_pendingLocalRevision = 0u, m_localRevision = 0u;
+		std::atomic<bool> m_localReflectionReady{ false };
+		std::atomic<uint32_t> m_localReflectionSamples{ 0u };
+		RHI::RHITexturePtr m_localUploadTexture;
+		LocalReflectionParameters m_localParameters{};
 
 		ShaderSetPtr m_pComputeIrradianceShader{};
 		ShaderSetPtr m_pComputeSpecularShader{};

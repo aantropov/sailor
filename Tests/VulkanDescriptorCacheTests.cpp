@@ -42,6 +42,44 @@ namespace
 		}
 	}
 
+	void TestStagingAllocationIdentityKeepsEveryRange()
+	{
+		using Allocation = Memory::TMemoryPtr<Memory::VulkanBufferMemoryPtr>;
+		using Dependency = TPair<Allocation, TWeakPtr<VulkanBufferAllocator>>;
+		// An uncompiled buffer provides real pointer identity without a GPU allocation.
+		const auto buffer = VulkanBufferPtr::Make(VulkanDevicePtr{}, 65536u,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE);
+		const Memory::VulkanBufferMemoryPtr storage(buffer, 0u, 65536u);
+		TSet<Dependency> dependencies;
+		for (size_t index = 0u; index < 256u; ++index)
+		{
+			const Allocation range(index * 128u, 0u, 128u, storage, 0u);
+			Require(dependencies.Insert(Dependency(range, {})),
+				"every staging suballocation must be retained, including hash-bucket collisions");
+		}
+		Require(dependencies.Num() == 256u,
+			"no live staging range may disappear from the command buffer release list");
+		const Allocation first(0u, 0u, 128u, storage, 0u);
+		Require(!dependencies.Insert(Dependency(first, {})),
+			"the same staging allocation must be released exactly once");
+		const Allocation aligned(0u, 16u, 112u, storage, 0u);
+		Require(!Sailor::Equals(first, aligned),
+			"alignment and range size are part of suballocation identity");
+		const Allocation otherBlock(0u, 0u, 128u, storage, 1u);
+		Require(!Sailor::Equals(first, otherBlock),
+			"allocator block identity must not collapse to pointer validity");
+		const Allocation shiftedStorage(0u, 0u, 128u,
+			Memory::VulkanBufferMemoryPtr(buffer, 128u, 65408u), 0u);
+		Require(!Sailor::Equals(first, shiftedStorage),
+			"the underlying Vulkan buffer range is part of allocation identity");
+		const auto otherBuffer = VulkanBufferPtr::Make(VulkanDevicePtr{}, 65536u,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE);
+		const Allocation differentBuffer(0u, 0u, 128u,
+			Memory::VulkanBufferMemoryPtr(otherBuffer, 0u, 65536u), 0u);
+		Require(!Sailor::Equals(first, differentBuffer),
+			"equal offsets in different Vulkan buffers remain different allocations");
+	}
+
 
 
 	RHI::RHITexturePtr MakeTexture()
@@ -351,6 +389,8 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "StagingAllocationIdentityKeepsEveryRange",
+			TestStagingAllocationIdentityKeepsEveryRange },
 		{ "SsboElementAlignmentPreservesStd430Stride",
 			TestSsboElementAlignmentPreservesStd430Stride },
 		{ "DescriptorCacheKeyKeepsItsCompatibilitySnapshot",

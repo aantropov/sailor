@@ -21,6 +21,7 @@ namespace Sailor::Memory
 		SAILOR_API VulkanMemoryPtr& operator=(const TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory>& rhs);
 
 		SAILOR_API explicit operator bool() const;
+		bool operator==(const VulkanMemoryPtr& rhs) const = default;
 
 		size_t GetHash() const
 		{

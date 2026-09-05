@@ -11,6 +11,7 @@
 #include "RHI/Cubemap.h"
 #include "RHI/CommandList.h"
 #include "FrameGraph/LightCullingNode.h"
+#include "FrameGraph/EnvironmentNode.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Settings/GraphicsSettings.h"
 #include "Tasks/Tasks.h"
@@ -89,6 +90,7 @@ namespace
 		RHIShaderBindingSetPtr m_sharedLightsStorage{};
 		RHIShaderBindingSetPtr m_sharedGlobalIlluminationStorage{};
 		RHIShaderBindingSetPtr m_frameBindings{};
+		size_t m_previousBoneCapacity = 0u;
 		RHIShaderBindingSetPtr m_lightCullingBindings{};
 		RHITexturePtr m_lightCullingDepth{};
 		glm::ivec2 m_lightCullingViewportSize{};
@@ -700,6 +702,8 @@ namespace
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_brdfSampler")));
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_envCubemap")));
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_sheenEnvCubemap")));
+		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_localEnvCubemap")));
+		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_localSheenEnvCubemap")));
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetRenderTarget("g_AO")));
 		const bool bRecreateLights = !resources->m_lightsBindings ||
 			bRecreateLightCulling ||
@@ -719,6 +723,8 @@ namespace
 			resources->m_shadowIndexCapacity = GrowSubmissionCapacity(resources->m_shadowIndexCapacity, numShadowIndices);
 			resources->m_shadowAtlasTileCapacity = GrowSubmissionCapacity(resources->m_shadowAtlasTileCapacity, numShadowAtlasTiles);
 			resources->m_lightsBindings = driver->CreateShaderBindings();
+			driver->AddBufferToShaderBindings(resources->m_lightsBindings, "localReflection",
+				sizeof(LocalReflectionParameters), 20u, EShaderBindingType::UniformBuffer);
 			driver->AddShaderBinding(
 				resources->m_lightsBindings,
 				sharedResources->m_lightsStorage->GetOrAddShaderBinding("light"),
@@ -834,11 +840,19 @@ namespace
 			}
 			if (auto texture = owner->GetRenderTarget("g_AO"))
 			{
+				driver->AddSamplerToShaderBindings(resources->m_lightsBindings, "g_aoSampler", texture, 8u);
+			}
+			auto localEnvironment = owner->GetSampler("g_localEnvCubemap");
+			if (!localEnvironment) localEnvironment = owner->GetSampler("g_envCubemap");
+			if (localEnvironment)
+				driver->AddSamplerToShaderBindings(resources->m_lightsBindings, "g_localEnvCubemap", localEnvironment, 21u);
+			auto localSheen = owner->GetSampler("g_localSheenEnvCubemap");
+			if (!localSheen) localSheen = sheenEnvironment;
+			if (localSheen)
+			{
 				driver->AddSamplerToShaderBindings(
 					resources->m_lightsBindings,
-					"g_aoSampler",
-					texture,
-					8u);
+					"g_localSheenEnvCubemap", localSheen, 22u);
 			}
 			if (auto texture = driver->GetDefaultTexture())
 			{
@@ -864,6 +878,13 @@ namespace
 			resources->m_shadowIndicesHash = InvalidContentHash;
 			resources->m_shadowAtlasTilesHash = InvalidContentHash;
 		}
+
+		LocalReflectionParameters localParameters{};
+		if (auto environment = owner->GetGraphNode("Environment").DynamicCast<EnvironmentNode>())
+			localParameters = environment->GetLocalReflectionParameters();
+		commands->UpdateShaderBinding(transferCommandList,
+			resources->m_lightsBindings->GetOrAddShaderBinding("localReflection"),
+			&localParameters, sizeof(localParameters), 0u);
 
 		const uint64_t shadowMatricesHash = HashSubmissionValues(snapshot.m_shadowMatrices);
 		if (resources->m_shadowMatricesHash != shadowMatricesHash)
@@ -971,6 +992,7 @@ RHIFrameGraph::GetGlobalIlluminationRenderStats() const
 
 void RHIFrameGraph::Clear()
 {
+	m_motionHistory.Clear();
 	m_samplers.Clear();
 	m_graph.Clear();
 	m_values.Clear();
@@ -1049,11 +1071,15 @@ glm::ivec2 RHIFrameGraph::GetSceneRenderExtent()
 		static_cast<int32_t>(fallbackExtent.m_height));
 }
 
-RHI::UboFrameData RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, const RHI::UboFrameData& previousFrame, float deltaTime, float worldTime)
+void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	RHI::UboFrameData frameData;
+	auto frameData = CaptureMotionHistory(snapshot, world, worldTime, GetSceneRenderExtent()).m_frameData;
+	const auto& previousFrame = snapshot.m_previousMotionFrame ?
+		snapshot.m_previousMotionFrame->m_frameData : frameData;
+	frameData.m_deltaTime = snapshot.m_previousMotionFrame ?
+		worldTime - previousFrame.m_currentTime : 0.0f;
 
 	if (!snapshot.m_frameBindings)
 	{
@@ -1062,19 +1088,39 @@ RHI::UboFrameData RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCm
 		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(snapshot.m_frameBindings, "previousFrameData", sizeof(RHI::UboFrameData), 1, RHI::EShaderBindingType::UniformBuffer);
 	}
 
-	frameData.m_cameraPosition = snapshot.m_cameraTransform.m_position;
-	frameData.m_projection = snapshot.m_camera->GetProjectionMatrix();
-	frameData.m_invProjection = snapshot.m_camera->GetInvProjection();
-	frameData.m_cameraZNearZFar = vec2(snapshot.m_camera->GetZNear(), snapshot.m_camera->GetZFar());
-	frameData.m_currentTime = worldTime;
-	frameData.m_deltaTime = deltaTime;
-	frameData.m_view = snapshot.m_camera->GetViewMatrix();
-	frameData.m_viewportSize = GetSceneRenderExtent();
-
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("previousFrameData"), &previousFrame, sizeof(previousFrame));
 
-	return frameData;
+	auto resources = snapshot.m_submissionContext->GetOrAddFrameGraphResources<RHIViewSubmissionResources>(this, snapshot.m_cameraIndex, 0u);
+	const auto bones = snapshot.m_previousMotionFrame ? snapshot.m_previousMotionFrame->m_bones : snapshot.m_cpuBoneMatrices;
+	const size_t count = bones ? bones->Num() : 0u;
+	if (resources->m_previousBoneCapacity < (std::max)(size_t{ 1u }, count))
+	{
+		resources->m_previousBoneCapacity = GrowSubmissionCapacity(resources->m_previousBoneCapacity, (std::max)(size_t{ 1u }, count));
+		Renderer::GetDriver()->AddSsboToShaderBindings(snapshot.m_frameBindings, "previousBones",
+			sizeof(glm::mat4), resources->m_previousBoneCapacity, 2u, true);
+	}
+	const glm::mat4 identity(1.0f);
+	Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList,
+		snapshot.m_frameBindings->GetOrAddShaderBinding("previousBones"),
+		count ? bones->GetData() : &identity, (std::max)(size_t{ 1u }, count) * sizeof(glm::mat4));
+
+}
+
+void RHIFrameGraph::CompleteMotionHistory(RHI::RHISceneViewPtr sceneView, bool succeeded)
+{
+	if (!succeeded)
+	{
+		m_motionHistory.Clear();
+		return;
+	}
+	m_motionHistory.Resize(sceneView->m_snapshots.Num());
+	for (const auto& snapshot : sceneView->m_snapshots)
+	{
+		m_motionHistory[snapshot.m_cameraIndex] = TSharedPtr<RHIMotionHistoryFrame>::Make(
+			CaptureMotionHistory(snapshot, sceneView->m_world,
+				sceneView->m_currentTime, GetSceneRenderExtent()));
+	}
 }
 
 TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhiSceneView)
@@ -1084,6 +1130,16 @@ TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHIScene
 	auto frameRefPtr = this->ToRefPtr<RHIFrameGraph>();
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
+		snapshot.m_previousMotionFrame.Clear();
+		if (snapshot.m_cameraIndex < m_motionHistory.Num() && m_motionHistory[snapshot.m_cameraIndex])
+		{
+			const auto current = CaptureMotionHistory(snapshot, rhiSceneView->m_world,
+				rhiSceneView->m_currentTime, GetSceneRenderExtent());
+			if (IsMotionHistoryContinuous(*m_motionHistory[snapshot.m_cameraIndex], current))
+			{
+				snapshot.m_previousMotionFrame = m_motionHistory[snapshot.m_cameraIndex];
+			}
+		}
 		for (auto& node : m_graph)
 		{
 			auto task = node->Prepare(frameRefPtr, snapshot);
@@ -1204,7 +1260,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 		driverCommands->BeginDebugRegion(transferCmdList, "Fill Frame Data", DebugContext::Color_CmdTransfer);
 		{
-			m_prevFrameData = FillFrameData(transferCmdList, snapshot, m_prevFrameData, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
+			FillFrameData(transferCmdList, snapshot, rhiSceneView->m_world, rhiSceneView->m_currentTime);
 		}
 		driverCommands->EndDebugRegion(transferCmdList);
 

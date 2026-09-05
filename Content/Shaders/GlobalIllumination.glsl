@@ -251,10 +251,16 @@ float GlobalIlluminationSurfaceFacingWeight(
   const float transitionWidth = max(
     globalIlluminationHeader.volumeMin.w,
     GLOBAL_ILLUMINATION_SURFACE_PLANE_TOLERANCE);
-  return smoothstep(
-    -transitionWidth,
-    transitionWidth,
-    signedPlaneDistance);
+  // A centimetre-wide step around the receiver plane becomes an almost
+  // binary normal test for distant probes, drawing lobes on smooth meshes.
+  // Use a cosine-shaped hemisphere; retain the small geometric tolerance
+  // for coincident and tangent probes, and reject probes behind that plane.
+  const float facing = clamp(
+    (signedPlaneDistance + transitionWidth) /
+      (length(surfaceToProbe) + transitionWidth),
+    0.0,
+    1.0);
+  return facing * facing;
 }
 
 vec2 GlobalIlluminationVisibilityMoments(
@@ -552,274 +558,10 @@ vec3 GlobalIlluminationEvaluateProbeStates(
   return irradiance;
 }
 
-void GlobalIlluminationBuildTetrahedron(
-  vec3 fraction,
-  out uvec3 firstCornerOffset,
-  out uvec3 secondCornerOffset,
-  out vec4 weights)
-{
-  if(fraction.x >= fraction.y)
-  {
-    if(fraction.y >= fraction.z)
-    {
-      firstCornerOffset = uvec3(1u, 0u, 0u);
-      secondCornerOffset = uvec3(1u, 1u, 0u);
-      weights = vec4(
-        1.0 - fraction.x,
-        fraction.x - fraction.y,
-        fraction.y - fraction.z,
-        fraction.z);
-    }
-    else if(fraction.x >= fraction.z)
-    {
-      firstCornerOffset = uvec3(1u, 0u, 0u);
-      secondCornerOffset = uvec3(1u, 0u, 1u);
-      weights = vec4(
-        1.0 - fraction.x,
-        fraction.x - fraction.z,
-        fraction.z - fraction.y,
-        fraction.y);
-    }
-    else
-    {
-      firstCornerOffset = uvec3(0u, 0u, 1u);
-      secondCornerOffset = uvec3(1u, 0u, 1u);
-      weights = vec4(
-        1.0 - fraction.z,
-        fraction.z - fraction.x,
-        fraction.x - fraction.y,
-        fraction.y);
-    }
-  }
-  else if(fraction.x >= fraction.z)
-  {
-    firstCornerOffset = uvec3(0u, 1u, 0u);
-    secondCornerOffset = uvec3(1u, 1u, 0u);
-    weights = vec4(
-      1.0 - fraction.y,
-      fraction.y - fraction.x,
-      fraction.x - fraction.z,
-      fraction.z);
-  }
-  else if(fraction.y >= fraction.z)
-  {
-    firstCornerOffset = uvec3(0u, 1u, 0u);
-    secondCornerOffset = uvec3(0u, 1u, 1u);
-    weights = vec4(
-      1.0 - fraction.y,
-      fraction.y - fraction.z,
-      fraction.z - fraction.x,
-      fraction.x);
-  }
-  else
-  {
-    firstCornerOffset = uvec3(0u, 0u, 1u);
-    secondCornerOffset = uvec3(0u, 1u, 1u);
-    weights = vec4(
-      1.0 - fraction.z,
-      fraction.z - fraction.y,
-      fraction.y - fraction.x,
-      fraction.x);
-  }
-}
-
-bool TrySampleGlobalIlluminationTetrahedral(
-  GlobalIlluminationProbeCell probeCell,
-  vec3 worldPosition,
-  vec3 shadingNormal,
-  vec3 geometricNormal,
-  vec3 samplingPosition,
-  vec3 environmentDirection,
-  out vec3 irradiance,
-  out float environmentVisibility)
-{
-  irradiance = vec3(0.0);
-  environmentVisibility = 1.0;
-
-  const uvec3 probeCounts = probeCell.probeCounts;
-  if(any(lessThan(probeCounts, uvec3(2u))))
-  {
-    return false;
-  }
-  if(!probeCell.allProbesFullyValid)
-  {
-    return false;
-  }
-  const vec3 extent = probeCell.boundsMax - probeCell.boundsMin;
-  const vec3 lastProbeCoordinate = vec3(probeCounts - uvec3(1u));
-  const vec3 cell = clamp(
-    (samplingPosition - probeCell.boundsMin) / extent,
-    vec3(0.0),
-    vec3(1.0)) * lastProbeCoordinate;
-  const uvec3 lower = uvec3(floor(cell));
-  const uvec3 upper = min(lower + uvec3(1u), probeCounts - uvec3(1u));
-  if(any(equal(lower, upper)))
-  {
-    return false;
-  }
-
-  // Keep the exact eight-probe path in a narrow band around every brick
-  // boundary. Tetrahedral and trilinear interpolation agree at probe points,
-  // but can otherwise diverge along a shared face when either brick changes.
-  const vec3 distanceToMinFace = cell;
-  const vec3 distanceToMaxFace = lastProbeCoordinate - cell;
-  const float nearestBrickFaceDistance = min(
-    min(distanceToMinFace.x, distanceToMaxFace.x),
-    min(
-      min(distanceToMinFace.y, distanceToMaxFace.y),
-      min(distanceToMinFace.z, distanceToMaxFace.z)));
-  if(nearestBrickFaceDistance <= 0.035)
-  {
-    return false;
-  }
-
-  // Adaptive faces and the outer world-space volume boundary get a wider
-  // full-path band. The adaptive bits are packed while the CPU already owns
-  // the brick BVH, so the fragment shader never traces it.
-  const float worldBoundaryTolerance = max(
-    uintBitsToFloat(globalIlluminationHeader.settings.z) * 0.001,
-    0.0001);
-  const uvec3 minFaceBits = uvec3(1u << 0u, 1u << 2u, 1u << 4u);
-  const uvec3 maxFaceBits = uvec3(1u << 1u, 1u << 3u, 1u << 5u);
-  const vec3 adaptiveFaceDistances = min(
-    mix(
-      vec3(1e20),
-      distanceToMinFace,
-      notEqual(
-        uvec3(probeCell.adaptiveFaceMask) & minFaceBits,
-        uvec3(0u))),
-    mix(
-      vec3(1e20),
-      distanceToMaxFace,
-      notEqual(
-        uvec3(probeCell.adaptiveFaceMask) & maxFaceBits,
-        uvec3(0u))));
-  const vec3 volumeFaceDistances = min(
-    mix(
-      vec3(1e20),
-      distanceToMinFace,
-      lessThanEqual(
-        abs(probeCell.boundsMin - globalIlluminationHeader.volumeMin.xyz),
-        vec3(worldBoundaryTolerance))),
-    mix(
-      vec3(1e20),
-      distanceToMaxFace,
-      lessThanEqual(
-        abs(probeCell.boundsMax - globalIlluminationHeader.volumeMax.xyz),
-        vec3(worldBoundaryTolerance))));
-  const vec3 unsafeFaceDistances = min(
-    adaptiveFaceDistances,
-    volumeFaceDistances);
-  const float unsafeFaceDistance = min(
-    unsafeFaceDistances.x,
-    min(unsafeFaceDistances.y, unsafeFaceDistances.z));
-  if(unsafeFaceDistance <= 0.10)
-  {
-    return false;
-  }
-
-  uvec3 firstCornerOffset;
-  uvec3 secondCornerOffset;
-  vec4 tetrahedralWeights;
-  GlobalIlluminationBuildTetrahedron(
-    fract(cell),
-    firstCornerOffset,
-    secondCornerOffset,
-    tetrahedralWeights);
-  const uvec3 coordinates[4] = uvec3[4](
-    lower,
-    lower + firstCornerOffset,
-    lower + secondCornerOffset,
-    upper);
-  uint probeIndices[4];
-  float spatialWeights[4];
-  float totalVisibleWeight = 0.0;
-  vec3 positiveDirectionVisibility = vec3(0.0);
-  vec3 negativeDirectionVisibility = vec3(0.0);
-  for(uint probeOffset = 0u; probeOffset < 4u; ++probeOffset)
-  {
-    const uint probeIndex = probeCell.firstProbeIndex +
-      GlobalIlluminationFlattenIndex(
-        coordinates[probeOffset],
-        probeCounts);
-    const GlobalIlluminationProbe probe =
-      globalIlluminationProbes.instance[probeIndex];
-    const float interpolationWeight = tetrahedralWeights[probeOffset];
-    const float validity = clamp(
-      probe.positionAndValidity.w,
-      0.0,
-      1.0);
-    if(interpolationWeight > 0.000001 && validity <= 0.05)
-    {
-      return false;
-    }
-    const float surfaceFacingWeight =
-      GlobalIlluminationSurfaceFacingWeight(
-        probe,
-        worldPosition,
-        geometricNormal);
-    const float visibility = surfaceFacingWeight *
-      GlobalIlluminationMomentVisibility(
-        probe,
-        worldPosition);
-    const float spatialWeight = interpolationWeight * validity * visibility;
-    probeIndices[probeOffset] = probeIndex;
-    spatialWeights[probeOffset] = spatialWeight;
-    totalVisibleWeight += spatialWeight;
-    positiveDirectionVisibility += vec3(
-      probe.environmentVisibility0123.x,
-      probe.environmentVisibility0123.z,
-      probe.environmentVisibility45.x) * spatialWeight;
-    negativeDirectionVisibility += vec3(
-      probe.environmentVisibility0123.y,
-      probe.environmentVisibility0123.w,
-      probe.environmentVisibility45.y) * spatialWeight;
-  }
-  if(totalVisibleWeight <= 0.000001)
-  {
-    return false;
-  }
-  const float receiverCoverage = clamp(totalVisibleWeight, 0.0, 1.0);
-  // Tetrahedral interpolation is only safe when nearly all of its receiver-
-  // side support survives. Renormalizing one or two remaining probes creates
-  // large triangular dark or bright regions on walls and depth edges.
-  if(receiverCoverage < 0.75)
-  {
-    return false;
-  }
-
-  const GlobalIlluminationShBasis shBasis =
-    GlobalIlluminationBuildShBasis(shadingNormal);
-  const uint stateCount = min(
-    globalIlluminationHeader.stateAndDebug.x,
-    uint(globalIlluminationStates.instance.length()));
-  const float singleStateWeight = stateCount == 1u
-    ? globalIlluminationStates.instance[0].parameters.x
-    : 0.0;
-  for(uint probeOffset = 0u; probeOffset < 4u; ++probeOffset)
-  {
-    if(spatialWeights[probeOffset] > 0.0)
-    {
-      irradiance += GlobalIlluminationEvaluateProbeStates(
-        probeIndices[probeOffset],
-        shBasis,
-        stateCount,
-        singleStateWeight) * spatialWeights[probeOffset];
-    }
-  }
-  irradiance = max(irradiance / totalVisibleWeight, vec3(0.0));
-  environmentVisibility = GlobalIlluminationEnvironmentVisibility(
-    positiveDirectionVisibility / totalVisibleWeight,
-    negativeDirectionVisibility / totalVisibleWeight,
-    environmentDirection);
-  return true;
-}
-
 bool SampleGlobalIlluminationFromProbeCell(
   GlobalIlluminationProbeCell probeCell,
   vec3 worldPosition,
   vec3 shadingNormal,
-  vec3 geometricNormal,
   vec3 samplingPosition,
   vec3 environmentDirection,
   out vec3 irradiance,
@@ -839,26 +581,10 @@ bool SampleGlobalIlluminationFromProbeCell(
     return false;
   }
 
+  // Use the same eight-probe interpolation for every receiver. Switching
+  // between tetrahedral and trilinear results at a coverage threshold makes
+  // lighting discontinuous even when positions and normals vary smoothly.
   const uint debugMode = globalIlluminationHeader.stateAndDebug.z;
-  vec3 tetrahedralIrradiance;
-  float tetrahedralEnvironmentVisibility;
-  if((debugMode == GLOBAL_ILLUMINATION_DEBUG_LIT ||
-      debugMode == GLOBAL_ILLUMINATION_DEBUG_INDIRECT_ONLY) &&
-    TrySampleGlobalIlluminationTetrahedral(
-      probeCell,
-      worldPosition,
-      shadingNormal,
-      geometricNormal,
-      samplingPosition,
-      environmentDirection,
-      tetrahedralIrradiance,
-      tetrahedralEnvironmentVisibility))
-  {
-    irradiance = tetrahedralIrradiance;
-    environmentVisibility = tetrahedralEnvironmentVisibility;
-    debugInfo.usedGIProbes = true;
-    return true;
-  }
 
   const GlobalIlluminationShBasis shBasis =
     GlobalIlluminationBuildShBasis(shadingNormal);
@@ -890,6 +616,7 @@ bool SampleGlobalIlluminationFromProbeCell(
   const uint firstProbeIndex = probeCell.firstProbeIndex;
 
   float totalInterpolationWeight = 0.0;
+  float totalFacingWeight = 0.0;
   float totalVisibleWeight = 0.0;
   const uint stateCount = min(
     globalIlluminationHeader.stateAndDebug.x,
@@ -936,11 +663,14 @@ bool SampleGlobalIlluminationFromProbeCell(
           (z != 0u ? fraction.z : 1.0 - fraction.z);
         const float validity = clamp(probe.positionAndValidity.w, 0.0, 1.0);
         const float interpolationWeight = trilinearWeight * validity;
+        // Receiver weights follow the continuous shading surface. The flat
+        // triangle normal is still used for the geometric sampling bias,
+        // but using it here exposes every triangle edge in indirect light.
         const float surfaceFacingWeight =
           GlobalIlluminationSurfaceFacingWeight(
             probe,
             worldPosition,
-            geometricNormal);
+            shadingNormal);
         const float visibility = surfaceFacingWeight *
           GlobalIlluminationMomentVisibility(
             probe,
@@ -955,6 +685,7 @@ bool SampleGlobalIlluminationFromProbeCell(
           probe.environmentVisibility0123.w,
           probe.environmentVisibility45.y);
         totalInterpolationWeight += interpolationWeight;
+        totalFacingWeight += interpolationWeight * surfaceFacingWeight;
         totalVisibleWeight += spatialWeight;
         positiveDirectionVisibility +=
           probePositiveDirectionVisibility * spatialWeight;
@@ -1003,7 +734,7 @@ bool SampleGlobalIlluminationFromProbeCell(
           const float visibility = GlobalIlluminationSurfaceFacingWeight(
             probe,
             worldPosition,
-            geometricNormal) * GlobalIlluminationMomentVisibility(
+            shadingNormal) * GlobalIlluminationMomentVisibility(
               probe,
               worldPosition);
           if(bTrackProbe)
@@ -1038,14 +769,13 @@ bool SampleGlobalIlluminationFromProbeCell(
     return false;
   }
 
-  // Renormalizing five percent of the interpolation support to one hundred
-  // percent produces bright pixels at depth edges and thin geometry. Preserve
-  // the normalized result once half the valid support survives, but attenuate
-  // lower receiver coverage instead of amplifying it or sampling probes from
-  // the opposite side of the surface.
+  // Normal-facing weights select which probes describe this receiver; they
+  // are not occlusion. Normalize that selection so a constant unoccluded
+  // field stays constant on curved surfaces. Only loss to blocker moments
+  // may attenuate low coverage, avoiding amplification of cross-wall leaks.
   const float normalizationWeight = max(
     totalVisibleWeight,
-    totalInterpolationWeight *
+    totalFacingWeight *
       GLOBAL_ILLUMINATION_MINIMUM_RECEIVER_COVERAGE);
   irradiance = max(irradiance / normalizationWeight, vec3(0.0));
   positiveDirectionVisibility = clamp(
@@ -1501,7 +1231,6 @@ bool TryResolveGlobalIlluminationDiffuseIrradiance(
       probeCell,
       worldPosition,
       worldShadingNormal,
-      worldGeometricNormal,
       samplingPosition,
       environmentDirection,
       probeIrradiance,

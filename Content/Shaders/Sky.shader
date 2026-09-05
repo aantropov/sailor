@@ -47,6 +47,7 @@ glslVertex: |
   {
       vec4 lightDirection;
       vec4 sunIlluminance;
+      vec4 groundRadiance;
       float cloudsAttenuation1;
     float cloudsAttenuation2;
     float cloudsDensity;
@@ -118,6 +119,7 @@ glslFragment: |
   {
     vec4 lightDirection;
     vec4 sunIlluminance;
+    vec4 groundRadiance;
     float cloudsAttenuation1;
     float cloudsAttenuation2;
     float cloudsDensity;
@@ -617,10 +619,12 @@ glslFragment: |
 
      origin = atmosphereOrigin;
      const vec3 destination = IntersectSphere(origin, direction, 0.0f, atmosphereRadius);
+     float groundDistance;
+     const bool hitsGround = RayEntersAltitudeSphere(origin, direction, 0.0f, groundDistance);
      
      if(length(destination - origin) < 0.01)
      {
-         return vec3(0);
+         return hitsGround ? max(data.groundRadiance.xyz, vec3(0.0f)) : vec3(0.0f);
      }
 
      const float Angle = dot(normalize(destination - origin), -lightDirection);
@@ -729,8 +733,10 @@ glslFragment: |
     #else
         const vec3 scattering =
           B0R * resR * phaseR + B0Mie * resMie * phaseMie;
+        const vec3 ground = hitsGround ? max(data.groundRadiance.xyz, vec3(0.0f)) *
+          exp(-B0R * densityR - B0Mie * 1.1f * densityMie) : vec3(0.0f);
         return min(
-          max(data.sunIlluminance.xyz, vec3(0.0f)) * scattering,
+          max(data.sunIlluminance.xyz, vec3(0.0f)) * scattering + ground,
           vec3(maxHalfFloat));
     #endif
   }

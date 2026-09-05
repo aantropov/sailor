@@ -49,11 +49,13 @@ namespace
 		const float width = (std::max)(
 			transitionWidth,
 			SurfacePlaneTolerance);
-		const float normalized = glm::clamp(
-			(signedPlaneDistance + width) / (2.0f * width),
+		// Angular support varies smoothly with receiver normals. A world-space
+		// step at the plane would become nearly binary for distant probes.
+		const float facing = glm::clamp(
+			(signedPlaneDistance + width) / (glm::length(surfaceToProbe) + width),
 			0.0f,
 			1.0f);
-		return normalized * normalized * (3.0f - 2.0f * normalized);
+		return facing * facing;
 	}
 
 	float ProbeMomentVisibility(
@@ -212,6 +214,7 @@ bool Sailor::SampleGIProbesIrradiance(
 	std::array<glm::vec3,
 		GIProbeSphericalHarmonicsCoefficientCount> blended{};
 	float totalInterpolationWeight = 0.0f;
+	float totalFacingWeight = 0.0f;
 	float totalVisibleWeight = 0.0f;
 	uint32_t cornerIndex = 0u;
 	for (uint32_t z = 0u; z < 2u; ++z)
@@ -237,18 +240,19 @@ bool Sailor::SampleGIProbesIrradiance(
 					(z ? fraction.z : 1.0f - fraction.z);
 				const float interpolationWeight = trilinearWeight *
 					glm::clamp(probe.m_validity, 0.0f, 1.0f);
-					const float surfaceFacingWeight = SurfaceFacingWeight(
+				const float surfaceFacingWeight = SurfaceFacingWeight(
+					probe,
+					worldPosition,
+					worldNormal,
+					data.m_bakeSettings.m_normalBias);
+				const float visibility = surfaceFacingWeight *
+					ProbeMomentVisibility(
 						probe,
 						worldPosition,
-						worldNormal,
-						data.m_bakeSettings.m_normalBias);
-					const float visibility = surfaceFacingWeight *
-						ProbeMomentVisibility(
-							probe,
-							worldPosition,
-							data.m_bakeSettings);
+						data.m_bakeSettings);
 				const float visibleWeight = interpolationWeight * visibility;
 				totalInterpolationWeight += interpolationWeight;
+				totalFacingWeight += interpolationWeight * surfaceFacingWeight;
 				for (uint32_t coefficientIndex = 0u;
 					coefficientIndex < GIProbeSphericalHarmonicsCoefficientCount;
 					++coefficientIndex)
@@ -275,14 +279,11 @@ bool Sailor::SampleGIProbesIrradiance(
 	{
 		return false;
 	}
-	// Never promote a tiny surviving receiver-side weight to a full probe
-	// contribution. That amplification turns a single bright probe into white
-	// pixels at depth discontinuities and thin alpha-tested geometry. Cells with
-	// at least half of their valid interpolation support retain the established
-	// normalized result; lower coverage fades conservatively instead.
+	// Normal-facing selection is not occlusion. Preserve a constant field as
+	// receiver normals vary, while still attenuating support lost to blockers.
 	const float normalizationWeight = (std::max)(
 		totalVisibleWeight,
-		totalInterpolationWeight * MinimumReceiverCoverage);
+		totalFacingWeight * MinimumReceiverCoverage);
 	for (glm::vec3& coefficient : blended)
 	{
 		coefficient /= normalizationWeight;

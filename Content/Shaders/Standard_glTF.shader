@@ -4,6 +4,7 @@ includes:
 - Shaders/Math.glsl
 - Shaders/Lighting.glsl
 - Shaders/GlobalIllumination.glsl
+- Shaders/Motions.glsl
 - Shaders/ForwardLighting.glsl
 
 defines:
@@ -14,6 +15,7 @@ defines:
  - TRANSMISSION
  - MATERIAL_IOR
  - SUPPORT_LIGHTS_OVERFLOW
+ - MOTIONS
 
 glslCommon: |
   #version 460
@@ -100,6 +102,17 @@ glslVertex: |
     vout.color = inColor;
     vout.texcoord = inTexcoord;
     materialInstance = data.instance[instanceIndex].materialInstance;
+  #ifdef MOTIONS
+    ObjectMotionData motion = data.instance[instanceIndex].motion;
+    bool historyValid = motion.state.y != 0u;
+    vec4 oldPosition = vec4(inPosition, 1.0);
+  #ifdef SKINNING
+    if(data.instance[instanceIndex].skeletonOffset != INVALID_SKELETON_OFFSET)
+      oldPosition = PreviousMotionPosition(inPosition, inBoneIds, inBoneWeights, motion.state.x, historyValid);
+  #endif
+    WriteMotionVertex(gl_Position, previousFrame.projection *
+      (previousFrame.view * (motion.previousModel * oldPosition)), historyValid, motion.state.z != 0u);
+  #endif
   }
 
 glslFragment: |
@@ -418,27 +431,20 @@ glslFragment: |
   vec3 ClearCoatAmbientLighting(
     float roughness,
     vec3 reflectionDirection,
+    vec3 worldPosition,
     float cosLo,
-    float ambientOcclusion)
+    float ambientOcclusion,
+    float environmentVisibility)
   {
-    vec3 specularIrradiance = textureLod(
-      g_envCubemap,
-      reflectionDirection,
-      CalculateSpecularEnvironmentLod(
-        textureQueryLevels(g_envCubemap),
-        roughness)).rgb;
+    vec3 specularIrradiance = SampleForwardEnvironment(g_envCubemap, g_localEnvCubemap,
+      worldPosition, reflectionDirection, roughness, cosLo, ambientOcclusion, environmentVisibility);
     vec2 clearcoatBrdf = texture(
       g_brdfSampler,
       vec2(clamp(cosLo, 0.0, 1.0), roughness)).rg;
     float integratedCoatResponse = max(
       clearcoatBrdf.x + clearcoatBrdf.y,
       0.0);
-    float specularOcclusion = CalculateSpecularOcclusion(
-      ambientOcclusion,
-      cosLo,
-      roughness);
-    return specularIrradiance * integratedCoatResponse *
-      specularOcclusion;
+    return specularIrradiance * integratedCoatResponse;
   }
   #endif
 
@@ -488,24 +494,18 @@ glslFragment: |
     float roughness,
     vec3 color,
     vec3 reflectionDirection,
+    vec3 worldPosition,
     float cosLo,
-    float ambientOcclusion)
+    float ambientOcclusion,
+    float environmentVisibility)
   {
-    vec3 specularIrradiance = textureLod(
-      g_sheenEnvCubemap,
-      reflectionDirection,
-      CalculateSpecularEnvironmentLod(
-        textureQueryLevels(g_sheenEnvCubemap),
-        roughness)).rgb;
+    vec3 specularIrradiance = SampleForwardEnvironment(g_sheenEnvCubemap, g_localSheenEnvCubemap,
+      worldPosition, reflectionDirection, roughness, cosLo, ambientOcclusion, environmentVisibility);
     float directionalAlbedo = texture(
       g_brdfSampler,
       clamp(vec2(cosLo, roughness), vec2(0.0), vec2(1.0))).b;
-    float specularOcclusion = CalculateSpecularOcclusion(
-      ambientOcclusion,
-      cosLo,
-      roughness);
     return color * directionalAlbedo *
-      specularIrradiance * specularOcclusion;
+      specularIrradiance;
   }
   #endif
   
@@ -732,8 +732,9 @@ glslFragment: |
         material.sheenRoughnessFactor,
         material.sheenColorFactor.rgb,
         Lr,
+        vin.worldPosition,
         cosLo,
-        min(material.occlusionStrength, environmentVisibility)) +
+        material.occlusionStrength, environmentVisibility) +
         ambientLighting * ResolveSheenAlbedoScaling(
           cosLo,
           material.sheenRoughnessFactor,
@@ -745,8 +746,9 @@ glslFragment: |
         ClearCoatAmbientLighting(
           material.clearcoatRoughnessFactor,
           LrCC,
+          vin.worldPosition,
           cosLoCC,
-          min(material.occlusionStrength, environmentVisibility)),
+          material.occlusionStrength, environmentVisibility),
         clearcoatViewLayerWeight);
   #endif
     }
@@ -872,17 +874,12 @@ glslFragment: |
       g_transmissionFramebufferSampler,
       transmissionUv,
       transmissionLod).rgb;
-    int transmissionEnvMipCount = textureQueryLevels(g_envCubemap);
-    float transmissionEnvLod = transmissionRoughness *
-      float(max(transmissionEnvMipCount - 1, 0));
     vec3 environmentDirection = mix(
       -viewDirection,
       refractionDirection,
       canTransmit);
-    vec3 environmentRadiance = textureLod(
-      g_envCubemap,
-      environmentDirection,
-      transmissionEnvLod).rgb;
+    vec3 environmentRadiance = SampleForwardEnvironment(g_envCubemap, g_localEnvCubemap,
+      vin.worldPosition, environmentDirection, transmissionRoughness, cosLo, 1.0, 1.0);
     vec3 transmittedColor = mix(
       environmentRadiance,
       framebufferRadiance,
@@ -907,5 +904,8 @@ glslFragment: |
     }
   #endif
 
-    outColor.a = material.baseColorFactor.a;    
+    outColor.a = material.baseColorFactor.a;
+  #ifdef MOTIONS
+    WriteMotionFragment(outColor.a);
+  #endif
   }

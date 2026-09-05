@@ -1,4 +1,11 @@
 find_package(ixwebsocket CONFIG QUIET)
+find_package(imgui CONFIG REQUIRED)
+
+add_executable(ImGuiDrawDataSnapshotTests ImGuiDrawDataSnapshotTests.cpp)
+target_compile_features(ImGuiDrawDataSnapshotTests PRIVATE cxx_std_20)
+target_include_directories(ImGuiDrawDataSnapshotTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ImGuiDrawDataSnapshotTests PRIVATE imgui::imgui)
+add_test(NAME ImGuiDrawDataSnapshotTests COMMAND ImGuiDrawDataSnapshotTests)
 
 if(NOT TARGET ixwebsocket::ixwebsocket)
     add_library(ixwebsocket::ixwebsocket INTERFACE IMPORTED)
@@ -345,6 +352,7 @@ set_target_properties(WorkspaceModuleFixture PROPERTIES OUTPUT_NAME WorkspaceFix
 set_target_properties(WorkspaceModuleIncompatibleFixture PROPERTIES OUTPUT_NAME IncompatibleFixture)
 set_target_properties(WorkspaceModuleMissingEntryFixture PROPERTIES OUTPUT_NAME MissingEntryFixture)
 if(WIN32)
+    sailor_stage_workspace_test_runtime(ImGuiDrawDataSnapshotTests)
     sailor_stage_workspace_test_runtime(WorkspaceModuleContractTests)
     sailor_stage_workspace_test_runtime(WorkspaceModuleRuntimeTests)
     sailor_stage_workspace_test_runtime(WorkspaceContextTests)

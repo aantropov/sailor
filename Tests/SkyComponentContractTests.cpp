@@ -357,46 +357,48 @@ namespace
 			std::is_standard_layout_v<SkyParameters>,
 			"SkyParameters must remain suitable for direct UBO upload");
 		static_assert(
-			sizeof(SkyParameters) == 100,
+			sizeof(SkyParameters) == 116,
 			"SkyParameters must preserve its shader-facing byte size");
 
 		Require(offsetof(SkyParameters, m_lightDirection) == 0,
 			"light direction should start the sky UBO");
 		Require(offsetof(SkyParameters, m_sunIlluminance) == 16,
 			"sun illuminance should follow the vec4 direction");
-		Require(offsetof(SkyParameters, m_cloudsAttenuation1) == 32,
-			"cloud attenuation 1 should follow sun illuminance");
-		Require(offsetof(SkyParameters, m_cloudsAttenuation2) == 36,
+		Require(offsetof(SkyParameters, m_groundRadiance) == 32,
+			"ground radiance should follow sun illuminance");
+		Require(offsetof(SkyParameters, m_cloudsAttenuation1) == 48,
+			"cloud attenuation 1 should follow ground radiance");
+		Require(offsetof(SkyParameters, m_cloudsAttenuation2) == 52,
 			"cloud attenuation 2 should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_cloudsDensity) == 40,
+		Require(offsetof(SkyParameters, m_cloudsDensity) == 56,
 			"cloud density should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_cloudsCoverage) == 44,
+		Require(offsetof(SkyParameters, m_cloudsCoverage) == 60,
 			"cloud coverage should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_phaseInfluence1) == 48,
+		Require(offsetof(SkyParameters, m_phaseInfluence1) == 64,
 			"phase influence 1 should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_phaseInfluence2) == 52,
+		Require(offsetof(SkyParameters, m_phaseInfluence2) == 68,
 			"phase influence 2 should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_eccentrisy1) == 56,
+		Require(offsetof(SkyParameters, m_eccentrisy1) == 72,
 			"eccentricity 1 should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_eccentrisy2) == 60,
+		Require(offsetof(SkyParameters, m_eccentrisy2) == 76,
 			"eccentricity 2 should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_fog) == 64,
+		Require(offsetof(SkyParameters, m_fog) == 80,
 			"horizon blend should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_cloudScatteringScale) == 68,
+		Require(offsetof(SkyParameters, m_cloudScatteringScale) == 84,
 			"cloud scattering scale should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_ambient) == 72,
+		Require(offsetof(SkyParameters, m_ambient) == 88,
 			"ambient should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_scatteringSteps) == 76,
+		Require(offsetof(SkyParameters, m_scatteringSteps) == 92,
 			"scattering steps should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_scatteringDensity) == 80,
+		Require(offsetof(SkyParameters, m_scatteringDensity) == 96,
 			"scattering density should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_scatteringIntensity) == 84,
+		Require(offsetof(SkyParameters, m_scatteringIntensity) == 100,
 			"scattering intensity should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_scatteringPhase) == 88,
+		Require(offsetof(SkyParameters, m_scatteringPhase) == 104,
 			"scattering phase should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_sunShaftsIntensity) == 92,
+		Require(offsetof(SkyParameters, m_sunShaftsIntensity) == 108,
 			"sun shafts intensity should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_sunShaftsDistance) == 96,
+		Require(offsetof(SkyParameters, m_sunShaftsDistance) == 112,
 			"sun shafts distance should preserve its UBO offset");
 
 		const SkyParameters defaults;
@@ -409,6 +411,7 @@ namespace
 			"SkyParameters should preserve the shader defaults");
 		Require(
 			IsNear(defaults.m_sunIlluminance, glm::vec4(120000.0f, 120000.0f, 120000.0f, 0.0f)) &&
+				IsNear(defaults.m_groundRadiance, glm::vec4(0.0f)) &&
 				IsNear(defaults.m_cloudsAttenuation1, 0.3f) &&
 				IsNear(defaults.m_cloudsAttenuation2, 0.06f) &&
 				IsNear(defaults.m_cloudsDensity, 0.3f) &&
@@ -964,6 +967,62 @@ namespace
 			"cancelling transient sky generation should release its partial texture");
 	}
 
+	void TestGroundEnvironmentUsesTheSameSkyAndSun()
+	{
+		SkyTestWorld world;
+		auto sky = world.Instantiate("GroundEnvironment")->AddComponent<SkyComponent>();
+		sky->SetSunAngle(38.0f);
+		sky->SetSunIlluminance(glm::vec3(2000.0f, 1800.0f, 1600.0f));
+		const SkyParameters withoutGround = sky->GetSkyParameters();
+		Require(sky->GetGroundAlbedo() == glm::vec3(0.0f) &&
+			withoutGround.m_groundRadiance == glm::vec4(0.0f),
+			"terrain reflection must be opt-in");
+		const glm::vec3 albedo(0.2f, 0.3f, 0.4f);
+		sky->SetGroundAlbedo(albedo);
+		const SkyParameters withGround = sky->GetSkyParameters();
+		const auto serialized = sky->GetReflectedData().Serialize();
+		Require(IsNear(serialized["overrideProperties"]["groundAlbedo"].as<glm::vec3>(), albedo),
+			"ground reflectance must serialize through the editor/runtime reflected interface");
+		const glm::vec3 radiance(withGround.m_groundRadiance);
+		const glm::vec3 directLambert = albedo * Raytracing::CalculateDirectSunIlluminance(withGround) *
+			(-withGround.m_lightDirection.y / glm::pi<float>());
+		Require(Math::AllFinite(radiance) && glm::all(glm::greaterThan(radiance, directLambert)),
+			"ground must reflect both direct horizontal sunlight and diffuse skylight");
+		Require(!(withoutGround == withGround) &&
+			!(withoutGround.GetEnvironmentKey() == withGround.GetEnvironmentKey()),
+			"changing ground must invalidate sky upload and filtered environment caches");
+
+		TVector<glm::vec4> original, reflected;
+		const glm::uvec2 extent(16u, 8u);
+		Require(Raytracing::GenerateSkyEnvironmentEquirectangular(withoutGround, extent, original) &&
+			Raytracing::GenerateSkyEnvironmentEquirectangular(withGround, extent, reflected),
+			"both environment variants should generate successfully");
+		for (uint32_t y = 0u; y < extent.y; ++y)
+			for (uint32_t x = 0u; x < extent.x; ++x)
+			{
+				const size_t index = x + y * extent.x;
+				Require(y < extent.y / 2u ? reflected[index] == original[index] :
+					IsNear(glm::vec3(reflected[index]), radiance),
+					"probe environment must keep the sky and use the raster ground boundary below it");
+			}
+		sky->SetGroundAlbedo(albedo * 0.5f);
+		Require(IsNear(glm::vec3(sky->GetSkyParameters().m_groundRadiance), radiance * 0.5f, 0.001f),
+			"Lambertian ground radiance must scale linearly with albedo");
+		sky->SetGroundAlbedo(albedo);
+		sky->SetSunIlluminance(glm::vec3(withGround.m_sunIlluminance) * 0.5f);
+		Require(IsNear(glm::vec3(sky->GetSkyParameters().m_groundRadiance), radiance * 0.5f, 0.001f),
+			"sunlight and skylight must both follow source illuminance changes");
+		sky->SetSunAngle(-12.0f);
+		Require(glm::length(glm::vec3(sky->GetSkyParameters().m_groundRadiance)) < glm::length(radiance) * 0.05f,
+			"daylight ground must not remain bright at night");
+		sky->SetSunIlluminance(glm::vec3(0.0f));
+		Require(sky->GetSkyParameters().m_groundRadiance == glm::vec4(0.0f),
+			"ground reflection cannot emit light when its sources are dark");
+		sky->SetGroundAlbedo(glm::vec3(-1.0f, 0.4f, 2.0f));
+		Require(sky->GetGroundAlbedo() == glm::vec3(0.0f, 0.4f, 1.0f), "ground albedo must be bounded");
+		world.Clear();
+	}
+
 	void TestSkyNodeMailboxHandoff()
 	{
 		auto node = TRefPtr<SkyNodeMailboxProbe>::Make();
@@ -1298,6 +1357,7 @@ int main()
 		{ "SettersClampAndUpdateDirection", TestSettersClampAndUpdateDirection },
 		{ "EnvironmentKeyHashEquality", TestEnvironmentKeyHashEquality },
 		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
+		{ "GroundEnvironmentUsesTheSameSkyAndSun", TestGroundEnvironmentUsesTheSameSkyAndSun },
 		{ "SkyNodeMailboxHandoff", TestSkyNodeMailboxHandoff },
 		{ "CloudNoiseCacheRecovery", TestCloudNoiseCacheRecovery },
 		{ "CloudsWaitForAllTextureUploads", TestCloudsWaitForAllTextureUploads },

@@ -415,13 +415,14 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		}
 	}
 
+	ImGuiApi::PreparedFramePtr imguiFrame;
 	{
 		SAILOR_PROFILE_SCOPE("Record ImGui Update Command List");
 
 		auto transferCmdList = currentInputState.CreateCommandBuffer(1);
 		RHI::Renderer::GetDriver()->SetDebugName(transferCmdList, "ImGui Transfer CommandList");
 		RHI::Renderer::GetDriverCommands()->BeginCommandList(transferCmdList, true);
-		App::GetSubmodule<ImGuiApi>()->PrepareFrame(transferCmdList);
+		imguiFrame = App::GetSubmodule<ImGuiApi>()->PrepareFrame(transferCmdList);
 		RHI::Renderer::GetDriverCommands()->EndCommandList(transferCmdList);
 	}
 
@@ -431,7 +432,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 			RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record ImGui Draw Command List");
 			RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false, imguiColorFormat);
-			App::GetSubmodule<ImGuiApi>()->RenderFrame(cmdList);
+			ImGuiApi::RenderFrame(imguiFrame, cmdList);
 			RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 			return cmdList;

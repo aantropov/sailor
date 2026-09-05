@@ -1063,6 +1063,7 @@ void RHISceneView::Clear()
 void RHISceneViewSnapshot::ResetForReuse()
 {
 	m_submissionContext.Clear();
+	m_previousMotionFrame.Clear();
 	m_sceneVersions.Clear();
 	m_sceneRevision = 0ull;
 	m_renderMode = ESceneViewRenderMode::Lit;
