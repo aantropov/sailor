@@ -2,6 +2,7 @@
 #include "Engine/GameObject.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace Sailor;
 
@@ -13,12 +14,16 @@ void LandscapeComponent::Initialize()
 	data.SetOwner(GetOwner());
 	data.SetSettings(m_chunksX, m_chunksZ, m_chunkSize, m_chunkResolution,
 		m_heightScale, m_noiseScale, m_seed, m_textureTiling);
+	data.SetLodSettings(m_lodDistances, m_lodSkirtDepth);
+	data.SetGrassResidencyHysteresis(m_grassResidencyHysteresis);
 	data.SetMaterial(m_material);
 	data.SetLayerTextures(m_layerTextures);
 	data.SetImportMaps(m_heightmapTexture, m_materialMasks);
 	data.SetAuthoredStamps(m_sculptStamps, m_paintStamps);
+	data.SetVegetationAsset(m_vegetation);
 	data.SetVegetationProfiles(m_vegetationModels, m_vegetationMaterials,
-		m_vegetationMeshIndex, m_vegetationInstancesPerChunk, m_vegetationMinScale,
+		m_vegetationMeshIndex, m_vegetationInstancesPerChunk,
+		m_vegetationResidency, m_vegetationPriority, m_vegetationMinScale,
 		m_vegetationMaxScale, m_vegetationGroundOffset,
 		m_vegetationShadowMode, m_vegetationShadowDistance,
 		m_vegetationMinLod, m_vegetationMaxLod,
@@ -52,12 +57,16 @@ void LandscapeComponent::MarkDirty()
 	{
 		data->SetSettings(m_chunksX, m_chunksZ, m_chunkSize, m_chunkResolution,
 			m_heightScale, m_noiseScale, m_seed, m_textureTiling);
+		data->SetLodSettings(m_lodDistances, m_lodSkirtDepth);
+		data->SetGrassResidencyHysteresis(m_grassResidencyHysteresis);
 		data->SetMaterial(m_material);
 		data->SetLayerTextures(m_layerTextures);
 		data->SetImportMaps(m_heightmapTexture, m_materialMasks);
 		data->SetAuthoredStamps(m_sculptStamps, m_paintStamps);
+		data->SetVegetationAsset(m_vegetation);
 		data->SetVegetationProfiles(m_vegetationModels, m_vegetationMaterials,
-			m_vegetationMeshIndex, m_vegetationInstancesPerChunk, m_vegetationMinScale,
+			m_vegetationMeshIndex, m_vegetationInstancesPerChunk,
+			m_vegetationResidency, m_vegetationPriority, m_vegetationMinScale,
 			m_vegetationMaxScale, m_vegetationGroundOffset,
 			m_vegetationShadowMode, m_vegetationShadowDistance,
 			m_vegetationMinLod, m_vegetationMaxLod,
@@ -79,12 +88,28 @@ void LandscapeComponent::SetLayerTextures(const TVector<FileId>& value) { m_laye
 void LandscapeComponent::SetHeightmapTexture(const FileId& value) { m_heightmapTexture = value; MarkDirty(); }
 void LandscapeComponent::SetMaterialMasks(const TVector<FileId>& value) { m_materialMasks = value; if (m_materialMasks.Num() > 4u) m_materialMasks.Resize(4u); MarkDirty(); }
 void LandscapeComponent::SetTextureTiling(float value) { m_textureTiling = (std::max)(value, 0.001f); MarkDirty(); }
+void LandscapeComponent::SetLodDistances(const TVector<float>& value)
+{
+	m_lodDistances = value;
+	for (float& distance : m_lodDistances)
+	{
+		distance = std::isfinite(distance) ? (std::max)(distance, 1.0f) : 1.0f;
+	}
+	std::sort(m_lodDistances.begin(), m_lodDistances.end());
+	m_lodDistances.Resize((std::min)(m_lodDistances.Num(), size_t(7u)));
+	MarkDirty();
+}
+void LandscapeComponent::SetLodSkirtDepth(float value) { m_lodSkirtDepth = std::isfinite(value) ? (std::clamp)(value, 0.0f, 64.0f) : 2.0f; MarkDirty(); }
+void LandscapeComponent::SetGrassResidencyHysteresis(float value) { m_grassResidencyHysteresis = std::isfinite(value) ? (std::clamp)(value, 0.0f, 512.0f) : 12.0f; MarkDirty(); }
 void LandscapeComponent::SetSculptStamps(const TVector<float>& value) { m_sculptStamps = value; m_sculptStamps.Resize(m_sculptStamps.Num() / 5u * 5u); MarkDirty(); }
 void LandscapeComponent::SetPaintStamps(const TVector<float>& value) { m_paintStamps = value; m_paintStamps.Resize(m_paintStamps.Num() / 5u * 5u); MarkDirty(); }
+void LandscapeComponent::SetVegetation(const FileId& value) { m_vegetation = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationModels(const TVector<FileId>& value) { m_vegetationModels = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationMaterials(const TVector<FileId>& value) { m_vegetationMaterials = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationMeshIndex(const TVector<float>& value) { m_vegetationMeshIndex = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationInstancesPerChunk(const TVector<float>& value) { m_vegetationInstancesPerChunk = value; MarkDirty(); }
+void LandscapeComponent::SetVegetationResidency(const TVector<float>& value) { m_vegetationResidency = value; MarkDirty(); }
+void LandscapeComponent::SetVegetationPriority(const TVector<float>& value) { m_vegetationPriority = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationMinScale(const TVector<float>& value) { m_vegetationMinScale = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationMaxScale(const TVector<float>& value) { m_vegetationMaxScale = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationGroundOffset(const TVector<float>& value) { m_vegetationGroundOffset = value; MarkDirty(); }
@@ -105,8 +130,18 @@ void LandscapeComponent::SetRegenerate(bool value)
 	{
 		if (auto* data = TryGetData())
 		{
-			data->RequestFullRebuild();
+			data->RequestVegetationAssetReload();
 		}
 	}
 }
 void LandscapeComponent::SetFlatten(bool value) { m_bFlatten = false; if (value) { m_heightScale = 0.0f; MarkDirty(); } }
+void LandscapeComponent::SetSaveVegetation(bool value)
+{
+	if (value)
+	{
+		if (auto* data = TryGetData())
+		{
+			data->RequestSaveVegetation();
+		}
+	}
+}

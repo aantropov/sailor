@@ -36,6 +36,9 @@ namespace Sailor
 		SAILOR_API float GetZFar() const { return GetData().GetZFar(); }
 		SAILOR_API void SetZFar(float value);
 
+		// Call after a cinematic cut, seek, respawn or intentional teleport.
+		SAILOR_API void ResetMotionHistory();
+
 		SAILOR_API static float CalculateAspect();
 
 	protected:

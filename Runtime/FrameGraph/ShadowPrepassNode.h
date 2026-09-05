@@ -47,6 +47,13 @@ namespace Sailor
 		};
 
 		SAILOR_API static const char* GetName() { return m_name; }
+		static constexpr float GetRasterShadowBias(
+			RHI::EShadowType shadowType,
+			float configuredBias) noexcept
+		{
+			// Reverse Z moves casters away from the light by decreasing their depth.
+			return shadowType == RHI::EShadowType::PCF ? -configuredBias : 0.0f;
+		}
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;

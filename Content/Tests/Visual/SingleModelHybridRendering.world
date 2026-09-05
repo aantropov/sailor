@@ -2,6 +2,7 @@ name: SingleModelHybridRendering
 prefabs:
   - gameObjects:
       - name: SingleModelHybridRendering
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -39,6 +40,7 @@ prefabs:
           instanceId: 3D5C42D92E7A4F1BA17A582A2AEF2D10_10010010010010010000
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 0
           - 130
@@ -68,6 +70,7 @@ prefabs:
           instanceId: 9A6AC30A438F49F69E4B73D72A53EF01_10010010010010010001
   - gameObjects:
       - name: Duck
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -104,6 +107,7 @@ prefabs:
           instanceId: 6B2D048C8B044DE5AFB19B3AE8FB39F3_10010010010010010002
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 300
@@ -127,13 +131,9 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 17
-            - 17
-            - 17
-          attenuation:
-            - 1
-            - 0.0219999999
-            - 0.00190000003
+            - 17000
+            - 17000
+            - 17000
           lightType: Directional
           bounds:
             - 100

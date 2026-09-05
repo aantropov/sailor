@@ -219,6 +219,168 @@ public sealed class EngineProtocolClientTests
             requests[1].CommandCase);
     }
 
+    [Theory]
+    [InlineData(EditorStatsMode.None)]
+    [InlineData(EditorStatsMode.RenderStats)]
+    [InlineData(EditorStatsMode.RenderStatsAndQueries)]
+    public async Task SetEditorStatsModeAsync_SendsExplicitTypedMode(
+        EditorStatsMode mode)
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true });
+        });
+
+        Assert.True(await client.SetEditorStatsModeAsync(mode));
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.SetEditorStatsMode,
+            capturedRequest.CommandCase);
+        Assert.Equal(mode, capturedRequest.SetEditorStatsMode.Mode);
+    }
+
+    [Theory]
+    [InlineData(EditorStatsMode.Unspecified)]
+    [InlineData((EditorStatsMode)99)]
+    public async Task SetEditorStatsModeAsync_RejectsInvalidModes(
+        EditorStatsMode mode)
+    {
+        var client = CreateClient(request =>
+            Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true }));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            client.SetEditorStatsModeAsync(mode));
+    }
+
+    [Theory]
+    [InlineData(EditorRenderMode.Lit)]
+    [InlineData(EditorRenderMode.AmbientOcclusion)]
+    [InlineData(EditorRenderMode.Cascades)]
+    [InlineData(EditorRenderMode.LightTiles)]
+    [InlineData(EditorRenderMode.GlobalIlluminationOnly)]
+    [InlineData(EditorRenderMode.GlobalIlluminationProbes)]
+    [InlineData(EditorRenderMode.GlobalIlluminationBricks)]
+    [InlineData(EditorRenderMode.GlobalIlluminationValidity)]
+    [InlineData(EditorRenderMode.GlobalIlluminationVisibility)]
+    [InlineData(EditorRenderMode.GlobalIlluminationResidency)]
+    [InlineData(EditorRenderMode.GlobalIlluminationAssetIdentity)]
+    [InlineData(EditorRenderMode.GlobalIlluminationFallback)]
+    [InlineData(EditorRenderMode.GlobalIlluminationSubdivisions)]
+    public async Task SetEditorRenderModeAsync_SendsExplicitTypedMode(
+        EditorRenderMode mode)
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true });
+        });
+
+        Assert.True(await client.SetEditorRenderModeAsync(mode));
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.SetEditorRenderMode,
+            capturedRequest.CommandCase);
+        Assert.Equal(mode, capturedRequest.SetEditorRenderMode.Mode);
+    }
+
+    [Theory]
+    [InlineData(EditorRenderMode.Unspecified)]
+    [InlineData((EditorRenderMode)99)]
+    public async Task SetEditorRenderModeAsync_RejectsInvalidModes(
+        EditorRenderMode mode)
+    {
+        var client = CreateClient(request =>
+            Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true }));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            client.SetEditorRenderModeAsync(mode));
+    }
+
+    [Theory]
+    [InlineData(RuntimeGIProbesPreviewBudget.Eco)]
+    [InlineData(RuntimeGIProbesPreviewBudget.Balanced)]
+    public async Task SetRuntimeGIProbesPreviewBudgetAsync_SendsTypedBudget(
+        RuntimeGIProbesPreviewBudget budget)
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true });
+        });
+
+        Assert.True(await client.SetRuntimeGIProbesPreviewBudgetAsync(budget));
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.SetRuntimeGiProbesPreviewBudget,
+            capturedRequest.CommandCase);
+        Assert.Equal(
+            budget,
+            capturedRequest.SetRuntimeGiProbesPreviewBudget.Budget);
+    }
+
+    [Theory]
+    [InlineData(RuntimeGIProbesPreviewBudget.Unspecified)]
+    [InlineData((RuntimeGIProbesPreviewBudget)99)]
+    public async Task SetRuntimeGIProbesPreviewBudgetAsync_RejectsInvalidBudget(
+        RuntimeGIProbesPreviewBudget budget)
+    {
+        var client = CreateClient(request =>
+            Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true }));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            client.SetRuntimeGIProbesPreviewBudgetAsync(budget));
+    }
+
+    [Fact]
+    public async Task GetEditorRenderModeAsync_ReadsTypedEngineState()
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.EditorRenderModeResult =
+                    new EditorRenderModeResult
+                    {
+                        Mode = EditorRenderMode.Cascades
+                    });
+        });
+
+        Assert.Equal(
+            EditorRenderMode.Cascades,
+            await client.GetEditorRenderModeAsync());
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.GetEditorRenderMode,
+            capturedRequest.CommandCase);
+    }
+
     [Fact]
     public async Task AnimatorParameters_UseTypedProtocolValues()
     {
@@ -646,7 +808,7 @@ public sealed class EngineProtocolClientTests
                     ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml,
                     request.CommandCase);
                 Assert.Equal(
-                    EngineProtocolClient.StrictInstanceIdsProtocolVersion,
+                    EngineProtocolClient.ProtocolVersion,
                     request.ProtocolVersion);
                 Assert.True(
                     request.InstantiatePrefabFromYaml.StrictInstanceIds);
@@ -728,7 +890,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public async Task InstantiatePrefabFromYamlAsync_UsesVersionGatedStrictRequest()
+    public async Task InstantiatePrefabFromYamlAsync_UsesV1StrictFlag()
     {
         var requests = new List<ProtocolRequest>();
         var client = CreateClient(request =>
@@ -775,7 +937,7 @@ public sealed class EngineProtocolClientTests
                     ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml,
                     request.CommandCase);
                 Assert.Equal(
-                    EngineProtocolClient.StrictInstanceIdsProtocolVersion,
+                    EngineProtocolClient.ProtocolVersion,
                     request.ProtocolVersion);
                 Assert.Equal(
                     "prefab: undo",
@@ -838,7 +1000,7 @@ public sealed class EngineProtocolClientTests
                     ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml,
                     request.CommandCase);
                 Assert.Equal(
-                    EngineProtocolClient.StrictInstanceIdsProtocolVersion,
+                    EngineProtocolClient.ProtocolVersion,
                     request.ProtocolVersion);
                 Assert.True(
                     request.InstantiatePrefabFromYaml.StrictInstanceIds);
@@ -846,7 +1008,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public async Task InstantiatePrefabFromYamlStrictAsync_RejectsOldV1HostWithoutSendingMutation()
+    public async Task InstantiatePrefabFromYamlStrictAsync_RejectsHostWithoutCapability()
     {
         var requests = new List<ProtocolRequest>();
         var client = CreateClient(request =>
@@ -896,50 +1058,6 @@ public sealed class EngineProtocolClientTests
                 request.CommandCase ==
                     ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml &&
                 request.InstantiatePrefabFromYaml.StrictInstanceIds);
-    }
-
-    [Fact]
-    public async Task InstantiatePrefabFromYamlStrictAsync_RejectsV1ResponseAfterStaleCapability()
-    {
-        var requests = new List<ProtocolRequest>();
-        var client = CreateClient(request =>
-        {
-            requests.Add(request);
-            if (request.CommandCase ==
-                ProtocolRequest.CommandOneofCase.RequestAssetReload)
-            {
-                return Success(
-                    request,
-                    response => response.BoolResult =
-                        new BoolResult { Value = true });
-            }
-
-            return new ProtocolResponse
-            {
-                ProtocolVersion = EngineProtocolClient.ProtocolVersion,
-                RequestId = request.RequestId,
-                Success = true,
-                BoolResult = new BoolResult { Value = true }
-            };
-        });
-
-        Assert.True(await client.RequestAssetReloadAsync());
-        var exception =
-            await Assert.ThrowsAsync<EngineProtocolException>(
-                () => client.InstantiatePrefabFromYamlStrictAsync(
-                    "prefab: undo",
-                    string.Empty));
-
-        Assert.Contains(
-            "protocol version",
-            exception.Message,
-            StringComparison.Ordinal);
-        Assert.Equal(2, requests.Count);
-        Assert.Equal(
-            EngineProtocolClient.StrictInstanceIdsProtocolVersion,
-            requests[1].ProtocolVersion);
-        Assert.True(
-            requests[1].InstantiatePrefabFromYaml.StrictInstanceIds);
     }
 
     [Fact]

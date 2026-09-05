@@ -9,11 +9,18 @@
 #include "Platform/Win32/Window.h"
 #include "Containers/Containers.h"
 #include "Math/Math.h"
+#include "RHI/RenderDebugView.h"
+#include "Settings/GraphicsSettings.h"
 #include "Workspace/WorkspaceContext.h"
 #include <functional>
 
 namespace Sailor
 {
+	struct EditorGIProbesBakeRequest;
+	struct EditorGIProbesBakeStatus;
+	struct EditorGlobalIlluminationState;
+	struct GISettings;
+
 	namespace Workspace
 	{
 		class WorkspaceModuleManager;
@@ -52,6 +59,15 @@ namespace Sailor
 		SAILOR_API static App* GetInstance();
 		SAILOR_API static const std::string& GetWorkspace();
 		SAILOR_API static const Workspace::WorkspaceContext& GetWorkspaceContext();
+		SAILOR_API static const Settings::GraphicsSettings& GetGraphicsSettings();
+		SAILOR_API static const Settings::GraphicsQualityProfile& GetActiveGraphicsSettings();
+		SAILOR_API static Settings::EGraphicsQualitySelection GetSelectedGraphicsQuality();
+		SAILOR_API static const Settings::EditorGraphicsSettings& GetEditorGraphicsSettings();
+		SAILOR_API static Settings::EGraphicsQuality GetActiveGraphicsQuality();
+		SAILOR_API static Settings::ERenderStatsMode GetRenderStatsMode();
+		SAILOR_API static bool SetRenderStatsMode(Settings::ERenderStatsMode mode);
+		SAILOR_API static RHI::ESceneViewRenderMode GetEditorRenderMode();
+		SAILOR_API static bool SetEditorRenderMode(RHI::ESceneViewRenderMode mode);
 
 		SAILOR_API static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
 		SAILOR_API static void Start();
@@ -96,6 +112,31 @@ namespace Sailor
 		SAILOR_API static bool SetEditorSimulationEnabled(bool bEnabled);
 		SAILOR_API static bool IsEditorSimulationEnabled();
 		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
+		SAILOR_API static bool StartEditorGIProbesBake(
+			const EditorGIProbesBakeRequest& request,
+			std::string& outDiagnostic);
+		SAILOR_API static bool CancelEditorGIProbesBake(
+			std::string& outDiagnostic);
+		SAILOR_API static bool GetEditorGIProbesBakeStatus(
+			EditorGIProbesBakeStatus& outStatus);
+		SAILOR_API static bool SetEditorGISettings(
+			GISettings settings,
+			std::string& outDiagnostic);
+		SAILOR_API static bool GetEditorGlobalIlluminationState(
+			EditorGlobalIlluminationState& outState);
+		SAILOR_API static bool SetEditorRuntimeGIProbesPreviewEnabled(
+			bool bEnabled,
+			std::string& outDiagnostic);
+		SAILOR_API static bool SetEditorRuntimeGIProbesBudget(
+			Settings::ERuntimeGIProbesEditorBudget budget,
+			std::string& outDiagnostic);
+		SAILOR_API static bool SetEditorRuntimeGIProbesPaused(
+			bool bPaused,
+			std::string& outDiagnostic);
+		SAILOR_API static bool RestartEditorRuntimeGIProbes(
+			std::string& outDiagnostic);
+		SAILOR_API static bool RebuildEditorRuntimeGIProbesScene(
+			std::string& outDiagnostic);
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool SetEditorAnimatorParameter(
 			const char* strInstanceId,

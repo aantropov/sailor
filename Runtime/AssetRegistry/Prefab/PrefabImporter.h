@@ -34,7 +34,7 @@ namespace Sailor
 		public:
 
 			std::string m_name{};
-			EMobilityType m_mobilityType{};
+			EMobilityType m_mobilityType = EMobilityType::Stationary;
 
 			glm::vec4 m_position{};
 			glm::quat m_rotation = glm::identity<glm::quat>();
@@ -51,6 +51,7 @@ namespace Sailor
 		private:
 
 			bool m_bHasParentIndex = true;
+			bool m_bHasMobilityType = true;
 
 			friend class Prefab;
 		};
@@ -99,6 +100,10 @@ namespace Sailor
 		SAILOR_API const FileId& GetLinkedSnapshotSourceFileId() const { return m_linkedSnapshotSourceFileId; }
 
 	protected:
+
+		void SerializeLinkedProperties(
+			YAML::Node& outData,
+			const FileId& sourceFileId) const;
 
 		SAILOR_API static void SerializeGameObject(
 			GameObjectPtr root,

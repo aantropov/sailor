@@ -12,6 +12,9 @@
 #include "Engine/InstanceId.h"
 #include "Components/AnimatorComponent.h"
 #include "Editor/EditorViewportController.h"
+#include "Editor/GlobalIlluminationBakeController.h"
+#include "Editor/GlobalIlluminationEditorState.h"
+#include "ECS/GlobalIlluminationECS.h"
 #include "Submodules/Editor.h"
 #include "Workspace/WorkspaceModuleManager.h"
 #include "Workspace/WorkspaceCacheContract.h"
@@ -34,6 +37,21 @@ namespace
 		SAILOR_LOG_ERROR("Failed to serialize editor type metadata: %s", message);
 	}
 
+	GlobalIlluminationECS* ResolveEditorGlobalIllumination(
+		std::string* outDiagnostic = nullptr)
+	{
+		auto* editor = App::GetSubmodule<Editor>();
+		auto* world = editor ? editor->GetWorld() : nullptr;
+		auto* globalIllumination = world
+			? world->GetECS<GlobalIlluminationECS>()
+			: nullptr;
+		if (!globalIllumination && outDiagnostic)
+		{
+			*outDiagnostic = "Global Illumination ECS is unavailable";
+		}
+		return globalIllumination;
+	}
+
 	bool TryParseOptionalParent(const std::string& value, InstanceId& outParent)
 	{
 		outParent = InstanceId::Invalid;
@@ -42,7 +60,7 @@ namespace
 			return true;
 		}
 
-		outParent.Deserialize(YAML::Node(value));
+		outParent = InstanceId(value);
 		return outParent.IsGameObjectId();
 	}
 
@@ -54,7 +72,7 @@ namespace
 			return true;
 		}
 
-		outInstanceId.Deserialize(YAML::Node(value));
+		outInstanceId = InstanceId(value);
 		return outInstanceId.IsGameObjectId();
 	}
 
@@ -66,7 +84,7 @@ namespace
 			return true;
 		}
 
-		outInstanceId.Deserialize(YAML::Node(value));
+		outInstanceId = InstanceId(value);
 		return outInstanceId.ComponentId() != InstanceId::Invalid &&
 			outInstanceId.GameObjectId() != InstanceId::Invalid;
 	}
@@ -288,8 +306,7 @@ uint64_t App::GetEditorManagedMutationRevision(uint32_t kind, const char* strIns
 
 			if (kind == c_objectMutationRevisionKind && !instanceId.empty())
 			{
-				InstanceId parsedInstanceId{};
-				parsedInstanceId.Deserialize(YAML::Node(instanceId));
+				const InstanceId parsedInstanceId(instanceId);
 				return editor->GetManagedObjectMutationRevision(parsedInstanceId);
 			}
 
@@ -464,8 +481,7 @@ bool App::LoadEditorWorld(const char* strFileId)
 				return false;
 			}
 
-			FileId fileId;
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const FileId fileId(fileIdValue);
 			auto worldPrefab = assetRegistry->LoadAssetFromFile<WorldPrefab>(fileId);
 			if (!worldPrefab || !worldPrefab->IsReady())
 			{
@@ -563,9 +579,199 @@ bool App::PreviewEditorAudioAsset(const char* strFileId)
 				return false;
 			}
 
-			FileId fileId;
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const FileId fileId(fileIdValue);
 			return fileId && editor->PreviewAudioAsset(fileId);
+		});
+}
+
+bool App::StartEditorGIProbesBake(
+	const EditorGIProbesBakeRequest& request,
+	std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[request, &outDiagnostic]()
+		{
+			auto* editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				outDiagnostic = "the Editor submodule is unavailable";
+				return false;
+			}
+			return editor->StartGIProbesBake(request, outDiagnostic);
+		});
+}
+
+bool App::CancelEditorGIProbesBake(std::string& outDiagnostic)
+{
+	auto* editor = GetSubmodule<Editor>();
+	if (!editor)
+	{
+		outDiagnostic = "the Editor submodule is unavailable";
+		return false;
+	}
+	return editor->CancelGIProbesBake(outDiagnostic);
+}
+
+bool App::GetEditorGIProbesBakeStatus(
+	EditorGIProbesBakeStatus& outStatus)
+{
+	const auto* editor = GetSubmodule<Editor>();
+	if (!editor)
+	{
+		outStatus = {};
+		return false;
+	}
+	outStatus = editor->GetGIProbesBakeStatus();
+	return true;
+}
+
+bool App::SetEditorGISettings(
+	GISettings settings,
+	std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[settings = std::move(settings), &outDiagnostic]() mutable
+		{
+			auto* editor = GetSubmodule<Editor>();
+			auto* world = editor ? editor->GetWorld() : nullptr;
+			if (!world)
+			{
+				outDiagnostic = "the current Editor world is unavailable";
+				return false;
+			}
+			return world->SetGISettings(
+				std::move(settings),
+				outDiagnostic);
+		});
+}
+
+bool App::GetEditorGlobalIlluminationState(
+	EditorGlobalIlluminationState& outState)
+{
+	outState = {};
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[&outState]()
+		{
+			auto* globalIllumination = ResolveEditorGlobalIllumination();
+			if (!globalIllumination)
+			{
+				return false;
+			}
+			outState.m_maxProbeStatesPerSnapshot =
+				globalIllumination->GetMaxProbeStatesPerSnapshot();
+			outState.m_mode = globalIllumination->GetWorldSettings().m_mode;
+			outState.m_runtimeSettings =
+				globalIllumination->GetWorldSettings().m_runtimeProbes;
+			outState.m_runtimeStatus =
+				globalIllumination->GetRuntimeGIProbesStatus();
+			outState.m_bRuntimePreviewEnabled =
+				globalIllumination->IsRuntimeGIProbesPreviewEnabled();
+			outState.m_runtimeEditorBudget =
+				globalIllumination->GetRuntimeGIProbesEditorBudget();
+			outState.m_bEnabled = globalIllumination->IsEnabled();
+			outState.m_probes = globalIllumination->GetProbeStates();
+			outState.m_diagnostic = globalIllumination->GetDiagnostic();
+			outState.m_compositionCount =
+				globalIllumination->GetCompositionCount();
+			outState.m_rejectedCompositionCount =
+				globalIllumination->GetRejectedCompositionCount();
+			return true;
+		});
+}
+
+bool App::SetEditorRuntimeGIProbesPreviewEnabled(
+	bool bEnabled,
+	std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[bEnabled, &outDiagnostic]()
+		{
+			auto* globalIllumination = ResolveEditorGlobalIllumination(
+				&outDiagnostic);
+			if (!globalIllumination)
+			{
+				return false;
+			}
+			return globalIllumination->SetRuntimeGIProbesPreviewEnabled(
+				bEnabled,
+				outDiagnostic);
+		});
+}
+
+bool App::SetEditorRuntimeGIProbesPaused(
+	bool bPaused,
+	std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[bPaused, &outDiagnostic]()
+		{
+			auto* globalIllumination = ResolveEditorGlobalIllumination(
+				&outDiagnostic);
+			if (!globalIllumination)
+			{
+				return false;
+			}
+			return globalIllumination->SetRuntimeGIProbesPaused(
+				bPaused,
+				outDiagnostic);
+		});
+}
+
+bool App::SetEditorRuntimeGIProbesBudget(
+	Settings::ERuntimeGIProbesEditorBudget budget,
+	std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[budget, &outDiagnostic]()
+		{
+			auto* globalIllumination = ResolveEditorGlobalIllumination(
+				&outDiagnostic);
+			if (!globalIllumination)
+			{
+				return false;
+			}
+			return globalIllumination->SetRuntimeGIProbesEditorBudget(
+				budget,
+				outDiagnostic);
+		});
+}
+
+bool App::RestartEditorRuntimeGIProbes(std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[&outDiagnostic]()
+		{
+			auto* globalIllumination = ResolveEditorGlobalIllumination(
+				&outDiagnostic);
+			if (!globalIllumination)
+			{
+				return false;
+			}
+			return globalIllumination->RestartRuntimeGIProbes(outDiagnostic);
+		});
+}
+
+bool App::RebuildEditorRuntimeGIProbesScene(std::string& outDiagnostic)
+{
+	return ExecuteOnEngineMainThread<bool>(
+		false,
+		[&outDiagnostic]()
+		{
+			auto* globalIllumination = ResolveEditorGlobalIllumination(
+				&outDiagnostic);
+			if (!globalIllumination)
+			{
+				return false;
+			}
+			return globalIllumination->RebuildRuntimeGIProbesScene(
+				outDiagnostic);
 		});
 }
 
@@ -586,8 +792,7 @@ bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return editor->UpdateObject(instanceId, yamlValue);
 		});
 }
@@ -611,8 +816,7 @@ bool App::SetEditorAnimatorParameter(
 		[instanceIdValue, name, valueKind, floatValue, intValue, boolValue]()
 		{
 			auto editor = GetSubmodule<Editor>();
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			auto* animator = FindEditorAnimator(editor, instanceId);
 			if (!animator)
 			{
@@ -674,8 +878,7 @@ bool App::GetEditorAnimatorState(
 			&outTransitionAlpha]()
 		{
 			auto editor = GetSubmodule<Editor>();
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			auto* animator = FindEditorAnimator(editor, instanceId);
 			if (!animator)
 			{
@@ -739,8 +942,7 @@ bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentI
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			InstanceId parentInstanceId;
 			if (!TryParseOptionalParent(parentInstanceIdValue, parentInstanceId))
 			{
@@ -813,8 +1015,7 @@ bool App::CreateEditorModelInstance(
 	}
 
 	outInstanceId[0] = nullptr;
-	FileId modelFileId;
-	modelFileId.Deserialize(YAML::Node(strModelFileId));
+	const FileId modelFileId(strModelFileId);
 	auto modelImporter = GetSubmodule<ModelImporter>();
 	ModelPtr model;
 	if (!modelFileId ||
@@ -898,8 +1099,7 @@ bool App::DestroyEditorObject(const char* strInstanceId)
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return editor->DestroyObject(instanceId);
 		});
 }
@@ -920,8 +1120,7 @@ bool App::ResetEditorComponentToDefaults(const char* strInstanceId)
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return editor->ResetComponentToDefaults(instanceId);
 		});
 }
@@ -949,8 +1148,7 @@ bool App::AddEditorComponent(
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 
 			InstanceId preferredInstanceId;
 			if (!TryParseOptionalComponentId(preferredInstanceIdValue, preferredInstanceId))
@@ -985,8 +1183,7 @@ bool App::RemoveEditorComponent(const char* strInstanceId)
 				return false;
 			}
 
-			InstanceId instanceId;
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return editor->RemoveComponent(instanceId);
 		});
 }
@@ -1008,8 +1205,7 @@ bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentIn
 				return false;
 			}
 
-			FileId fileId;
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const FileId fileId(fileIdValue);
 			InstanceId parentInstanceId;
 			if (!TryParseOptionalParent(parentInstanceIdValue, parentInstanceId))
 			{
@@ -1054,8 +1250,7 @@ bool App::InstantiateEditorPrefabInstance(
 				return false;
 			}
 
-			FileId fileId{};
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const FileId fileId(fileIdValue);
 			if (!fileId)
 			{
 				return false;
@@ -1238,8 +1433,7 @@ bool App::FocusEditorCamera(const char* strInstanceId)
 				return false;
 			}
 
-			InstanceId instanceId{};
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return instanceId.IsGameObjectId() &&
 				editor->FocusEditorCamera(instanceId);
 		});
@@ -1266,10 +1460,8 @@ bool App::SetEditorPrefabLink(
 				return false;
 			}
 
-			InstanceId instanceId{};
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
-			FileId fileId{};
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const InstanceId instanceId(instanceIdValue);
+			const FileId fileId(fileIdValue);
 			return editor->SetPrefabLink(instanceId, fileId);
 		});
 }
@@ -1292,8 +1484,7 @@ bool App::BreakEditorPrefabLink(const char* strInstanceId)
 				return false;
 			}
 
-			InstanceId instanceId{};
-			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			const InstanceId instanceId(instanceIdValue);
 			return editor->BreakPrefabLink(instanceId);
 		});
 }
@@ -1398,11 +1589,7 @@ bool App::RenderPathTracedImage(const char* strOutputPath, const char* strInstan
 				return false;
 			}
 
-			InstanceId instanceId{};
-			if (!instanceIdValue.empty())
-			{
-				instanceId.Deserialize(YAML::Node(instanceIdValue));
-			}
+			const InstanceId instanceId(instanceIdValue);
 
 			const bool bSuccess = editor->RenderPathTracedImage(instanceId, outputPath, height, samplesPerPixel, maxBounces);
 			editor->PushMessage(bSuccess ?

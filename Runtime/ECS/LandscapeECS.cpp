@@ -1,9 +1,14 @@
 #include "ECS/LandscapeECS.h"
+#include "ECS/LandscapeECSInternal.h"
+#include "ECS/LandscapeStreaming.h"
 
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "Components/LandscapeComponent.h"
+#include "Core/StringHash.h"
+#include "ECS/CameraECS.h"
 #include "ECS/TransformECS.h"
 #include "ECS/PhysicsECS.h"
 #include "Engine/GameObject.h"
@@ -17,775 +22,33 @@
 #include <limits>
 
 using namespace Sailor;
+using namespace Sailor::LandscapeECSInternal;
 using namespace Sailor::Tasks;
-
-namespace
-{
-	struct LandscapeCpuTexture
-	{
-		TVector<uint8_t> m_pixels{};
-		int32_t m_width = 0;
-		int32_t m_height = 0;
-		bool m_bFloat = false;
-
-		bool IsValid() const
-		{
-			return m_width > 0 && m_height > 0 &&
-				m_pixels.Num() >= static_cast<size_t>(m_width) * m_height * (m_bFloat ? 16u : 4u);
-		}
-	};
-
-	struct LandscapeChunkCpuData
-	{
-		struct VegetationInstance
-		{
-			size_t m_profileIndex = 0u;
-			glm::vec3 m_position{};
-			float m_angle = 0.0f;
-			float m_scale = 1.0f;
-		};
-
-		uint32_t m_chunkX = 0u;
-		uint32_t m_chunkZ = 0u;
-		TVector<RHI::VertexP3N3T3B3UV2C4> m_vertices{};
-		TVector<uint32_t> m_indices{};
-		TVector<VegetationInstance> m_vegetation{};
-		Math::AABB m_localBounds{};
-	};
-
-	uint32_t Hash(uint32_t value)
-	{
-		value ^= value >> 16u;
-		value *= 0x7feb352du;
-		value ^= value >> 15u;
-		value *= 0x846ca68bu;
-		return value ^ (value >> 16u);
-	}
-
-	float Random01(uint32_t value)
-	{
-		return static_cast<float>(Hash(value) & 0x00ffffffu) / 16777215.0f;
-	}
-
-	float SmoothNoise(int32_t x, int32_t z, uint32_t seed)
-	{
-		const uint32_t key = static_cast<uint32_t>(x) * 0x9e3779b9u ^
-			static_cast<uint32_t>(z) * 0x85ebca6bu ^ seed;
-		return Random01(key) * 2.0f - 1.0f;
-	}
-
-	float Fade(float value)
-	{
-		return value * value * (3.0f - 2.0f * value);
-	}
-
-	float ValueNoise(float x, float z, uint32_t seed)
-	{
-		const int32_t x0 = static_cast<int32_t>(std::floor(x));
-		const int32_t z0 = static_cast<int32_t>(std::floor(z));
-		const float tx = Fade(x - static_cast<float>(x0));
-		const float tz = Fade(z - static_cast<float>(z0));
-		const float a = glm::mix(SmoothNoise(x0, z0, seed), SmoothNoise(x0 + 1, z0, seed), tx);
-		const float b = glm::mix(SmoothNoise(x0, z0 + 1, seed), SmoothNoise(x0 + 1, z0 + 1, seed), tx);
-		return glm::mix(a, b, tz);
-	}
-
-	bool DecodeCpuTexture(const FileId& fileId, LandscapeCpuTexture& result)
-	{
-		if (!fileId)
-		{
-			return false;
-		}
-		uint32_t mipLevels = 1u;
-		if (!TextureImporter::DecodeTextureCpu(fileId, result.m_pixels,
-			result.m_width, result.m_height, mipLevels))
-		{
-			return false;
-		}
-		const size_t pixelCount = static_cast<size_t>(result.m_width) * result.m_height;
-		result.m_bFloat = pixelCount > 0u && result.m_pixels.Num() == pixelCount * sizeof(float) * 4u;
-		return result.IsValid();
-	}
-
-	float ReadTextureChannel(const LandscapeCpuTexture& texture, int32_t x, int32_t y, uint32_t channel)
-	{
-		x = (std::clamp)(x, 0, texture.m_width - 1);
-		y = (std::clamp)(y, 0, texture.m_height - 1);
-		channel = (std::min)(channel, 3u);
-		const size_t pixel = static_cast<size_t>(y) * texture.m_width + x;
-		if (!texture.m_bFloat)
-		{
-			return static_cast<float>(texture.m_pixels[pixel * 4u + channel]) / 255.0f;
-		}
-
-		float value = 0.0f;
-		memcpy(&value, texture.m_pixels.GetData() +
-			(pixel * 4u + channel) * sizeof(float), sizeof(float));
-		return (std::clamp)(value, 0.0f, 1.0f);
-	}
-
-	float SampleTextureChannel(const LandscapeCpuTexture& texture, float u, float v, uint32_t channel)
-	{
-		if (!texture.IsValid())
-		{
-			return 0.0f;
-		}
-		const float x = (std::clamp)(u, 0.0f, 1.0f) * static_cast<float>(texture.m_width - 1);
-		const float y = (std::clamp)(v, 0.0f, 1.0f) * static_cast<float>(texture.m_height - 1);
-		const int32_t x0 = static_cast<int32_t>(std::floor(x));
-		const int32_t y0 = static_cast<int32_t>(std::floor(y));
-		const float tx = x - x0;
-		const float ty = y - y0;
-		const float a = glm::mix(ReadTextureChannel(texture, x0, y0, channel),
-			ReadTextureChannel(texture, x0 + 1, y0, channel), tx);
-		const float b = glm::mix(ReadTextureChannel(texture, x0, y0 + 1, channel),
-			ReadTextureChannel(texture, x0 + 1, y0 + 1, channel), tx);
-		return glm::mix(a, b, ty);
-	}
-
-	float BrushFalloff(float x, float z, const TVector<float>& stamps, size_t offset)
-	{
-		const float radius = (std::max)(stamps[offset + 2u], 0.001f);
-		const float distance = glm::distance(glm::vec2(x, z), glm::vec2(stamps[offset], stamps[offset + 1u]));
-		const float linear = (std::clamp)(1.0f - distance / radius, 0.0f, 1.0f);
-		return linear * linear * (3.0f - 2.0f * linear);
-	}
-
-	float SampleHeight(float x, float z, float landscapeWidth, float landscapeDepth,
-		float noiseScale, float heightScale, uint32_t seed,
-		const TVector<float>& sculptStamps, const LandscapeCpuTexture& heightmap)
-	{
-		float height = 0.0f;
-		if (heightmap.IsValid())
-		{
-			const float u = x / landscapeWidth + 0.5f;
-			const float v = z / landscapeDepth + 0.5f;
-			height = (SampleTextureChannel(heightmap, u, v, 0u) * 2.0f - 1.0f) * heightScale;
-		}
-		else
-		{
-			float amplitude = 1.0f;
-			float frequency = noiseScale;
-			float sum = 0.0f;
-			float normalization = 0.0f;
-			for (uint32_t octave = 0; octave < 4u; ++octave)
-			{
-				sum += ValueNoise(x * frequency, z * frequency, seed + octave * 1013u) * amplitude;
-				normalization += amplitude;
-				amplitude *= 0.5f;
-				frequency *= 2.0f;
-			}
-			height = heightScale > 0.0f ? sum / normalization * heightScale : 0.0f;
-		}
-		for (size_t stamp = 0u; stamp + 4u < sculptStamps.Num(); stamp += 5u)
-		{
-			const float falloff = BrushFalloff(x, z, sculptStamps, stamp);
-			const float strength = sculptStamps[stamp + 3u] * falloff;
-			const uint32_t operation = static_cast<uint32_t>(sculptStamps[stamp + 4u]);
-			if (operation == 0u) height += strength;
-			else if (operation == 1u) height -= strength;
-			else height = glm::mix(height, 0.0f, (std::clamp)(strength, 0.0f, 1.0f));
-		}
-		return height;
-	}
-
-	LandscapeChunkCpuData BuildChunk(const LandscapeData& data,
-		const LandscapeCpuTexture& heightmap,
-		const TVector<LandscapeCpuTexture>& materialMasks,
-		uint32_t chunkX, uint32_t chunkZ)
-	{
-		LandscapeChunkCpuData result;
-		result.m_chunkX = chunkX;
-		result.m_chunkZ = chunkZ;
-		const uint32_t resolution = data.m_chunkResolution;
-		const uint32_t row = resolution + 1u;
-		const float step = data.m_chunkSize / static_cast<float>(resolution);
-		const float landscapeWidth = data.m_chunksX * data.m_chunkSize;
-		const float landscapeDepth = data.m_chunksZ * data.m_chunkSize;
-		const float originX = chunkX * data.m_chunkSize - landscapeWidth * 0.5f;
-		const float originZ = chunkZ * data.m_chunkSize - landscapeDepth * 0.5f;
-
-		result.m_vertices.Resize(static_cast<size_t>(row) * row);
-		for (uint32_t z = 0u; z <= resolution; ++z)
-		{
-			for (uint32_t x = 0u; x <= resolution; ++x)
-			{
-				const float localX = originX + x * step;
-				const float localZ = originZ + z * step;
-				const auto sampleHeight = [&](float sampleX, float sampleZ)
-				{
-					return SampleHeight(sampleX, sampleZ, landscapeWidth, landscapeDepth,
-						data.m_noiseScale, data.m_heightScale, data.m_seed,
-						data.m_sculptStamps, heightmap);
-				};
-				const float height = sampleHeight(localX, localZ);
-				const float left = sampleHeight(localX - step, localZ);
-				const float right = sampleHeight(localX + step, localZ);
-				const float down = sampleHeight(localX, localZ - step);
-				const float up = sampleHeight(localX, localZ + step);
-				const glm::vec3 normal = glm::normalize(glm::vec3(left - right, 2.0f * step, down - up));
-				const glm::vec3 tangent = glm::normalize(glm::vec3(2.0f * step, right - left, 0.0f));
-				const glm::vec3 bitangent = glm::normalize(glm::cross(normal, tangent));
-				const float slope = 1.0f - (std::clamp)(normal.y, 0.0f, 1.0f);
-				const float normalizedHeight = data.m_heightScale > 0.0f ?
-					(std::clamp)(height / (data.m_heightScale * 2.0f) + 0.5f, 0.0f, 1.0f) : 0.5f;
-				glm::vec4 weights;
-				weights.x = (1.0f - slope) * (1.0f - normalizedHeight);
-				weights.y = slope;
-				weights.z = (1.0f - slope) * normalizedHeight;
-				weights.w = (std::max)(0.0f, normalizedHeight - 0.72f) * 3.57f;
-				weights /= (std::max)(glm::dot(weights, glm::vec4(1.0f)), 0.0001f);
-				if (!materialMasks.IsEmpty())
-				{
-					const float u = localX / landscapeWidth + 0.5f;
-					const float v = localZ / landscapeDepth + 0.5f;
-					glm::vec4 importedWeights(0.0f);
-					if (materialMasks.Num() == 1u)
-					{
-						for (uint32_t channel = 0u; channel < 4u; ++channel)
-						{
-							importedWeights[channel] = SampleTextureChannel(materialMasks[0], u, v, channel);
-						}
-					}
-					else
-					{
-						for (size_t mask = 0u; mask < materialMasks.Num() && mask < 4u; ++mask)
-						{
-							importedWeights[static_cast<glm::length_t>(mask)] =
-								SampleTextureChannel(materialMasks[mask], u, v, 0u);
-						}
-					}
-					const float importedWeightSum = glm::dot(importedWeights, glm::vec4(1.0f));
-					if (importedWeightSum > 0.0001f)
-					{
-						weights = importedWeights / importedWeightSum;
-					}
-				}
-				for (size_t stamp = 0u; stamp + 4u < data.m_paintStamps.Num(); stamp += 5u)
-				{
-					const float alpha = (std::clamp)(data.m_paintStamps[stamp + 3u] *
-						BrushFalloff(localX, localZ, data.m_paintStamps, stamp), 0.0f, 1.0f);
-					glm::vec4 target(0.0f);
-					target[(std::min)(static_cast<uint32_t>(data.m_paintStamps[stamp + 4u]), 3u)] = 1.0f;
-					weights = glm::mix(weights, target, alpha);
-				}
-
-				auto& vertex = result.m_vertices[static_cast<size_t>(z) * row + x];
-				vertex.m_position = glm::vec3(localX, height, localZ);
-				vertex.m_normal = normal;
-				vertex.m_tangent = tangent;
-				vertex.m_bitangent = bitangent;
-				vertex.m_texcoord = glm::vec2(localX, localZ) * data.m_textureTiling;
-				vertex.m_color = weights;
-				result.m_localBounds.Extend(Math::AABB(vertex.m_position, glm::vec3(0.01f)));
-			}
-		}
-
-		result.m_indices.Reserve(static_cast<size_t>(resolution) * resolution * 6u);
-		for (uint32_t z = 0u; z < resolution; ++z)
-		{
-			for (uint32_t x = 0u; x < resolution; ++x)
-			{
-				const uint32_t i0 = z * row + x;
-				const uint32_t i1 = i0 + 1u;
-				const uint32_t i2 = i0 + row;
-				const uint32_t i3 = i2 + 1u;
-				result.m_indices.AddRange({ i0, i2, i1, i1, i2, i3 });
-			}
-		}
-
-		for (size_t profileIndex = 0u; profileIndex < data.m_vegetationProfiles.Num(); ++profileIndex)
-		{
-			const auto& profile = data.m_vegetationProfiles[profileIndex];
-			if (!profile.m_modelFileId)
-			{
-				continue;
-			}
-			result.m_vegetation.Reserve(result.m_vegetation.Num() + profile.m_instancesPerChunk);
-			for (uint32_t instance = 0u; instance < profile.m_instancesPerChunk; ++instance)
-			{
-				const uint32_t randomSeed = data.m_seed ^
-					static_cast<uint32_t>(chunkX * 92821u + chunkZ * 68917u +
-						profileIndex * 4099u + instance * 131u);
-				LandscapeChunkCpuData::VegetationInstance placement;
-				placement.m_profileIndex = profileIndex;
-				placement.m_position.x = originX + Random01(randomSeed) * data.m_chunkSize;
-				placement.m_position.z = originZ + Random01(randomSeed + 1u) * data.m_chunkSize;
-				placement.m_position.y = SampleHeight(placement.m_position.x, placement.m_position.z,
-					landscapeWidth, landscapeDepth, data.m_noiseScale, data.m_heightScale,
-					data.m_seed, data.m_sculptStamps, heightmap) +
-					profile.m_groundOffset;
-				placement.m_angle = Random01(randomSeed + 2u) * glm::two_pi<float>();
-				placement.m_scale = glm::mix(profile.m_minScale, profile.m_maxScale,
-					Random01(randomSeed + 3u));
-				result.m_vegetation.Add(std::move(placement));
-			}
-		}
-		return result;
-	}
-
-	float GetProfileValue(const TVector<float>& values, size_t index, float fallback)
-	{
-		return index < values.Num() && std::isfinite(values[index]) ? values[index] : fallback;
-	}
-
-	void AppendShadowMesh(RHI::RHIShadowCasterProxy& shadowCaster,
-		const RHI::RHIMeshPtr& mesh, const glm::mat4& worldMatrix,
-		const MaterialPtr& material, float maxCameraDistance)
-	{
-		if (!mesh || !material)
-		{
-			return;
-		}
-
-		const size_t opaqueQueueTag = GetHash(std::string("Opaque"));
-		const size_t maskedQueueTag = GetHash(std::string("Masked"));
-		const size_t renderQueueTag = material->GetRenderState().GetTag();
-		if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
-		{
-			return;
-		}
-
-		RHI::RHIShadowMeshProxy shadowMesh;
-		shadowMesh.m_mesh = mesh;
-		shadowMesh.m_worldMatrix = worldMatrix;
-		shadowMesh.m_renderQueueTag = renderQueueTag;
-		shadowMesh.m_maxCameraDistance = maxCameraDistance;
-		if (material->GetRenderState().IsRequiredCustomDepthShader())
-		{
-			auto rhiMaterialSource = material;
-			shadowMesh.m_customDepthMaterial = rhiMaterialSource->GetOrAddRHI(
-				mesh->m_vertexDescription);
-			shadowMesh.m_customDepthShader = material->GetShader();
-		}
-
-		auto* textureImporter = App::GetSubmodule<TextureImporter>();
-		if (renderQueueTag == maskedQueueTag)
-		{
-			const glm::vec4* baseColorFactor = nullptr;
-			if (!material->GetUniformsVec4().Find("material.baseColorFactor", baseColorFactor))
-			{
-				material->GetUniformsVec4().Find("material.albedo", baseColorFactor);
-			}
-			if (baseColorFactor)
-			{
-				shadowMesh.m_baseColorFactor = *baseColorFactor;
-			}
-
-			const float* alphaCutoff = nullptr;
-			if (material->GetUniformsFloat().Find("material.alphaCutoff", alphaCutoff) && alphaCutoff)
-			{
-				shadowMesh.m_alphaCutoff = *alphaCutoff;
-			}
-
-			const TexturePtr* baseColorTexture = nullptr;
-			if (!material->GetSamplers().Find("baseColorSampler", baseColorTexture))
-			{
-				material->GetSamplers().Find("albedoSampler", baseColorTexture);
-			}
-			if (textureImporter && baseColorTexture && *baseColorTexture)
-			{
-				shadowMesh.m_baseColorSampler = static_cast<uint32_t>(
-					textureImporter->GetTextureIndex((*baseColorTexture)->GetFileId()));
-			}
-		}
-#if defined(__APPLE__)
-		shadowMesh.m_materialTextureSamplers.Insert(0u);
-		if (textureImporter)
-		{
-			for (const auto& sampler : material->GetSamplers())
-			{
-				shadowMesh.m_materialTextureSamplers.Insert(sampler.m_second ?
-					static_cast<uint32_t>(textureImporter->GetTextureIndex(sampler.m_second->GetFileId())) : 0u);
-			}
-		}
-#endif
-		shadowCaster.m_meshes.Add(std::move(shadowMesh));
-	}
-
-	void AppendDepthMaterialMetadata(RHI::RHISceneViewProxy& proxy, const MaterialPtr& material)
-	{
-		glm::vec4 baseColorFactor{ 1.0f };
-		float alphaCutoff = 0.5f;
-		uint32_t baseColorSampler = 0u;
-		if (material->GetRenderState().GetTag() != GetHash(std::string("Masked")))
-		{
-			proxy.m_baseColorFactors.Add(baseColorFactor);
-			proxy.m_alphaCutoffs.Add(alphaCutoff);
-			proxy.m_baseColorSamplers.Add(baseColorSampler);
-			return;
-		}
-
-		const glm::vec4* materialBaseColorFactor = nullptr;
-		if (!material->GetUniformsVec4().Find("material.baseColorFactor", materialBaseColorFactor))
-		{
-			material->GetUniformsVec4().Find("material.albedo", materialBaseColorFactor);
-		}
-		if (materialBaseColorFactor)
-		{
-			baseColorFactor = *materialBaseColorFactor;
-		}
-		proxy.m_baseColorFactors.Add(baseColorFactor);
-
-		const float* materialAlphaCutoff = nullptr;
-		if (material->GetUniformsFloat().Find("material.alphaCutoff", materialAlphaCutoff) && materialAlphaCutoff)
-		{
-			alphaCutoff = *materialAlphaCutoff;
-		}
-		proxy.m_alphaCutoffs.Add(alphaCutoff);
-
-		const TexturePtr* baseColorTexture = nullptr;
-		if (!material->GetSamplers().Find("baseColorSampler", baseColorTexture))
-		{
-			material->GetSamplers().Find("albedoSampler", baseColorTexture);
-		}
-		auto* textureImporter = App::GetSubmodule<TextureImporter>();
-		if (textureImporter && baseColorTexture && *baseColorTexture)
-		{
-			baseColorSampler = static_cast<uint32_t>(
-				textureImporter->GetTextureIndex((*baseColorTexture)->GetFileId()));
-		}
-		proxy.m_baseColorSamplers.Add(baseColorSampler);
-	}
-
-	void GetOctreeBounds(const Math::AABB& bounds, glm::ivec3& center, glm::ivec3& extents)
-	{
-		const glm::ivec3 minimum = glm::ivec3(glm::floor(bounds.m_min));
-		const glm::ivec3 maximum = glm::ivec3(glm::ceil(bounds.m_max));
-		center = minimum + (maximum - minimum) / 2;
-		extents = glm::max(glm::max(maximum - center, center - minimum), glm::ivec3(1));
-	}
-
-	size_t LandscapeProxyId(size_t componentIndex, size_t chunkIndex)
-	{
-		return (size_t(1) << (sizeof(size_t) * 8u - 1u)) |
-			((componentIndex & 0x7fffffffu) << 24u) | (chunkIndex & 0xffffffu);
-	}
-
-	size_t LandscapeVegetationProxyId(
-		size_t componentIndex,
-		size_t chunkIndex,
-		size_t instanceIndex)
-	{
-		return (size_t(3) << (sizeof(size_t) * 8u - 2u)) |
-			((componentIndex & 0xfffffu) << 36u) |
-			((chunkIndex & 0xfffffu) << 16u) | (instanceIndex & 0xffffu);
-	}
-
-	bool AreVegetationProfileSettingsEqual(
-		const LandscapeVegetationProfile& lhs,
-		const LandscapeVegetationProfile& rhs)
-	{
-		return lhs.m_modelFileId == rhs.m_modelFileId &&
-			lhs.m_materialFileId == rhs.m_materialFileId &&
-			lhs.m_meshIndex == rhs.m_meshIndex &&
-			lhs.m_instancesPerChunk == rhs.m_instancesPerChunk &&
-			lhs.m_minScale == rhs.m_minScale &&
-			lhs.m_maxScale == rhs.m_maxScale &&
-			lhs.m_groundOffset == rhs.m_groundOffset &&
-			lhs.m_shadowMode == rhs.m_shadowMode &&
-			lhs.m_shadowDistance == rhs.m_shadowDistance &&
-			lhs.m_minLod == rhs.m_minLod &&
-			lhs.m_maxLod == rhs.m_maxLod &&
-			lhs.m_screenCoverageThresholds == rhs.m_screenCoverageThresholds &&
-			lhs.m_cullDistance == rhs.m_cullDistance &&
-			lhs.m_colliderRadius == rhs.m_colliderRadius &&
-			lhs.m_colliderHeight == rhs.m_colliderHeight &&
-			lhs.m_colliderOffsetY == rhs.m_colliderOffsetY;
-	}
-
-	uint64_t CalculateVegetationMaterialRenderMetadataRevision(
-		const LandscapeVegetationProfile& profile)
-	{
-		size_t result = 1469598103934665603ull;
-		if (profile.m_materialFileId)
-		{
-			HashCombine(
-				result,
-				profile.m_material,
-				profile.m_material ? profile.m_material->GetRenderMetadataRevision() : 0ull);
-		}
-		else
-		{
-			HashCombine(result, profile.m_modelMaterials.Num());
-			for (const auto& material : profile.m_modelMaterials)
-			{
-				HashCombine(
-					result,
-					material,
-					material ? material->GetRenderMetadataRevision() : 0ull);
-			}
-		}
-		return static_cast<uint64_t>(result);
-	}
-
-	void MarkChunksIntersectingStamp(
-		LandscapeData& data,
-		const TVector<float>& stamps,
-		size_t offset,
-		float margin)
-	{
-		if (offset + 4u >= stamps.Num())
-		{
-			return;
-		}
-
-		const float radius = (std::max)(stamps[offset + 2u], 0.001f) + margin;
-		const glm::vec2 center(stamps[offset], stamps[offset + 1u]);
-		const float landscapeWidth = data.m_chunksX * data.m_chunkSize;
-		const float landscapeDepth = data.m_chunksZ * data.m_chunkSize;
-		for (uint32_t z = 0u; z < data.m_chunksZ; ++z)
-		{
-			for (uint32_t x = 0u; x < data.m_chunksX; ++x)
-			{
-				const glm::vec2 minimum(
-					x * data.m_chunkSize - landscapeWidth * 0.5f,
-					z * data.m_chunkSize - landscapeDepth * 0.5f);
-				const glm::vec2 maximum = minimum + glm::vec2(data.m_chunkSize);
-				const glm::vec2 closest = glm::clamp(center, minimum, maximum);
-				if (glm::distance(center, closest) <= radius)
-				{
-					data.m_dirtyChunks.Insert(z * data.m_chunksX + x);
-				}
-			}
-		}
-	}
-
-	void MarkChunksAffectedByStampChanges(
-		LandscapeData& data,
-		const TVector<float>& previous,
-		const TVector<float>& current,
-		float margin)
-	{
-		const size_t numStamps = (std::max)(previous.Num(), current.Num()) / 5u;
-		for (size_t stampIndex = 0u; stampIndex < numStamps; ++stampIndex)
-		{
-			const size_t offset = stampIndex * 5u;
-			bool bSame = offset + 4u < previous.Num() && offset + 4u < current.Num();
-			for (size_t valueIndex = 0u; bSame && valueIndex < 5u; ++valueIndex)
-			{
-				bSame = previous[offset + valueIndex] == current[offset + valueIndex];
-			}
-			if (bSame)
-			{
-				continue;
-			}
-
-			MarkChunksIntersectingStamp(data, previous, offset, margin);
-			MarkChunksIntersectingStamp(data, current, offset, margin);
-		}
-	}
-}
-
-void LandscapeData::SetSettings(uint32_t chunksX, uint32_t chunksZ,
-	float chunkSize, uint32_t chunkResolution, float heightScale,
-	float noiseScale, uint32_t seed, float textureTiling)
-{
-	const uint32_t normalizedChunksX = (std::clamp)(chunksX, 1u, 64u);
-	const uint32_t normalizedChunksZ = (std::clamp)(chunksZ, 1u, 64u);
-	const float normalizedChunkSize = (std::max)(chunkSize, 1.0f);
-	const uint32_t normalizedChunkResolution = (std::clamp)(chunkResolution, 2u, 128u);
-	const float normalizedHeightScale = (std::max)(heightScale, 0.0f);
-	const float normalizedNoiseScale = (std::max)(noiseScale, 0.0001f);
-	const float normalizedTextureTiling = (std::max)(textureTiling, 0.001f);
-	if (m_chunksX == normalizedChunksX &&
-		m_chunksZ == normalizedChunksZ &&
-		m_chunkSize == normalizedChunkSize &&
-		m_chunkResolution == normalizedChunkResolution &&
-		m_heightScale == normalizedHeightScale &&
-		m_noiseScale == normalizedNoiseScale &&
-		m_seed == seed &&
-		m_textureTiling == normalizedTextureTiling)
-	{
-		return;
-	}
-
-	m_chunksX = normalizedChunksX;
-	m_chunksZ = normalizedChunksZ;
-	m_chunkSize = normalizedChunkSize;
-	m_chunkResolution = normalizedChunkResolution;
-	m_heightScale = normalizedHeightScale;
-	m_noiseScale = normalizedNoiseScale;
-	m_seed = seed;
-	m_textureTiling = normalizedTextureTiling;
-	RequestFullRebuild();
-}
-
-void LandscapeData::SetMaterial(const MaterialPtr& material)
-{
-	if (m_material == material)
-	{
-		return;
-	}
-	m_material = material;
-	m_runtimeMaterial.Clear();
-	m_cachedSourceMaterialContentRevision = 0ull;
-	m_cachedSourceMaterialRenderMetadataRevision = 0ull;
-	RequestFullRebuild();
-}
-
-void LandscapeData::SetLayerTextures(const TVector<FileId>& textures)
-{
-	TVector<FileId> normalized = textures;
-	if (normalized.Num() > 4u) normalized.Resize(4u);
-	if (m_layerTextures == normalized)
-	{
-		return;
-	}
-	m_layerTextures = std::move(normalized);
-	m_runtimeMaterial.Clear();
-	m_cachedSourceMaterialContentRevision = 0ull;
-	m_cachedSourceMaterialRenderMetadataRevision = 0ull;
-	RequestFullRebuild();
-}
-
-void LandscapeData::SetImportMaps(const FileId& heightmapTexture,
-	const TVector<FileId>& materialMasks)
-{
-	TVector<FileId> normalizedMasks = materialMasks;
-	if (normalizedMasks.Num() > 4u) normalizedMasks.Resize(4u);
-	if (m_heightmapTexture == heightmapTexture && m_materialMasks == normalizedMasks)
-	{
-		return;
-	}
-	m_heightmapTexture = heightmapTexture;
-	m_materialMasks = std::move(normalizedMasks);
-	RequestFullRebuild();
-}
-
-void LandscapeData::SetAuthoredStamps(const TVector<float>& sculptStamps,
-	const TVector<float>& paintStamps)
-{
-	if (m_sculptStamps == sculptStamps && m_paintStamps == paintStamps)
-	{
-		return;
-	}
-
-	if (!m_bRebuildAllChunks &&
-		m_chunks.Num() == static_cast<size_t>(m_chunksX) * m_chunksZ)
-	{
-		const float normalSampleMargin = m_chunkSize /
-			static_cast<float>((std::max)(m_chunkResolution, 1u));
-		MarkChunksAffectedByStampChanges(
-			*this,
-			m_sculptStamps,
-			sculptStamps,
-			normalSampleMargin);
-		MarkChunksAffectedByStampChanges(
-			*this,
-			m_paintStamps,
-			paintStamps,
-			0.0f);
-	}
-	else
-	{
-		m_bRebuildAllChunks = true;
-	}
-	m_sculptStamps = sculptStamps;
-	m_paintStamps = paintStamps;
-	MarkDirty();
-}
-
-void LandscapeData::RequestFullRebuild()
-{
-	m_bRebuildAllChunks = true;
-	m_dirtyChunks.Clear();
-	MarkDirty();
-}
-
-void LandscapeData::SetVegetationProfiles(
-	const TVector<FileId>& models,
-	const TVector<FileId>& materials,
-	const TVector<float>& meshIndex,
-	const TVector<float>& instancesPerChunk,
-	const TVector<float>& minScale,
-	const TVector<float>& maxScale,
-	const TVector<float>& groundOffset,
-	const TVector<float>& shadowMode,
-	const TVector<float>& shadowDistance,
-	const TVector<float>& minLod,
-	const TVector<float>& maxLod,
-	const TVector<float>& lod1ScreenCoverage,
-	const TVector<float>& lod2ScreenCoverage,
-	const TVector<float>& cullDistance,
-	const TVector<float>& colliderRadius,
-	const TVector<float>& colliderHeight,
-	const TVector<float>& colliderOffsetY)
-{
-	TVector<LandscapeVegetationProfile> profiles;
-	const size_t numProfiles = models.Num();
-	profiles.Reserve(numProfiles);
-	for (size_t index = 0u; index < numProfiles; ++index)
-	{
-		LandscapeVegetationProfile profile;
-		profile.m_modelFileId = models[index];
-		profile.m_materialFileId = index < materials.Num() ? materials[index] : FileId{};
-		profile.m_meshIndex = static_cast<int32_t>((std::clamp)(
-			GetProfileValue(meshIndex, index, -1.0f), -1.0f, 65535.0f));
-		profile.m_instancesPerChunk = static_cast<uint32_t>((std::clamp)(
-			GetProfileValue(instancesPerChunk, index, 0.0f), 0.0f, 2048.0f));
-		profile.m_minScale = (std::max)(GetProfileValue(minScale, index, 0.75f), 0.01f);
-		profile.m_maxScale = (std::max)(GetProfileValue(maxScale, index, 1.25f), profile.m_minScale);
-		profile.m_groundOffset = GetProfileValue(groundOffset, index, 0.0f);
-		profile.m_shadowMode = static_cast<ELandscapeVegetationShadowMode>(
-			static_cast<uint32_t>((std::clamp)(GetProfileValue(shadowMode, index, 1.0f), 0.0f, 2.0f)));
-		profile.m_shadowDistance = (std::max)(GetProfileValue(shadowDistance, index, 35.0f), 0.1f);
-		profile.m_minLod = static_cast<uint32_t>((std::clamp)(
-			GetProfileValue(minLod, index, 0.0f), 0.0f, 15.0f));
-		profile.m_maxLod = static_cast<uint32_t>((std::clamp)(
-			GetProfileValue(maxLod, index, 2.0f),
-			static_cast<float>(profile.m_minLod), 15.0f));
-		profile.m_screenCoverageThresholds = {
-			(std::clamp)(GetProfileValue(lod1ScreenCoverage, index, 0.25f), 0.0f, 1.0f),
-			(std::clamp)(GetProfileValue(lod2ScreenCoverage, index, 0.05f), 0.0f, 1.0f)
-		};
-		std::sort(profile.m_screenCoverageThresholds.begin(),
-			profile.m_screenCoverageThresholds.end(), std::greater<float>());
-		profile.m_cullDistance = (std::max)(GetProfileValue(cullDistance, index, 120.0f), 0.1f);
-		profile.m_colliderRadius = (std::max)(GetProfileValue(colliderRadius, index, 0.0f), 0.0f);
-		profile.m_colliderHeight = (std::max)(GetProfileValue(colliderHeight, index, 2.0f),
-			profile.m_colliderRadius * 2.0f);
-		profile.m_colliderOffsetY = GetProfileValue(colliderOffsetY, index, 1.0f);
-		profiles.Add(std::move(profile));
-	}
-
-	bool bSettingsChanged = profiles.Num() != m_vegetationProfiles.Num();
-	for (size_t index = 0u; !bSettingsChanged && index < profiles.Num(); ++index)
-	{
-		bSettingsChanged = !AreVegetationProfileSettingsEqual(
-			profiles[index],
-			m_vegetationProfiles[index]);
-	}
-	if (!bSettingsChanged)
-	{
-		return;
-	}
-
-	for (size_t index = 0u; index < profiles.Num() && index < m_vegetationProfiles.Num(); ++index)
-	{
-		auto& profile = profiles[index];
-		const auto& previous = m_vegetationProfiles[index];
-		if (profile.m_modelFileId == previous.m_modelFileId)
-		{
-			profile.m_model = previous.m_model;
-			profile.m_modelMaterials = previous.m_modelMaterials;
-			profile.m_bModelMaterialsRequested = previous.m_bModelMaterialsRequested;
-		}
-		if (profile.m_materialFileId == previous.m_materialFileId)
-		{
-			profile.m_material = previous.m_material;
-			profile.m_cachedMaterialRenderMetadataRevision =
-				previous.m_cachedMaterialRenderMetadataRevision;
-		}
-	}
-	m_vegetationProfiles = std::move(profiles);
-	RequestFullRebuild();
-}
 
 void LandscapeECS::BeginPlay()
 {
 	m_rhiScene = RHI::RHIScenePtr::Make();
 	PublishSceneVersion();
+}
+
+void LandscapeECS::MarkDirty(GameObjectPtr owner)
+{
+	if (!owner)
+	{
+		return;
+	}
+
+	for (const auto& component : owner->GetComponents())
+	{
+		if (auto landscape = component.DynamicCast<LandscapeComponent>())
+		{
+			const size_t componentIndex = landscape->GetComponentIndex();
+			if (IsComponentRegistered(componentIndex))
+			{
+				m_components[componentIndex].RequestFullRebuild();
+			}
+		}
+	}
 }
 
 void LandscapeECS::OnComponentUnregistered(size_t, LandscapeData& component)
@@ -814,9 +77,7 @@ void LandscapeECS::DestroyPhysicsBodies(LandscapeData& component)
 	}
 }
 
-void LandscapeECS::DestroyChunkPhysicsBodies(
-	LandscapeData& component,
-	LandscapeChunk& chunk)
+void LandscapeECS::DestroyChunkPhysicsBodies(LandscapeData& component, LandscapeChunk& chunk)
 {
 	auto* physics = GetWorld() ? GetWorld()->GetECS<PhysicsECS>() : nullptr;
 	for (uint32_t bodyId : chunk.m_physicsBodies)
@@ -834,6 +95,11 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 {
 	SAILOR_PROFILE_FUNCTION();
 	bool bSceneChanged = false;
+	const auto* cameraEcs = GetWorld() ? GetWorld()->GetECS<CameraECS>() : nullptr;
+	const TVector<Math::Transform> noCameraTransforms;
+	const TVector<CameraData> noCameras;
+	const auto& cameraTransforms = cameraEcs ? cameraEcs->GetActiveCameraTransforms() : noCameraTransforms;
+	const auto& cameras = cameraEcs ? cameraEcs->GetActiveCameras() : noCameras;
 	for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)
 	{
 		if (!IsComponentRegistered(componentIndex))
@@ -843,7 +109,8 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 
 		auto& data = m_components[componentIndex];
 		GameObjectPtr owner = const_cast<ObjectPtr&>(data.GetOwner()).StaticCast<GameObject>();
-		const bool transformChanged = owner && owner->GetTransformComponent().GetFrameLastChange() > data.GetFrameLastChange();
+		const bool transformChanged =
+			owner && owner->GetTransformComponent().GetFrameLastChange() > data.GetFrameLastChange();
 		const bool bTerrainMaterialReady = data.m_material && data.m_material->IsReady();
 		if (data.m_runtimeMaterial)
 		{
@@ -853,12 +120,10 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		}
 		const bool bTerrainMaterialContentRevisionChanged =
 			data.m_runtimeMaterial && data.m_material &&
-			data.m_cachedSourceMaterialContentRevision !=
-				data.m_material->GetContentRevision();
+			data.m_cachedSourceMaterialContentRevision != data.m_material->GetContentRevision();
 		const bool bTerrainMaterialRenderMetadataRevisionChanged =
 			data.m_runtimeMaterial && data.m_material &&
-			data.m_cachedSourceMaterialRenderMetadataRevision !=
-				data.m_material->GetRenderMetadataRevision();
+			data.m_cachedSourceMaterialRenderMetadataRevision != data.m_material->GetRenderMetadataRevision();
 		bool bVegetationMaterialRenderMetadataRevisionChanged = false;
 		for (const auto& profile : data.m_vegetationProfiles)
 		{
@@ -881,8 +146,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		{
 			data.m_runtimeMaterial.Clear();
 		}
-		if (bTerrainMaterialRenderMetadataRevisionChanged ||
-			bVegetationMaterialRenderMetadataRevisionChanged)
+		if (bTerrainMaterialRenderMetadataRevisionChanged || bVegetationMaterialRenderMetadataRevisionChanged)
 		{
 			data.RequestFullRebuild();
 		}
@@ -894,8 +158,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 				// Copy only source uniform values and version its bindings in place;
 				// chunk meshes, physics, vegetation and scene records remain shared.
 				data.m_runtimeMaterial->SynchronizeUniformValues(*data.m_material);
-				data.m_cachedSourceMaterialContentRevision =
-					data.m_material->GetContentRevision();
+				data.m_cachedSourceMaterialContentRevision = data.m_material->GetContentRevision();
 			}
 			else
 			{
@@ -915,21 +178,20 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		if (!data.m_runtimeMaterial)
 		{
 			data.m_runtimeMaterial = Material::CreateInstance(GetWorld(), data.m_material);
-			static const char* LayerNames[] = { "layer0Sampler", "layer1Sampler", "layer2Sampler", "layer3Sampler" };
+			static const char* LayerNames[] = {"layer0Sampler", "layer1Sampler", "layer2Sampler", "layer3Sampler"};
 			auto* textureImporter = App::GetSubmodule<TextureImporter>();
 			for (size_t layer = 0; textureImporter && layer < data.m_layerTextures.Num() && layer < 4u; ++layer)
 			{
 				TexturePtr texture;
-				if (data.m_layerTextures[layer] && textureImporter->LoadTexture_Immediate(data.m_layerTextures[layer], texture) && texture)
+				if (data.m_layerTextures[layer] &&
+					textureImporter->LoadTexture_Immediate(data.m_layerTextures[layer], texture) && texture)
 				{
 					data.m_runtimeMaterial->SetSampler(LayerNames[layer], texture);
 				}
 			}
 			data.m_runtimeMaterial->UpdateRHIResourceAndUniforms();
-			data.m_cachedSourceMaterialContentRevision =
-				data.m_material->GetContentRevision();
-			data.m_cachedSourceMaterialRenderMetadataRevision =
-				data.m_material->GetRenderMetadataRevision();
+			data.m_cachedSourceMaterialContentRevision = data.m_material->GetContentRevision();
+			data.m_cachedSourceMaterialRenderMetadataRevision = data.m_material->GetRenderMetadataRevision();
 		}
 
 		auto* modelImporter = App::GetSubmodule<ModelImporter>();
@@ -950,10 +212,11 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 				profile.m_bModelMaterialsRequested = true;
 			}
 		}
+		TryLoadVegetationAsset(data);
 
 		const size_t numLandscapeChunks = static_cast<size_t>(data.m_chunksX) * data.m_chunksZ;
-		const bool bRebuildAllChunks = data.m_bRebuildAllChunks ||
-			transformChanged || data.m_chunks.Num() != numLandscapeChunks;
+		const bool bRebuildAllChunks =
+			data.m_bRebuildAllChunks || transformChanged || data.m_chunks.Num() != numLandscapeChunks;
 		TVector<uint32_t> chunksToBuild;
 		if (bRebuildAllChunks)
 		{
@@ -979,6 +242,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		}
 		if (chunksToBuild.IsEmpty())
 		{
+			TrySaveVegetationAsset(data);
 			data.m_bIsDirty = false;
 			data.SetLastChange(owner->GetTransformComponent().GetFrameLastChange());
 			continue;
@@ -997,8 +261,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			LandscapeCpuTexture mask;
 			if (!DecodeCpuTexture(maskFileId, mask) && maskFileId)
 			{
-				SAILOR_LOG_ERROR("LandscapeECS: failed to decode material mask %s.",
-					maskFileId.ToString().c_str());
+				SAILOR_LOG_ERROR("LandscapeECS: failed to decode material mask %s.", maskFileId.ToString().c_str());
 			}
 			materialMasks.Add(std::move(mask));
 		}
@@ -1010,10 +273,10 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			const uint32_t x = chunkIndex % data.m_chunksX;
 			const uint32_t z = chunkIndex / data.m_chunksX;
 			auto task = Tasks::CreateTask<LandscapeChunkCpuData>(
-				"LandscapeECS:Build Chunk", [&data, &heightmap, &materialMasks, x, z]()
-				{
-					return BuildChunk(data, heightmap, materialMasks, x, z);
-				}, EThreadType::Worker);
+				"LandscapeECS:Build Chunk",
+				[&data, &heightmap, &materialMasks, x, z]()
+				{ return BuildChunk(data, heightmap, materialMasks, x, z); },
+				EThreadType::Worker);
 			task->Run();
 			tasks.Add(task);
 		}
@@ -1029,6 +292,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		size_t vegetationProfilesWithoutRenderData = 0u;
 		bool bVegetationResourcesPending = false;
 		const glm::mat4 ownerMatrix = owner->GetTransformComponent().GetCachedWorldMatrix();
+		const EMobilityType ownerMobility = owner->GetMobilityType();
 		const Math::Transform ownerTransform = Math::Transform::FromMatrix(ownerMatrix);
 		auto* physics = GetWorld()->GetECS<PhysicsECS>();
 		for (size_t taskIndex = 0u; taskIndex < tasks.Num(); ++taskIndex)
@@ -1041,16 +305,37 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 				DestroyChunkPhysicsBodies(data, data.m_chunks[chunkIndex]);
 			}
 			LandscapeChunk chunk;
+			chunk.m_chunkX = cpu.m_chunkX;
+			chunk.m_chunkZ = cpu.m_chunkZ;
+			chunk.m_heightResolution = data.m_chunkResolution;
+			const size_t terrainVertexCount =
+				static_cast<size_t>(data.m_chunkResolution + 1u) * (data.m_chunkResolution + 1u);
+			chunk.m_heightSamples.Resize(terrainVertexCount);
+			chunk.m_bakeTriangles = TSharedPtr<TVector<Math::Triangle>>::Make(std::move(cpu.m_bakeTriangles));
+			chunk.m_localBounds = cpu.m_localBounds;
+			chunk.m_bakeVegetation.Reserve(cpu.m_vegetation.Num());
+			for (const auto& placement : cpu.m_vegetation)
+			{
+				LandscapeBakeVegetationInstance bakeInstance;
+				bakeInstance.m_profileIndex = placement.m_profileIndex;
+				bakeInstance.m_localMatrix = placement.m_transform;
+				chunk.m_bakeVegetation.Add(std::move(bakeInstance));
+			}
 			TVector<glm::vec3> collisionVertices;
-			collisionVertices.Resize(cpu.m_vertices.Num());
-			for (size_t vertexIndex = 0u; vertexIndex < cpu.m_vertices.Num(); ++vertexIndex)
+			collisionVertices.Resize(terrainVertexCount);
+			for (size_t vertexIndex = 0u; vertexIndex < terrainVertexCount; ++vertexIndex)
 			{
 				collisionVertices[vertexIndex] = cpu.m_vertices[vertexIndex].m_position;
+				chunk.m_heightSamples[vertexIndex] = cpu.m_vertices[vertexIndex].m_position.y;
 			}
 			uint32_t physicsBodyId = RigidBodyData::InvalidBodyId;
 			if (physics && physics->CreateStaticTriangleMesh(owner->GetInstanceId(),
-				collisionVertices, cpu.m_indices, glm::vec3(ownerTransform.m_position),
-				ownerTransform.m_rotation, glm::vec3(ownerTransform.m_scale), physicsBodyId))
+							   collisionVertices,
+							   cpu.m_collisionIndices,
+							   glm::vec3(ownerTransform.m_position),
+							   ownerTransform.m_rotation,
+							   glm::vec3(ownerTransform.m_scale),
+							   physicsBodyId))
 			{
 				data.m_physicsBodies.Add(physicsBodyId);
 				chunk.m_physicsBodies.Add(physicsBodyId);
@@ -1058,43 +343,84 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			TVector<Physics::CollisionShapeDesc> vegetationCollisionShapes;
 			for (const auto& placement : cpu.m_vegetation)
 			{
+				if (placement.m_profileIndex >= data.m_vegetationProfiles.Num())
+				{
+					continue;
+				}
 				const auto& profile = data.m_vegetationProfiles[placement.m_profileIndex];
 				if (profile.m_colliderRadius <= 0.0f)
 				{
 					continue;
 				}
+				const Math::Transform instanceTransform = Math::Transform::FromMatrix(placement.m_transform);
+				const float instanceScale = (std::max)({std::abs(instanceTransform.m_scale.x),
+					std::abs(instanceTransform.m_scale.y),
+					std::abs(instanceTransform.m_scale.z)});
 				Physics::CollisionShapeDesc shape;
 				shape.m_type = Physics::ECollisionShapeType::Capsule;
-				shape.m_center = placement.m_position + glm::vec3(
-					0.0f, profile.m_colliderOffsetY * placement.m_scale, 0.0f);
-				shape.m_rotation = glm::angleAxis(placement.m_angle, glm::vec3(0.0f, 1.0f, 0.0f));
-				shape.m_radius = profile.m_colliderRadius * placement.m_scale;
-				shape.m_height = profile.m_colliderHeight * placement.m_scale;
+				shape.m_center = glm::vec3(
+					instanceTransform.TransformPosition(glm::vec4(0.0f, profile.m_colliderOffsetY, 0.0f, 1.0f)));
+				shape.m_rotation = instanceTransform.m_rotation;
+				shape.m_radius = profile.m_colliderRadius * instanceScale;
+				shape.m_height = profile.m_colliderHeight * instanceScale;
 				vegetationCollisionShapes.Add(std::move(shape));
 			}
 			if (physics && !vegetationCollisionShapes.IsEmpty() &&
-				physics->CreateStaticCompound(owner->GetInstanceId(), vegetationCollisionShapes,
-					glm::vec3(ownerTransform.m_position), ownerTransform.m_rotation,
-					glm::vec3(ownerTransform.m_scale), physicsBodyId))
+				physics->CreateStaticCompound(owner->GetInstanceId(),
+					vegetationCollisionShapes,
+					glm::vec3(ownerTransform.m_position),
+					ownerTransform.m_rotation,
+					glm::vec3(ownerTransform.m_scale),
+					physicsBodyId))
 			{
 				data.m_physicsBodies.Add(physicsBodyId);
 				chunk.m_physicsBodies.Add(physicsBodyId);
 			}
 			auto mesh = RHI::Renderer::GetDriver()->CreateMesh();
-			mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
+			mesh->m_vertexDescription =
+				RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
 			mesh->m_bounds = cpu.m_localBounds;
 			mesh->m_materialIndex = 0u;
+			mesh->m_indexCount =
+				cpu.m_lodIndexCounts.IsEmpty() ? static_cast<uint32_t>(cpu.m_indices.Num()) : cpu.m_lodIndexCounts[0];
+			mesh->m_firstIndex = 0u;
+			mesh->m_vertexOffset = 0u;
 			RHI::Renderer::GetDriver()->UpdateMesh(mesh,
-				cpu.m_vertices.GetData(), cpu.m_vertices.Num() * sizeof(RHI::VertexP3N3T3B3UV2C4),
-				cpu.m_indices.GetData(), cpu.m_indices.Num() * sizeof(uint32_t));
+				cpu.m_vertices.GetData(),
+				cpu.m_vertices.Num() * sizeof(RHI::VertexP3N3T3B3UV2C4),
+				cpu.m_indices.GetData(),
+				cpu.m_indices.Num() * sizeof(uint32_t));
+			for (size_t lodIndex = 1u; lodIndex < cpu.m_lodIndexCounts.Num(); ++lodIndex)
+			{
+				auto lodMesh = RHI::Renderer::GetDriver()->CreateMesh();
+				lodMesh->m_vertexDescription = mesh->m_vertexDescription;
+				lodMesh->m_vertexBuffer = mesh->m_vertexBuffer;
+				lodMesh->m_indexBuffer = mesh->m_indexBuffer;
+				lodMesh->m_bounds = mesh->m_bounds;
+				lodMesh->m_materialIndex = mesh->m_materialIndex;
+				lodMesh->m_bakedVolumeScale = mesh->m_bakedVolumeScale;
+				lodMesh->m_indexCount = cpu.m_lodIndexCounts[lodIndex];
+				lodMesh->m_firstIndex = cpu.m_lodFirstIndices[lodIndex];
+				lodMesh->m_vertexOffset = 0u;
+				mesh->m_lods.Add(std::move(lodMesh));
+			}
 
 			RHI::RHISceneViewProxy proxy;
 			proxy.m_staticMeshEcs = LandscapeProxyId(componentIndex, chunkIndex);
+			proxy.m_mobility = ResolveLandscapeProxyMobility(ownerMobility, ELandscapeVegetationResidency::Persistent);
 			proxy.m_worldMatrix = ownerMatrix;
 			proxy.m_worldAabb = cpu.m_localBounds;
 			proxy.m_worldAabb.Apply(ownerMatrix);
 			proxy.m_frame = GetWorld()->GetCurrentFrame();
 			proxy.m_bCastShadows = true;
+			proxy.m_lodPolicy.m_bEnabled = !mesh->m_lods.IsEmpty();
+			proxy.m_lodPolicy.m_minLod = 0u;
+			proxy.m_lodPolicy.m_maxLod = mesh->GetNumLods() - 1u;
+			proxy.m_lodPolicy.m_cameraDistanceThresholds = data.m_lodDistances;
+			if (proxy.m_lodPolicy.m_cameraDistanceThresholds.Num() >= mesh->GetNumLods())
+			{
+				proxy.m_lodPolicy.m_cameraDistanceThresholds.Resize(mesh->GetNumLods() - 1u);
+			}
 			proxy.m_meshes.Add(mesh);
 			proxy.m_meshModelMatrices.Add(ownerMatrix);
 			proxy.m_overrideMaterials.Add(data.m_runtimeMaterial->GetOrAddRHI(mesh->m_vertexDescription));
@@ -1102,24 +428,27 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			AppendDepthMaterialMetadata(proxy, data.m_runtimeMaterial);
 			auto shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
 			shadowCaster->m_staticMeshEcs = proxy.m_staticMeshEcs;
+			shadowCaster->m_mobility = proxy.m_mobility;
+			shadowCaster->m_lodPolicy = proxy.m_lodPolicy;
 			shadowCaster->m_skeletonOffset = (std::numeric_limits<uint32_t>::max)();
 			shadowCaster->m_frame = proxy.m_frame;
-			AppendShadowMesh(*shadowCaster, mesh, ownerMatrix, data.m_runtimeMaterial,
-				(std::numeric_limits<float>::max)());
+			AppendShadowMesh(
+				*shadowCaster, mesh, ownerMatrix, data.m_runtimeMaterial, (std::numeric_limits<float>::max)());
 
 			shadowCaster->m_worldAabb = proxy.m_worldAabb;
-			proxy.m_shadowCaster = shadowCaster->m_meshes.IsEmpty() ?
-				RHI::RHIShadowCasterProxyPtr{} : shadowCaster;
+			proxy.m_shadowCaster = shadowCaster->m_meshes.IsEmpty() ? RHI::RHIShadowCasterProxyPtr{} : shadowCaster;
 #if defined(__APPLE__)
-			proxy.m_materialTextureSamplers.Resize(1u);
 			auto* textureImporter = App::GetSubmodule<TextureImporter>();
+			proxy.m_materialTextureSamplers.Resize(1u);
 			proxy.m_materialTextureSamplers[0].Insert(0u);
 			if (textureImporter)
 			{
 				for (const auto& sampler : data.m_runtimeMaterial->GetSamplers())
 				{
-					proxy.m_materialTextureSamplers[0].Insert(sampler.m_second ?
-						static_cast<uint32_t>(textureImporter->GetTextureIndex(sampler.m_second->GetFileId())) : 0u);
+					proxy.m_materialTextureSamplers[0].Insert(
+						sampler.m_second
+							? static_cast<uint32_t>(textureImporter->GetTextureIndex(sampler.m_second->GetFileId()))
+							: 0u);
 				}
 			}
 #endif
@@ -1128,182 +457,47 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			for (size_t profileIndex = 0u; profileIndex < data.m_vegetationProfiles.Num(); ++profileIndex)
 			{
 				auto& profile = data.m_vegetationProfiles[profileIndex];
-				const bool bUseMaterialOverride = static_cast<bool>(profile.m_materialFileId);
-				if (!profile.m_model || !profile.m_model->IsReady() ||
-					(bUseMaterialOverride && (!profile.m_material || !profile.m_material->IsReady())))
+				if (profile.m_residency == ELandscapeVegetationResidency::Grass)
 				{
-					++vegetationProfilesNotReady;
-					bVegetationResourcesPending = bVegetationResourcesPending ||
-						(profile.m_model && (!bUseMaterialOverride || profile.m_material));
 					continue;
 				}
 
-				TVector<RHI::RHIMeshPtr> vegetationMeshes;
-				TVector<glm::mat4> vegetationModelMatrices;
-				Math::AABB vegetationBounds;
-				if (!profile.m_model->CollectRenderData(profile.m_meshIndex,
-					vegetationMeshes, vegetationModelMatrices, vegetationBounds))
-				{
-					++vegetationProfilesWithoutRenderData;
-					continue;
-				}
-				TVector<MaterialPtr> vegetationMaterials;
-				vegetationMaterials.Reserve(vegetationMeshes.Num());
-				bool bVegetationMaterialsReady = true;
-				for (size_t meshIndex = 0u; meshIndex < vegetationMeshes.Num(); ++meshIndex)
-				{
-					MaterialPtr material = profile.m_material;
-					if (!bUseMaterialOverride)
-					{
-						const size_t materialIndex = vegetationMeshes[meshIndex]->ResolveMaterialIndex(
-							meshIndex, profile.m_modelMaterials.Num());
-						material = materialIndex < profile.m_modelMaterials.Num() ?
-							profile.m_modelMaterials[materialIndex] : MaterialPtr{};
-					}
-					if (!material || !material->IsReady())
-					{
-						bVegetationMaterialsReady = false;
-						break;
-					}
-					vegetationMaterials.Add(std::move(material));
-				}
-				if (!bVegetationMaterialsReady)
-				{
-					++vegetationProfilesNotReady;
-					bVegetationResourcesPending = bVegetationResourcesPending ||
-						(!bUseMaterialOverride && !profile.m_modelMaterials.IsEmpty());
-					continue;
-				}
-				LandscapeVegetationRenderProxy vegetationRenderProxy;
-				RHI::RHISceneViewProxy vegetationProxy;
-				vegetationProxy.m_staticMeshEcs = LandscapeVegetationProxyId(
-					componentIndex, chunkIndex, profileIndex);
-				vegetationProxy.m_worldMatrix = ownerMatrix;
-				vegetationProxy.m_frame = proxy.m_frame;
-				vegetationProxy.m_bCastShadows =
-					profile.m_shadowMode != ELandscapeVegetationShadowMode::None;
-				vegetationProxy.m_lodPolicy.m_bEnabled = true;
-				vegetationProxy.m_lodPolicy.m_minLod = profile.m_minLod;
-				vegetationProxy.m_lodPolicy.m_maxLod = profile.m_maxLod;
-				vegetationProxy.m_lodPolicy.m_screenCoverageThresholds =
-					profile.m_screenCoverageThresholds;
-				vegetationProxy.m_lodPolicy.m_maxCameraDistance = profile.m_cullDistance;
-				RHI::RHIInstancedMeshGroup instanceGroup;
-				instanceGroup.m_bCastShadows = vegetationProxy.m_bCastShadows;
-				instanceGroup.m_maxShadowDistance = (std::min)(profile.m_cullDistance,
-					profile.m_shadowMode == ELandscapeVegetationShadowMode::NearOnly ?
-					profile.m_shadowDistance : (std::numeric_limits<float>::max)());
-				instanceGroup.m_materials.Reserve(vegetationMeshes.Num());
-				instanceGroup.m_sourceMaterialShaders.Reserve(vegetationMeshes.Num());
-				instanceGroup.m_renderQueueTags.Reserve(vegetationMeshes.Num());
-				instanceGroup.m_baseColorFactors.Reserve(vegetationMeshes.Num());
-				instanceGroup.m_baseColorSamplers.Reserve(vegetationMeshes.Num());
-				instanceGroup.m_alphaCutoffs.Reserve(vegetationMeshes.Num());
-#if defined(__APPLE__)
-				instanceGroup.m_materialTextureSamplers.Resize(vegetationMeshes.Num());
-#endif
-				for (size_t meshIndex = 0u; meshIndex < vegetationMeshes.Num(); ++meshIndex)
-				{
-					MaterialPtr& material = vegetationMaterials[meshIndex];
-					instanceGroup.m_sourceMaterialShaders.Add(material->GetShader());
-					instanceGroup.m_materials.Add(material->GetOrAddRHI(
-						vegetationMeshes[meshIndex]->m_vertexDescription));
-					instanceGroup.m_renderQueueTags.Add(material->GetRenderState().GetTag());
-
-					glm::vec4 baseColorFactor{ 1.0f };
-					const glm::vec4* materialBaseColorFactor = nullptr;
-					if (!material->GetUniformsVec4().Find(
-						"material.baseColorFactor",
-						materialBaseColorFactor))
-					{
-						material->GetUniformsVec4().Find("material.albedo", materialBaseColorFactor);
-					}
-					if (materialBaseColorFactor)
-					{
-						baseColorFactor = *materialBaseColorFactor;
-					}
-					instanceGroup.m_baseColorFactors.Add(baseColorFactor);
-
-					float alphaCutoff = 0.5f;
-					const float* materialAlphaCutoff = nullptr;
-					if (material->GetUniformsFloat().Find(
-						"material.alphaCutoff",
-						materialAlphaCutoff) && materialAlphaCutoff)
-					{
-						alphaCutoff = *materialAlphaCutoff;
-					}
-					instanceGroup.m_alphaCutoffs.Add(alphaCutoff);
-
-					uint32_t baseColorSampler = 0u;
-					const TexturePtr* baseColorTexture = nullptr;
-					if (!material->GetSamplers().Find("baseColorSampler", baseColorTexture))
-					{
-						material->GetSamplers().Find("albedoSampler", baseColorTexture);
-					}
-					if (textureImporter && baseColorTexture && *baseColorTexture)
-					{
-						baseColorSampler = static_cast<uint32_t>(
-							textureImporter->GetTextureIndex((*baseColorTexture)->GetFileId()));
-					}
-					instanceGroup.m_baseColorSamplers.Add(baseColorSampler);
-#if defined(__APPLE__)
-					auto& requested = instanceGroup.m_materialTextureSamplers[meshIndex];
-					requested.Insert(0u);
-					if (textureImporter)
-					{
-						for (const auto& sampler : material->GetSamplers())
-						{
-							requested.Insert(sampler.m_second ? static_cast<uint32_t>(
-								textureImporter->GetTextureIndex(sampler.m_second->GetFileId())) : 0u);
-						}
-					}
-#endif
-				}
-				instanceGroup.m_meshes = std::move(vegetationMeshes);
-				instanceGroup.m_meshTransforms = std::move(vegetationModelMatrices);
-				auto vegetationShadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
-				vegetationShadowCaster->m_staticMeshEcs = vegetationProxy.m_staticMeshEcs;
-				vegetationShadowCaster->m_skeletonOffset =
-					(std::numeric_limits<uint32_t>::max)();
-				vegetationShadowCaster->m_frame = vegetationProxy.m_frame;
-				vegetationShadowCaster->m_lodPolicy.m_bEnabled = true;
-				vegetationShadowCaster->m_lodPolicy.m_minLod = profile.m_minLod;
-				vegetationShadowCaster->m_lodPolicy.m_maxLod = profile.m_maxLod;
-				vegetationShadowCaster->m_lodPolicy.m_screenCoverageThresholds =
-					profile.m_screenCoverageThresholds;
-				Math::AABB batchedVegetationBounds;
+				LandscapeVegetationRenderInstances instances;
+				instances.m_transforms.Reserve(profile.m_instancesPerChunk);
+				instances.m_lodBiases.Reserve(profile.m_instancesPerChunk);
+				instances.m_cullDistanceScales.Reserve(profile.m_instancesPerChunk);
+				instances.m_shadowDistanceScales.Reserve(profile.m_instancesPerChunk);
 				for (const auto& placement : cpu.m_vegetation)
 				{
 					if (placement.m_profileIndex != profileIndex)
 					{
 						continue;
 					}
-
-					const glm::mat4 localInstanceMatrix =
-						glm::translate(glm::mat4(1.0f), placement.m_position) *
-						glm::rotate(glm::mat4(1.0f), placement.m_angle, glm::vec3(0.0f, 1.0f, 0.0f)) *
-						glm::scale(glm::mat4(1.0f), glm::vec3(placement.m_scale));
-					instanceGroup.m_instanceTransforms.Add(localInstanceMatrix);
-					const glm::mat4 instanceMatrix = ownerMatrix * localInstanceMatrix;
-					Math::AABB instanceBounds = vegetationBounds;
-					instanceBounds.Apply(instanceMatrix);
-					batchedVegetationBounds.Extend(instanceBounds);
+					AppendRenderInstance(placement, instances);
 				}
-				if (instanceGroup.m_instanceTransforms.IsEmpty() ||
-					instanceGroup.m_meshes.IsEmpty() ||
-					!batchedVegetationBounds.IsValid())
+
+				LandscapeVegetationRenderProxy vegetationRenderProxy;
+				const auto buildResult = BuildLandscapeVegetationProxy(componentIndex,
+					chunkIndex,
+					profileIndex,
+					profile,
+					ownerMatrix,
+					proxy.m_frame,
+					std::move(instances),
+					ResolveLandscapeProxyMobility(ownerMobility, profile.m_residency),
+					data.m_buildRevision + 1u,
+					vegetationRenderProxy);
+				if (buildResult == EVegetationProxyBuildResult::Pending)
 				{
+					++vegetationProfilesNotReady;
+					bVegetationResourcesPending = true;
 					continue;
 				}
-				vegetationProxy.m_worldAabb = batchedVegetationBounds;
-				vegetationShadowCaster->m_worldAabb = vegetationProxy.m_worldAabb;
-				vegetationProxy.m_shadowCaster = vegetationProxy.m_bCastShadows ?
-					vegetationShadowCaster : RHI::RHIShadowCasterProxyPtr{};
-				vegetationProxy.m_instancedGroups.Add(std::move(instanceGroup));
-				GetOctreeBounds(vegetationProxy.m_worldAabb,
-					vegetationRenderProxy.m_octreeCenter, vegetationRenderProxy.m_octreeExtents);
-				vegetationRenderProxy.m_resource =
-					RHI::RHISceneProxyResourcePtr::Make(std::move(vegetationProxy));
+				if (buildResult == EVegetationProxyBuildResult::NoRenderData)
+				{
+					++vegetationProfilesWithoutRenderData;
+					continue;
+				}
 				chunk.m_vegetationProxies.Add(std::move(vegetationRenderProxy));
 				++vegetationRenderProxies;
 			}
@@ -1319,8 +513,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		data.m_bIsDirty = bVegetationResourcesPending;
 		for (auto& profile : data.m_vegetationProfiles)
 		{
-			profile.m_cachedMaterialRenderMetadataRevision =
-				CalculateVegetationMaterialRenderMetadataRevision(profile);
+			profile.m_cachedMaterialRenderMetadataRevision = CalculateVegetationMaterialRenderMetadataRevision(profile);
 		}
 		data.SetLastChange(owner->GetTransformComponent().GetFrameLastChange());
 		++m_shadowCastersRevision;
@@ -1330,239 +523,30 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		{
 			vegetationPerChunk += profile.m_instancesPerChunk;
 		}
-		SAILOR_LOG("LandscapeECS: rebuilt %zu of %zu chunks with %zu collision bodies (%ux%u, %.1fm, resolution %u), %zu vegetation profiles, %zu instances per chunk and %zu render proxies (%zu profile loads not ready, %zu without render data), %zu sculpt and %zu paint stamps, revision %llu.",
-			chunksToBuild.Num(), data.m_chunks.Num(), data.m_physicsBodies.Num(), data.m_chunksX, data.m_chunksZ, data.m_chunkSize,
-			data.m_chunkResolution, data.m_vegetationProfiles.Num(), vegetationPerChunk,
-			vegetationRenderProxies, vegetationProfilesNotReady,
+		SAILOR_LOG("LandscapeECS: rebuilt %zu of %zu chunks with %zu collision bodies (%ux%u, %.1fm, resolution %u), "
+				   "%zu vegetation profiles, %zu instances per chunk and %zu render proxies (%zu profile loads not "
+				   "ready, %zu without render data), %zu sculpt and %zu paint stamps, revision %llu.",
+			chunksToBuild.Num(),
+			data.m_chunks.Num(),
+			data.m_physicsBodies.Num(),
+			data.m_chunksX,
+			data.m_chunksZ,
+			data.m_chunkSize,
+			data.m_chunkResolution,
+			data.m_vegetationProfiles.Num(),
+			vegetationPerChunk,
+			vegetationRenderProxies,
+			vegetationProfilesNotReady,
 			vegetationProfilesWithoutRenderData,
-			data.m_sculptStamps.Num() / 5u, data.m_paintStamps.Num() / 5u,
+			data.m_sculptStamps.Num() / 5u,
+			data.m_paintStamps.Num() / 5u,
 			static_cast<unsigned long long>(data.m_buildRevision));
+		TrySaveVegetationAsset(data);
 	}
+	bSceneChanged |= UpdateGrassResidency(cameraTransforms, cameras);
 	if (bSceneChanged)
 	{
 		PublishSceneVersion();
 	}
 	return nullptr;
-}
-
-void LandscapeECS::PublishSceneVersion()
-{
-	auto version = RHI::RHISpatialSceneVersionPtr::Make();
-	version->m_revision = ++m_sceneVersionRevision;
-	version->m_shadowCastersRevision = m_shadowCastersRevision;
-	version->m_scene = m_rhiScene;
-	TSet<size_t> activeProducerKeys;
-	size_t spatialHash = 1469598103934665603ull;
-	auto hashSpatialEntry = [&spatialHash](
-		const RHI::RenderInstanceHandle& handle,
-		const glm::ivec3& center,
-		const glm::ivec3& extents)
-		{
-			HashCombine(
-				spatialHash,
-				handle.m_slot,
-				handle.m_generation,
-				center.x,
-				center.y,
-				center.z,
-				extents.x,
-				extents.y,
-				extents.z);
-		};
-
-	auto publishProxy = [this, &activeProducerKeys](
-		const RHI::RHISceneProxyResourcePtr& resource,
-		uint64_t buildRevision) -> RHI::RenderInstanceHandle
-		{
-			if (!m_rhiScene || !resource)
-			{
-				return {};
-			}
-
-			const auto& proxy = resource->m_proxy;
-			const size_t producerKey = proxy.m_staticMeshEcs;
-			activeProducerKeys.Insert(producerKey);
-			RHI::RenderInstanceHandle* handle = nullptr;
-			uint64_t* publishedRevision = nullptr;
-			if (m_renderInstanceHandles.Find(producerKey, handle) && handle &&
-				m_publishedBuildRevisions.Find(producerKey, publishedRevision) &&
-				publishedRevision && *publishedRevision == buildRevision)
-			{
-				return *handle;
-			}
-
-			RHI::RHISceneInstanceRecord record;
-			record.m_producerKey = producerKey;
-			record.m_mobility = EMobilityType::Static;
-			record.m_worldMatrix = proxy.m_worldMatrix;
-			record.m_worldBounds = proxy.m_worldAabb;
-			record.m_topology = resource;
-			record.m_topologyRevision = buildRevision;
-			record.m_materialRevision = Material::GetGlobalContentRevision();
-			record.m_shadowRevision = resource->m_shadowRevision;
-			record.m_skeletonOffset = proxy.m_skeletonOffset;
-			record.m_renderFlags = proxy.m_bCastShadows ? 1u : 0u;
-
-			if (m_renderInstanceHandles.Find(producerKey, handle) && handle)
-			{
-				m_rhiScene->UpdateInstance(
-					*handle,
-					record,
-					RHI::ToMask(RHI::ESceneChangeBit::ReplaceChunkRange) |
-					RHI::ToMask(RHI::ESceneChangeBit::MeshOrLodTopology) |
-					RHI::ToMask(RHI::ESceneChangeBit::Material) |
-					RHI::ToMask(RHI::ESceneChangeBit::ShadowState));
-			}
-			else
-			{
-				m_renderInstanceHandles[producerKey] = m_rhiScene->AddInstance(record);
-				handle = &m_renderInstanceHandles[producerKey];
-			}
-			m_publishedBuildRevisions[producerKey] = buildRevision;
-			return handle ? *handle : RHI::RenderInstanceHandle{};
-		};
-
-	for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)
-	{
-		if (!IsComponentRegistered(componentIndex))
-		{
-			continue;
-		}
-
-		const auto& data = m_components[componentIndex];
-		for (const auto& chunk : data.m_chunks)
-		{
-			const auto chunkHandle = publishProxy(chunk.m_resource, chunk.m_buildRevision);
-			if (chunkHandle.IsValid())
-			{
-				hashSpatialEntry(chunkHandle, chunk.m_octreeCenter, chunk.m_octreeExtents);
-			}
-			for (const auto& vegetation : chunk.m_vegetationProxies)
-			{
-				const auto vegetationHandle = publishProxy(
-					vegetation.m_resource,
-					chunk.m_buildRevision);
-				if (vegetationHandle.IsValid())
-				{
-					hashSpatialEntry(
-						vegetationHandle,
-						vegetation.m_octreeCenter,
-						vegetation.m_octreeExtents);
-				}
-			}
-		}
-
-		for (const auto& profile : data.m_vegetationProfiles)
-		{
-			version->m_bHasCustomDepthShadowCasters |= profile.m_material &&
-				profile.m_shadowMode != ELandscapeVegetationShadowMode::None &&
-				profile.m_material->GetRenderState().IsRequiredCustomDepthShader();
-		}
-	}
-	if (m_rhiScene)
-	{
-		for (size_t producerKey : m_renderInstanceHandles.GetKeys())
-		{
-			if (activeProducerKeys.Contains(producerKey))
-			{
-				continue;
-			}
-			RHI::RenderInstanceHandle* handle = nullptr;
-			if (m_renderInstanceHandles.Find(producerKey, handle) && handle)
-			{
-				m_rhiScene->RemoveInstance(*handle);
-			}
-			m_renderInstanceHandles.Remove(producerKey);
-			m_publishedBuildRevisions.Remove(producerKey);
-		}
-
-		const bool bSpatialChanged = !m_publishedSceneVersion ||
-			m_spatialHash != spatialHash;
-		if (bSpatialChanged)
-		{
-			++m_spatialRevision;
-			if (!activeProducerKeys.IsEmpty())
-			{
-				version->m_staticOctree =
-					TSharedPtr<TOctree<RHI::RenderInstanceHandle>>::Make(
-						glm::ivec3(0, 0, 0), 16536 * 16, 4);
-				auto appendSpatialEntry = [this, &version](
-					const RHI::RHISceneProxyResourcePtr& resource,
-					const glm::ivec3& center,
-					const glm::ivec3& extents)
-					{
-						if (!resource)
-						{
-							return;
-						}
-						RHI::RenderInstanceHandle* handle = nullptr;
-						if (m_renderInstanceHandles.Find(
-							resource->m_proxy.m_staticMeshEcs,
-							handle) && handle)
-						{
-							version->m_staticOctree->Update(center, extents, *handle);
-						}
-					};
-				for (size_t componentIndex = 0u;
-					componentIndex < m_components.Num(); ++componentIndex)
-				{
-					if (!IsComponentRegistered(componentIndex))
-					{
-						continue;
-					}
-					for (const auto& chunk : m_components[componentIndex].m_chunks)
-					{
-						appendSpatialEntry(
-							chunk.m_resource,
-							chunk.m_octreeCenter,
-							chunk.m_octreeExtents);
-						for (const auto& vegetation : chunk.m_vegetationProxies)
-						{
-							appendSpatialEntry(
-								vegetation.m_resource,
-								vegetation.m_octreeCenter,
-								vegetation.m_octreeExtents);
-						}
-					}
-				}
-			}
-		}
-		else
-		{
-			version->m_staticOctree = m_publishedSceneVersion->m_staticOctree;
-		}
-		m_spatialHash = spatialHash;
-		version->m_sceneVersion = m_rhiScene->PublishVersion(
-			Material::GetGlobalContentRevision(),
-			m_shadowCastersRevision,
-			m_spatialRevision);
-	}
-
-	m_publishedSceneVersion = std::move(version);
-}
-
-void LandscapeECS::AppendSceneView(RHI::RHISceneViewPtr& sceneView) const
-{
-	if (!sceneView)
-	{
-		return;
-	}
-	sceneView->AddSceneVersion(m_publishedSceneVersion);
-}
-
-void LandscapeECS::EndPlay()
-{
-	for (auto& component : m_components)
-	{
-		DestroyPhysicsBodies(component);
-	}
-	ECS::TSystem<LandscapeECS, LandscapeData>::EndPlay();
-	m_shadowCastersRevision = 0u;
-	m_sceneVersionRevision = 0u;
-	m_spatialRevision = 0u;
-	m_spatialHash = 0u;
-	m_publishedSceneVersion.Clear();
-	m_rhiScene.Clear();
-	m_renderInstanceHandles.Clear();
-	m_publishedBuildRevisions.Clear();
 }

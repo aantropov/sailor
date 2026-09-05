@@ -6,16 +6,13 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
-#include <iomanip>
 #include <iostream>
-#include <sstream>
 #include "Memory/ObjectAllocator.hpp"
 #include "Tasks/Scheduler.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "ECS/TransformECS.h"
 #include "Core/LogMacros.h"
-#include "Containers/Hash.h"
 #include "YamlExceptionBoundary.h"
 
 using namespace Sailor;
@@ -99,24 +96,13 @@ namespace
 		const InstanceId& sourceInstanceId,
 		uint32_t collisionAttempt)
 	{
-		const std::string key =
-			sourcePrefabId.ToString() + "|" +
-			instanceSeed + "|" +
-			sourceInstanceId.ToString() + "|" +
-			std::to_string(collisionAttempt);
-		const uint64_t primaryHash = Sailor::fnv1a(key.data(), key.size());
-		const std::string suffixKey = key + "|suffix";
-		const uint16_t suffixHash = static_cast<uint16_t>(
-			Sailor::fnv1a(suffixKey.data(), suffixKey.size()));
-
-		std::stringstream stream;
-		stream << std::uppercase << std::hex << std::setfill('0')
-			<< std::setw(16) << primaryHash
-			<< std::setw(4) << suffixHash;
-
-		InstanceId result;
-		result.Deserialize(YAML::Node(stream.str()));
-		return result;
+		return InstanceId::GenerateDeterministic(
+			{
+				sourcePrefabId.ToString(),
+				instanceSeed,
+				sourceInstanceId.ToString()
+			},
+			collisionAttempt);
 	}
 }
 
@@ -128,7 +114,13 @@ YAML::Node WorldPrefab::Serialize() const
 	}
 
 	YAML::Node outData;
-	::Serialize(outData, "name", m_name);
+	SERIALIZE_PROPERTY(outData, m_name);
+	if (!m_globalIllumination.m_probes.IsEmpty() ||
+		m_globalIllumination.m_mode !=
+			EGlobalIlluminationMode::Baked)
+	{
+		outData["globalIllumination"] = m_globalIllumination.Serialize();
+	}
 
 	TVector<YAML::Node> nodes;
 	for (const auto& prefab : m_gameObjects)
@@ -136,17 +128,7 @@ YAML::Node WorldPrefab::Serialize() const
 		YAML::Node prefabNode = prefab->Serialize();
 		if (prefab->m_bLinkedInstanceRecord)
 		{
-			::Serialize(prefabNode, "fileId", prefab->GetFileId());
-			::Serialize(prefabNode, "parentInstanceId", prefab->m_linkedParentInstanceId);
-			::Serialize(prefabNode, "instanceIds", prefab->m_linkedInstanceIds);
-			::Serialize(
-				prefabNode,
-				"gameObjectOverrides",
-				prefab->m_gameObjectOverrides);
-			::Serialize(
-				prefabNode,
-				"componentOverrides",
-				prefab->m_componentOverrides);
+			prefab->SerializeLinkedProperties(prefabNode, prefab->GetFileId());
 		}
 
 		nodes.Add(std::move(prefabNode));
@@ -162,8 +144,15 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 	m_bIsReady.store(false, std::memory_order_release);
 	m_loadDiagnostic.clear();
 	m_name.clear();
+	m_globalIllumination = {};
 	m_gameObjects.Clear();
-	::Deserialize(inData, "name", m_name);
+	DESERIALIZE_PROPERTY(inData, m_name);
+	if (!m_globalIllumination.Deserialize(inData, m_loadDiagnostic))
+	{
+		m_loadDiagnostic = "invalid world global illumination settings: " +
+			m_loadDiagnostic;
+		return;
+	}
 
 	if (!inData["prefabs"] || !inData["prefabs"].IsSequence())
 	{
@@ -649,6 +638,14 @@ bool WorldPrefab::BuildLinkedOverrides(
 			gameObjectOverride["name"] = expandedGameObject->m_name;
 		}
 
+		if (expandedGameObject->m_mobilityType !=
+			sourceGameObject.m_mobilityType)
+		{
+			gameObjectOverride["mobilityType"] =
+				SerializeEnum<EMobilityType>(
+					expandedGameObject->m_mobilityType);
+		}
+
 		if (!Utils::AreYamlNodesEqual(
 				YAML::Node(expandedGameObject->m_position),
 				YAML::Node(sourceGameObject.m_position)))
@@ -888,6 +885,27 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 			{
 				gameObjectOverride["name"] =
 					YAML::Clone(priorGameObjectOverride["name"]);
+			}
+
+			const bool bMobilityChangedFromBaseline =
+				baselineGameObject &&
+				expandedGameObject->m_mobilityType !=
+					baselineGameObject->m_mobilityType;
+			if (bMobilityChangedFromBaseline)
+			{
+				if (expandedGameObject->m_mobilityType !=
+					sourceGameObject.m_mobilityType)
+				{
+					gameObjectOverride["mobilityType"] =
+						SerializeEnum<EMobilityType>(
+							expandedGameObject->m_mobilityType);
+				}
+			}
+			else if (priorGameObjectOverride["mobilityType"])
+			{
+				gameObjectOverride["mobilityType"] =
+					YAML::Clone(
+						priorGameObjectOverride["mobilityType"]);
 			}
 
 			auto mergeTransformOverride = [
@@ -1284,6 +1302,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 {
 	auto res = App::GetSubmodule<WorldPrefabImporter>()->Create();
 	res->m_name = world->GetName();
+	res->m_globalIllumination = world->GetGISettings();
 
 	TVector<PendingPrefabLinkUpdate> pendingLinkUpdates;
 
@@ -1501,6 +1520,8 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 				nextEffectiveBaseline->m_gameObjects[
 					sourceGameObjectIndex];
 			baselineGameObject.m_name = liveGameObject->m_name;
+			baselineGameObject.m_mobilityType =
+				liveGameObject->m_mobilityType;
 			baselineGameObject.m_position =
 				liveGameObject->m_position;
 			baselineGameObject.m_rotation =

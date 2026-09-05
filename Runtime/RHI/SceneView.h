@@ -5,9 +5,12 @@
 #include "Engine/Types.h"
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
+#include "RHI/RenderDebugView.h"
 #include "RHI/RenderSubmission.h"
 #include "RHI/Scene.h"
+#include "RHI/MotionHistory.h"
 #include "RHI/Lighting.h"
+#include "RHI/GlobalIllumination.h"
 #include "ECS/CameraECS.h"
 #include "Math/Math.h"
 #include "Raytracing/LightingModel.h"
@@ -51,9 +54,14 @@ namespace Sailor::RHI
 		uint32_t m_minLod = 0u;
 		uint32_t m_maxLod = 2u;
 		TVector<float> m_screenCoverageThresholds{ 0.25f, 0.05f };
+		TVector<float> m_cameraDistanceThresholds{};
 		float m_maxCameraDistance = (std::numeric_limits<float>::infinity)();
 
 		SAILOR_API uint32_t Resolve(float screenCoverage, uint32_t numAvailableLods) const;
+		SAILOR_API uint32_t Resolve(
+			float screenCoverage,
+			float cameraDistance,
+			uint32_t numAvailableLods) const;
 	};
 
 	struct RHIShadowCasterProxy
@@ -77,6 +85,9 @@ namespace Sailor::RHI
 	struct RHIInstancedMeshGroup
 	{
 		TVector<glm::mat4> m_instanceTransforms{};
+		TVector<int32_t> m_instanceLodBiases{};
+		TVector<float> m_instanceCullDistanceScales{};
+		TVector<float> m_instanceShadowDistanceScales{};
 		TVector<RHIMeshPtr> m_meshes{};
 		TVector<glm::mat4> m_meshTransforms{};
 		TVector<RHIMaterialPtr> m_materials{};
@@ -167,6 +178,7 @@ namespace Sailor::RHI
 		const RHISceneInstanceRecord* m_record = nullptr;
 		const RHISceneProxyResource* m_resource = nullptr;
 		float m_screenCoverage = 1.0f;
+		float m_cameraDistance = 0.0f;
 
 		SAILOR_API const RHISceneViewProxy* GetSource() const;
 		SAILOR_API const glm::mat4& GetWorldMatrix() const;
@@ -202,6 +214,7 @@ namespace Sailor::RHI
 		// The owning RHISceneVersion is retained by the submission snapshot.
 		const RHISceneInstanceRecord* m_record = nullptr;
 		const RHISceneProxyResource* m_resource = nullptr;
+		float m_cameraDistance = 0.0f;
 
 		SAILOR_API const RHIShadowCasterProxy* GetSource() const;
 		SAILOR_API const glm::mat4& GetWorldMatrix() const;
@@ -236,7 +249,7 @@ namespace Sailor::RHI
 
 	static_assert(sizeof(RHIVisibleSceneProxy) <= sizeof(void*) * 4u,
 		"Visible scene records must remain lightweight immutable references.");
-	static_assert(sizeof(RHIVisibleShadowCaster) <= sizeof(void*) * 3u,
+	static_assert(sizeof(RHIVisibleShadowCaster) <= sizeof(void*) * 4u,
 		"Visible shadow records must remain lightweight immutable references.");
 
 	/**
@@ -371,8 +384,10 @@ namespace Sailor::RHI
 		}
 
 		RHIRenderSubmissionContextPtr m_submissionContext{};
+		TSharedPtr<RHIMotionHistoryFrame> m_previousMotionFrame{};
 		TSharedPtr<TVector<RHISceneVersionPtr>> m_sceneVersions{};
 		uint64_t m_sceneRevision = 0ull;
+		ESceneViewRenderMode m_renderMode = ESceneViewRenderMode::Lit;
 		float m_deltaTime = 0.0f;
 		uint64_t m_frame = 0ull;
 		uint32_t m_cameraIndex = 0u;
@@ -399,6 +414,10 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr m_boneMatrices{};
 		TSharedPtr<TVector<glm::mat4>> m_cpuBoneMatrices{};
 		uint64_t m_animationRevision = 0ull;
+		EGlobalIlluminationMode m_globalIlluminationMode =
+			EGlobalIlluminationMode::Baked;
+		bool m_bGlobalIlluminationEnabled = true;
+		RHIGlobalIlluminationSnapshotPtr m_globalIllumination{};
 
 		Tasks::TaskPtr<RHICommandListPtr> m_debugDrawSecondaryCmdList{};
 		Tasks::TaskPtr<RHICommandListPtr, void> m_drawImGui{};
@@ -411,12 +430,17 @@ namespace Sailor::RHI
 			const Math::Frustum& frustum,
 			TVector<RHIVisibleSceneProxy>& outVisibleProxies,
 			bool bSkipMaterials) const;
-		SAILOR_API TVector<RHIVisibleShadowCaster> TraceShadowCasters(const Math::Frustum& frustum) const;
+		SAILOR_API TVector<RHIVisibleShadowCaster> TraceShadowCasters(
+			const Math::Frustum& frustum,
+			const glm::vec3& lodReferencePosition) const;
 		SAILOR_API void TraceShadowCasters(
 			const Math::Frustum& frustum,
+			const glm::vec3& lodReferencePosition,
 			TVector<RHIVisibleShadowCaster>& outVisibleCasters) const;
 		SAILOR_API void PrepareSnapshots();
-		SAILOR_API void PrepareDebugDrawCommandLists(WorldPtr world);
+		SAILOR_API void PrepareDebugDrawCommandLists(
+			WorldPtr world,
+			const glm::ivec2& renderExtent);
 		SAILOR_API void SetSubmissionContext(RHIRenderSubmissionContextPtr submissionContext);
 		SAILOR_API RHISubmissionCompletionTokenPtr GetOrCreateSubmissionCompletionToken();
 		SAILOR_API bool IsCurrentSubmissionCompletionToken(
@@ -429,6 +453,7 @@ namespace Sailor::RHI
 		TVector<RHISceneVersionPtr> m_virtualSceneVersions{};
 		TSharedPtr<TVector<RHISceneVersionPtr>> m_retainedSceneVersions{};
 		uint64_t m_sceneRevision = 0ull;
+		ESceneViewRenderMode m_renderMode = ESceneViewRenderMode::Lit;
 
 		uint32_t m_totalNumLights = 0;
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
@@ -438,6 +463,10 @@ namespace Sailor::RHI
 		RHI::RHIShaderBindingSetPtr m_boneMatrices{};
 		TSharedPtr<TVector<glm::mat4>> m_cpuBoneMatrices{};
 		uint64_t m_animationRevision = 0ull;
+		EGlobalIlluminationMode m_globalIlluminationMode =
+			EGlobalIlluminationMode::Baked;
+		bool m_bGlobalIlluminationEnabled = true;
+		RHIGlobalIlluminationSnapshotPtr m_globalIllumination{};
 
 		// For each camera
 		TVector<TVector<RHIUpdateShadowMapCommand>> m_shadowMapsToUpdate;

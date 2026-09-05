@@ -1,14 +1,17 @@
 #include "Engine/World.h"
+#include "FrameGraph/BlitFormatConversion.h"
 #include "RHI/Material.h"
 #include "RHI/RenderSubmission.h"
 #include "RHI/Scene.h"
 #include "RHI/SceneView.h"
+#include "RHI/MotionHistory.h"
 
 #include <iostream>
 #include <stdexcept>
 #include <string>
 
 using namespace Sailor;
+using namespace Sailor::Framegraph;
 using namespace Sailor::RHI;
 
 namespace
@@ -126,6 +129,38 @@ namespace
 		auto materialOnlyVersion = scene->PublishVersion(1ull);
 		Require(materialOnlyVersion->m_recordsRoot == second->m_recordsRoot,
 			"publishing a version without record deltas must retain the immutable COW root");
+	}
+
+	void TestRenderedMotionHistoryReleasesOldScenePages()
+	{
+		auto scene = RHIScenePtr::Make(3u);
+		const auto handle = scene->AddInstance(MakeRecord(1u, EMobilityType::Dynamic));
+		RHISceneViewSnapshot snapshot;
+		TSharedPtr<RHIMotionHistoryFrame> history;
+		TVector<TWeakPtr<RHISceneRecordPage>> oldPages;
+		TVector<TWeakPtr<RHIMotionHistoryFrame>> oldHistory;
+		for (uint32_t frame = 0u; frame < 256u; ++frame)
+		{
+			scene->UpdateInstance(handle, MakeRecord(1u, EMobilityType::Dynamic, static_cast<float>(frame)),
+				ToMask(ESceneChangeBit::Transform));
+			auto version = scene->PublishVersion();
+			oldPages.Add(version->m_recordsRoot->m_pages[0]);
+			snapshot.ResetForReuse();
+			snapshot.m_previousMotionFrame = history;
+			snapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(
+				TVector<RHISceneVersionPtr>{ version });
+			history = TSharedPtr<RHIMotionHistoryFrame>::Make();
+			history->m_sceneVersions = snapshot.m_sceneVersions;
+			oldHistory.Add(history);
+			scene->PrepareFlight(frame % 3u, version);
+			scene->CollectGarbage();
+			if (frame >= 8u)
+			{
+				Require(!oldHistory[frame - 8u], "recycled snapshots must release older history frames");
+				Require(!oldPages[frame - 8u],
+					"submitted motion history and rotating flights must not retain older scene pages");
+			}
+		}
 	}
 
 	void TestTwoAndThreeFlightRevisionReplay()
@@ -301,11 +336,167 @@ namespace
 		auto context = RHIRenderSubmissionContextPtr::Make();
 		context->BeginSubmission(11ull, 1u);
 		view.SetSubmissionContext(context);
+		view.m_renderMode = ESceneViewRenderMode::Cascades;
+		auto firstGlobalIllumination =
+			RHIGlobalIlluminationSnapshotPtr::Make();
+		firstGlobalIllumination->m_generation = 41u;
+		view.m_globalIlluminationMode = EGlobalIlluminationMode::Baked;
+		view.m_bGlobalIlluminationEnabled = false;
+		view.m_globalIllumination = firstGlobalIllumination;
 		view.PrepareSnapshots();
 
 		Require(view.m_snapshots.Num() == 1u &&
-			view.m_snapshots[0].m_submissionContext == context,
+			view.m_snapshots[0].m_submissionContext == context &&
+			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades &&
+			view.m_snapshots[0].m_globalIlluminationMode ==
+				EGlobalIlluminationMode::Baked &&
+			!view.m_snapshots[0].m_bGlobalIlluminationEnabled,
 			"preparing a camera snapshot must retain the acquired flight submission context");
+		view.m_renderMode = ESceneViewRenderMode::AmbientOcclusion;
+		view.m_globalIlluminationMode = EGlobalIlluminationMode::NoGI;
+		view.m_bGlobalIlluminationEnabled = true;
+		Require(
+			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades &&
+			view.m_snapshots[0].m_globalIlluminationMode ==
+				EGlobalIlluminationMode::Baked &&
+			!view.m_snapshots[0].m_bGlobalIlluminationEnabled,
+			"a prepared frame snapshot must keep its render and GI modes when the next frame changes");
+		auto secondGlobalIllumination =
+			RHIGlobalIlluminationSnapshotPtr::Make();
+		secondGlobalIllumination->m_generation = 42u;
+		view.m_globalIllumination = secondGlobalIllumination;
+		Require(
+			view.m_snapshots[0].m_globalIllumination == firstGlobalIllumination &&
+			view.m_snapshots[0].m_globalIllumination->m_generation == 41u,
+			"an in-flight camera snapshot must retain its exact immutable GI revision");
+
+		Require(
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::AmbientOcclusion)) == "AO" &&
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::Cascades)) == "CASCADES" &&
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::LightTiles)) == "LIGHT_TILES" &&
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::Lit)).empty() &&
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::GlobalIlluminationVisibility)).empty(),
+			"Scene View modes must resolve to immutable variants or GI runtime metadata");
+		Require(
+			!IsSceneViewDebugVisualization(ESceneViewRenderMode::Lit) &&
+			IsSceneViewDebugVisualization(
+				ESceneViewRenderMode::AmbientOcclusion) &&
+			IsSceneViewDebugVisualization(
+				ESceneViewRenderMode::GlobalIlluminationOnly) &&
+			IsSceneViewDebugVisualization(
+				ESceneViewRenderMode::GlobalIlluminationFallback) &&
+			IsSceneViewDebugVisualization(
+				ESceneViewRenderMode::GlobalIlluminationSubdivisions),
+			"CPU path-traced Lit composition must yield to every Scene View debug visualization");
+	}
+
+	void TestMotionHistoryContinuity()
+	{
+		RHIMotionHistoryFrame previous;
+		previous.m_frameData.m_view = glm::mat4(1.0f);
+		previous.m_frameData.m_projection = glm::mat4(1.0f);
+		previous.m_frameData.m_cameraPosition = glm::vec4(0.0f);
+		previous.m_frameData.m_viewportSize = glm::ivec2(1280, 720);
+		previous.m_frameData.m_cameraZNearZFar = glm::vec2(0.1f, 1000.0f);
+		previous.m_frameData.m_currentTime = 1.0f;
+		auto current = previous;
+		current.m_frameData.m_currentTime += 1.0f / 60.0f;
+		Require(IsMotionHistoryContinuous(previous, current), "adjacent rendered views must retain motion history");
+		++current.m_cameraRevision;
+		Require(!IsMotionHistoryContinuous(previous, current), "a camera cut must invalidate all object and camera motion");
+		--current.m_cameraRevision;
+		current.m_frameData.m_viewportSize.x += 1;
+		Require(!IsMotionHistoryContinuous(previous, current), "render-size changes must invalidate history");
+		current.m_frameData.m_viewportSize = previous.m_frameData.m_viewportSize;
+		current.m_frameData.m_currentTime = 2.0f;
+		Require(!IsMotionHistoryContinuous(previous, current), "a long suspended render must not stretch the shutter");
+		current.m_frameData.m_currentTime = 0.5f;
+		Require(!IsMotionHistoryContinuous(previous, current), "time rewinds must invalidate history");
+		current.m_frameData.m_currentTime = previous.m_frameData.m_currentTime;
+		Require(!IsMotionHistoryContinuous(previous, current), "a paused frame must not reuse nonzero motion");
+		current.m_frameData.m_currentTime += 0.02f;
+		current.m_frameData.m_cameraPosition.x = 200.0f;
+		Require(!IsMotionHistoryContinuous(previous, current), "large unannounced camera teleports must reset history");
+		CameraData camera;
+		const auto revision = camera.GetMotionHistoryRevision();
+		camera.ResetMotionHistory();
+		Require(camera.GetMotionHistoryRevision() != revision, "camera reset must survive snapshot copying");
+	}
+
+	void TestObjectMotionUsesRenderedVersions()
+	{
+		auto scene = RHIScenePtr::Make(2u);
+		RHISceneViewProxy source;
+		source.m_worldMatrix = glm::mat4(1.0f);
+		source.m_meshModelMatrices.Add(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 0.0f)));
+		auto topology = RHISceneProxyResourcePtr::Make(source);
+		auto record = MakeRecord(71u, EMobilityType::Stationary);
+		record.m_topology = topology;
+		const auto handle = scene->AddInstance(record);
+		auto first = scene->PublishVersion();
+		record.m_worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, 0.0f, 0.0f));
+		Require(scene->UpdateInstance(handle, record, ToMask(ESceneChangeBit::Transform)), "a moved motion fixture must update");
+		auto second = scene->PublishVersion();
+		RHISceneViewSnapshot view;
+		view.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(TVector<RHISceneVersionPtr>{ second });
+		view.m_previousMotionFrame = TSharedPtr<RHIMotionHistoryFrame>::Make();
+		view.m_previousMotionFrame->m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(TVector<RHISceneVersionPtr>{ first });
+		RHIVisibleSceneProxy current;
+		current.m_handle = handle;
+		current.m_resource = topology.GetRawPtr();
+		Require(second->Resolve(handle, current.m_record), "current motion fixture must resolve");
+		RHIVisibleSceneProxy previous;
+		Require(ResolvePreviousMotionProxy(view, current, previous), "retained scene generations must resolve the previously rendered model");
+		const auto motion = MakeObjectMotionData(current.ResolveMeshWorldMatrix(0u), previous.ResolveMeshWorldMatrix(0u), previous.GetSkeletonOffset(), true);
+		Require(motion.m_state.y == 1u && glm::vec3(motion.m_previousModel[3]) == glm::vec3(0.0f, 2.0f, 0.0f),
+			"motion must preserve mesh-local transforms and the previous, not current, object position");
+		view.m_previousMotionFrame->m_sceneVersions = view.m_sceneVersions;
+		Require(ResolvePreviousMotionProxy(view, current, previous) && previous.ResolveMeshWorldMatrix(0u) == current.ResolveMeshWorldMatrix(0u),
+			"after the next submitted frame a stationary object must have zero object motion without another ECS mutation");
+		const auto newborn = scene->AddInstance(MakeRecord(72u, EMobilityType::Dynamic));
+		auto third = scene->PublishVersion();
+		view.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(TVector<RHISceneVersionPtr>{ third });
+		current.m_handle = newborn;
+		Require(third->Resolve(newborn, current.m_record), "newborn fixture must resolve");
+		Require(!ResolvePreviousMotionProxy(view, current, previous), "new instances must never inherit motion from an older slot");
+		auto otherScene = RHIScenePtr::Make(2u);
+		const auto otherHandle = otherScene->AddInstance(record);
+		auto otherVersion = otherScene->PublishVersion();
+		view.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(TVector<RHISceneVersionPtr>{ otherVersion });
+		current.m_handle = otherHandle;
+		Require(otherVersion->Resolve(otherHandle, current.m_record), "other scene fixture must resolve");
+		Require(!ResolvePreviousMotionProxy(view, current, previous), "matching slots in distinct scenes must not share history");
+		const auto teleported = MakeObjectMotionData(glm::translate(glm::mat4(1.0f), glm::vec3(1000.0f, 0.0f, 0.0f)), glm::mat4(1.0f), 0u, true);
+		Require(teleported.m_state.y == 0u, "respawns and route wrapping must not create full-screen velocities");
+		view.ResetForReuse();
+		Require(!view.m_previousMotionFrame, "recycled snapshots must release old temporal data");
+	}
+
+	void TestBlitFormatConversionPath()
+	{
+		Require(
+			RequiresShaderColorBlitForFormatConversion(
+				ETextureFormat::R16G16B16A16_SFLOAT,
+				ETextureFormat::B8G8R8A8_UNORM) &&
+			RequiresShaderColorBlitForFormatConversion(
+				ETextureFormat::R16G16B16A16_SFLOAT,
+				ETextureFormat::B8G8R8A8_SRGB),
+			"floating-point Scene View output must use the shader blit when targeting normalized editor output");
+		Require(
+			!RequiresShaderColorBlitForFormatConversion(
+				ETextureFormat::R16G16B16A16_UNORM,
+				ETextureFormat::B8G8R8A8_UNORM),
+			"formats from the same normalized numeric class may use the native blit path");
+		Require(
+			!RequiresShaderColorBlitForFormatConversion(
+				ETextureFormat::D32_SFLOAT,
+				ETextureFormat::D32_SFLOAT),
+			"matching depth formats must remain on the dedicated native depth path");
 	}
 }
 
@@ -315,12 +506,16 @@ int main()
 	{
 		TestGenerationalHandlesAndImmutableVersions();
 		TestCopyOnWritePageSharing();
+		TestRenderedMotionHistoryReleasesOldScenePages();
 		TestTwoAndThreeFlightRevisionReplay();
 		TestRangeRetirementAndDirtyCoalescing();
 		TestImmutableMaterialBindingVersions();
 		TestLocalizedShadowVersionDiff();
 		TestSubmissionCompletionToken();
 		TestSubmissionContextSurvivesSnapshotPreparation();
+		TestBlitFormatConversionPath();
+		TestMotionHistoryContinuity();
+		TestObjectMotionUsesRenderedVersions();
 	}
 	catch (const std::exception& exception)
 	{

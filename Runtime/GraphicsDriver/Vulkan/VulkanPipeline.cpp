@@ -144,6 +144,45 @@ bool VulkanGraphicsPipeline::Compile()
 
 	ApplyStates(pipelineInfo);
 
+	// Dynamic rendering can add MRT attachments to an existing material. Match
+	// the blend array to this pipeline's actual target count, retaining the
+	// material's alpha blend for every written output. A colour-only shader must
+	// not overwrite another pass's velocity attachment with undefined values.
+	TVector<VkPipelineColorBlendAttachmentState> blendAttachments;
+	VkPipelineColorBlendStateCreateInfo colorBlending{};
+	if (pipelineInfo.pColorBlendState && pipelineInfo.pNext)
+	{
+		const auto* rendering = static_cast<const VkPipelineRenderingCreateInfo*>(pipelineInfo.pNext);
+		if (rendering->sType == VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO)
+		{
+			uint32_t outputMask = 0u;
+			for (const auto& stage : m_stages)
+				if (stage->m_stage == VK_SHADER_STAGE_FRAGMENT_BIT) outputMask = stage->GetFragmentOutputMask();
+			colorBlending = *pipelineInfo.pColorBlendState;
+			const auto attachment = colorBlending.attachmentCount ? colorBlending.pAttachments[0] : VkPipelineColorBlendAttachmentState{};
+			blendAttachments.Resize(rendering->colorAttachmentCount);
+			for (uint32_t i = 0u; i < rendering->colorAttachmentCount; ++i)
+			{
+				blendAttachments[i] = attachment;
+				if (i > 0u && attachment.blendEnable)
+				{
+					// Auxiliary MRT coverage uses ordinary source-over, not the
+					// HDR colour alpha channel's subtractive metadata operation.
+					blendAttachments[i].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+					blendAttachments[i].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+					blendAttachments[i].colorBlendOp = VK_BLEND_OP_ADD;
+					blendAttachments[i].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+					blendAttachments[i].dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+					blendAttachments[i].alphaBlendOp = VK_BLEND_OP_ADD;
+				}
+				if (i >= 32u || (outputMask & (1u << i)) == 0u) blendAttachments[i].colorWriteMask = 0u;
+			}
+			colorBlending.attachmentCount = rendering->colorAttachmentCount;
+			colorBlending.pAttachments = blendAttachments.GetData();
+			pipelineInfo.pColorBlendState = &colorBlending;
+		}
+	}
+
 	const VkResult result = vkCreateGraphicsPipelines(*m_pDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline);
 	_freea(shaderStageCreateInfo);
 

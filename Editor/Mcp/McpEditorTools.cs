@@ -3,6 +3,7 @@
 using ModelContextProtocol.Server;
 using SailorEditor.AI;
 using SailorEditor.Commands;
+using SailorEditor.Scene;
 using SailorEditor.Services;
 using SailorEditor.Workspace;
 
@@ -19,6 +20,11 @@ public sealed record McpEditorStateSnapshot(
     long WorkspaceEpoch,
     int UndoCount,
     int RedoCount);
+
+public sealed record McpEditorRenderModeSnapshot(
+    bool Succeeded,
+    string Mode,
+    string Message);
 
 internal sealed class McpEditorTools
 {
@@ -76,6 +82,27 @@ internal sealed class McpEditorTools
                 UseStructuredContent = true,
             }),
         McpServerTool.Create(
+            (CancellationToken cancellationToken) =>
+                GetRenderModeAsync(cancellationToken),
+            new()
+            {
+                Name = "sailor_editor_get_render_mode",
+                Description =
+                    "Get the active Scene View rendering mode. Canonical modes are lit, ambient_occlusion, cascades and light_tiles.",
+                UseStructuredContent = true,
+            }),
+        McpServerTool.Create(
+            (string mode, CancellationToken cancellationToken) =>
+                SetRenderModeAsync(mode, cancellationToken),
+            new()
+            {
+                Name = "sailor_editor_set_render_mode",
+                Description =
+                    "Set the transient Scene View rendering mode without changing the scene or project settings. " +
+                    "Accepted canonical modes are lit, ambient_occlusion, cascades and light_tiles.",
+                UseStructuredContent = true,
+            }),
+        McpServerTool.Create(
             (bool includeYaml, CancellationToken cancellationToken) =>
                 GetSceneHierarchyAsync(includeYaml, cancellationToken),
             new()
@@ -130,6 +157,25 @@ internal sealed class McpEditorTools
                 UseStructuredContent = true,
             }),
         McpServerTool.Create(
+            (string targetComponentId,
+                long offset,
+                int limit,
+                CancellationToken cancellationToken) =>
+                GetLandscapeVegetationAsync(
+                    targetComponentId,
+                    offset,
+                    limit,
+                    cancellationToken),
+            new()
+            {
+                Name = "sailor_landscape_get_vegetation",
+                Description =
+                    "Read the binary vegetation asset referenced by a LandscapeComponent and return its exact fileId, " +
+                    "versioned binary format and a paged list of per-instance matrices/settings. " +
+                    "Matrices are Landscape-local and column-major. offset is a global instance index; limit is clamped to 1..4096.",
+                UseStructuredContent = true,
+            }),
+        McpServerTool.Create(
             (McpLandscapeApplyRequest request, CancellationToken cancellationToken) =>
                 ApplyLandscapeAsync(request, cancellationToken),
             new()
@@ -139,6 +185,7 @@ internal sealed class McpEditorTools
                     "Create or fully author a LandscapeComponent from a level description. " +
                     "Resolve material, texture and model fileIds with sailor_assets_list/get first. " +
                     "The request replaces terrain stamps and all vegetation profiles atomically. " +
+                    "Set vegetationFileId to link an existing Landscape.vegetation binary asset. " +
                     "A vegetation materialFileId is optional; leave it empty to use the GLB materials. " +
                     "Vegetation shadows accept None, NearOnly, or All. Leave targetComponentId empty to create a new Landscape GameObject. " +
                     "Pass the current workspace epoch and confirm=true; the complete edit is one undo entry.",
@@ -158,7 +205,7 @@ internal sealed class McpEditorTools
             {
                 Name = "sailor_landscape_regenerate",
                 Description =
-                    "Regenerate terrain, vegetation, render proxies and collision for an existing LandscapeComponent. " +
+                    "Reload its linked Landscape.vegetation asset, then regenerate terrain, vegetation, render proxies and collision. " +
                     "Requires its component instance ID, the current workspace epoch and confirm=true.",
                 UseStructuredContent = true,
             }),
@@ -305,6 +352,54 @@ internal sealed class McpEditorTools
             () => Task.FromResult(_sceneSnapshots.Build(includeYaml)),
             cancellationToken);
 
+    public Task<McpEditorRenderModeSnapshot> GetRenderModeAsync(
+        CancellationToken cancellationToken = default) =>
+        _editorThread.InvokeAsync(
+            async () =>
+            {
+                var mode = await _engine.GetEditorRenderModeAsync(
+                    cancellationToken);
+                return mode is not null
+                    ? new McpEditorRenderModeSnapshot(
+                        true,
+                        SceneViewRenderModeNames.ToExternalName(mode.Value),
+                        "Scene View render mode read successfully.")
+                    : new McpEditorRenderModeSnapshot(
+                        false,
+                        string.Empty,
+                        "The Engine is not running or rejected the render mode query.");
+            },
+            cancellationToken);
+
+    public Task<McpEditorRenderModeSnapshot> SetRenderModeAsync(
+        string mode,
+        CancellationToken cancellationToken = default) =>
+        _editorThread.InvokeAsync(
+            async () =>
+            {
+                if (!SceneViewRenderModeNames.TryParse(mode, out var parsed))
+                {
+                    return new McpEditorRenderModeSnapshot(
+                        false,
+                        string.Empty,
+                        "Unsupported render mode. Use one of: " +
+                        string.Join(", ", SceneViewRenderModeNames.Supported) + ".");
+                }
+
+                var succeeded = await _engine.SetEditorRenderModeAsync(
+                    parsed,
+                    cancellationToken);
+                return new McpEditorRenderModeSnapshot(
+                    succeeded,
+                    succeeded
+                        ? SceneViewRenderModeNames.ToExternalName(parsed)
+                        : string.Empty,
+                    succeeded
+                        ? "Scene View render mode updated."
+                        : "The Engine is not running or rejected the render mode command.");
+            },
+            cancellationToken);
+
     public Task<McpGameObjectSnapshot?> GetSceneObjectAsync(
         string instanceId,
         CancellationToken cancellationToken = default) =>
@@ -352,6 +447,18 @@ internal sealed class McpEditorTools
                 expectedWorkspaceEpoch,
                 targetComponentId,
                 cancellationToken),
+            cancellationToken);
+
+    public Task<McpLandscapeVegetationSnapshot> GetLandscapeVegetationAsync(
+        string targetComponentId,
+        long offset,
+        int limit,
+        CancellationToken cancellationToken = default) =>
+        _editorThread.InvokeAsync(
+            () => Task.FromResult(_landscapeOperations.GetVegetation(
+                targetComponentId,
+                offset,
+                limit)),
             cancellationToken);
 
     public Task<object> UndoAsync(

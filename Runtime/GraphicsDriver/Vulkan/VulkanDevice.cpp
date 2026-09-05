@@ -134,7 +134,11 @@ VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples reques
 #endif
 
 	// Create swapchain	CreateCommandPool();
-	CreateSwapchain(pViewport);
+	if (!CreateSwapchain(pViewport))
+	{
+		SAILOR_LOG_ERROR("Failed to create the initial Vulkan swapchain.");
+		std::abort();
+	}
 
 	// Create graphics
 	CreateDefaultRenderPass();
@@ -513,14 +517,13 @@ bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 
 	WaitIdle();
 
-	CleanupSwapChain();
-
 	if (!CreateSwapchain(pViewport))
 	{
 		m_bIsSwapChainOutdated = true;
 		return false;
 	}
 
+	CleanupSwapChain();
 	CreateDefaultRenderPass();
 
 	m_frameDeps.Clear();
@@ -528,6 +531,7 @@ bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 	CreateFrameDependencies();
 
 	m_bIsSwapChainOutdated = false;
+	m_bIsSwapChainSuboptimal = false;
 
 	assert(m_swapchain);
 
@@ -733,6 +737,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		supportedCore12.descriptorBindingStorageBufferUpdateAfterBind &&
 		supportedCore12.descriptorBindingUniformBufferUpdateAfterBind &&
 		supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
+	m_bSupportsHostQueryReset = supportedCore12.hostQueryReset == VK_TRUE;
 
 
 	AddFeature<VkPhysicalDeviceVulkan12Features>(features, [&](auto& core12)
@@ -752,9 +757,11 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 			core12.descriptorBindingVariableDescriptorCount = supportedCore12.descriptorBindingVariableDescriptorCount;
 			core12.descriptorIndexing = supportedCore12.descriptorIndexing;
 			core12.descriptorBindingUpdateUnusedWhilePending = supportedCore12.descriptorBindingUpdateUnusedWhilePending;
+			core12.hostQueryReset = supportedCore12.hostQueryReset;
 		});
 
 	SAILOR_LOG("m_bSupportsDescriptorUpdateAfterBind = %d", (int32_t)m_bSupportsDescriptorUpdateAfterBind);
+	SAILOR_LOG("m_bSupportsHostQueryReset = %d", (int32_t)m_bSupportsHostQueryReset);
 	SAILOR_LOG("maxDescriptorSetUpdateAfterBindSamplers = %d", (int32_t)supportedCore12Properties.maxDescriptorSetUpdateAfterBindSamplers);
 
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
@@ -900,14 +907,19 @@ bool VulkanDevice::CreateSwapchain(Platform::Window* pViewport)
 		return false;
 	}
 
-	m_oldSwapchain = m_swapchain;
-
-	m_swapchain = VulkanSwapchainPtr::Make(
+	auto replacement = VulkanSwapchainPtr::Make(
 		VulkanDevicePtr(this),
 		pViewport->GetWidth(),
 		pViewport->GetHeight(),
 		pViewport->IsVsyncRequested(),
-		m_oldSwapchain);
+		m_swapchain);
+	if (static_cast<VkSwapchainKHR>(*replacement) == VK_NULL_HANDLE || !replacement->GetDepthBufferView())
+	{
+		m_bIsSwapChainOutdated = true;
+		return false;
+	}
+	m_oldSwapchain = m_swapchain;
+	m_swapchain = std::move(replacement);
 
 	pViewport->SetRenderArea(ivec2(m_swapchain->GetExtent().width, m_swapchain->GetExtent().height));
 	m_pCurrentFrameViewport = CreateSwapchainViewport();
@@ -944,16 +956,39 @@ bool VulkanDevice::ShouldFixLostDevice(const Platform::Window* pViewport)
 		return true;
 	}
 
-	const auto& m_swapChainSupportDetails = m_swapchain->GetSwapchainSupportDetails();
-
-	const VkExtent2D swapchainExtent = VulkanApi::ChooseSwapExtent(m_swapChainSupportDetails.m_capabilities, pViewport->GetWidth(), pViewport->GetHeight());
-	return m_swapchain && (swapchainExtent.width != m_swapchain->GetExtent().width || swapchainExtent.height != m_swapchain->GetExtent().height);
+	const auto& support = m_swapchain->GetSwapchainSupportDetails();
+	if (m_bIsSwapChainSuboptimal.exchange(false))
+	{
+		// SUBOPTIMAL still presents successfully. MoltenVK can keep returning it
+		// for a scaled drawable even after recreation. Rebuild only when the
+		// surface would actually produce a different swapchain; otherwise every
+		// frame would discard temporal history and all frame-graph resources.
+		const auto current = VulkanApi::QuerySwapChainSupport(m_physicalDevice, m_surface);
+		if (current.m_formats.IsEmpty() || current.m_presentModes.IsEmpty())
+		{
+			m_bIsSwapChainOutdated = true;
+			return true;
+		}
+		const auto extent = VulkanApi::ChooseSwapExtent(current.m_capabilities, pViewport->GetWidth(), pViewport->GetHeight());
+		const auto oldFormat = VulkanApi::ChooseSwapSurfaceFormat(support.m_formats);
+		const auto newFormat = VulkanApi::ChooseSwapSurfaceFormat(current.m_formats);
+		if (extent.width != m_swapchain->GetExtent().width || extent.height != m_swapchain->GetExtent().height ||
+			current.m_capabilities.currentTransform != support.m_capabilities.currentTransform ||
+			newFormat.format != oldFormat.format || newFormat.colorSpace != oldFormat.colorSpace)
+		{
+			m_bIsSwapChainOutdated = true;
+			return true;
+		}
+	}
+	const auto extent = VulkanApi::ChooseSwapExtent(support.m_capabilities, pViewport->GetWidth(), pViewport->GetHeight());
+	return extent.width != m_swapchain->GetExtent().width || extent.height != m_swapchain->GetExtent().height;
 }
 
-void VulkanDevice::FixLostDevice(Platform::Window* pViewport)
+bool VulkanDevice::FixLostDevice(Platform::Window* pViewport)
 {
-	RecreateSwapchain(pViewport);
+	if (!RecreateSwapchain(pViewport)) return false;
 	m_bIsDeviceLost = false;
+	return true;
 }
 
 VulkanImageViewPtr VulkanDevice::GetBackBuffer() const
@@ -1020,6 +1055,7 @@ bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSw
 		SAILOR_LOG("Failed to acquire swap chain image!");
 		return false;
 	}
+	if (result == VK_SUBOPTIMAL_KHR) m_bIsSwapChainSuboptimal = true;
 
 	// Check if a previous frame is using this image (i.e. there is its fence to wait on)
 	if (m_syncImages[m_currentSwapchainImageIndex] && *m_syncImages[m_currentSwapchainImageIndex] != VK_NULL_HANDLE)
@@ -1036,6 +1072,7 @@ bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSw
 
 bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
 {
+	m_bLastFrameSubmitSuccessful = false;
 	//////////////////////////////////////////////////
 	if (!m_pCurrentFrameViewport ||
 		(m_pCurrentFrameViewport->GetViewport().width != m_swapchain->GetExtent().width ||
@@ -1124,6 +1161,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 
 	//TODO: Transfer queue for transfer family command lists
 	const VkResult submitResult = m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]);
+	m_bLastFrameSubmitSuccessful = submitResult == VK_SUCCESS;
 
 	m_numSubmittedCommandBuffersAcc += (uint32_t)commandBuffers.Num();
 
@@ -1157,9 +1195,13 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		m_bIsDeviceLost = true;
 	}
 
-	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR)
+	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR)
 	{
 		m_bIsSwapChainOutdated = true;
+	}
+	else if (presentResult == VK_SUBOPTIMAL_KHR)
+	{
+		m_bIsSwapChainSuboptimal = true;
 	}
 	else if (presentResult != VK_SUCCESS)
 	{
@@ -1167,7 +1209,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		return false;
 	}
 
-	return submitResult == VK_SUCCESS && presentResult == VK_SUCCESS;
+	return submitResult == VK_SUCCESS && (presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR);
 }
 
 bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)

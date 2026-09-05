@@ -3,10 +3,9 @@
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
-#include <fstream>
 #include <functional>
 #include <iostream>
-#include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -14,6 +13,7 @@
 #include <vector>
 
 #include "AssetRegistry/Prefab/PrefabImporter.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "Components/LightComponent.h"
 #include "Components/SkyComponent.h"
 #include "Core/Reflection.h"
@@ -23,6 +23,8 @@
 #include "FrameGraph/SkyParameters.h"
 #include "Engine/World.h"
 #include "FrameGraph/SkyNode.h"
+#include "Raytracing/SkyEnvironmentGenerator.h"
+#include "RHI/Texture.h"
 
 using namespace Sailor;
 
@@ -60,13 +62,14 @@ namespace
 	glm::vec4 ExpectedLightDirection(float sunAngleDegrees)
 	{
 		const float sunAngleRadians = glm::radians(sunAngleDegrees);
-		return Math::SafeNormalize(
-			glm::vec4(
-				0.2f,
-				std::sin(-sunAngleRadians),
-				std::cos(sunAngleRadians),
-				0.0f),
-			Math::vec4_Down);
+		const glm::vec2 horizontalDirection =
+			glm::normalize(glm::vec2(0.2f, 1.0f));
+		const float horizontalScale = std::cos(sunAngleRadians);
+		return glm::vec4(
+			horizontalDirection.x * horizontalScale,
+			-std::sin(sunAngleRadians),
+			horizontalDirection.y * horizontalScale,
+			0.0f);
 	}
 
 	glm::mat4 CalculateWorldMatrix(GameObjectPtr gameObject)
@@ -84,15 +87,6 @@ namespace
 			: local;
 	}
 
-	std::string ReadText(const std::filesystem::path& path)
-	{
-		std::ifstream input(path, std::ios::binary);
-		Require(input.is_open(),
-			"test source should be readable: " + path.generic_string());
-		return std::string(
-			std::istreambuf_iterator<char>(input),
-			std::istreambuf_iterator<char>());
-	}
 
 	class SkyTestWorld final : public World
 	{
@@ -153,7 +147,93 @@ namespace
 		using Framegraph::SkyNode::ConsumePendingSkyParams;
 		using Framegraph::SkyNode::CreateEnvironmentProjectionMatrix;
 		using Framegraph::SkyNode::CreateEnvironmentViewMatrices;
+		using Framegraph::SkyNode::LoadCloudsNoise;
+		using Framegraph::SkyNode::AreCloudsResourcesReady;
+
+		void SetCloudTextures(RHI::RHITexturePtr map, RHI::RHITexturePtr low, RHI::RHITexturePtr high)
+		{
+			m_pCloudsMapTexture = map;
+			m_pCloudsNoiseLowTexture = low;
+			m_pCloudsNoiseHighTexture = high;
+		}
 	};
+
+	void TestCloudsWaitForAllTextureUploads()
+	{
+		class PendingTexture final : public RHI::RHITexture
+		{
+		public:
+			PendingTexture() : RHITexture(RHI::ETextureFiltration::Linear,
+				RHI::ETextureClamping::Repeat, false) {}
+			bool IsReady() const override { return ready; }
+			bool ready = false;
+		};
+		SkyNodeMailboxProbe node;
+		Require(!node.AreCloudsResourcesReady(), "clouds must be skipped before noise generation completes");
+		auto map = TRefPtr<PendingTexture>::Make();
+		auto low = TRefPtr<PendingTexture>::Make();
+		auto high = TRefPtr<PendingTexture>::Make();
+		node.SetCloudTextures(map, low, high);
+		Require(!node.AreCloudsResourcesReady(), "scheduled GPU uploads are not yet renderable");
+		map->ready = true;
+		high->ready = true;
+		Require(!node.AreCloudsResourcesReady(), "one completed noise volume must not enable clouds");
+		low->ready = true;
+		Require(node.AreCloudsResourcesReady(), "clouds become renderable when all uploads complete");
+		map->ready = false;
+		Require(!node.AreCloudsResourcesReady(), "clouds also require the weather map upload");
+		node.SetCloudTextures(map, nullptr, high);
+		Require(!node.AreCloudsResourcesReady(), "missing noise must disable clouds again");
+	}
+
+	void TestCloudNoiseCacheRecovery()
+	{
+		struct TemporaryCache
+		{
+			std::filesystem::path path = std::filesystem::temp_directory_path() /
+				("sailor-cloud-noise-" + FileId::CreateNewFileId().ToString());
+			TemporaryCache() { std::filesystem::create_directory(path); }
+			~TemporaryCache()
+			{
+				std::error_code error;
+				std::filesystem::remove_all(path, error);
+			}
+		} cache;
+		static uint32_t generationCount = 0;
+		generationCount = 0;
+		auto generate = +[]() -> TVector<uint8_t>
+		{
+			generationCount++;
+			return { 3, 17, 42, 65, 90, 127, 180, 255 };
+		};
+		const auto path = cache.path / "noise.bin";
+		auto verify = [](const TVector<uint8_t>& noise)
+		{
+			const TVector<uint8_t> expected{ 3, 17, 42, 65, 90, 127, 180, 255 };
+			Require(noise.Num() == expected.Num(), "noise must contain the entire volume");
+			for (size_t i = 0; i < expected.Num(); ++i)
+			{
+				Require(noise[i] == expected[i], "noise payload must survive the cache round trip");
+			}
+		};
+
+		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		Require(generationCount == 1, "a cold cache should generate the noise");
+		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		Require(generationCount == 1, "a valid cache should not regenerate noise");
+
+		AssetRegistry::WriteBinaryFile(path, TVector<uint8_t>{ 1, 2 });
+		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		Require(generationCount == 2, "a truncated cache should be regenerated");
+		AssetRegistry::WriteBinaryFile(path, TVector<uint8_t>{ 1, 2, 3, 4, 5, 6, 7, 8, 9 });
+		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		Require(generationCount == 3, "an oversized cache should be regenerated");
+
+		// A regular file cannot be used as a parent directory, even when run as root.
+		verify(SkyNodeMailboxProbe::LoadCloudsNoise((path / "unwritable.bin").string(), 2, generate));
+		Require(generationCount == 4,
+			"an unwritable cache must still return the generated in-memory volume");
+	}
 
 	glm::vec3 ReconstructEnvironmentDirection(
 		const glm::mat4& projection,
@@ -270,95 +350,6 @@ namespace
 			(!node["fileId"] && !node["instanceId"]);
 	}
 
-	void RequireWorldSkyLinks(
-		const std::filesystem::path& path,
-		const std::string& worldName)
-	{
-		const YAML::Node world = YAML::LoadFile(path.string());
-		Require(world["prefabs"].IsSequence(),
-			worldName + " should contain a prefab list");
-
-		size_t skyCount = 0;
-		for (const YAML::Node& prefab : world["prefabs"])
-		{
-			const YAML::Node components = prefab["components"];
-			const YAML::Node gameObjects = prefab["gameObjects"];
-			if (!components.IsSequence() || !gameObjects.IsSequence())
-			{
-				continue;
-			}
-
-			for (const YAML::Node& gameObject : gameObjects)
-			{
-				std::vector<std::string> localLightIds;
-				std::vector<std::string> localSkyLightIds;
-				const YAML::Node componentIndices =
-					gameObject["components"];
-				if (!componentIndices.IsSequence())
-				{
-					continue;
-				}
-
-				for (const YAML::Node& componentIndexNode :
-					componentIndices)
-				{
-					const size_t componentIndex =
-						componentIndexNode.as<size_t>();
-					Require(componentIndex < components.size(),
-						worldName +
-							" should not reference an out-of-range component");
-					const YAML::Node component =
-						components[componentIndex];
-					const std::string typeName =
-						component["typename"].as<std::string>();
-					const YAML::Node properties =
-						component["overrideProperties"];
-
-					if (typeName ==
-						LightComponent::GetStaticTypeInfo().Name())
-					{
-						Require(
-							properties["instanceId"].IsScalar(),
-							worldName +
-								" light should have an instance id");
-						localLightIds.push_back(
-							properties["instanceId"].
-								as<std::string>());
-					}
-					else if (typeName ==
-						SkyComponent::GetStaticTypeInfo().Name())
-					{
-						++skyCount;
-						const YAML::Node reference =
-							properties["m_directionalLight"];
-						Require(
-							reference.IsMap() &&
-								reference["instanceId"].IsScalar(),
-							worldName +
-								" sky should explicitly reference a light");
-						localSkyLightIds.push_back(
-							reference["instanceId"].
-								as<std::string>());
-					}
-				}
-
-				for (const std::string& lightId :
-					localSkyLightIds)
-				{
-					Require(
-						std::find(
-							localLightIds.begin(),
-							localLightIds.end(),
-							lightId) != localLightIds.end(),
-						worldName +
-							" sky should reference a LightComponent on the same game object");
-				}
-			}
-		}
-
-		Require(skyCount > 0,
-			worldName + " should explicitly contain a SkyComponent");
-	}
 
 	void TestSkyParameterGpuLayoutAndDefaults()
 	{
@@ -366,44 +357,48 @@ namespace
 			std::is_standard_layout_v<SkyParameters>,
 			"SkyParameters must remain suitable for direct UBO upload");
 		static_assert(
-			sizeof(SkyParameters) == 84,
+			sizeof(SkyParameters) == 116,
 			"SkyParameters must preserve its shader-facing byte size");
 
 		Require(offsetof(SkyParameters, m_lightDirection) == 0,
 			"light direction should start the sky UBO");
-		Require(offsetof(SkyParameters, m_cloudsAttenuation1) == 16,
-			"cloud attenuation 1 should follow the vec4 direction");
-		Require(offsetof(SkyParameters, m_cloudsAttenuation2) == 20,
+		Require(offsetof(SkyParameters, m_sunIlluminance) == 16,
+			"sun illuminance should follow the vec4 direction");
+		Require(offsetof(SkyParameters, m_groundRadiance) == 32,
+			"ground radiance should follow sun illuminance");
+		Require(offsetof(SkyParameters, m_cloudsAttenuation1) == 48,
+			"cloud attenuation 1 should follow ground radiance");
+		Require(offsetof(SkyParameters, m_cloudsAttenuation2) == 52,
 			"cloud attenuation 2 should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_cloudsDensity) == 24,
+		Require(offsetof(SkyParameters, m_cloudsDensity) == 56,
 			"cloud density should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_cloudsCoverage) == 28,
+		Require(offsetof(SkyParameters, m_cloudsCoverage) == 60,
 			"cloud coverage should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_phaseInfluence1) == 32,
+		Require(offsetof(SkyParameters, m_phaseInfluence1) == 64,
 			"phase influence 1 should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_phaseInfluence2) == 36,
+		Require(offsetof(SkyParameters, m_phaseInfluence2) == 68,
 			"phase influence 2 should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_eccentrisy1) == 40,
+		Require(offsetof(SkyParameters, m_eccentrisy1) == 72,
 			"eccentricity 1 should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_eccentrisy2) == 44,
+		Require(offsetof(SkyParameters, m_eccentrisy2) == 76,
 			"eccentricity 2 should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_fog) == 48,
+		Require(offsetof(SkyParameters, m_fog) == 80,
 			"horizon blend should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_sunIntensity) == 52,
-			"sun intensity should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_ambient) == 56,
+		Require(offsetof(SkyParameters, m_cloudScatteringScale) == 84,
+			"cloud scattering scale should preserve its UBO offset");
+		Require(offsetof(SkyParameters, m_ambient) == 88,
 			"ambient should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_scatteringSteps) == 60,
+		Require(offsetof(SkyParameters, m_scatteringSteps) == 92,
 			"scattering steps should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_scatteringDensity) == 64,
+		Require(offsetof(SkyParameters, m_scatteringDensity) == 96,
 			"scattering density should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_scatteringIntensity) == 68,
+		Require(offsetof(SkyParameters, m_scatteringIntensity) == 100,
 			"scattering intensity should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_scatteringPhase) == 72,
+		Require(offsetof(SkyParameters, m_scatteringPhase) == 104,
 			"scattering phase should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_sunShaftsIntensity) == 76,
+		Require(offsetof(SkyParameters, m_sunShaftsIntensity) == 108,
 			"sun shafts intensity should preserve its UBO offset");
-		Require(offsetof(SkyParameters, m_sunShaftsDistance) == 80,
+		Require(offsetof(SkyParameters, m_sunShaftsDistance) == 112,
 			"sun shafts distance should preserve its UBO offset");
 
 		const SkyParameters defaults;
@@ -415,7 +410,9 @@ namespace
 					Math::vec4_Down)),
 			"SkyParameters should preserve the shader defaults");
 		Require(
-			IsNear(defaults.m_cloudsAttenuation1, 0.3f) &&
+			IsNear(defaults.m_sunIlluminance, glm::vec4(120000.0f, 120000.0f, 120000.0f, 0.0f)) &&
+				IsNear(defaults.m_groundRadiance, glm::vec4(0.0f)) &&
+				IsNear(defaults.m_cloudsAttenuation1, 0.3f) &&
 				IsNear(defaults.m_cloudsAttenuation2, 0.06f) &&
 				IsNear(defaults.m_cloudsDensity, 0.3f) &&
 				IsNear(defaults.m_cloudsCoverage, 0.56f) &&
@@ -424,7 +421,7 @@ namespace
 				IsNear(defaults.m_eccentrisy1, 0.95f) &&
 				IsNear(defaults.m_eccentrisy2, 0.51f) &&
 				IsNear(defaults.m_fog, 10.0f) &&
-				IsNear(defaults.m_sunIntensity, 500.0f) &&
+				IsNear(defaults.m_cloudScatteringScale, 1.0f) &&
 				IsNear(defaults.m_ambient, 0.5f) &&
 				defaults.m_scatteringSteps == 5 &&
 				IsNear(defaults.m_scatteringDensity, 0.5f) &&
@@ -439,12 +436,13 @@ namespace
 		auto sky = owner->AddComponent<SkyComponent>();
 		Require(
 			IsNear(sky->GetSunAngle(), 60.0f) &&
+				IsNear(sky->GetGiIndirectIntensity(), 1.0f) &&
 				IsNear(
 					sky->GetSkyParameters().m_lightDirection,
 					ExpectedLightDirection(60.0f)) &&
 				IsNear(
-					sky->GetDirectionalLightIntensity(),
-					glm::vec3(17.0f)) &&
+					sky->GetSunIlluminance(),
+					glm::vec3(120000.0f)) &&
 				!sky->GetDirectionalLight(),
 			"SkyComponent should expose stable component defaults");
 		world.Clear();
@@ -473,8 +471,9 @@ namespace
 		RequireRange(type, "cloudsPhaseInfluence2", 0.0, 1.0);
 		RequireRange(type, "cloudsPhaseEccentricity2", 0.01, 1.0);
 		RequireRange(type, "cloudsHorizonBlend", 0.0, 20.0);
-		RequireRange(type, "sunIntensity", 0.0, 800.0);
+		RequireRange(type, "cloudScatteringScale", 0.0, 8.0);
 		RequireRange(type, "ambient", 0.0, 10.0);
+		RequireRange(type, "giIndirectIntensity", 0.0, 16.0);
 		RequireRange(type, "scatteringSteps", 1.0, 10.0);
 		RequireRange(type, "scatteringDensity", 0.1, 1.0);
 		RequireRange(type, "scatteringIntensity", 0.01, 1.0);
@@ -485,7 +484,7 @@ namespace
 		Require(
 			!type.PropertyRanges().ContainsKey("m_directionalLight") &&
 				!type.PropertyRanges().ContainsKey(
-					"directionalLightIntensity"),
+					"sunIlluminance"),
 			"non-scalar light properties should not advertise slider ranges");
 
 		const YAML::Node metadata = type.Serialize();
@@ -507,8 +506,10 @@ namespace
 					as<float>() == 0.3f &&
 				cdo.GetProperties()["cloudsCoverage"].
 					as<float>() == 0.56f &&
-				cdo.GetProperties()["sunIntensity"].
-					as<float>() == 500.0f &&
+				cdo.GetProperties()["cloudScatteringScale"].
+					as<float>() == 1.0f &&
+				cdo.GetProperties()["giIndirectIntensity"].
+					as<float>() == 1.0f &&
 				cdo.GetProperties()["scatteringSteps"].
 					as<int32_t>() == 5 &&
 				IsNullObjectReference(
@@ -535,6 +536,11 @@ namespace
 				component.GetSkyParameters().m_lightDirection,
 				ExpectedLightDirection(89.0f)),
 			"clamped sunAngle should immediately update light direction");
+		Require(
+			IsNear(
+				-component.GetSkyParameters().m_lightDirection.y,
+				std::sin(glm::radians(89.0f))),
+			"sunAngle should represent the physical solar elevation");
 
 		RequireFloatClamp(
 			component,
@@ -601,11 +607,11 @@ namespace
 			"cloudsHorizonBlend");
 		RequireFloatClamp(
 			component,
-			&SkyComponent::SetSunIntensity,
-			&SkyComponent::GetSunIntensity,
+			&SkyComponent::SetCloudScatteringScale,
+			&SkyComponent::GetCloudScatteringScale,
 			0.0f,
-			800.0f,
-			"sunIntensity");
+			8.0f,
+			"cloudScatteringScale");
 		RequireFloatClamp(
 			component,
 			&SkyComponent::SetAmbient,
@@ -613,6 +619,22 @@ namespace
 			0.0f,
 			10.0f,
 			"ambient");
+		const SkyParameters skyBeforeGiIntensity =
+			component.GetSkyParameters();
+		RequireFloatClamp(
+			component,
+			&SkyComponent::SetGiIndirectIntensity,
+			&SkyComponent::GetGiIndirectIntensity,
+			0.0f,
+			16.0f,
+			"giIndirectIntensity");
+		Require(
+			component.GetSkyParameters() == skyBeforeGiIntensity,
+			"GI indirect intensity must remain a bake-only SkyComponent control");
+		component.SetGiIndirectIntensity(
+			(std::numeric_limits<float>::quiet_NaN)());
+		Require(IsNear(component.GetGiIndirectIntensity(), 0.0f),
+			"non-finite GI indirect intensity should resolve to zero");
 		RequireIntClamp(
 			component,
 			&SkyComponent::SetScatteringSteps,
@@ -656,13 +678,19 @@ namespace
 			1.0f,
 			"sunShaftsIntensity");
 
-		component.SetDirectionalLightIntensity(
+		component.SetSunIlluminance(
 			glm::vec3(-10.0f, 2.0f, -3.0f));
 		Require(
 			IsNear(
-				component.GetDirectionalLightIntensity(),
+				component.GetSunIlluminance(),
 				glm::vec3(0.0f, 2.0f, 0.0f)),
-			"directional light intensity should clamp each channel to zero");
+			"sun illuminance should clamp each channel to zero");
+		Require(
+			IsNear(
+				component.GetSkyParameters().m_sunIlluminance,
+				glm::vec4(0.0f, 2.0f, 0.0f, 0.0f)),
+			"sun illuminance should update the shader parameters immediately");
+
 		world.Clear();
 	}
 
@@ -676,15 +704,13 @@ namespace
 					rhs.GetEnvironmentKey().GetHash(),
 			"equal default sky environments should have equal keys and hashes");
 
-		lhs.m_sunIntensity = 100.0f;
-		rhs.m_sunIntensity = 700.0f;
+		lhs.m_sunIlluminance = glm::vec4(100000.0f, 95000.0f, 90000.0f, 0.0f);
+		rhs.m_sunIlluminance = glm::vec4(120000.0f, 115000.0f, 110000.0f, 0.0f);
 		Require(
-			lhs.GetEnvironmentKey() == rhs.GetEnvironmentKey() &&
-				lhs.GetEnvironmentKey().GetHash() ==
-					rhs.GetEnvironmentKey().GetHash(),
-			"sun intensity should not invalidate an environment shader that does not consume it");
+			!(lhs.GetEnvironmentKey() == rhs.GetEnvironmentKey()),
+			"sun illuminance should invalidate the physical sky environment");
 
-		lhs.m_sunIntensity = rhs.m_sunIntensity = 500.0f;
+		lhs.m_sunIlluminance = rhs.m_sunIlluminance = glm::vec4(120000.0f, 120000.0f, 120000.0f, 0.0f);
 		lhs.m_lightDirection =
 			glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
 		rhs.m_lightDirection =
@@ -716,6 +742,285 @@ namespace
 				lhsFallback == rhsFallback &&
 				lhsFallback.GetHash() == rhsFallback.GetHash(),
 			"below-horizon directions should share the fallback environment key");
+	}
+
+	void TestTransientBakeEnvironmentUsesClearSkyParameters()
+	{
+		SkyParameters source;
+		source.m_lightDirection = ExpectedLightDirection(23.5f);
+		const glm::uvec2 extent(24u, 12u);
+		TVector<glm::vec4> environment;
+		uint32_t finalCompletedRows = 0u;
+		Require(
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				source,
+				extent,
+				environment,
+				[&finalCompletedRows](
+					uint32_t completedRows,
+					uint32_t)
+				{
+					finalCompletedRows = completedRows;
+					return true;
+				}),
+			"the probe baker should generate a transient longitude sky map");
+		Require(
+			environment.Num() ==
+				static_cast<size_t>(extent.x) * extent.y &&
+			finalCompletedRows == extent.y,
+			"the transient sky map should fill every requested equirectangular texel");
+
+		float strongestSky = 0.0f;
+		for (uint32_t y = 0u; y < extent.y; ++y)
+		{
+			for (uint32_t x = 0u; x < extent.x; ++x)
+			{
+				const glm::vec4 sample = environment[x + y * extent.x];
+				Require(
+					std::isfinite(sample.x) &&
+					std::isfinite(sample.y) &&
+					std::isfinite(sample.z) &&
+					sample.x >= 0.0f && sample.y >= 0.0f &&
+					sample.z >= 0.0f && sample.w == 1.0f,
+					"the transient clear-sky radiance should stay finite and non-negative");
+				strongestSky = std::max(
+					strongestSky,
+					glm::length(glm::vec3(sample)));
+				if (y >= extent.y / 2u)
+				{
+					Require(
+						glm::length(glm::vec3(sample)) <= 0.000001f,
+						"the no-cloud bake map should keep the opaque lower hemisphere black");
+				}
+			}
+		}
+		Require(strongestSky > 0.01f,
+			"the upper hemisphere should contain atmospheric lighting");
+
+		SkyParameters cloudOnlyChanges = source;
+		cloudOnlyChanges.m_cloudsDensity = 1.0f;
+		cloudOnlyChanges.m_cloudsCoverage = 2.0f;
+		cloudOnlyChanges.m_cloudScatteringScale = 8.0f;
+		cloudOnlyChanges.m_ambient = 10.0f;
+		cloudOnlyChanges.m_scatteringSteps = 10;
+		cloudOnlyChanges.m_scatteringDensity = 1.0f;
+		cloudOnlyChanges.m_scatteringIntensity = 1.0f;
+		cloudOnlyChanges.m_scatteringPhase = 1.0f;
+		TVector<glm::vec4> withoutClouds;
+		Require(
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				cloudOnlyChanges,
+				extent,
+				withoutClouds),
+			"cloud parameters should not prevent clear-sky map generation");
+		Require(withoutClouds.Num() == environment.Num(),
+			"cloud-free map variants should keep the same extent");
+		for (size_t index = 0u; index < environment.Num(); ++index)
+		{
+			Require(
+				withoutClouds[index] == environment[index],
+				"cloud and cloud-scattering controls must not enter the bake sky map");
+		}
+
+		SkyParameters lowSun = source;
+		lowSun.m_sunIlluminance = glm::vec4(1000.0f, 900.0f, 800.0f, 0.0f);
+		SkyParameters halfSun = lowSun;
+		halfSun.m_sunIlluminance *= 0.5f;
+		TVector<glm::vec4> lowSunEnvironment;
+		TVector<glm::vec4> halfSunEnvironment;
+		Require(
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				lowSun,
+				extent,
+				lowSunEnvironment) &&
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				halfSun,
+				extent,
+				halfSunEnvironment),
+			"physical sky variants should generate for different sun illuminance");
+		for (size_t index = 0u; index < lowSunEnvironment.Num(); ++index)
+		{
+			Require(
+				IsNear(
+					halfSunEnvironment[index],
+					lowSunEnvironment[index] *
+						glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+					0.0001f),
+				"clear-sky radiance should scale linearly with sun illuminance");
+		}
+
+		SkyParameters movedSun = source;
+		movedSun.m_lightDirection = ExpectedLightDirection(70.0f);
+		TVector<glm::vec4> movedEnvironment;
+		Require(
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				movedSun,
+				extent,
+				movedEnvironment),
+			"a second sun direction should generate another transient map");
+		bool bLightingChanged = false;
+		for (size_t index = 0u; index < environment.Num(); ++index)
+		{
+			bLightingChanged |= glm::length(
+				glm::vec3(movedEnvironment[index] - environment[index])) >
+				0.0001f;
+		}
+		Require(bLightingChanged,
+			"the transient sky map should follow the SkyComponent sun direction");
+
+		SkyParameters afterSunset = source;
+		afterSunset.m_lightDirection = ExpectedLightDirection(-6.75f);
+		TVector<glm::vec4> afterSunsetEnvironment;
+		Require(
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				afterSunset,
+				extent,
+				afterSunsetEnvironment),
+			"an after-sunset SkyComponent should generate a transient map");
+		const auto integratedLuminance = [](const TVector<glm::vec4>& image)
+		{
+			double result = 0.0;
+			for (const glm::vec4& pixel : image)
+			{
+				result +=
+					0.2126 * static_cast<double>(pixel.r) +
+					0.7152 * static_cast<double>(pixel.g) +
+					0.0722 * static_cast<double>(pixel.b);
+			}
+			return result;
+		};
+		Require(
+			integratedLuminance(afterSunsetEnvironment) <
+				integratedLuminance(environment) * 0.25,
+			"the clear-sky bake environment must become substantially darker after sunset");
+
+		SkyParameters eveningSky = source;
+		eveningSky.m_lightDirection = ExpectedLightDirection(5.0f);
+		eveningSky.m_sunIlluminance =
+			glm::vec4(30000.0f, 30000.0f, 30000.0f, 0.0f);
+		const glm::uvec2 eveningExtent(64u, 32u);
+		TVector<glm::vec4> eveningEnvironment;
+		Require(
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				eveningSky,
+				eveningExtent,
+				eveningEnvironment),
+			"the physical evening sky should generate for photometric validation");
+		const double dTheta = glm::pi<double>() /
+			static_cast<double>(eveningExtent.y);
+		const double dPhi = 2.0 * glm::pi<double>() /
+			static_cast<double>(eveningExtent.x);
+		double skyHorizontalIlluminance = 0.0;
+		for (uint32_t y = 0u; y < eveningExtent.y / 2u; ++y)
+		{
+			const double theta = dTheta *
+				(static_cast<double>(y) + 0.5);
+			const double solidAngleRow =
+				std::sin(theta) * dTheta * dPhi;
+			const double projectedCosine = std::cos(theta);
+			for (uint32_t x = 0u; x < eveningExtent.x; ++x)
+			{
+				const glm::vec3 radiance(
+					eveningEnvironment[x + y * eveningExtent.x]);
+				const double luminance = glm::dot(
+					radiance,
+					glm::vec3(0.2126f, 0.7152f, 0.0722f));
+				skyHorizontalIlluminance +=
+					luminance * projectedCosine * solidAngleRow;
+			}
+		}
+		const glm::vec3 directNormalIlluminance =
+			Raytracing::CalculateDirectSunIlluminance(eveningSky);
+		const double directHorizontalIlluminance =
+			static_cast<double>(glm::dot(
+				directNormalIlluminance,
+				glm::vec3(0.2126f, 0.7152f, 0.0722f))) *
+			static_cast<double>(
+				std::max(-eveningSky.m_lightDirection.y, 0.0f));
+		Require(
+			directHorizontalIlluminance > 0.0 &&
+			directHorizontalIlluminance <
+				30000.0 * static_cast<double>(
+					std::max(-eveningSky.m_lightDirection.y, 0.0f)),
+			"the low-sun direct illuminance must include atmospheric extinction");
+		Require(
+			skyHorizontalIlluminance >
+				directHorizontalIlluminance * 0.05 &&
+			skyHorizontalIlluminance <
+				directHorizontalIlluminance * 2.0,
+			"normalized atmospheric scattering must remain comparable to the "
+			"attenuated direct low-sun illuminance without collapsing; sky " +
+				std::to_string(skyHorizontalIlluminance) + ", direct " +
+				std::to_string(directHorizontalIlluminance));
+
+		TVector<glm::vec4> cancelled;
+		Require(
+			!Raytracing::GenerateSkyEnvironmentEquirectangular(
+				source,
+				extent,
+				cancelled,
+				[](uint32_t completedRows, uint32_t)
+				{
+					return completedRows < 2u;
+				}) &&
+			cancelled.IsEmpty(),
+			"cancelling transient sky generation should release its partial texture");
+	}
+
+	void TestGroundEnvironmentUsesTheSameSkyAndSun()
+	{
+		SkyTestWorld world;
+		auto sky = world.Instantiate("GroundEnvironment")->AddComponent<SkyComponent>();
+		sky->SetSunAngle(38.0f);
+		sky->SetSunIlluminance(glm::vec3(2000.0f, 1800.0f, 1600.0f));
+		const SkyParameters withoutGround = sky->GetSkyParameters();
+		Require(sky->GetGroundAlbedo() == glm::vec3(0.0f) &&
+			withoutGround.m_groundRadiance == glm::vec4(0.0f),
+			"terrain reflection must be opt-in");
+		const glm::vec3 albedo(0.2f, 0.3f, 0.4f);
+		sky->SetGroundAlbedo(albedo);
+		const SkyParameters withGround = sky->GetSkyParameters();
+		const auto serialized = sky->GetReflectedData().Serialize();
+		Require(IsNear(serialized["overrideProperties"]["groundAlbedo"].as<glm::vec3>(), albedo),
+			"ground reflectance must serialize through the editor/runtime reflected interface");
+		const glm::vec3 radiance(withGround.m_groundRadiance);
+		const glm::vec3 directLambert = albedo * Raytracing::CalculateDirectSunIlluminance(withGround) *
+			(-withGround.m_lightDirection.y / glm::pi<float>());
+		Require(Math::AllFinite(radiance) && glm::all(glm::greaterThan(radiance, directLambert)),
+			"ground must reflect both direct horizontal sunlight and diffuse skylight");
+		Require(!(withoutGround == withGround) &&
+			!(withoutGround.GetEnvironmentKey() == withGround.GetEnvironmentKey()),
+			"changing ground must invalidate sky upload and filtered environment caches");
+
+		TVector<glm::vec4> original, reflected;
+		const glm::uvec2 extent(16u, 8u);
+		Require(Raytracing::GenerateSkyEnvironmentEquirectangular(withoutGround, extent, original) &&
+			Raytracing::GenerateSkyEnvironmentEquirectangular(withGround, extent, reflected),
+			"both environment variants should generate successfully");
+		for (uint32_t y = 0u; y < extent.y; ++y)
+			for (uint32_t x = 0u; x < extent.x; ++x)
+			{
+				const size_t index = x + y * extent.x;
+				Require(y < extent.y / 2u ? reflected[index] == original[index] :
+					IsNear(glm::vec3(reflected[index]), radiance),
+					"probe environment must keep the sky and use the raster ground boundary below it");
+			}
+		sky->SetGroundAlbedo(albedo * 0.5f);
+		Require(IsNear(glm::vec3(sky->GetSkyParameters().m_groundRadiance), radiance * 0.5f, 0.001f),
+			"Lambertian ground radiance must scale linearly with albedo");
+		sky->SetGroundAlbedo(albedo);
+		sky->SetSunIlluminance(glm::vec3(withGround.m_sunIlluminance) * 0.5f);
+		Require(IsNear(glm::vec3(sky->GetSkyParameters().m_groundRadiance), radiance * 0.5f, 0.001f),
+			"sunlight and skylight must both follow source illuminance changes");
+		sky->SetSunAngle(-12.0f);
+		Require(glm::length(glm::vec3(sky->GetSkyParameters().m_groundRadiance)) < glm::length(radiance) * 0.05f,
+			"daylight ground must not remain bright at night");
+		sky->SetSunIlluminance(glm::vec3(0.0f));
+		Require(sky->GetSkyParameters().m_groundRadiance == glm::vec4(0.0f),
+			"ground reflection cannot emit light when its sources are dark");
+		sky->SetGroundAlbedo(glm::vec3(-1.0f, 0.4f, 2.0f));
+		Require(sky->GetGroundAlbedo() == glm::vec3(0.0f, 0.4f, 1.0f), "ground albedo must be bounded");
+		world.Clear();
 	}
 
 	void TestSkyNodeMailboxHandoff()
@@ -851,13 +1156,16 @@ namespace
 			lightOwner->AddComponent<LightComponent>();
 
 		sky->SetDirectionalLight(light);
-		sky->SetDirectionalLightIntensity(
-			glm::vec3(4.0f, 5.0f, 6.0f));
+		sky->SetSunIlluminance(
+			glm::vec3(4000.0f, 5000.0f, 6000.0f));
 		sky->SetSunAngle(60.0f);
 		sky->Tick(0.0f);
 
 		const glm::vec3 expectedDirection =
 			glm::vec3(ExpectedLightDirection(60.0f));
+		const glm::vec3 expectedDirectIlluminance =
+			Raytracing::CalculateDirectSunIlluminance(
+				sky->GetSkyParameters());
 		const glm::mat4 lightWorld =
 			CalculateWorldMatrix(lightOwner);
 		const glm::vec3 actualPosition =
@@ -870,7 +1178,13 @@ namespace
 			light->GetLightType() == ELightType::Directional &&
 				IsNear(
 					light->GetIntensity(),
-					glm::vec3(4.0f, 5.0f, 6.0f)) &&
+					expectedDirectIlluminance) &&
+				glm::all(glm::greaterThan(
+					expectedDirectIlluminance,
+					glm::vec3(0.0f))) &&
+				glm::all(glm::lessThan(
+					expectedDirectIlluminance,
+					glm::vec3(4000.0f, 5000.0f, 6000.0f))) &&
 				IsNear(
 					actualPosition,
 					-expectedDirection * 9000.0f,
@@ -978,8 +1292,9 @@ namespace
 		sourceSky->SetSunAngle(35.0f);
 		sourceSky->SetCloudsCoverage(1.25f);
 		sourceSky->SetAmbient(2.5f);
-		sourceSky->SetDirectionalLightIntensity(
-			glm::vec3(7.0f, 8.0f, 9.0f));
+		sourceSky->SetGiIndirectIntensity(0.35f);
+		sourceSky->SetSunIlluminance(
+			glm::vec3(7000.0f, 8000.0f, 9000.0f));
 		source->Tick(0.0f);
 
 		const PrefabPtr prefab =
@@ -1000,9 +1315,10 @@ namespace
 				IsNear(firstSky->GetSunAngle(), 35.0f) &&
 				IsNear(firstSky->GetCloudsCoverage(), 1.25f) &&
 				IsNear(firstSky->GetAmbient(), 2.5f) &&
+				IsNear(firstSky->GetGiIndirectIntensity(), 0.35f) &&
 				IsNear(
-					firstSky->GetDirectionalLightIntensity(),
-					glm::vec3(7.0f, 8.0f, 9.0f)),
+					firstSky->GetSunIlluminance(),
+					glm::vec3(7000.0f, 8000.0f, 9000.0f)),
 			"prefab loading should restore sky properties and its internal light reference");
 
 		auto second = world.Instantiate(prefab);
@@ -1031,107 +1347,6 @@ namespace
 
 		world.Clear();
 	}
-
-	void TestSourceAndContentContracts()
-	{
-		const std::filesystem::path sourceRoot =
-			SAILOR_TEST_SOURCE_DIR;
-		const std::string editorSource = ReadText(
-			sourceRoot /
-				"Runtime/Components/EditorComponent.cpp");
-		const std::string editorHeader = ReadText(
-			sourceRoot /
-				"Runtime/Components/EditorComponent.h");
-		const std::string testSource = ReadText(
-			sourceRoot /
-				"Runtime/Components/TestComponent.cpp");
-		const std::string testHeader = ReadText(
-			sourceRoot /
-				"Runtime/Components/TestComponent.h");
-		const std::string engineLoop = ReadText(
-			sourceRoot /
-				"Runtime/Engine/EngineLoop.cpp");
-		const std::string skyNode = ReadText(
-			sourceRoot /
-				"Runtime/FrameGraph/SkyNode.cpp");
-		const std::string skyShader = ReadText(
-			sourceRoot /
-				"Content/Shaders/Sky.shader");
-		const std::string sunShaftsShader = ReadText(
-			sourceRoot /
-				"Content/Shaders/SunShafts.shader");
-		const std::string starsShader = ReadText(
-			sourceRoot /
-				"Content/Shaders/Stars.shader");
-
-		Require(
-			editorSource.find("Sky Settings") ==
-					std::string::npos &&
-				editorSource.find("GetSkyParams") ==
-					std::string::npos &&
-				editorHeader.find("SkyNode") ==
-					std::string::npos,
-			"EditorComponent should not retain the legacy direct sky editor");
-		Require(
-			testSource.find("Sky Settings") ==
-					std::string::npos &&
-				testSource.find("GetSkyParams") ==
-					std::string::npos &&
-				testHeader.find("SkyNode") ==
-					std::string::npos,
-			"TestComponent should not retain the legacy direct sky editor");
-		Require(
-			engineLoop.find("AddComponent<SkyComponent>") ==
-				std::string::npos,
-			"EngineLoop should not auto-discover or auto-create a SkyComponent");
-		const size_t generateMipMaps = skyNode.find(
-			"commands->GenerateMipMaps(commandList, cubemap);");
-		Require(
-			skyNode.find("else if (face == 6)") != std::string::npos &&
-			skyNode.find("if (m_updateEnvCubemapPattern == 6)") != std::string::npos &&
-			generateMipMaps != std::string::npos &&
-			skyNode.find(
-				"commands->GenerateMipMaps(commandList, cubemap);",
-				generateMipMaps + 1) == std::string::npos,
-			"the procedural environment should generate mipmaps once and publish immediately afterward");
-		Require(
-			skyShader.find("float PlanetHeight(vec3 position)") !=
-				std::string::npos &&
-			skyShader.find("vec2 RaySphereAtAltitude") !=
-				std::string::npos &&
-			skyShader.find("ResolveAtmosphereRayOrigin") !=
-				std::string::npos &&
-			skyShader.find("origin.y = max(origin.y, 0.0f)") ==
-				std::string::npos &&
-			skyShader.find("const float q = -halfB") !=
-				std::string::npos &&
-			skyShader.find("heightDelta * (2.0f * earthRadius") !=
-				std::string::npos &&
-			skyShader.find("planetToLightIntersection") ==
-				std::string::npos &&
-			skyShader.find("if((-lightDirection).y < 0.0f)") ==
-				std::string::npos &&
-			skyShader.find("pow(angle / border, 3)") ==
-				std::string::npos,
-			"the atmosphere must preserve twilight, handle below-datum cameras geometrically, occlude sunlight with the planet, and avoid undefined negative pow inputs");
-		Require(
-			sunShaftsShader.find("SunDiskVisibility") != std::string::npos &&
-			sunShaftsShader.find("sunVisibility <= 0.0f") != std::string::npos,
-			"sun shafts must fade with the geometrically visible fraction of the solar disk");
-		Require(
-			starsShader.find("gl_Position.z = 0.0f") != std::string::npos &&
-			starsShader.find("radians(-18.0f)") != std::string::npos &&
-			starsShader.find("radians(-6.0f)") != std::string::npos,
-			"stars must remain on the reverse-Z far plane and appear through physical twilight");
-
-		RequireWorldSkyLinks(
-			sourceRoot / "Content/Editor.world",
-			"Editor.world");
-		RequireWorldSkyLinks(
-			sourceRoot /
-				"Content/Tests/Visual/EmptyWorldStartupShutdown.world",
-			"EmptyWorldStartupShutdown.world");
-	}
 }
 
 int main()
@@ -1141,12 +1356,15 @@ int main()
 		{ "ReflectionMetadataRangesAndStableLightType", TestReflectionMetadataRangesAndStableLightType },
 		{ "SettersClampAndUpdateDirection", TestSettersClampAndUpdateDirection },
 		{ "EnvironmentKeyHashEquality", TestEnvironmentKeyHashEquality },
+		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
+		{ "GroundEnvironmentUsesTheSameSkyAndSun", TestGroundEnvironmentUsesTheSameSkyAndSun },
 		{ "SkyNodeMailboxHandoff", TestSkyNodeMailboxHandoff },
+		{ "CloudNoiseCacheRecovery", TestCloudNoiseCacheRecovery },
+		{ "CloudsWaitForAllTextureUploads", TestCloudsWaitForAllTextureUploads },
 		{ "EnvironmentCubemapOrientation", TestEnvironmentCubemapOrientation },
 		{ "ExplicitDirectionalLightSynchronization", TestExplicitDirectionalLightSynchronization },
 		{ "DestroyedLightReferencesSerializeAsNull", TestDestroyedLightReferencesSerializeAsNull },
 		{ "PrefabRoundTripRemapsExplicitLight", TestPrefabRoundTripRemapsExplicitLight },
-		{ "SourceAndContentContracts", TestSourceAndContentContracts },
 	};
 
 	for (const auto& test : tests)

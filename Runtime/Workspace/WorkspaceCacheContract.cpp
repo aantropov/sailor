@@ -1,6 +1,7 @@
 #include "Workspace/WorkspaceCacheContract.h"
 #include "Containers/Containers.h"
 
+#include "Core/YamlUtils.h"
 #include "Workspace/WorkspaceContext.h"
 #include "Workspace/WorkspaceModuleApi.h"
 #include "YamlExceptionBoundary.h"
@@ -83,40 +84,29 @@ namespace
 		return sourceName.empty() ? "workspace cache" : sourceName;
 	}
 
-	YAML::Node FindField(const YAML::Node& document, const char* fieldName)
-	{
-		for (const auto& field : document)
-		{
-			if (field.first.IsScalar() && field.first.Scalar() == fieldName)
-			{
-				return field.second;
-			}
-		}
-
-		return YAML::Node(YAML::NodeType::Undefined);
-	}
-
 	bool ValidateMapKeys(
 		const YAML::Node& document,
 		const std::string& sourceName,
 		std::string& outDiagnostic)
 	{
-		TSet<std::string> keys;
-		for (const auto& field : document)
+		const Sailor::Utils::YamlMapValidationResult validation =
+			Sailor::Utils::ValidateYamlMap(document);
+		if (validation.m_error ==
+			Sailor::Utils::EYamlMapValidationError::NonScalarKey)
 		{
-			if (!field.first.IsScalar())
-			{
-				outDiagnostic = sourceName + " is corrupt: its envelope contains a non-scalar field name.";
-				return false;
-			}
-
-			const std::string key = field.first.Scalar();
-			if (key.empty() || !keys.Insert(key))
-			{
-				outDiagnostic = sourceName + " is corrupt: its envelope contains duplicate or empty field " +
-					Quote(key) + ".";
-				return false;
-			}
+			outDiagnostic = sourceName +
+				" is corrupt: its envelope contains a non-scalar field name.";
+			return false;
+		}
+		if (validation.m_error ==
+				Sailor::Utils::EYamlMapValidationError::EmptyKey ||
+			validation.m_error ==
+				Sailor::Utils::EYamlMapValidationError::DuplicateKey)
+		{
+			outDiagnostic = sourceName +
+				" is corrupt: its envelope contains duplicate or empty field " +
+				Quote(validation.m_fieldName) + ".";
+			return false;
 		}
 
 		return true;
@@ -140,7 +130,9 @@ namespace
 
 		for (const std::string& requiredField : EnvelopeFields)
 		{
-			if (!FindField(document, requiredField.c_str()).IsDefined())
+			if (!Sailor::Utils::FindYamlMapField(
+					document,
+					requiredField).IsDefined())
 			{
 				outDiagnostic = sourceName + " is corrupt: its current envelope is missing required field " +
 					Quote(requiredField) + ".";
@@ -197,7 +189,9 @@ namespace
 		std::string& outDiagnostic,
 		bool bAllowEmpty = false)
 	{
-		const YAML::Node field = FindField(document, fieldName);
+		const YAML::Node field = Sailor::Utils::FindYamlMapField(
+			document,
+			fieldName);
 		if (!field.IsDefined() || !field.IsScalar())
 		{
 			outDiagnostic = sourceName + " is corrupt: field " + Quote(fieldName) +
@@ -681,7 +675,9 @@ WorkspaceCacheLoadResult Sailor::Workspace::ParseWorkspaceCacheEnvelope(
 		return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
 	}
 
-	const YAML::Node cacheVersionField = FindField(document, CacheVersionField);
+	const YAML::Node cacheVersionField = Sailor::Utils::FindYamlMapField(
+		document,
+		CacheVersionField);
 	if (!cacheVersionField.IsDefined())
 	{
 		return VersionMismatch(
@@ -710,7 +706,9 @@ WorkspaceCacheLoadResult Sailor::Workspace::ParseWorkspaceCacheEnvelope(
 			std::to_string(cacheVersion));
 	}
 
-	const YAML::Node payloadVersionField = FindField(document, PayloadVersionField);
+	const YAML::Node payloadVersionField = Sailor::Utils::FindYamlMapField(
+		document,
+		PayloadVersionField);
 	if (!payloadVersionField.IsDefined())
 	{
 		return VersionMismatch(
@@ -859,6 +857,23 @@ bool Sailor::Workspace::AtomicReplaceWorkspaceCacheBinary(
 	std::string& outDiagnostic,
 	EWorkspaceCacheAtomicWriteFailurePoint failurePoint) noexcept
 {
+	return AtomicReplaceWorkspaceCacheBinary(
+		target,
+		data,
+		size,
+		outDiagnostic,
+		failurePoint,
+		EWorkspaceCacheAtomicWriteMode::ReplaceExisting);
+}
+
+bool Sailor::Workspace::AtomicReplaceWorkspaceCacheBinary(
+	const std::filesystem::path& target,
+	const void* data,
+	uint64_t size,
+	std::string& outDiagnostic,
+	EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
+	EWorkspaceCacheAtomicWriteMode writeMode) noexcept
+{
 	outDiagnostic.clear();
 	if (target.empty() || target.filename().empty())
 	{
@@ -899,33 +914,61 @@ bool Sailor::Workspace::AtomicReplaceWorkspaceCacheBinary(
 	}
 
 #if defined(_WIN32)
+	DWORD moveFlags = MOVEFILE_WRITE_THROUGH;
+	if (writeMode == EWorkspaceCacheAtomicWriteMode::ReplaceExisting)
+	{
+		moveFlags |= MOVEFILE_REPLACE_EXISTING;
+	}
 	if (!MoveFileExW(
-			temporaryPath.c_str(),
-			target.c_str(),
-			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+		temporaryPath.c_str(),
+		target.c_str(),
+		moveFlags))
 	{
 		const DWORD error = GetLastError();
-		outDiagnostic = "Cannot atomically replace workspace cache " + Quote(target.generic_string()) +
+		outDiagnostic = "Cannot atomically publish workspace cache " + Quote(target.generic_string()) +
 			": " + WindowsErrorMessage(error) + ".";
 		return false;
 	}
 	cleanup.Release();
 #else
-	if (rename(temporaryPath.c_str(), target.c_str()) != 0)
+	if (writeMode == EWorkspaceCacheAtomicWriteMode::FailIfExists)
+	{
+		if (link(temporaryPath.c_str(), target.c_str()) != 0)
+		{
+			const int error = errno;
+			outDiagnostic = "Cannot atomically create workspace cache " + Quote(target.generic_string()) +
+				": " + PosixErrorMessage(error) + ".";
+			return false;
+		}
+		if (unlink(temporaryPath.c_str()) != 0)
+		{
+			const int error = errno;
+			outDiagnostic = "Workspace cache was created, but its temporary link could not be removed " +
+				Quote(temporaryPath.generic_string()) + ": " + PosixErrorMessage(error) + ".";
+			return false;
+		}
+		cleanup.Release();
+	}
+	else if (rename(temporaryPath.c_str(), target.c_str()) != 0)
 	{
 		const int error = errno;
 		outDiagnostic = "Cannot atomically replace workspace cache " + Quote(target.generic_string()) +
 			": " + PosixErrorMessage(error) + ".";
 		return false;
 	}
-	cleanup.Release();
+	else
+	{
+		cleanup.Release();
+	}
 	if (!FlushDirectory(parent, outDiagnostic))
 	{
 		return false;
 	}
 #endif
 
-	outDiagnostic = "Atomically replaced workspace cache " + Quote(target.generic_string()) + ".";
+	outDiagnostic = writeMode == EWorkspaceCacheAtomicWriteMode::FailIfExists ?
+		"Atomically created workspace cache " + Quote(target.generic_string()) + "." :
+		"Atomically replaced workspace cache " + Quote(target.generic_string()) + ".";
 	return true;
 	return false;
 }

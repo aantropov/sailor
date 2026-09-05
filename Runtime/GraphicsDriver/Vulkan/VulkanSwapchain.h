@@ -62,6 +62,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanDevicePtr m_device;
 		VulkanSurfacePtr m_surface;
 		VkSwapchainKHR m_swapchain = 0;
+		bool m_bIsRetired = false;
 
 		VkExtent2D m_swapchainExtent;
 		VkSurfaceFormatKHR m_surfaceFormat;

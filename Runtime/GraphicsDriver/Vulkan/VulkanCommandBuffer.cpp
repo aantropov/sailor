@@ -253,7 +253,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	VkClearValue clearColor,
 	bool bStoreDepth)
 {
-	// TODO: Support more than color 1 attachment
+	check(colorAttachmentResolves.IsEmpty() || colorAttachmentResolves.Num() == colorAttachments.Num());
 	const bool bHasStencil = depthStencilAttachment && (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment->m_format) & VK_IMAGE_ASPECT_STENCIL_BIT);
 
 	VkRenderingAttachmentInfoKHR depthAttachmentInfo
@@ -285,16 +285,18 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.clearValue = clearColor
 	};
 
-	if (colorAttachments.Num() > 0)
+	TVector<VkRenderingAttachmentInfoKHR> colorAttachmentInfos(colorAttachments.Num());
+	for (size_t i = 0u; i < colorAttachments.Num(); ++i)
 	{
-		colorAttachmentInfo.imageView = *(colorAttachments[0]);
-	}
-
-	if (colorAttachmentResolves.Num() > 0)
-	{
-		colorAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-		colorAttachmentInfo.resolveImageView = *(colorAttachmentResolves[0]);
-		colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		auto& attachment = colorAttachmentInfos[i];
+		attachment = colorAttachmentInfo;
+		attachment.imageView = *colorAttachments[i];
+		if (i < colorAttachmentResolves.Num() && colorAttachmentResolves[i])
+		{
+			attachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+			attachment.resolveImageView = *colorAttachmentResolves[i];
+			attachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		}
 	}
 
 	if (depthStencilAttachmentResolve)
@@ -318,7 +320,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.renderArea = renderArea,
 		.layerCount = 1,
 		.colorAttachmentCount = (uint32_t)colorAttachments.Num(),
-		.pColorAttachments = &colorAttachmentInfo,
+		.pColorAttachments = colorAttachmentInfos.GetData(),
 		.pDepthAttachment = &depthAttachmentInfo,
 		.pStencilAttachment = &stencilAttachmentInfo,
 	};
@@ -368,15 +370,10 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 			msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView;
 		}
 
-		if (colorAttachments.Num() > 0)
+		for (uint32_t i = 0u; i < colorAttachments.Num(); ++i)
 		{
-			const bool bIsRenderingIntoFrameBuffer = colorAttachments[0] == vulkanRenderer->GetBackBuffer()->m_vulkan.m_imageView;
-			if (!bIsRenderingIntoFrameBuffer)
-			{
-				// TODO: Add support for multiple MSAA targets
-				const auto extents = glm::ivec2(colorAttachments[0]->GetImage()->m_extent.width, colorAttachments[0]->GetImage()->m_extent.height);
-				msaaColorTargets.Add(vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)colorAttachments[0]->m_format, extents)->m_vulkan.m_imageView);
-			}
+			const auto extents = glm::ivec2(colorAttachments[i]->GetImage()->m_extent.width, colorAttachments[i]->GetImage()->m_extent.height);
+			msaaColorTargets.Add(vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)colorAttachments[i]->m_format, extents, i)->m_vulkan.m_imageView);
 		}
 
 		BeginRenderPassEx(msaaColorTargets,
@@ -1022,14 +1019,8 @@ void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags d
 {
 	const uint32_t queueFamilyIndex = m_commandPool->GetQueueFamilyIndex();
 	const auto& queueFamilies = m_device->GetQueueFamilies();
-	const bool bSupportsGraphics = queueFamilies.m_graphicsFamily.has_value() &&
-		queueFamilyIndex == queueFamilies.m_graphicsFamily.value();
-	const bool bSupportsCompute = queueFamilies.m_computeFamily.has_value() &&
-		queueFamilyIndex == queueFamilies.m_computeFamily.value();
-
 	const VkPipelineStageFlags shaderStages =
-		(bSupportsGraphics ? VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT : 0) |
-		(bSupportsCompute ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : 0);
+		GetShaderPipelineStages(queueFamilies.GetFlags(queueFamilyIndex));
 
 	auto resolvePipelineStages = [shaderStages](VkAccessFlags access, bool bSource)
 		{

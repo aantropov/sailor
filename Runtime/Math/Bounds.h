@@ -26,6 +26,7 @@ namespace Sailor::Math
 		vec3 m_bitangent[3];
 		vec2 m_uvs[3];
 		vec2 m_uvs2[3];
+		vec4 m_colors[3];
 		u8 m_materialIndex{};
 
 		float SquareArea() const;

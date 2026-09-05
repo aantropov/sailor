@@ -13,11 +13,9 @@ namespace Sailor::Framegraph
 	class SkyNode : public TFrameGraphNode<SkyNode>
 	{
 		const uint32_t EnvCubemapSize = 256u;
-		const uint32_t SkyResolution = 256u;
 		const uint32_t SunResolution = 32u;
-		const float CloudsResolutionFactor = 0.5f;
-		const uint32_t CloudsNoiseHighResolution = 32u;
-		const uint32_t CloudsNoiseLowResolution = 128u;
+		static constexpr uint32_t CloudsNoiseHighResolution = 32u;
+		static constexpr uint32_t CloudsNoiseLowResolution = 128u;
 		static constexpr float CloudsVisibilityEpsilon = 0.0001f;
 
 		struct BrighStarCatalogue_Header
@@ -74,6 +72,7 @@ namespace Sailor::Framegraph
 		};
 
 		SAILOR_API void ConsumePendingSkyParams();
+		SAILOR_API bool AreCloudsResourcesReady() const;
 		SAILOR_API static glm::mat4 CreateEnvironmentProjectionMatrix();
 		SAILOR_API static TVector<glm::mat4x4> CreateEnvironmentViewMatrices();
 
@@ -114,12 +113,13 @@ namespace Sailor::Framegraph
 		RHI::RHITexturePtr m_pCloudsMapTexture{};
 		RHI::RHITexturePtr m_pCloudsNoiseHighTexture{};
 		RHI::RHITexturePtr m_pCloudsNoiseLowTexture{};
+		RHI::RHITexturePtr m_pCloudsNoiseFallbackTexture{};
 
 		RHI::RHIMeshPtr m_starsMesh{};
 
 		TexturePtr m_clouds{};
-		Tasks::ITaskPtr m_createNoiseLow{};
-		Tasks::ITaskPtr m_createNoiseHigh{};
+		Tasks::TaskPtr<TVector<uint8_t>> m_createNoiseLow{};
+		Tasks::TaskPtr<TVector<uint8_t>> m_createNoiseHigh{};
 
 		Tasks::TaskPtr<RHI::RHIMeshPtr, TPair<TVector<RHI::VertexP3C4>, TVector<uint32_t>>> m_loadMeshTask{};
 		Tasks::TaskPtr<RHI::RHIMeshPtr, TPair<TVector<RHI::VertexP3C4>, TVector<uint32_t>>> CreateStarsMesh();
@@ -137,8 +137,11 @@ namespace Sailor::Framegraph
 		static const glm::vec3& TemperatureToColor(uint32_t temperature);
 		static const glm::vec3& MorganKeenanToColor(char spectralType, char subType);
 
-		TVector<uint8_t> GenerateCloudsNoiseLow() const;
-		TVector<uint8_t> GenerateCloudsNoiseHigh() const;
+		SAILOR_API static TVector<uint8_t> LoadCloudsNoise(
+			const std::string& path, uint32_t resolution,
+			TVector<uint8_t> (*generate)());
+		static TVector<uint8_t> GenerateCloudsNoiseLow();
+		static TVector<uint8_t> GenerateCloudsNoiseHigh();
 
 		uint32_t m_ditherPatternIndex = 0;
 		uint32_t m_updateEnvCubemapPattern = 0;

@@ -176,6 +176,30 @@ namespace
 		Require(policy.Resolve(1.0f, 3) == 1, "the configured minimum LOD must be respected");
 	}
 
+	void TestLodPolicyResolvesCameraDistance()
+	{
+		RHI::RHILodPolicy policy;
+		policy.m_bEnabled = true;
+		policy.m_minLod = 0;
+		policy.m_maxLod = 2;
+		policy.m_cameraDistanceThresholds = { 50.0f, 100.0f };
+
+		Require(policy.Resolve(0.0f, 49.999f, 3) == 0,
+			"distance below the first threshold must select the highest-detail LOD");
+		Require(policy.Resolve(1.0f, 50.0f, 3) == 1,
+			"the first distance threshold must select the middle LOD independently of coverage");
+		Require(policy.Resolve(1.0f, 100.0f, 3) == 2,
+			"the second distance threshold must select the lowest-detail LOD");
+		Require(policy.Resolve(1.0f, std::numeric_limits<float>::infinity(), 3) == 2,
+			"non-finite distance must resolve to the lowest configured LOD");
+		Require(policy.Resolve(1.0f, 100.0f, 2) == 1,
+			"distance LOD must clamp to the available mesh count");
+
+		policy.m_minLod = 1;
+		Require(policy.Resolve(0.0f, 0.0f, 3) == 1,
+			"distance LOD must respect the configured minimum LOD");
+	}
+
 	void TestStabilizedShadowProjectionKeepsReceiverGuardBand()
 	{
 		Math::Frustum cameraSlice;
@@ -215,6 +239,7 @@ int main()
 		{ "ReverseZFrustumCornersUseZeroToOneDepth", TestReverseZFrustumCornersUseZeroToOneDepth },
 		{ "ShadowProjectionIncludesCastersTowardLightSource", TestShadowProjectionIncludesCastersTowardLightSource },
 		{ "LodPolicyResolvesCoverageAndAvailableMeshes", TestLodPolicyResolvesCoverageAndAvailableMeshes },
+		{ "LodPolicyResolvesCameraDistance", TestLodPolicyResolvesCameraDistance },
 		{ "StabilizedShadowProjectionKeepsReceiverGuardBand", TestStabilizedShadowProjectionKeepsReceiverGuardBand },
 	};
 

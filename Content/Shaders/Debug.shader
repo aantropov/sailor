@@ -56,7 +56,7 @@ glslVertex: |
       LightsGrid instance[];
   } lightsGrid;
 
-  layout(set=2, binding=9) uniform sampler2D g_aoSampler;
+  layout(set=2, binding=8) uniform sampler2D g_aoSampler;
   
   layout(location=DefaultPositionBinding) in vec3 inPosition;
   layout(location=DefaultTexcoordBinding) in vec2 inTexcoord;
@@ -110,14 +110,15 @@ glslFragment: |
       LightsGrid instance[];
   } lightsGrid;
   
-  layout(set=2, binding=9) uniform sampler2D g_aoSampler;
+  layout(set=2, binding=8) uniform sampler2D g_aoSampler;
   
   void main() 
   {
     outColor = texture(ldrSceneSampler, fragTexcoord);
     
   #if defined(AO)
-    outColor = texture(g_aoSampler, fragTexcoord);
+    const float ao = texture(g_aoSampler, fragTexcoord).r;
+    outColor = vec4(vec3(ao), 1.0);
   #elif defined(LIGHT_TILES)
     outColor = vec4(texture(linearDepthSampler, fragTexcoord).r / 50000);
   
@@ -143,10 +144,14 @@ glslFragment: |
   #elif defined(CASCADES)
     float linearDepth = texture(linearDepthSampler, fragTexcoord).r;
     float shadowFarPlane = min(frame.cameraZNearZFar.y, ShadowMaxDistance);
-    int layer = NUM_CSM_CASCADES;
-    for (int i = 0; i < NUM_CSM_CASCADES; ++i)
+    const uint activeCascadeCount = light.instance.length() > 0 ?
+      clamp(light.instance[0].activeCascadeCount, 1u, uint(NUM_CSM_CASCADES)) :
+      uint(NUM_CSM_CASCADES);
+    int layer = int(activeCascadeCount);
+    for (int i = 0; i < int(activeCascadeCount); ++i)
     {
-        if (linearDepth < shadowFarPlane * ShadowCascadeLevels[i])
+        if (linearDepth < shadowFarPlane *
+          GetActiveShadowCascadeLevel(i, activeCascadeCount))
         {
             layer = i;
             break;

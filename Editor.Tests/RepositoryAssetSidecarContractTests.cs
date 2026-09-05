@@ -15,6 +15,7 @@ public sealed class RepositoryAssetSidecarContractTests
         "Sailor::MaterialAssetInfo",
         "Sailor::ModelAssetInfo",
         "Sailor::PrefabAssetInfo",
+        "Sailor::GIProbesAssetInfo",
         "Sailor::ShaderAssetInfo",
         "Sailor::TextureAssetInfo",
         "Sailor::WorldPrefabAssetInfo"

@@ -17,6 +17,9 @@ public sealed class PrefabGameObjectOverride : ICloneable
     public string? Name { get; set; }
 
     [YamlMember(DefaultValuesHandling = DefaultValuesHandling.OmitNull)]
+    public string? MobilityType { get; set; }
+
+    [YamlMember(DefaultValuesHandling = DefaultValuesHandling.OmitNull)]
     public Vec4? Position { get; set; }
 
     [YamlMember(DefaultValuesHandling = DefaultValuesHandling.OmitNull)]
@@ -28,6 +31,7 @@ public sealed class PrefabGameObjectOverride : ICloneable
     public object Clone() => new PrefabGameObjectOverride
     {
         Name = Name,
+        MobilityType = MobilityType,
         Position = Position is null
             ? null
             : (Vec4)Position.Clone(),

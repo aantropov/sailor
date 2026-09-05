@@ -54,6 +54,7 @@ glslFragment: |
     float occlusionAttenuation;
     float occlusionBias;
     float noiseScale;
+    float normalBias;
   } data;
   
   layout(set=1, binding=1) uniform sampler2D depthSampler;
@@ -64,7 +65,6 @@ glslFragment: |
  
   const uint NumDirections = 8;
   const uint NumSamples = 8;
-  const float OcclusionOffset = 0.002f;
   
   const vec2 Directions[8] = 
   {
@@ -88,7 +88,8 @@ glslFragment: |
   vec3 GetViewSpacePos(vec2 uv)
   {
     float depth = texture(depthSampler, uv).r;
-    return ScreenSpaceToViewSpace(uv, depth, frame.invProjection).xyz;
+    vec2 projectionUv = FramebufferUvToSceneProjectionUv(uv);
+    return ScreenSpaceToViewSpace(projectionUv, depth, frame.invProjection).xyz;
   }
   
   vec3 GetViewSpaceNormal(vec2 uv, vec2 depthTextureSize)
@@ -109,16 +110,34 @@ glslFragment: |
     float depthDdx = TakeSmallerAbsDelta(depthLeft, depth, depthRight);
     float depthDdy = TakeSmallerAbsDelta(depthDown, depth, depthUp);
 
-    vec4 mid    = ScreenSpaceToViewSpace(uv, depth, frame.invProjection);
-    vec4 right  = ScreenSpaceToViewSpace(uvRight, depth + depthDdx, frame.invProjection) - mid;
-    vec4 up     = ScreenSpaceToViewSpace(uvUp, depth + depthDdy, frame.invProjection) - mid;
+    vec4 mid = ScreenSpaceToViewSpace(
+      FramebufferUvToSceneProjectionUv(uv),
+      depth,
+      frame.invProjection);
+    vec4 right = ScreenSpaceToViewSpace(
+      FramebufferUvToSceneProjectionUv(uvRight),
+      depth + depthDdx,
+      frame.invProjection) - mid;
+    vec4 framebufferDown = ScreenSpaceToViewSpace(
+      FramebufferUvToSceneProjectionUv(uvUp),
+      depth + depthDdy,
+      frame.invProjection) - mid;
 
-    return normalize(cross(up.xyz, right.xyz));
+    return normalize(cross(right.xyz, framebufferDown.xyz));
   }
   
-  vec2 SnapTexel(vec2 uv, vec2 depthTextureSize)
+  vec2 SnapTexelOffset(vec2 uvOffset, vec2 depthTextureSize)
   {
-     return round(uv * depthTextureSize) * rcp(depthTextureSize);
+    return round(uvOffset * depthTextureSize) * rcp(depthTextureSize);
+  }
+
+  vec2 SnapTexelCenter(vec2 uv, vec2 depthTextureSize)
+  {
+    vec2 pixel = clamp(
+      floor(uv * depthTextureSize),
+      vec2(0.0f),
+      depthTextureSize - vec2(1.0f));
+    return (pixel + vec2(0.5f)) * rcp(depthTextureSize);
   }
   
   float SampleAO(inout float sinH, vec3 viewSpaceSamplePos, vec3 viewSpaceOriginPos, vec3 viewSpaceOriginNormal)
@@ -162,9 +181,9 @@ glslFragment: |
     direction *= sampleRadius;
 
     // jitter the starting position for ray marching between the nearest neighbour and the sample step size
-    vec2 stepUV = SnapTexel(direction * rcp(NumSamples + 1.0f), depthTextureSize);
+    vec2 stepUV = SnapTexelOffset(direction * rcp(NumSamples + 1.0f), depthTextureSize);
     vec2 jitteredOffset = mix(singleTexelStep, stepUV, jitter);
-    vec2 rayStart = SnapTexel(rayOrigin + jitteredOffset, depthTextureSize);
+    vec2 rayStart = SnapTexelCenter(rayOrigin + jitteredOffset, depthTextureSize);
     vec2 rayEnd = rayStart + direction;
 
     // top occlusion keeps track of the occlusion contribution of the last found occluder.
@@ -176,7 +195,9 @@ glslFragment: |
     [[unroll]]
     for (uint step = 0; step < NumSamples; ++step)
     {
-        vec2 uv = SnapTexel(mix(rayStart, rayEnd, step / float(NumSamples)), depthTextureSize);
+        vec2 uv = SnapTexelCenter(
+          mix(rayStart, rayEnd, step / float(NumSamples)),
+          depthTextureSize);
         vec3 viewSpaceSamplePos = GetViewSpacePos(uv);
 
         occlusion += SampleAO(sinH, viewSpaceSamplePos, viewSpaceOriginPos, viewSpaceOriginNormal);
@@ -201,7 +222,7 @@ glslFragment: |
     
     vec3 viewSpaceNormal = normalize(GetViewSpaceNormal(fragTexcoord, depthTextureSize));
     
-    viewSpacePosition += viewSpaceNormal * OcclusionOffset;
+    viewSpacePosition += viewSpaceNormal * data.normalBias;
     
     vec2 noiseUv = fragTexcoord * depthTextureSize / max(noiseTextureSize, vec2(1.0f));
     vec3 noise = texture(noiseSampler, noiseUv).xyz;
@@ -234,6 +255,10 @@ glslFragment: |
             depthTextureSize);
     }
 
-    outColor = vec4(1 - saturate((data.occlusionPower / NumDirections) * occlusionFactor));
+    float averageOcclusion = saturate(occlusionFactor / float(NumDirections));
+    float visibility = saturate(1.0f - averageOcclusion);
+    // Treat power as the final visibility exponent so it changes contrast
+    // without changing the directional normalization of the estimator.
+    outColor = vec4(pow(visibility, max(data.occlusionPower, 0.0001f)));
     //outColor.xyz = viewSpaceNormal;
   }

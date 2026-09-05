@@ -1,0 +1,18 @@
+name: GpuOcclusionCulling
+prefabs:
+  - gameObjects:
+      - name: GPU occlusion validation
+        mobilityType: Stationary
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: 18000000000000000001
+        components: [0]
+    components:
+      - typename: Sailor::GpuOcclusionTestCaseComponent
+        overrideProperties:
+          testName: GpuOcclusionCulling
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 1800000000000001_18000000000000000001

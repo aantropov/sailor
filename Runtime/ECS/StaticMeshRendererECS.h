@@ -74,6 +74,8 @@ namespace Sailor
 		void CopySceneView(RHI::RHISceneViewPtr& outProxies);
 		void MarkDirty(GameObjectPtr owner);
 		const RHI::RHIScenePtr& GetRHIScene() const { return m_rhiScene; }
+		SAILOR_API uint64_t GetGlobalIlluminationContributorRevision()
+			const noexcept;
 
 		virtual uint32_t GetOrder() const override { return 1000; }
 

@@ -10,6 +10,8 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
 
+#include <algorithm>
+
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
@@ -24,11 +26,9 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
 	RHI::RHIRenderTargetPtr bloomRenderTarget = GetResolvedAttachment("bloom").DynamicCast<RHIRenderTarget>();
-
-	const size_t numMipBindings = bloomRenderTarget->GetMipLevels() - 1;
+	RHI::RHITexturePtr averageLuminance = GetResolvedAttachment("averageLuminanceSampler");
 
 	if (!m_pComputeDownscaleShader)
 	{
@@ -47,10 +47,16 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 	}
 
 	if (!m_pComputeUpscaleShader || !m_pComputeDownscaleShader ||
-		!m_pComputeUpscaleShader->IsReady() || !m_pComputeDownscaleShader->IsReady())
+		!m_pComputeUpscaleShader->IsReady() || !m_pComputeDownscaleShader->IsReady() ||
+		!bloomRenderTarget || bloomRenderTarget->GetMipLevels() < 2 ||
+		!averageLuminance)
 	{
 		return;
 	}
+
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
+
+	const size_t numMipBindings = bloomRenderTarget->GetMipLevels() - 1;
 
 	if (m_computeUpscaleBindings.Num() == 0)
 	{
@@ -65,6 +71,7 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 
 			m_computeUpscaleBindings[i] = driver->CreateShaderBindings();
 			driver->AddSamplerToShaderBindings(m_computeUpscaleBindings[i], "u_dirt_texture", lensDirtTexture, 2);
+			driver->AddSamplerToShaderBindings(m_computeUpscaleBindings[i], "u_average_luminance", averageLuminance, 3);
 
 			driver->AddStorageImageToShaderBindings(m_computeUpscaleBindings[i], "u_input_texture", readMipLevel, 0);
 			driver->AddStorageImageToShaderBindings(m_computeUpscaleBindings[i], "u_output_image", writeMipLevel, 1);
@@ -83,16 +90,23 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 			m_computeDownscaleBindings[i] = driver->CreateShaderBindings();
 			driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings[i], "u_input_texture", readMipLevel, 0);
 			driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings[i], "u_output_image", writeMipLevel, 1);
+			driver->AddSamplerToShaderBindings(m_computeDownscaleBindings[i], "u_average_luminance", averageLuminance, 2);
 		}
 	}
 
 	const glm::vec4 threshold = GetVec4("threshold");
 	const glm::vec4 knee = GetVec4("knee");
+	const float softKnee = (std::max)(knee.x, 0.0001f);
 
 	PushConstantsDownscale downscaleParams{};
-	downscaleParams.m_threshold = glm::vec4(threshold.x, threshold.x - knee.x, 2.0f * knee.x, 0.25f * knee.x);
+	downscaleParams.m_threshold = glm::vec4(
+		threshold.x,
+		threshold.x - softKnee,
+		2.0f * softKnee,
+		0.25f / softKnee);
 
 	commands->ImageMemoryBarrier(commandList, bloomRenderTarget, EImageLayout::General);
+	commands->ImageMemoryBarrier(commandList, averageLuminance, EImageLayout::ShaderReadOnlyOptimal);
 
 	// Bloom Downscale
 	for (uint32_t i = 0; i < bloomRenderTarget->GetMipLevels() - 1; ++i)
@@ -118,6 +132,10 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 	PushConstantsUpscale upscaleParams{};
 	upscaleParams.m_bloomIntensity = GetVec4("bloomIntensity").x;
 	upscaleParams.m_dirtIntensity = GetVec4("dirtIntensity").x;
+	upscaleParams.m_scatter = (std::clamp)(
+		GetVec4("scatter").x,
+		0.0f,
+		1.0f);
 
 	// Bloom Upscale
 	for (uint32_t i = (uint32_t)bloomRenderTarget->GetMipLevels() - 1; i >= 1; --i)
@@ -145,4 +163,8 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 
 void BloomNode::Clear()
 {
+	m_pComputeDownscaleShader.Clear();
+	m_pComputeUpscaleShader.Clear();
+	m_computeDownscaleBindings.Clear();
+	m_computeUpscaleBindings.Clear();
 }

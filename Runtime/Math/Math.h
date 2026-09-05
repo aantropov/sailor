@@ -9,6 +9,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/common.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -24,6 +26,70 @@ namespace Sailor::Math
 			if (!std::isfinite(static_cast<double>(value[i])))
 			{
 				return false;
+			}
+		}
+
+		return true;
+	}
+
+	template<glm::length_t C, glm::length_t R, typename T, qualifier Q>
+	__forceinline bool AllFinite(const mat<C, R, T, Q>& value)
+	{
+		for (glm::length_t column = 0; column < C; ++column)
+		{
+			if (!AllFinite(value[column]))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	template<typename T, qualifier Q>
+	__forceinline bool AllFinite(const qua<T, Q>& value)
+	{
+		return AllFinite(vec<4, T, Q>(value.x, value.y, value.z, value.w));
+	}
+
+	template<glm::length_t C, glm::length_t R, typename T, qualifier Q>
+	__forceinline bool AreExactlyEqual(
+		const mat<C, R, T, Q>& lhs,
+		const mat<C, R, T, Q>& rhs)
+	{
+		for (glm::length_t column = 0; column < C; ++column)
+		{
+			for (glm::length_t row = 0; row < R; ++row)
+			{
+				if (lhs[column][row] != rhs[column][row])
+				{
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	template<glm::length_t C, glm::length_t R, typename T, qualifier Q>
+	__forceinline bool AreNearlyEqual(
+		const mat<C, R, T, Q>& lhs,
+		const mat<C, R, T, Q>& rhs,
+		T tolerance = static_cast<T>(0.0001))
+	{
+		for (glm::length_t column = 0; column < C; ++column)
+		{
+			for (glm::length_t row = 0; row < R; ++row)
+			{
+				const T scale = (std::max)({
+					static_cast<T>(1),
+					std::abs(lhs[column][row]),
+					std::abs(rhs[column][row]) });
+				if (std::abs(lhs[column][row] - rhs[column][row]) >
+					tolerance * scale)
+				{
+					return false;
+				}
 			}
 		}
 

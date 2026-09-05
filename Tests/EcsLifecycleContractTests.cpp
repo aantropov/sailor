@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstddef>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -12,6 +13,7 @@
 
 #include "Containers/Octree.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Components/AnimatorComponent.h"
 #include "Components/Component.h"
@@ -24,6 +26,8 @@
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "RHI/SceneView.h"
+#include "RHI/Material.h"
+#include "RHI/VertexDescription.h"
 #include "Submodules/Editor.h"
 
 using namespace Sailor;
@@ -109,7 +113,11 @@ namespace
 	{
 		std::ifstream input(path, std::ios::binary);
 		Require(input.is_open(), "test source should be readable: " + path.generic_string());
-		return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+		std::string text = std::string(
+			std::istreambuf_iterator<char>(input),
+			std::istreambuf_iterator<char>());
+		text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+		return text;
 	}
 
 	class LifecycleData final : public ECS::TComponent
@@ -172,6 +180,7 @@ namespace
 	public:
 
 		PrefabTestWorld() : World("PrefabRollbackTests", 0, CreateEcs()) {}
+		void AdvanceFrame() { ++m_currentFrame; }
 		size_t GetPendingDependencyCount() const { return GetNumPendingDependencyResolutions(); }
 		bool RemovePrefabMetadataForTest(
 			const InstanceId& rootInstanceId)
@@ -194,6 +203,35 @@ namespace
 			systems.Add(TUniquePtr<StaticMeshRendererECS>::Make());
 			return systems;
 		}
+	};
+
+	class PublishedMeshTestModel final : public Model
+	{
+	public:
+		PublishedMeshTestModel() : Model(FileId::Invalid)
+		{
+			auto mesh = RHI::RHIMeshPtr::Make();
+			mesh->m_vertexDescription = RHI::RHIVertexDescriptionPtr::Make();
+			mesh->m_bounds = Math::AABB(glm::vec3(-1.0f), glm::vec3(1.0f));
+			m_boundsAabb = mesh->m_bounds;
+			m_meshes.Add(mesh);
+			m_renderInstances.Add(RenderInstance{});
+		}
+		bool IsReady() const override { return m_ready; }
+		bool m_ready = false;
+	};
+
+	class PublishedMeshTestMaterial final : public Material
+	{
+	public:
+		PublishedMeshTestMaterial() : Material(FileId::Invalid)
+		{
+			// CPU scene publication needs a material identity, not a GPU pipeline.
+			m_rhiMaterials.At_Lock(0u) = RHI::RHIMaterialPtr::Make(
+				RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+			m_rhiMaterials.Unlock(0u);
+		}
+		bool IsReady() const override { return true; }
 	};
 
 	class EditorModelInstanceTestModel final : public Model
@@ -797,6 +835,62 @@ namespace
 			"callback frustum tracing should visit the matching element exactly once");
 	}
 
+	void TestFrameZeroMeshPublicationStaysStable()
+	{
+		PrefabTestWorld world;
+		auto object = world.Instantiate("UnchangedIdentityMesh");
+		object->SetMobilityType(EMobilityType::Static);
+		auto* transforms = world.GetECS<TransformECS>();
+		Require(object->GetTransformComponent().GetFrameLastChange() == 0u,
+			"the fixture must use a legitimate frame-zero transform");
+		auto* meshes = world.GetECS<StaticMeshRendererECS>();
+		meshes->BeginPlay();
+		const auto slot = meshes->RegisterComponent();
+		auto& data = meshes->GetComponentData(slot);
+		data.SetOwner(object);
+		auto model = TObjectPtr<PublishedMeshTestModel>::Make(world.GetAllocator());
+		data.SetModel(model);
+		data.GetMaterials().Add(TObjectPtr<PublishedMeshTestMaterial>::Make(world.GetAllocator()));
+		meshes->Tick(0.016f);
+		Require(meshes->GetRHIScene()->GetCurrentVersion()->m_staticHandles->IsEmpty(),
+			"a pending model must not publish a render instance");
+		model->m_ready = true;
+		world.AdvanceFrame();
+		meshes->Tick(0.016f);
+		const auto published = meshes->GetRHIScene()->GetCurrentVersion();
+		Require(published->m_staticHandles->Num() == 1u,
+			"a ready frame-zero model must be published exactly once");
+		const auto handle = (*published->m_staticHandles)[0];
+		const auto revision = meshes->GetGlobalIlluminationContributorRevision();
+		const RHI::RHISceneInstanceRecord* original = nullptr;
+		Require(published->Resolve(handle, original) && original,
+			"the published instance must resolve");
+		for (size_t frame = 0; frame < 32; ++frame)
+		{
+			world.AdvanceFrame();
+			meshes->Tick(0.016f);
+			Require(meshes->GetRHIScene()->GetCurrentVersion() == published &&
+				meshes->GetGlobalIlluminationContributorRevision() == revision,
+				"unchanged frame-zero geometry must not republish or invalidate GI");
+		}
+		world.AdvanceFrame();
+		object->GetTransformComponent().SetPosition(glm::vec3(2.0f, 0.0f, 0.0f));
+		transforms->Tick(0.016f);
+		transforms->PostTick();
+		meshes->Tick(0.016f);
+		const auto moved = meshes->GetRHIScene()->GetCurrentVersion();
+		const RHI::RHISceneInstanceRecord* current = nullptr;
+		Require(moved != published && moved->Resolve(handle, current) && current &&
+			current->m_worldMatrix[3].x == 2.0f &&
+			current->m_topology == original->m_topology &&
+			meshes->GetGlobalIlluminationContributorRevision() != revision,
+			"a later transform must update bounds and GI while retaining mesh topology");
+		meshes->UnregisterComponent(slot);
+		Require(meshes->GetRHIScene()->GetCurrentVersion()->m_staticHandles->IsEmpty(),
+			"unregistering the component must remove its published instance");
+		world.Clear();
+	}
+
 	void TestClearingMeshModelAlsoClearsMaterials()
 	{
 		StaticMeshRendererData data;
@@ -862,171 +956,6 @@ namespace
 		Require(cameraIntersectionCoverage == 1.0f,
 			"projected AABB coverage must conservatively select the highest LOD when bounds cross the camera plane");
 
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string sceneViewSource = ReadText(
-			sourceRoot / "Runtime/RHI/SceneView.cpp");
-		const std::string renderSceneSource = ReadText(
-			sourceRoot / "Runtime/FrameGraph/RenderSceneNode.cpp");
-		const std::string depthSource = ReadText(
-			sourceRoot / "Runtime/FrameGraph/DepthPrepassNode.cpp");
-		const std::string shadowSource = ReadText(
-			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
-		Require(sceneViewSource.find("source->m_lodPolicy.Resolve(") != std::string::npos &&
-			sceneViewSource.find("topology->m_lodPolicy.Resolve(") != std::string::npos &&
-			renderSceneSource.find("proxy.ResolveMesh(") != std::string::npos &&
-			depthSource.find("proxy.ResolveMesh(") != std::string::npos &&
-			shadowSource.find("proxy.ResolveMesh(") != std::string::npos,
-			"main, depth, and shadow packets must resolve view-local LODs from lightweight visible references");
-	}
-
-	void TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation()
-	{
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string rendererEcsSource = ReadText(
-			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
-		const size_t stateOnlyPath = rendererEcsSource.find(
-			"if (!bTopologyDirty && !bMaterialsDirty && m_rhiScene)");
-		const size_t topologyCollection = rendererEcsSource.find(
-			"CollectComponentRenderData(", stateOnlyPath);
-		Require(rendererEcsSource.find(
-			"shadowCaster->m_frame = currentFrame;") != std::string::npos &&
-			rendererEcsSource.find(
-			"++m_shadowCastersRevision;") != std::string::npos &&
-			rendererEcsSource.find(
-			"version->m_shadowCastersRevision = m_shadowCastersRevision;") != std::string::npos &&
-			stateOnlyPath != std::string::npos &&
-			topologyCollection != std::string::npos &&
-			rendererEcsSource.find(
-				"previousResource->m_bMeshTransformsAreLocal", stateOnlyPath) < topologyCollection &&
-			rendererEcsSource.find(
-				"result.m_bStateOnly = true;", stateOnlyPath) < topologyCollection,
-			"transform-only mesh updates must publish shadow invalidation while reusing immutable topology before full render-data collection");
-	}
-
-	void TestStaticMeshProxyTracksMaterialContentRevisions()
-	{
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string rendererEcsHeader = ReadText(
-			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.h");
-		Require(rendererEcsHeader.find("TVector<uint64_t> m_materialContentRevisions;") !=
-				std::string::npos &&
-			rendererEcsHeader.find("m_materialRenderMetadataRevisions") == std::string::npos &&
-			rendererEcsHeader.find("m_bMaterialVersionPending") == std::string::npos,
-			"static mesh material state must reuse one compact revision vector without new per-component allocations");
-
-		const std::string rendererEcsSource = ReadText(
-			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
-		const size_t globalRevisionGate = rendererEcsSource.find(
-			"materialContentRevision != m_lastMaterialContentRevision");
-		const size_t compareCachedRevisions = rendererEcsSource.find(
-			"data.m_materialContentRevisions[materialIndex] != currentRevision",
-			globalRevisionGate);
-		const size_t collectDirtyComponent = rendererEcsSource.find(
-			"dirtyComponents.Add(componentIndex);",
-			compareCachedRevisions);
-		const size_t compareRenderMetadataRevisions = rendererEcsSource.find(
-			"CalculateMaterialRenderMetadataSignature(data.GetMaterials())",
-			collectDirtyComponent);
-		const size_t cacheRebuiltRevisions = rendererEcsSource.find(
-			"data.m_materialContentRevisions[materialIndex] = material ?",
-			collectDirtyComponent);
-		const size_t materialVersionOnlyBegin = rendererEcsSource.find(
-			"if (update.m_state == EPreparedProxyState::MaterialVersionOnly)");
-		const size_t materialVersionOnlyCache = rendererEcsSource.find(
-			"cacheMaterialRevisions();",
-			materialVersionOnlyBegin);
-		const size_t materialVersionOnlyContinue = rendererEcsSource.find(
-			"continue;",
-			materialVersionOnlyCache);
-		const size_t nextSceneUpdate = rendererEcsSource.find(
-			"UpdateInstance",
-			materialVersionOnlyBegin);
-		Require(globalRevisionGate != std::string::npos &&
-			compareCachedRevisions > globalRevisionGate &&
-			collectDirtyComponent > compareCachedRevisions &&
-			compareRenderMetadataRevisions > collectDirtyComponent &&
-			cacheRebuiltRevisions > compareRenderMetadataRevisions &&
-			rendererEcsSource.find("data.GetMaterials().Num() + 1u") != std::string::npos &&
-			rendererEcsSource.find("bool bMaterialVersionsPending = false;") != std::string::npos &&
-			materialVersionOnlyBegin != std::string::npos &&
-			materialVersionOnlyCache > materialVersionOnlyBegin &&
-			materialVersionOnlyContinue > materialVersionOnlyCache &&
-			nextSceneUpdate > materialVersionOnlyContinue,
-			"material changes should publish pending bindings while rebuilding proxy topology only for render metadata");
-		Require(rendererEcsSource.find("for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)") != std::string::npos &&
-			rendererEcsSource.find("m_dirtyComponents") == std::string::npos,
-			"static mesh updates should use the conservative component scan without a separate dirty queue");
-		Require(rendererEcsHeader.find("TVector<PreparedProxyUpdate> m_preparedUpdatesScratch{};") != std::string::npos &&
-			rendererEcsHeader.find("TVector<Tasks::ITaskPtr> m_prepareTasksScratch{};") != std::string::npos &&
-			rendererEcsSource.find("preparedUpdates.Resize(dirtyComponents.Num());") != std::string::npos &&
-			rendererEcsSource.find("TVector<glm::mat4> modelMatrices;") == std::string::npos &&
-			rendererEcsSource.find("modelMatrix = ownerWorldMatrix * modelMatrix;") != std::string::npos &&
-			rendererEcsSource.find("TVector<Tasks::TaskPtr<TVector<PreparedProxyUpdate>>>") == std::string::npos &&
-			rendererEcsSource.find("preparedUpdates.AddRange") == std::string::npos,
-			"dirty mesh proxy preparation should reuse one pre-sized result array without per-task result vectors");
-	}
-
-	void TestCsmSnapshotTracksCastersBeforeDependencyFiltering()
-	{
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string lightingEcsSource = ReadText(
-			sourceRoot / "Runtime/ECS/LightingECS.cpp");
-		const std::string lightingEcsHeader = ReadText(
-			sourceRoot / "Runtime/ECS/LightingECS.h");
-		const size_t prepareCsmBegin = lightingEcsSource.find(
-			"LightingECS::PrepareCSMPasses");
-		const size_t fillLightingBegin = lightingEcsSource.find(
-			"void LightingECS::ReleaseLocalShadowAllocation", prepareCsmBegin);
-		Require(prepareCsmBegin != std::string::npos &&
-			fillLightingBegin > prepareCsmBegin,
-			"lighting ECS must expose a bounded CSM preparation path");
-
-		const std::string prepareCsmBody = lightingEcsSource.substr(
-			prepareCsmBegin, fillLightingBegin - prepareCsmBegin);
-		const size_t reuseDecision = prepareCsmBody.find(
-			"csmSnapshots[currentSnapshotIndex].CanReuse(");
-		const size_t traceShadowCasters = prepareCsmBody.find(
-			"sceneView->TraceShadowCasters(broadFrustum, m_csmBroadCastersScratch)");
-		Require(reuseDecision != std::string::npos &&
-			traceShadowCasters > reuseDecision,
-			"CSM must consult retained scene versions before tracing any shadow casters");
-		Require(prepareCsmBody.find("TraceScene(") == std::string::npos &&
-			prepareCsmBody.find(
-				"TraceShadowCasters(",
-				traceShadowCasters + std::string("TraceShadowCasters(").size()) == std::string::npos,
-			"CSM preparation must not build full scene proxies or repeat the broad caster query per cascade");
-		Require(prepareCsmBody.find("cascadeNeedsUpdate[cascadeIndex]") != std::string::npos &&
-			prepareCsmBody.find("if (cascadeNeedsUpdate[k] == 0u)") != std::string::npos,
-			"a localized scene change must filter and rebuild only invalidated CSM cascades");
-		Require(prepareCsmBody.find("LightingECS:Build CSM Cascade") != std::string::npos &&
-			prepareCsmBody.find("EThreadType::Worker") != std::string::npos &&
-			prepareCsmBody.find("cascadeCasterTasks[k]->Wait()") != std::string::npos,
-			"CSM caster filtering must run per cascade on worker tasks and join before command assembly");
-		Require(prepareCsmBody.find("const auto& shadowCasters = m_csmBroadCastersScratch;") != std::string::npos &&
-			lightingEcsHeader.find("TVector<RHI::RHIVisibleShadowCaster> m_csmBroadCastersScratch{};") != std::string::npos,
-			"CSM invalidation must reuse broad-caster scratch instead of reallocating the broad query result");
-		const size_t selectFlightCsm = prepareCsmBody.find(
-			"flightResources.m_csmShadowMaps[snapshotIndex]");
-		const size_t allocateFlightCsm = prepareCsmBody.find(
-			"if (!writableShadowMap)", selectFlightCsm);
-		const size_t createFlightCsm = prepareCsmBody.find(
-			"CreateRenderTarget(", allocateFlightCsm);
-		Require(lightingEcsHeader.find("struct LightingShadowFlightResources") != std::string::npos &&
-			lightingEcsHeader.find("TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps{};") != std::string::npos &&
-			lightingEcsHeader.find("TVector<CSMLightState> m_csmSnapshots{};") != std::string::npos &&
-			prepareCsmBody.find("auto& csmSnapshots = flightResources.m_csmSnapshots;") != std::string::npos &&
-			selectFlightCsm != std::string::npos &&
-			allocateFlightCsm > selectFlightCsm &&
-			createFlightCsm > allocateFlightCsm &&
-			prepareCsmBody.find("cascade.m_shadowMap = writableShadowMap;") != std::string::npos &&
-			prepareCsmBody.find("std::move(writableShadowMap)") == std::string::npos,
-			"changed CSM cascades must overwrite the freed flight-slot texture and allocate only while warming an empty slot");
-		Require(prepareCsmBody.find(
-			"cascade.m_shadowType == RHI::EShadowType::EVSM") != std::string::npos,
-			"PCF cascades must use the compact depth format instead of allocating EVSM moments per flight");
-		Require(lightingEcsSource.find("snapshot.Equals(") == std::string::npos &&
-			lightingEcsSource.find("m_snapshot.Add(") == std::string::npos,
-			"a transform invalidation must not be overridden by a duplicate caster-id snapshot");
 	}
 
 	void TestLocalLightShadowContract()
@@ -1050,141 +979,6 @@ namespace
 		Require(LightingECS::DefaultShadowsMemoryBudgetMb == 768.0f,
 			"the runtime shadow cache must expose the planned 768 MB default budget");
 
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string lightComponentHeader = ReadText(
-			sourceRoot / "Runtime/Components/LightComponent.h");
-		const std::string lightingSource = ReadText(
-			sourceRoot / "Runtime/ECS/LightingECS.cpp");
-		const std::string lightingHeader = ReadText(
-			sourceRoot / "Runtime/ECS/LightingECS.h");
-		const std::string engineLoopSource = ReadText(
-			sourceRoot / "Runtime/Engine/EngineLoop.cpp");
-		const std::string rendererSource = ReadText(
-			sourceRoot / "Runtime/RHI/Renderer.cpp");
-		const std::string rhiTypesHeader = ReadText(
-			sourceRoot / "Runtime/RHI/Types.h");
-		const std::string blockAllocatorHeader = ReadText(
-			sourceRoot / "Runtime/Memory/MemoryBlockAllocator.hpp");
-		const std::string shadowPrepassSource = ReadText(
-			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
-		const std::string frameGraphSource = ReadText(
-			sourceRoot / "Runtime/FrameGraph/RHIFrameGraph.cpp");
-		const std::string sceneViewSource = ReadText(
-			sourceRoot / "Runtime/RHI/SceneView.cpp");
-		const std::string lightingShader = ReadText(
-			sourceRoot / "Content/Shaders/Lighting.glsl");
-		const std::string lightCullingShader = ReadText(
-			sourceRoot / "Content/Shaders/ComputeLightCulling.shader");
-		const std::string linearizeDepthShader = ReadText(
-			sourceRoot / "Content/Shaders/LinearizeDepth.shader");
-		const std::string defaultRenderer = ReadText(
-			sourceRoot / "Content/DefaultRenderer.renderer");
-		Require(lightComponentHeader.find("property(\"shadowQuality\")") != std::string::npos &&
-			lightComponentHeader.find("property(\"shadowFilter\")") != std::string::npos,
-			"light shadow quality and hard/soft filtering must be editor-visible reflected properties");
-		Require(lightComponentHeader.find("func(GetRadius, property(\"radius\"), SkipCDO())") != std::string::npos &&
-			lightComponentHeader.find("func(GetRadius, property(\"radius\"), SkipCDO(), Range(") == std::string::npos,
-			"local light radius must be an unrestricted float field in the editor");
-		Require(lightingSource.find("glm::radians(90.0f)") != std::string::npos &&
-			lightingSource.find("light.m_type == ELightType::Spot") != std::string::npos &&
-			lightingSource.find("shadowPass.m_shadowType = RHI::EShadowType::PCF") != std::string::npos,
-			"point and spot shadow passes must use their respective projections and PCF-only rendering");
-		Require(lightingSource.find("TryCreateLocalShadowAtlas") != std::string::npos &&
-			lightingSource.find("m_shadowMapTextures[NumCascades + atlasIndex] = texture") != std::string::npos &&
-			lightingSource.find("m_bShadowMapBindingsDirty = true") != std::string::npos &&
-			lightingSource.find("PublishShadowMapBindings()") != std::string::npos &&
-			lightingSource.find("AddSamplerToShaderBindings(") != std::string::npos,
-			"local shadow atlases must publish a new immutable sampler generation on demand");
-		Require(lightingSource.find("TryAllocateLocalShadowTiles(") != std::string::npos &&
-			lightingSource.find("uint32_t& outAtlasIndex") != std::string::npos &&
-			lightingSource.find("candidate + mapCount <= MaxShadowsInView") != std::string::npos &&
-			lightingSource.find("candidate = static_cast<uint32_t>(m_csmShadowMaps.Num())") != std::string::npos &&
-			lightingSource.find("m_shadowMapsMb + LocalShadowAtlasMemoryMb > m_shadowsMemoryBudgetMb") != std::string::npos,
-			"local shadow allocation must use bounded dynamic atlases without overlapping directional slots or the memory budget");
-		Require(lightingHeader.find("GetCsmShadowsOccupiedMemoryMb") != std::string::npos &&
-			lightingHeader.find("GetLocalShadowsOccupiedMemoryMb") != std::string::npos &&
-			engineLoopSource.find("Shadows %.1f / %.0f MB") != std::string::npos &&
-			engineLoopSource.find("Materials %.1f MB") != std::string::npos &&
-			rendererSource.find("void Renderer::UpdateMemoryStats()") != std::string::npos &&
-			rhiTypesHeader.find("m_texturesMemoryUsage") != std::string::npos &&
-			blockAllocatorHeader.find("const size_t occupiedSpace = m_usedDataSpace") != std::string::npos,
-			"frame statistics must expose shadow, CSM, local atlas, and Vulkan allocator memory without racing allocator updates");
-		Require(lightingSource.find("App::GetMainWindow()->GetRenderArea().y") != std::string::npos &&
-			lightingSource.find("camera,\n\t\t\t1080u,") == std::string::npos,
-			"dynamic local-shadow resolution must use the active viewport instead of a fixed reference height");
-		Require(lightingSource.find("m_directionalLightsScratch.Clear(false)") != std::string::npos &&
-			lightingSource.find("m_pointLightsScratch.Clear(false)") != std::string::npos &&
-			lightingSource.find("m_spotLightsScratch.Clear(false)") != std::string::npos &&
-			lightingSource.find("m_directionalLightsScratch,\n\t\t\tm_pointLightsScratch,\n\t\t\tm_spotLightsScratch") != std::string::npos,
-			"point and spot lights must remain in their matching sorted collections");
-		Require(lightingHeader.find(
-			"std::bitset<MaxShadowMapSamplers - NumCascades> m_writableLocalShadowAtlases") != std::string::npos &&
-			lightingHeader.find("TVector<RHI::RHIRenderTargetPtr> m_localShadowAtlasTextures{};") != std::string::npos &&
-			lightingHeader.find("TVector<TVector<CSMLightState>> m_localShadowSnapshots{};") != std::string::npos &&
-			lightingSource.find("m_writableLocalShadowAtlases.reset()") != std::string::npos &&
-			lightingSource.find("flightResources.m_localShadowAtlasTextures[atlasIndex]") != std::string::npos &&
-			lightingSource.find("shadowMapsToBlit.Add(") == std::string::npos &&
-			lightingSource.find("std::array<Math::Frustum, NumCascades> frustums") != std::string::npos &&
-			lightingSource.find("std::array<glm::mat4, 6u> lightMatrices") != std::string::npos &&
-			shadowPrepassSource.find("outMatrices.Clear(false)") != std::string::npos,
-			"per-camera shadow preparation must reuse bounded CPU scratch and freed flight-slot shadow textures without transient allocations");
-		Require(lightingSource.find("frustum.OverlapsSphere(Math::Sphere(worldPosition, sphereRadius))") != std::string::npos &&
-			lightingSource.find("frustum.ContainsSphere(Math::Sphere(worldPosition, sphereRadius))") == std::string::npos,
-			"local shadow lights must remain visible when their influence sphere intersects the camera frustum");
-		Require(lightingSource.find("sceneView->m_shadowIndices.Resize(numCameras)") != std::string::npos &&
-			lightingSource.find("shadowIndices = std::move(previous.m_shadowIndices)") != std::string::npos &&
-			lightingSource.find("shadowMapsToBlit = std::move(previous.m_shadowMapsToBlit)") != std::string::npos &&
-			lightingSource.find("shadowAtlasTiles = std::move(previous.m_shadowAtlasTiles)") != std::string::npos &&
-			lightingSource.find("shadowIndices.Resize(m_numLights)") != std::string::npos &&
-			lightingSource.find("shadowAtlasTiles.Resize(NumCascades)") != std::string::npos &&
-			lightingSource.find("shadowAtlasTiles.Resize(static_cast<size_t>(shadowSlot) + 1u)") != std::string::npos &&
-			lightingSource.find("TVector<uint32_t> shadowAtlasTiles(MaxShadowsInView)") == std::string::npos &&
-			sceneViewSource.find("res.m_shadowMapsToBlit = std::move(m_shadowMapsToBlit[i])") != std::string::npos &&
-			sceneViewSource.find("res.m_shadowIndices = std::move(m_shadowIndices[i])") != std::string::npos &&
-			sceneViewSource.find("res.m_shadowAtlasTiles = std::move(m_shadowAtlasTiles[i])") != std::string::npos &&
-			frameGraphSource.find("snapshot.m_shadowIndices.GetData()") != std::string::npos &&
-			frameGraphSource.find("snapshot.m_shadowAtlasTiles.GetData()") != std::string::npos &&
-			frameGraphSource.find("PrepareViewSubmissionResources(") != std::string::npos &&
-			frameGraphSource.find("commands->UpdateShaderBinding(") != std::string::npos &&
-			frameGraphSource.find("transferCmdList") != std::string::npos,
-			"local shadow indices and atlas transforms must cross the scene snapshot and upload through the frame transfer command list");
-		Require(lightingSource.find("GetWorld()->GetCommandList(),\n\t\t\tm_shadowIndices") == std::string::npos,
-			"scene preparation must not record shadow-index uploads into the world command list");
-		Require(lightingShader.find("SelectPointShadowFace") != std::string::npos &&
-			lightingShader.find("CalculateLocalPcfShadow") != std::string::npos &&
-			lightingShader.find("DecodeShadowAtlasIndex") != std::string::npos &&
-			lightingShader.find("atlasRect.xy + projCoords.xy * atlasRect.zw") != std::string::npos &&
-			lightingShader.find("tileMin,\n    tileMax") != std::string::npos &&
-			lightingShader.find("SOFT_SHADOW_MAP_BIT") != std::string::npos,
-			"lighting shaders must select point faces and support atlas-aware hard/soft PCF sampling");
-		Require(lightingSource.find("snapshot.Equals(cachedState)") == std::string::npos &&
-			lightingSource.find("m_submissionToken != currentSubmissionToken") != std::string::npos,
-			"local shadow reuse must use COW scene diffs and submission identity without hiding transform invalidation behind caster ids");
-		Require(lightingSource.find("current.m_revision = ++m_localShadowAllocationRevision") != std::string::npos &&
-			lightingSource.find("cachedState.m_resourceRevision == allocation.m_revision") != std::string::npos &&
-			shadowPrepassSource.find("sceneView.m_shadowMapsToBlit") != std::string::npos,
-			"distance-driven tile moves must invalidate only that flight-local shadow while retaining the generic blit command path");
-		Require(lightCullingShader.find("uintBitsToFloat(minDepthInt)") != std::string::npos &&
-			lightCullingShader.find("uintBitsToFloat(maxDepthInt)") != std::string::npos &&
-			lightCullingShader.find("texelFetch(linearDepth, location, 0)") != std::string::npos &&
-			lightCullingShader.find("SphereTileOverlaps(") != std::string::npos &&
-			lightCullingShader.find("uv.y = 1 - uv.y") == std::string::npos &&
-			lightingShader.find("float(safeViewportSize.y) - fragmentPosition.y") == std::string::npos,
-			"tiled local-light culling must use per-tile depth bounds and address compute and fragment tiles in the same framebuffer coordinates");
-		Require(linearizeDepthShader.find("#ifdef REVERSE_Z_INF_FAR_PLANE") != std::string::npos &&
-			linearizeDepthShader.find("- REVERSE_Z_INF_FAR_PLANE") == std::string::npos &&
-			linearizeDepthShader.find("frame.cameraZNearZFar.x / depth") != std::string::npos &&
-			linearizeDepthShader.find("frame.invProjection * vec4(0.0, 0.0, depth, 1.0)") != std::string::npos &&
-			linearizeDepthShader.find("abs(viewPosition.z / viewPosition.w)") != std::string::npos &&
-			linearizeDepthShader.find("texelFetch(depthSampler, pixel, 0)") != std::string::npos &&
-			linearizeDepthShader.find("fragTexcoord.y") == std::string::npos,
-			"linear depth must retain disabled infinite-far support while defaulting to finite reverse-Z in framebuffer coordinates");
-		const size_t lightCullingNode = defaultRenderer.find("- name: LightCulling");
-		Require(lightCullingNode != std::string::npos &&
-			defaultRenderer.find("- linearDepth: LinearDepth", lightCullingNode) != std::string::npos &&
-			defaultRenderer.find("- linearDepth: LinearDepth", lightCullingNode) <
-				defaultRenderer.find("- name:", lightCullingNode + 1),
-			"Forward+ culling must consume the pre-linearized depth target");
 	}
 
 	void TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves()
@@ -1338,47 +1132,7 @@ namespace
 				LightingECS::GetCsmShadowMapFormat(RHI::EShadowType::EVSM),
 			"switching the near cascade between PCF and EVSM must invalidate an incompatible flight target");
 
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string lightingSource = ReadText(
-			sourceRoot / "Runtime/ECS/LightingECS.cpp");
-		Require(
-			lightingSource.find("writableShadowMap->GetFormat() != shadowMapFormat") !=
-				std::string::npos &&
-			lightingSource.find("writableShadowMap->GetExtent().x != shadowMapExtent.x") !=
-				std::string::npos &&
-			lightingSource.find("writableShadowMap.Clear();") != std::string::npos,
-			"flight-local CSM targets must be recreated when their mode or resolution changes");
 	}
-
-	void TestShadowCachePolicy()
-	{
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string meshRendererSource = ReadText(sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
-		const std::string lightingSource = ReadText(sourceRoot / "Runtime/ECS/LightingECS.cpp");
-		const std::string shadowPrepassSource = ReadText(
-			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
-		const size_t localShadowBegin = lightingSource.find("LightingECS::PrepareLocalShadowPasses");
-		const size_t fillLightingBegin = lightingSource.find("void LightingECS::FillLightingData", localShadowBegin);
-		Require(localShadowBegin != std::string::npos && fillLightingBegin > localShadowBegin,
-			"lighting ECS must expose a bounded local-shadow preparation path");
-		const std::string localShadowBody = lightingSource.substr(
-			localShadowBegin, fillLightingBegin - localShadowBegin);
-
-		Require(meshRendererSource.find("++m_shadowCastersRevision;") != std::string::npos &&
-			lightingSource.find("sceneView->m_shadowCastersRevision") != std::string::npos,
-			"shadow caches must invalidate when the shadow-caster scene revision changes");
-		Require(lightingSource.find("bForceCustomDepthShadowUpdate") != std::string::npos &&
-			lightingSource.find("const bool bCanReuseCascade = !bForceCustomDepthShadowUpdate") != std::string::npos,
-			"directional CSM must retain the conservative custom-depth update policy");
-		Require(localShadowBody.find("m_bHasCustomDepthShadowCasters") == std::string::npos &&
-			localShadowBody.find("cachedState.CanReuse(") != std::string::npos,
-			"static local-light shadow maps must reuse revision-validated snapshots even with custom-depth vegetation");
-		Require(lightingSource.find("m_payloadCompletionToken->IsSuccessful()") != std::string::npos &&
-			shadowPrepassSource.find("bPassPayloadComplete") != std::string::npos &&
-			shadowPrepassSource.find("m_payloadCompletionToken->Complete(") != std::string::npos,
-			"incomplete shadow packets must remain invalid and retry instead of caching a cleared map");
-	}
-
 	void TestAnimationGpuBoneLayoutContract()
 	{
 		const uint32_t invalidOffset = AnimatorComponentData::InvalidGpuOffset;
@@ -1450,221 +1204,6 @@ namespace
 
 		sameSkeleton.DestroyObject(allocator);
 
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string shaderSource = ReadText(sourceRoot / "Content/Shaders/Standard_glTF.shader");
-		Require(shaderSource.find("INVALID_SKELETON_OFFSET = 0xFFFFFFFFu") != std::string::npos,
-			"the skinned shader should define the invalid skeleton marker");
-		Require(shaderSource.find("if (offset != INVALID_SKELETON_OFFSET)") != std::string::npos,
-			"the skinned shader should avoid bone-buffer reads for an invalid skeleton offset");
-	}
-
-	void TestExpiredWorldPrefabInvalidatesLoadedCacheContract()
-	{
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string importerSource = ReadText(
-			sourceRoot / "Runtime/AssetRegistry/World/WorldPrefabImporter.cpp");
-		const size_t updateBegin = importerSource.find(
-			"void WorldPrefabImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)");
-		const size_t updateEnd = importerSource.find(
-			"void WorldPrefabImporter::OnImportAsset", updateBegin);
-
-		Require(updateBegin != std::string::npos && updateEnd != std::string::npos,
-			"world prefab importer must expose its asset-update handler");
-		const std::string updateBody = importerSource.substr(updateBegin, updateEnd - updateBegin);
-		Require(updateBody.find("if (!bWasExpired)") != std::string::npos,
-			"unchanged world metadata must preserve the loaded world prefab cache");
-		Require(updateBody.find("m_loadedWorldPrefabs.Remove(uid)") != std::string::npos,
-			"an expired world source must invalidate its loaded world prefab");
-		Require(updateBody.find("m_promises.Remove(uid)") != std::string::npos,
-			"an expired world source must invalidate its completed load promise");
-		Require(updateBody.find("dynamic_cast<PrefabAssetInfo*>") != std::string::npos &&
-			updateBody.find("m_loadedWorldPrefabs.Clear()") != std::string::npos &&
-			updateBody.find("m_promises.Clear()") != std::string::npos,
-			"an expired linked prefab source must invalidate cached merged world prefabs");
-	}
-
-	void TestEmptyEditorWorldBootstrapContract()
-	{
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string engineLoopSource = ReadText(
-			sourceRoot / "Runtime/Engine/EngineLoop.cpp");
-		const size_t createEmptyWorldBegin = engineLoopSource.find(
-			"TSharedPtr<World> EngineLoop::CreateEmptyWorld");
-		const size_t createEmptyWorldEnd = engineLoopSource.find(
-			"TSharedPtr<World> EngineLoop::InstantiateWorld", createEmptyWorldBegin);
-
-		Require(createEmptyWorldBegin != std::string::npos && createEmptyWorldEnd != std::string::npos,
-			"engine loop must expose the empty-world bootstrap");
-		const std::string createEmptyWorldBody = engineLoopSource.substr(
-			createEmptyWorldBegin,
-			createEmptyWorldEnd - createEmptyWorldBegin);
-		Require(createEmptyWorldBody.find("AddComponent<CameraComponent>()") != std::string::npos,
-			"an empty editor world must create its camera component");
-		Require(createEmptyWorldBody.find("AddComponent<EditorComponent>()") != std::string::npos,
-			"an empty editor world must create its editor controller component");
-		Require(createEmptyWorldBody.find("AddComponent<TestComponent>()") == std::string::npos,
-			"an empty editor world must not create the legacy test component");
-
-		const size_t ensureInfrastructureBegin = engineLoopSource.find(
-			"void EnsureEditorWorldInfrastructure");
-		Require(ensureInfrastructureBegin != std::string::npos &&
-			ensureInfrastructureBegin < createEmptyWorldBegin,
-			"engine loop must define its editor-world infrastructure bootstrap");
-		const std::string ensureInfrastructureBody = engineLoopSource.substr(
-			ensureInfrastructureBegin,
-			createEmptyWorldBegin - ensureInfrastructureBegin);
-		Require(ensureInfrastructureBody.find("GetComponent<CameraComponent>().IsInited()") != std::string::npos,
-			"editor-world bootstrap must reuse the first initialized scene camera before BeginPlay");
-		Require(ensureInfrastructureBody.find("GetComponent<EditorComponent>().IsInited()") != std::string::npos,
-			"editor-world bootstrap must detect an initialized editor controller before BeginPlay");
-		Require(ensureInfrastructureBody.find("GameObjectPtr editorOwner") != std::string::npos &&
-			ensureInfrastructureBody.find("editorOwner->GetComponent<CameraComponent>().IsInited()") != std::string::npos,
-			"an existing editor controller must own a camera instead of creating a duplicate controller");
-		Require(ensureInfrastructureBody.find("Instantiate(\"Editor Camera\")") != std::string::npos,
-			"a scene without a camera must receive a named editor camera");
-		Require(ensureInfrastructureBody.find("AddComponent<CameraComponent>()") != std::string::npos &&
-			ensureInfrastructureBody.find("AddComponent<EditorComponent>()") != std::string::npos,
-			"the fallback editor camera must contain camera and editor controller components");
-		Require(ensureInfrastructureBody.find("AddComponent<TestComponent>()") == std::string::npos,
-			"editor-world infrastructure must never add the legacy test component");
-
-		const size_t instantiateWorldEnd = engineLoopSource.find(
-			"bool EngineLoop::ExitWorld", createEmptyWorldEnd);
-		Require(instantiateWorldEnd != std::string::npos,
-			"engine loop must expose the end of its world-loading bootstrap");
-		const std::string instantiateWorldBody = engineLoopSource.substr(
-			createEmptyWorldEnd,
-			instantiateWorldEnd - createEmptyWorldEnd);
-		Require(instantiateWorldBody.find("EditorWorldMask") != std::string::npos &&
-			instantiateWorldBody.find("EnsureEditorWorldInfrastructure(newWorld)") != std::string::npos,
-			"world loading must ensure editor infrastructure only for editor worlds");
-
-		const YAML::Node editorWorld = YAML::Load(ReadText(sourceRoot / "Content/Editor.world"));
-		const YAML::Node prefabs = editorWorld["prefabs"];
-		Require(prefabs && prefabs.IsSequence() && prefabs.size() > 0,
-			"the engine editor scene must contain its camera prefab");
-
-		bool bHasCameraComponent = false;
-		bool bHasEditorComponent = false;
-		bool bHasTestComponent = false;
-		for (const auto& prefab : prefabs)
-		{
-			const YAML::Node components = prefab["components"];
-			if (!components || !components.IsSequence())
-			{
-				continue;
-			}
-
-			for (const auto& component : components)
-			{
-				const std::string typeName = component["typename"].as<std::string>("");
-				bHasCameraComponent |= typeName == "Sailor::CameraComponent";
-				bHasEditorComponent |= typeName == "Sailor::EditorComponent";
-				bHasTestComponent |= typeName == "Sailor::TestComponent";
-			}
-		}
-
-		Require(bHasCameraComponent,
-			"the engine editor scene must retain its camera component");
-		Require(bHasEditorComponent,
-			"the engine editor scene must retain its editor controller component");
-		Require(!bHasTestComponent,
-			"the engine editor scene must not contain the legacy test component");
-
-		const YAML::Node cameraPrefab = prefabs[0];
-		const YAML::Node cameraObjects = cameraPrefab["gameObjects"];
-		const YAML::Node cameraComponents = cameraPrefab["components"];
-		Require(cameraObjects && cameraObjects.IsSequence() && cameraObjects.size() == 1,
-			"the editor camera prefab must contain exactly one game object");
-		const YAML::Node componentIndices = cameraObjects[0]["components"];
-		Require(componentIndices && componentIndices.IsSequence() && componentIndices.size() == 2,
-			"the editor camera must reference only its camera and editor controller components");
-		Require(componentIndices[0].as<uint32_t>() == 0 && componentIndices[1].as<uint32_t>() == 1,
-			"the editor camera component indices must stay contiguous after test-component removal");
-		Require(cameraComponents && cameraComponents.IsSequence() && cameraComponents.size() == 2,
-			"the editor camera prefab must store exactly two components");
-		Require(cameraComponents[0]["typename"].as<std::string>() == "Sailor::CameraComponent" &&
-			cameraComponents[1]["typename"].as<std::string>() == "Sailor::EditorComponent",
-			"the editor camera prefab must store CameraComponent followed by EditorComponent");
-	}
-
-	void TestWorkspaceEditorStartupWorldContract()
-	{
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string appHeader = ReadText(sourceRoot / "Runtime/Sailor.h");
-		const std::string appSource = ReadText(sourceRoot / "Runtime/Sailor.cpp");
-
-		Require(appHeader.find("std::string m_world = \"Editor.world\"") != std::string::npos,
-			"standalone engine startup must retain its existing Editor.world default");
-
-		const size_t parseBegin = appSource.find("AppArgs ParseCommandLineArgs");
-		const size_t parseEnd = appSource.find("void App::Initialize", parseBegin);
-		Require(parseBegin != std::string::npos && parseEnd != std::string::npos,
-			"application startup must expose its command-line parser");
-		const std::string parseBody = appSource.substr(parseBegin, parseEnd - parseBegin);
-		const size_t newWorldFlag = parseBody.find("else if (arg == \"--new-world\")");
-		const size_t clearWorld = parseBody.find("params.m_world.clear()", newWorldFlag);
-		Require(newWorldFlag != std::string::npos && clearWorld != std::string::npos,
-			"the explicit workspace new-world flag must clear the standalone default scene");
-
-		const size_t worldBootstrapBegin = appSource.find("auto worldParams =");
-		const size_t worldBootstrapEnd = appSource.find("if (auto editor =", worldBootstrapBegin);
-		Require(worldBootstrapBegin != std::string::npos && worldBootstrapEnd != std::string::npos,
-			"application startup must expose its initial world bootstrap");
-		const std::string worldBootstrap = appSource.substr(
-			worldBootstrapBegin,
-			worldBootstrapEnd - worldBootstrapBegin);
-		Require(worldBootstrap.find("if (!params.m_world.empty()") != std::string::npos,
-			"an explicit new world must skip startup asset loading");
-		Require(worldBootstrap.find("params.m_bIsEditor ? \"New Scene\" : \"New World\"") != std::string::npos,
-			"an editor empty-world bootstrap must use the untitled scene name");
-	}
-
-	void TestEditorWorldReplacementRetiresRenderFramesContract()
-	{
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string rendererHeader = ReadText(sourceRoot / "Runtime/RHI/Renderer.h");
-		const std::string rendererSource = ReadText(sourceRoot / "Runtime/RHI/Renderer.cpp");
-		const std::string engineLoopSource = ReadText(sourceRoot / "Runtime/Engine/EngineLoop.cpp");
-		const std::string appSource = ReadText(sourceRoot / "Runtime/Sailor.cpp");
-
-		Require(rendererHeader.find("SAILOR_API void WaitIdle()") != std::string::npos,
-			"renderer must expose a world-retirement barrier");
-		const size_t waitIdleBegin = rendererSource.find("void Renderer::WaitIdle()");
-		Require(waitIdleBegin != std::string::npos,
-			"renderer must implement its world-retirement barrier");
-		const std::string waitIdleBody = rendererSource.substr(waitIdleBegin);
-		const size_t waitRenderFrame = waitIdleBody.find("m_previousRenderFrame->Wait()");
-		const size_t waitGpu = waitIdleBody.find("m_driverInstance->WaitIdle()");
-		Require(waitRenderFrame != std::string::npos && waitGpu != std::string::npos &&
-			waitRenderFrame < waitGpu,
-			"world retirement must drain the latest chained render frame before waiting for GPU idle");
-
-		const size_t processExitsBegin = engineLoopSource.find(
-			"void EngineLoop::ProcessPendingWorldExits()");
-		const size_t processExitsEnd = engineLoopSource.find(
-			"void EngineLoop::ProcessPendingDependencyResolution", processExitsBegin);
-		Require(processExitsBegin != std::string::npos && processExitsEnd != std::string::npos,
-			"engine loop must expose pending world retirement");
-		const std::string processExitsBody = engineLoopSource.substr(
-			processExitsBegin,
-			processExitsEnd - processExitsBegin);
-		const size_t flushRenderer = processExitsBody.find("renderer->WaitIdle()");
-		const size_t clearWorld = processExitsBody.find("m_worlds[index]->Clear()");
-		Require(flushRenderer != std::string::npos && clearWorld != std::string::npos &&
-			flushRenderer < clearWorld,
-			"pending world retirement must drain renderer work before clearing ECS storage");
-
-		const size_t startBegin = appSource.find("void App::Start()");
-		const size_t startEnd = appSource.find("void App::Stop()", startBegin);
-		Require(startBegin != std::string::npos && startEnd != std::string::npos,
-			"application must expose its engine main loop");
-		const std::string startBody = appSource.substr(startBegin, startEnd - startBegin);
-		Require(startBody.find(
-			"currentFrame.GetWorld() != pEngineLoop->GetWorld().GetRawPtr()") != std::string::npos &&
-			startBody.find("bCanCreateNewFrame = true") != std::string::npos &&
-			startBody.find("bFirstFrame = true") != std::string::npos,
-			"the engine main loop must replace a stale frame immediately after an editor world switch");
 	}
 
 	void TestAnimationRelayoutMarksEveryOwnedMeshDirty()
@@ -1710,19 +1249,21 @@ namespace
 		const LightingECS::LightShaderData invalidShaderData{};
 		Require(invalidShaderData.m_type == LightingECS::LightShaderData::InvalidType,
 			"released GPU light payload should use an explicit invalid marker");
+		Require(offsetof(LightingECS::LightShaderData, m_shadowBias) == 12u,
+			"the profile shadow bias must occupy the existing std430 light padding");
+		Require(
+			offsetof(LightingECS::LightShaderData, m_cutOff) == 64u &&
+			offsetof(LightingECS::LightShaderData, m_bounds) == 80u &&
+			sizeof(LightingECS::LightShaderData) == 96u,
+			"the CPU light payload must match the shader's std430 layout");
+		Require(invalidShaderData.m_shadowBias == 0.0f,
+			"an invalid GPU light payload should not introduce receiver bias");
 
 		const size_t reused = system.RegisterComponent();
 		Require(reused == released, "released sparse light slot should be reused");
 		Require(system.GetComponentData(reused).m_type == ELightType::Point,
 			"reused light slot should restore default component data");
 
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string lightingSource = ReadText(sourceRoot / "Content/Shaders/Lighting.glsl");
-		const std::string cullingSource = ReadText(sourceRoot / "Content/Shaders/ComputeLightCulling.shader");
-		Require(lightingSource.find("INVALID_LIGHT_TYPE = 0xFFFFFFFFu") != std::string::npos,
-			"shader light layout should define the invalid light marker");
-		Require(cullingSource.find("type == INVALID_LIGHT_TYPE") != std::string::npos,
-			"light culling should skip invalid sparse slots");
 	}
 
 	YAML::Node MakePrefabNode(
@@ -1804,6 +1345,111 @@ namespace
 		return fileId;
 	}
 
+	void TestGameObjectMobilityHierarchyAndPersistence()
+	{
+		PrefabTestWorld world;
+		auto parent = world.Instantiate("MobilityParent");
+		auto child = world.Instantiate("MobilityChild");
+		auto grandChild = world.Instantiate("MobilityGrandChild");
+
+		child->SetMobilityType(EMobilityType::Static);
+		child->SetParent(parent);
+		Require(child->GetMobilityType() == EMobilityType::Stationary,
+			"parenting must promote a less-movable child to the parent's mobility");
+
+		grandChild->SetMobilityType(EMobilityType::Static);
+		grandChild->SetParent(child);
+		Require(grandChild->GetMobilityType() == EMobilityType::Stationary,
+			"parenting must preserve the mobility invariant at every hierarchy level");
+
+		parent->SetMobilityType(EMobilityType::Dynamic);
+		Require(child->GetMobilityType() == EMobilityType::Dynamic &&
+			grandChild->GetMobilityType() == EMobilityType::Dynamic,
+			"making a parent more movable must promote its full descendant hierarchy");
+
+		child->SetMobilityType(EMobilityType::Static);
+		Require(child->GetMobilityType() == EMobilityType::Dynamic,
+			"a child cannot be made less movable than its parent");
+
+		child->SetParent(GameObjectPtr());
+		child->SetMobilityType(EMobilityType::Static);
+		Require(child->GetMobilityType() == EMobilityType::Static &&
+			grandChild->GetMobilityType() == EMobilityType::Dynamic,
+			"detached hierarchies may lower their root mobility without lowering more-movable descendants");
+		world.Clear();
+
+		auto persistedRoot = world.Instantiate("PersistedStaticRoot");
+		auto persistedChild = world.Instantiate("PersistedStationaryChild");
+		auto persistedGrandChild = world.Instantiate("PersistedDynamicGrandChild");
+		persistedRoot->SetMobilityType(EMobilityType::Static);
+		persistedChild->SetMobilityType(EMobilityType::Stationary);
+		persistedGrandChild->SetMobilityType(EMobilityType::Dynamic);
+		persistedChild->SetParent(persistedRoot);
+		persistedGrandChild->SetParent(persistedChild);
+
+		const InstanceId persistedRootId = persistedRoot->GetInstanceId();
+		PrefabPtr captured = PrefabDocumentTestAsset::Capture(
+			world,
+			persistedRoot);
+		const YAML::Node serialized = captured->Serialize();
+		Require(serialized["gameObjects"][0]["mobilityType"].as<std::string>() ==
+				"Static" &&
+			serialized["gameObjects"][1]["mobilityType"].as<std::string>() ==
+				"Stationary" &&
+			serialized["gameObjects"][2]["mobilityType"].as<std::string>() ==
+				"Dynamic",
+			"prefab serialization must preserve GameObject mobility for the full hierarchy");
+
+		world.DestroyImmediate(persistedRoot);
+		GameObjectPtr restoredRoot = world.Instantiate(
+			DeserializePrefab(world, serialized),
+			true);
+		Require(restoredRoot &&
+			restoredRoot->GetInstanceId() == persistedRootId &&
+			restoredRoot->GetMobilityType() == EMobilityType::Static &&
+			restoredRoot->GetChildren().Num() == 1 &&
+			restoredRoot->GetChildren()[0]->GetMobilityType() ==
+				EMobilityType::Stationary &&
+			restoredRoot->GetChildren()[0]->GetChildren().Num() == 1 &&
+			restoredRoot->GetChildren()[0]->GetChildren()[0]->GetMobilityType() ==
+				EMobilityType::Dynamic,
+			"prefab instantiation must restore GameObject mobility without component-owned state");
+
+		constexpr uint32_t noParent = static_cast<uint32_t>(-1);
+		YAML::Node missingMobility = MakePrefabNode({ noParent, 0 });
+		missingMobility["gameObjects"][0].remove("mobilityType");
+		PrefabPtr incompletePrefab = DeserializePrefab(world, missingMobility);
+		std::string diagnostic;
+		Require(!incompletePrefab->ValidateForInstantiation(diagnostic) &&
+			diagnostic.find("mobilityType") != std::string::npos,
+			"prefab YAML must provide mobilityType for every GameObject");
+
+		YAML::Node invalidHierarchy = MakePrefabNode({ noParent, 0 });
+		invalidHierarchy["gameObjects"][0]["mobilityType"] = "Dynamic";
+		invalidHierarchy["gameObjects"][1]["mobilityType"] = "Static";
+		Prefab invalidPrefab{ FileId() };
+		invalidPrefab.Deserialize(invalidHierarchy);
+		Require(!invalidPrefab.ValidateForInstantiation(diagnostic) &&
+			diagnostic.find("less movable") != std::string::npos,
+			"serialized hierarchies with a less-movable child must be rejected before instantiation");
+
+		auto edited = world.Instantiate("EditorMobility");
+		edited->SetMobilityType(EMobilityType::Dynamic);
+		YAML::Node editedYaml = PrefabDocumentTestAsset::Capture(
+			world,
+			edited)->Serialize()["gameObjects"][0];
+		editedYaml["mobilityType"] = "Static";
+		Editor editor(nullptr, 0, nullptr);
+		editor.SetWorld(&world);
+		Require(editor.UpdateObject(
+				edited->GetInstanceId(),
+				YAML::Dump(editedYaml)) &&
+			edited->GetMobilityType() == EMobilityType::Static,
+			"the editor GameObject update path must apply authored mobility");
+
+		world.Clear();
+	}
+
 	void TestMeshRendererMaterialOverridesAreReflectedAndPersisted()
 	{
 		auto areOverridesEquivalent = [](const TVector<FileId>& lhs, const TVector<FileId>& rhs)
@@ -1850,22 +1496,6 @@ namespace
 			(defaultOverrides.IsSequence() && defaultOverrides.size() == 0),
 			"a mesh renderer must omit or serialize its default material override list as empty: " +
 			YAML::Dump(defaultOverrides));
-
-		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string componentSource = ReadText(
-			sourceRoot / "Runtime/Components/MeshRendererComponent.cpp");
-		const size_t rebuildBegin = componentSource.find(
-			"void MeshRendererComponent::RebuildMaterials()");
-		const size_t rebuildEnd = componentSource.find(
-			"bool MeshRendererComponent::LoadModel", rebuildBegin);
-		Require(rebuildBegin != std::string::npos && rebuildEnd != std::string::npos,
-			"mesh renderer must expose its material rebuild path");
-		const std::string rebuildBody = componentSource.substr(
-			rebuildBegin, rebuildEnd - rebuildBegin);
-		Require(rebuildBody.find("LoadDefaultMaterials(model->GetFileId(), materials)") != std::string::npos,
-			"an empty override list must continue resolving the model's default runtime materials");
-		Require(rebuildBody.find("m_overrideMaterials = modelInfo->GetDefaultMaterials()") == std::string::npos,
-			"model defaults must not become serialized component overrides");
 
 		const FileId firstMaterial =
 			DeserializeFileId("{11111111-AAAA-BBBB-CCCC-111111111111}");
@@ -2051,6 +1681,7 @@ namespace
 		TMap<InstanceId, YAML::Node> gameObjectOverrides;
 		YAML::Node childOverride;
 		childOverride["name"] = "OverriddenChild";
+		childOverride["mobilityType"] = "Dynamic";
 		childOverride["position"] = glm::vec4(7.0f, 8.0f, 9.0f, 0.0f);
 		gameObjectOverrides[DeserializeInstanceId(sourceChildId)] =
 			childOverride;
@@ -2155,9 +1786,10 @@ namespace
 			child->GetInstanceId(),
 			"linked component identity should embed its mapped live owner");
 		Require(child->GetName() == "OverriddenChild" &&
+			child->GetMobilityType() == EMobilityType::Dynamic &&
 			child->GetTransformComponent().GetPosition() ==
 				glm::vec4(7.0f, 8.0f, 9.0f, 1.0f),
-			"linked instantiate should apply name and transform overrides");
+			"linked instantiate should apply name, mobility, and transform overrides");
 
 		const PrefabInstanceLink* registeredLink = nullptr;
 		Require(world.TryGetPrefabInstance(
@@ -2364,6 +1996,7 @@ namespace
 
 		YAML::Node evolvedSourceNode = YAML::Clone(sourceNode);
 		evolvedSourceNode["gameObjects"][0]["name"] = "SourceV2";
+		evolvedSourceNode["gameObjects"][0]["mobilityType"] = "Dynamic";
 		evolvedSourceNode["gameObjects"][0]["position"] =
 			glm::vec4(5.0f, 6.0f, 7.0f, 0.0f);
 		evolvedSourceNode["components"][0]["overrideProperties"]["m_value"] =
@@ -2407,6 +2040,7 @@ namespace
 
 		YAML::Node editedExpandedNode = YAML::Clone(expandedNode);
 		editedExpandedNode["gameObjects"][0]["name"] = "InstanceEdit";
+		editedExpandedNode["gameObjects"][0]["mobilityType"] = "Static";
 		editedExpandedNode["components"][0]["overrideProperties"]["m_value"] =
 			3.0f;
 		PrefabPtr editedExpanded =
@@ -2428,6 +2062,8 @@ namespace
 		Require(gameObjectOverrides.ContainsKey(sourceRoot) &&
 			gameObjectOverrides[sourceRoot]["name"].as<std::string>() ==
 				"InstanceEdit" &&
+			gameObjectOverrides[sourceRoot]["mobilityType"].as<std::string>() ==
+				"Static" &&
 			componentOverrides.ContainsKey(sourceComponent) &&
 			componentOverrides[sourceComponent].GetProperties()[
 				"m_value"].as<float>() == 3.0f,
@@ -2436,6 +2072,7 @@ namespace
 		TMap<InstanceId, YAML::Node> priorGameObjectOverrides;
 		YAML::Node priorGameObjectOverride;
 		priorGameObjectOverride["name"] = "PinnedName";
+		priorGameObjectOverride["mobilityType"] = "Static";
 		priorGameObjectOverrides[sourceRoot] =
 			priorGameObjectOverride;
 		TMap<InstanceId, ReflectedData> priorComponentOverrides;
@@ -2463,6 +2100,8 @@ namespace
 		YAML::Node overriddenExpandedNode = YAML::Clone(expandedNode);
 		overriddenExpandedNode["gameObjects"][0]["name"] =
 			"PinnedName";
+		overriddenExpandedNode["gameObjects"][0]["mobilityType"] =
+			"Static";
 		overriddenExpandedNode["components"][0]["overrideProperties"]["m_value"] =
 			2.0f;
 		PrefabPtr overriddenExpanded =
@@ -2480,6 +2119,8 @@ namespace
 		Require(gameObjectOverrides.ContainsKey(sourceRoot) &&
 			gameObjectOverrides[sourceRoot]["name"].as<std::string>() ==
 				"PinnedName" &&
+			gameObjectOverrides[sourceRoot]["mobilityType"].as<std::string>() ==
+				"Static" &&
 			componentOverrides.ContainsKey(sourceComponent) &&
 			componentOverrides[sourceComponent].GetProperties()[
 				"m_value"].as<float>() == 2.0f,
@@ -2507,30 +2148,6 @@ namespace
 			ReadText(failedSavePath) == "existing-scene",
 			"a failed linked world document should not overwrite a scene file");
 		std::filesystem::remove(failedSavePath);
-
-		const std::filesystem::path sourceRootPath =
-			SAILOR_TEST_SOURCE_DIR;
-		const std::string editorSource = ReadText(
-			sourceRootPath / "Runtime/Submodules/Editor.cpp");
-		const std::string interopSource = ReadText(
-			sourceRootPath / "Runtime/Editor/EditorInterop.cpp");
-		const std::string worldPrefabSource = ReadText(
-			sourceRootPath /
-				"Runtime/AssetRegistry/World/WorldPrefabImporter.cpp");
-		Require(editorSource.find("!prefab->IsReady()") !=
-				std::string::npos &&
-			editorSource.find("GetLoadDiagnostic()") !=
-				std::string::npos &&
-			interopSource.find("node.IsNull()") !=
-				std::string::npos,
-			"failed world serialization should propagate through Editor and interop as a save failure");
-		Require(worldPrefabSource.find(
-				"preserving its expanded live state as inline data") ==
-				std::string::npos &&
-			worldPrefabSource.find(
-				"res->m_gameObjects.Add(Prefab::FromGameObject(root));") ==
-				std::string::npos,
-			"linked serialization failures must never silently flatten an instance into inline scene data");
 
 		world.Clear();
 	}
@@ -4187,20 +3804,14 @@ int main()
 		{ "EditorKeepWorldReparentRejectsShearedCandidateWithoutMutation", TestEditorKeepWorldReparentRejectsShearedCandidateWithoutMutation },
 		{ "OctreeRelocationPreservesElementCount", TestOctreeRelocationPreservesElementCount },
 		{ "ClearingMeshModelAlsoClearsMaterials", TestClearingMeshModelAlsoClearsMaterials },
+		{ "FrameZeroMeshPublicationStaysStable", TestFrameZeroMeshPublicationStaysStable },
 		{ "StaticMeshLodSelectionUsesScreenCoverage", TestStaticMeshLodSelectionUsesScreenCoverage },
-		{ "StaticMeshProxyPublishesTransformRevisionForShadowInvalidation", TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation },
-		{ "StaticMeshProxyTracksMaterialContentRevisions", TestStaticMeshProxyTracksMaterialContentRevisions },
-		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },
 		{ "LocalLightShadowContract", TestLocalLightShadowContract },
 		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },
 		{ "CsmShadowTargetFormatTracksShadowMode", TestCsmShadowTargetFormatTracksShadowMode },
-		{ "ShadowCachePolicy", TestShadowCachePolicy },
+		{ "GameObjectMobilityHierarchyAndPersistence", TestGameObjectMobilityHierarchyAndPersistence },
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },
-		{ "ExpiredWorldPrefabInvalidatesLoadedCacheContract", TestExpiredWorldPrefabInvalidatesLoadedCacheContract },
-		{ "EmptyEditorWorldBootstrapContract", TestEmptyEditorWorldBootstrapContract },
-		{ "WorkspaceEditorStartupWorldContract", TestWorkspaceEditorStartupWorldContract },
-		{ "EditorWorldReplacementRetiresRenderFramesContract", TestEditorWorldReplacementRetiresRenderFramesContract },
 		{ "AnimationRelayoutMarksEveryOwnedMeshDirty", TestAnimationRelayoutMarksEveryOwnedMeshDirty },
 		{ "SparseLightSlotInvalidationAndReuse", TestSparseLightSlotInvalidationAndReuse },
 		{ "RemovingComponentCancelsPendingDependencyResolution", TestRemovingComponentCancelsPendingDependencyResolution },

@@ -48,11 +48,14 @@ namespace Sailor
 		SAILOR_API float GetCloudsHorizonBlend() const { return m_skyParams.m_fog; }
 		SAILOR_API void SetCloudsHorizonBlend(float value);
 
-		SAILOR_API float GetSunIntensity() const { return m_skyParams.m_sunIntensity; }
-		SAILOR_API void SetSunIntensity(float value);
+		SAILOR_API float GetCloudScatteringScale() const { return m_skyParams.m_cloudScatteringScale; }
+		SAILOR_API void SetCloudScatteringScale(float value);
 
 		SAILOR_API float GetAmbient() const { return m_skyParams.m_ambient; }
 		SAILOR_API void SetAmbient(float value);
+
+		SAILOR_API float GetGiIndirectIntensity() const { return m_giIndirectIntensity; }
+		SAILOR_API void SetGiIndirectIntensity(float value);
 
 		SAILOR_API int32_t GetScatteringSteps() const { return m_skyParams.m_scatteringSteps; }
 		SAILOR_API void SetScatteringSteps(int32_t value);
@@ -75,8 +78,11 @@ namespace Sailor
 		SAILOR_API const TObjectPtr<LightComponent>& GetDirectionalLight() const { return m_directionalLight; }
 		SAILOR_API void SetDirectionalLight(const TObjectPtr<LightComponent>& value);
 
-		SAILOR_API const glm::vec3& GetDirectionalLightIntensity() const { return m_directionalLightIntensity; }
-		SAILOR_API void SetDirectionalLightIntensity(const glm::vec3& value);
+		SAILOR_API const glm::vec3& GetSunIlluminance() const { return m_sunIlluminance; }
+		SAILOR_API void SetSunIlluminance(const glm::vec3& value);
+
+		SAILOR_API const glm::vec3& GetGroundAlbedo() const { return m_groundAlbedo; }
+		SAILOR_API void SetGroundAlbedo(const glm::vec3& value);
 
 		SAILOR_API const SkyParameters& GetSkyParameters() const { return m_skyParams; }
 
@@ -84,11 +90,14 @@ namespace Sailor
 
 		void Apply();
 		void UpdateLightDirection();
+		void UpdateGroundRadiance();
 
 		SkyParameters m_skyParams{};
 		TObjectPtr<LightComponent> m_directionalLight{};
-		glm::vec3 m_directionalLightIntensity = glm::vec3(17.0f);
+		glm::vec3 m_sunIlluminance = glm::vec3(120000.0f);
+		glm::vec3 m_groundAlbedo = glm::vec3(0.0f);
 		float m_sunAngleDegrees = 60.0f;
+		float m_giIndirectIntensity = 1.0f;
 	};
 }
 
@@ -127,11 +136,14 @@ REFL_AUTO(
 	func(GetCloudsHorizonBlend, property("cloudsHorizonBlend"), Range(0.0, 20.0)),
 	func(SetCloudsHorizonBlend, property("cloudsHorizonBlend")),
 
-	func(GetSunIntensity, property("sunIntensity"), Range(0.0, 800.0)),
-	func(SetSunIntensity, property("sunIntensity")),
+	func(GetCloudScatteringScale, property("cloudScatteringScale"), Range(0.0, 8.0)),
+	func(SetCloudScatteringScale, property("cloudScatteringScale")),
 
 	func(GetAmbient, property("ambient"), Range(0.0, 10.0)),
 	func(SetAmbient, property("ambient")),
+
+	func(GetGiIndirectIntensity, property("giIndirectIntensity"), Range(0.0, 16.0)),
+	func(SetGiIndirectIntensity, property("giIndirectIntensity")),
 
 	func(GetScatteringSteps, property("scatteringSteps"), Range(1.0, 10.0)),
 	func(SetScatteringSteps, property("scatteringSteps")),
@@ -154,6 +166,9 @@ REFL_AUTO(
 	func(GetDirectionalLight, property("m_directionalLight")),
 	func(SetDirectionalLight, property("m_directionalLight")),
 
-	func(GetDirectionalLightIntensity, property("directionalLightIntensity")),
-	func(SetDirectionalLightIntensity, property("directionalLightIntensity"))
+	func(GetSunIlluminance, property("sunIlluminance")),
+	func(SetSunIlluminance, property("sunIlluminance")),
+
+	func(GetGroundAlbedo, property("groundAlbedo")),
+	func(SetGroundAlbedo, property("groundAlbedo"))
 )

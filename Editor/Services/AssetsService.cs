@@ -389,7 +389,7 @@ namespace SailorEditor.Services
                 try
                 {
                     created = await MainThread.InvokeOnMainThreadAsync(() =>
-                        PublishCreatedAnimationAsset(
+                        PublishCreatedAsset(
                             sourcePath,
                             targetFolder,
                             fileId));
@@ -422,6 +422,126 @@ namespace SailorEditor.Services
             }
         }
 
+        public async Task<LandscapeVegetationFile?> CreateLandscapeVegetationAssetAsync(
+            string baseName,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(CurrentProjectRootPath))
+            {
+                return null;
+            }
+
+            var destinationDirectory = Path.Combine(
+                CurrentProjectRootPath,
+                "Landscape",
+                "Vegetation");
+            if (!ProjectContentPathPolicy.IsInsideRoot(
+                    CurrentProjectRootPath,
+                    destinationDirectory))
+            {
+                return null;
+            }
+            Directory.CreateDirectory(destinationDirectory);
+
+            var filename = GetUniqueAssetName(
+                destinationDirectory,
+                string.IsNullOrWhiteSpace(baseName) ? "Landscape" : baseName.Trim(),
+                ".vegetation");
+            var sourcePath = Path.Combine(destinationDirectory, filename);
+            var fileId = new FileId(
+                Guid.NewGuid().ToString().ToUpperInvariant());
+            var metadataContents = SerializeLandscapeVegetationAssetInfo(
+                fileId,
+                filename);
+
+            await _assetSaveLock.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            try
+            {
+                ProjectContentAssetWriteTransaction transaction;
+                (FileSystemWatcher Watcher, bool Enabled)[] watcherStates;
+                lock (_watcherLock)
+                {
+                    watcherStates = _contentWatchers
+                        .Select(watcher =>
+                            (watcher, watcher.EnableRaisingEvents))
+                        .ToArray();
+                    foreach (var watcherState in watcherStates)
+                    {
+                        watcherState.Watcher.EnableRaisingEvents = false;
+                    }
+                }
+
+                try
+                {
+                    transaction = _fileOperations.BeginWriteAssetPair(
+                        CurrentProjectRootPath,
+                        sourcePath,
+                        string.Empty,
+                        metadataContents,
+                        fileId.Value,
+                        overwrite: false);
+                }
+                finally
+                {
+                    lock (_watcherLock)
+                    {
+                        foreach (var watcherState in watcherStates)
+                        {
+                            if (_contentWatchers.Contains(watcherState.Watcher))
+                            {
+                                watcherState.Watcher.EnableRaisingEvents =
+                                    watcherState.Enabled;
+                            }
+                        }
+                    }
+                }
+
+                if (!transaction.Result.Succeeded)
+                {
+                    return null;
+                }
+
+                AssetFile? created;
+                try
+                {
+                    created = await MainThread.InvokeOnMainThreadAsync(() =>
+                        PublishCreatedAsset(
+                            sourcePath,
+                            targetFolder: null,
+                            fileId));
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                if (created is not LandscapeVegetationFile vegetation)
+                {
+                    transaction.Rollback();
+                    return null;
+                }
+
+                var commit = transaction.Commit();
+                if (!commit.Succeeded)
+                {
+                    await MainThread.InvokeOnMainThreadAsync(Refresh);
+                    return null;
+                }
+
+                if (_engineService.IsRunning)
+                {
+                    await _engineService.RequestAssetReloadAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                return vegetation;
+            }
+            finally
+            {
+                _assetSaveLock.Release();
+            }
+        }
+
         AssetFile? FindAssetBySourcePath(string sourcePath) =>
             Files.FirstOrDefault(asset =>
                 asset.Asset is not null &&
@@ -429,7 +549,7 @@ namespace SailorEditor.Services
                     asset.Asset.FullName,
                     sourcePath));
 
-        AssetFile? PublishCreatedAnimationAsset(
+        AssetFile? PublishCreatedAsset(
             string sourcePath,
             AssetFolder? targetFolder,
             FileId expectedFileId)
@@ -540,6 +660,16 @@ namespace SailorEditor.Services
             };
             return SaveYaml(root);
         }
+
+        static string SerializeLandscapeVegetationAssetInfo(
+            FileId fileId,
+            string filename) => SaveYaml(
+            new YamlMappingNode
+            {
+                { "assetInfoType", "Sailor::LandscapeVegetationAssetInfo" },
+                { "fileId", fileId.Value },
+                { "filename", filename }
+            });
 
         static string CreateAnimationSetSource() => SaveYaml(
             new YamlMappingNode
@@ -2031,6 +2161,8 @@ namespace SailorEditor.Services
                 "Sailor::ShaderAssetInfo" => new ShaderFile(),
                 "Sailor::MaterialAssetInfo" => new MaterialFile(),
                 "Sailor::FrameGraphAssetInfo" => new FrameGraphFile(),
+                "Sailor::LandscapeVegetationAssetInfo" => new LandscapeVegetationFile(),
+                "Sailor::GIProbesAssetInfo" => new GIProbesFile(),
                 _ => CreateAssetFileByExtension(extension)
             };
             assetFile.AssetInfoTypeName = assetInfoType;
@@ -2054,14 +2186,8 @@ namespace SailorEditor.Services
                 throw new InvalidDataException($"Asset metadata root must be a map: {assetInfo.FullName}");
             }
 
-            static string ReadScalar(YamlMappingNode root, string name)
-                => root.Children.TryGetValue(new YamlScalarNode(name), out var node) &&
-                    node is YamlScalarNode scalar
-                    ? scalar.Value ?? string.Empty
-                    : string.Empty;
-
-            var fileId = ReadScalar(root, "fileId");
-            var filename = ReadScalar(root, "filename");
+            var fileId = YamlHelper.ReadString(root, "fileId");
+            var filename = YamlHelper.ReadString(root, "filename");
             if (string.IsNullOrWhiteSpace(fileId) || string.IsNullOrWhiteSpace(filename))
             {
                 throw new InvalidDataException($"Asset metadata requires fileId and filename: {assetInfo.FullName}");
@@ -2070,7 +2196,7 @@ namespace SailorEditor.Services
             return new AssetMetadataIdentity(
                 fileId,
                 filename,
-                ReadScalar(root, "assetInfoType"));
+                YamlHelper.ReadString(root, "assetInfoType"));
         }
 
         private static AssetFile CreateAssetFileByExtension(string extension) => extension switch
@@ -2086,31 +2212,10 @@ namespace SailorEditor.Services
             ".shader" => new ShaderFile(),
             ".mat" => new MaterialFile(),
             ".renderer" => new FrameGraphFile(),
+            ".vegetation" => new LandscapeVegetationFile(),
             ".glsl" => new ShaderLibraryFile(),
             _ => new AssetFile()
         };
-
-        private static string TryReadScalar(FileInfo assetInfo, string fieldName)
-        {
-            try
-            {
-                using var reader = new StreamReader(assetInfo.FullName);
-                var yaml = new YamlStream();
-                yaml.Load(reader);
-                if (yaml.Documents.Count > 0 &&
-                    yaml.Documents[0].RootNode is YamlMappingNode root &&
-                    root.Children.TryGetValue(new YamlScalarNode(fieldName), out var node))
-                {
-                    return node?.ToString();
-                }
-            }
-            catch (YamlException ex)
-            {
-                Console.WriteLine($"[AssetsService] Failed to read {fieldName}: {assetInfo.FullName} :: {ex.Message}");
-            }
-
-            return null;
-        }
 
         private void TryPopulateAssetMetadataFromYaml(AssetFile assetFile)
         {
@@ -2134,26 +2239,27 @@ namespace SailorEditor.Services
                     return;
                 }
 
-                if (string.IsNullOrEmpty(assetFile.AssetInfoTypeName) && root.Children.TryGetValue(new YamlScalarNode("assetInfoType"), out var assetInfoTypeNode))
+                if (string.IsNullOrEmpty(assetFile.AssetInfoTypeName) &&
+                    YamlHelper.TryGetScalar(root, "assetInfoType", out var assetInfoType))
                 {
-                    assetFile.AssetInfoTypeName = assetInfoTypeNode?.ToString();
+                    assetFile.AssetInfoTypeName = assetInfoType;
                 }
 
-                if ((assetFile.FileId == null || assetFile.FileId.IsEmpty()) && root.Children.TryGetValue(new YamlScalarNode("fileId"), out var fileIdNode))
+                if ((assetFile.FileId == null || assetFile.FileId.IsEmpty()) &&
+                    YamlHelper.TryGetScalar(root, "fileId", out var fileId))
                 {
-                    var value = fileIdNode?.ToString();
-                    if (!string.IsNullOrWhiteSpace(value))
+                    if (!string.IsNullOrWhiteSpace(fileId))
                     {
-                        assetFile.FileId = new FileId(value);
+                        assetFile.FileId = new FileId(fileId);
                     }
                 }
 
-                if ((assetFile.Filename == null || assetFile.Filename.IsEmpty()) && root.Children.TryGetValue(new YamlScalarNode("filename"), out var filenameNode))
+                if ((assetFile.Filename == null || assetFile.Filename.IsEmpty()) &&
+                    YamlHelper.TryGetScalar(root, "filename", out var filename))
                 {
-                    var value = filenameNode?.ToString();
-                    if (!string.IsNullOrWhiteSpace(value))
+                    if (!string.IsNullOrWhiteSpace(filename))
                     {
-                        assetFile.Filename = new FileId(value);
+                        assetFile.Filename = new FileId(filename);
                     }
                 }
             }

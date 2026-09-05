@@ -7,6 +7,7 @@ public static class KnownPanelTypes
     public static readonly PanelTypeId Scene = new("Scene");
     public static readonly PanelTypeId Hierarchy = new("Hierarchy");
     public static readonly PanelTypeId Inspector = new("Inspector");
+    public static readonly PanelTypeId Lighting = new("Lighting");
     public static readonly PanelTypeId Content = new("Content");
     public static readonly PanelTypeId Console = new("Console");
     public static readonly PanelTypeId Settings = new("Settings");
@@ -23,6 +24,7 @@ public sealed class PanelRegistry : IPanelDescriptorRegistry
         Register(new PanelDescriptor(KnownPanelTypes.Scene, "Scene", PanelRole.Document, false, new(DefaultPosition: DockPosition.Center), () => new SceneView()));
         Register(new PanelDescriptor(KnownPanelTypes.Hierarchy, "Hierarchy", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Left), () => new HierarchyView()));
         Register(new PanelDescriptor(KnownPanelTypes.Inspector, "Inspector", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Right), () => new InspectorView()));
+        Register(new PanelDescriptor(KnownPanelTypes.Lighting, "Lighting", PanelRole.Tool, false, new(TargetGroupId: "right-inspector", DefaultPosition: DockPosition.Right), () => new LightingPanelView()));
         Register(new PanelDescriptor(KnownPanelTypes.Content, "Content", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Left), () => new ContentFolderView()));
         Register(new PanelDescriptor(KnownPanelTypes.Console, "Console", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Bottom), () => new ConsoleView()));
         Register(new PanelDescriptor(KnownPanelTypes.Settings, "Settings", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Right), () => new SettingsPanelView()));

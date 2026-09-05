@@ -45,8 +45,10 @@ glslVertex: |
   
   layout(set=1, binding=0) uniform PostProcessDataUBO
   {
-    vec4 lightDirection;
-    float cloudsAttenuation1;
+      vec4 lightDirection;
+      vec4 sunIlluminance;
+      vec4 groundRadiance;
+      float cloudsAttenuation1;
     float cloudsAttenuation2;
     float cloudsDensity;
     float cloudsCoverage;
@@ -55,7 +57,7 @@ glslVertex: |
     float eccentrisy1;
     float eccentrisy2;
     float fog;
-    float sunIntensity;
+    float cloudScatteringScale;
     float ambient;
     int   scatteringSteps;
     float scatteringDensity;
@@ -116,6 +118,8 @@ glslFragment: |
   layout(set=1, binding=0) uniform PostProcessDataUBO
   {
     vec4 lightDirection;
+    vec4 sunIlluminance;
+    vec4 groundRadiance;
     float cloudsAttenuation1;
     float cloudsAttenuation2;
     float cloudsDensity;
@@ -125,7 +129,7 @@ glslFragment: |
     float eccentrisy1;
     float eccentrisy2;
     float fog;
-    float sunIntensity;
+    float cloudScatteringScale;
     float ambient;
     int   scatteringSteps;
     float scatteringDensity;
@@ -163,10 +167,14 @@ glslFragment: |
   const float atmosphereRadius = 160000.0f;    // Atmosphere thickness in meters
   const float cloudsStartHeight = 7000.0f;     // Height where clouds start above earth
   const float cloudsThickness = 15000.0f;      // Thickness of the cloud layer
-  const float sunAngularRadius = radians(0.545f); // Sun's angular radius in radians
+  const float sunAngularRadius = radians(0.266f); // Sun's angular radius in radians
+  const float maxHalfFloat = 65504.0f;
   const float bigDistance = 600000.0f;         // Used for max trace distance
   const uint integralSteps = 8u;               // Steps for density integration
   const uint integralSteps2 = 128u;            // Steps for atmospheric scattering
+  #if defined(SUN)
+  const uint sunTransmittanceSteps = 32u;
+  #endif
 
   // Atmospheric positions are kept relative to the local tangent surface:
   // sea level is y=0 and the planet center is (0, -earthRadius, 0). This avoids
@@ -295,6 +303,32 @@ glslFragment: |
     atmosphereOrigin = origin + direction * surfaceExit;
     return true;
   }
+
+  float SunVisibility(vec3 position, vec3 directionToSun)
+  {
+    const vec3 radialPosition = vec3(
+      position.x,
+      earthRadius + position.y,
+      position.z);
+    const float motionTowardSun = dot(radialPosition, directionToSun);
+    if(motionTowardSun >= 0.0f)
+    {
+      return 1.0f;
+    }
+
+    const float closestRadius = sqrt(max(
+      dot(radialPosition, radialPosition) -
+        motionTowardSun * motionTowardSun,
+      0.0f));
+    const float tangentAltitude = closestRadius - earthRadius;
+    const float penumbraWidth = max(
+      -motionTowardSun * tan(sunAngularRadius),
+      1.0f);
+    return smoothstep(
+      -penumbraWidth,
+      penumbraWidth,
+      tangentAltitude);
+  }
   
   float Density(vec3 a, vec3 b, float H0)
   {
@@ -313,10 +347,159 @@ glslFragment: |
     
     return res;
   }
+
+  #if defined(SUN)
+  vec2 IntegrateSunDensity(
+    vec3 origin,
+    vec3 direction,
+    float rangeStart,
+    float rangeEnd,
+    bool concentrateAtEnd)
+  {
+    if(rangeEnd <= rangeStart)
+    {
+      return vec2(0.0f);
+    }
+
+    const float rangeLength = rangeEnd - rangeStart;
+    vec2 density = vec2(0.0f);
+    for(uint index = 0u; index < sunTransmittanceSteps; ++index)
+    {
+      const float u0 = float(index) / float(sunTransmittanceSteps);
+      const float u1 = float(index + 1u) / float(sunTransmittanceSteps);
+      const float shapedU0 = concentrateAtEnd
+        ? 1.0f - (1.0f - u0) * (1.0f - u0)
+        : u0 * u0;
+      const float shapedU1 = concentrateAtEnd
+        ? 1.0f - (1.0f - u1) * (1.0f - u1)
+        : u1 * u1;
+      const float distance0 = rangeStart + rangeLength * shapedU0;
+      const float distance1 = rangeStart + rangeLength * shapedU1;
+      const float sampleDistance = 0.5f * (distance0 + distance1);
+      const float stepLength = distance1 - distance0;
+      const float height = max(
+        PlanetHeight(origin + direction * sampleDistance),
+        0.0f);
+      density.x += exp(-height / 7994.0f) * stepLength;
+      density.y += exp(-height / 1200.0f) * stepLength;
+    }
+    return density;
+  }
+
+  vec3 SunRayTransmittance(vec3 origin, vec3 directionToSun)
+  {
+    const float directionLengthSquared = dot(
+      directionToSun,
+      directionToSun);
+    if(directionLengthSquared <= 0.000001f || PlanetHeight(origin) < 0.0f)
+    {
+      return vec3(0.0f);
+    }
+
+    const vec3 direction = directionToSun *
+      inversesqrt(directionLengthSquared);
+    float planetEntryDistance = -1.0f;
+    if(RayEntersAltitudeSphere(
+      origin,
+      direction,
+      0.0f,
+      planetEntryDistance))
+    {
+      return vec3(0.0f);
+    }
+
+    const float originHeight = PlanetHeight(origin);
+    const vec2 atmosphereIntersections = RaySphereAtAltitude(
+      origin,
+      direction,
+      atmosphereRadius);
+    float rangeStart = 0.0f;
+    float rangeEnd = -1.0f;
+    if(originHeight >= atmosphereRadius)
+    {
+      if(atmosphereIntersections.y <= 0.0f)
+      {
+        // No atmosphere lies between the observer and the Sun.
+        return vec3(1.0f);
+      }
+      rangeStart = max(atmosphereIntersections.x, 0.0f);
+      rangeEnd = atmosphereIntersections.y;
+    }
+    else
+    {
+      rangeEnd = max(
+        atmosphereIntersections.x,
+        atmosphereIntersections.y);
+    }
+
+    if(rangeEnd <= rangeStart)
+    {
+      return vec3(1.0f);
+    }
+
+    const vec3 radialPosition = vec3(
+      origin.x,
+      earthRadius + origin.y,
+      origin.z);
+    const float closestDistance = clamp(
+      -dot(radialPosition, direction),
+      rangeStart,
+      rangeEnd);
+    vec2 density = IntegrateSunDensity(
+      origin,
+      direction,
+      rangeStart,
+      closestDistance,
+      true);
+    density += IntegrateSunDensity(
+      origin,
+      direction,
+      closestDistance,
+      rangeEnd,
+      false);
+
+    const vec3 rayleighCoefficient = vec3(3.8e-6, 13.5e-6, 33.1e-6);
+    const vec3 mieCoefficient = vec3(22e-6);
+    return exp(
+      -rayleighCoefficient * density.x -
+      mieCoefficient * 1.1f * density.y);
+  }
+
+  vec3 SunDiskLighting(
+    vec3 origin,
+    vec3 direction,
+    vec3 directionToSun)
+  {
+    const float theta = dot(direction, directionToSun);
+    const float diskEdgeCosine = cos(sunAngularRadius);
+    if(theta < diskEdgeCosine)
+    {
+      return vec3(0.0f);
+    }
+
+    const float normalizedRadius = clamp(
+      (1.0f - theta) / max(1.0f - diskEdgeCosine, 0.000001f),
+      0.0f,
+      1.0f);
+    const float limbDarkening = mix(
+      0.83f,
+      1.0f,
+      1.0f - normalizedRadius * normalizedRadius);
+    // Keep the explicit disk in Sailor's scene-linear emission scale. A true
+    // lux-to-radiance conversion would exceed the R16F sky target and erase
+    // the spectral energy loss by saturating every channel before bloom.
+    const vec3 sourceEmission =
+      max(data.sunIlluminance.xyz, vec3(0.0f));
+    return min(
+      limbDarkening * sourceEmission *
+        SunRayTransmittance(origin, direction),
+      vec3(maxHalfFloat));
+  }
+  #endif
   
   float PhaseR(float cosAngle)
   {
-    return ((3.0f * PI) / 16.0f) * (1.0f + cosAngle * cosAngle);
+    return (3.0f / (16.0f * PI)) * (1.0f + cosAngle * cosAngle);
   }
   
   // The best variant with the precomputed values
@@ -326,7 +509,8 @@ glslFragment: |
     const vec3 c = vec3(.256098,.132268,.010016);
     const vec3 d = vec3(-1.5,-1.74,-1.98);
     const vec3 e = vec3(1.5625,1.7569,1.9801);
-    return dot((x * x + 1.) * c / pow( d * x + e, vec3(1.5)),vec3(.33333333333));
+    return dot((x * x + 1.) * c / pow(d * x + e, vec3(1.5)),
+      vec3(.33333333333)) / (4.0f * PI);
   }
   
   /*
@@ -342,8 +526,14 @@ glslFragment: |
   
   float PhaseHenyeyGreenstein(float a, float g) 
   {
-      float g2 = g * g;
-      return (1.0f - g2) / (4.0f * 3.1415f * pow(1.0f + g2 - 2.0f * g * (a), 1.5f));
+      const float safeCosine = clamp(a, -1.0f, 1.0f);
+      const float safeEccentricity = clamp(g, -0.999f, 0.999f);
+      const float g2 = safeEccentricity * safeEccentricity;
+      const float denominator = max(
+        1.0f + g2 - 2.0f * safeEccentricity * safeCosine,
+        0.000001f);
+      return (1.0f - g2) /
+        (4.0f * PI * pow(denominator, 1.5f));
   }
 
   vec3 IntersectSphere(vec3 origin, vec3 direction, float innerHeight, float outerHeight)
@@ -374,47 +564,48 @@ glslFragment: |
       }
       return origin + direction * shift;
   }
-  
-  vec3 CalculateSunColor(vec3 sunDirection)
+
+  vec3 DirectSunAtmosphereTransmittance(
+    vec3 position,
+    vec3 directionToSun)
   {
-      const vec3 ZenithIlluminance =  vec3(0.925, 0.861, 0.755);
-      const vec3 HalfIlluminance = vec3(0.6f, 0.4490196f, 0.1588f);
-      const vec3 GroundIlluminance = vec3(0.0499, 0.004, 4.10 * 0.00001) * 2;
-      
-      const float angle = dot(-sunDirection, vec3(0, 1, 0));
-      
-      const float border = 0.1f;
-      
-      const float artisticTune1 = sqrt(max((angle - border) / (1.0f - border), 0.0f));
-      const float normalizedGroundAngle = angle / border;
-      const float artisticTune2 = clamp(
-        normalizedGroundAngle * normalizedGroundAngle * normalizedGroundAngle,
+      const float visibility = SunVisibility(position, directionToSun);
+      if(visibility <= 0.0f)
+      {
+          return vec3(0.0f);
+      }
+
+      const vec3 atmosphereExit = IntersectSphere(
+        position,
+        directionToSun,
         0.0f,
-        1.0f);
-      
-      vec3 color = angle > border ? mix(HalfIlluminance, ZenithIlluminance, artisticTune1) : 
-      mix(GroundIlluminance, HalfIlluminance, artisticTune2);
-      
-      return color;
-  }
-  
-  vec3 CalculateSunIlluminance(vec3 sunDirection)
-  {
-      const float w = 2*PI*(1-cos(sunAngularRadius));
-      const float LsZenith = 120000.0f / w;
-      const float LsGround = 100000.0f / w;
-      
-      const float sunHeight = dot(-sunDirection, vec3(0, 1, 0));
-      const float artisticTune = clamp(
-        sunHeight * sunHeight * sunHeight,
-        0.0f,
-        1.0f);
-      
-      return mix(LsGround, LsZenith, artisticTune) * CalculateSunColor(sunDirection);
+        atmosphereRadius);
+      if(length(atmosphereExit - position) <= 0.01f)
+      {
+          return vec3(0.0f);
+      }
+
+      const vec3 rayleighCoefficient = vec3(3.8e-6, 13.5e-6, 33.1e-6);
+      const vec3 mieCoefficient = vec3(22e-6);
+      const float rayleighDensity = Density(
+        position,
+        atmosphereExit,
+        7994.0f);
+      const float mieDensity = Density(
+        position,
+        atmosphereExit,
+        1200.0f);
+      return visibility * exp(
+        -rayleighCoefficient * rayleighDensity -
+        mieCoefficient * 1.1f * mieDensity);
   }
   
   vec3 SkyLighting(vec3 origin, vec3 direction, vec3 lightDirection)
   {
+     #if defined(SUN)
+       return SunDiskLighting(origin, direction, -lightDirection);
+     #endif
+
      vec3 atmosphereOrigin;
      float distanceToAtmosphere;
      if(!ResolveAtmosphereRayOrigin(
@@ -428,13 +619,14 @@ glslFragment: |
 
      origin = atmosphereOrigin;
      const vec3 destination = IntersectSphere(origin, direction, 0.0f, atmosphereRadius);
+     float groundDistance;
+     const bool hitsGround = RayEntersAltitudeSphere(origin, direction, 0.0f, groundDistance);
      
      if(length(destination - origin) < 0.01)
      {
-         return vec3(0);
+         return hitsGround ? max(data.groundRadiance.xyz, vec3(0.0f)) : vec3(0.0f);
      }
 
-     const float LightIntensity = 7.0f;
      const float Angle = dot(normalize(destination - origin), -lightDirection);
            
      const vec3 step = (destination - origin) / INTEGRAL_STEPS_2;
@@ -467,9 +659,9 @@ glslFragment: |
      float phaseR = PhaseR(Angle);
      float phaseMie = PhaseMie(Angle);
      
-     for(uint i = 0; i < INTEGRAL_STEPS_2 - 1; i++)
+     for(uint i = 0; i < integralSteps2; i++)
      {
-         const vec3 point = origin + step * (i + 1);
+         const vec3 point = origin + step * (float(i) + 0.5f);
          const float h = max(PlanetHeight(point), 0.0f);
          
          const float hr = exp(-h/H0R)  * dStep;
@@ -478,6 +670,14 @@ glslFragment: |
          densityR  += hr;
          densityMie += hm;
 
+         const float sunVisibility = SunVisibility(
+           point,
+           -lightDirection);
+         if(sunVisibility <= 0.0f)
+         {
+            continue;
+         }
+
          const vec3  toLight = IntersectSphere(point, -lightDirection, 0.0f, atmosphereRadius);
          const float hLight  = max(PlanetHeight(toLight), 0.0f);
          const float stepToLight = (hLight - h) / INTEGRAL_STEPS;
@@ -485,19 +685,12 @@ glslFragment: |
          float densityLightR = 0.0f;
          float densityLightMie = 0.0f;
 
-         float planetEntryDistance = -1.0f;
-         bool bReached = !RayEntersAltitudeSphere(
-           point,
-           -lightDirection,
-           0.0f,
-           planetEntryDistance);
          for(int j = 0; j < INTEGRAL_STEPS; j++)
          {
             const float h1 = h + stepToLight * j;
             
             if(h1 < 0)
             {
-                bReached = false;
                 break;
             }
             
@@ -505,12 +698,9 @@ glslFragment: |
             densityLightR  += exp(-h1/H0R)  * dStepLight;
          }
         
-        if(bReached)
-        {
-            vec3 aggr = exp(-B0R * (densityR + densityLightR) - B0Mie * 1.1f * (densityLightMie + densityMie));
-            resR  += aggr * hr;
-            resMie += aggr * hm;
-        }
+        vec3 aggr = exp(-B0R * (densityR + densityLightR) - B0Mie * 1.1f * (densityLightMie + densityMie));
+        resR  += aggr * hr * sunVisibility;
+        resMie += aggr * hm * sunVisibility;
     }
     
     #if defined(SUN)
@@ -523,18 +713,31 @@ glslFragment: |
           planetEntryDistance))
         {
             const float t = (1 - pow((1 - theta)/(1-zeta), 2));
-            const float attenuation = mix(0.83, 1.0f, t);
-            const vec3 SunIlluminance = attenuation * vec3(1.0f) * 12000000.0f;
-            const vec3 final = SunIlluminance;// * (resR * B0R * PhaseR(Angle) + B0Mie * resMie * PhaseMie(Angle));
-            return final;
+            const float diskEdgeAttenuation = mix(0.83, 1.0f, t);
+            const float solidAngle = max(
+              2.0f * PI * (1.0f - cos(sunAngularRadius)),
+              0.000001f);
+            const vec3 sunDiskRadiance =
+              max(data.sunIlluminance.xyz, vec3(0.0f)) / solidAngle;
+            const vec3 atmosphereTransmittance = exp(
+              -B0R * densityR - B0Mie * 1.1f * densityMie);
+            return min(
+              diskEdgeAttenuation * sunDiskRadiance *
+                atmosphereTransmittance,
+              vec3(maxHalfFloat));
         }
         else
         {
             return vec3(0);
         }
     #else
-        const vec3 final = LightIntensity * (B0R * resR * phaseR + B0Mie * resMie * phaseMie);
-        return final;
+        const vec3 scattering =
+          B0R * resR * phaseR + B0Mie * resMie * phaseMie;
+        const vec3 ground = hitsGround ? max(data.groundRadiance.xyz, vec3(0.0f)) *
+          exp(-B0R * densityR - B0Mie * 1.1f * densityMie) : vec3(0.0f);
+        return min(
+          max(data.sunIlluminance.xyz, vec3(0.0f)) * scattering + ground,
+          vec3(maxHalfFloat));
     #endif
   }
   
@@ -685,8 +888,7 @@ glslFragment: |
         return vec4(0);
     }
     
-    vec3 sunColor = CalculateSunColor(-dirToSun);
-    float mu = max(0, dot(viewDir, dirToSun));
+    const float mu = clamp(dot(viewDir, dirToSun), -1.0f, 1.0f);
     
     float dA[10];
     float dB[10];
@@ -699,23 +901,15 @@ glslFragment: |
        dC[j] = pow(data.scatteringPhase, j);
     }
     
-    const vec3 finalTrace = traceEnd;
     const uint StepsHighDetail = 128;
     const uint StepsLowDetail = 256;
     
     vec3 position = traceStart;
-    vec3 color = vec3(0.0);
     vec3 colorLow = vec3(0.0);
-    float transmittance = 1.0;
     float transmittanceLow = 1.0f;
-
-    // Perspective compensation
-    /*vec4 cameraDir = vec4(0,0,0,0);
-    cameraDir.xyz = ScreenSpaceToViewSpace(vec2(0.5, 0.5), 1.0f, frame.invProjection).xyz;    
-    cameraDir.z *= -1;
-    cameraDir = normalize(inverse(frame.view) * cameraDir);
-    const float cosA = dot(cameraDir.xyz, viewDir);
-    */
+    const vec3 directSunIlluminance =
+      max(data.sunIlluminance.xyz, vec3(0.0f)) *
+      DirectSunAtmosphereTransmittance(traceStart, dirToSun);
 
     float baseStep = 150.0;
     float density = CloudsSampleDensity(position);
@@ -733,7 +927,15 @@ glslFragment: |
                 vec3 randomVec = vec3(0);
                 if(j > 0)
                 {
-                    randomVec = normalize(texture(g_noiseSampler, position.xz + j / 16.0f).xyz - 0.5f) * 10.0f;
+                    const vec3 randomSample =
+                      texture(g_noiseSampler, position.xz + j / 16.0f).xyz -
+                      0.5f;
+                    const float randomLengthSquared = dot(
+                      randomSample,
+                      randomSample);
+                    randomVec = randomLengthSquared > 1e-12f
+                      ? randomSample * inversesqrt(randomLengthSquared) * 10.0f
+                      : vec3(0.0f);
                 }
                 
                 vec3 localPosition = position + randomVec;
@@ -745,20 +947,22 @@ glslFragment: |
                 float m2 = exp(-dA[j] * data.cloudsAttenuation1 * sunDensity);
                 float m3 = data.cloudsAttenuation2 * density;
                 
-                float planetEntryDistance = -1.0f;
-
-                // No sun rays through the Earth.
-                if(!RayEntersAltitudeSphere(
+                const float sunVisibility = SunVisibility(
                   localPosition,
-                  dirToSun,
-                  0.0f,
-                  planetEntryDistance))
+                  dirToSun);
+                if(sunVisibility > 0.0f)
                 {
-                    colorLow += dB[j] * (m11 + m12) * m2 * m3 * transmittanceLow;
+                    colorLow += sunVisibility * dB[j] *
+                      (m11 + m12) * m2 * m3 * transmittanceLow;
                 }
                 
-                transmittanceLow *= exp(-dA[j] * data.cloudsAttenuation1 * density);
             }
+
+            // Multiple-scattering orders alter in-scattered radiance, not the
+            // primary view-ray extinction. Applying extinction per order made
+            // cloud opacity depend on the quality setting.
+            transmittanceLow *= exp(
+              -data.cloudsAttenuation1 * density);
         }
         
         position += viewDir * avrStep;
@@ -779,21 +983,27 @@ glslFragment: |
     }
    
     vec4 finalColor = vec4(
-      data.sunIntensity * sunColor * colorLow,
+      min(
+        data.cloudScatteringScale * directSunIlluminance * colorLow,
+        vec3(maxHalfFloat)),
       1.0 - transmittanceLow);
     return finalColor;
   }
   
   #endif
   
-  float CalculateSunHeight(vec3 originWorldPos, vec3 worldViewDir, vec3 dirToSun)
+  void BuildSunBasis(vec3 dirToSun, out vec3 right, out vec3 up)
   {
-      const float l = (dot(worldViewDir, dirToSun) * length(originWorldPos));
-      return PlanetHeight(l * worldViewDir + originWorldPos);
+      const vec3 referenceAxis = abs(dirToSun.y) < 0.999f
+        ? vec3(0.0f, 1.0f, 0.0f)
+        : vec3(1.0f, 0.0f, 0.0f);
+      right = normalize(cross(dirToSun, referenceAxis));
+      up = normalize(cross(right, dirToSun));
   }
   
   void main()
   {
+    outColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     vec4 dirWorldSpace = vec4(0);
     
     // Keep the actual camera position. Atmospheric functions resolve a ray
@@ -811,8 +1021,9 @@ glslFragment: |
         
        outColor.xyz = texture(skySampler, fragTexcoord).xyz; 
 
-       const vec3 right = normalize(cross(dirToSun, vec3(0,1,0)));
-       const vec3 up = cross(right, dirToSun);
+       vec3 right;
+       vec3 up;
+       BuildSunBasis(dirToSun, right, up);
 
        float dx = dot(dirWorldSpace.xyz - dirToSun, right);
        float dy = dot(dirWorldSpace.xyz - dirToSun, up);
@@ -829,8 +1040,14 @@ glslFragment: |
          sunUv.y = 1 - sunUv.y;
          sunUv.x = 1 - sunUv.x;
          const vec3 sunColor = texture(sunSampler, sunUv).xyz;
-         float luminance = dot(sunColor,sunColor);
-         outColor.xyz = max(outColor.xyz, mix(outColor.xyz, sunColor, clamp(0,1, luminance)));         
+         outColor.xyz += sunColor;
+         if(any(greaterThan(sunColor, vec3(0.0f))))
+         {
+           // Reserve zero alpha on the opaque sky for the explicit solar disk.
+           // Bloom uses it to retain solar energy without weakening the global
+           // firefly filter for stars and isolated HDR pixels.
+           outColor.a = 0.0f;
+         }
        }
 
     #elif defined(CLOUDS)
@@ -867,11 +1084,9 @@ glslFragment: |
        dirWorldSpace.z *= -1;
        dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
         
-       outColor.xyz = texture(skySampler, fragTexcoord).xyz;
-       
-       // Remove horizon red line
-       vec3 sky = vec3(outColor.b);
-       sky = sky / (1 + sky);
+       const vec3 skyRadiance = max(
+         texture(skySampler, fragTexcoord).xyz,
+         vec3(0.0f));
 
        vec3 viewDir = normalize(dirWorldSpace.xyz);
        float horizon = 1.0f;
@@ -883,34 +1098,64 @@ glslFragment: |
        
        float maxTraceDistance = abs(linearDepth - frame.cameraZNearZFar.y) < 1.0f ? bigDistance : linearDepth;
 
-       vec4 rawClouds = CloudsMarching(origin, viewDir, dirToSun, maxTraceDistance) + vec4(sky.xyz, 0.0f) * data.ambient;
-       vec3 tunedClouds = mix(outColor.xyz, rawClouds.xyz, horizon);
-       
-       outColor.xyz = tunedClouds;
-       outColor.a = rawClouds.a;
+       const vec4 rawClouds = CloudsMarching(
+         origin,
+         viewDir,
+         dirToSun,
+         maxTraceDistance);
+       const float opacity = clamp(rawClouds.a * horizon, 0.0f, 1.0f);
+       if(opacity <= cloudsVisibilityEpsilon)
+       {
+           outColor = vec4(0.0f);
+           return;
+       }
+
+       // CloudsMarching integrates direct radiance in premultiplied form.
+       // Approximate hemispherical skylight with a bounded artistic weight and
+       // keep it in the same HDR units as the atmospheric sky. The cloud pass
+       // uses standard alpha blending, so convert the complete premultiplied
+       // result to straight alpha exactly once before composition.
+       const float ambientWeight = 1.0f - exp(-max(data.ambient, 0.0f));
+       const vec3 ambientScattering =
+         skyRadiance * ambientWeight * rawClouds.a;
+       const vec3 premultipliedRadiance =
+         (rawClouds.xyz + ambientScattering) * horizon;
+       outColor = vec4(
+         premultipliedRadiance / max(opacity, cloudsVisibilityEpsilon),
+         opacity);
     #elif defined(SUN)
     
         // World space
         const vec2 sunAngular = vec2(mix(-sunAngularRadius, sunAngularRadius, fragTexcoord.x),
                                     mix(-sunAngularRadius, sunAngularRadius, fragTexcoord.y));
 
-        const vec3 right = normalize(cross(dirToSun, vec3(0,1,0)));
-        const vec3 up = cross(right, dirToSun);
+        vec3 right;
+        vec3 up;
+        BuildSunBasis(dirToSun, right, up);
 
         vec3 viewDir = Rotate(dirToSun, up, sunAngular.x);
         dirWorldSpace.xyz = normalize(Rotate(viewDir, cross(dirToSun, up), sunAngular.y));
         
         outColor = vec4(0,0,0,0);
 
-        vec4 uvView = ((frame.projection * frame.view * dirWorldSpace) + 1.0f) * 0.5f;
-        uvView /= uvView.w;
-        
-        float clouds = texture(cloudsSampler, uvView.xy).a;
-        
-        if(clouds < 0.5)
+        const vec4 sunClip = frame.projection * frame.view * dirWorldSpace;
+        float cloudOpacity = 0.0f;
+        if(sunClip.w > 0.000001f)
         {
-            outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun);
+            const vec2 sunNdc = sunClip.xy / sunClip.w;
+            const vec2 sunUv = vec2(
+              sunNdc.x * 0.5f + 0.5f,
+              0.5f - sunNdc.y * 0.5f);
+            if(all(greaterThanEqual(sunUv, vec2(0.0f))) &&
+               all(lessThanEqual(sunUv, vec2(1.0f))))
+            {
+                cloudOpacity = texture(cloudsSampler, sunUv).a;
+            }
         }
+
+        const float cloudTransmittance =
+          1.0f - clamp(cloudOpacity, 0.0f, 1.0f);
+        outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun) * cloudTransmittance;
         
     #else
         vec2 uv = fragTexcoord.xy;
@@ -930,4 +1175,15 @@ glslFragment: |
         
         outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun);
     #endif
+
+    if(any(isnan(outColor.xyz)) || any(isinf(outColor.xyz)))
+    {
+        outColor.xyz = vec3(0.0f);
+    }
+    outColor.xyz = clamp(outColor.xyz, vec3(0.0f), vec3(maxHalfFloat));
+    if(isnan(outColor.a) || isinf(outColor.a))
+    {
+        outColor.a = 0.0f;
+    }
+    outColor.a = clamp(outColor.a, 0.0f, 1.0f);
   }

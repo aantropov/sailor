@@ -1,6 +1,8 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "Components/Component.h"
+#include "Components/LandscapeComponent.h"
+#include "ECS/LandscapeECS.h"
 #include "ECS/TransformECS.h"
 #include "ECS/StaticMeshRendererECS.h"
 #include "Editor/EditorViewportController.h"
@@ -32,15 +34,35 @@ TransformComponent& GameObject::GetTransformComponent()
 
 void GameObject::SetMobilityType(EMobilityType type)
 {
-	if (m_type == type)
+	if (m_parent &&
+		!IsMobilityHierarchyValid(m_parent->m_type, type))
 	{
-		return;
+		type = m_parent->m_type;
 	}
 
-	m_type = type;
-	if (m_self && m_pWorld)
+	if (m_type != type)
 	{
-		m_pWorld->GetECS<StaticMeshRendererECS>()->MarkDirty(m_self);
+		m_type = type;
+		if (m_self && m_pWorld)
+		{
+			m_pWorld->GetECS<StaticMeshRendererECS>()->MarkDirty(m_self);
+			if (m_self->GetComponent<LandscapeComponent>())
+			{
+				if (auto* landscapeEcs = m_pWorld->GetECS<LandscapeECS>())
+				{
+					landscapeEcs->MarkDirty(m_self);
+				}
+			}
+		}
+	}
+
+	for (auto& child : m_children)
+	{
+		if (child &&
+			!IsMobilityHierarchyValid(m_type, child->m_type))
+		{
+			child->SetMobilityType(m_type);
+		}
 	}
 }
 
@@ -96,6 +118,8 @@ void GameObject::SetParentInternal(
 	{
 		GetTransformComponent().SetNewParent(nullptr);
 	}
+
+	SetMobilityType(m_type);
 }
 
 bool GameObject::RemoveComponent(ComponentPtr component)

@@ -4,6 +4,7 @@ using SailorEditor.ViewModels;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using SailorEditor.Utility;
+using SailorEditor.Workflow;
 using SailorEngine;
 using YamlDotNet.Core.Tokens;
 using System.Numerics;
@@ -60,6 +61,9 @@ namespace SailorEditor.Services
                 currentWorldAsset,
                 hasStableFileId,
                 refreshedWorld,
+                currentWorldAsset is not null &&
+                    File.Exists(currentWorldAsset.Asset?.FullName) &&
+                    File.Exists(currentWorldAsset.AssetInfo?.FullName),
                 IsCurrentWorldUntitled,
                 currentWorldAsset?.IsDirty ?? false);
             if (result.Asset is not null && result.DirtyState is bool dirtyState)
@@ -333,6 +337,18 @@ namespace SailorEditor.Services
                 return new SceneSaveResult(
                     SceneSaveOutcome.Failed,
                     Error: "Stop simulation before saving the scene.");
+            }
+
+            var selectedItem = MauiProgram
+                .GetService<SelectionService>()
+                .SelectedItem;
+            if (!await InspectorSaveCommitGate.CommitSelectedAsync(
+                    selectedItem,
+                    cancellationToken))
+            {
+                return new SceneSaveResult(
+                    SceneSaveOutcome.Failed,
+                    Error: "Pending Inspector changes could not be committed before saving the scene.");
             }
 
             var assetsService = MauiProgram.GetService<AssetsService>();
@@ -867,6 +883,7 @@ namespace SailorEditor.Services
             Current.Prefabs.Clear();
 
             Current.Name = world.Name;
+            Current.GlobalIllumination = world.GlobalIllumination ?? new();
 
             var worldKey = GetWorldKey(world);
             if (!worldCaches.TryGetValue(worldKey, out var cache))
@@ -1125,6 +1142,7 @@ namespace SailorEditor.Services
             {
                 Name = gameObject.Name,
                 InstanceId = new InstanceId(gameObject.InstanceId.Value),
+                MobilityType = gameObject.MobilityType,
                 ParentIndex = gameObject.ParentIndex,
                 Position = new Vec4(gameObject.Position),
                 Rotation = new Rotation(gameObject.Rotation),

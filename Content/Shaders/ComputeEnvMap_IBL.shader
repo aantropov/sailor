@@ -11,10 +11,10 @@ glslCompute: |
   // Pre-filters environment cube map using GGX NDF importance sampling.
   // Part of specular IBL split-sum approximation.
   const float Epsilon = 0.00001;
-  
+
   const uint NumSamples = 1024;
   const float InvNumSamples = 1.0 / float(NumSamples);
-  
+
   //layout(constant_id=0) const int NumMipLevels = 1;
   const int NumMipLevels = 9;
   layout(set=0, binding=0) uniform samplerCube rawEnvMap;
@@ -40,7 +40,9 @@ glslCompute: |
   // See: OpenGL core profile specs, section 8.13.
   vec3 GetSamplingVector()
   {
-      vec2 st = gl_GlobalInvocationID.xy/vec2(imageSize(envMap[pushConstants.level]));
+      vec2 st =
+        (vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) /
+        vec2(imageSize(envMap[pushConstants.level]));
       vec2 uv = 2.0 * vec2(st.x, 1.0-st.y) - vec2(1.0);
   
       vec3 ret;
@@ -129,7 +131,6 @@ glslCompute: |
       }
     }
     color /= weight;
-  
+
     imageStore(envMap[pushConstants.level], ivec3(gl_GlobalInvocationID), vec4(color, 1.0));
   }
-  

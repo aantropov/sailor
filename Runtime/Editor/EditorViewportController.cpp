@@ -32,47 +32,17 @@ namespace
 	constexpr float c_cameraFramePadding = 1.2f;
 	constexpr float c_minimumCameraFrameRadius = 1.0f;
 
-	bool IsFiniteMatrix(const glm::mat4& matrix)
-	{
-		for (glm::length_t column = 0; column < matrix.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < matrix[column].length(); ++row)
-			{
-				if (!std::isfinite(matrix[column][row]))
-				{
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
-	bool AreMatricesNear(const glm::mat4& lhs, const glm::mat4& rhs, float tolerance = c_matrixTolerance)
-	{
-		for (glm::length_t column = 0; column < lhs.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < lhs[column].length(); ++row)
-			{
-				const float scale = std::max({ 1.0f, std::abs(lhs[column][row]), std::abs(rhs[column][row]) });
-				if (std::abs(lhs[column][row] - rhs[column][row]) > tolerance * scale)
-				{
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
 	bool AreTransformsNear(const Math::Transform& lhs, const Math::Transform& rhs)
 	{
-		return AreMatricesNear(lhs.Matrix(), rhs.Matrix());
+		return Math::AreNearlyEqual(
+			lhs.Matrix(),
+			rhs.Matrix(),
+			c_matrixTolerance);
 	}
 
 	bool TryInvertTransformMatrix(const glm::mat4& matrix, glm::mat4& outInverse)
 	{
-		if (!IsFiniteMatrix(matrix))
+		if (!Math::AllFinite(matrix))
 		{
 			return false;
 		}
@@ -90,8 +60,11 @@ namespace
 		}
 
 		outInverse = glm::inverse(matrix);
-		return IsFiniteMatrix(outInverse) &&
-			AreMatricesNear(matrix * outInverse, glm::identity<glm::mat4>());
+		return Math::AllFinite(outInverse) &&
+			Math::AreNearlyEqual(
+				matrix * outInverse,
+				glm::identity<glm::mat4>(),
+				c_matrixTolerance);
 	}
 
 	glm::mat4 CalculateCurrentWorldMatrix(const TObjectPtr<GameObject>& gameObject)
@@ -105,23 +78,6 @@ namespace
 		return worldMatrix;
 	}
 
-	const char* ToString(ETransformOperation operation)
-	{
-		switch (operation)
-		{
-		case ETransformOperation::Select: return "Select";
-		case ETransformOperation::Translate: return "Translate";
-		case ETransformOperation::Rotate: return "Rotate";
-		case ETransformOperation::Scale: return "Scale";
-		default: return "Select";
-		}
-	}
-
-	const char* ToString(ETransformSpace space)
-	{
-		return space == ETransformSpace::Local ? "Local" : "World";
-	}
-
 	ImGuizmo::OPERATION ToImGuizmoOperation(ETransformOperation operation)
 	{
 		switch (operation)
@@ -130,32 +86,6 @@ namespace
 		case ETransformOperation::Scale: return ImGuizmo::SCALE;
 		case ETransformOperation::Translate:
 		default: return ImGuizmo::TRANSLATE;
-		}
-	}
-
-	bool IsValidTransformOperation(ETransformOperation operation)
-	{
-		switch (operation)
-		{
-		case ETransformOperation::Select:
-		case ETransformOperation::Translate:
-		case ETransformOperation::Rotate:
-		case ETransformOperation::Scale:
-			return true;
-		default:
-			return false;
-		}
-	}
-
-	bool IsValidTransformSpace(ETransformSpace space)
-	{
-		switch (space)
-		{
-		case ETransformSpace::World:
-		case ETransformSpace::Local:
-			return true;
-		default:
-			return false;
 		}
 	}
 
@@ -180,7 +110,7 @@ bool EditorViewport::BuildWorldRay(
 		viewportWidth <= 0.0f || viewportHeight <= 0.0f ||
 		pointerX < 0.0f || pointerY < 0.0f ||
 		pointerX > viewportWidth || pointerY > viewportHeight ||
-		!IsFiniteMatrix(view) || !IsFiniteMatrix(projection))
+		!Math::AllFinite(view) || !Math::AllFinite(projection))
 	{
 		return false;
 	}
@@ -391,7 +321,7 @@ bool EditorViewport::TryConvertWorldToLocalTransform(
 	const glm::mat4* parentWorldMatrix,
 	Math::Transform& outLocalTransform)
 {
-	if (!IsFiniteMatrix(worldMatrix))
+	if (!Math::AllFinite(worldMatrix))
 	{
 		return false;
 	}
@@ -408,7 +338,7 @@ bool EditorViewport::TryConvertWorldToLocalTransform(
 		localMatrix = inverseParent * worldMatrix;
 	}
 
-	if (!IsFiniteMatrix(localMatrix))
+	if (!Math::AllFinite(localMatrix))
 	{
 		return false;
 	}
@@ -422,7 +352,10 @@ bool EditorViewport::TryConvertWorldToLocalTransform(
 	if (!Math::AllFinite(localTransform.m_position) ||
 		!Math::AllFinite(rotation) ||
 		!Math::AllFinite(localTransform.m_scale) ||
-		!AreMatricesNear(localTransform.Matrix(), localMatrix))
+		!Math::AreNearlyEqual(
+			localTransform.Matrix(),
+			localMatrix,
+			c_matrixTolerance))
 	{
 		return false;
 	}
@@ -717,7 +650,7 @@ bool EditorViewportController::FocusCameraOnObject(
 
 	const glm::mat4 cameraWorldMatrix =
 		CalculateCurrentWorldMatrix(cameraObject);
-	if (!IsFiniteMatrix(cameraWorldMatrix))
+	if (!Math::AllFinite(cameraWorldMatrix))
 	{
 		return false;
 	}
@@ -765,9 +698,7 @@ bool EditorViewportController::SetTransformToolState(
 	ETransformOperation operation,
 	ETransformSpace space)
 {
-	if (m_wasUsingGizmo ||
-		!IsValidTransformOperation(operation) ||
-		!IsValidTransformSpace(space))
+	if (m_wasUsingGizmo)
 	{
 		return false;
 	}
@@ -1059,8 +990,8 @@ void EditorViewportController::QueueTransformEvent(
 	event["revision"] = ++m_eventRevision;
 	event["managedMutationRevision"] = m_dragManagedObjectMutationRevision;
 	event["instanceId"] = instanceId.ToString();
-	event["operation"] = ToString(operation);
-	event["space"] = ToString(space);
+	event["operation"] = std::string(magic_enum::enum_name(operation));
+	event["space"] = std::string(magic_enum::enum_name(space));
 	event["beforePosition"] = beforeTransform.m_position;
 	event["beforeRotation"] = beforeTransform.m_rotation;
 	event["beforeScale"] = beforeTransform.m_scale;

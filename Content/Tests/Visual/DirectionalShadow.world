@@ -2,6 +2,7 @@ name: DirectionalShadow
 prefabs:
   - gameObjects:
       - name: DirectionalShadow
+        mobilityType: Stationary
         position: [0, 0, 0, 1]
         rotation: [0, 0, 0, 1]
         scale: [1, 1, 1, 1]

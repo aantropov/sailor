@@ -8,6 +8,7 @@
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RenderSceneTextureCache.h"
+#include "RHI/MotionHistory.h"
 
 namespace Sailor
 {
@@ -48,6 +49,7 @@ namespace Sailor
 			uint32_t bIsCulled = 0u;
 			uint32_t padding = 0u;
 			vec4 bakedVolumeScale = vec4(1.0f);
+			RHI::RHIObjectMotionData motion{};
 
 			bool operator==(const CustomPerInstanceData& rhs) const
 			{
@@ -57,7 +59,7 @@ namespace Sailor
 					skeletonOffset == rhs.skeletonOffset &&
 					bIsCulled == rhs.bIsCulled &&
 					padding == rhs.padding &&
-					bakedVolumeScale == rhs.bakedVolumeScale;
+					bakedVolumeScale == rhs.bakedVolumeScale && motion == rhs.motion;
 			}
 
 		};

@@ -10,6 +10,7 @@ public class InspectorTemplateSelector : DataTemplateSelector
     public DataTemplate ShaderLibraryFileTemplate { get; set; }
     public DataTemplate MaterialFileTemplate { get; set; }
     public DataTemplate FrameGraphFileTemplate { get; set; }
+    public DataTemplate WorldFileTemplate { get; set; }
     public DataTemplate AnimationControllerFileTemplate { get; set; }
     public DataTemplate AnimationSetFileTemplate { get; set; }
     public DataTemplate GameObjectTemplate { get; set; }
@@ -28,7 +29,7 @@ public class InspectorTemplateSelector : DataTemplateSelector
             AnimationSetFile => AnimationSetFileTemplate,
             AnimationFile => AssetFileTemplate,
             PrefabFile => AssetFileTemplate,
-            WorldFile => AssetFileTemplate,
+            WorldFile => WorldFileTemplate,
             GameObject => GameObjectTemplate,
             _ => AssetFileTemplate
         };

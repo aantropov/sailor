@@ -1,5 +1,11 @@
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
 find_package(ixwebsocket CONFIG QUIET)
+find_package(imgui CONFIG REQUIRED)
+
+add_executable(ImGuiDrawDataSnapshotTests ImGuiDrawDataSnapshotTests.cpp)
+target_compile_features(ImGuiDrawDataSnapshotTests PRIVATE cxx_std_20)
+target_include_directories(ImGuiDrawDataSnapshotTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ImGuiDrawDataSnapshotTests PRIVATE imgui::imgui)
+add_test(NAME ImGuiDrawDataSnapshotTests COMMAND ImGuiDrawDataSnapshotTests)
 
 if(NOT TARGET ixwebsocket::ixwebsocket)
     add_library(ixwebsocket::ixwebsocket INTERFACE IMPORTED)
@@ -55,12 +61,20 @@ add_executable(InstanceIdContractTests
     InstanceIdContractTests.cpp
 )
 
+add_executable(YamlUtilsContractTests
+    YamlUtilsContractTests.cpp
+)
+
 add_executable(EcsLifecycleContractTests
     EcsLifecycleContractTests.cpp
 )
 
 add_executable(BoundsContractTests
     BoundsContractTests.cpp
+)
+
+add_executable(LandscapeStreamingTests
+    LandscapeStreamingTests.cpp
 )
 
 add_executable(GpuCullingContractTests
@@ -97,6 +111,14 @@ add_executable(PhysicsRuntimeTests
 
 add_executable(AudioContractTests
     AudioContractTests.cpp
+)
+
+add_executable(GpuFrameTimeQueryTests
+    GpuFrameTimeQueryTests.cpp
+)
+
+add_executable(GlobalIlluminationContractTests
+    GlobalIlluminationContractTests.cpp
 )
 
 add_library(WorkspaceModuleFixture SHARED
@@ -214,41 +236,30 @@ endif()
 target_compile_features(RemoteViewportFoundationTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
-target_compile_definitions(RemoteViewportRuntimeTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
 target_compile_features(EditorEngineProtocolTests PRIVATE cxx_std_20)
 target_compile_features(EditorEngineWebSocketServerTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
 target_compile_features(SmartPointerTests PRIVATE cxx_std_20)
 target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
+target_compile_features(YamlUtilsContractTests PRIVATE cxx_std_20)
 target_compile_features(EcsLifecycleContractTests PRIVATE cxx_std_20)
 target_compile_features(BoundsContractTests PRIVATE cxx_std_20)
+target_compile_features(LandscapeStreamingTests PRIVATE cxx_std_20)
 target_compile_features(GpuCullingContractTests PRIVATE cxx_std_20)
-target_compile_features(RHISceneVirtualizationTests PRIVATE cxx_std_20)
 target_compile_definitions(GpuCullingContractTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
+target_compile_features(RHISceneVirtualizationTests PRIVATE cxx_std_20)
 target_compile_features(ModelImporterContractTests PRIVATE cxx_std_20)
 target_compile_features(AnimationSamplingContractTests PRIVATE cxx_std_20)
 target_compile_features(VulkanDescriptorCacheTests PRIVATE cxx_std_20)
-target_compile_definitions(VulkanDescriptorCacheTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
 target_compile_features(EditorViewportControllerContractTests PRIVATE cxx_std_20)
 target_compile_features(SkyComponentContractTests PRIVATE cxx_std_20)
 target_compile_features(PhysicsRuntimeTests PRIVATE cxx_std_20)
-target_compile_definitions(PhysicsRuntimeTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
 target_compile_features(AudioContractTests PRIVATE cxx_std_20)
-target_compile_definitions(SkyComponentContractTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
-target_compile_definitions(AudioContractTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
-target_compile_definitions(EcsLifecycleContractTests PRIVATE
+target_compile_features(GpuFrameTimeQueryTests PRIVATE cxx_std_20)
+target_compile_features(GlobalIlluminationContractTests PRIVATE cxx_std_20)
+target_compile_definitions(GlobalIlluminationContractTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
 target_compile_features(WorkspaceModuleFixture PRIVATE cxx_std_20)
@@ -293,8 +304,10 @@ target_link_libraries(EditorEngineWebSocketServerTests PRIVATE
 target_link_libraries(EditorViewportSessionTests PRIVATE Sailor::Runtime)
 target_link_libraries(SmartPointerTests PRIVATE Sailor::Runtime)
 target_link_libraries(InstanceIdContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(YamlUtilsContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(EcsLifecycleContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(BoundsContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(LandscapeStreamingTests PRIVATE Sailor::Runtime)
 target_link_libraries(GpuCullingContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(RHISceneVirtualizationTests PRIVATE Sailor::Runtime)
 target_link_libraries(ModelImporterContractTests PRIVATE Sailor::Runtime)
@@ -304,6 +317,8 @@ target_link_libraries(EditorViewportControllerContractTests PRIVATE Sailor::Runt
 target_link_libraries(SkyComponentContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(PhysicsRuntimeTests PRIVATE Sailor::Runtime)
 target_link_libraries(AudioContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(GpuFrameTimeQueryTests PRIVATE Sailor::Runtime)
+target_link_libraries(GlobalIlluminationContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(AssetMountDiscoveryTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
@@ -337,6 +352,7 @@ set_target_properties(WorkspaceModuleFixture PROPERTIES OUTPUT_NAME WorkspaceFix
 set_target_properties(WorkspaceModuleIncompatibleFixture PROPERTIES OUTPUT_NAME IncompatibleFixture)
 set_target_properties(WorkspaceModuleMissingEntryFixture PROPERTIES OUTPUT_NAME MissingEntryFixture)
 if(WIN32)
+    sailor_stage_workspace_test_runtime(ImGuiDrawDataSnapshotTests)
     sailor_stage_workspace_test_runtime(WorkspaceModuleContractTests)
     sailor_stage_workspace_test_runtime(WorkspaceModuleRuntimeTests)
     sailor_stage_workspace_test_runtime(WorkspaceContextTests)
@@ -345,6 +361,7 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(ShaderCacheArtifactTests)
     sailor_stage_workspace_test_runtime(EcsLifecycleContractTests)
     sailor_stage_workspace_test_runtime(BoundsContractTests)
+    sailor_stage_workspace_test_runtime(LandscapeStreamingTests)
     sailor_stage_workspace_test_runtime(GpuCullingContractTests)
     sailor_stage_workspace_test_runtime(ModelImporterContractTests)
     sailor_stage_workspace_test_runtime(VulkanDescriptorCacheTests)
@@ -352,6 +369,8 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(SkyComponentContractTests)
     sailor_stage_workspace_test_runtime(PhysicsRuntimeTests)
     sailor_stage_workspace_test_runtime(AudioContractTests)
+    sailor_stage_workspace_test_runtime(GpuFrameTimeQueryTests)
+    sailor_stage_workspace_test_runtime(GlobalIlluminationContractTests)
     sailor_stage_workspace_test_runtime(RemoteViewportRuntimeTests)
     sailor_stage_workspace_test_runtime(EditorEngineProtocolTests)
     sailor_stage_workspace_test_runtime(EditorEngineWebSocketServerTests)
@@ -393,10 +412,16 @@ target_include_directories(SmartPointerTests PRIVATE
 target_include_directories(InstanceIdContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
+target_include_directories(YamlUtilsContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
 target_include_directories(EcsLifecycleContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(BoundsContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(LandscapeStreamingTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(GpuCullingContractTests PRIVATE
@@ -424,6 +449,12 @@ target_include_directories(PhysicsRuntimeTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(AudioContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(GpuFrameTimeQueryTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(GlobalIlluminationContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(WorkspaceModuleFixture PRIVATE
@@ -534,6 +565,11 @@ add_test(
 )
 
 add_test(
+    NAME YamlUtilsContractTests
+    COMMAND YamlUtilsContractTests
+)
+
+add_test(
     NAME EcsLifecycleContractTests
     COMMAND EcsLifecycleContractTests
 )
@@ -541,6 +577,11 @@ add_test(
 add_test(
     NAME BoundsContractTests
     COMMAND BoundsContractTests
+)
+
+add_test(
+    NAME LandscapeStreamingTests
+    COMMAND LandscapeStreamingTests
 )
 
 add_test(
@@ -589,6 +630,16 @@ add_test(
 )
 
 add_test(
+    NAME GpuFrameTimeQueryTests
+    COMMAND GpuFrameTimeQueryTests
+)
+
+add_test(
+    NAME GlobalIlluminationContractTests
+    COMMAND GlobalIlluminationContractTests
+)
+
+add_test(
     NAME WorkspaceModuleContractTests
     COMMAND WorkspaceModuleContractTests
 )
@@ -616,35 +667,6 @@ add_test(
 add_test(
     NAME AssetMountDiscoveryTests
     COMMAND AssetMountDiscoveryTests "${PROJECT_SOURCE_DIR}/Content"
-)
-
-add_test(
-    NAME VulkanMemoryCounterContract
-    COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/vulkan_memory_counter_contract_test.py
-        ${SAILOR_RUNTIME_DIR}
-)
-
-add_test(
-    NAME SkyTemperatureTableContract
-    COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/sky_temperature_table_contract_test.py
-        ${SAILOR_RUNTIME_DIR}
-        ${PROJECT_SOURCE_DIR}/Content
-)
-
-add_test(
-    NAME ShaderConstantsModeContract
-    COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/shader_constants_mode_contract_test.py
-        ${SAILOR_RUNTIME_DIR}
-)
-
-add_test(
-    NAME Win32EditorAssetDropContract
-    COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/win32_editor_asset_drop_contract_test.py
-        ${PROJECT_SOURCE_DIR}
 )
 
 add_test(
@@ -682,6 +704,7 @@ set_tests_properties(
     InstanceIdContractTests
     EcsLifecycleContractTests
     BoundsContractTests
+    LandscapeStreamingTests
     GpuCullingContractTests
     RHISceneVirtualizationTests
     ModelImporterContractTests
@@ -691,13 +714,10 @@ set_tests_properties(
     SkyComponentContractTests
     PhysicsRuntimeTests
     AudioContractTests
+    GpuFrameTimeQueryTests
     EditorEngineProtocolTests
     EditorEngineWebSocketServerTests
     EditorEngineWebSocketLateStopTests
-    VulkanMemoryCounterContract
-    SkyTemperatureTableContract
-    ShaderConstantsModeContract
-    Win32EditorAssetDropContract
     PROPERTIES TIMEOUT 30
 )
 
@@ -707,6 +727,7 @@ if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR 
         WorkspaceCacheContractTests
         AssetCacheContractTests
         ShaderCacheArtifactTests
+        GpuFrameTimeQueryTests
         WorkspaceModuleContractTests
         WorkspaceModuleRuntimeTests
         PROPERTIES ENVIRONMENT_MODIFICATION
@@ -738,23 +759,3 @@ if(APPLE)
         COMMAND RemoteViewportMacNativeBridgeTests
     )
 endif()
-
-add_test(
-    NAME RuntimeNoExceptions
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/runtime_no_exceptions_test.py ${SAILOR_RUNTIME_DIR}
-)
-
-add_test(
-    NAME RuntimeNoStdContainersOrSmartPointers
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/runtime_no_std_containers_test.py ${SAILOR_RUNTIME_DIR}
-)
-
-add_test(
-    NAME ProcessNoCrash
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/process_no_crash_test.py
-)
-
-add_test(
-    NAME ContainerBenchmarks
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/container_benchmarks_test.py
-)

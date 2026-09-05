@@ -24,8 +24,12 @@ namespace Sailor
 
 	public:
 
+		// Point and spot lights use candela; directional lights use lux.
 		glm::vec3 m_intensity{ 100.0f, 100.0f, 100.0f };
-		glm::vec3 m_attenuation{ 1.0f, 0.022f, 0.0019f };
+		float m_indirectLightingIntensity = 1.0f;
+		ELightGlobalIlluminationMode m_globalIlluminationMode =
+			ELightGlobalIlluminationMode::RealtimeAndBaked;
+		// Smooth culling range for local lights, in metres.
 		float m_radius = 100.0f;
 		glm::vec2 m_cutOff{ 30.0f, 45.0f };
 		ELightType m_type = ELightType::Point;
@@ -146,6 +150,16 @@ namespace Sailor
 		static constexpr float ShadowCascadeLevels[NumCascades] = { 0.025f, 0.075f, 0.2f, 1.0f };
 		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {4096,4096}, {2048,2048}, {1024,1024}, {1024,1024} };
 		static constexpr glm::ivec2 ShadowCascadeBlur[NumCascades] = { glm::vec2(2, 2), glm::vec2(1, 1), glm::vec2(1, 1), glm::vec2(1, 1) };
+		static constexpr float GetShadowCascadeLevel(
+			uint32_t cascadeIndex,
+			uint32_t activeCascadeCount)
+		{
+			const uint32_t safeCount = activeCascadeCount < 1u ? 1u :
+				(activeCascadeCount > NumCascades ? NumCascades : activeCascadeCount);
+			const uint32_t safeIndex = cascadeIndex < safeCount ?
+				cascadeIndex : safeCount - 1u;
+			return ShadowCascadeLevels[NumCascades - safeCount + safeIndex];
+		}
 
 		// TODO: Tightly pack
 		using LightShaderData = RHI::RHILightShaderData;
@@ -156,6 +170,8 @@ namespace Sailor
 		SAILOR_API virtual uint32_t GetOrder() const override { return 150; }
 
 		SAILOR_API void GetLightProxies(TVector<Raytracing::LightProxy>& outLights) const;
+		SAILOR_API void GetGlobalIlluminationBakeLightProxies(
+			TVector<Raytracing::LightProxy>& outLights) const;
 		void FillLightingData(RHI::RHISceneViewPtr& sceneView);
 
 		float GetShadowsOccupiedMemoryMb() const { return m_shadowMapsMb; }
@@ -171,6 +187,9 @@ namespace Sailor
 		}
 
 	protected:
+		void CollectLightProxies(
+			TVector<Raytracing::LightProxy>& outLights,
+			bool bGlobalIlluminationBakeContributorsOnly) const;
 
 		SAILOR_API void PrepareCSMPasses(
 			const RHI::RHISceneViewPtr& sceneView,
@@ -186,6 +205,7 @@ namespace Sailor
 			const RHI::RHISceneViewPtr& sceneView,
 			const TVector<RHI::RHILightProxy>& spotLights,
 			const TVector<RHI::RHILightProxy>& pointLights,
+			const Math::Transform& cameraTransform,
 			const CameraData& cameraData,
 			uint32_t viewportHeight,
 			uint32_t flightSlot,

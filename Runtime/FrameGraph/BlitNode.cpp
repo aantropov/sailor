@@ -1,4 +1,5 @@
 #include "BlitNode.h"
+#include "BlitFormatConversion.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
@@ -10,6 +11,9 @@
 #include "Engine/GameObject.h"
 #include "AssetRegistry/AssetRegistry.h"
 
+#include <cstdint>
+#include <string_view>
+
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
@@ -17,6 +21,69 @@ using namespace Sailor::Framegraph;
 #ifndef _SAILOR_IMPORT_
 const char* BlitNode::m_name = "Blit";
 #endif
+
+namespace
+{
+	enum class EFormatNumericClass : uint8_t
+	{
+		Unknown,
+		Float,
+		Normalized,
+		Scaled,
+		UnsignedInteger,
+		SignedInteger,
+		Srgb
+	};
+
+	EFormatNumericClass GetFormatNumericClass(RHI::ETextureFormat format)
+	{
+		const std::string_view name = magic_enum::enum_name(format);
+		if (name.find("_SFLOAT") != std::string_view::npos ||
+			name.find("_UFLOAT") != std::string_view::npos)
+		{
+			return EFormatNumericClass::Float;
+		}
+		if (name.find("_UNORM") != std::string_view::npos ||
+			name.find("_SNORM") != std::string_view::npos)
+		{
+			return EFormatNumericClass::Normalized;
+		}
+		if (name.find("_USCALED") != std::string_view::npos ||
+			name.find("_SSCALED") != std::string_view::npos)
+		{
+			return EFormatNumericClass::Scaled;
+		}
+		if (name.find("_UINT") != std::string_view::npos)
+		{
+			return EFormatNumericClass::UnsignedInteger;
+		}
+		if (name.find("_SINT") != std::string_view::npos)
+		{
+			return EFormatNumericClass::SignedInteger;
+		}
+		if (name.find("_SRGB") != std::string_view::npos)
+		{
+			return EFormatNumericClass::Srgb;
+		}
+		return EFormatNumericClass::Unknown;
+	}
+}
+
+bool Sailor::Framegraph::RequiresShaderColorBlitForFormatConversion(
+	RHI::ETextureFormat srcFormat,
+	RHI::ETextureFormat dstFormat)
+{
+	if (RHI::IsDepthFormat(srcFormat) || RHI::IsDepthFormat(dstFormat))
+	{
+		return false;
+	}
+
+	const EFormatNumericClass srcClass = GetFormatNumericClass(srcFormat);
+	const EFormatNumericClass dstClass = GetFormatNumericClass(dstFormat);
+	return srcClass != EFormatNumericClass::Unknown &&
+		dstClass != EFormatNumericClass::Unknown &&
+		srcClass != dstClass;
+}
 
 void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
@@ -61,38 +128,49 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 	}
 
 	const bool bIsDepthFormat = RHI::IsDepthFormat(src->GetFormat()) || RHI::IsDepthFormat(dst->GetFormat());
-
-#ifdef _DEBUG
-	const auto srcFormatName = magic_enum::enum_name(src->GetFormat());
-	const auto dstFormatName = magic_enum::enum_name(dst->GetFormat());
-
-	// In case of float ot uint conversion we should forcely run BlitRaw
-	const bool bForceConversion = !bIsDepthFormat &&
-		srcFormatName.substr(srcFormatName.length() - 4, 4) != dstFormatName.substr(dstFormatName.length() - 4, 4);
-
-	check(!bForceConversion);
-#endif
+	const bool bForceShaderConversion =
+		Framegraph::RequiresShaderColorBlitForFormatConversion(
+			src->GetFormat(),
+			dst->GetFormat());
 
 	//glm::vec4 srcRegion = GetVec4("srcRegion");
 	//glm::vec4 dstRegion = GetVec4("dstRegion");
 	glm::ivec4 srcRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
 	glm::ivec4 dstRegion(0, 0, dst->GetExtent().x, dst->GetExtent().y);
 
-	commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::TransferSrcOptimal);
-	commands->ImageMemoryBarrier(commandList, dst, RHI::EImageLayout::TransferDstOptimal);
-
-	const bool bResolvedBlitSuccessful = commands->BlitImage(
-		commandList,
-		src,
-		dst,
-		srcRegion,
-		dstRegion,
-		bIsDepthFormat ?
-			ETextureFiltration::Nearest :
-			ETextureFiltration::Linear);
+	RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>();
+	const bool bUseFullscreenColorBlit =
+		!bIsDepthFormat &&
+		!dstSurface &&
+		m_blitToMsaaTargetMaterial &&
+		(src->GetExtent() != dst->GetExtent() || bForceShaderConversion);
+	bool bResolvedBlitSuccessful = false;
+	if (bUseFullscreenColorBlit)
+	{
+		// A fullscreen pass owns the native output viewport explicitly. This keeps
+		// resolution-scaled Scene View targets correctly fitted on MoltenVK instead
+		// of relying on cross-format vkCmdBlitImage scaling.
+		commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::ShaderReadOnlyOptimal);
+		commands->ImageMemoryBarrier(commandList, dst, RHI::EImageLayout::ColorAttachmentOptimal);
+		BlitRaw(commandList, frameGraph, sceneView, src, dst);
+		bResolvedBlitSuccessful = true;
+	}
+	else
+	{
+		commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::TransferSrcOptimal);
+		commands->ImageMemoryBarrier(commandList, dst, RHI::EImageLayout::TransferDstOptimal);
+		bResolvedBlitSuccessful = commands->BlitImage(
+			commandList,
+			src,
+			dst,
+			srcRegion,
+			dstRegion,
+			bIsDepthFormat ?
+				ETextureFiltration::Nearest :
+				ETextureFiltration::Linear);
+	}
 
 	// Blit to MSAA targets
-	RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>();
 	if (dstSurface && dstSurface->NeedsResolve())
 	{
 		bool bMsaaBlitSuccessful = false;

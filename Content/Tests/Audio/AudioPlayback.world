@@ -2,6 +2,7 @@ name: AudioPlayback
 prefabs:
   - gameObjects:
       - name: CameraListener
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -38,6 +39,7 @@ prefabs:
           instanceId: 139A0000000000000000000000000002_139A0000000000000001
   - gameObjects:
       - name: SpatialTone440Hz
+        mobilityType: Stationary
         position:
           - 0
           - 0

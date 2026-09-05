@@ -67,7 +67,8 @@ glslFragment: |
   float GetViewDepth(vec2 uv)
   {
     float depth = texture(depthSampler, uv).r;
-    return ScreenSpaceToViewSpace(uv, depth, frame.invProjection).z;
+    vec2 projectionUv = FramebufferUvToSceneProjectionUv(uv);
+    return ScreenSpaceToViewSpace(projectionUv, depth, frame.invProjection).z;
   }
 
   vec4 CalcBilateral(vec2 UV, float R, float CenterViewDepth, inout float TotalW)

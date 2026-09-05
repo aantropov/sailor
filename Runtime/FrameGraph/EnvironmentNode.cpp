@@ -50,6 +50,16 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		m_computeSpecularBindings = driver->CreateShaderBindings();
 	}
 
+	if (!m_pComputeSheenShader)
+	{
+		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeSheenEnvMap.shader"))
+		{
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pComputeSheenShader);
+		}
+
+		m_computeSheenBindings = driver->CreateShaderBindings();
+	}
+
 	if (!m_pComputeIrradianceShader)
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeIrradianceMap.shader"))
@@ -69,7 +79,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	if (!m_brdfSampler)
 	{
 		m_brdfSampler = RHI::Renderer::GetDriver()->CreateRenderTarget(ivec2(BrdfLutSize, BrdfLutSize), 1,
-			RHI::EFormat::R16G16_SFLOAT, RHI::ETextureFiltration::Linear,
+			RHI::EFormat::R16G16B16A16_SFLOAT, RHI::ETextureFiltration::Linear,
 			RHI::ETextureClamping::Clamp, usage);
 
 		commands->ImageMemoryBarrier(commandList, m_brdfSampler, EImageLayout::ShaderReadOnlyOptimal);
@@ -86,7 +96,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			commands->Dispatch(commandList, m_pComputeBrdfShader->GetComputeShaderRHI(),
 				(uint32_t)(m_brdfSampler->GetExtent().x / 32.0f),
 				(uint32_t)(m_brdfSampler->GetExtent().y / 32.0f),
-				6u,
+				1u,
 				{ m_computeBrdfBindings },
 				nullptr, 0);
 
@@ -94,6 +104,8 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 		commands->EndDebugRegion(commandList);
 	}
+
+	ProcessLocalReflection(frameGraph, commandList);
 
 	if (m_bIsDirty)
 	{
@@ -106,6 +118,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				{
 					App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetFileId(), m_envMapTexture);
 				}
+				commands->EndDebugRegion(commandList);
 				return;
 			}
 		}
@@ -144,6 +157,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 		else
 		{
+			commands->EndDebugRegion(commandList);
 			return;
 		}
 
@@ -160,23 +174,41 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 		auto& envCubemap = m_envCubemaps[skyHash];
 		auto& irradianceCubemap = m_irradianceCubemaps[skyHash];
+		auto& sheenEnvCubemap = m_sheenEnvCubemaps[skyHash];
 
 		const bool bShouldUpdateEnvCubemap = !envCubemap;
 		const bool bShouldUpdateIrradianceCubemap = !irradianceCubemap;
+		const bool bShouldUpdateSheenEnvCubemap = !sheenEnvCubemap;
 
-		if (!bShouldUpdateEnvCubemap && !bShouldUpdateIrradianceCubemap)
+		if (!bShouldUpdateEnvCubemap &&
+			!bShouldUpdateIrradianceCubemap &&
+			!bShouldUpdateSheenEnvCubemap)
 		{
 			frameGraph->SetSampler("g_rawEnvCubemap", rawEnvCubemap);
 			frameGraph->SetSampler("g_envCubemap", envCubemap);
 			frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
+			frameGraph->SetSampler("g_sheenEnvCubemap", sheenEnvCubemap);
 
 			m_bIsDirty = false;
 
+			commands->EndDebugRegion(commandList);
 			return;
 		}
 
 		// Create all textures/cubemaps
 		frameGraph->SetSampler("g_rawEnvCubemap", rawEnvCubemap);
+		if (envCubemap)
+		{
+			frameGraph->SetSampler("g_envCubemap", envCubemap);
+		}
+		if (irradianceCubemap)
+		{
+			frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
+		}
+		if (sheenEnvCubemap)
+		{
+			frameGraph->SetSampler("g_sheenEnvCubemap", sheenEnvCubemap);
+		}
 
 		if (bShouldUpdateEnvCubemap)
 		{
@@ -234,6 +266,10 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 						&pushConstants, sizeof(PushConstants));
 				}
 			}
+			commands->ImageMemoryBarrier(
+				commandList,
+				envCubemap,
+				EImageLayout::ShaderReadOnlyOptimal);
 			commands->EndDebugRegion(commandList);
 		}
 
@@ -270,12 +306,112 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					IrradianceMapSize / 32u,
 					6u,
 					{ m_computeIrradianceBindings });
-
-				//commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, envCubemap->GetDefaultLayout());
 			}
+			commands->ImageMemoryBarrier(
+				commandList,
+				irradianceCubemap,
+				EImageLayout::ShaderReadOnlyOptimal);
 			commands->EndDebugRegion(commandList);
 		}
 
+		if (bShouldUpdateSheenEnvCubemap)
+		{
+			sheenEnvCubemap = RHI::Renderer::GetDriver()->CreateCubemap(
+				ivec2(SheenEnvMapSize, SheenEnvMapSize),
+				SheenEnvMapLevels,
+				RHI::EFormat::R16G16B16A16_SFLOAT,
+				RHI::ETextureFiltration::Linear,
+				RHI::ETextureClamping::Clamp,
+				usage);
+
+			commands->ImageMemoryBarrier(
+				commandList,
+				sheenEnvCubemap,
+				EImageLayout::ShaderReadOnlyOptimal);
+			sheenEnvCubemap->ForceSetDefaultLayout(
+				EImageLayout::ShaderReadOnlyOptimal);
+			frameGraph->SetSampler(
+				"g_sheenEnvCubemap",
+				sheenEnvCubemap);
+			RHI::Renderer::GetDriver()->SetDebugName(
+				sheenEnvCubemap,
+				"g_sheenEnvCubemap");
+
+			commands->BeginDebugRegion(
+				commandList,
+				"Compute Charlie pre-filtered sheen environment map",
+				DebugContext::Color_CmdCompute);
+			{
+				struct PushConstants
+				{
+					int32_t level{};
+					float roughness{};
+				};
+				TVector<RHI::RHITexturePtr> sheenEnvMapMips;
+				for (uint32_t level = 0u;
+					level < SheenEnvMapLevels;
+					++level)
+				{
+					sheenEnvMapMips.Add(
+						level == 0u
+							? sheenEnvCubemap
+							: sheenEnvCubemap->GetMipLevel(level));
+				}
+
+				driver->AddSamplerToShaderBindings(
+					m_computeSheenBindings,
+					"rawEnvMap",
+					rawEnvCubemap,
+					0u);
+				driver->AddStorageImageToShaderBindings(
+					m_computeSheenBindings,
+					"sheenEnvMap",
+					sheenEnvMapMips,
+					1u);
+				m_computeSheenBindings->RecalculateCompatibility();
+
+				commands->ImageMemoryBarrier(
+					commandList,
+					rawEnvCubemap,
+					EImageLayout::ShaderReadOnlyOptimal);
+				commands->ImageMemoryBarrier(
+					commandList,
+					sheenEnvCubemap,
+					EImageLayout::ComputeWrite);
+
+				const float deltaRoughness = 1.0f /
+					std::max(float(SheenEnvMapLevels - 1u), 1.0f);
+				for (uint32_t level = 0u, size = SheenEnvMapSize;
+					level < SheenEnvMapLevels;
+					++level, size = std::max(size / 2u, 1u))
+				{
+					const uint32_t numGroups =
+						std::max<uint32_t>(1u, (size + 15u) / 16u);
+					const PushConstants pushConstants = {
+						static_cast<int32_t>(level),
+						level * deltaRoughness
+					};
+					commands->Dispatch(
+						commandList,
+						m_pComputeSheenShader->GetComputeShaderRHI(),
+						numGroups,
+						numGroups,
+						6u,
+						{ m_computeSheenBindings },
+						&pushConstants,
+						sizeof(PushConstants));
+				}
+			}
+			commands->ImageMemoryBarrier(
+				commandList,
+				sheenEnvCubemap,
+				EImageLayout::ShaderReadOnlyOptimal);
+			commands->EndDebugRegion(commandList);
+		}
+
+		frameGraph->SetSampler("g_envCubemap", envCubemap);
+		frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
+		frameGraph->SetSampler("g_sheenEnvCubemap", sheenEnvCubemap);
 		m_bIsDirty = false;
 	}
 
@@ -284,4 +420,128 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 void EnvironmentNode::Clear()
 {
+	ResetLocalReflection();
+}
+
+bool EnvironmentNode::SetLocalReflection(LocalReflectionImage image)
+{
+	if (!image.IsValid()) return false;
+	image.m_parameters.m_minEnabled.w = 1.0f;
+	auto owned = std::make_shared<const LocalReflectionImage>(std::move(image));
+	std::lock_guard<std::mutex> lock(m_localReflectionLock);
+	m_pendingLocalReflection = std::move(owned);
+	++m_pendingLocalRevision;
+	// Refinement keeps the current capture valid during upload. Producers reset
+	// explicitly when its scene or lighting becomes obsolete.
+	return true;
+}
+
+void EnvironmentNode::ResetLocalReflection()
+{
+	std::lock_guard<std::mutex> lock(m_localReflectionLock);
+	m_pendingLocalReflection.reset();
+	++m_pendingLocalRevision;
+	m_localReflectionReady.store(false);
+	m_localReflectionSamples.store(0u);
+}
+
+void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICommandListPtr commandList)
+{
+	{
+		std::lock_guard<std::mutex> lock(m_localReflectionLock);
+		if (m_localRevision != m_pendingLocalRevision)
+		{
+			m_localRevision = m_pendingLocalRevision;
+			m_uploadLocalReflection = m_pendingLocalReflection;
+			m_localUploadTexture = {};
+			if (!m_uploadLocalReflection)
+			{
+				m_localParameters = {};
+				frameGraph->SetSampler("g_localEnvCubemap", {});
+				frameGraph->SetSampler("g_localSheenEnvCubemap", {});
+			}
+		}
+	}
+	if (!m_uploadLocalReflection || !m_pComputeSpecularShader || !m_pComputeSheenShader) return;
+	auto& driver = RHI::Renderer::GetDriver();
+	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	if (!m_localUploadTexture)
+	{
+		const auto& source = *m_uploadLocalReflection;
+		m_localUploadTexture = driver->CreateTexture(source.m_pixels.GetData(),
+			source.m_pixels.Num() * sizeof(glm::vec4), glm::ivec3(source.m_extent, 1), 1u,
+			ETextureType::Texture2D, ETextureFormat::R32G32B32A32_SFLOAT,
+			ETextureFiltration::Linear, ETextureClamping::Repeat);
+		return;
+	}
+	if (!m_localUploadTexture->IsReady()) return;
+
+	constexpr uint32_t size = 128u, levels = 8u;
+	const ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit |
+		ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Storage_Bit | ETextureUsageBit::Sampled_Bit;
+	const auto createCube = [&]()
+	{
+		return driver->CreateCubemap(glm::ivec2(size), levels, EFormat::R16G16B16A16_SFLOAT,
+			ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
+	};
+	auto raw = createCube();
+	commands->BeginDebugRegion(commandList, "Local scene reflection", DebugContext::Color_CmdCompute);
+	commands->ImageMemoryBarrier(commandList, raw, EImageLayout::ComputeWrite);
+	commands->ConvertEquirect2Cubemap(commandList, m_localUploadTexture, raw);
+	commands->ImageMemoryBarrier(commandList, raw, EImageLayout::TransferDstOptimal);
+	commands->GenerateMipMaps(commandList, raw);
+
+	const auto prefilter = [&](bool sheen)
+	{
+		auto filtered = createCube();
+		auto bindings = driver->CreateShaderBindings();
+		if (!sheen)
+		{
+			commands->ImageMemoryBarrier(commandList, raw, EImageLayout::TransferSrcOptimal);
+			commands->ImageMemoryBarrier(commandList, filtered, EImageLayout::TransferDstOptimal);
+			commands->BlitImage(commandList, raw, filtered, glm::ivec4(0, 0, size, size), glm::ivec4(0, 0, size, size));
+		}
+		commands->ImageMemoryBarrier(commandList, raw, EImageLayout::ShaderReadOnlyOptimal);
+		commands->ImageMemoryBarrier(commandList, filtered, EImageLayout::ComputeWrite);
+		TVector<RHITexturePtr> mips;
+		const uint32_t first = sheen ? 0u : 1u;
+		for (uint32_t level = first; level < levels; ++level)
+			mips.Add(level == 0u ? filtered : filtered->GetMipLevel(level));
+		// The existing GGX shader declares nine outputs; unused tail bindings
+		// remain valid even though this bounded capture has fewer mip levels.
+		while (mips.Num() < (sheen ? 8u : 9u)) mips.Add(filtered->GetMipLevel(levels - 1u));
+		driver->AddSamplerToShaderBindings(bindings, "rawEnvMap", raw, 0u);
+		driver->AddStorageImageToShaderBindings(bindings, sheen ? "sheenEnvMap" : "envMap", mips, 1u);
+		bindings->RecalculateCompatibility();
+		for (uint32_t level = first; level < levels; ++level)
+		{
+			struct PushConstants { int32_t level; float roughness; };
+			const PushConstants push{ int32_t(level - first), float(level) / float(levels - 1u) };
+			const uint32_t groupSize = sheen ? 16u : 32u;
+			const uint32_t groups = std::max(1u, ((size >> level) + groupSize - 1u) / groupSize);
+			commands->Dispatch(commandList,
+				(sheen ? m_pComputeSheenShader : m_pComputeSpecularShader)->GetComputeShaderRHI(),
+				groups, groups, 6u, { bindings }, &push, sizeof(push));
+		}
+		commands->ImageMemoryBarrier(commandList, filtered, EImageLayout::ShaderReadOnlyOptimal);
+		return filtered;
+	};
+	auto specular = prefilter(false);
+	auto sheen = prefilter(true);
+	{
+		std::lock_guard<std::mutex> lock(m_localReflectionLock);
+		// A world/lighting reset may have arrived while commands were recorded.
+		// Never publish that now-obsolete capture or report it as ready.
+		if (m_localRevision == m_pendingLocalRevision && m_pendingLocalReflection)
+		{
+			frameGraph->SetSampler("g_localEnvCubemap", specular);
+			frameGraph->SetSampler("g_localSheenEnvCubemap", sheen);
+			m_localParameters = m_uploadLocalReflection->m_parameters;
+			m_localReflectionSamples.store(m_uploadLocalReflection->m_samplesPerPixel);
+			m_localReflectionReady.store(true);
+		}
+	}
+	m_uploadLocalReflection.reset();
+	m_localUploadTexture = {};
+	commands->EndDebugRegion(commandList);
 }

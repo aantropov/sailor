@@ -2,14 +2,12 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
-#include "RHI/Surface.h"
 #include "RHI/Texture.h"
-#include "RHI/RenderTarget.h"
 #include "RHI/Types.h"
-#include "RHI/VertexDescription.h"
-#include "Engine/World.h"
-#include "Engine/GameObject.h"
 #include "AssetRegistry/AssetRegistry.h"
+
+#include <algorithm>
+#include <cmath>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -26,15 +24,6 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
-
-	RHI::RHITexturePtr target = GetResolvedAttachment("color");
-	RHI::RHITexturePtr colorTarget = target;
-	if (RHI::RHIRenderTargetPtr renderTarget = target.DynamicCast<RHI::RHIRenderTarget>();
-		renderTarget && renderTarget->GetMipLevels() > 0)
-	{
-		colorTarget = renderTarget->GetMipLayer(0);
-	}
 
 	if (!m_pComputeHistogramShader)
 	{
@@ -52,56 +41,55 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		}
 	}
 
-	if (!m_pToneMappingShader)
+	RHI::RHITexturePtr hdrColor = GetResolvedAttachment("hdrColor");
+	RHI::RHITexturePtr averageLuminance = GetResolvedAttachment("averageLuminance");
+	if (!m_pComputeHistogramShader || !m_pComputeHistogramShader->IsReady() ||
+		!m_pComputeAverageShader || !m_pComputeAverageShader->IsReady() ||
+		!hdrColor || !averageLuminance)
 	{
-		auto shaderPath = GetString("toneMappingShader");
-		check(!shaderPath.empty());
-
-		auto definesStr = GetString("toneMappingDefines");
-		TVector<std::string> defines = Sailor::Utils::SplitString(definesStr, " ");
-
-		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
-		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pToneMappingShader, defines);
-		}
+		return;
 	}
 
-	RHI::RHITexturePtr quarterResolution = GetResolvedAttachment("hdrColor");
-	RHI::RHITexturePtr fullResolution = GetResolvedAttachment("colorSampler");
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
+
+	if (m_averageLuminanceTarget != averageLuminance)
+	{
+		m_averageLuminanceTarget = averageLuminance;
+		m_bAverageLuminanceInitialized = false;
+	}
+
+	if (!m_bAverageLuminanceInitialized)
+	{
+		commands->ImageMemoryBarrier(commandList, averageLuminance, EImageLayout::TransferDstOptimal);
+		commands->ClearImage(commandList, averageLuminance, glm::vec4(-1.0f));
+		m_bAverageLuminanceInitialized = true;
+	}
 
 	if (!m_computeHistogramShaderBindings)
 	{
 		m_computeHistogramShaderBindings = driver->CreateShaderBindings();
-		auto hitogramRes = driver->AddSsboToShaderBindings(m_computeHistogramShaderBindings, "histogram", sizeof(uint32_t), HistogramShades, 0, true);
+		auto histogramResource = driver->AddSsboToShaderBindings(
+			m_computeHistogramShaderBindings,
+			"histogram",
+			sizeof(uint32_t),
+			HistogramShades,
+			0,
+			true);
 
-		check(quarterResolution);
-		driver->AddStorageImageToShaderBindings(m_computeHistogramShaderBindings, "s_texColor", quarterResolution, 1);
-
-		// We should init the buffer
+		driver->AddStorageImageToShaderBindings(m_computeHistogramShaderBindings, "s_texColor", hdrColor, 1);
 		static TVector<uint32_t> initialData(HistogramShades);
 
-		commands->UpdateShaderBinding(transferCommandList, hitogramRes,
+		commands->UpdateShaderBinding(transferCommandList, histogramResource,
 			initialData.GetData(),
 			sizeof(uint32_t) * HistogramShades,
 			0);
 	}
-
-	if (!m_averageLuminance)
+	else
 	{
-		const ETextureUsageFlags usage = ETextureUsageBit::Storage_Bit | ETextureUsageBit::TextureTransferDst_Bit |
-			ETextureUsageBit::Sampled_Bit;
-
-		m_averageLuminance = driver->CreateRenderTarget(
-			transferCommandList,
-			glm::ivec2(1, 1),
-			1,
-			ETextureFormat::R16_SFLOAT,
-			ETextureFiltration::Nearest,
-			ETextureClamping::Repeat,
-			usage);
-
-		commands->ImageMemoryBarrier(commandList, m_averageLuminance, EImageLayout::TransferDstOptimal);
-		commands->ClearImage(commandList, m_averageLuminance, glm::vec4(0.5f, 0.5f, 0.5f, 0.5f));
+		driver->UpdateShaderBinding(
+			m_computeHistogramShaderBindings,
+			"s_texColor",
+			hdrColor);
 	}
 
 	if (!m_computeAverageShaderBindings)
@@ -112,127 +100,93 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 		m_computeAverageShaderBindings = driver->CreateShaderBindings();
 		driver->AddShaderBinding(m_computeAverageShaderBindings, histogram, "histogram", 0);
-		driver->AddStorageImageToShaderBindings(m_computeAverageShaderBindings, "s_texColor", m_averageLuminance, 1);
+		driver->AddStorageImageToShaderBindings(m_computeAverageShaderBindings, "s_texColor", averageLuminance, 1);
 	}
-
-	if (!m_pToneMappingShader || !m_pToneMappingShader->IsReady() ||
-		!m_pComputeHistogramShader || !m_pComputeHistogramShader->IsReady() ||
-		!m_pComputeAverageShader || !m_pComputeAverageShader->IsReady() ||
-		!colorTarget)
+	else
 	{
-		return;
-	}
-
-	if (!m_postEffectMaterial)
-	{
-		m_shaderBindings = driver->CreateShaderBindings();
-
-		// Firstly we must assign the correct layout
-		driver->FillShadersLayout(m_shaderBindings, { m_pToneMappingShader->GetDebugVertexShaderRHI(), m_pToneMappingShader->GetDebugFragmentShaderRHI() }, 1);
-
-		// That should be enough to handle all the uniforms
-		const size_t uniformsSize = m_vectorParams.Num() * sizeof(glm::vec4);
-		if (uniformsSize > 0)
-		{
-			driver->AddBufferToShaderBindings(m_shaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
-		}
-
-		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
-		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pToneMappingShader, m_shaderBindings);
-
-		for (const auto& v : m_vectorParams)
-		{
-			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, v.First(), *v.Second());
-		}
-
-		if (m_vectorParams.ContainsKey("data.whitePoint"))
-		{
-			m_whitePointLum = glm::dot(glm::vec4(0.2125f, 0.7154f, 0.0721f, 0.0f), m_vectorParams["data.whitePoint"]);
-		}
-
-		driver->UpdateShaderBinding(m_shaderBindings, "colorSampler", fullResolution);
-		driver->UpdateShaderBinding(m_shaderBindings, "averageLuminanceSampler", m_averageLuminance);
+		driver->UpdateShaderBinding(
+			m_computeAverageShaderBindings,
+			"s_texColor",
+			averageLuminance);
 	}
 
 	{
 		SAILOR_PROFILE_SCOPE("Image barriers");
 
-		const float minLogLuminance = -8.0f;
-		const float maxLogLuminance = 4.0f;
-		const float eyeReaction = 3.6f;
+		const float minLogLuminance = -16.0f;
+		const float maxLogLuminance = 16.0f;
+		const glm::vec4 metering = GetVec4("metering");
+		const glm::vec4 adaptation = GetVec4("adaptation");
+		const float centerWeight = std::max(metering.x, 0.0f);
+		const float lowPercentile = std::clamp(metering.y, 0.0f, 0.99f);
+		const float highPercentile = std::clamp(
+			metering.z,
+			lowPercentile + 0.01f,
+			1.0f);
+		const float minEV100 = std::min(adaptation.x, adaptation.y);
+		const float maxEV100 = std::max(adaptation.x, adaptation.y);
+		const float minimumMeteredLuminance =
+			std::exp2(minEV100) / 8.0f;
+		const float speedUp = std::max(adaptation.z, 0.0f);
+		const float speedDown = std::max(adaptation.w, 0.0f);
 
 		const float logLuminanceRange = maxLogLuminance - minLogLuminance;
 
-		float pushConstantsHistogramm[] = { minLogLuminance, 1.0f / logLuminanceRange };
+		const float pushConstantsHistogram[] =
+		{
+			minLogLuminance,
+			1.0f / logLuminanceRange,
+			centerWeight,
+			minimumMeteredLuminance
+		};
 
-		float timeCoeff = std::clamp(1.0f - exp2(-sceneView.m_deltaTime * eyeReaction), 0.0f, 1.0f);
-
-		float pushConstantsAverage[] =
+		const float pushConstantsAverage[] =
 		{
 			minLogLuminance,
 			logLuminanceRange,
-			(float)quarterResolution->GetExtent().x * quarterResolution->GetExtent().y,
-			timeCoeff
+			lowPercentile,
+			highPercentile,
+			minEV100,
+			maxEV100,
+			std::max(sceneView.m_deltaTime, 0.0f),
+			speedUp,
+			speedDown,
+			0.0f,
+			0.0f,
+			0.0f
 		};
 
-		commands->ImageMemoryBarrier(commandList, quarterResolution, EImageLayout::ComputeRead);
+		commands->ImageMemoryBarrier(commandList, hdrColor, EImageLayout::ComputeRead);
 		commands->Dispatch(commandList, m_pComputeHistogramShader->GetComputeShaderRHI(),
-			quarterResolution->GetExtent().x / 16, quarterResolution->GetExtent().y / 16, 1,
+			(hdrColor->GetExtent().x + 15) / 16,
+			(hdrColor->GetExtent().y + 15) / 16,
+			1,
 			{ m_computeHistogramShaderBindings },
-			&pushConstantsHistogramm, sizeof(float) * 2);
+			&pushConstantsHistogram, sizeof(pushConstantsHistogram));
+		const EAccessFlags shaderReadWrite =
+			static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit) |
+			static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit);
+		commands->MemoryBarrier(commandList,
+			static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit),
+			shaderReadWrite);
 
-		commands->ImageMemoryBarrier(commandList, m_averageLuminance, EImageLayout::ComputeWrite);
+		commands->ImageMemoryBarrier(commandList, averageLuminance, EImageLayout::ComputeWrite);
 		commands->Dispatch(commandList, m_pComputeAverageShader->GetComputeShaderRHI(),
 			1, 1, 1,
 			{ m_computeAverageShaderBindings },
-			&pushConstantsAverage, sizeof(float) * 4);
-		commands->ImageMemoryBarrier(commandList, m_averageLuminance, EImageLayout::ShaderReadOnlyOptimal);
-		commands->ImageMemoryBarrier(commandList, colorTarget, EImageLayout::ColorAttachmentOptimal);
+			&pushConstantsAverage, sizeof(pushConstantsAverage));
+		commands->ImageMemoryBarrier(commandList, averageLuminance, EImageLayout::ShaderReadOnlyOptimal);
 	}
-
-	auto fullResolutionBinding = m_shaderBindings->GetOrAddShaderBinding("colorSampler")->GetTextureBinding();
-	commands->ImageMemoryBarrier(commandList, fullResolutionBinding, EImageLayout::ShaderReadOnlyOptimal);
-
-	auto mesh = frameGraph->GetFullscreenNdcQuad();
-
-	commands->BeginRenderPass(commandList,
-		TVector<RHI::RHITexturePtr>{colorTarget},
-		nullptr,
-		glm::vec4(0, 0, colorTarget->GetExtent().x, colorTarget->GetExtent().y),
-		glm::ivec2(0, 0),
-		false,
-		glm::vec4(0.0f),
-		0.0f,
-		false);
-
-	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
-
-	commands->BindMaterial(commandList, m_postEffectMaterial);
-	commands->SetViewport(commandList,
-		0, 0,
-		(float)colorTarget->GetExtent().x, (float)colorTarget->GetExtent().y,
-		glm::vec2(0, 0),
-		glm::vec2(colorTarget->GetExtent().x, colorTarget->GetExtent().y),
-		0, 1.0f);
-
-	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
-	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_shaderBindings });
-
-	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-	RecordDrawCallStats(1);
-	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);
 }
 
 void EyeAdaptationNode::Clear()
 {
-	m_pToneMappingShader.Clear();
-	m_postEffectMaterial.Clear();
-	m_shaderBindings.Clear();
 	m_pComputeHistogramShader.Clear();
 	m_pComputeAverageShader.Clear();
+	m_computeHistogramShaderBindings.Clear();
+	m_computeAverageShaderBindings.Clear();
+	m_averageLuminanceTarget.Clear();
+	m_bAverageLuminanceInitialized = false;
 }

@@ -8,6 +8,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
 #include "RHI/RenderTarget.h"
+#include "RHI/GpuCulling.h"
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -1656,18 +1657,7 @@ namespace Sailor::RHI
 
 		if (computeCullingShader)
 		{
-			struct PushConstants
-			{
-				uint32_t m_numBatches = 0u;
-				uint32_t m_numInstances = 0u;
-				uint32_t m_firstInstanceIndex = 0u;
-				uint32_t m_firstStorageInstance = 0u;
-				uint32_t m_firstCandidateInstance = 0u;
-				uint32_t m_phase = 0u;
-				uint32_t m_bEnableOcclusion = 0u;
-			};
-
-			PushConstants constants;
+			GpuCullingPushConstants constants;
 			constants.m_numBatches = static_cast<uint32_t>(groups.Num());
 			constants.m_numInstances = numInstances;
 			constants.m_firstInstanceIndex = firstIndexInstance;
@@ -1675,50 +1665,9 @@ namespace Sailor::RHI
 			constants.m_firstCandidateInstance = firstCandidateInstance;
 			constants.m_bEnableOcclusion = bEnableOcclusion ? 1u : 0u;
 			commands->BeginDebugRegion(cullingCommandList, "GPU Culling", DebugContext::Color_CmdCompute);
-			const EAccessFlags uploadWrites = static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit) |
-				static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit);
-			const EAccessFlags shaderReadWrite = static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit) |
-				static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit);
-			commands->MemoryBarrier(cullingCommandList, uploadWrites, shaderReadWrite);
-
-			const uint32_t cullingGroups = (std::max)(1u,
-				(constants.m_numInstances + Renderer::GPUCullingGroupSize - 1u) / Renderer::GPUCullingGroupSize);
-			commands->Dispatch(
-				cullingCommandList,
-				computeCullingShader,
-				cullingGroups,
-				1u,
-				1u,
-				cullingDispatchBindings,
-				&constants,
-				sizeof(constants));
-			commands->MemoryBarrier(
-				cullingCommandList,
-				static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit),
-				shaderReadWrite);
-
-			constants.m_phase = 1u;
-			const uint32_t compactionGroups = (std::max)(1u,
-				(constants.m_numBatches + Renderer::GPUCullingGroupSize - 1u) / Renderer::GPUCullingGroupSize);
-			commands->Dispatch(
-				cullingCommandList,
-				computeCullingShader,
-				compactionGroups,
-				1u,
-				1u,
-				cullingDispatchBindings,
-				&constants,
-				sizeof(constants));
-			if (cullingCommandList == graphicsCmdList)
-			{
-				const EAccessFlags drawReads =
-					static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit) |
-					static_cast<EAccessFlags>(EAccessBit::IndirectCommandRead_Bit);
-				commands->MemoryBarrier(
-					cullingCommandList,
-					static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit),
-					drawReads);
-			}
+			RecordGpuCullingDispatches(*commands, cullingCommandList, computeCullingShader,
+				cullingDispatchBindings, constants, Renderer::GPUCullingGroupSize,
+				cullingCommandList == graphicsCmdList);
 			commands->EndDebugRegion(cullingCommandList);
 		}
 

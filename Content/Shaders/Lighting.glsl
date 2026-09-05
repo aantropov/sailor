@@ -1,10 +1,8 @@
 const float EVSM_C1 = 40.0f;
 const float EVSM_C2 = 40.0f;
-// Offset the receiver before projecting it into a cascade. Applying bias after
-// projection makes the effective surface offset depend on that cascade's depth
-// range and precision, which exposes the split as a band.
-const float SHADOW_RECEIVER_LIGHT_OFFSET = 0.005f;
-const float SHADOW_RECEIVER_NORMAL_OFFSET = 0.02f;
+const float EVSM_RECEIVER_LIGHT_OFFSET = 0.005f;
+const float EVSM_RECEIVER_NORMAL_OFFSET = 0.02f;
+const float PCF_DEPTH_QUANTIZATION = 1.0f / 65535.0f;
 const uint SHADOW_TYPE_NONE = 0u;
 const uint SHADOW_TYPE_PCF = 1u;
 const uint SHADOW_TYPE_EVSM = 2u;
@@ -14,6 +12,11 @@ const uint SHADOW_MAP_INDEX_MASK = 0x7FFFFFFFu;
 
 uint GetDirectionalCascadeShadowType(uint lightShadowType, int cascadeLayer)
 {
+  if (lightShadowType == SHADOW_TYPE_NONE)
+  {
+    return SHADOW_TYPE_NONE;
+  }
+
   // The renderer stores the near cascade using the light's requested mode,
   // while all wider cascades use depth-only PCF maps. Sampling a PCF map as
   // EVSM moments produces a dark band during the cross-cascade blend.
@@ -25,10 +28,11 @@ struct LightData
 {
   uint type;
   uint shadowType;
+  uint activeCascadeCount;
+  float shadowBias;
   vec3 worldPosition;
   vec3 direction;
   vec3 intensity;
-  vec3 attenuation;
   vec2 cutOff;
   vec3 bounds;
 };
@@ -61,34 +65,147 @@ float CalculateLocalLightRangeAttenuation(LightData light, float distanceToLight
 {
   const float safeRadius = max(light.bounds.x, 0.00001f);
   const float normalizedDistance = clamp(distanceToLight / safeRadius, 0.0f, 1.0f);
-  const float squaredDistance = distanceToLight * distanceToLight;
-  const float attenuation = 1.0f / max(
-    light.attenuation.x +
-      light.attenuation.y * distanceToLight +
-      light.attenuation.z * squaredDistance,
-    0.00001f);
+  const float minimumDistance = 0.01f;
+  const float safeDistance = max(distanceToLight, minimumDistance);
+  const float inverseSquareFalloff = 1.0f / (safeDistance * safeDistance);
 
-  // Radius is the actual light range in world metres. Preserve the configured
-  // attenuation throughout that range and only soften the final edge so tile
-  // rejection reaches zero without visibly shrinking the light volume.
-  const float rangeWindow = 1.0f - smoothstep(0.9f, 1.0f, normalizedDistance);
-  return attenuation * rangeWindow;
+  // Radius is a culling range in world metres, not a brightness parameter.
+  // This is the KHR_lights_punctual range window: inverse-square falloff is
+  // preserved near the source and reaches zero with a continuous derivative.
+  const float normalizedDistanceSquared =
+    normalizedDistance * normalizedDistance;
+  const float rangeBase = clamp(
+    1.0f - normalizedDistanceSquared * normalizedDistanceSquared,
+    0.0f,
+    1.0f);
+  const float rangeWindow = rangeBase * rangeBase;
+  return inverseSquareFalloff * rangeWindow;
 }
+
+float CalculateSpotLightAngularAttenuation(
+  LightData light,
+  vec3 surfaceToLightDirection)
+{
+  const float coneRange = max(light.cutOff.x - light.cutOff.y, 0.00001f);
+  const float actualCosine = dot(
+    surfaceToLightDirection,
+    normalize(-light.direction));
+  const float angularBase = clamp(
+    (actualCosine - light.cutOff.y) / coneRange,
+    0.0f,
+    1.0f);
+  return angularBase * angularBase;
+}
+
+vec3 CalculateLambertDiffuseBRDF(vec3 diffuseWeight, vec3 albedo)
+{
+  return diffuseWeight * albedo / PI;
+}
+
+vec3 NormalizeOrFallback(vec3 value, vec3 fallback)
+{
+  const float lengthSquared = dot(value, value);
+  return lengthSquared > 1e-12 ?
+    value * inversesqrt(lengthSquared) :
+    fallback;
+}
+
+#ifdef FRAGMENT
+void ResolveFragmentSurfaceGeometry(
+  vec3 worldPosition,
+  vec3 surfaceToCamera,
+  vec3 interpolatedNormal,
+  mat3 interpolatedTangentBasis,
+  out vec3 geometricNormal,
+  out vec3 vertexNormal,
+  out mat3 tangentBasis)
+{
+  const vec3 derivativeNormal = cross(
+    dFdx(worldPosition),
+    dFdy(worldPosition));
+  const float derivativeLengthSquared = dot(
+    derivativeNormal,
+    derivativeNormal);
+  const vec3 interpolatedNormalFallback = NormalizeOrFallback(
+    interpolatedNormal,
+    vec3(0.0, 1.0, 0.0));
+  geometricNormal = derivativeLengthSquared > 1e-12 ?
+    derivativeNormal * inversesqrt(derivativeLengthSquared) :
+    interpolatedNormalFallback;
+  if(dot(geometricNormal, surfaceToCamera) < 0.0)
+  {
+    geometricNormal *= -1.0;
+  }
+  vertexNormal = NormalizeOrFallback(
+    interpolatedNormal,
+    geometricNormal);
+  tangentBasis = interpolatedTangentBasis;
+  if(dot(vertexNormal, geometricNormal) < 0.0)
+  {
+    vertexNormal *= -1.0;
+    tangentBasis[1] *= -1.0;
+  }
+
+  vec3 tangent = tangentBasis[0] -
+    vertexNormal * dot(vertexNormal, tangentBasis[0]);
+  const float tangentLengthSquared = dot(tangent, tangent);
+  if(tangentLengthSquared <= 1e-12)
+  {
+    const vec3 fallbackAxis = abs(vertexNormal.y) < 0.999
+      ? vec3(0.0, 1.0, 0.0)
+      : vec3(1.0, 0.0, 0.0);
+    tangent = cross(fallbackAxis, vertexNormal);
+  }
+  tangent = normalize(tangent);
+  const vec3 canonicalBitangent = normalize(cross(vertexNormal, tangent));
+  const float handedness = dot(
+    canonicalBitangent,
+    tangentBasis[1]) < 0.0 ? -1.0 : 1.0;
+  tangentBasis = mat3(
+    tangent,
+    canonicalBitangent * handedness,
+    vertexNormal);
+}
+
+vec3 KeepShadingNormalOnGeometricSurface(
+  vec3 shadingNormal,
+  vec3 geometricNormal)
+{
+  const float geometricCosine = dot(shadingNormal, geometricNormal);
+  return normalize(shadingNormal -
+    2.0 * min(geometricCosine, 0.0) * geometricNormal);
+}
+#endif
 
 // Importance sample GGX normal distribution function for a fixed roughness value.
 // This returns normalized half-vector between Li & Lo.
 // For derivation see: http://blog.tobias-franke.eu/2014/03/30/notes_on_importance_sampling.html
 vec3 SampleGGX(float u1, float u2, float roughness)
 {
-  float alpha = roughness * roughness;
+  float alpha = max(roughness * roughness, 0.001);
 
   float cosTheta = sqrt((1.0 - u2) / (1.0 + (alpha*alpha - 1.0) * u2));
-  float sinTheta = sqrt(1.0 - cosTheta*cosTheta); // Trig. identity
+  float sinTheta = sqrt(max(1.0 - cosTheta*cosTheta, 0.0)); // Trig. identity
   float phi = TwoPI * u1;
 
   // Convert to Cartesian upon return.
   return vec3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
-}  
+}
+
+// Importance sample the Charlie distribution used by KHR_materials_sheen.
+vec3 SampleCharlie(float u1, float u2, float roughness)
+{
+  const float alpha = max(roughness * roughness, 0.000001);
+  const float sinTheta = pow(
+    clamp(u2, 0.000001, 0.999999),
+    alpha / (2.0 * alpha + 1.0));
+  const float cosTheta = sqrt(max(1.0 - sinTheta * sinTheta, 0.0));
+  const float phi = TwoPI * u1;
+  return vec3(
+    sinTheta * cos(phi),
+    sinTheta * sin(phi),
+    cosTheta);
+}
 
 // GGX/Towbridge-Reitz normal distribution function.
 // Uses Disney's reparametrization of alpha = roughness^2.
@@ -101,54 +218,161 @@ float NdfGGX(float cosLh, float roughness)
   return alphaSq / max(PI * denom * denom, 1e-7);
 }
 
-// Single term for separable Schlick-GGX below.
-float GeometrySchlickG1(float cosTheta, float k)
+// Height-correlated Smith masking-shadowing for isotropic GGX.
+float GeometrySmithGGXCorrelated(float cosLi, float cosLo, float roughness)
 {
-  return cosTheta / (cosTheta * (1.0 - k) + k);
-}
+  const float nDotL = clamp(cosLi, 0.0, 1.0);
+  const float nDotV = clamp(cosLo, 0.0, 1.0);
+  if(nDotL <= 0.0 || nDotV <= 0.0)
+  {
+    return 0.0;
+  }
 
-// Schlick-GGX approximation of geometric attenuation function using Smith's method.
-float GeometrySchlickGGX(float cosLi, float cosLo, float roughness)
-{
-  float r = roughness + 1.0;
-  float k = (r * r) / 8.0; // Epic suggests using this roughness remapping for analytic lights.
-  return GeometrySchlickG1(cosLi, k) * GeometrySchlickG1(cosLo, k);
+  const float alpha = max(roughness * roughness, 0.001);
+  const float alphaSq = alpha * alpha;
+  const float lambdaV = nDotL * sqrt(
+    nDotV * nDotV * (1.0 - alphaSq) + alphaSq);
+  const float lambdaL = nDotV * sqrt(
+    nDotL * nDotL * (1.0 - alphaSq) + alphaSq);
+  return 2.0 * nDotL * nDotV /
+    max(lambdaV + lambdaL, 1e-7);
 }
 
 // Charlie microfacet normal distribution function used for cloth-like sheen.
 float NdfCharlie(float cosLh, float roughness)
 {
-  float alpha = max(roughness, 0.001);
+  const float alpha = max(roughness * roughness, 0.000001);
   float invAlpha = 1.0 / alpha;
   float cos2h = cosLh * cosLh;
-  float sin2h = max(1.0 - cos2h, 0.0078125);
+  float sin2h = max(1.0 - cos2h, 0.0);
   return (2.0 + invAlpha) * pow(sin2h, 0.5 * invAlpha) / (2.0 * PI);
 }
 
-// Neubelt visibility term for cloth-like sheen.
-float GeometryNeubelt(float cosLi, float cosLo)
+float LambdaSheenNumericHelper(float cosine, float alpha)
 {
-  return 1.0 / (4.0 * (cosLi + cosLo - cosLi * cosLo));
+  const float oneMinusAlphaSquared =
+    (1.0 - alpha) * (1.0 - alpha);
+  const float a = mix(21.5473, 25.3245, oneMinusAlphaSquared);
+  const float b = mix(3.82987, 3.32435, oneMinusAlphaSquared);
+  const float c = mix(0.19823, 0.16801, oneMinusAlphaSquared);
+  const float d = mix(-1.97760, -1.27393, oneMinusAlphaSquared);
+  const float e = mix(-4.32054, -4.85967, oneMinusAlphaSquared);
+  const float x = clamp(cosine, 0.0, 1.0);
+  return a / (1.0 + b * pow(x, c)) + d * x + e;
 }
 
-// Schlick-GGX approximation of geometric attenuation function using Smith's method (IBL version).
-float GeometrySchlickGGX_IBL(float cosLi, float cosLo, float roughness)
+float LambdaSheen(float cosine, float alpha)
 {
-  float r = roughness;
-  float k = (r * r) / 2.0; // Epic suggests using this roughness remapping for IBL lighting.
-  return GeometrySchlickG1(cosLi, k) * GeometrySchlickG1(cosLo, k);
+  const float x = clamp(abs(cosine), 0.0, 1.0);
+  return x < 0.5 ?
+    exp(LambdaSheenNumericHelper(x, alpha)) :
+    exp(
+      2.0 * LambdaSheenNumericHelper(0.5, alpha) -
+      LambdaSheenNumericHelper(1.0 - x, alpha));
 }
-  
-// Shlick's approximation of the Fresnel factor.
+
+// Charlie masking-shadowing visibility fitted to the production sheen model.
+float VisibilitySheen(float cosLi, float cosLo, float roughness)
+{
+  const float clampedCosLi = clamp(cosLi, 0.0, 1.0);
+  const float clampedCosLo = clamp(cosLo, 0.0, 1.0);
+  if(clampedCosLi <= 0.0 || clampedCosLo <= 0.0)
+  {
+    return 0.0;
+  }
+
+  const float alpha = max(roughness * roughness, 0.000001);
+  const float denominator =
+    (1.0 +
+      LambdaSheen(clampedCosLo, alpha) +
+      LambdaSheen(clampedCosLi, alpha)) *
+    4.0 * clampedCosLo * clampedCosLi;
+  return 1.0 / max(denominator, 1e-7);
+}
+
+// Schlick's approximation of the Fresnel factor.
 vec3 FresnelSchlick(vec3 F0, float cosTheta)
 {
-  return F0 + (vec3(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
+  const vec3 clampedF0 = clamp(F0, vec3(0.0), vec3(1.0));
+  const float clampedCosine = clamp(cosTheta, 0.0, 1.0);
+  return clampedF0 + (vec3(1.0) - clampedF0) *
+    pow(1.0 - clampedCosine, 5.0);
+}
+
+float FresnelDielectric(float cosTheta, float fromIor, float toIor)
+{
+  const float etaI = max(fromIor, 0.0001);
+  const float etaT = max(toIor, 0.0001);
+  if(abs(etaI - etaT) <= 0.0001)
+  {
+    return 0.0;
+  }
+  // KHR_materials_ior uses zero as the specular-glossiness compatibility
+  // value. The importer represents its effective infinite IOR with 1e6.
+  if(etaI >= 100000.0 || etaT >= 100000.0)
+  {
+    return 1.0;
+  }
+
+  const float cosThetaI = clamp(abs(cosTheta), 0.0, 1.0);
+  const float sinThetaISquared = max(
+    0.0,
+    1.0 - cosThetaI * cosThetaI);
+  const float eta = etaI / etaT;
+  const float sinThetaTSquared =
+    eta * eta * sinThetaISquared;
+  if(sinThetaTSquared >= 1.0)
+  {
+    return 1.0;
+  }
+
+  const float cosThetaT = sqrt(max(
+    0.0,
+    1.0 - sinThetaTSquared));
+  const float parallelNumerator =
+    etaT * cosThetaI - etaI * cosThetaT;
+  const float parallelDenominator =
+    etaT * cosThetaI + etaI * cosThetaT;
+  const float perpendicularNumerator =
+    etaI * cosThetaI - etaT * cosThetaT;
+  const float perpendicularDenominator =
+    etaI * cosThetaI + etaT * cosThetaT;
+  const float parallel = abs(parallelDenominator) > 0.0001 ?
+    parallelNumerator / parallelDenominator : 1.0;
+  const float perpendicular = abs(perpendicularDenominator) > 0.0001 ?
+    perpendicularNumerator / perpendicularDenominator : 1.0;
+  return clamp(
+    0.5 * (parallel * parallel + perpendicular * perpendicular),
+    0.0,
+    1.0);
 }
 
 vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
 {
-    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+    const vec3 clampedF0 = clamp(F0, vec3(0.0), vec3(1.0));
+    const float clampedRoughness = clamp(roughness, 0.0, 1.0);
+    return clampedF0 +
+      (max(vec3(1.0 - clampedRoughness), clampedF0) - clampedF0) *
+      pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 } 
+
+// Screen-space ambient occlusion describes the visibility of indirect light.
+// Diffuse IBL can use the visibility directly, while glossy reflections need
+// a view- and roughness-dependent approximation to avoid over-darkening.
+float CalculateSpecularOcclusion(float ambientOcclusion, float cosLo, float roughness)
+{
+  const float ao = clamp(ambientOcclusion, 0.0, 1.0);
+  const float nDotV = clamp(cosLo, 0.0, 1.0);
+  const float clampedRoughness = clamp(roughness, 0.0, 1.0);
+  const float exponent = exp2(-16.0 * clampedRoughness - 1.0);
+  return clamp(pow(nDotV + ao, exponent) - 1.0 + ao, 0.0, 1.0);
+}
+
+float CalculateSpecularEnvironmentLod(int mipLevelCount, float roughness)
+{
+  const int maximumMipLevel = max(mipLevelCount - 1, 0);
+  return clamp(roughness, 0.0, 1.0) * float(maximumMipLevel);
+}
 
 vec4 GaussianBlur_Evsm(sampler2D textureSampler, vec2 uv, vec2 texelSize, ivec2 radius)
 {
@@ -235,10 +459,15 @@ float LuminanceCzm(vec3 rgb)
     return dot(rgb, w);
 }
 
-float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth)
+float ManualPCF(
+  sampler2D shadowMap,
+  vec3 projCoords,
+  float currentDepth,
+  vec2 receiverDepthGradient)
 {
    float shadow = 0.0;
-   vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+   const ivec2 mapSize = textureSize(shadowMap, 0);
+   const vec2 texelSize = 1.0 / vec2(mapSize);
    int samples = 16; // Number of samples
    float radius = 2.0; // Radius of the kernel
 
@@ -269,8 +498,13 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth)
            continue;
        }
 
-       const float pcfDepth = texture(shadowMap, sampleUv).r;
-       shadow += currentDepth > pcfDepth ? 1.0 : 0.0;
+       const ivec2 texel = clamp(ivec2(floor(sampleUv * vec2(mapSize))),
+         ivec2(0), mapSize - ivec2(1));
+       const vec2 texelCenterUv = (vec2(texel) + 0.5f) * texelSize;
+       const float receiverDepth = currentDepth +
+         dot(receiverDepthGradient, texelCenterUv - projCoords.xy);
+       const float pcfDepth = texelFetch(shadowMap, texel, 0).r;
+       shadow += pcfDepth == 0.0f || receiverDepth > pcfDepth ? 1.0 : 0.0;
    }
 
    shadow /= float(samples);
@@ -305,31 +539,69 @@ uint DecodeShadowAtlasIndex(uint packedTile)
   return packedTile >> 15u;
 }
 
+vec2 CalculateLocalShadowReceiverDepthGradient(
+  mat4 lightMatrix,
+  vec3 projectedPosition,
+  vec3 surfaceNormal)
+{
+  const vec3 lightW = vec3(lightMatrix[0][3], lightMatrix[1][3], lightMatrix[2][3]);
+  // Jacobian of perspective division. Its common 1/w scale cancels in the
+  // inverse-transpose normal ratios, so this also handles translated lights.
+  const vec3 lightX = vec3(lightMatrix[0][0], lightMatrix[1][0], lightMatrix[2][0]) -
+    projectedPosition.x * lightW;
+  const vec3 lightY = vec3(lightMatrix[0][1], lightMatrix[1][1], lightMatrix[2][1]) -
+    projectedPosition.y * lightW;
+  const vec3 lightZ = vec3(lightMatrix[0][2], lightMatrix[1][2], lightMatrix[2][2]) -
+    projectedPosition.z * lightW;
+  const vec3 normal = NormalizeOrFallback(surfaceNormal, vec3(0.0f, 1.0f, 0.0f));
+  const vec3 depthAxis = cross(lightX, lightY);
+  const float depthAxisLength = length(depthAxis);
+  const float planeDepth = dot(depthAxis, normal);
+  if(depthAxisLength <= 1e-12f || abs(planeDepth) < 0.001f * depthAxisLength)
+  {
+    return vec2(0.0f);
+  }
+
+  const vec2 planeXY = vec2(
+    dot(cross(lightY, lightZ), normal),
+    dot(cross(lightZ, lightX), normal));
+  return vec2(-2.0f, 2.0f) * planeXY / planeDepth;
+}
+
+float SampleLocalShadowReceiverPlane(
+  sampler2D shadowMap,
+  vec2 sampleUv,
+  vec2 receiverUv,
+  float receiverDepth,
+  vec2 receiverDepthGradient)
+{
+  const ivec2 mapSize = textureSize(shadowMap, 0);
+  const ivec2 texel = clamp(ivec2(floor(sampleUv * vec2(mapSize))),
+    ivec2(0), mapSize - ivec2(1));
+  const vec2 texelCenterUv = (vec2(texel) + 0.5f) / vec2(mapSize);
+  const float depthAtTexel = receiverDepth +
+    dot(receiverDepthGradient, texelCenterUv - receiverUv);
+  const float shadowDepth = texelFetch(shadowMap, texel, 0).r;
+  return shadowDepth == 0.0f || depthAtTexel > shadowDepth ? 1.0f : 0.0f;
+}
+
 float CalculateLocalPcfShadow(
   sampler2D shadowMap,
   mat4 lightMatrix,
   vec4 atlasRect,
   vec3 worldPosition,
   vec3 surfaceNormal,
-  vec3 surfaceToLightDirection,
-  float surfaceToLightDistance,
-  bool softShadow)
+  bool softShadow,
+  float receiverBiasScale)
 {
-  const vec3 normal = normalize(surfaceNormal);
-  const vec3 toLight = normalize(surfaceToLightDirection);
-  const float slope = 1.0f - clamp(dot(normal, toLight), 0.0f, 1.0f);
-  const float tileResolution = max(
-    float(textureSize(shadowMap, 0).x) * atlasRect.z,
-    1.0f);
-  const float receiverTexelWorldSize = max(
-    2.0f * surfaceToLightDistance / tileResolution,
-    0.001f);
-  const vec3 receiverPosition = worldPosition +
-    normal * receiverTexelWorldSize * (1.0f + slope) +
-    toLight * receiverTexelWorldSize * 0.25f;
-
-  const vec4 fragPosLightSpace = lightMatrix * vec4(receiverPosition, 1.0f);
+  const vec4 fragPosLightSpace = lightMatrix * vec4(worldPosition, 1.0f);
+  if(fragPosLightSpace.w <= 0.0f)
+  {
+    return 1.0f;
+  }
   vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+  const vec2 tileDepthGradient = CalculateLocalShadowReceiverDepthGradient(
+    lightMatrix, projCoords, surfaceNormal);
   projCoords.xy = projCoords.xy * 0.5f + 0.5f;
   projCoords.y = 1.0f - projCoords.y;
   if(any(lessThan(projCoords, vec3(0.0f))) ||
@@ -345,6 +617,12 @@ float CalculateLocalPcfShadow(
     atlasRect.xy + projCoords.xy * atlasRect.zw,
     tileMin,
     tileMax);
+  const vec2 receiverUv = atlasRect.xy + projCoords.xy * atlasRect.zw;
+  const vec2 receiverDepthGradient = tileDepthGradient / max(atlasRect.zw, atlasTexelSize);
+  // The atlas stores R16_UNORM color depth. World-space offsets can disappear
+  // after that quantization, and they displace shadows differently per triangle.
+  const float depthQuantization = 1.0f / 65535.0f;
+  const float receiverDepth = projCoords.z + receiverBiasScale * depthQuantization;
   if(softShadow)
   {
     const vec2 poissonDisk[16] = vec2[](
@@ -363,27 +641,40 @@ float CalculateLocalPcfShadow(
         atlasUv + poissonDisk[sampleIndex] * 2.0f * atlasTexelSize,
         tileMin,
         tileMax);
-      const float shadowDepth = texture(shadowMap, sampleUv).r;
-      lit += projCoords.z > shadowDepth ? 1.0f : 0.0f;
+      lit += SampleLocalShadowReceiverPlane(shadowMap, sampleUv, receiverUv,
+        receiverDepth, receiverDepthGradient);
     }
     return lit / 16.0f;
   }
 
-  const float shadowDepth = texture(shadowMap, atlasUv).r;
-  return projCoords.z > shadowDepth ? 1.0f : 0.0f;
+  return SampleLocalShadowReceiverPlane(shadowMap, atlasUv, receiverUv,
+    receiverDepth, receiverDepthGradient);
 }
 
 
-int SelectCascade(mat4 view, vec3 worldPosition, vec2 cameraZNearZFar)
+float GetActiveShadowCascadeLevel(int cascadeLayer, uint activeCascadeCount)
+{
+  const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
+  const int levelIndex = NUM_CSM_CASCADES - int(safeCascadeCount) + cascadeLayer;
+  return ShadowCascadeLevels[clamp(levelIndex, 0, NUM_CSM_CASCADES - 1)];
+}
+
+int SelectCascade(
+  mat4 view,
+  vec3 worldPosition,
+  vec2 cameraZNearZFar,
+  uint activeCascadeCount)
 {
   vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0);
   float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
   float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
+  const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
   
-  int layer = NUM_CSM_CASCADES;
-  for (int i = 0; i < NUM_CSM_CASCADES; ++i)
+  int layer = int(safeCascadeCount);
+  for (int i = 0; i < int(safeCascadeCount); ++i)
   {
-      if (depthValue < shadowFarPlane * ShadowCascadeLevels[i])
+      if (depthValue < shadowFarPlane *
+        GetActiveShadowCascadeLevel(i, safeCascadeCount))
       {
           layer = i;
           break;
@@ -397,9 +688,11 @@ float CalculateCascadeBlend(
   mat4 view,
   vec3 worldPosition,
   vec2 cameraZNearZFar,
-  int cascadeLayer)
+  int cascadeLayer,
+  uint activeCascadeCount)
 {
-  if(cascadeLayer < 0 || cascadeLayer >= NUM_CSM_CASCADES - 1)
+  const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
+  if(cascadeLayer < 0 || cascadeLayer >= int(safeCascadeCount) - 1)
   {
     return 0.0f;
   }
@@ -409,8 +702,10 @@ float CalculateCascadeBlend(
   float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
   float cascadeNear = cascadeLayer == 0 ?
     cameraZNearZFar.x :
-    shadowFarPlane * ShadowCascadeLevels[cascadeLayer - 1];
-  float cascadeFar = shadowFarPlane * ShadowCascadeLevels[cascadeLayer];
+    shadowFarPlane * GetActiveShadowCascadeLevel(
+      cascadeLayer - 1, safeCascadeCount);
+  float cascadeFar = shadowFarPlane * GetActiveShadowCascadeLevel(
+    cascadeLayer, safeCascadeCount);
   float blendStart = cascadeFar -
     (cascadeFar - cascadeNear) * ShadowCascadeBlendFraction;
   return smoothstep(blendStart, cascadeFar, depthValue);
@@ -420,9 +715,11 @@ float CalculateShadowDistanceFade(
   mat4 view,
   vec3 worldPosition,
   vec2 cameraZNearZFar,
-  int cascadeLayer)
+  int cascadeLayer,
+  uint activeCascadeCount)
 {
-  if(cascadeLayer != NUM_CSM_CASCADES - 1)
+  const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
+  if(cascadeLayer != int(safeCascadeCount) - 1)
   {
     return 0.0f;
   }
@@ -430,8 +727,10 @@ float CalculateShadowDistanceFade(
   const vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0f);
   const float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
   const float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
-  const float cascadeNear = shadowFarPlane *
-    ShadowCascadeLevels[NUM_CSM_CASCADES - 2];
+  const float cascadeNear = safeCascadeCount > 1u ?
+    shadowFarPlane * GetActiveShadowCascadeLevel(
+      int(safeCascadeCount) - 2, safeCascadeCount) :
+    cameraZNearZFar.x;
   const float fadeStart = shadowFarPlane -
     (shadowFarPlane - cascadeNear) * ShadowCascadeBlendFraction;
   return smoothstep(fadeStart, shadowFarPlane, depthValue);
@@ -461,7 +760,11 @@ float Chebyshev(vec2 moments, float currentDepth, float minVariance, float linst
     return ReduceLightBleed(variance / (variance + d * d), linstep);
 }
 
-float ShadowCalculation_Pcf(sampler2D shadowMap, vec4 fragPosLightSpace, int cascadeLayer)
+float ShadowCalculation_Pcf(
+  sampler2D shadowMap,
+  vec4 fragPosLightSpace,
+  vec2 receiverDepthGradient,
+  float receiverBiasScale)
 {
   vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
   projCoords.xy = projCoords.xy * 0.5 + 0.5;
@@ -474,9 +777,11 @@ float ShadowCalculation_Pcf(sampler2D shadowMap, vec4 fragPosLightSpace, int cas
     return 1.0f;
   }
   
-  const float currentDepth = projCoords.z;
+  // PCF depth is stored in R16_UNORM, independently of the raster depth buffer.
+  const float currentDepth = projCoords.z +
+    receiverBiasScale * PCF_DEPTH_QUANTIZATION;
   
-  float shadow = ManualPCF(shadowMap, projCoords, currentDepth);
+  float shadow = ManualPCF(shadowMap, projCoords, currentDepth, receiverDepthGradient);
   return shadow;  
 }
 
@@ -493,7 +798,7 @@ float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, int ca
     return 1.0f;
   }
   
-  vec4 shadow = texture(shadowMap, projCoords.xy);// > 0.39 ? 1.0f : 0.0f;
+  vec4 shadow = textureLod(shadowMap, projCoords.xy, 0.0f);
   const float currentDepth = exp(EVSM_C1 * projCoords.z);
   const float negCurrentDepth = -exp(-EVSM_C2 * projCoords.z);
   
@@ -503,10 +808,50 @@ float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, int ca
   return clamp(1 - max(posValue, negValue), 0, 1);
 }
 
+vec2 CalculateShadowReceiverDepthGradient(mat4 lightMatrix, vec3 surfaceNormal)
+{
+  const vec3 lightX = vec3(lightMatrix[0][0], lightMatrix[1][0], lightMatrix[2][0]);
+  const vec3 lightY = vec3(lightMatrix[0][1], lightMatrix[1][1], lightMatrix[2][1]);
+  const vec3 lightZ = vec3(lightMatrix[0][2], lightMatrix[1][2], lightMatrix[2][2]);
+  const vec3 normal = normalize(surfaceNormal);
+  const vec3 lightDepthAxis = cross(lightX, lightY);
+  if(abs(dot(normal, normalize(lightDepthAxis))) < 0.001f)
+  {
+    return vec2(0.0f);
+  }
+
+  // Transform the plane normal by the inverse transpose. The common
+  // determinant cancels in the depth gradient, including for scaled parents.
+  const vec3 clipNormal = vec3(
+    dot(cross(lightY, lightZ), normal),
+    dot(cross(lightZ, lightX), normal),
+    dot(lightDepthAxis, normal));
+  // Clip-to-UV scale, with the texture Y axis flipped.
+  return vec2(-2.0f, 2.0f) * clipNormal.xy / clipNormal.z;
+}
+
+vec3 OffsetEvsmShadowReceiver(
+  vec3 worldPosition,
+  vec3 surfaceNormal,
+  vec3 surfaceToLightDirection,
+  float receiverBiasScale)
+{
+  const vec3 normal = normalize(surfaceNormal);
+  const vec3 toLight = normalize(surfaceToLightDirection);
+  const float cosTheta = clamp(dot(normal, toLight), 0.0f, 1.0f);
+  const float sinTheta = sqrt(max(1.0f - cosTheta * cosTheta, 0.0f));
+  return worldPosition + receiverBiasScale * (
+    toLight * EVSM_RECEIVER_LIGHT_OFFSET +
+    normal * (EVSM_RECEIVER_NORMAL_OFFSET * sinTheta));
+}
+
 float CalculateDirectionalShadow(
   uint shadowType,
   sampler2D shadowMap,
-  vec4 fragPosLightSpace,
+  mat4 lightMatrix,
+  vec3 worldPosition,
+  vec3 surfaceNormal,
+  float receiverBiasScale,
   int cascadeLayer)
 {
   if (shadowType == SHADOW_TYPE_NONE)
@@ -516,25 +861,22 @@ float CalculateDirectionalShadow(
 
   if (shadowType == SHADOW_TYPE_EVSM && cascadeLayer == 0)
   {
+    const vec3 lightX = vec3(lightMatrix[0][0], lightMatrix[1][0], lightMatrix[2][0]);
+    const vec3 lightY = vec3(lightMatrix[0][1], lightMatrix[1][1], lightMatrix[2][1]);
+    const vec3 lightZ = vec3(lightMatrix[0][2], lightMatrix[1][2], lightMatrix[2][2]);
+    const vec3 lightDepthAxis = cross(lightX, lightY);
+    const vec3 toLight = normalize(lightDepthAxis) * sign(dot(lightDepthAxis, lightZ));
+    const vec3 receiverPosition = OffsetEvsmShadowReceiver(
+      worldPosition, surfaceNormal, toLight, receiverBiasScale);
     return ShadowCalculation_Evsm(
       shadowMap,
-      fragPosLightSpace,
+      lightMatrix * vec4(receiverPosition, 1.0f),
       cascadeLayer);
   }
 
-  return ShadowCalculation_Pcf(shadowMap, fragPosLightSpace, cascadeLayer);
-}
-
-vec3 OffsetDirectionalShadowReceiver(
-  vec3 worldPosition,
-  vec3 surfaceNormal,
-  vec3 surfaceToLightDirection)
-{
-  const vec3 normal = normalize(surfaceNormal);
-  const vec3 toLight = normalize(surfaceToLightDirection);
-  const float cosTheta = clamp(dot(normal, toLight), 0.0f, 1.0f);
-  const float sinTheta = sqrt(max(1.0f - cosTheta * cosTheta, 0.0f));
-  return worldPosition +
-    toLight * SHADOW_RECEIVER_LIGHT_OFFSET +
-    normal * (SHADOW_RECEIVER_NORMAL_OFFSET * sinTheta);
+  return ShadowCalculation_Pcf(
+    shadowMap,
+    lightMatrix * vec4(worldPosition, 1.0f),
+    CalculateShadowReceiverDepthGradient(lightMatrix, surfaceNormal),
+    receiverBiasScale);
 }

@@ -72,9 +72,12 @@ namespace Sailor
 
 				SAILOR_API virtual YAML::Node Serialize() const override;
 				SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
+				bool Validate(
+					const FileId& key,
+					std::string& outDiagnostic) const;
 			};
 
-			TConcurrentMap<FileId, AssetCache::AssetCacheData::Entry> m_data{};
+			TConcurrentMap<FileId, AssetCache::AssetCacheData::Entry> m_assets{};
 
 			SAILOR_API virtual YAML::Node Serialize() const override;
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -83,6 +86,10 @@ namespace Sailor
 				const YAML::Node& inData,
 				AssetCacheData& outData,
 				std::string& outDiagnostic) noexcept;
+
+		private:
+			bool DeserializeProperties(const YAML::Node& inData);
+			bool Validate(std::string& outDiagnostic) const;
 		};
 
 		SAILOR_API static bool ShouldResetCacheFile(
@@ -117,6 +124,12 @@ namespace Sailor
 		mutable std::mutex m_cacheMutex;
 
 	private:
+		static constexpr const char* CacheKind = "asset-cache";
+		static constexpr const char* CacheProducer = "asset-cache-v1";
+		static constexpr uint32_t PayloadVersion = 1u;
+
+		static Workspace::WorkspaceCacheIdentity MakeExpectedIdentity();
+
 		AssetCacheData m_cache;
 		std::filesystem::path m_cacheFolder;
 		Workspace::WorkspaceCacheIdentity m_cacheIdentity;

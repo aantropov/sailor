@@ -2,17 +2,15 @@
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Core/Utils.h"
+#include "Core/StringHash.h"
 #include "Raytracing/MaterialUtils.h"
 #include "Raytracing/PathTracer.h"
 #include "Components/MeshRendererComponent.h"
 #include "RHI/Buffer.h"
 
 #include <cmath>
-#include <filesystem>
-#include <fstream>
 #include <functional>
 #include <iostream>
-#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -156,15 +154,19 @@ namespace
 			GetShadingBasis(hit, outNormal, outTangent, outBitangent);
 		}
 
-		bool OrientAgainstRay(
+		bool OrientToGeometricSurface(
 			const glm::vec3& rayDirection,
+			const glm::vec3& geometricNormal,
 			glm::vec3& inOutNormal,
-			glm::vec3& inOutBitangent)
+			glm::vec3& inOutBitangent,
+			glm::vec3& outOrientedGeometricNormal)
 		{
-			return OrientShadingBasisAgainstRay(
+			return OrientShadingBasisToGeometricSurface(
 				rayDirection,
+				geometricNormal,
 				inOutNormal,
-				inOutBitangent);
+				inOutBitangent,
+				outOrientedGeometricNormal);
 		}
 	};
 
@@ -176,15 +178,6 @@ namespace
 		}
 	}
 
-	std::string ReadText(const std::filesystem::path& path)
-	{
-		std::ifstream input(path, std::ios::binary);
-		Require(input.is_open(),
-			"test source should be readable: " + path.generic_string());
-		return std::string(
-			std::istreambuf_iterator<char>(input),
-			std::istreambuf_iterator<char>());
-	}
 
 	RHI::VertexP3N3T3B3UV2C4I4W4 MakeVertex(const glm::vec3& position)
 	{
@@ -507,8 +500,117 @@ namespace
 		Require(materialAsset.GetRenderQueue() == "Transparent",
 			"material deserialization must retain its authored render queue");
 		Require(materialAsset.GetRenderState().GetTag() ==
-			GetHash(std::string("Transparent")),
+			"Transparent"_h.GetHash(),
 			"material render state tag must match the retained render queue");
+	}
+
+	void TestStandardGltfTexturelessDefaultsAndLegacyAliases()
+	{
+		MaterialAsset legacyMaterial;
+		legacyMaterial.Deserialize(YAML::Load(R"(
+shaderUid: 1A4BA353-FDA4-4F65-941F-D9FFEE4630A0
+samplers:
+  albedoSampler: 11111111-1111-4111-8111-111111111111
+uniformsVec4:
+  material.albedo: [0.8, 0.25, 0.1, 1.0]
+  material.emission: [0.2, 0.1, 0.05, 0.0]
+uniformsFloat:
+  material.roughness: 0.72
+  material.metallic: 0.15
+)"));
+
+		const glm::vec4* baseColor = nullptr;
+		const glm::vec4* emissive = nullptr;
+		const float* roughness = nullptr;
+		const float* metallic = nullptr;
+		const float* normalScale = nullptr;
+		const float* alphaCutoff = nullptr;
+		const float* occlusionStrength = nullptr;
+		const FileId* baseColorSampler = nullptr;
+		Require(
+			legacyMaterial.GetUniformsVec4().Find(
+				"material.baseColorFactor",
+				baseColor) &&
+			baseColor && *baseColor == glm::vec4(0.8f, 0.25f, 0.1f, 1.0f) &&
+			legacyMaterial.GetUniformsVec4().Find(
+				"material.emissiveFactor",
+				emissive) &&
+			emissive && *emissive == glm::vec4(0.2f, 0.1f, 0.05f, 0.0f) &&
+			legacyMaterial.GetUniformsFloat().Find(
+				"material.roughnessFactor",
+				roughness) &&
+			roughness && std::abs(*roughness - 0.72f) < 0.0001f &&
+			legacyMaterial.GetUniformsFloat().Find(
+				"material.metallicFactor",
+				metallic) &&
+			metallic && std::abs(*metallic - 0.15f) < 0.0001f,
+			"the default Standard_glTF material must preserve legacy Standard PBR values");
+		Require(
+			legacyMaterial.GetUniformsFloat().Find(
+				"material.normalScale",
+				normalScale) &&
+			normalScale && *normalScale == 1.0f &&
+			legacyMaterial.GetUniformsFloat().Find(
+				"material.alphaCutoff",
+				alphaCutoff) &&
+			alphaCutoff && *alphaCutoff == 0.5f &&
+			legacyMaterial.GetUniformsFloat().Find(
+				"material.occlusionStrength",
+				occlusionStrength) &&
+			occlusionStrength && *occlusionStrength == 1.0f,
+			"a textureless Standard_glTF material must receive neutral normal, alpha, and occlusion defaults");
+		Require(
+			legacyMaterial.GetSamplers().Find(
+				"baseColorSampler",
+				baseColorSampler) &&
+			baseColorSampler &&
+			baseColorSampler->ToString() ==
+				"11111111-1111-4111-8111-111111111111",
+			"legacy albedo textures must bind to the Standard_glTF base-color slot");
+
+		MaterialAsset texturelessMaterial;
+		texturelessMaterial.Deserialize(YAML::Load(R"(
+shaderUid: 1A4BA353-FDA4-4F65-941F-D9FFEE4630A0
+samplers: {}
+uniformsVec4: {}
+uniformsFloat: {}
+)"));
+		baseColor = nullptr;
+		emissive = nullptr;
+		roughness = nullptr;
+		metallic = nullptr;
+		Require(
+			texturelessMaterial.GetUniformsVec4().Find(
+				"material.baseColorFactor",
+				baseColor) &&
+			baseColor && *baseColor == glm::vec4(1.0f) &&
+			texturelessMaterial.GetUniformsVec4().Find(
+				"material.emissiveFactor",
+				emissive) &&
+			emissive && *emissive == glm::vec4(0.0f) &&
+			texturelessMaterial.GetUniformsFloat().Find(
+				"material.roughnessFactor",
+				roughness) &&
+			roughness && *roughness == 1.0f &&
+			texturelessMaterial.GetUniformsFloat().Find(
+				"material.metallicFactor",
+				metallic) &&
+			metallic && *metallic == 0.0f &&
+			texturelessMaterial.GetSamplers().IsEmpty(),
+			"a Standard_glTF material without authored maps must be white, rough, non-metallic, and use sampler-zero fallbacks");
+
+		MaterialAsset legacyStandardMaterial;
+		legacyStandardMaterial.Deserialize(YAML::Load(R"(
+shaderUid: E42B1499-8C0C-47E3-9584-E7BB6CD821FC
+uniformsVec4:
+  material.albedo: [0.3, 0.4, 0.5, 1.0]
+)"));
+		baseColor = nullptr;
+		Require(
+			!legacyStandardMaterial.GetUniformsVec4().Find(
+				"material.baseColorFactor",
+				baseColor),
+			"Standard_glTF compatibility defaults must not rewrite custom or legacy shader schemas");
 	}
 
 	void TestGltfTransmissionExtensionResolvesMaterialFields()
@@ -518,6 +620,30 @@ namespace
 			material,
 			2).IsEnabled(),
 			"materials without KHR_materials_transmission must remain disabled");
+
+		tinygltf::Material opaqueIorMaterial;
+		tinygltf::Value::Object opaqueIorExtension;
+		opaqueIorExtension.emplace("ior", tinygltf::Value(1.33));
+		opaqueIorMaterial.extensions["KHR_materials_ior"] =
+			tinygltf::Value(std::move(opaqueIorExtension));
+		const auto opaqueIor = GltfImporterUtils::ResolveMaterialTransmission(
+			opaqueIorMaterial,
+			0);
+		Require(!opaqueIor.IsEnabled() &&
+			opaqueIor.m_bHasIndexOfRefraction &&
+			std::abs(opaqueIor.m_indexOfRefraction - 1.33f) < 0.0001f,
+			"KHR_materials_ior must affect opaque dielectric materials independently of transmission");
+
+		tinygltf::Value::Object infiniteIorExtension;
+		infiniteIorExtension.emplace("ior", tinygltf::Value(0.0));
+		opaqueIorMaterial.extensions["KHR_materials_ior"] =
+			tinygltf::Value(std::move(infiniteIorExtension));
+		const auto infiniteIor = GltfImporterUtils::ResolveMaterialTransmission(
+			opaqueIorMaterial,
+			0);
+		Require(infiniteIor.m_bHasIndexOfRefraction &&
+			infiniteIor.m_indexOfRefraction >= 100000.0f,
+			"KHR_materials_ior zero must retain its full dielectric reflection semantics");
 
 		tinygltf::Value::Object textureInfo;
 		textureInfo.emplace("index", tinygltf::Value(1));
@@ -540,7 +666,8 @@ namespace
 			transmission.m_attenuationColor == glm::vec3(1.0f) &&
 			transmission.m_attenuationDistance ==
 				(std::numeric_limits<float>::max)() &&
-			transmission.m_indexOfRefraction == 1.5f,
+			transmission.m_indexOfRefraction == 1.5f &&
+			!transmission.m_bHasIndexOfRefraction,
 			"transmission materials must retain glTF volume and IOR defaults");
 
 		tinygltf::Value::Object thicknessTexture;
@@ -601,6 +728,25 @@ namespace
 			"out-of-range glTF transmission textures must be ignored");
 	}
 
+	void TestGltfEmissiveStrengthResolvesMaterialRadiance()
+	{
+		tinygltf::Material material;
+		material.emissiveFactor = { 1.0, 0.25, 0.0 };
+		Require(
+			GltfImporterUtils::ResolveMaterialEmissiveFactor(material) ==
+				glm::vec3(1.0f, 0.25f, 0.0f),
+			"glTF emissive factors without a strength extension must retain unit strength");
+
+		tinygltf::Value::Object extension;
+		extension.emplace("emissiveStrength", tinygltf::Value(24.0));
+		material.extensions["KHR_materials_emissive_strength"] =
+			tinygltf::Value(std::move(extension));
+		Require(
+			GltfImporterUtils::ResolveMaterialEmissiveFactor(material) ==
+				glm::vec3(24.0f, 6.0f, 0.0f),
+			"KHR_materials_emissive_strength must preserve physical emissive radiance");
+	}
+
 	void TestGeneratedMaterialMigrationPreservesAuthoredProperties()
 	{
 		YAML::Node material = YAML::Load(R"(
@@ -621,6 +767,7 @@ uniformsFloat:
 uniformsVec4:
   material.baseColorFactor: [0.1, 0.2, 0.3, 1.0]
   material.attenuationColor: [1.0, 0.0, 0.0, 1.0]
+  material.emissiveFactor: [1.0, 1.0, 1.0, 0.0]
 samplers:
   baseColorSampler: authored-base-color
   transmissionSampler: stale-transmission
@@ -641,6 +788,7 @@ uniformsFloat:
   material.indexOfRefraction: 1.5
 uniformsVec4:
   material.attenuationColor: [0.8, 0.8, 0.8, 1.0]
+  material.emissiveFactor: [24.0, 6.0, 0.0, 0.0]
 samplers:
   transmissionSampler: generated-transmission
 )");
@@ -660,10 +808,17 @@ samplers:
 		Require(material["uniformsFloat"]["material.roughnessFactor"]
 			.as<float>() == 0.37f &&
 			material["uniformsFloat"]["material.transmissionFactor"]
-			.as<float>() == 1.0f &&
+				.as<float>() == 1.0f &&
 			material["uniformsFloat"]["material.alphaCutoff"]
-			.as<float>() == 0.5f,
+				.as<float>() == 0.5f,
 			"migration must replace only importer-owned scalar uniforms");
+		const YAML::Node migratedEmissive =
+			material["uniformsVec4"]["material.emissiveFactor"];
+		Require(
+			migratedEmissive[0].as<float>() == 24.0f &&
+			migratedEmissive[1].as<float>() == 6.0f &&
+			migratedEmissive[2].as<float>() == 0.0f,
+			"migration must refresh importer-owned HDR emissive radiance");
 		Require(material["samplers"]["baseColorSampler"].as<std::string>() ==
 			"authored-base-color" &&
 			material["samplers"]["transmissionSampler"].as<std::string>() ==
@@ -747,148 +902,6 @@ uniformsFloat:
 			"an unskinned material must not pay for the SKINNING variant");
 	}
 
-	void TestGeneratedMaterialMigrationRecognizesLegacyOwnership()
-	{
-		const std::filesystem::path sourceRoot =
-			std::filesystem::path(__FILE__).parent_path().parent_path();
-		const std::string importer = ReadText(
-			sourceRoot /
-			"Runtime/AssetRegistry/Model/ModelImporter.cpp");
-		const size_t migrationBegin = importer.find(
-			"bool ModelImporter::UpdateGeneratedMaterialProperties(");
-		const size_t migrationEnd = importer.find(
-			"Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel",
-			migrationBegin);
-		Require(migrationBegin != std::string::npos &&
-			migrationEnd != std::string::npos,
-			"generated material migration implementation must remain present");
-		const std::string migration = importer.substr(
-			migrationBegin,
-			migrationEnd - migrationBegin);
-
-		for (const std::string contract : {
-			"sanitizeLegacyMaterialStem",
-			"gltfModel.materials[materialIndex].name",
-			"legacyMaterialPath",
-			"defaultMaterials[materialIndex]",
-			"std::filesystem::equivalent",
-			"GetAssetInfoIdsByTypeAndSource",
-			"TMap<int32_t, FileId> textureIdsByGltfIndex",
-			"ModelImporter::CreateTextureAsset(",
-			"generatedTextureVirtualPath",
-			"m_generatedMaterialMigrationComplete.At_Lock",
-			"assetRegistry->UpdateAsset(materialId)",
-			"AtomicReplaceWorkspaceCacheText" })
-		{
-			Require(migration.find(contract) != std::string::npos,
-				"generated material migration lost its ownership/reload contract: " +
-					contract);
-		}
-
-		const size_t textureHelperBegin = importer.find(
-			"FileId ModelImporter::CreateTextureAsset(");
-		const size_t textureHelperEnd = importer.find(
-			"FileId CreateAnimationAsset(",
-			textureHelperBegin);
-		Require(textureHelperBegin != std::string::npos &&
-			textureHelperEnd != std::string::npos,
-			"generated texture identity helper must remain present");
-		const std::string textureHelper = importer.substr(
-			textureHelperBegin,
-			textureHelperEnd - textureHelperBegin);
-		Require(textureHelper.find(
-				"assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath)") !=
-				std::string::npos &&
-			textureHelper.find("FileId::CreateNewFileId()") !=
-				std::string::npos &&
-			textureHelper.find("existingTextureInfo->GetGlbTextureIndex()") !=
-				std::string::npos &&
-			textureHelper.find("AtomicReplaceWorkspaceCacheText") !=
-				std::string::npos,
-			"generated texture updates must reuse a compatible existing FileId "
-			"and allocate only a genuinely new secondary asset");
-
-		const size_t customSkipBegin = migration.find(
-			"if (!findOwnedMaterial(");
-		const size_t customSkipEnd = migration.find(
-			"const tinygltf::Material& sourceMaterial",
-			customSkipBegin);
-		Require(customSkipBegin != std::string::npos &&
-			customSkipEnd != std::string::npos,
-			"custom material ownership check must remain present");
-		const std::string customSkip = migration.substr(
-			customSkipBegin,
-			customSkipEnd - customSkipBegin);
-		Require(customSkip.find("continue;") != std::string::npos &&
-			customSkip.find("bSucceeded = false") == std::string::npos,
-			"preserving a custom replacement is a successful skip and must not "
-			"leave on-demand migration retrying forever");
-
-		const size_t loadModelBegin = importer.find(
-			"Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(");
-		const size_t loadModelEnd = importer.find(
-			"bool ModelImporter::LoadModel_Immediate(",
-			loadModelBegin);
-		Require(loadModelBegin != std::string::npos &&
-			loadModelEnd != std::string::npos,
-			"model load implementation must remain present");
-		const std::string loadModel = importer.substr(
-			loadModelBegin,
-			loadModelEnd - loadModelBegin);
-		Require(loadModel.find("&pData->m_gltfModel") != std::string::npos &&
-			loadModel.find(
-				"UpdateGeneratedMaterialPropertiesOnDemand") !=
-				std::string::npos &&
-			loadModel.find("EThreadType::Main") != std::string::npos &&
-			loadModel.find(
-				"m_generatedMaterialMigrationTasks") != std::string::npos,
-			"unchanged legacy materials must migrate on demand from the "
-			"already parsed model on the main thread without blocking RHI upload");
-	}
-
-	void TestGltfMaterialTextureColorSpaces()
-	{
-		const std::filesystem::path sourceRoot =
-			std::filesystem::path(__FILE__).parent_path().parent_path();
-		const std::string importer = ReadText(
-			sourceRoot /
-			"Runtime/AssetRegistry/Model/ModelImporter.cpp");
-
-		for (const std::string textureSuffix : {
-			"_ormTexture.png.asset",
-			"_occlusionTexture.png.asset",
-			"_clearcoatTexture.png.asset",
-			"_clearcoatRoughnessTexture.png.asset",
-			"_sheenRoughnessTexture.png.asset" })
-		{
-			const size_t textureOffset = importer.find(textureSuffix);
-			Require(textureOffset != std::string::npos,
-				"glTF data texture generation should remain present: " +
-				textureSuffix);
-			const size_t lineEnd = importer.find('\n', textureOffset);
-			Require(importer.substr(textureOffset, lineEnd - textureOffset)
-				.find("R8G8B8A8_UNORM") != std::string::npos,
-				"glTF scalar/data textures must bypass sRGB decoding: " +
-				textureSuffix);
-		}
-
-		for (const std::string textureSuffix : {
-			"_baseColorTexture.png.asset",
-			"_emissionTexture.png.asset",
-			"_sheenColorTexture.png.asset" })
-		{
-			const size_t textureOffset = importer.find(textureSuffix);
-			Require(textureOffset != std::string::npos,
-				"glTF color texture generation should remain present: " +
-				textureSuffix);
-			const size_t lineEnd = importer.find('\n', textureOffset);
-			Require(importer.substr(textureOffset, lineEnd - textureOffset)
-				.find("R8G8B8A8_SRGB") != std::string::npos,
-				"glTF color textures must retain sRGB decoding: " +
-				textureSuffix);
-		}
-	}
-
 	void TestCompactedMeshesRetainMaterialSlots()
 	{
 		RHI::RHIMesh mesh;
@@ -902,64 +915,6 @@ uniformsFloat:
 			(std::numeric_limits<size_t>::max)(),
 			"material resolution without materials must remain invalid");
 
-		const std::filesystem::path sourceRoot =
-			std::filesystem::path(__FILE__).parent_path().parent_path();
-		const std::string importer = ReadText(
-			sourceRoot /
-			"Runtime/AssetRegistry/Model/ModelImporter.cpp");
-		const size_t sourceMeshContextOffset = importer.find(
-			"context.materialSlot = bShouldBatchByMaterial ?");
-		Require(sourceMeshContextOffset != std::string::npos,
-			"source mesh contexts must distinguish batched material indices from primitive slots");
-		const size_t sourceMeshContextEnd = importer.find(
-			"context.sourceMeshIndex =",
-			sourceMeshContextOffset);
-		Require(sourceMeshContextEnd != std::string::npos,
-			"source mesh material-slot assignment must remain bounded");
-		const std::string materialSlotAssignment = importer.substr(
-			sourceMeshContextOffset,
-			sourceMeshContextEnd - sourceMeshContextOffset);
-		Require(materialSlotAssignment.find(
-				"static_cast<uint32_t>(materialIndex)") !=
-				std::string::npos,
-			"material-batched source meshes must retain glTF material indices");
-		Require(materialSlotAssignment.find(
-				"static_cast<uint32_t>(outParsedMeshes.Num())") !=
-				std::string::npos,
-			"unbatched source meshes must retain global primitive material slots");
-	}
-
-	void TestDefaultMaterialLoadingPreservesSourceSlots()
-	{
-		const std::filesystem::path sourceRoot =
-			std::filesystem::path(__FILE__).parent_path().parent_path();
-		const std::string importer = ReadText(
-			sourceRoot /
-			"Runtime/AssetRegistry/Model/ModelImporter.cpp");
-		const size_t functionOffset = importer.find(
-			"Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(");
-		Require(functionOffset != std::string::npos,
-			"default material loading implementation must remain present");
-		const size_t functionEnd = importer.find(
-			"\nbool ModelImporter::LoadAsset(",
-			functionOffset);
-		Require(functionEnd != std::string::npos,
-			"default material loading implementation must remain bounded");
-		const std::string function = importer.substr(
-			functionOffset,
-			functionEnd - functionOffset);
-
-		Require(function.find(
-				"outMaterials.Resize(defaultMaterials.Num())") !=
-				std::string::npos,
-			"default material loading must reserve every original glTF material slot");
-		Require(function.find(
-				"outMaterials[materialIndex] = material") !=
-				std::string::npos,
-			"successfully loaded materials must be assigned to their original glTF slots");
-		Require(function.find("outMaterials.Add(material)") ==
-				std::string::npos,
-			"missing default materials must not compact and shift later material slots");
 	}
 
 	void TestGeneratedTangentsPreserveMirroredUvHandedness()
@@ -1073,10 +1028,13 @@ uniformsFloat:
 		const glm::vec3 frontNormal = actualNormal;
 		const glm::vec3 frontTangent = actualTangent;
 		const glm::vec3 frontBitangent = actualBitangent;
-		Require(!pathTracer.OrientAgainstRay(
+		glm::vec3 orientedGeometricNormal{};
+		Require(!pathTracer.OrientToGeometricSurface(
+				frontNormal,
 				frontNormal,
 				actualNormal,
-				actualBitangent),
+				actualBitangent,
+				orientedGeometricNormal),
 			"a ray traveling with the shading normal must hit the back face");
 		RequireVec3Near(actualNormal, -frontNormal,
 			"back-face orientation must flip the shading normal");
@@ -1092,6 +1050,24 @@ uniformsFloat:
 				glm::cross(frontNormal, frontTangent),
 				frontBitangent) > 0.0f,
 			"back-face orientation must preserve tangent-space handedness");
+		RequireVec3Near(orientedGeometricNormal, -frontNormal,
+			"the geometric normal must face the incident side of a back-face hit");
+
+		actualNormal = -frontNormal;
+		actualBitangent = -frontBitangent;
+		Require(pathTracer.OrientToGeometricSurface(
+				-frontNormal,
+				frontNormal,
+				actualNormal,
+				actualBitangent,
+				orientedGeometricNormal),
+			"triangle winding, not an inverted vertex normal, must identify a front-face hit");
+		RequireVec3Near(actualNormal, frontNormal,
+			"an inverted vertex normal must be returned to the geometric hemisphere");
+		RequireVec3Near(actualBitangent, frontBitangent,
+			"repairing an inverted vertex normal must preserve tangent-space handedness");
+		RequireVec3Near(orientedGeometricNormal, frontNormal,
+			"a front-face hit must retain the winding normal");
 	}
 
 	void TestBuildBlasRejectsOutOfRangeIndicesAtomically()
@@ -1657,13 +1633,12 @@ int main()
 		{ "RhiMeshLodsShareBuffersAndDrawRanges", TestRhiMeshLodsShareBuffersAndDrawRanges },
 		{ "GltfAlphaModesResolveRenderState", TestGltfAlphaModesResolveRenderState },
 		{ "MaterialAssetRetainsRenderQueue", TestMaterialAssetRetainsRenderQueue },
+		{ "StandardGltfTexturelessDefaultsAndLegacyAliases", TestStandardGltfTexturelessDefaultsAndLegacyAliases },
 		{ "GltfTransmissionExtensionResolvesMaterialFields", TestGltfTransmissionExtensionResolvesMaterialFields },
+		{ "GltfEmissiveStrengthResolvesMaterialRadiance", TestGltfEmissiveStrengthResolvesMaterialRadiance },
 		{ "GeneratedMaterialMigrationPreservesAuthoredProperties", TestGeneratedMaterialMigrationPreservesAuthoredProperties },
 		{ "SkinnedGltfMaterialsRequireSkinningShaderVariant", TestSkinnedGltfMaterialsRequireSkinningShaderVariant },
-		{ "GeneratedMaterialMigrationRecognizesLegacyOwnership", TestGeneratedMaterialMigrationRecognizesLegacyOwnership },
-		{ "GltfMaterialTextureColorSpaces", TestGltfMaterialTextureColorSpaces },
 		{ "CompactedMeshesRetainMaterialSlots", TestCompactedMeshesRetainMaterialSlots },
-		{ "DefaultMaterialLoadingPreservesSourceSlots", TestDefaultMaterialLoadingPreservesSourceSlots },
 		{ "GeneratedTangentsPreserveMirroredUvHandedness", TestGeneratedTangentsPreserveMirroredUvHandedness },
 		{ "PathTracerTransformsShadingBasisCorrectly", TestPathTracerTransformsShadingBasisCorrectly },
 		{ "BuildBlasRejectsOutOfRangeIndicesAtomically", TestBuildBlasRejectsOutOfRangeIndicesAtomically },

@@ -17,7 +17,7 @@ glslCompute: |
   const uint NumSamples = 1024;
   const float InvNumSamples = 1.0 / float(NumSamples);
 
-  layout(set=0, binding=0, rg16f) restrict writeonly uniform image2D dst;
+  layout(set=0, binding=0, rgba16f) restrict writeonly uniform image2D dst;
   
   // Sample i-th point from Hammersley point set of NumSamples points total.
   vec2 SampleHammersley(uint i)
@@ -28,8 +28,11 @@ glslCompute: |
   layout(local_size_x=32, local_size_y=32, local_size_z=1) in;
   void main(void)
   {
-    float cosLo = gl_GlobalInvocationID.x / float(imageSize(dst).x);
-    float roughness = gl_GlobalInvocationID.y / float(imageSize(dst).y);
+    vec2 lutUv =
+      (vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) /
+      vec2(imageSize(dst));
+    float cosLo = lutUv.x;
+    float roughness = lutUv.y;
   
     // Make sure viewing angle is non-zero to avoid divisions by zero (and subsequently NaNs).
     cosLo = max(cosLo, Epsilon);
@@ -42,6 +45,7 @@ glslCompute: |
     // For derivation see: "Moving Frostbite to Physically Based Rendering 3.0", SIGGRAPH 2014, section 4.9.2.
     float DFG1 = 0;
     float DFG2 = 0;
+    float sheenDirectionalAlbedo = 0;
   
     for(uint i = 0; i < NumSamples; i++) 
     {
@@ -58,15 +62,43 @@ glslCompute: |
       float cosLoLh = max(dot(Lo, Lh), 0.0);
   
       if(cosLi > 0.0) 
-        {
-        float G  = GeometrySchlickGGX_IBL(cosLi, cosLo, roughness);
+      {
+        float G = GeometrySmithGGXCorrelated(
+          cosLi,
+          cosLo,
+          roughness);
         float Gv = G * cosLoLh / (cosLh * cosLo);
         float Fc = pow(1.0 - cosLoLh, 5);
   
         DFG1 += (1 - Fc) * Gv;
         DFG2 += Fc * Gv;
       }
+
+      vec3 sheenHalfVector = SampleCharlie(u.x, u.y, roughness);
+      vec3 sheenLi = 2.0 * dot(Lo, sheenHalfVector) *
+        sheenHalfVector - Lo;
+      float sheenCosLi = sheenLi.z;
+      if(sheenCosLi > 0.0)
+      {
+        float sheenCosLh = max(sheenHalfVector.z, Epsilon);
+        float sheenCosLoLh = max(
+          dot(Lo, sheenHalfVector),
+          0.0);
+        sheenDirectionalAlbedo +=
+          4.0 * VisibilitySheen(
+            sheenCosLi,
+            cosLo,
+            roughness) *
+          sheenCosLi * sheenCosLoLh / sheenCosLh;
+      }
     }
   
-    imageStore(dst, ivec2(gl_GlobalInvocationID), vec4(DFG1, DFG2, 0, 0) * InvNumSamples);
+    imageStore(
+      dst,
+      ivec2(gl_GlobalInvocationID),
+      vec4(
+        DFG1 * InvNumSamples,
+        DFG2 * InvNumSamples,
+        clamp(sheenDirectionalAlbedo * InvNumSamples, 0.0, 1.0),
+        0.0));
   }

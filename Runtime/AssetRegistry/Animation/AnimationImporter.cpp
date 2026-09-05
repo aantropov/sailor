@@ -2,6 +2,7 @@
 #include "AnimationClipSampler.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Model/GltfImporterUtils.h"
+#include "Containers/Hash.h"
 #include <tiny_gltf.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -381,32 +382,6 @@ namespace
 			std::isfinite(transform.m_rotation.w);
 	}
 
-	bool IsMatrixFinite(const glm::mat4& matrix)
-	{
-		for (glm::length_t column = 0; column < 4; ++column)
-		{
-			if (!Math::AllFinite(matrix[column]))
-			{
-				return false;
-			}
-		}
-		return true;
-	}
-
-	void AddSkeletonHashByte(uint64_t& hash, uint8_t value)
-	{
-		constexpr uint64_t FnvPrime = 1099511628211ull;
-		hash ^= value;
-		hash *= FnvPrime;
-	}
-
-	void AddSkeletonHashUint32(uint64_t& hash, uint32_t value)
-	{
-		for (uint32_t shift = 0; shift < 32; shift += 8)
-		{
-			AddSkeletonHashByte(hash, static_cast<uint8_t>((value >> shift) & 0xff));
-		}
-	}
 }
 
 AnimationImporter::AnimationImporter(AnimationAssetInfoHandler* infoHandler)
@@ -627,21 +602,17 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				parentBoneIndices[boneIndex] = parentBone;
 			}
 
-			constexpr uint64_t FnvOffsetBasis = 14695981039346656037ull;
-			uint64_t skeletonSignature = FnvOffsetBasis;
-			AddSkeletonHashUint32(skeletonSignature, static_cast<uint32_t>(numBones));
+			uint64_t skeletonSignature = Fnv1aOffsetBasis;
+			HashValue(skeletonSignature, static_cast<uint32_t>(numBones));
 			for (size_t boneIndex = 0; boneIndex < numBones; ++boneIndex)
 			{
-				AddSkeletonHashUint32(
+				HashValue(
 					skeletonSignature,
 					static_cast<uint32_t>(parentBoneIndices[boneIndex] + 1));
 				const auto& jointNode = gltfModel.nodes[
 					static_cast<size_t>(gltfSkin.joints[boneIndex])];
-				for (char character : jointNode.name)
-				{
-					AddSkeletonHashByte(skeletonSignature, static_cast<uint8_t>(character));
-				}
-				AddSkeletonHashByte(skeletonSignature, 0);
+				HashString(skeletonSignature, jointNode.name);
+				HashValue(skeletonSignature, uint8_t{ 0u });
 			}
 
 			TVector<Math::Transform> base(numNodes);
@@ -718,7 +689,7 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 							gltfSkin.joints[static_cast<size_t>(parentBoneIndex)]);
 						localMatrix = glm::inverse(global[parentNodeIndex].Matrix()) * localMatrix;
 					}
-					Math::Transform localTransform = IsMatrixFinite(localMatrix) ?
+					Math::Transform localTransform = Math::AllFinite(localMatrix) ?
 						Math::Transform::FromMatrix(localMatrix) : Math::Transform::Identity;
 					outPose[poseOffset + boneIndex] = IsTransformFinite(localTransform) ?
 						localTransform : Math::Transform::Identity;

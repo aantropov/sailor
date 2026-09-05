@@ -10,9 +10,12 @@
 #include "AssetRegistry/Animation/AnimationControllerImporter.h"
 #include "AssetRegistry/Audio/AudioAssetInfo.h"
 #include "AssetRegistry/Audio/AudioImporter.h"
+#include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
+#include "AssetRegistry/GlobalIllumination/GIProbesAssetInfo.h"
+#include "AssetRegistry/GlobalIllumination/GIProbesImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Core/Reflection.h"
@@ -55,6 +58,7 @@
 #include "Workspace/WorkspaceModuleManager.h"
 #include "Workspace/WorkspacePathEncoding.h"
 #include "YamlExceptionBoundary.h"
+#include <atomic>
 
 #if defined(_WIN32)
 #include <timeapi.h>
@@ -65,6 +69,13 @@ using namespace Sailor::RHI;
 
 App* App::s_pInstance = nullptr;
 std::string App::s_workspace = "../";
+
+namespace
+{
+	Settings::GraphicsSettingsState g_graphicsSettingsState{};
+	std::atomic<Settings::ERenderStatsMode> g_renderStatsMode{ Settings::ERenderStatsMode::None };
+	std::atomic<RHI::ESceneViewRenderMode> g_editorRenderMode{ RHI::ESceneViewRenderMode::Lit };
+}
 
 App::~App() = default;
 
@@ -82,6 +93,53 @@ const Workspace::WorkspaceContext& App::GetWorkspaceContext()
 {
 	check(s_pInstance);
 	return s_pInstance->m_workspaceContext;
+}
+
+const Settings::GraphicsSettings& App::GetGraphicsSettings()
+{
+	return g_graphicsSettingsState.m_projectSettings;
+}
+
+const Settings::GraphicsQualityProfile& App::GetActiveGraphicsSettings()
+{
+	return g_graphicsSettingsState.GetActiveProfile();
+}
+
+Settings::EGraphicsQualitySelection App::GetSelectedGraphicsQuality()
+{
+	return g_graphicsSettingsState.m_editorSettings.m_selectedQuality;
+}
+
+const Settings::EditorGraphicsSettings& App::GetEditorGraphicsSettings()
+{
+	return g_graphicsSettingsState.m_editorSettings;
+}
+
+Settings::EGraphicsQuality App::GetActiveGraphicsQuality()
+{
+	return g_graphicsSettingsState.m_activeQuality;
+}
+
+Settings::ERenderStatsMode App::GetRenderStatsMode()
+{
+	return g_renderStatsMode.load(std::memory_order_acquire);
+}
+
+bool App::SetRenderStatsMode(Settings::ERenderStatsMode mode)
+{
+	g_renderStatsMode.store(mode, std::memory_order_release);
+	return true;
+}
+
+RHI::ESceneViewRenderMode App::GetEditorRenderMode()
+{
+	return g_editorRenderMode.load(std::memory_order_acquire);
+}
+
+bool App::SetEditorRenderMode(RHI::ESceneViewRenderMode mode)
+{
+	g_editorRenderMode.store(mode, std::memory_order_release);
+	return true;
 }
 
 namespace
@@ -368,6 +426,9 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	EditorRuntime::ResetForAppLifecycle();
+	g_graphicsSettingsState = Settings::GraphicsSettingsState{};
+	g_renderStatsMode.store(Settings::ERenderStatsMode::None, std::memory_order_release);
+	g_editorRenderMode.store(RHI::ESceneViewRenderMode::Lit, std::memory_order_release);
 
 	{
 		const std::lock_guard<std::mutex> shutdownLock(g_engineShutdownMutex);
@@ -430,6 +491,47 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		s_pInstance->s_workspace += "/";
 	}
 
+	g_graphicsSettingsState = Settings::LoadGraphicsSettings(
+		s_pInstance->m_workspaceContext,
+		params.m_bIsEditor);
+	g_renderStatsMode.store(
+		params.m_bIsEditor
+			? g_graphicsSettingsState.m_editorSettings.m_statsMode
+			: Settings::ERenderStatsMode::None,
+		std::memory_order_release);
+	if (g_graphicsSettingsState.m_projectLoadStatus == Settings::EGraphicsSettingsLoadStatus::Loaded ||
+		g_graphicsSettingsState.m_projectLoadStatus == Settings::EGraphicsSettingsLoadStatus::Missing)
+	{
+		SAILOR_LOG("%s", g_graphicsSettingsState.m_projectDiagnostic.c_str());
+	}
+	else
+	{
+		SAILOR_LOG_ERROR("%s", g_graphicsSettingsState.m_projectDiagnostic.c_str());
+	}
+	if (params.m_bIsEditor)
+	{
+		if (g_graphicsSettingsState.m_editorLoadStatus == Settings::EGraphicsSettingsLoadStatus::Loaded ||
+			g_graphicsSettingsState.m_editorLoadStatus == Settings::EGraphicsSettingsLoadStatus::Missing)
+		{
+			SAILOR_LOG("%s", g_graphicsSettingsState.m_editorDiagnostic.c_str());
+		}
+		else
+		{
+			SAILOR_LOG_ERROR("%s", g_graphicsSettingsState.m_editorDiagnostic.c_str());
+		}
+	}
+	const std::string activeQualityName(
+		magic_enum::enum_name(g_graphicsSettingsState.m_activeQuality));
+	const std::string renderStatsModeName(
+		magic_enum::enum_name(GetRenderStatsMode()));
+	SAILOR_LOG(
+		"Active graphics quality: %s (FPS cap %u, MSAA %ux, PCF shadow bias %.3f, stats mode %s).",
+		activeQualityName.c_str(),
+		g_graphicsSettingsState.GetActiveProfile().m_fpsCap,
+		g_graphicsSettingsState.GetActiveProfile().m_msaaSamples,
+		g_graphicsSettingsState.GetActiveProfile().m_shadowBias,
+		renderStatsModeName.c_str());
+
 	bool bWorkspaceModuleActivationFailed = false;
 	s_pInstance->m_pWorkspaceModuleManager = TUniquePtr<Workspace::WorkspaceModuleManager>::Make();
 	const auto& workspaceModuleResult = s_pInstance->m_pWorkspaceModuleManager->Load(
@@ -473,7 +575,16 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		className = std::format("SailorEditor PID{}", ::GetCurrentThreadId());
 	}
 
-	s_pInstance->m_pMainWindow->Create(className.c_str(), className.c_str(), 1024, 768, false, false, params.m_editorHwnd);
+	// The editor renders continuously into an embedded viewport. Keep its hidden
+	// swapchain synchronized so an idle Scene View does not spin at uncapped FPS.
+	s_pInstance->m_pMainWindow->Create(
+		className.c_str(),
+		className.c_str(),
+		1024,
+		768,
+		false,
+		params.m_bIsEditor,
+		params.m_editorHwnd);
 
 #if defined(_WIN32)
 	if (params.m_bIsEditor)
@@ -490,7 +601,10 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
 	s_pInstance->AddSubmodule(TSubmodule<AudioSystem>::Make(params.m_bForceNullAudioDevice));
 	s_pInstance->AddSubmodule(TSubmodule<Physics::JoltRuntime>::Make());
-	auto renderer = s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bEnableRenderValidationLayers));
+	auto renderer = s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(
+		s_pInstance->m_pMainWindow.GetRawPtr(),
+		Settings::ToMsaaSamples(GetActiveGraphicsSettings().m_msaaSamples),
+		bEnableRenderValidationLayers));
 	if (!renderer->IsInitialized())
 	{
 		SAILOR_LOG_ERROR("App initialization aborted: renderer backend failed to initialize.");
@@ -507,8 +621,11 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	auto animationControllerInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationControllerAssetInfoHandler>::Make(assetRegistry));
 	auto animationSetInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationSetAssetInfoHandler>::Make(assetRegistry));
 	auto audioInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AudioAssetInfoHandler>::Make(assetRegistry));
+	s_pInstance->AddSubmodule(
+		TSubmodule<LandscapeVegetationAssetInfoHandler>::Make(assetRegistry));
 	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
 	auto frameGraphInfoHandler = s_pInstance->AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
+	auto giProbesInfoHandler = s_pInstance->AddSubmodule(TSubmodule<GIProbesAssetInfoHandler>::Make(assetRegistry));
 	auto prefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<PrefabAssetInfoHandler>::Make(assetRegistry));
 	auto worldPrefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<WorldPrefabAssetInfoHandler>::Make(assetRegistry));
 
@@ -520,6 +637,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<AudioImporter>::Make(audioInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<GIProbesImporter>::Make(giProbesInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphBuilder>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<PrefabImporter>::Make(prefabInfoHandler));
@@ -547,7 +665,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
-	auto engineLoop = s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
+	auto engineLoop = s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make(
+		GetActiveGraphicsSettings().m_fpsCap));
 
 #ifdef SAILOR_EDITOR
 	AssetRegistry::WriteTextFile(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml", Reflection::ExportEngineTypes());
@@ -725,6 +844,7 @@ void App::Start()
 		{
 			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
 			EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
+			EditorRuntime::UpdateRuntimeGIWorkAllowanceOnEngineThread();
 		}
 
 		if (!pEngineLoop->GetWorlds().IsEmpty() &&
@@ -922,8 +1042,7 @@ bool App::UpdateAsset(const char* strFileId)
 				return false;
 			}
 
-			FileId fileId;
-			fileId.Deserialize(YAML::Node(fileIdValue));
+			const FileId fileId(fileIdValue);
 			if (!fileId)
 			{
 				return false;
@@ -1088,7 +1207,7 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor, EThreadType::Physics, EThreadType::Audio });
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
 		s_pInstance->m_pendingAssetReloadTask.Clear();
 	}
 
@@ -1115,6 +1234,7 @@ void App::Shutdown()
 	}
 
 	RemoveSubmodule<FrameGraphImporter>();
+	RemoveSubmodule<GIProbesImporter>();
 	RemoveSubmodule<MaterialImporter>();
 	RemoveSubmodule<ModelImporter>();
 	RemoveSubmodule<AnimationImporter>();
@@ -1151,6 +1271,9 @@ void App::Shutdown()
 
 	delete s_pInstance;
 	s_pInstance = nullptr;
+	g_graphicsSettingsState = Settings::GraphicsSettingsState{};
+	g_renderStatsMode.store(Settings::ERenderStatsMode::None, std::memory_order_release);
+	g_editorRenderMode.store(RHI::ESceneViewRenderMode::Lit, std::memory_order_release);
 }
 
 bool App::IsRendererInitialized()

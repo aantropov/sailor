@@ -1,0 +1,358 @@
+#include "GlobalIllumination/GIProbesData.h"
+
+#include "Containers/Hash.h"
+#include "Math/Math.h"
+
+#include <cmath>
+#include <limits>
+
+using namespace Sailor;
+
+namespace
+{
+	constexpr uint32_t MaxProbeCount = 16u * 1024u * 1024u;
+	constexpr uint32_t MaxBrickCount = 1024u * 1024u;
+
+}
+
+uint64_t Sailor::ComputeGIProbesRepresentationHash(
+	uint32_t formatVersion,
+	uint32_t shOrder,
+	EGIProbesCompression compression) noexcept
+{
+	uint64_t hash = Fnv1aOffsetBasis;
+	HashValue(hash, formatVersion);
+	HashValue(hash, shOrder);
+	const uint32_t compressionValue = static_cast<uint32_t>(compression);
+	HashValue(hash, compressionValue);
+	const uint32_t coefficientCount =
+		GIProbeSphericalHarmonicsCoefficientCount;
+	HashValue(hash, coefficientCount);
+	const uint32_t visibilityDirectionCount =
+		GIProbeVisibilityDirectionCount;
+	HashValue(hash, visibilityDirectionCount);
+	const uint32_t environmentVisibilityDirectionCount =
+		GIProbeVisibilityDirectionCount;
+	HashValue(hash, environmentVisibilityDirectionCount);
+	return hash;
+}
+
+uint64_t Sailor::ComputeGIProbesLayoutHash(
+	const GIProbesData& data) noexcept
+{
+	uint64_t hash = Fnv1aOffsetBasis;
+	HashValues(
+		hash,
+		data.m_volumeMin.x,
+		data.m_volumeMin.y,
+		data.m_volumeMin.z,
+		data.m_volumeMax.x,
+		data.m_volumeMax.y,
+		data.m_volumeMax.z);
+	const uint32_t numBricks = static_cast<uint32_t>(data.m_bricks.Num());
+	const uint32_t numProbes = static_cast<uint32_t>(data.m_probes.Num());
+	HashValue(hash, numBricks);
+	HashValue(hash, numProbes);
+
+	for (const GIProbeBrick& brick : data.m_bricks)
+	{
+		HashValues(
+			hash,
+			brick.m_min.x,
+			brick.m_min.y,
+			brick.m_min.z,
+			brick.m_max.x,
+			brick.m_max.y,
+			brick.m_max.z);
+		HashValue(hash, brick.m_subdivisionLevel);
+		HashValue(hash, brick.m_firstProbeIndex);
+		HashValue(hash, brick.m_probeCount);
+		HashValue(hash, brick.m_probeCounts.x);
+		HashValue(hash, brick.m_probeCounts.y);
+		HashValue(hash, brick.m_probeCounts.z);
+	}
+
+	for (const GIProbe& probe : data.m_probes)
+	{
+		HashValues(
+			hash,
+			probe.m_position.x,
+			probe.m_position.y,
+			probe.m_position.z);
+	}
+
+	return hash;
+}
+
+float Sailor::CalculateGIProbeVisibilityMaxDistance(
+	const GIProbesData& data,
+	const GIProbeBrick& brick) noexcept
+{
+	const glm::uvec3 cellCounts = glm::max(
+		brick.m_probeCounts,
+		glm::uvec3(2u)) - glm::uvec3(1u);
+	const glm::vec3 cellExtent =
+		(brick.m_max - brick.m_min) / glm::vec3(cellCounts);
+	float cellDiagonal = glm::length(cellExtent);
+	if (!std::isfinite(cellDiagonal) || cellDiagonal <= 0.0f)
+	{
+		cellDiagonal = data.m_bakeSettings.m_maxRayDistance;
+	}
+
+	const float relocationAndSamplingMargin =
+		data.m_bakeSettings.m_minProbeSpacing * 0.45f +
+		data.m_bakeSettings.m_normalBias +
+		data.m_bakeSettings.m_viewBias;
+	return glm::clamp(
+		cellDiagonal + relocationAndSamplingMargin,
+		(std::min)(0.001f, data.m_bakeSettings.m_maxRayDistance),
+		data.m_bakeSettings.m_maxRayDistance);
+}
+
+bool GIProbesData::Validate(std::string& outDiagnostic) const
+{
+	outDiagnostic.clear();
+	if (m_formatVersion != GIProbesFormatVersion)
+	{
+		outDiagnostic = "unsupported GI probes data version";
+		return false;
+	}
+	if (m_shOrder != GIProbeSphericalHarmonicsOrder)
+	{
+		outDiagnostic = "only order-2 spherical harmonics are supported";
+		return false;
+	}
+	if (m_compression != EGIProbesCompression::Float32)
+	{
+		outDiagnostic = "unsupported GI probes coefficient compression";
+		return false;
+	}
+	if (m_stateName.empty() || m_bakerVersion.empty())
+	{
+		outDiagnostic =
+			"the GI probe data must identify its baked state and baker version";
+		return false;
+	}
+	if (!IsGIProbesBakerVersionSupported(m_bakerVersion))
+	{
+		outDiagnostic =
+			"the GI probe data uses obsolete visibility transport; use Bake New";
+		return false;
+	}
+	if (!std::isfinite(m_diagnostics.m_averageValidity) ||
+		m_diagnostics.m_averageValidity < 0.0f ||
+		m_diagnostics.m_averageValidity > 1.0f ||
+		!std::isfinite(m_diagnostics.m_bakeDurationSeconds) ||
+		m_diagnostics.m_bakeDurationSeconds < 0.0f)
+	{
+		outDiagnostic = "the GI probe data has invalid bake diagnostics";
+		return false;
+	}
+	if (m_probes.IsEmpty() || m_probes.Num() > MaxProbeCount)
+	{
+		outDiagnostic = "probe count is zero or exceeds the supported limit";
+		return false;
+	}
+	if (m_bricks.IsEmpty() || m_bricks.Num() > MaxBrickCount)
+	{
+		outDiagnostic = "brick count is zero or exceeds the supported limit";
+		return false;
+	}
+	if (!Math::AllFinite(m_volumeMin) ||
+		!Math::AllFinite(m_volumeMax) ||
+		glm::any(glm::lessThanEqual(m_volumeMax, m_volumeMin)))
+	{
+		outDiagnostic = "the GI probe data has invalid bounds";
+		return false;
+	}
+	if (m_bakeSettings.m_raysPerProbe == 0u ||
+		m_bakeSettings.m_raysPerProbe > GIProbesMaxRaysPerProbe ||
+		m_bakeSettings.m_bounceCount == 0u ||
+		m_bakeSettings.m_bounceCount > GIProbesMaxBounceCount ||
+		m_bakeSettings.m_maxSubdivisionLevel >
+			GIProbesMaxSubdivisionLevel ||
+		!std::isfinite(m_bakeSettings.m_minProbeSpacing) ||
+		m_bakeSettings.m_minProbeSpacing <= 0.0f ||
+		!std::isfinite(m_bakeSettings.m_normalBias) ||
+		m_bakeSettings.m_normalBias < 0.0f ||
+		!std::isfinite(m_bakeSettings.m_viewBias) ||
+		m_bakeSettings.m_viewBias < 0.0f ||
+		!std::isfinite(m_bakeSettings.m_maxRayDistance) ||
+		m_bakeSettings.m_maxRayDistance <= 0.0f ||
+		!std::isfinite(m_bakeSettings.m_skyIndirectIntensity) ||
+		m_bakeSettings.m_skyIndirectIntensity < 0.0f)
+	{
+		outDiagnostic = "the GI probe data has invalid bake settings";
+		return false;
+	}
+
+	uint64_t coveredProbeCount = 0u;
+	for (const GIProbeBrick& brick : m_bricks)
+	{
+		if (!Math::AllFinite(brick.m_min) ||
+			!Math::AllFinite(brick.m_max) ||
+			glm::any(glm::lessThanEqual(brick.m_max, brick.m_min)) ||
+			glm::any(glm::lessThan(brick.m_min, m_volumeMin)) ||
+			glm::any(glm::greaterThan(brick.m_max, m_volumeMax)) ||
+			brick.m_subdivisionLevel > m_bakeSettings.m_maxSubdivisionLevel ||
+			brick.m_probeCount == 0u ||
+			brick.m_probeCounts.x == 0u ||
+			brick.m_probeCounts.y == 0u ||
+			brick.m_probeCounts.z == 0u)
+		{
+			outDiagnostic = "the adaptive brick table is invalid or non-contiguous";
+			return false;
+		}
+
+		const uint64_t probeCountXY =
+			static_cast<uint64_t>(brick.m_probeCounts.x) *
+			brick.m_probeCounts.y;
+		if (probeCountXY >
+			(std::numeric_limits<uint64_t>::max)() /
+			brick.m_probeCounts.z)
+		{
+			outDiagnostic = "an adaptive brick probe-grid size overflows the format";
+			return false;
+		}
+		const uint64_t expectedBrickProbeCount =
+			probeCountXY * brick.m_probeCounts.z;
+		if (expectedBrickProbeCount != brick.m_probeCount ||
+			brick.m_firstProbeIndex != coveredProbeCount ||
+			static_cast<uint64_t>(brick.m_firstProbeIndex) +
+				brick.m_probeCount > m_probes.Num())
+		{
+			outDiagnostic = "the adaptive brick table is invalid or non-contiguous";
+			return false;
+		}
+		coveredProbeCount += brick.m_probeCount;
+	}
+	if (coveredProbeCount != m_probes.Num())
+	{
+		outDiagnostic = "the adaptive brick table does not cover every probe exactly once";
+		return false;
+	}
+	if (m_diagnostics.m_invalidProbeCount > m_probes.Num() ||
+		m_diagnostics.m_relocatedProbeCount > m_probes.Num())
+	{
+		outDiagnostic = "the GI probe diagnostic counts exceed the probe count";
+		return false;
+	}
+
+	for (const GIProbe& probe : m_probes)
+	{
+		constexpr uint32_t KnownProbeFlags =
+			EGIProbeFlag::Valid |
+			EGIProbeFlag::Relocated |
+			GIProbeBlockedDirectionMask;
+		if (!Math::AllFinite(probe.m_position) ||
+			!Math::AllFinite(probe.m_relocationOffset) ||
+			glm::any(glm::lessThan(probe.m_position, m_volumeMin)) ||
+			glm::any(glm::greaterThan(probe.m_position, m_volumeMax)) ||
+			!std::isfinite(probe.m_validity) ||
+			probe.m_validity < 0.0f ||
+			probe.m_validity > 1.0f ||
+			(probe.m_flags & ~KnownProbeFlags) != 0u)
+		{
+			outDiagnostic =
+				"a probe has invalid position, relocation, validity, or flags";
+			return false;
+		}
+		for (const glm::vec3& coefficient : probe.m_irradiance)
+		{
+			if (!Math::AllFinite(coefficient))
+			{
+				outDiagnostic = "a probe has a non-finite irradiance coefficient";
+				return false;
+			}
+		}
+		for (const glm::vec2& visibility : probe.m_visibility)
+		{
+			if (!Math::AllFinite(visibility) ||
+				visibility.x < 0.0f ||
+				visibility.y < 0.0f)
+			{
+				outDiagnostic = "a probe has invalid visibility moments";
+				return false;
+			}
+		}
+		for (const float environmentVisibility :
+			probe.m_environmentVisibility)
+		{
+			if (!std::isfinite(environmentVisibility) ||
+				environmentVisibility < 0.0f ||
+				environmentVisibility > 1.0f)
+			{
+				outDiagnostic =
+					"a probe has invalid directional environment visibility";
+				return false;
+			}
+		}
+	}
+
+	const uint64_t expectedLayoutHash = ComputeGIProbesLayoutHash(*this);
+	if (m_layoutHash != 0u && m_layoutHash != expectedLayoutHash)
+	{
+		outDiagnostic = "the stored layout hash does not match the spatial payload";
+		return false;
+	}
+	const uint64_t expectedRepresentationHash =
+		ComputeGIProbesRepresentationHash(
+			m_formatVersion,
+			m_shOrder,
+			m_compression);
+	if (m_representationHash != 0u &&
+		m_representationHash != expectedRepresentationHash)
+	{
+		outDiagnostic = "the stored representation hash does not match the payload encoding";
+		return false;
+	}
+
+	return true;
+}
+
+bool GIProbesData::IsCompositionCompatibleWith(
+	const GIProbesData& rhs,
+	std::string& outDiagnostic) const
+{
+	outDiagnostic.clear();
+	const uint64_t lhsRepresentation = m_representationHash != 0u
+		? m_representationHash
+		: ComputeGIProbesRepresentationHash(
+			m_formatVersion,
+			m_shOrder,
+			m_compression);
+	const uint64_t rhsRepresentation = rhs.m_representationHash != 0u
+		? rhs.m_representationHash
+		: ComputeGIProbesRepresentationHash(
+			rhs.m_formatVersion,
+			rhs.m_shOrder,
+			rhs.m_compression);
+	if (lhsRepresentation != rhsRepresentation)
+	{
+		outDiagnostic = "probe representation hashes differ";
+		return false;
+	}
+
+	const uint64_t lhsLayout = m_layoutHash != 0u
+		? m_layoutHash
+		: ComputeGIProbesLayoutHash(*this);
+	const uint64_t rhsLayout = rhs.m_layoutHash != 0u
+		? rhs.m_layoutHash
+		: ComputeGIProbesLayoutHash(rhs);
+	if (lhsLayout != rhsLayout)
+	{
+		outDiagnostic = "probe layout hashes differ";
+		return false;
+	}
+	if (m_transportHash == 0u || rhs.m_transportHash == 0u)
+	{
+		outDiagnostic = "probe transport hash is missing";
+		return false;
+	}
+	if (m_transportHash != rhs.m_transportHash)
+	{
+		outDiagnostic = "probe transport and visibility hashes differ";
+		return false;
+	}
+	return true;
+}

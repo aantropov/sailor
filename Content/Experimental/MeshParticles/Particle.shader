@@ -283,8 +283,12 @@ glslFragment: |
         outColor = vin.color;        
         
         vec3 normal = normalize(vin.tangentBasis * vec3(0,0,1));
+        vec3 geometricNormal = NormalizeOrFallback(
+          cross(dFdx(vin.worldPosition), dFdy(vin.worldPosition)), normal);
         float lighting = max(0, dot(-light.instance[0].direction, normal));
-        float shadow = ShadowCalculation_Pcf(shadowMapSampler, lightsMatrices.instance[0] * vec4(vin.worldPosition, 1.0f), 0.00001, 0);
+        float shadow = CalculateDirectionalShadow(SHADOW_TYPE_PCF,
+          shadowMapSampler, lightsMatrices.instance[0], vin.worldPosition,
+          geometricNormal, light.instance[0].shadowBias, 0);
         outColor.xyz *= max(0.05, min(lighting, shadow));
     #endif
   }

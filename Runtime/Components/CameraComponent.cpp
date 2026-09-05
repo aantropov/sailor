@@ -38,6 +38,11 @@ void CameraComponent::SetZFar(float value)
 	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(GetFov()), GetAspect(), GetZNear(), GetZFar()));
 }
 
+void CameraComponent::ResetMotionHistory()
+{
+	GetData().ResetMotionHistory();
+}
+
 void CameraComponent::Initialize()
 {
 	auto ecs = GetOwner()->GetWorld()->GetECS<CameraECS>();

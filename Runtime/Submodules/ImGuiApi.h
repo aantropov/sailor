@@ -3,7 +3,10 @@
 #include "RHI/Types.h"
 #include <imgui.h>
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "ImGuiDrawDataSnapshot.h"
 #include <cstdint>
+#include <memory>
+#include <vector>
 
 namespace Sailor
 {
@@ -11,12 +14,24 @@ namespace Sailor
 	{
 	public:
 
+		struct PreparedFrame
+		{
+			explicit PreparedFrame(const ImDrawData* data) : DrawData(data) {}
+
+			ImGuiDrawDataSnapshot DrawData;
+			RHI::RHIBufferPtr VertexBuffer;
+			RHI::RHIBufferPtr IndexBuffer;
+			RHI::RHIMaterialPtr Material;
+			RHI::RHIShaderBindingSetPtr ShaderBindings;
+		};
+		using PreparedFramePtr = std::shared_ptr<const PreparedFrame>;
+
 		ImGuiApi(void* hWnd);
 		virtual ~ImGuiApi();
 
 		void NewFrame();
-		void PrepareFrame(RHI::RHICommandListPtr transferCmdList);
-		void RenderFrame(RHI::RHICommandListPtr drawCmdList);
+		PreparedFramePtr PrepareFrame(RHI::RHICommandListPtr transferCmdList);
+		static void RenderFrame(const PreparedFramePtr& frame, RHI::RHICommandListPtr drawCmdList);
 #if defined(_WIN32)
 		void HandleWin32(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -67,6 +82,10 @@ namespace Sailor
 
 	protected:
 
+		// Keep the final owner on the CPU thread: ImGui allocation accounting is
+		// context-owned too. RHI tasks only release their shared references.
+		std::vector<PreparedFramePtr> m_preparedFrames;
+
 		struct InitInfo
 		{
 			uint32_t                        Subpass{};
@@ -105,10 +124,10 @@ namespace Sailor
 		SAILOR_API static Data* ImGui_GetBackendData();
 		SAILOR_API static bool ImGui_Init(InitInfo* info);
 		SAILOR_API static void ImGui_Shutdown();
-		SAILOR_API static void ImGui_UpdateDrawData(ImDrawData* draw_data, RHI::RHICommandListPtr transferCmdList);
-		SAILOR_API static void ImGui_RenderDrawData(ImDrawData* draw_data, RHI::RHICommandListPtr drawCmdList);
+		SAILOR_API static void ImGui_UpdateDrawData(PreparedFrame& frame, RHI::RHICommandListPtr transferCmdList);
+		SAILOR_API static void ImGui_RenderDrawData(const PreparedFrame& frame, RHI::RHICommandListPtr drawCmdList);
 		SAILOR_API static void ImGui_SetMinImageCount(uint32_t min_image_count);
-		SAILOR_API static void ImGui_SetupRenderState(ImDrawData* drawData, RHI::RHICommandListPtr cmdList, const FrameRenderBuffers* rb, int width, int height);
+		SAILOR_API static void ImGui_SetupRenderState(const PreparedFrame& frame, RHI::RHICommandListPtr cmdList, int width, int height);
 		SAILOR_API static void CreateOrResizeBuffer(RHI::RHIBufferPtr& buffer, size_t newSize);
 		SAILOR_API static void DestroyWindowRenderBuffers(WindowRenderBuffers* buffers);
 	};

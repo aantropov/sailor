@@ -630,7 +630,9 @@ namespace
 
 	void TestWorldInstantiationGuards()
 	{
-		EngineLoop engineLoop;
+		EngineLoop engineLoop(120u);
+		Require(engineLoop.GetFpsCap() == 120u,
+			"EngineLoop should retain the FPS cap passed by application startup");
 		Require(!engineLoop.InstantiateWorld({}, EngineLoop::DefaultWorldMask),
 			"unavailable world prefab should be rejected without creating a partial world");
 		Require(engineLoop.GetWorlds().IsEmpty(),

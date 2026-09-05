@@ -1,6 +1,7 @@
 #include "SkyNode.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
+#include "Settings/GraphicsSettings.h"
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/RenderTarget.h"
@@ -165,53 +166,56 @@ float Remap(float value, float minValue, float maxValue, float newMinValue, floa
 	return newMinValue + (value - minValue) / (maxValue - minValue) * (newMaxValue - newMinValue);
 }
 
-TVector<uint8_t> SkyNode::GenerateCloudsNoiseLow() const
+TVector<uint8_t> SkyNode::LoadCloudsNoise(
+	const std::string& path, uint32_t resolution,
+	TVector<uint8_t> (*generate)())
+{
+	TVector<uint8_t> noise;
+	const size_t expectedSize = size_t(resolution) * resolution * resolution;
+	if (!AssetRegistry::ReadBinaryFile(path, noise) || noise.Num() != expectedSize)
+	{
+		noise = generate();
+		// The in-memory result remains usable even when the cache is read-only.
+		AssetRegistry::WriteBinaryFile(path, noise);
+	}
+	return noise;
+}
+
+TVector<uint8_t> SkyNode::GenerateCloudsNoiseLow()
 {
 	TVector<uint8_t> res;
 	res.Resize(CloudsNoiseLowResolution * CloudsNoiseLowResolution * CloudsNoiseLowResolution);
 
-	TVector<Tasks::ITaskPtr> tasks;
-	tasks.Reserve(CloudsNoiseLowResolution);
-
+	// This runs on the dedicated Background queue. Never wait for Worker jobs:
+	// frame preparation drains that queue and would stall behind cloud generation.
 	for (uint32_t z = 0; z < CloudsNoiseLowResolution; z++)
 	{
-		auto pTask = Tasks::CreateTask("Generate Clouds Noise Low", [=, this, &res]()
+		for (uint32_t y = 0; y < CloudsNoiseLowResolution; y++)
+		{
+			for (uint32_t x = 0; x < CloudsNoiseLowResolution; x++)
 			{
-				for (uint32_t y = 0; y < CloudsNoiseLowResolution; y++)
-				{
-					for (uint32_t x = 0; x < CloudsNoiseLowResolution; x++)
-					{
-						uint8_t& value = res[x + y * CloudsNoiseLowResolution + z * CloudsNoiseLowResolution * CloudsNoiseLowResolution];
+				uint8_t& value = res[x + y * CloudsNoiseLowResolution + z * CloudsNoiseLowResolution * CloudsNoiseLowResolution];
 
-						vec3 uv = vec3((float)x / CloudsNoiseLowResolution, (float)y / CloudsNoiseLowResolution, (float)z / CloudsNoiseLowResolution) + (0.5f / CloudsNoiseLowResolution);
+				vec3 uv = vec3((float)x / CloudsNoiseLowResolution, (float)y / CloudsNoiseLowResolution, (float)z / CloudsNoiseLowResolution) + (0.5f / CloudsNoiseLowResolution);
 
-						const float tiling = 5.0f;
+				const float tiling = 5.0f;
 
-						const float perlinNoiseLow = (Math::fBmTiledPerlin(uv * tiling, 4, (int32_t)tiling) + 1) * 0.5f;
-						const float cellularNoiseLow = Math::fBmTiledWorley(uv * tiling, 4, (int32_t)tiling);
-						const float cellularNoiseMid = Math::fBmTiledWorley(uv * tiling * 2.0f, 4, (int32_t)tiling * 2);
-						const float cellularNoiseHigh = Math::fBmTiledWorley(uv * tiling * 3.0f, 4, (int32_t)tiling * 3);
+				const float perlinNoiseLow = (Math::fBmTiledPerlin(uv * tiling, 4, (int32_t)tiling) + 1) * 0.5f;
+				const float cellularNoiseLow = Math::fBmTiledWorley(uv * tiling, 4, (int32_t)tiling);
+				const float cellularNoiseMid = Math::fBmTiledWorley(uv * tiling * 2.0f, 4, (int32_t)tiling * 2);
+				const float cellularNoiseHigh = Math::fBmTiledWorley(uv * tiling * 3.0f, 4, (int32_t)tiling * 3);
 
-						const float noise = Remap(perlinNoiseLow, (cellularNoiseLow * 0.625f + cellularNoiseMid * 0.25f + cellularNoiseHigh * 0.125f) - 1.0f, 1.0f, 0.0f, 1.0f);
+				const float noise = Remap(perlinNoiseLow, (cellularNoiseLow * 0.625f + cellularNoiseMid * 0.25f + cellularNoiseHigh * 0.125f) - 1.0f, 1.0f, 0.0f, 1.0f);
 
-						value = uint8_t(noise * 255.0f);
-					}
-				}
-
-			})->Run();
-
-		tasks.Add(pTask);
-	}
-
-	for (uint32_t i = 0; i < tasks.Num(); i++)
-	{
-		tasks[i]->Wait();
+				value = uint8_t(noise * 255.0f);
+			}
+		}
 	}
 
 	return res;
 }
 
-TVector<uint8_t> SkyNode::GenerateCloudsNoiseHigh() const
+TVector<uint8_t> SkyNode::GenerateCloudsNoiseHigh()
 {
 	TVector<uint8_t> res;
 	res.Resize(CloudsNoiseHighResolution * CloudsNoiseHighResolution * CloudsNoiseHighResolution);
@@ -280,6 +284,13 @@ TVector<glm::mat4x4> SkyNode::CreateEnvironmentViewMatrices()
 	};
 }
 
+bool SkyNode::AreCloudsResourcesReady() const
+{
+	return m_pCloudsMapTexture && m_pCloudsMapTexture->IsReady() &&
+		m_pCloudsNoiseLowTexture && m_pCloudsNoiseLowTexture->IsReady() &&
+		m_pCloudsNoiseHighTexture && m_pCloudsNoiseHighTexture->IsReady();
+}
+
 void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	ResetDrawCallStats();
@@ -287,6 +298,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdPostProcess);
 
 	if (!m_pSkyShader)
@@ -295,11 +307,21 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
 		{
+			TVector<std::string> cloudsDefines;
+			cloudsDefines.Add("CLOUDS");
+			if (graphicsProfile.m_bCloudsDithering)
+			{
+				cloudsDefines.Add("DITHER");
+			}
+
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pSkyShader, { "FILL" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pSkyEnvShader, { });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pSunShader, { "SUN" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComposeShader, { "COMPOSE" });
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pCloudsShader, { "CLOUDS" /*,"DITHER", "DISCARD_BY_DEPTH"*/ });
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(
+				shaderInfo->GetFileId(),
+				m_pCloudsShader,
+				cloudsDefines);
 		}
 	}
 
@@ -335,80 +357,67 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			}
 		}
 
-		m_pCloudsMapTexture = m_clouds->GetRHI();
+		m_pCloudsMapTexture = m_clouds ? m_clouds->GetRHI() : nullptr;
+	}
 
-		if (!m_pCloudsMapTexture)
+	auto prepareNoise = [&](auto& task, RHITexturePtr& texture,
+		uint32_t resolution, const char* name, TVector<uint8_t> (*generate)())
+	{
+		if (texture)
 		{
 			return;
 		}
-	}
-
-	if ((m_createNoiseLow && !m_createNoiseLow->IsFinished()) ||
-		(m_createNoiseHigh && !m_createNoiseHigh->IsFinished()))
-	{
-		commands->EndDebugRegion(commandList);
-		return;
-	}
-
-	if (!m_pCloudsNoiseHighTexture)
-	{
-		bool bShouldReturn = false;
-
-		TVector<uint8_t> noiseHigh;
-		auto pathNoiseHigh = std::filesystem::path(AssetRegistry::GetCacheFolder() + std::string("CloudsNoiseHigh.bin"));
-		if (!AssetRegistry::ReadBinaryFile(pathNoiseHigh, noiseHigh))
+		if (!task)
 		{
-			m_createNoiseHigh = Tasks::CreateTask("Generate Clouds Noise High",
-				[=, this]()
+			const std::string path = AssetRegistry::GetCacheFolder() + name + ".bin";
+			// Capture values only: a pending task may outlive this frame-graph node.
+			task = Tasks::CreateTaskWithResult<TVector<uint8_t>>(name,
+				[path, resolution, generate]()
 				{
-					auto cache = GenerateCloudsNoiseHigh();
-					AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
-				})->Run();
-
-			bShouldReturn = true;
+					return LoadCloudsNoise(path, resolution, generate);
+				}, EThreadType::Background);
+			task->Run();
 		}
-
-		TVector<uint8_t> noiseLow;
-		auto pathNoiseLow = std::filesystem::path(AssetRegistry::GetCacheFolder() + std::string("CloudsNoiseLow.bin"));
-		if (!AssetRegistry::ReadBinaryFile(pathNoiseLow, noiseLow))
-		{
-			m_createNoiseLow = Tasks::CreateTask("Generate Clouds Noise Low",
-				[=, this]()
-				{
-					auto cache = GenerateCloudsNoiseLow();
-					AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
-				})->Run();
-
-			bShouldReturn = true;
-		}
-
-		if (bShouldReturn)
+		if (!task->IsFinished())
 		{
 			return;
 		}
 
-		m_pCloudsNoiseHighTexture = driver->CreateTexture(noiseHigh.GetData(), noiseHigh.Num() * sizeof(uint8_t),
-			glm::ivec3(CloudsNoiseHighResolution, CloudsNoiseHighResolution, CloudsNoiseHighResolution),
-			(uint32_t)glm::max(1.0f, glm::log2((float)CloudsNoiseHighResolution)),
+		const auto& noise = task->GetResult();
+		texture = driver->CreateTexture(noise.GetData(), noise.Num() * sizeof(uint8_t),
+			glm::ivec3(resolution),
+			(uint32_t)glm::max(1.0f, glm::log2((float)resolution)),
 			ETextureType::Texture3D,
 			ETextureFormat::R8_UNORM,
 			ETextureFiltration::Linear,
 			ETextureClamping::Repeat,
 			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
+		driver->SetDebugName(texture, name);
+		task.Clear();
+	};
 
-		driver->SetDebugName(m_pCloudsNoiseHighTexture, "CloudsNoiseHigh");
+	prepareNoise(m_createNoiseHigh, m_pCloudsNoiseHighTexture,
+		CloudsNoiseHighResolution, "CloudsNoiseHigh", &GenerateCloudsNoiseHigh);
+	prepareNoise(m_createNoiseLow, m_pCloudsNoiseLowTexture,
+		CloudsNoiseLowResolution, "CloudsNoiseLow", &GenerateCloudsNoiseLow);
 
-		m_pCloudsNoiseLowTexture = driver->CreateTexture(noiseLow.GetData(), noiseLow.Num() * sizeof(uint8_t),
-			glm::ivec3(CloudsNoiseLowResolution, CloudsNoiseLowResolution, CloudsNoiseLowResolution),
-			(uint32_t)glm::max(1.0f, glm::log2((float)CloudsNoiseLowResolution)),
+	if (!m_pCloudsNoiseFallbackTexture)
+	{
+		// Shared sky layouts still need valid 3D descriptors while clouds load.
+		const uint8_t emptyNoise = 0;
+		m_pCloudsNoiseFallbackTexture = driver->CreateTexture(&emptyNoise, sizeof(emptyNoise),
+			glm::ivec3(1), 1,
 			ETextureType::Texture3D,
 			ETextureFormat::R8_UNORM,
 			ETextureFiltration::Linear,
 			ETextureClamping::Repeat,
 			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
-
-		driver->SetDebugName(m_pCloudsNoiseLowTexture, "CloudsNoiseLow");
+		driver->SetDebugName(m_pCloudsNoiseFallbackTexture, "PendingCloudsNoise");
 	}
+	const bool bCloudsReady = AreCloudsResourcesReady();
+	const auto cloudsMap = m_pCloudsMapTexture ? m_pCloudsMapTexture : driver->GetDefaultTexture();
+	const auto noiseLow = bCloudsReady ? m_pCloudsNoiseLowTexture : m_pCloudsNoiseFallbackTexture;
+	const auto noiseHigh = bCloudsReady ? m_pCloudsNoiseHighTexture : m_pCloudsNoiseFallbackTexture;
 
 	if (!m_pStarsShader)
 	{
@@ -420,11 +429,28 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		}
 	}
 
+	const Settings::GraphicsExtent desiredSkyExtent =
+		Settings::ResolveSkyExtent(graphicsProfile);
+	if (m_pSkyTexture &&
+		m_pSkyTexture->GetExtent() != glm::ivec2(
+			static_cast<int32_t>(desiredSkyExtent.m_width),
+			static_cast<int32_t>(desiredSkyExtent.m_height)))
+	{
+		m_pSkyTexture.Clear();
+		m_pShaderBindings.Clear();
+		m_pSkyMaterial.Clear();
+		m_pComposeMaterial.Clear();
+		m_pCloudsMaterial.Clear();
+		m_pSunShaftsMaterial.Clear();
+	}
+
 	if (!m_pSkyTexture)
 	{
 		m_pSkyTexture = driver->CreateRenderTarget(
 			commandList,
-			glm::ivec2(SkyResolution, SkyResolution),
+			glm::ivec2(
+				static_cast<int32_t>(desiredSkyExtent.m_width),
+				static_cast<int32_t>(desiredSkyExtent.m_height)),
 			1,
 			ETextureFormat::R16G16B16A16_SFLOAT,
 			ETextureFiltration::Linear,
@@ -448,12 +474,25 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		driver->SetDebugName(m_pSunTexture, "Sun");
 	}
 
-	float cloudsResolutionFactor = CloudsResolutionFactor;
+	float cloudsPlatformMultiplier = 1.0f;
 #if defined(__APPLE__)
-	cloudsResolutionFactor *= 0.5f;
+	cloudsPlatformMultiplier = 0.5f;
 #endif
-	const float cloudsSize = std::min(App::GetMainWindow()->GetRenderArea().x * cloudsResolutionFactor, App::GetMainWindow()->GetRenderArea().y * cloudsResolutionFactor);
-	const glm::ivec2 desiredCloudsExtent(std::max(1.0f, cloudsSize), std::max(1.0f, cloudsSize));
+	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
+	const Settings::GraphicsExtent renderExtent =
+		Settings::ResolveRenderDimensions(
+			static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
+			static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
+			graphicsProfile.m_resolutionFactor);
+	const Settings::GraphicsExtent cloudsExtent =
+		Settings::ResolveCloudsExtent(
+			renderExtent.m_width,
+			renderExtent.m_height,
+			graphicsProfile,
+			cloudsPlatformMultiplier);
+	const glm::ivec2 desiredCloudsExtent(
+		static_cast<int32_t>(cloudsExtent.m_width),
+		static_cast<int32_t>(cloudsExtent.m_height));
 
 	if (m_pCloudsTexture && m_pCloudsTexture->GetExtent() != desiredCloudsExtent)
 	{
@@ -493,7 +532,6 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 	if (!m_pBlitShader || !m_pBlitShader->IsReady() ||
 		!m_pStarsShader || !m_pStarsShader->IsReady() ||
-		!m_pCloudsShader || !m_pCloudsShader->IsReady() ||
 		!m_pSkyShader || !m_pSkyShader->IsReady() ||
 		!m_pSkyEnvShader || !m_pSkyEnvShader->IsReady() ||
 		!m_pSunShader || !m_pSunShader->IsReady() ||
@@ -507,6 +545,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 	if (!m_pSkyMaterial)
 	{
+		m_pCloudsMaterial.Clear();
 		m_pShaderBindings = driver->CreateShaderBindings();
 
 		// Firstly we must assign the correct layout
@@ -517,9 +556,9 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		RHIShaderBindingPtr data = driver->AddBufferToShaderBindings(m_pShaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "skySampler", m_pSkyTexture, 1);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "sunSampler", m_pSunTexture, 2);
-		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsMapSampler", m_pCloudsMapTexture, 3);
-		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsNoiseLowSampler", m_pCloudsNoiseLowTexture, 4);
-		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsNoiseHighSampler", m_pCloudsNoiseHighTexture, 5);
+		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsMapSampler", cloudsMap, 3);
+		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsNoiseLowSampler", noiseLow, 4);
+		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsNoiseHighSampler", noiseHigh, 5);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsSampler", m_pCloudsTexture, 6);
 
 		auto ditherPattern = frameGraph->GetSampler("g_ditherPatternSampler");
@@ -537,11 +576,20 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		m_pSkyEnvMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSkyEnvShader, m_pShaderBindings);
 		m_pSunMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSunShader, m_pShaderBindings);
 		m_pComposeMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pComposeShader, m_pShaderBindings);
-		m_pCloudsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pCloudsShader, m_pShaderBindings);
 
 		RenderState renderStateMultiply{ false, false, 0, false, ECullMode::Back, EBlendMode::Multiply, EFillMode::Fill, 0, false };
 		m_pSunShaftsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderStateMultiply, m_pSunShaftsShader, m_pShaderBindings);
 	}
+	if (bCloudsReady && m_pCloudsShader && m_pCloudsShader->IsReady() && !m_pCloudsMaterial)
+	{
+		auto vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+		RenderState renderState{ false, false, 0.0f, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 0, false };
+		m_pCloudsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pCloudsShader, m_pShaderBindings);
+	}
+	// UpdateShaderBinding preserves the existing descriptor set when unchanged.
+	driver->UpdateShaderBinding(m_pShaderBindings, "cloudsMapSampler", cloudsMap, 0);
+	driver->UpdateShaderBinding(m_pShaderBindings, "cloudsNoiseLowSampler", noiseLow, 0);
+	driver->UpdateShaderBinding(m_pShaderBindings, "cloudsNoiseHighSampler", noiseHigh, 0);
 
 	// TODO: Should we update each frame?
 	if (auto bindings = GetShaderBindings())
@@ -645,7 +693,8 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 	}
 	commands->EndDebugRegion(commandList);
 
-	if (m_skyParams.m_cloudsDensity > CloudsVisibilityEpsilon &&
+	if (bCloudsReady && m_pCloudsMaterial &&
+		m_skyParams.m_cloudsDensity > CloudsVisibilityEpsilon &&
 		m_skyParams.m_cloudsCoverage > CloudsVisibilityEpsilon)
 	{
 		commands->BeginDebugRegion(commandList, "Clouds", DebugContext::Color_CmdPostProcess);
@@ -802,7 +851,12 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		commands->BindShaderBindings(commandList, m_pStarsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
 		commands->PushConstants(commandList, m_pStarsMaterial, sizeof(PushConstants), &pushConstants);
 
-		commands->SetDefaultViewport(commandList);
+		commands->SetViewport(commandList,
+			0, (float)target->GetExtent().y,
+			(float)target->GetExtent().x, -(float)target->GetExtent().y,
+			glm::vec2(0, 0),
+			glm::vec2(target->GetExtent().x, target->GetExtent().y),
+			0, 1.0f);
 
 		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, 0u, 0u, 0u);
 		RecordDrawCallStats(1);

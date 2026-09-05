@@ -43,11 +43,17 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	const bool bIsRecreating = oldSwapchain.IsValid();
 
 	m_swapChainSupport = VulkanApi::QuerySwapChainSupport(device->GetPhysicalDevice(), m_surface);
+	if (m_swapChainSupport.m_formats.IsEmpty() || m_swapChainSupport.m_presentModes.IsEmpty())
+	{
+		SAILOR_LOG_ERROR("Swapchain surface is temporarily unavailable.");
+		return;
+	}
 
 	m_surfaceFormat = VulkanApi::ChooseSwapSurfaceFormat(m_swapChainSupport.m_formats);
 	m_presentMode = VulkanApi::ChooseSwapPresentMode(m_swapChainSupport.m_presentModes, bIsVSync);
 	SAILOR_LOG("Vulkan swapchain present mode: %d (vsync requested: %d)", (int32_t)m_presentMode, (int32_t)bIsVSync);
 	m_swapchainExtent = VulkanApi::ChooseSwapExtent(m_swapChainSupport.m_capabilities, width, height);
+	if (m_swapchainExtent.width == 0u || m_swapchainExtent.height == 0u) return;
 
 	uint32_t imageCount = m_swapChainSupport.m_capabilities.minImageCount + 1;
 
@@ -90,12 +96,21 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	createSwapChainInfo.presentMode = m_presentMode;
 	createSwapChainInfo.clipped = VK_TRUE;
 
-	if (oldSwapchain)
+	if (oldSwapchain && !oldSwapchain->m_bIsRetired)
 	{
 		createSwapChainInfo.oldSwapchain = *oldSwapchain;
 	}
 
-	VK_CHECK(vkCreateSwapchainKHR(*m_device, &createSwapChainInfo, nullptr, &m_swapchain));
+	const VkResult createResult = vkCreateSwapchainKHR(*m_device, &createSwapChainInfo, nullptr, &m_swapchain);
+	// Vulkan retires oldSwapchain even when creation fails. A later retry must
+	// not pass that retired handle back as another replacement candidate.
+	if (createSwapChainInfo.oldSwapchain) oldSwapchain->m_bIsRetired = true;
+	if (createResult != VK_SUCCESS || m_swapchain == VK_NULL_HANDLE)
+	{
+		SAILOR_LOG_ERROR("Swapchain creation failed: result=%d extent=%ux%u. Keeping the previous rendering resources.",
+			int32_t(createResult), m_swapchainExtent.width, m_swapchainExtent.height);
+		return;
+	}
 	
 	TVector<VkImage> vkSwapchainImages;
 

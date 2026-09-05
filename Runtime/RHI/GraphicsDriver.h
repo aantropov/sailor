@@ -3,6 +3,8 @@
 #include "Types.h"
 #include "Engine/Object.h"
 
+#include <limits>
+
 #ifdef MemoryBarrier
 #undef MemoryBarrier
 #endif
@@ -59,14 +61,27 @@ namespace Sailor::RHI
 	class IGraphicsDriver
 	{
 	public:
+		static constexpr uint32_t InvalidGpuFrameTimeRange =
+			(std::numeric_limits<uint32_t>::max)();
 
 		SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
 		SAILOR_API virtual ~IGraphicsDriver() = default;
 
 		SAILOR_API virtual void BeginConditionalDestroy() = 0;
 
-		SAILOR_API virtual void StartGpuTracking() = 0;
+		SAILOR_API virtual bool StartGpuTracking() = 0;
 		SAILOR_API virtual RHI::GpuStats FinishGpuTracking() = 0;
+		SAILOR_API virtual bool SupportsGpuFrameTimeQueries() const = 0;
+		SAILOR_API virtual bool BeginGpuFrameTimeQuery() = 0;
+		SAILOR_API virtual uint32_t BeginGpuFrameTimeRange(
+			RHICommandListPtr commandList) = 0;
+		SAILOR_API virtual void EndGpuFrameTimeRange(
+			RHICommandListPtr commandList,
+			uint32_t range) = 0;
+		SAILOR_API virtual void EndGpuFrameTimeQuery() = 0;
+		SAILOR_API virtual void CommitGpuFrameTimeQuery() = 0;
+		SAILOR_API virtual void CancelGpuFrameTimeQuery() = 0;
+		SAILOR_API virtual bool TryGetGpuFrameTimeMs(float& outMilliseconds) const = 0;
 
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const = 0;
 
@@ -81,7 +96,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual bool AcquireNextImage() = 0;
 		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
-			const TVector<RHISemaphorePtr>& waitSemaphores = {}) const = 0;
+			const TVector<RHISemaphorePtr>& waitSemaphores = {}) = 0;
 		SAILOR_API virtual bool SubmitFrameWithoutPresent(
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
 			const TVector<RHISemaphorePtr>& waitSemaphores = {}) = 0;
@@ -240,7 +255,7 @@ namespace Sailor::RHI
 		SAILOR_API void TrackResources_ThreadSafe();
 		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, RHIFencePtr handle);
 
-		SAILOR_API virtual RHI::RHITexturePtr GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent) = 0;
+		SAILOR_API virtual RHI::RHITexturePtr GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent, uint32_t attachmentIndex = 0u) = 0;
 
 	protected:
 
@@ -269,6 +284,12 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual void BeginDebugRegion(RHI::RHICommandListPtr cmdList, const std::string& title, const glm::vec4& color) = 0;
 		SAILOR_API virtual void EndDebugRegion(RHI::RHICommandListPtr cmdList) = 0;
+		SAILOR_API virtual uint32_t BeginGpuTimestamp(
+			RHI::RHICommandListPtr cmdList,
+			const std::string& name) = 0;
+		SAILOR_API virtual void EndGpuTimestamp(
+			RHI::RHICommandListPtr cmdList,
+			uint32_t query) = 0;
 
 		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
 			TVector<RHI::RHICommandListPtr> secondaryCmds,

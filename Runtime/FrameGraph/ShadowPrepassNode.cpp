@@ -1,9 +1,11 @@
 #include "ShadowPrepassNode.h"
+#include "Core/StringHash.h"
 #include "RHI/Batch.hpp"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
+#include "Settings/GraphicsSettings.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
@@ -56,7 +58,20 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 			check(pShader->IsReady());
 
 			const ECullMode cullMode = bMasked ? ECullMode::None : ECullMode::Back;
-			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, cullMode, EBlendMode::None, EFillMode::Fill, GetHash(std::string("Shadow")), false, EDepthCompare::GreaterOrEqual);
+			const float shadowBias = GetRasterShadowBias(
+				shadowType,
+				App::GetActiveGraphicsSettings().m_shadowBias);
+			RenderState renderState = RHI::RenderState(
+				true,
+				true,
+				shadowBias,
+				false,
+				cullMode,
+				EBlendMode::None,
+				EFillMode::Fill,
+				"Shadow"_h.GetHash(),
+				false,
+				EDepthCompare::GreaterOrEqual);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
 	}
@@ -122,14 +137,17 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddCustomShadowMaterial(
 	}
 
 	const auto& sourceState = sourceMaterial->GetRenderState();
+	const float shadowBias = GetRasterShadowBias(
+		shadowType,
+		App::GetActiveGraphicsSettings().m_shadowBias);
 	RenderState shadowState(true,
 		true,
-		sourceState.GetDepthBias(),
+		sourceState.GetDepthBias() + shadowBias,
 		true,
 		sourceState.GetCullMode(),
 		EBlendMode::None,
 		sourceState.GetFillMode(),
-		GetHash(std::string("Shadow")),
+		"Shadow"_h.GetHash(),
 		false,
 		EDepthCompare::GreaterOrEqual);
 	auto material = RHI::Renderer::GetDriver()->CreateMaterial(
@@ -286,8 +304,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	commands->BeginDebugRegion(commandList, std::string(GetName()), DebugContext::Color_CmdGraphics);
 	{
 		const uint32_t NumShadowPasses = (uint32_t)sceneView.m_shadowMapsToUpdate.Num();
-		const size_t opaqueQueueTag = GetHash(std::string("Opaque"));
-		const size_t maskedQueueTag = GetHash(std::string("Masked"));
+		const size_t opaqueQueueTag = "Opaque"_h.GetHash();
+		const size_t maskedQueueTag = "Masked"_h.GetHash();
 		const size_t staticPayloadIndex =
 			RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(
 				EMobilityType::Static);
@@ -309,7 +327,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				const size_t index =
 					RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
 				size_t cacheSlot = usesPagedArena(index) ?
-					1469598103934665603ull : viewKey;
+					Fnv1aOffsetBasis : viewKey;
 				if (usesPagedArena(index))
 				{
 					HashCombine(cacheSlot, static_cast<uint32_t>(shadowType), index);
@@ -341,7 +359,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				requestedTextures.Reset();
 			}
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[passIndex];
-			size_t viewKey = 1469598103934665603ull;
+			size_t viewKey = Fnv1aOffsetBasis;
 			HashCombine(
 				viewKey,
 				shadowPass.m_lighMatrixIndex,
@@ -359,7 +377,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			for (size_t index = 0u; index < shadowPayloadRevisions[passIndex].size(); ++index)
 			{
 				auto& revision = shadowPayloadRevisions[passIndex][index];
-				revision = 1469598103934665603ull;
+				revision = Fnv1aOffsetBasis;
 				HashCombine(
 					revision,
 					index,
@@ -379,7 +397,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
 					auto& arenaRevision =
 						shadowPayloadRevisions[passIndex][payloadIndex];
-					arenaRevision = 1469598103934665603ull;
+					arenaRevision = Fnv1aOffsetBasis;
 					HashCombine(
 						arenaRevision,
 						payloadIndex,
@@ -1398,18 +1416,25 @@ void ShadowPrepassNode::CalculateLightProjectionForCascades(
 {
 	SAILOR_PROFILE_FUNCTION();
 	const float shadowFarPlane = (std::min)(cameraFarPlane, LightingECS::ShadowMaxDistance);
-
+	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
+	const uint32_t activeCascadeCount = (std::clamp)(
+		graphicsProfile.m_shadowCascadeCount,
+		1u,
+		LightingECS::NumCascades);
 	outMatrices.Clear(false);
-	outMatrices.Reserve(LightingECS::NumCascades);
-	for (uint32_t i = 0; i < LightingECS::NumCascades; ++i)
+	outMatrices.Reserve(activeCascadeCount);
+	for (uint32_t i = 0; i < activeCascadeCount; ++i)
 	{
-		const float cascadeFar = shadowFarPlane * LightingECS::ShadowCascadeLevels[i];
+		const float cascadeFar = shadowFarPlane *
+			LightingECS::GetShadowCascadeLevel(i, activeCascadeCount);
 		float cascadeNear = cameraNearPlane;
 		if (i > 0)
 		{
-			const float previousSplit = shadowFarPlane * LightingECS::ShadowCascadeLevels[i - 1];
+			const float previousSplit = shadowFarPlane *
+				LightingECS::GetShadowCascadeLevel(i - 1u, activeCascadeCount);
 			const float previousNear = i > 1 ?
-				shadowFarPlane * LightingECS::ShadowCascadeLevels[i - 2] : cameraNearPlane;
+				shadowFarPlane * LightingECS::GetShadowCascadeLevel(
+					i - 2u, activeCascadeCount) : cameraNearPlane;
 			const float overlap = (previousSplit - previousNear) * LightingECS::ShadowCascadeBlendFraction;
 			cascadeNear = (std::max)(cameraNearPlane, previousSplit - overlap);
 		}
@@ -1418,7 +1443,7 @@ void ShadowPrepassNode::CalculateLightProjectionForCascades(
 			cascadeNear,
 			cascadeFar,
 			10.0f,
-			LightingECS::ShadowCascadeResolutions[i],
+			glm::ivec2(graphicsProfile.GetShadowCascadeResolution(i)),
 			LightingECS::ShadowCasterDepthExtension));
 	}
 }

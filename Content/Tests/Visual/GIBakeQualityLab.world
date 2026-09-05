@@ -1,0 +1,1518 @@
+name: GIBakeQualityLab
+globalIllumination:
+  mode: Baked
+  runtimeProbes:
+    version: 1
+    includeSky: true
+    includeEmissive: true
+    includeDirectLighting: true
+    bounceCount: 3
+    minProbeSpacing: 1
+    normalBias: 0.05
+    viewBias: 0.05
+    maxRayDistance: 1000
+  probes: {}
+prefabs:
+  - gameObjects:
+      - name: GI_Lab_Directional_Sun
+        mobilityType: Stationary
+        position:
+          - -1765.04529
+          - 7229.20215
+          - -5061.94141
+          - 1
+        rotation:
+          - 0.0750752166
+          - 0.88067174
+          - 0.443327308
+          - -0.149137259
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000001
+        components:
+          - 0
+    components:
+      - typename: Sailor::LightComponent
+        overrideProperties:
+          intensity:
+            - 3500
+            - 3200
+            - 2800
+          shadowQuality: Medium
+          indirectLightingIntensity: 1
+          globalIlluminationMode: RealtimeAndBaked
+          radius: 150
+          instanceId: D1A60000000040008000000000000001_16060000000000000001
+          cutOff:
+            - 30
+            - 45
+          lightType: Directional
+          shadowType: PCF
+          shadowFilter: Soft
+          fileId: ""
+  - gameObjects:
+      - name: GI_Lab_Cloudless_Sky
+        mobilityType: Stationary
+        position:
+          - 0
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000002
+        components:
+          - 0
+    components:
+      - typename: Sailor::SkyComponent
+        overrideProperties:
+          sunAngle: 55
+          scatteringSteps: 5
+          m_directionalLight:
+            fileId: ""
+            instanceId: D1A60000000040008000000000000001_16060000000000000001
+          cloudsDensity: 0
+          cloudsAttenuation1: 0.300000012
+          cloudsPhaseEccentricity2: 0.50999999
+          cloudsCoverage: 0
+          cloudsAttenuation2: 0.0599999987
+          cloudsPhaseInfluence1: 0.0250000004
+          cloudsPhaseEccentricity1: 0.949999988
+          cloudsPhaseInfluence2: 0.899999976
+          cloudsHorizonBlend: 10
+          giIndirectIntensity: 1
+          scatteringDensity: 0.5
+          instanceId: D1A60000000040008000000000000002_16060000000000000002
+          cloudScatteringScale: 0
+          scatteringPhase: 0.5
+          sunShaftsIntensity: 0.00100000005
+          ambient: 0
+          scatteringIntensity: 0.5
+          sunIlluminance:
+            - 3500
+            - 3200
+            - 2800
+          fileId: ""
+          sunShaftsDistance: 60
+  - gameObjects:
+      - name: GI_Lab_Overview_Camera
+        mobilityType: Stationary
+        position:
+          - -15.3603773
+          - 11.0878429
+          - -46.7609329
+          - 1
+        rotation:
+          - -0.0183827244
+          - 0.97964406
+          - 0.169213995
+          - 0.10642457
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000003
+        components:
+          - 0
+          - 1
+    components:
+      - typename: Sailor::CameraComponent
+        overrideProperties:
+          fov: 65
+          zNear: 0.100000001
+          zFar: 300
+          instanceId: D1A60000000040008000000000000003_16060000000000000003
+          fileId: ""
+      - typename: Sailor::EditorComponent
+        overrideProperties:
+          fileId: ""
+          instanceId: D1A60000000040008000000000000004_16060000000000000003
+  - gameObjects:
+      - name: A_ColorBleed_WhiteFloor
+        mobilityType: Stationary
+        position:
+          - -36
+          - -0.5
+          - -14
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 9
+          - 0.5
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000004
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000005_16060000000000000004
+          fileId: ""
+  - gameObjects:
+      - name: A_ColorBleed_WhiteBackWall
+        mobilityType: Stationary
+        position:
+          - -36
+          - 5
+          - -4.5
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 9
+          - 5
+          - 0.5
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000005
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000006_16060000000000000005
+          fileId: ""
+  - gameObjects:
+      - name: A_ColorBleed_RedLeftWall
+        mobilityType: Stationary
+        position:
+          - -44.5
+          - 5
+          - -14
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.5
+          - 5
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000006
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000102
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000007_16060000000000000006
+          fileId: ""
+  - gameObjects:
+      - name: A_ColorBleed_WhiteRightWall
+        mobilityType: Stationary
+        position:
+          - -27.5
+          - 5
+          - -14
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.5
+          - 5
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000007
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000008_16060000000000000007
+          fileId: ""
+  - gameObjects:
+      - name: A_ColorBleed_WhiteCeiling
+        mobilityType: Stationary
+        position:
+          - -36
+          - 10.5
+          - -14
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 9
+          - 0.5
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000008
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000009_16060000000000000008
+          fileId: ""
+  - gameObjects:
+      - name: A_ColorBleed_WhiteReferenceBlock
+        mobilityType: Stationary
+        position:
+          - -36
+          - 2
+          - -11
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 2
+          - 2
+          - 2
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000009
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000000A_16060000000000000009
+          fileId: ""
+  - gameObjects:
+      - name: A_ColorBleed_VisibleEmitter
+        mobilityType: Stationary
+        position:
+          - -32
+          - 7
+          - -18
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.349999994
+          - 0.349999994
+          - 0.349999994
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000010
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000104
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000000B_16060000000000000010
+          fileId: ""
+  - gameObjects:
+      - name: A_ColorBleed_NeutralPoint
+        mobilityType: Stationary
+        position:
+          - -32
+          - 7
+          - -18
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000011
+        components:
+          - 0
+    components:
+      - typename: Sailor::LightComponent
+        overrideProperties:
+          intensity:
+            - 480
+            - 480
+            - 480
+          shadowQuality: Medium
+          indirectLightingIntensity: 1
+          globalIlluminationMode: RealtimeAndBaked
+          radius: 22
+          instanceId: D1A6000000004000800000000000000C_16060000000000000011
+          cutOff:
+            - 30
+            - 45
+          lightType: Point
+          shadowType: PCF
+          shadowFilter: Soft
+          fileId: ""
+  - gameObjects:
+      - name: B_Corridor_WhiteFloor
+        mobilityType: Stationary
+        position:
+          - -10
+          - -0.5
+          - 8
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 5
+          - 0.5
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000012
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000000D_16060000000000000012
+          fileId: ""
+  - gameObjects:
+      - name: B_Corridor_LeftWall
+        mobilityType: Stationary
+        position:
+          - -14.5
+          - 4
+          - 8
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.5
+          - 4
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000013
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000000E_16060000000000000013
+          fileId: ""
+  - gameObjects:
+      - name: B_Corridor_RightWall
+        mobilityType: Stationary
+        position:
+          - -5.5
+          - 4
+          - 8
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.5
+          - 4
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000014
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000000F_16060000000000000014
+          fileId: ""
+  - gameObjects:
+      - name: B_Corridor_Ceiling
+        mobilityType: Stationary
+        position:
+          - -10
+          - 8.5
+          - 8
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 5
+          - 0.5
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000015
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000010_16060000000000000015
+          fileId: ""
+  - gameObjects:
+      - name: B_Corridor_EndWall
+        mobilityType: Stationary
+        position:
+          - -10
+          - 4
+          - 30.5
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 5
+          - 4
+          - 0.5
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000016
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000011_16060000000000000016
+          fileId: ""
+  - gameObjects:
+      - name: B_Corridor_HalfWidthBaffle
+        mobilityType: Stationary
+        position:
+          - -12.25
+          - 4
+          - 10
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 2.25
+          - 4
+          - 0.400000006
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000017
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000012_16060000000000000017
+          fileId: ""
+  - gameObjects:
+      - name: B_Corridor_WarmEmitter
+        mobilityType: Stationary
+        position:
+          - -10
+          - 4
+          - 26
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.449999988
+          - 0.449999988
+          - 0.449999988
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000018
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000104
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000013_16060000000000000018
+          fileId: ""
+  - gameObjects:
+      - name: B_Corridor_WarmPointAtEnd
+        mobilityType: Stationary
+        position:
+          - -10
+          - 4
+          - 26
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000019
+        components:
+          - 0
+    components:
+      - typename: Sailor::LightComponent
+        overrideProperties:
+          intensity:
+            - 900
+            - 470
+            - 180
+          shadowQuality: Medium
+          indirectLightingIntensity: 1
+          globalIlluminationMode: RealtimeAndBaked
+          radius: 48
+          instanceId: D1A60000000040008000000000000014_16060000000000000019
+          cutOff:
+            - 30
+            - 45
+          lightType: Point
+          shadowType: PCF
+          shadowFilter: Soft
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_WhiteFloor
+        mobilityType: Stationary
+        position:
+          - 22
+          - -0.5
+          - -12
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 10
+          - 0.5
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000020
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000015_16060000000000000020
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_WhiteCeiling
+        mobilityType: Stationary
+        position:
+          - 22
+          - 10.5
+          - -12
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 10
+          - 0.5
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000021
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000016_16060000000000000021
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_BackWall
+        mobilityType: Stationary
+        position:
+          - 22
+          - 5
+          - -2.5
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 10
+          - 5
+          - 0.5
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000022
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000017_16060000000000000022
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_LeftWall
+        mobilityType: Stationary
+        position:
+          - 12.5
+          - 5
+          - -12
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.5
+          - 5
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000023
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000018_16060000000000000023
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_RightWall
+        mobilityType: Stationary
+        position:
+          - 31.5
+          - 5
+          - -12
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.5
+          - 5
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000024
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000019_16060000000000000024
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_FrontWallLeft
+        mobilityType: Stationary
+        position:
+          - 14.25
+          - 5
+          - -21.5
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1.75
+          - 5
+          - 0.5
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000025
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000001A_16060000000000000025
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_FrontWallRight
+        mobilityType: Stationary
+        position:
+          - 25.25
+          - 5
+          - -21.5
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 6.25
+          - 5
+          - 0.5
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000026
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000001B_16060000000000000026
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_TransverseBaffle
+        mobilityType: Stationary
+        position:
+          - 19
+          - 5
+          - -15.5
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 6.5
+          - 5
+          - 0.5
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000027
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000001C_16060000000000000027
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_EntranceGuide
+        mobilityType: Stationary
+        position:
+          - 20
+          - 5
+          - -18.5
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.5
+          - 5
+          - 3.5
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000028
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000001D_16060000000000000028
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_DiffuseReference
+        mobilityType: Stationary
+        position:
+          - 23.5
+          - 1.25
+          - -8
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1.25
+          - 1.25
+          - 1.25
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000029
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000001E_16060000000000000029
+          fileId: ""
+  - gameObjects:
+      - name: C_LightTrap_GlossyReference
+        mobilityType: Stationary
+        position:
+          - 27.5
+          - 1.25
+          - -8
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1.25
+          - 1.25
+          - 1.25
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000030
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000103
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A6000000004000800000000000001F_16060000000000000030
+          fileId: ""
+  - gameObjects:
+      - name: D_SkyTube_WhiteFloor
+        mobilityType: Stationary
+        position:
+          - 44
+          - -0.5
+          - 8
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 5
+          - 0.5
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000031
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000020_16060000000000000031
+          fileId: ""
+  - gameObjects:
+      - name: D_SkyTube_LeftWall
+        mobilityType: Stationary
+        position:
+          - 39.5
+          - 4
+          - 8
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.5
+          - 4
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000032
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000021_16060000000000000032
+          fileId: ""
+  - gameObjects:
+      - name: D_SkyTube_RightWall
+        mobilityType: Stationary
+        position:
+          - 48.5
+          - 4
+          - 8
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 0.5
+          - 4
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000033
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000022_16060000000000000033
+          fileId: ""
+  - gameObjects:
+      - name: D_SkyTube_EndWall
+        mobilityType: Stationary
+        position:
+          - 44
+          - 4
+          - 30.5
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 5
+          - 4
+          - 0.5
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000034
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000023_16060000000000000034
+          fileId: ""
+  - gameObjects:
+      - name: D_SkyTube_CeilingFront
+        mobilityType: Stationary
+        position:
+          - 44
+          - 8.5
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 5
+          - 0.5
+          - 14
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000035
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000024_16060000000000000035
+          fileId: ""
+  - gameObjects:
+      - name: D_SkyTube_CeilingBack
+        mobilityType: Stationary
+        position:
+          - 44
+          - 8.5
+          - 24
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 5
+          - 0.5
+          - 6
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000036
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000025_16060000000000000036
+          fileId: ""
+  - gameObjects:
+      - name: D_SkyTube_ApertureLeftStrip
+        mobilityType: Stationary
+        position:
+          - 41
+          - 8.5
+          - 16
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1.5
+          - 0.5
+          - 2
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000037
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000026_16060000000000000037
+          fileId: ""
+  - gameObjects:
+      - name: D_SkyTube_ApertureRightStrip
+        mobilityType: Stationary
+        position:
+          - 47
+          - 8.5
+          - 16
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1.5
+          - 0.5
+          - 2
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000038
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000027_16060000000000000038
+          fileId: ""
+  - gameObjects:
+      - name: D_SkyTube_ApertureReferenceBlock
+        mobilityType: Stationary
+        position:
+          - 44
+          - 1.5
+          - 16
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1.5
+          - 1.5
+          - 1.5
+          - 1
+        parentIndex: 4294967295
+        instanceId: 16060000000000000039
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: 2387902B-538E-4191-93D6-53503B5571B1
+            instanceId: ""
+          meshIndex: -1
+          overrideMaterials:
+            - D1A60000-0000-4000-8000-000000000101
+          minLod: 0
+          maxLod: 2
+          screenCoverageThresholds:
+            - 0.25
+            - 0.0500000007
+          instanceId: D1A60000000040008000000000000028_16060000000000000039
+          fileId: ""

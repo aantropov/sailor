@@ -2,59 +2,128 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using Microsoft.Maui.Controls.Shapes;
+using SailorEditor.Services;
 using SailorEditor.Settings;
 
 namespace SailorEditor.Views;
 
 public sealed class SettingsPanelView : ContentView
 {
+    const string GraphicsCategory = "Graphics";
     readonly UnifiedSettingsStore _store;
     readonly EditorSettingsPersistenceStore _persistence;
+    readonly GraphicsSettingsService _graphicsSettings;
+    readonly WorkspaceUiService _workspaceUiService;
     readonly Picker _scopePicker;
-    readonly SearchBar _searchBar;
+    readonly Entry _searchBar;
     readonly Label _statusLabel;
     readonly ObservableCollection<SettingsEditorRow> _rows = [];
+    readonly List<GraphicsPresetEditor> _graphicsPresetEditors = [];
+    readonly GraphicsSettingsDraftSession _graphicsDraftSession = new();
     readonly VerticalStackLayout _entriesLayout;
+    Picker? _projectDefaultQualityPicker;
+    Picker? _editorQualityPicker;
+    Picker? _statsModePicker;
+    GraphicsSettingsSnapshot? _graphicsSnapshot;
     bool _loaded;
+    bool _graphicsDirty;
+    bool _graphicsStale;
+    bool _updatingGraphicsEditors;
+    bool _applyingGraphics;
+    bool _eventsSubscribed;
 
     public SettingsPanelView()
     {
         _store = MauiProgram.GetService<UnifiedSettingsStore>();
         _persistence = MauiProgram.GetService<EditorSettingsPersistenceStore>();
+        _graphicsSettings = MauiProgram.GetService<GraphicsSettingsService>();
+        _workspaceUiService = MauiProgram.GetService<WorkspaceUiService>();
         _scopePicker = new Picker
         {
             Title = "Category",
-            ItemsSource = Enum.GetValues<SettingsScope>().Cast<object>().ToList(),
-            SelectedItem = SettingsScope.Editor
+            ItemsSource = new[] { GraphicsCategory }
+                .Concat(Enum.GetNames<SettingsScope>())
+                .Cast<object>()
+                .ToList(),
+            SelectedItem = SettingsScope.Editor.ToString(),
+            FontSize = 11,
+            HeightRequest = 32,
+            MinimumHeightRequest = 32,
+            HorizontalOptions = LayoutOptions.Fill
         };
-        _searchBar = new SearchBar { Placeholder = "Search settings" };
-        _statusLabel = new Label { Margin = new Thickness(8, 0), FontSize = 11, Opacity = 0.8 };
-        _entriesLayout = new VerticalStackLayout { Spacing = 6, Padding = new Thickness(8, 0, 8, 8) };
+        _searchBar = new Entry
+        {
+            Placeholder = "Search settings",
+            FontSize = 11,
+            HeightRequest = 32,
+            MinimumHeightRequest = 32,
+            HorizontalOptions = LayoutOptions.Fill
+        };
+        _statusLabel = new Label
+        {
+            Margin = new Thickness(6, 1, 6, 2),
+            FontSize = 10,
+            Opacity = 0.8,
+            LineBreakMode = LineBreakMode.WordWrap
+        };
+        _entriesLayout = new VerticalStackLayout
+        {
+            Spacing = 3,
+            Padding = new Thickness(6, 1, 6, 8),
+            HorizontalOptions = LayoutOptions.Fill
+        };
 
         _scopePicker.SelectedIndexChanged += (_, _) => Refresh();
         _searchBar.TextChanged += (_, _) => Refresh();
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
 
-        var toolbar = new HorizontalStackLayout
+        var actions = new HorizontalStackLayout
         {
-            Margin = new Thickness(8, 8, 8, 4),
-            Spacing = 8,
+            Spacing = 4,
+            HorizontalOptions = LayoutOptions.End,
             Children =
             {
-                _scopePicker,
-                _searchBar,
                 CreateToolbarButton("Apply", async () => await ApplyAllAsync()),
                 CreateToolbarButton("Revert", RevertAll),
-                CreateToolbarButton("Reset Scope", async () => await ResetScopeAsync())
+                CreateToolbarButton("Reset", async () => await ResetScopeAsync())
             }
         };
 
-        var scroll = new ScrollView { Content = _entriesLayout };
+        var toolbar = new Grid
+        {
+            Margin = new Thickness(6, 4, 6, 2),
+            RowSpacing = 2,
+            ColumnSpacing = 4,
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto)
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(new GridLength(2, GridUnitType.Star)),
+                new ColumnDefinition(new GridLength(3, GridUnitType.Star))
+            }
+        };
+        toolbar.Add(_scopePicker, 0, 0);
+        toolbar.Add(_searchBar, 1, 0);
+        toolbar.Add(actions, 0, 1);
+        Grid.SetColumnSpan(actions, 2);
+
+        var scroll = new ScrollView
+        {
+            Content = _entriesLayout,
+            Orientation = ScrollOrientation.Vertical,
+            VerticalOptions = LayoutOptions.Fill,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Always
+        };
         var root = new Grid
         {
             RowDefinitions =
             [
-                new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star)
@@ -75,24 +144,51 @@ public sealed class SettingsPanelView : ContentView
 
     async void OnLoaded(object? sender, EventArgs e)
     {
-        if (_loaded)
-            return;
+        SubscribeToEvents();
 
-        _loaded = true;
-        await _persistence.LoadAsync(_store);
+        if (!_loaded)
+        {
+            _loaded = true;
+            await _persistence.LoadAsync(_store);
+        }
+
+        _graphicsSnapshot = await _graphicsSettings.EnsureLoadedAsync();
+        _graphicsDraftSession.GetOrCreate(_graphicsSnapshot);
         Refresh();
         UpdateStatus();
     }
 
+    void OnUnloaded(object? sender, EventArgs e)
+    {
+        CaptureGraphicsDraftFromEditors();
+        UnsubscribeFromEvents();
+    }
+
     void Refresh()
     {
+        CaptureGraphicsDraftFromEditors();
         foreach (var row in _rows)
             row.PropertyChanged -= OnRowPropertyChanged;
 
         _rows.Clear();
         _entriesLayout.Children.Clear();
 
-        var selectedScope = _scopePicker.SelectedItem is SettingsScope scope ? scope : SettingsScope.Editor;
+        if (IsGraphicsSelected())
+        {
+            RefreshGraphics();
+            return;
+        }
+
+        _graphicsPresetEditors.Clear();
+        _projectDefaultQualityPicker = null;
+        _editorQualityPicker = null;
+        _statsModePicker = null;
+
+        var selectedScope = Enum.TryParse<SettingsScope>(
+            _scopePicker.SelectedItem?.ToString(),
+            out var scope)
+            ? scope
+            : SettingsScope.Editor;
         var rows = EditorSettingsCatalog.Definitions
             .Where(definition => definition.Entry.Scope == selectedScope)
             .Where(definition => string.IsNullOrWhiteSpace(_searchBar.Text)
@@ -130,6 +226,12 @@ public sealed class SettingsPanelView : ContentView
 
     async Task ApplyAllAsync()
     {
+        if (IsGraphicsSelected())
+        {
+            await ApplyGraphicsAsync();
+            return;
+        }
+
         var dirtyRows = _rows.Where(x => x.IsDirty).ToArray();
         var invalidRows = dirtyRows.Where(x => x.HasErrors).ToArray();
         if (invalidRows.Length > 0)
@@ -147,6 +249,18 @@ public sealed class SettingsPanelView : ContentView
 
     void RevertAll()
     {
+        if (IsGraphicsSelected())
+        {
+            _graphicsSnapshot = _graphicsSettings.Current ?? _graphicsSnapshot;
+            if (_graphicsSnapshot is not null)
+                _graphicsDraftSession.Replace(_graphicsSnapshot);
+            _graphicsDirty = false;
+            _graphicsStale = false;
+            RefreshGraphics();
+            UpdateStatus("Reverted pending graphics edits.");
+            return;
+        }
+
         foreach (var row in _rows)
             row.Revert();
 
@@ -155,7 +269,41 @@ public sealed class SettingsPanelView : ContentView
 
     async Task ResetScopeAsync()
     {
-        var selectedScope = _scopePicker.SelectedItem is SettingsScope scope ? scope : SettingsScope.Editor;
+        if (IsGraphicsSelected())
+        {
+            var snapshot = _graphicsSnapshot ??
+                await _graphicsSettings.EnsureLoadedAsync();
+            try
+            {
+                _applyingGraphics = true;
+                var result = await _graphicsSettings.ApplyAsync(
+                    GraphicsSettingsDefaults.Project,
+                    GraphicsSettingsDefaults.Editor,
+                    snapshot);
+                _graphicsSnapshot = _graphicsSettings.Current;
+                if (_graphicsSnapshot is not null)
+                    _graphicsDraftSession.Replace(_graphicsSnapshot);
+                _graphicsDirty = false;
+                _graphicsStale = false;
+                RefreshGraphics();
+                UpdateStatus(DescribeGraphicsApply(result, "Reset graphics settings to defaults."));
+            }
+            catch (Exception exception)
+            {
+                UpdateStatus($"Unable to reset graphics settings: {exception.Message}");
+            }
+            finally
+            {
+                _applyingGraphics = false;
+            }
+            return;
+        }
+
+        var selectedScope = Enum.TryParse<SettingsScope>(
+            _scopePicker.SelectedItem?.ToString(),
+            out var scope)
+            ? scope
+            : SettingsScope.Editor;
         _store.ResetScope(selectedScope);
         await _persistence.SaveAsync(_store);
         Refresh();
@@ -170,6 +318,27 @@ public sealed class SettingsPanelView : ContentView
             return;
         }
 
+        if (IsGraphicsSelected())
+        {
+            if (_graphicsStale)
+            {
+                _statusLabel.Text = "Graphics settings changed outside this panel. Revert to reload before applying.";
+            }
+            else if (_graphicsDirty)
+            {
+                _statusLabel.Text = "Graphics settings have pending changes. Apply to validate, persist, and update the Engine.";
+            }
+            else if (_graphicsSnapshot?.Diagnostics.Count > 0)
+            {
+                _statusLabel.Text = string.Join(Environment.NewLine, _graphicsSnapshot.Diagnostics);
+            }
+            else
+            {
+                _statusLabel.Text = "No pending graphics changes.";
+            }
+            return;
+        }
+
         var dirtyCount = _rows.Count(x => x.IsDirty);
         var errorCount = _rows.Count(x => x.HasErrors);
         _statusLabel.Text = dirtyCount == 0
@@ -178,6 +347,368 @@ public sealed class SettingsPanelView : ContentView
                 ? $"{dirtyCount} pending change(s). Apply to persist them."
                 : $"{dirtyCount} pending change(s), {errorCount} with validation errors.";
     }
+
+    bool IsGraphicsSelected()
+        => string.Equals(
+            _scopePicker.SelectedItem?.ToString(),
+            GraphicsCategory,
+            StringComparison.Ordinal);
+
+    void RefreshGraphics()
+    {
+        _entriesLayout.Children.Clear();
+        _graphicsPresetEditors.Clear();
+        _projectDefaultQualityPicker = null;
+        _editorQualityPicker = null;
+        _statsModePicker = null;
+
+        var snapshot = _graphicsSnapshot ?? _graphicsSettings.Current;
+        if (snapshot is null)
+        {
+            _entriesLayout.Children.Add(new Label
+            {
+                Text = "Graphics settings are loading…",
+                Margin = new Thickness(8)
+            });
+            UpdateStatus();
+            return;
+        }
+
+        _graphicsSnapshot = snapshot;
+        var draft = _graphicsDraftSession.GetOrCreate(snapshot);
+        _updatingGraphicsEditors = true;
+        try
+        {
+            _entriesLayout.Children.Add(new Label
+            {
+                Text = "Project Graphics",
+                FontSize = 14,
+                FontAttributes = FontAttributes.Bold,
+                Margin = new Thickness(0, 2, 0, 0)
+            });
+            var pathsLabel = new Label
+            {
+                Text = "ProjectSettings.yaml  •  Cache/EditorSettings.yaml",
+                FontSize = 9,
+                Opacity = 0.7,
+                LineBreakMode = LineBreakMode.TailTruncation
+            };
+            ToolTipProperties.SetText(
+                pathsLabel,
+                $"Project: {snapshot.Paths.ProjectSettingsPath}\nEditor: {snapshot.Paths.EditorSettingsPath}");
+            _entriesLayout.Children.Add(pathsLabel);
+
+            _projectDefaultQualityPicker = CreateOptionPicker(
+                QualityOptions,
+                draft.ProjectDefaultQuality);
+            _editorQualityPicker = CreateOptionPicker(
+                EditorQualityOptions,
+                draft.SelectedQuality);
+            _statsModePicker = CreateOptionPicker(
+                StatsModeOptions,
+                draft.StatsMode);
+            _entriesLayout.Children.Add(CreateGraphicsField(
+                "Project Default Quality",
+                "Preset used by standalone/game startup and by Project Default in the editor.",
+                _projectDefaultQualityPicker));
+            _entriesLayout.Children.Add(CreateGraphicsField(
+                "Scene View Quality",
+                "Workspace-local editor override. Applying a change restarts the Engine.",
+                _editorQualityPicker));
+            _entriesLayout.Children.Add(CreateGraphicsField(
+                "Scene View Stats",
+                "Workspace-local overlay mode. Applying a Stats-only change is live.",
+                _statsModePicker));
+
+            foreach (var quality in Enum.GetValues<GraphicsQualityLevel>())
+            {
+                if (!GraphicsSearchMatches(quality))
+                    continue;
+
+                var editor = new GraphicsPresetEditor(
+                    quality,
+                    draft.GetPreset(quality),
+                    MarkGraphicsDirty);
+                _graphicsPresetEditors.Add(editor);
+                _entriesLayout.Children.Add(editor.CreateView(
+                    initiallyExpanded: quality == snapshot.EffectiveQuality ||
+                        !string.IsNullOrWhiteSpace(_searchBar.Text),
+                    isActive: quality == snapshot.EffectiveQuality));
+            }
+        }
+        finally
+        {
+            _updatingGraphicsEditors = false;
+        }
+
+        UpdateStatus();
+    }
+
+    async Task ApplyGraphicsAsync()
+    {
+        if (_graphicsStale)
+        {
+            UpdateStatus("Graphics settings changed outside this panel. Revert to reload before applying.");
+            return;
+        }
+
+        var snapshot = _graphicsSnapshot ??
+            await _graphicsSettings.EnsureLoadedAsync();
+        CaptureGraphicsDraftFromEditors();
+        var draft = _graphicsDraftSession.GetOrCreate(snapshot);
+        if (!draft.TryBuild(
+                out var project,
+                out var editorSettings,
+                out var issues))
+        {
+            UpdateStatus(string.Join(
+                Environment.NewLine,
+                issues.Select(issue => $"{issue.Path}: {issue.Message}")));
+            return;
+        }
+
+        try
+        {
+            _applyingGraphics = true;
+            var result = await _graphicsSettings.ApplyAsync(
+                project,
+                editorSettings,
+                draft.SourceSnapshot);
+            _graphicsSnapshot = _graphicsSettings.Current;
+            if (_graphicsSnapshot is not null)
+                _graphicsDraftSession.Replace(_graphicsSnapshot);
+            _graphicsDirty = false;
+            _graphicsStale = false;
+            RefreshGraphics();
+            UpdateStatus(DescribeGraphicsApply(result, "Graphics settings applied."));
+        }
+        catch (Exception exception)
+        {
+            if (_graphicsSettings.Current is { } current &&
+                !ReferenceEquals(current, snapshot))
+            {
+                _graphicsSnapshot = current;
+                _graphicsDraftSession.Replace(current);
+                _graphicsDirty = false;
+                _graphicsStale = false;
+                RefreshGraphics();
+                UpdateStatus($"Graphics settings were persisted, but the Engine update failed: {exception.Message}");
+            }
+            else
+            {
+                UpdateStatus($"Unable to apply graphics settings: {exception.Message}");
+            }
+        }
+        finally
+        {
+            _applyingGraphics = false;
+        }
+    }
+
+    void MarkGraphicsDirty()
+    {
+        if (_updatingGraphicsEditors)
+            return;
+
+        _graphicsDirty = true;
+        UpdateStatus();
+    }
+
+    void CaptureGraphicsDraftFromEditors()
+    {
+        var draft = _graphicsDraftSession.Current;
+        if (draft is null)
+            return;
+
+        if (_projectDefaultQualityPicker?.SelectedItem is PickerOption<GraphicsQualityLevel> projectQuality &&
+            _editorQualityPicker?.SelectedItem is PickerOption<EditorQualitySelection> editorQuality &&
+            _statsModePicker?.SelectedItem is PickerOption<GraphicsStatsMode> statsMode)
+        {
+            draft.SetSelections(
+                projectQuality.Value,
+                editorQuality.Value,
+                statsMode.Value);
+        }
+
+        foreach (var editor in _graphicsPresetEditors)
+            draft.SetPreset(editor.Quality, editor.CaptureDraft());
+        _graphicsDirty = draft.IsDirty;
+    }
+
+    bool GraphicsSearchMatches(GraphicsQualityLevel quality)
+    {
+        if (string.IsNullOrWhiteSpace(_searchBar.Text))
+            return true;
+
+        var search = _searchBar.Text.Trim();
+        return FormatQuality(quality).Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            "resolution msaa shadow cascades soft clouds sky lod bias graphics quality preset"
+                .Contains(search, StringComparison.OrdinalIgnoreCase);
+    }
+
+    Picker CreateOptionPicker<T>(
+        IReadOnlyList<PickerOption<T>> options,
+        T selectedValue)
+        where T : struct, Enum
+    {
+        var picker = new Picker
+        {
+            ItemsSource = options.Cast<object>().ToList(),
+            SelectedItem = options.Single(option =>
+                EqualityComparer<T>.Default.Equals(
+                    option.Value,
+                    selectedValue)),
+            FontSize = 11,
+            HeightRequest = 30,
+            MinimumHeightRequest = 30,
+            HorizontalOptions = LayoutOptions.Fill
+        };
+        picker.SelectedIndexChanged += (_, _) => MarkGraphicsDirty();
+        return picker;
+    }
+
+    static View CreateGraphicsField(
+        string title,
+        string description,
+        View editor)
+    {
+        var titleLabel = new Label
+        {
+            Text = title,
+            FontSize = 11,
+            FontAttributes = FontAttributes.Bold,
+            LineBreakMode = LineBreakMode.TailTruncation,
+            VerticalTextAlignment = TextAlignment.Center
+        };
+        ToolTipProperties.SetText(titleLabel, description);
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(new GridLength(6, GridUnitType.Star)),
+                new ColumnDefinition(new GridLength(5, GridUnitType.Star))
+            },
+            ColumnSpacing = 6,
+            Padding = new Thickness(0, 1)
+        };
+        grid.Add(titleLabel, 0, 0);
+        grid.Add(editor, 1, 0);
+        return grid;
+    }
+
+    void SubscribeToEvents()
+    {
+        if (_eventsSubscribed)
+            return;
+
+        _graphicsSettings.SettingsChanged += OnGraphicsSettingsChanged;
+        _workspaceUiService.ProjectionChanged += OnWorkspaceProjectionChanged;
+        _eventsSubscribed = true;
+    }
+
+    void UnsubscribeFromEvents()
+    {
+        if (!_eventsSubscribed)
+            return;
+
+        _graphicsSettings.SettingsChanged -= OnGraphicsSettingsChanged;
+        _workspaceUiService.ProjectionChanged -= OnWorkspaceProjectionChanged;
+        _eventsSubscribed = false;
+    }
+
+    void OnGraphicsSettingsChanged(
+        object? sender,
+        GraphicsSettingsSnapshot snapshot)
+    {
+        Dispatcher.Dispatch(() =>
+        {
+            if (_applyingGraphics)
+            {
+                _graphicsSnapshot = snapshot;
+                return;
+            }
+
+            var workspaceChanged = _graphicsSnapshot is not null &&
+                (_graphicsSnapshot.Paths != snapshot.Paths ||
+                    _graphicsSnapshot.WorkspaceGeneration != snapshot.WorkspaceGeneration);
+            if (_graphicsDirty && !workspaceChanged)
+            {
+                _graphicsStale = true;
+                UpdateStatus();
+                return;
+            }
+
+            _graphicsSnapshot = snapshot;
+            _graphicsDraftSession.Replace(snapshot);
+            _graphicsDirty = false;
+            _graphicsStale = false;
+            if (IsGraphicsSelected())
+            {
+                _entriesLayout.Children.Clear();
+                RefreshGraphics();
+            }
+        });
+    }
+
+    void OnWorkspaceProjectionChanged(object? sender, EventArgs e)
+        => _ = ReloadGraphicsForWorkspaceAsync();
+
+    async Task ReloadGraphicsForWorkspaceAsync()
+    {
+        try
+        {
+            await _graphicsSettings.EnsureLoadedAsync();
+        }
+        catch (Exception exception)
+        {
+            Dispatcher.Dispatch(() =>
+                UpdateStatus($"Unable to load graphics settings for the active workspace: {exception.Message}"));
+        }
+    }
+
+    static string DescribeGraphicsApply(
+        GraphicsSettingsApplyResult result,
+        string successMessage)
+    {
+        if (result.QualityChanged && !result.EngineRestarted)
+            return "Graphics settings were saved, but the Engine restart did not complete.";
+        if (result.StatsChanged &&
+            !result.QualityChanged &&
+            !result.StatsAppliedLive)
+        {
+            return "Graphics settings were saved, but the live Stats command was rejected.";
+        }
+        return successMessage;
+    }
+
+    static string FormatQuality(GraphicsQualityLevel quality)
+        => quality == GraphicsQualityLevel.VeryLow
+            ? "Very Low"
+            : quality.ToString();
+
+    static readonly PickerOption<GraphicsQualityLevel>[] QualityOptions =
+        Enum.GetValues<GraphicsQualityLevel>()
+            .Select(value => new PickerOption<GraphicsQualityLevel>(
+                value,
+                FormatQuality(value)))
+            .ToArray();
+
+    static readonly PickerOption<EditorQualitySelection>[] EditorQualityOptions =
+    [
+        new(EditorQualitySelection.ProjectDefault, "Project Default"),
+        new(EditorQualitySelection.Ultra, "Ultra"),
+        new(EditorQualitySelection.High, "High"),
+        new(EditorQualitySelection.Medium, "Medium"),
+        new(EditorQualitySelection.Low, "Low"),
+        new(EditorQualitySelection.VeryLow, "Very Low")
+    ];
+
+    static readonly PickerOption<GraphicsStatsMode>[] StatsModeOptions =
+    [
+        new(GraphicsStatsMode.None, "None"),
+        new(GraphicsStatsMode.RenderStats, "Render stats"),
+        new(GraphicsStatsMode.RenderStatsAndQueries, "Render stats + queries")
+    ];
 
     View CreateRowView(SettingsEditorRow row)
     {
@@ -205,7 +736,7 @@ public sealed class SettingsPanelView : ContentView
 
         var actions = new HorizontalStackLayout
         {
-            Spacing = 8,
+            Spacing = 4,
             Children =
             {
                 CreateToolbarButton("Apply", async () =>
@@ -245,7 +776,7 @@ public sealed class SettingsPanelView : ContentView
 
         var editorColumn = new VerticalStackLayout
         {
-            Spacing = 6,
+            Spacing = 3,
             HorizontalOptions = LayoutOptions.Fill,
             Children = { editor, actions }
         };
@@ -257,8 +788,8 @@ public sealed class SettingsPanelView : ContentView
                 new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
                 new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) }
             },
-            ColumnSpacing = 12,
-            Padding = new Thickness(0, 4),
+            ColumnSpacing = 6,
+            Padding = new Thickness(0, 2),
             HorizontalOptions = LayoutOptions.Fill
         };
 
@@ -284,7 +815,12 @@ public sealed class SettingsPanelView : ContentView
 
     View CreateBooleanEditor(SettingsEditorRow row)
     {
-        var toggle = new Switch { BindingContext = row };
+        var toggle = new Switch
+        {
+            BindingContext = row,
+            Scale = 0.8,
+            HeightRequest = 30
+        };
         toggle.SetBinding(Switch.IsToggledProperty, nameof(SettingsEditorRow.BooleanValue), mode: BindingMode.TwoWay);
 
         return new HorizontalStackLayout
@@ -303,7 +839,10 @@ public sealed class SettingsPanelView : ContentView
         var picker = new Picker
         {
             BindingContext = row,
-            ItemsSource = row.Definition.Entry.AllowedValues?.Cast<object>().ToList() ?? []
+            ItemsSource = row.Definition.Entry.AllowedValues?.Cast<object>().ToList() ?? [],
+            FontSize = 11,
+            HeightRequest = 30,
+            MinimumHeightRequest = 30
         };
         picker.SetBinding(Picker.SelectedItemProperty, nameof(SettingsEditorRow.DraftText), mode: BindingMode.TwoWay);
         return picker;
@@ -316,7 +855,10 @@ public sealed class SettingsPanelView : ContentView
             BindingContext = row,
             Keyboard = keyboard,
             Placeholder = placeholder,
-            IsPassword = row.Definition.Entry.IsSecret
+            IsPassword = row.Definition.Entry.IsSecret,
+            FontSize = 11,
+            HeightRequest = 30,
+            MinimumHeightRequest = 30
         };
         entry.SetBinding(Entry.TextProperty, nameof(SettingsEditorRow.DraftText), mode: BindingMode.TwoWay);
         return entry;
@@ -324,16 +866,561 @@ public sealed class SettingsPanelView : ContentView
 
     static Button CreateToolbarButton(string text, Action action)
     {
-        var button = new Button { Text = text, Padding = new Thickness(12, 6) };
+        var button = new Button
+        {
+            Text = text,
+            FontSize = 11,
+            Padding = new Thickness(8, 2),
+            HeightRequest = 28,
+            MinimumHeightRequest = 28
+        };
         button.Clicked += (_, _) => action();
         return button;
     }
 
     static Button CreateToolbarButton(string text, Func<Task> action)
     {
-        var button = new Button { Text = text, Padding = new Thickness(12, 6) };
+        var button = new Button
+        {
+            Text = text,
+            FontSize = 11,
+            Padding = new Thickness(8, 2),
+            HeightRequest = 28,
+            MinimumHeightRequest = 28
+        };
         button.Clicked += async (_, _) => await action();
         return button;
+    }
+
+    sealed record PickerOption<T>(T Value, string DisplayName)
+        where T : struct, Enum
+    {
+        public override string ToString() => DisplayName;
+    }
+
+    sealed class GraphicsPresetEditor
+    {
+        static readonly PickerOption<GraphicsShadowQuality>[] ShadowQualityOptions =
+        [
+            new(GraphicsShadowQuality.High, "High"),
+            new(GraphicsShadowQuality.Medium, "Medium"),
+            new(GraphicsShadowQuality.Low, "Low"),
+            new(GraphicsShadowQuality.VeryLow, "Very Low")
+        ];
+
+        readonly Action _changed;
+        readonly Entry _resolutionFactor;
+        readonly Entry _fpsCap;
+        readonly Picker _msaaSamples;
+        readonly Picker _shadowQuality;
+        readonly Entry _shadowBias;
+        readonly Picker _shadowCascadeCount;
+        readonly Entry _shadowCascadeResolutions;
+        readonly Switch _supportSoftShadows;
+        readonly Entry _cloudsResolutionMultiplier;
+        readonly Switch _cloudsDithering;
+        readonly Entry _skyResolution;
+        readonly Entry _vegetationInstanceBudget;
+        readonly Entry _lodBias;
+        readonly Switch _enableGlobalIllumination;
+        readonly Entry _maxGiProbeStatesPerSnapshot;
+        readonly Switch _runtimeGIEnabled;
+        readonly Entry _runtimeGIMaxActiveProbes;
+        readonly Entry _runtimeGISpacingMultiplier;
+        readonly Entry _runtimeGIInitialSamples;
+        readonly Entry _runtimeGITargetSamples;
+        readonly Entry _runtimeGIWorkerCount;
+        readonly Entry _runtimeGICpuDutyFraction;
+        readonly Entry _runtimeGICpuBudgetMilliseconds;
+        readonly Entry _runtimeGIMaxPublicationsPerSecond;
+        readonly Entry _runtimeGIInitialPublicationCoverage;
+        readonly Entry _runtimeGIMaxDirtyUploadBytesPerFrame;
+
+        public GraphicsPresetEditor(
+            GraphicsQualityLevel quality,
+            GraphicsQualityPresetDraft draft,
+            Action changed)
+        {
+            Quality = quality;
+            _changed = changed;
+            _resolutionFactor = CreateEntry(draft.ResolutionFactor);
+            _fpsCap = CreateEntry(draft.FpsCap);
+            _msaaSamples = CreatePicker(
+                new object[] { 1, 2, 4, 8 },
+                draft.MsaaSamples);
+            _shadowQuality = CreatePicker(
+                ShadowQualityOptions.Cast<object>().ToArray(),
+                ShadowQualityOptions.Single(x => x.Value == draft.ShadowQuality));
+            _shadowBias = CreateEntry(draft.ShadowBias);
+            _shadowCascadeCount = CreatePicker(
+                new object[] { 1, 2, 3, 4 },
+                draft.ShadowCascadeCount);
+            _shadowCascadeResolutions = CreateEntry(
+                draft.ShadowCascadeResolutions);
+            _supportSoftShadows = new Switch
+            {
+                IsToggled = draft.SupportSoftShadows,
+                Scale = 0.8,
+                HeightRequest = 30,
+                HorizontalOptions = LayoutOptions.End
+            };
+            _supportSoftShadows.Toggled += (_, _) => _changed();
+            _cloudsResolutionMultiplier = CreateEntry(
+                draft.CloudsResolutionMultiplier);
+            _cloudsDithering = new Switch
+            {
+                IsToggled = draft.CloudsDithering,
+                Scale = 0.8,
+                HeightRequest = 30,
+                HorizontalOptions = LayoutOptions.End
+            };
+            _cloudsDithering.Toggled += (_, _) => _changed();
+            _skyResolution = CreateEntry(draft.SkyResolution);
+            _vegetationInstanceBudget = CreateEntry(
+                draft.VegetationInstanceBudget);
+            _lodBias = CreateEntry(draft.LodBias);
+            _enableGlobalIllumination = new Switch
+            {
+                IsToggled = draft.EnableGlobalIllumination,
+                Scale = 0.8,
+                HeightRequest = 30,
+                HorizontalOptions = LayoutOptions.End
+            };
+            _enableGlobalIllumination.Toggled += (_, _) => _changed();
+            _maxGiProbeStatesPerSnapshot = CreateEntry(
+                draft.MaxGiProbeStatesPerSnapshot);
+            _runtimeGIEnabled = new Switch
+            {
+                IsToggled = draft.RuntimeGIProbes.Enabled,
+                Scale = 0.8,
+                HeightRequest = 30,
+                HorizontalOptions = LayoutOptions.End
+            };
+            _runtimeGIEnabled.Toggled += (_, _) => _changed();
+            _runtimeGIMaxActiveProbes = CreateEntry(
+                draft.RuntimeGIProbes.MaxActiveProbes);
+            _runtimeGISpacingMultiplier = CreateEntry(
+                draft.RuntimeGIProbes.SpacingMultiplier);
+            _runtimeGIInitialSamples = CreateEntry(
+                draft.RuntimeGIProbes.InitialSamplesPerProbe);
+            _runtimeGITargetSamples = CreateEntry(
+                draft.RuntimeGIProbes.TargetSamplesPerProbe);
+            _runtimeGIWorkerCount = CreateEntry(
+                draft.RuntimeGIProbes.WorkerCount);
+            _runtimeGICpuDutyFraction = CreateEntry(
+                draft.RuntimeGIProbes.CpuDutyFraction);
+            _runtimeGICpuBudgetMilliseconds = CreateEntry(
+                draft.RuntimeGIProbes.CpuBudgetMilliseconds);
+            _runtimeGIMaxPublicationsPerSecond = CreateEntry(
+                draft.RuntimeGIProbes.MaxPublicationsPerSecond);
+            _runtimeGIInitialPublicationCoverage = CreateEntry(
+                draft.RuntimeGIProbes.InitialPublicationCoverage);
+            _runtimeGIMaxDirtyUploadBytesPerFrame = CreateEntry(
+                draft.RuntimeGIProbes.MaxDirtyUploadBytesPerFrame);
+        }
+
+        public GraphicsQualityLevel Quality { get; }
+
+        public GraphicsQualityPresetDraft CaptureDraft()
+            => new(
+                _resolutionFactor.Text ?? string.Empty,
+                _fpsCap.Text ?? string.Empty,
+                _msaaSamples.SelectedItem is int msaa ? msaa : 0,
+                _shadowQuality.SelectedItem is PickerOption<GraphicsShadowQuality> shadow
+                    ? shadow.Value
+                    : (GraphicsShadowQuality)(-1),
+                _shadowBias.Text ?? string.Empty,
+                _shadowCascadeCount.SelectedItem is int count ? count : 0,
+                _shadowCascadeResolutions.Text ?? string.Empty,
+                _supportSoftShadows.IsToggled,
+                _cloudsResolutionMultiplier.Text ?? string.Empty,
+                _cloudsDithering.IsToggled,
+                _skyResolution.Text ?? string.Empty,
+                _vegetationInstanceBudget.Text ?? string.Empty,
+                _lodBias.Text ?? string.Empty,
+                _enableGlobalIllumination.IsToggled,
+                _maxGiProbeStatesPerSnapshot.Text ?? string.Empty,
+                new RuntimeGIProbesQualityDraft(
+                    _runtimeGIEnabled.IsToggled,
+                    _runtimeGIMaxActiveProbes.Text ?? string.Empty,
+                    _runtimeGISpacingMultiplier.Text ?? string.Empty,
+                    _runtimeGIInitialSamples.Text ?? string.Empty,
+                    _runtimeGITargetSamples.Text ?? string.Empty,
+                    _runtimeGIWorkerCount.Text ?? string.Empty,
+                    _runtimeGICpuDutyFraction.Text ?? string.Empty,
+                    _runtimeGICpuBudgetMilliseconds.Text ?? string.Empty,
+                    _runtimeGIMaxPublicationsPerSecond.Text ?? string.Empty,
+                    _runtimeGIInitialPublicationCoverage.Text ?? string.Empty,
+                    _runtimeGIMaxDirtyUploadBytesPerFrame.Text ?? string.Empty));
+
+        public View CreateView(bool initiallyExpanded, bool isActive)
+        {
+            var fields = new VerticalStackLayout
+            {
+                Spacing = 1,
+                Children =
+                {
+                    CreatePresetField("Resolution Factor", "0.25–2.0", _resolutionFactor),
+                    CreatePresetField("FPS Cap", "Maximum CPU frames per second, 1–1000", _fpsCap),
+                    CreatePresetField("MSAA", "Supported sample count", _msaaSamples),
+                    CreatePresetField("Shadow Quality Cap", "Global cap over authored light quality", _shadowQuality),
+                    CreatePresetField("PCF Shadow Bias", "PCF caster and receiver bias, -16–16", _shadowBias),
+                    CreatePresetField("Shadow Cascade Count", "Active directional cascades, 1–4", _shadowCascadeCount),
+                    CreatePresetField("Cascade Resolutions", "Comma-separated powers of two, one per active cascade", _shadowCascadeResolutions),
+                    CreatePresetField("Soft Shadows", "Enable soft shadow filtering", _supportSoftShadows),
+                    CreatePresetField("Clouds Resolution Multiplier", "0.0625–2.0", _cloudsResolutionMultiplier),
+                    CreatePresetField("Clouds Dithering", "Render interleaved cloud samples", _cloudsDithering),
+                    CreatePresetField("Sky Resolution", "Power of two, 32–8192", _skyResolution),
+                    CreatePresetField("Vegetation Instance Budget", "Global active grass instances, 0–1048576", _vegetationInstanceBudget),
+                    CreatePresetField("LOD Bias", "Signed index shift, -8 (finer) to +8 (coarser)", _lodBias),
+                    CreatePresetField(
+                        "Global Illumination",
+                        "Enable diffuse environment and baked probe GI",
+                        _enableGlobalIllumination),
+                    CreatePresetField(
+                        "GI Probe States / Snapshot",
+                        "Maximum simultaneous Blend + Additive baked states, 0 disables probe GI",
+                        _maxGiProbeStatesPerSnapshot),
+                    CreatePresetField(
+                        "Experimental Runtime GI",
+                        "Allow runtime probe solving in game builds for this quality preset",
+                        _runtimeGIEnabled),
+                    CreatePresetField("Runtime GI Probe Capacity", "Maximum probes in the scene-wide grid, 8–32768", _runtimeGIMaxActiveProbes),
+                    CreatePresetField("Runtime GI Spacing", "Multiplier over world probe spacing, 0.25–16", _runtimeGISpacingMultiplier),
+                    CreatePresetField("Runtime GI Initial Samples", "Samples required for initial publication", _runtimeGIInitialSamples),
+                    CreatePresetField("Runtime GI Target Samples", "Progressive refinement target, up to 65536", _runtimeGITargetSamples),
+                    CreatePresetField("Runtime GI Workers", "Low-priority CPU workers, 1–16", _runtimeGIWorkerCount),
+                    CreatePresetField("Runtime GI CPU Duty", "Per-worker duty fraction, 0–1", _runtimeGICpuDutyFraction),
+                    CreatePresetField("Runtime GI CPU Budget", "CPU milliseconds per 60 Hz frame, 0–100", _runtimeGICpuBudgetMilliseconds),
+                    CreatePresetField("Runtime GI Publications / Second", "Snapshot publication throttle, 0–60", _runtimeGIMaxPublicationsPerSecond),
+                    CreatePresetField("Runtime GI Initial Coverage", "Coverage before first publication, 0–1", _runtimeGIInitialPublicationCoverage),
+                    CreatePresetField("Runtime GI Upload Budget", "Maximum dirty bytes published per frame", _runtimeGIMaxDirtyUploadBytesPerFrame)
+                }
+            };
+
+            var title = new Label
+            {
+                Text = $"{FormatQuality(Quality)} preset",
+                FontSize = 12,
+                FontAttributes = FontAttributes.Bold,
+                VerticalTextAlignment = TextAlignment.Center
+            };
+            var state = new Label
+            {
+                Text = FormatPresetState(initiallyExpanded, isActive),
+                FontSize = 10,
+                Opacity = 0.7,
+                HorizontalTextAlignment = TextAlignment.End,
+                VerticalTextAlignment = TextAlignment.Center
+            };
+            var header = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(GridLength.Star),
+                    new ColumnDefinition(GridLength.Auto)
+                },
+                Padding = new Thickness(1, 0)
+            };
+            header.Add(title, 0, 0);
+            header.Add(state, 1, 0);
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += (_, _) =>
+            {
+                fields.IsVisible = !fields.IsVisible;
+                state.Text = FormatPresetState(fields.IsVisible, isActive);
+            };
+            header.GestureRecognizers.Add(tap);
+            fields.IsVisible = initiallyExpanded;
+
+            return new Border
+            {
+                Stroke = Color.FromArgb("#3A3A3A"),
+                StrokeThickness = 1,
+                StrokeShape = new RoundRectangle { CornerRadius = 3 },
+                Padding = new Thickness(6, 4),
+                Margin = new Thickness(0, 1),
+                Content = new VerticalStackLayout
+                {
+                    Spacing = 2,
+                    Children =
+                    {
+                        header,
+                        fields
+                    }
+                }
+            };
+        }
+
+        static string FormatPresetState(bool expanded, bool isActive)
+            => $"{(expanded ? "▾" : "▸")}{(isActive ? "  Active" : string.Empty)}";
+
+        public bool TryBuild(
+            out GraphicsQualityPresetSettings settings,
+            ICollection<GraphicsSettingsValidationIssue> issues)
+        {
+            var path = $"graphics.presets.{Quality}";
+            var valid = true;
+            valid &= TryParseDouble(
+                _resolutionFactor.Text,
+                $"{path}.resolutionFactor",
+                "Resolution factor",
+                issues,
+                out var resolutionFactor);
+            valid &= TryParseInt(
+                _fpsCap.Text,
+                $"{path}.fpsCap",
+                "FPS cap",
+                issues,
+                out var fpsCap);
+            valid &= TryParseDouble(
+                _shadowBias.Text,
+                $"{path}.shadowBias",
+                "Shadow bias",
+                issues,
+                out var shadowBias);
+            valid &= TryParseCascadeResolutions(
+                _shadowCascadeResolutions.Text,
+                $"{path}.shadowCascadeResolutions",
+                issues,
+                out var cascadeResolutions);
+            valid &= TryParseDouble(
+                _cloudsResolutionMultiplier.Text,
+                $"{path}.cloudsResolutionMultiplier",
+                "Clouds resolution multiplier",
+                issues,
+                out var cloudsResolutionMultiplier);
+            valid &= TryParseInt(
+                _skyResolution.Text,
+                $"{path}.skyResolution",
+                "Sky resolution",
+                issues,
+                out var skyResolution);
+            valid &= TryParseInt(
+                _vegetationInstanceBudget.Text,
+                $"{path}.vegetationInstanceBudget",
+                "Vegetation instance budget",
+                issues,
+                out var vegetationInstanceBudget);
+            valid &= TryParseInt(
+                _lodBias.Text,
+                $"{path}.lodBias",
+                "LOD bias",
+                issues,
+                out var lodBias);
+            valid &= TryParseInt(
+                _maxGiProbeStatesPerSnapshot.Text,
+                $"{path}.maxGiProbeStatesPerSnapshot",
+                "Maximum GI probe states per snapshot",
+                issues,
+                out var maxGiProbeStatesPerSnapshot);
+            var runtimePath = $"{path}.runtimeGIProbes";
+            valid &= TryParseInt(_runtimeGIMaxActiveProbes.Text, $"{runtimePath}.maxActiveProbes", "Runtime GI probe capacity", issues, out var runtimeMaxActiveProbes);
+            valid &= TryParseDouble(_runtimeGISpacingMultiplier.Text, $"{runtimePath}.spacingMultiplier", "Runtime GI spacing multiplier", issues, out var runtimeSpacingMultiplier);
+            valid &= TryParseInt(_runtimeGIInitialSamples.Text, $"{runtimePath}.initialSamplesPerProbe", "Runtime GI initial samples", issues, out var runtimeInitialSamples);
+            valid &= TryParseInt(_runtimeGITargetSamples.Text, $"{runtimePath}.targetSamplesPerProbe", "Runtime GI target samples", issues, out var runtimeTargetSamples);
+            valid &= TryParseInt(_runtimeGIWorkerCount.Text, $"{runtimePath}.workerCount", "Runtime GI worker count", issues, out var runtimeWorkerCount);
+            valid &= TryParseDouble(_runtimeGICpuDutyFraction.Text, $"{runtimePath}.cpuDutyFraction", "Runtime GI CPU duty fraction", issues, out var runtimeCpuDuty);
+            valid &= TryParseDouble(_runtimeGICpuBudgetMilliseconds.Text, $"{runtimePath}.cpuBudgetMilliseconds", "Runtime GI CPU budget", issues, out var runtimeCpuBudget);
+            valid &= TryParseDouble(_runtimeGIMaxPublicationsPerSecond.Text, $"{runtimePath}.maxPublicationsPerSecond", "Runtime GI publication rate", issues, out var runtimePublicationRate);
+            valid &= TryParseDouble(_runtimeGIInitialPublicationCoverage.Text, $"{runtimePath}.initialPublicationCoverage", "Runtime GI initial coverage", issues, out var runtimeInitialCoverage);
+            valid &= TryParseInt(_runtimeGIMaxDirtyUploadBytesPerFrame.Text, $"{runtimePath}.maxDirtyUploadBytesPerFrame", "Runtime GI upload budget", issues, out var runtimeUploadBudget);
+
+            var msaaSamples = _msaaSamples.SelectedItem is int msaa
+                ? msaa
+                : 0;
+            var shadowQuality =
+                _shadowQuality.SelectedItem is PickerOption<GraphicsShadowQuality> shadow
+                    ? shadow.Value
+                    : (GraphicsShadowQuality)(-1);
+            var cascadeCount =
+                _shadowCascadeCount.SelectedItem is int count
+                    ? count
+                    : 0;
+            settings = new GraphicsQualityPresetSettings
+            {
+                ResolutionFactor = resolutionFactor,
+                FpsCap = fpsCap,
+                MsaaSamples = msaaSamples,
+                ShadowQuality = shadowQuality,
+                ShadowBias = shadowBias,
+                ShadowCascadeCount = cascadeCount,
+                ShadowCascadeResolutions = cascadeResolutions,
+                SupportSoftShadows = _supportSoftShadows.IsToggled,
+                CloudsResolutionMultiplier = cloudsResolutionMultiplier,
+                CloudsDithering = _cloudsDithering.IsToggled,
+                SkyResolution = skyResolution,
+                VegetationInstanceBudget = vegetationInstanceBudget,
+                LodBias = lodBias,
+                EnableGlobalIllumination = _enableGlobalIllumination.IsToggled,
+                MaxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot,
+                RuntimeGIProbes = new RuntimeGIProbesQualitySettings
+                {
+                    Enabled = _runtimeGIEnabled.IsToggled,
+                    MaxActiveProbes = runtimeMaxActiveProbes,
+                    SpacingMultiplier = runtimeSpacingMultiplier,
+                    InitialSamplesPerProbe = runtimeInitialSamples,
+                    TargetSamplesPerProbe = runtimeTargetSamples,
+                    WorkerCount = runtimeWorkerCount,
+                    CpuDutyFraction = runtimeCpuDuty,
+                    CpuBudgetMilliseconds = runtimeCpuBudget,
+                    MaxPublicationsPerSecond = runtimePublicationRate,
+                    InitialPublicationCoverage = runtimeInitialCoverage,
+                    MaxDirtyUploadBytesPerFrame = runtimeUploadBudget
+                }
+            };
+            return valid;
+        }
+
+        Entry CreateEntry(string text)
+        {
+            var entry = new Entry
+            {
+                Text = text,
+                Keyboard = Keyboard.Text,
+                FontSize = 11,
+                HeightRequest = 30,
+                MinimumHeightRequest = 30,
+                HorizontalOptions = LayoutOptions.Fill
+            };
+            entry.TextChanged += (_, _) => _changed();
+            return entry;
+        }
+
+        Picker CreatePicker(
+            IReadOnlyList<object> options,
+            object selected)
+        {
+            var picker = new Picker
+            {
+                ItemsSource = options.ToList(),
+                SelectedItem = selected,
+                FontSize = 11,
+                HeightRequest = 30,
+                MinimumHeightRequest = 30,
+                HorizontalOptions = LayoutOptions.Fill
+            };
+            picker.SelectedIndexChanged += (_, _) => _changed();
+            return picker;
+        }
+
+        static View CreatePresetField(
+            string title,
+            string description,
+            View editor)
+        {
+            var titleLabel = new Label
+            {
+                Text = title,
+                FontSize = 10,
+                LineBreakMode = LineBreakMode.TailTruncation,
+                VerticalTextAlignment = TextAlignment.Center
+            };
+            ToolTipProperties.SetText(titleLabel, description);
+            var grid = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(new GridLength(6, GridUnitType.Star)),
+                    new ColumnDefinition(new GridLength(5, GridUnitType.Star))
+                },
+                ColumnSpacing = 6,
+                Padding = new Thickness(0, 0)
+            };
+            grid.Add(titleLabel, 0, 0);
+            grid.Add(editor, 1, 0);
+            return grid;
+        }
+
+        static bool TryParseDouble(
+            string? text,
+            string path,
+            string displayName,
+            ICollection<GraphicsSettingsValidationIssue> issues,
+            out double value)
+        {
+            if (double.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out value) &&
+                double.IsFinite(value))
+            {
+                return true;
+            }
+
+            issues.Add(new GraphicsSettingsValidationIssue(
+                path,
+                $"{displayName} must be a finite number using '.' as the decimal separator."));
+            value = 0;
+            return false;
+        }
+
+        static bool TryParseInt(
+            string? text,
+            string path,
+            string displayName,
+            ICollection<GraphicsSettingsValidationIssue> issues,
+            out int value)
+        {
+            if (int.TryParse(
+                    text,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out value))
+            {
+                return true;
+            }
+
+            issues.Add(new GraphicsSettingsValidationIssue(
+                path,
+                $"{displayName} must be an integer."));
+            value = 0;
+            return false;
+        }
+
+        static bool TryParseCascadeResolutions(
+            string? text,
+            string path,
+            ICollection<GraphicsSettingsValidationIssue> issues,
+            out IReadOnlyList<int> values)
+        {
+            var parsed = new List<int>();
+            var parts = (text ?? string.Empty).Split(
+                ',',
+                StringSplitOptions.TrimEntries);
+            if (parts.Length == 0 || parts.Any(string.IsNullOrWhiteSpace))
+            {
+                issues.Add(new GraphicsSettingsValidationIssue(
+                    path,
+                    "Cascade resolutions must be a comma-separated list of integers."));
+                values = [];
+                return false;
+            }
+
+            foreach (var part in parts)
+            {
+                if (!int.TryParse(
+                        part,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var value))
+                {
+                    issues.Add(new GraphicsSettingsValidationIssue(
+                        path,
+                        $"Cascade resolution '{part}' is not an integer."));
+                    values = [];
+                    return false;
+                }
+                parsed.Add(value);
+            }
+
+            values = parsed;
+            return true;
+        }
+
+        static string FormatDouble(double value)
+            => value.ToString("0.####", CultureInfo.InvariantCulture);
     }
 
     sealed class SettingsEditorRow : INotifyPropertyChanged

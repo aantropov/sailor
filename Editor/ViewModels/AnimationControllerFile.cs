@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEngine;
+using SailorEditor.Helpers;
 using SailorEditor.Utility;
 using System.ComponentModel;
 using System.Globalization;
@@ -325,7 +326,7 @@ public partial class AnimationControllerFile : AssetFile
 
     void LoadControllerRoot(YamlMappingNode root)
     {
-        var defaultStateId = ReadUInt64(root, "defaultState");
+        var defaultStateId = YamlHelper.ReadUInt64(root, "defaultState");
         var parameters = ReadList(root, "parameters", AnimationControllerParameter.FromYaml);
         var states = ReadList(root, "states", AnimationControllerState.FromYaml);
         var transitions = ReadList(root, "transitions", AnimationControllerTransition.FromYaml);
@@ -397,8 +398,7 @@ public partial class AnimationControllerFile : AssetFile
         where T : INotifyPropertyChanged
     {
         var result = new ObservableList<T>();
-        if (root.Children.TryGetValue(new YamlScalarNode(key), out var value) &&
-            value is YamlSequenceNode sequence)
+        if (YamlHelper.TryGetSequence(root, key, out var sequence))
         {
             foreach (var node in sequence.Children.OfType<YamlMappingNode>())
             {
@@ -461,26 +461,6 @@ public partial class AnimationControllerFile : AssetFile
         }
     }
 
-    internal static string ReadString(YamlMappingNode node, string key, string fallback = "") =>
-        node.Children.TryGetValue(new YamlScalarNode(key), out var value) &&
-        value is YamlScalarNode scalar ? scalar.Value ?? fallback : fallback;
-
-    internal static ulong ReadUInt64(YamlMappingNode node, string key, ulong fallback = 0) =>
-        ulong.TryParse(ReadString(node, key), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : fallback;
-
-    internal static int ReadInt(YamlMappingNode node, string key, int fallback = 0) =>
-        int.TryParse(ReadString(node, key), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : fallback;
-
-    internal static float ReadFloat(YamlMappingNode node, string key, float fallback = 0.0f) =>
-        float.TryParse(ReadString(node, key), NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : fallback;
-
-    internal static bool ReadBool(YamlMappingNode node, string key, bool fallback = false) =>
-        bool.TryParse(ReadString(node, key), out var value) ? value : fallback;
-
-    internal static YamlScalarNode Scalar(ulong value) => new(value.ToString(CultureInfo.InvariantCulture));
-    internal static YamlScalarNode Scalar(int value) => new(value.ToString(CultureInfo.InvariantCulture));
-    internal static YamlScalarNode Scalar(float value) => new(value.ToString("R", CultureInfo.InvariantCulture));
-    internal static YamlScalarNode Scalar(bool value) => new(value ? "true" : "false");
 }
 
 public partial class AnimationControllerParameter : ObservableObject
@@ -505,7 +485,7 @@ public partial class AnimationControllerParameter : ObservableObject
 
     public static AnimationControllerParameter FromYaml(YamlMappingNode node)
     {
-        var serializedType = AnimationControllerFile.ReadString(node, "type", "Float");
+        var serializedType = YamlHelper.ReadString(node, "type", "Float");
         if (!Enum.TryParse<AnimationControllerParameterType>(
                 serializedType,
                 ignoreCase: false,
@@ -517,20 +497,20 @@ public partial class AnimationControllerParameter : ObservableObject
         }
         var result = new AnimationControllerParameter
         {
-            Id = AnimationControllerFile.ReadUInt64(node, "id"),
-            Name = AnimationControllerFile.ReadString(node, "name"),
+            Id = YamlHelper.ReadUInt64(node, "id"),
+            Name = YamlHelper.ReadString(node, "name"),
             Type = type
         };
         switch (type)
         {
             case AnimationControllerParameterType.Float:
-                result.DefaultFloat = AnimationControllerFile.ReadFloat(node, "default");
+                result.DefaultFloat = YamlHelper.ReadFloat(node, "default");
                 break;
             case AnimationControllerParameterType.Int:
-                result.DefaultInt = AnimationControllerFile.ReadInt(node, "default");
+                result.DefaultInt = YamlHelper.ReadInt(node, "default");
                 break;
             case AnimationControllerParameterType.Bool:
-                result.DefaultBool = AnimationControllerFile.ReadBool(node, "default");
+                result.DefaultBool = YamlHelper.ReadBool(node, "default");
                 break;
         }
         return result;
@@ -540,20 +520,20 @@ public partial class AnimationControllerParameter : ObservableObject
     {
         var result = new YamlMappingNode
         {
-            { "id", AnimationControllerFile.Scalar(Id) },
+            { "id", YamlHelper.Scalar(Id) },
             { "name", Name ?? string.Empty },
             { "type", Type.ToString() }
         };
         switch (Type)
         {
             case AnimationControllerParameterType.Float:
-                result.Add("default", AnimationControllerFile.Scalar(DefaultFloat));
+                result.Add("default", YamlHelper.Scalar(DefaultFloat));
                 break;
             case AnimationControllerParameterType.Int:
-                result.Add("default", AnimationControllerFile.Scalar(DefaultInt));
+                result.Add("default", YamlHelper.Scalar(DefaultInt));
                 break;
             case AnimationControllerParameterType.Bool:
-                result.Add("default", AnimationControllerFile.Scalar(DefaultBool));
+                result.Add("default", YamlHelper.Scalar(DefaultBool));
                 break;
         }
         return result;
@@ -585,34 +565,34 @@ public partial class AnimationControllerState : ObservableObject
 
     public static AnimationControllerState FromYaml(YamlMappingNode node)
     {
-        var editor = node.Children.TryGetValue(new YamlScalarNode("editor"), out var value)
-            ? value as YamlMappingNode
+        var editor = YamlHelper.TryGetMapping(node, "editor", out var editorMapping)
+            ? editorMapping
             : null;
         return new AnimationControllerState
         {
-            Id = AnimationControllerFile.ReadUInt64(node, "id"),
-            Name = AnimationControllerFile.ReadString(node, "name"),
-            Clip = AnimationControllerFile.ReadString(node, "clip"),
-            Speed = AnimationControllerFile.ReadFloat(node, "speed", 1.0f),
-            Loop = AnimationControllerFile.ReadBool(node, "loop", true),
-            EditorX = editor is null ? 0.0f : AnimationControllerFile.ReadFloat(editor, "x"),
-            EditorY = editor is null ? 0.0f : AnimationControllerFile.ReadFloat(editor, "y")
+            Id = YamlHelper.ReadUInt64(node, "id"),
+            Name = YamlHelper.ReadString(node, "name"),
+            Clip = YamlHelper.ReadString(node, "clip"),
+            Speed = YamlHelper.ReadFloat(node, "speed", 1.0f),
+            Loop = YamlHelper.ReadBool(node, "loop", true),
+            EditorX = editor is null ? 0.0f : YamlHelper.ReadFloat(editor, "x"),
+            EditorY = editor is null ? 0.0f : YamlHelper.ReadFloat(editor, "y")
         };
     }
 
     public YamlMappingNode ToYaml() => new()
     {
-        { "id", AnimationControllerFile.Scalar(Id) },
+        { "id", YamlHelper.Scalar(Id) },
         { "name", Name ?? string.Empty },
         { "clip", Clip ?? string.Empty },
-        { "speed", AnimationControllerFile.Scalar(Speed) },
-        { "loop", AnimationControllerFile.Scalar(Loop) },
+        { "speed", YamlHelper.Scalar(Speed) },
+        { "loop", YamlHelper.Scalar(Loop) },
         {
             "editor",
             new YamlMappingNode
             {
-                { "x", AnimationControllerFile.Scalar(EditorX) },
-                { "y", AnimationControllerFile.Scalar(EditorY) }
+                { "x", YamlHelper.Scalar(EditorX) },
+                { "y", YamlHelper.Scalar(EditorY) }
             }
         }
     };
@@ -637,7 +617,7 @@ public partial class AnimationControllerCondition : ObservableObject
 
     public static AnimationControllerCondition FromYaml(YamlMappingNode node)
     {
-        var serializedOperation = AnimationControllerFile.ReadString(
+        var serializedOperation = YamlHelper.ReadString(
             node,
             "operation",
             "Equal");
@@ -652,21 +632,21 @@ public partial class AnimationControllerCondition : ObservableObject
         }
         return new AnimationControllerCondition
         {
-            ParameterId = AnimationControllerFile.ReadUInt64(node, "parameter"),
+            ParameterId = YamlHelper.ReadUInt64(node, "parameter"),
             Operation = operation,
-            FloatValue = AnimationControllerFile.ReadFloat(node, "floatValue"),
-            IntValue = AnimationControllerFile.ReadInt(node, "intValue"),
-            BoolValue = AnimationControllerFile.ReadBool(node, "boolValue")
+            FloatValue = YamlHelper.ReadFloat(node, "floatValue"),
+            IntValue = YamlHelper.ReadInt(node, "intValue"),
+            BoolValue = YamlHelper.ReadBool(node, "boolValue")
         };
     }
 
     public YamlMappingNode ToYaml() => new()
     {
-        { "parameter", AnimationControllerFile.Scalar(ParameterId) },
+        { "parameter", YamlHelper.Scalar(ParameterId) },
         { "operation", Operation.ToString() },
-        { "floatValue", AnimationControllerFile.Scalar(FloatValue) },
-        { "intValue", AnimationControllerFile.Scalar(IntValue) },
-        { "boolValue", AnimationControllerFile.Scalar(BoolValue) }
+        { "floatValue", YamlHelper.Scalar(FloatValue) },
+        { "intValue", YamlHelper.Scalar(IntValue) },
+        { "boolValue", YamlHelper.Scalar(BoolValue) }
     };
 }
 
@@ -705,16 +685,15 @@ public partial class AnimationControllerTransition : ObservableObject
     {
         var result = new AnimationControllerTransition
         {
-            Id = AnimationControllerFile.ReadUInt64(node, "id"),
-            FromStateId = AnimationControllerFile.ReadUInt64(node, "from"),
-            ToStateId = AnimationControllerFile.ReadUInt64(node, "to"),
-            Priority = AnimationControllerFile.ReadInt(node, "priority"),
-            Duration = AnimationControllerFile.ReadFloat(node, "duration", 0.2f),
-            HasExitTime = AnimationControllerFile.ReadBool(node, "hasExitTime"),
-            ExitTime = AnimationControllerFile.ReadFloat(node, "exitTime")
+            Id = YamlHelper.ReadUInt64(node, "id"),
+            FromStateId = YamlHelper.ReadUInt64(node, "from"),
+            ToStateId = YamlHelper.ReadUInt64(node, "to"),
+            Priority = YamlHelper.ReadInt(node, "priority"),
+            Duration = YamlHelper.ReadFloat(node, "duration", 0.2f),
+            HasExitTime = YamlHelper.ReadBool(node, "hasExitTime"),
+            ExitTime = YamlHelper.ReadFloat(node, "exitTime")
         };
-        if (node.Children.TryGetValue(new YamlScalarNode("conditions"), out var value) &&
-            value is YamlSequenceNode sequence)
+        if (YamlHelper.TryGetSequence(node, "conditions", out var sequence))
         {
             foreach (var condition in sequence.Children.OfType<YamlMappingNode>())
             {
@@ -733,13 +712,13 @@ public partial class AnimationControllerTransition : ObservableObject
         }
         return new YamlMappingNode
         {
-            { "id", AnimationControllerFile.Scalar(Id) },
-            { "from", AnimationControllerFile.Scalar(FromStateId) },
-            { "to", AnimationControllerFile.Scalar(ToStateId) },
-            { "priority", AnimationControllerFile.Scalar(Priority) },
-            { "duration", AnimationControllerFile.Scalar(Duration) },
-            { "hasExitTime", AnimationControllerFile.Scalar(HasExitTime) },
-            { "exitTime", AnimationControllerFile.Scalar(ExitTime) },
+            { "id", YamlHelper.Scalar(Id) },
+            { "from", YamlHelper.Scalar(FromStateId) },
+            { "to", YamlHelper.Scalar(ToStateId) },
+            { "priority", YamlHelper.Scalar(Priority) },
+            { "duration", YamlHelper.Scalar(Duration) },
+            { "hasExitTime", YamlHelper.Scalar(HasExitTime) },
+            { "exitTime", YamlHelper.Scalar(ExitTime) },
             { "conditions", conditions }
         };
     }
@@ -804,15 +783,14 @@ public partial class AnimationSetFile : AssetFile
         }
 
         Clips = [];
-        if (root.Children.TryGetValue(new YamlScalarNode("clips"), out var value) &&
-            value is YamlSequenceNode sequence)
+        if (YamlHelper.TryGetSequence(root, "clips", out var sequence))
         {
             foreach (var node in sequence.Children.OfType<YamlMappingNode>())
             {
                 Clips.Add(new AnimationSetClip
                 {
-                    Slot = AnimationControllerFile.ReadString(node, "slot"),
-                    Animation = new FileId(AnimationControllerFile.ReadString(node, "animation"))
+                    Slot = YamlHelper.ReadString(node, "slot"),
+                    Animation = new FileId(YamlHelper.ReadString(node, "animation"))
                 });
             }
         }

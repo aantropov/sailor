@@ -17,12 +17,12 @@ const FileId FileId::Invalid = FileId();
 
 namespace
 {
-	std::string CanonicalizeFileId(std::string value)
+	std::string CanonicalizeFileId(std::string_view value)
 	{
 		const bool bHasBraces = value.size() == 38 &&
 			value.front() == '{' && value.back() == '}';
 		if (!bHasBraces && value.size() != 36)
-			return value;
+			return std::string(value);
 
 		const size_t offset = bHasBraces ? 1 : 0;
 		std::string canonical;
@@ -33,13 +33,13 @@ namespace
 			if (index == 8 || index == 13 || index == 18 || index == 23)
 			{
 				if (character != '-')
-					return value;
+					return std::string(value);
 				canonical.push_back(character);
 				continue;
 			}
 
 			if (!std::isxdigit(static_cast<unsigned char>(character)))
-				return value;
+				return std::string(value);
 
 			canonical.push_back(static_cast<char>(
 				std::toupper(static_cast<unsigned char>(character))));
@@ -47,6 +47,11 @@ namespace
 
 		return canonical;
 	}
+}
+
+FileId::FileId(std::string_view value)
+{
+	Assign(value);
 }
 
 YAML::Node FileId::Serialize() const
@@ -58,7 +63,17 @@ YAML::Node FileId::Serialize() const
 
 void FileId::Deserialize(const YAML::Node& inData)
 {
-	m_fileId = StringHash::Runtime(CanonicalizeFileId(inData.as<std::string>()));
+	if (!inData.IsScalar())
+	{
+		*this = FileId{};
+		return;
+	}
+	Assign(inData.Scalar());
+}
+
+void FileId::Assign(std::string_view value)
+{
+	m_fileId = StringHash::Runtime(CanonicalizeFileId(value));
 }
 
 const std::string& FileId::ToString() const
@@ -89,6 +104,6 @@ FileId FileId::CreateNewFileId()
 	uuid_unparse_upper(id, buffer);
 #endif
 
-	newuid.m_fileId = StringHash::Runtime(CanonicalizeFileId(buffer));
+	newuid.Assign(buffer);
 	return newuid;
 }

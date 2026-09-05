@@ -1,5 +1,7 @@
 #pragma once
+#include <initializer_list>
 #include <string>
+#include <string_view>
 #include "Core/YamlSerializable.h"
 #include "Core/StringHash.h"
 #include "Sailor.h"
@@ -21,10 +23,15 @@ namespace Sailor
 
 		static InstanceId GenerateNewInstanceId();
 		static InstanceId GenerateNewComponentId(const InstanceId& parentGameObjectId);
+		static InstanceId GenerateDeterministic(
+			std::initializer_list<std::string_view> values,
+			uint32_t variant = 0);
+		static InstanceId FromHash(uint64_t hash, uint16_t suffix);
 
 		const std::string& ToString() const;
 
 		InstanceId() = default;
+		explicit InstanceId(std::string_view value);
 		InstanceId(const InstanceId& inInstanceId) = default;
 		InstanceId(InstanceId&& inInstanceId) = default;
 		InstanceId(const InstanceId& inComponentId, const InstanceId& inGameObjectId);

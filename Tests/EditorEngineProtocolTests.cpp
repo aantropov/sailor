@@ -37,7 +37,6 @@ extern "C"
 namespace
 {
 	using Sailor::Protocol::EEditorEngineTransportStatus;
-	using Sailor::Protocol::EditorEngineProtocolStrictInstanceIdsVersion;
 	using Sailor::Protocol::EditorEngineProtocolMaxPayloadSize;
 	using Sailor::Protocol::EditorEngineProtocolVersion;
 
@@ -53,6 +52,7 @@ namespace
 	constexpr uint32_t c_viewportEventBatchResultField = 19;
 	constexpr uint32_t c_viewportToolStateResultField = 21;
 	constexpr uint32_t c_animatorStateResultField = 22;
+	constexpr uint32_t c_editorRenderModeResultField = 23;
 	constexpr uint32_t c_emptyResultField = 10;
 	constexpr uint32_t c_initializeCommandField = 10;
 	constexpr uint32_t c_startCommandField = 11;
@@ -70,6 +70,10 @@ namespace
 	constexpr uint32_t c_setEditorSimulationCommandField = 61;
 	constexpr uint32_t c_getEditorSimulationStateCommandField = 62;
 	constexpr uint32_t c_previewAudioAssetCommandField = 63;
+	constexpr uint32_t c_setEditorStatsModeCommandField = 64;
+	constexpr uint32_t c_setEditorRenderModeCommandField = 65;
+	constexpr uint32_t c_getEditorRenderModeCommandField = 66;
+	constexpr uint32_t c_setRuntimeGIProbesPreviewBudgetCommandField = 76;
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -273,7 +277,7 @@ namespace
 					static_cast<size_t>(length));
 			}
 			else if (fieldNumber >= 10u &&
-				fieldNumber <= c_animatorStateResultField)
+				fieldNumber <= c_editorRenderModeResultField)
 			{
 				response.m_resultField = fieldNumber;
 				response.m_resultPayload.assign(
@@ -895,13 +899,13 @@ namespace
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(
 				MakeRequest(
-					EditorEngineProtocolStrictInstanceIdsVersion + 1u,
+					EditorEngineProtocolVersion + 1u,
 					17,
 					c_getExitCodeCommandField),
 				buffer);
 			Require(
 				response.m_protocolVersion ==
-					EditorEngineProtocolStrictInstanceIdsVersion &&
+					EditorEngineProtocolVersion &&
 				response.m_requestId == 17 &&
 				!response.m_success &&
 				response.m_error.find("version") != std::string::npos &&
@@ -980,45 +984,6 @@ namespace
 			1u);
 
 		{
-			TProtocolBuffer buffer;
-			const auto response = RequireProtocolResponse(
-				MakeRequest(
-					EditorEngineProtocolVersion,
-					24,
-					c_instantiatePrefabFromYamlCommandField,
-					strictInstantiateRequest),
-				buffer);
-			Require(
-				response.m_protocolVersion ==
-					EditorEngineProtocolVersion &&
-				response.m_requestId == 24 &&
-				!response.m_success &&
-				response.m_error.find("Strict instance-id") !=
-					std::string::npos &&
-				response.m_supportsStrictInstanceIds,
-				"v1 strict restore must fail closed while advertising the compatible host capability");
-		}
-
-		{
-			TProtocolBuffer buffer;
-			const auto response = RequireProtocolResponse(
-				MakeRequest(
-					EditorEngineProtocolStrictInstanceIdsVersion,
-					25,
-					c_getExitCodeCommandField),
-				buffer);
-			Require(
-				response.m_protocolVersion ==
-					EditorEngineProtocolStrictInstanceIdsVersion &&
-				response.m_requestId == 25 &&
-				!response.m_success &&
-				response.m_error.find("reserved") !=
-					std::string::npos &&
-				response.m_supportsStrictInstanceIds,
-				"the strict protocol version must reject ordinary v1 commands");
-		}
-
-		{
 			Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
 			std::string admissionError;
 			Require(
@@ -1032,7 +997,7 @@ namespace
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(
 				MakeRequest(
-					EditorEngineProtocolStrictInstanceIdsVersion,
+					EditorEngineProtocolVersion,
 					26,
 					c_instantiatePrefabFromYamlCommandField,
 					strictInstantiateRequest),
@@ -1040,13 +1005,13 @@ namespace
 				dependencies);
 			Require(
 				response.m_protocolVersion ==
-					EditorEngineProtocolStrictInstanceIdsVersion &&
+					EditorEngineProtocolVersion &&
 				response.m_requestId == 26 &&
 				response.m_success &&
 				response.m_resultField == c_instanceIdResultField &&
 				!response.m_boolResult &&
 				response.m_supportsStrictInstanceIds,
-				"a capability-compatible host must dispatch a version-gated strict restore request");
+				"a capable host must dispatch strict restoration through protocol v1");
 		}
 	}
 
@@ -1083,6 +1048,197 @@ namespace
 		static_assert(
 			sailor::editor::v1::EditorSimulationRequest::
 				kEnabledFieldNumber == 1);
+	}
+
+	void TestEditorStatsModeWireContract()
+	{
+		static_assert(
+			sailor::editor::v1::ProtocolRequest::
+				kSetEditorStatsModeFieldNumber ==
+			c_setEditorStatsModeCommandField);
+		static_assert(
+			sailor::editor::v1::EditorStatsModeRequest::
+				kModeFieldNumber == 1);
+		static_assert(
+			sailor::editor::v1::EDITOR_STATS_MODE_NONE == 1);
+		static_assert(
+			sailor::editor::v1::EDITOR_STATS_MODE_RENDER_STATS == 2);
+		static_assert(
+			sailor::editor::v1::
+				EDITOR_STATS_MODE_RENDER_STATS_AND_QUERIES == 3);
+
+		std::string invalidModeRequest;
+		AppendVarintField(invalidModeRequest, 1u, 99u);
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string admissionError;
+		Require(
+			gate.TryBeginInitialization(admissionError),
+			"Stats mode protocol fixture lifecycle must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_lifecycleGate = &gate;
+
+		TProtocolBuffer buffer;
+		const auto response = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				28,
+				c_setEditorStatsModeCommandField,
+				invalidModeRequest),
+			buffer,
+			dependencies);
+		Require(
+			response.m_requestId == 28 &&
+			!response.m_success &&
+			response.m_resultField == 0 &&
+			response.m_error.find("stats mode") != std::string::npos,
+			"an invalid Editor stats mode must fail without mutating runtime state");
+	}
+
+	void TestEditorRenderModeWireContract()
+	{
+		static_assert(
+			sailor::editor::v1::ProtocolRequest::
+				kSetEditorRenderModeFieldNumber ==
+			c_setEditorRenderModeCommandField);
+		static_assert(
+			sailor::editor::v1::ProtocolRequest::
+				kGetEditorRenderModeFieldNumber ==
+			c_getEditorRenderModeCommandField);
+		static_assert(
+			sailor::editor::v1::ProtocolResponse::
+				kEditorRenderModeResultFieldNumber ==
+			c_editorRenderModeResultField);
+		static_assert(
+			sailor::editor::v1::EditorRenderModeRequest::
+				kModeFieldNumber == 1);
+		static_assert(
+			sailor::editor::v1::EditorRenderModeResult::
+				kModeFieldNumber == 1);
+		static_assert(sailor::editor::v1::EDITOR_RENDER_MODE_LIT == 1);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_AMBIENT_OCCLUSION == 2);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_CASCADES == 3);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_LIGHT_TILES == 4);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ONLY == 5);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_PROBES == 6);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_BRICKS == 7);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VALIDITY == 8);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY == 9);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_RESIDENCY == 10);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY == 11);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK == 12);
+		static_assert(
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_SUBDIVISIONS == 13);
+		static_assert(
+			sailor::editor::v1::ProtocolRequest::
+				kSetRuntimeGiProbesPreviewBudgetFieldNumber ==
+			c_setRuntimeGIProbesPreviewBudgetCommandField);
+		static_assert(
+			sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest::
+				kBudgetFieldNumber == 1);
+		static_assert(
+			sailor::editor::v1::RuntimeGIProbesState::
+				kPreviewBudgetFieldNumber == 16);
+		static_assert(
+			sailor::editor::v1::RUNTIME_GI_PROBES_PREVIEW_BUDGET_ECO == 1);
+		static_assert(
+			sailor::editor::v1::RUNTIME_GI_PROBES_PREVIEW_BUDGET_BALANCED == 2);
+
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string admissionError;
+		Require(
+			gate.TryBeginInitialization(admissionError),
+			"Render mode protocol fixture lifecycle must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_lifecycleGate = &gate;
+
+		std::string visibilityRequest;
+		AppendVarintField(
+			visibilityRequest,
+			1u,
+			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY);
+		TProtocolBuffer setBuffer;
+		const auto setResponse = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				129,
+				c_setEditorRenderModeCommandField,
+				visibilityRequest),
+			setBuffer,
+			dependencies);
+		Require(
+			setResponse.m_success &&
+			setResponse.m_resultField == c_boolResultField &&
+			setResponse.m_boolResult,
+			"a valid Editor render mode must update runtime state");
+
+		TProtocolBuffer getBuffer;
+		const auto getResponse = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				130,
+				c_getEditorRenderModeCommandField),
+			getBuffer,
+			dependencies);
+		int32_t currentMode = 0;
+		Require(
+			getResponse.m_success &&
+			getResponse.m_resultField == c_editorRenderModeResultField &&
+			TryDecodeInt32Result(
+				reinterpret_cast<const uint8_t*>(
+					getResponse.m_resultPayload.data()),
+				getResponse.m_resultPayload.size(),
+				currentMode) &&
+			currentMode ==
+				sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY,
+			"the typed render-mode query must return Engine truth");
+
+		std::string invalidModeRequest;
+		AppendVarintField(invalidModeRequest, 1u, 99u);
+		TProtocolBuffer invalidBuffer;
+		const auto invalidResponse = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				131,
+				c_setEditorRenderModeCommandField,
+				invalidModeRequest),
+			invalidBuffer,
+			dependencies);
+		Require(
+			!invalidResponse.m_success &&
+			invalidResponse.m_resultField == 0 &&
+			invalidResponse.m_error.find("render mode") != std::string::npos,
+			"an invalid Editor render mode must be rejected");
+
+		std::string litRequest;
+		AppendVarintField(
+			litRequest,
+			1u,
+			sailor::editor::v1::EDITOR_RENDER_MODE_LIT);
+		TProtocolBuffer resetBuffer;
+		const auto resetResponse = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				132,
+				c_setEditorRenderModeCommandField,
+				litRequest),
+			resetBuffer,
+			dependencies);
+		Require(
+			resetResponse.m_success && resetResponse.m_boolResult,
+			"the render-mode fixture must restore Lit mode");
 	}
 
 	void TestAudioPreviewWireContract()
@@ -2074,6 +2230,8 @@ int main()
 		TestStrictInstanceIdProtocolGate();
 		TestModelInstanceWireContract();
 		TestEditorSimulationWireContract();
+		TestEditorStatsModeWireContract();
+		TestEditorRenderModeWireContract();
 		TestAudioPreviewWireContract();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();

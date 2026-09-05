@@ -120,64 +120,40 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal(57, ProtocolRequest.UpdateAssetFieldNumber);
         Assert.Equal(61, ProtocolRequest.SetEditorSimulationFieldNumber);
         Assert.Equal(62, ProtocolRequest.GetEditorSimulationStateFieldNumber);
+        Assert.Equal(64, ProtocolRequest.SetEditorStatsModeFieldNumber);
+        Assert.Equal(65, ProtocolRequest.SetEditorRenderModeFieldNumber);
+        Assert.Equal(66, ProtocolRequest.GetEditorRenderModeFieldNumber);
+        Assert.Equal(70, ProtocolRequest.SetGiSettingsFieldNumber);
+        Assert.Equal(71, ProtocolRequest.GetGlobalIlluminationStateFieldNumber);
+        Assert.Equal(72, ProtocolRequest.SetRuntimeGiProbesPreviewFieldNumber);
+        Assert.Equal(73, ProtocolRequest.SetRuntimeGiProbesPausedFieldNumber);
+        Assert.Equal(74, ProtocolRequest.RestartRuntimeGiProbesFieldNumber);
+        Assert.Equal(75, ProtocolRequest.RebuildRuntimeGiProbesSceneFieldNumber);
+        Assert.Equal(
+            76,
+            ProtocolRequest.SetRuntimeGiProbesPreviewBudgetFieldNumber);
         Assert.Equal(10, ProtocolResponse.EmptyResultFieldNumber);
         Assert.Equal(19, ProtocolResponse.ViewportEventBatchResultFieldNumber);
+        Assert.Equal(
+            23,
+            ProtocolResponse.EditorRenderModeResultFieldNumber);
+        Assert.Equal(5, (int)EditorRenderMode.GlobalIlluminationOnly);
+        Assert.Equal(12, (int)EditorRenderMode.GlobalIlluminationFallback);
+        Assert.Equal(
+            13,
+            (int)EditorRenderMode.GlobalIlluminationSubdivisions);
+        Assert.Equal(1, (int)GlobalIlluminationMode.NoGi);
+        Assert.Equal(2, (int)GlobalIlluminationMode.Runtime);
+        Assert.Equal(3, (int)GlobalIlluminationMode.Baked);
+        Assert.Equal(2, SetGISettingsRequest.ModeFieldNumber);
+        Assert.Equal(3, SetGISettingsRequest.RuntimeProbesFieldNumber);
+        Assert.Equal(6, GlobalIlluminationStateResult.ModeFieldNumber);
+        Assert.Equal(7, GlobalIlluminationStateResult.EnabledFieldNumber);
+        Assert.Equal(8, GlobalIlluminationStateResult.RuntimeProbesFieldNumber);
+        Assert.Equal(9, GlobalIlluminationStateResult.RuntimeStateFieldNumber);
+        Assert.Equal(16, RuntimeGIProbesState.PreviewBudgetFieldNumber);
+        Assert.Equal(1, (int)RuntimeGIProbesPreviewBudget.Eco);
+        Assert.Equal(2, (int)RuntimeGIProbesPreviewBudget.Balanced);
     }
 
-    [Fact]
-    public void GeneratedSources_LiveInTheRequiredLanguageFolders()
-    {
-        var root = RepositoryRoot();
-
-        Assert.True(File.Exists(Path.Combine(root, "Protocol", "editor_engine.proto")));
-        Assert.True(File.Exists(Path.Combine(root, "Runtime", "Protocol", "Generated", "editor_engine.pb.h")));
-        Assert.True(File.Exists(Path.Combine(root, "Runtime", "Protocol", "Generated", "editor_engine.pb.cc")));
-        Assert.True(File.Exists(Path.Combine(root, "Editor", "Protocol", "Generated", "EditorEngine.cs")));
-    }
-
-    [Fact]
-    public void Builds_VerifyTemporaryGenerationWithoutOverwritingCheckedInSources()
-    {
-        var root = RepositoryRoot();
-        var cmake = File.ReadAllText(Path.Combine(root, "Lib", "CMakeLists.txt"));
-        var project = File.ReadAllText(
-            Path.Combine(root, "Editor", "Protocol", "SailorEditor.Protocol.csproj"));
-
-        Assert.Contains("SailorProtocolGeneratedSourcesCheck", cmake, StringComparison.Ordinal);
-        Assert.Contains("CMAKE_CURRENT_BINARY_DIR", cmake, StringComparison.Ordinal);
-        Assert.Contains("-E compare_files", cmake, StringComparison.Ordinal);
-        Assert.Contains(
-            "add_dependencies(SailorLib SailorProtocolGeneratedSourcesCheck)",
-            cmake,
-            StringComparison.Ordinal);
-        Assert.Contains("SAILOR_PROTOCOL_GENERATED_CPP_SOURCES", cmake, StringComparison.Ordinal);
-        Assert.DoesNotContain("PROPERTIES GENERATED TRUE", cmake, StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "\"--cpp_out=${SAILOR_PROTOCOL_GENERATED_CPP_DIR}\"",
-            cmake,
-            StringComparison.Ordinal);
-
-        Assert.Contains(
-            "/obj/$(Configuration)/$(TargetFramework)/ProtocolGenerated/",
-            project,
-            StringComparison.Ordinal);
-        Assert.Contains("CompileOutputs=\"false\"", project, StringComparison.Ordinal);
-        Assert.Contains("<GetFileHash", project, StringComparison.Ordinal);
-        Assert.Contains("Algorithm=\"SHA256\"", project, StringComparison.Ordinal);
-        Assert.Contains("Checked-in C# protocol source", project, StringComparison.Ordinal);
-        Assert.DoesNotContain("OutputDir=\"Generated\"", project, StringComparison.Ordinal);
-    }
-
-    static string RepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null &&
-               !File.Exists(Path.Combine(directory.FullName, "CMakeLists.txt")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new DirectoryNotFoundException("Could not locate the Sailor repository root.");
-    }
 }

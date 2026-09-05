@@ -31,6 +31,8 @@ namespace Sailor
 		SAILOR_API void SetAspect(float aspect) { m_aspect = aspect; }
 		SAILOR_API void SetZNear(float zNear) { m_zNear = zNear; }
 		SAILOR_API void SetZFar(float zFar) { m_zFar = zFar; }
+		SAILOR_API void ResetMotionHistory() { ++m_motionHistoryRevision; }
+		SAILOR_API uint64_t GetMotionHistoryRevision() const { return m_motionHistoryRevision; }
 
 	protected:
 
@@ -42,6 +44,7 @@ namespace Sailor
 
 		float m_zNear = 0.1f;
 		float m_zFar = 3000.0f;
+		uint64_t m_motionHistoryRevision = 0ull;
 
 		friend class CameraECS;
 	};
@@ -53,6 +56,14 @@ namespace Sailor
 		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		void CopyCameraData(RHI::RHISceneViewPtr& outCameras);
 		bool TryGetActiveCamera(Math::Transform& outCameraTransform, CameraData& outCameraData);
+		const TVector<Math::Transform>& GetActiveCameraTransforms() const
+		{
+			return m_rhiCameraTransforms;
+		}
+		const TVector<CameraData>& GetActiveCameras() const
+		{
+			return m_rhiCameras;
+		}
 
 		virtual uint32_t GetOrder() const override { return 100; }
 

@@ -2,6 +2,7 @@ name: PhysicsBounceComparison
 prefabs:
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 0
           - 130
@@ -31,6 +32,7 @@ prefabs:
           instanceId: A1540000000000000000000000000001_A1540000000000000001
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 250
@@ -54,15 +56,16 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 8
-            - 8
-            - 8
+            - 8000
+            - 8000
+            - 8000
           lightType: Directional
           shadowType: PCF
           fileId: NullFileId
           instanceId: A1540000000000000000000000000002_A1540000000000000002
   - gameObjects:
       - name: StaticGround
+        mobilityType: Stationary
         position:
           - 0
           - -10
@@ -112,6 +115,7 @@ prefabs:
           instanceId: A1540000000000000000000000000005_A1540000000000000003
   - gameObjects:
       - name: Bounce_000_Percent
+        mobilityType: Stationary
         position:
           - -90
           - 120
@@ -159,6 +163,7 @@ prefabs:
           instanceId: A1540000000000000000000000000008_A1540000000000000004
   - gameObjects:
       - name: Bounce_025_Percent
+        mobilityType: Stationary
         position:
           - -45
           - 120
@@ -206,6 +211,7 @@ prefabs:
           instanceId: A154000000000000000000000000000B_A1540000000000000005
   - gameObjects:
       - name: Bounce_050_Percent
+        mobilityType: Stationary
         position:
           - 0
           - 120
@@ -253,6 +259,7 @@ prefabs:
           instanceId: A154000000000000000000000000000E_A1540000000000000006
   - gameObjects:
       - name: Bounce_075_Percent
+        mobilityType: Stationary
         position:
           - 45
           - 120
@@ -300,6 +307,7 @@ prefabs:
           instanceId: A1540000000000000000000000000011_A1540000000000000007
   - gameObjects:
       - name: Bounce_100_Percent
+        mobilityType: Stationary
         position:
           - 90
           - 120

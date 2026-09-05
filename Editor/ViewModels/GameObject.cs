@@ -18,6 +18,7 @@ namespace SailorEditor.ViewModels;
 public interface IInspectorEditable
 {
     bool HasPendingInspectorChanges { get; }
+    bool HasInFlightInspectorCommit { get; }
     Task<bool> CommitInspectorChangesAsync(
         CancellationToken cancellationToken = default);
 }
@@ -26,7 +27,7 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 {
     readonly InspectorAutoCommitController _autoCommit = new(
         propertyName => propertyName == nameof(IsDirty),
-        propertyName => false);
+        propertyName => propertyName == nameof(MobilityType));
     readonly SemaphoreSlim _commitGate = new(1, 1);
     int pendingInspectorCommits;
 
@@ -156,6 +157,12 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
             component.HasPendingInspectorChanges);
 
     [YamlIgnore]
+    public bool HasInFlightInspectorCommit =>
+        Volatile.Read(ref pendingInspectorCommits) != 0 ||
+        GetComponentsSafely().Any(component =>
+            component.HasInFlightInspectorCommit);
+
+    [YamlIgnore]
     bool HasPendingGameObjectChanges =>
         IsDirty || Volatile.Read(ref pendingInspectorCommits) != 0;
 
@@ -178,6 +185,7 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
         Rotation ??= new Rotation();
         Scale ??= new Vec4();
         ComponentIndices ??= [];
+        MobilityType = GameObjectMobilityPolicy.Normalize(MobilityType);
 
         Scale.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Scale));
         Position.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Position));
@@ -194,6 +202,9 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
     [YamlIgnore]
     public string DisplayName { get { return Name; } }
+
+    [YamlIgnore]
+    public IList<string> MobilityTypes => GameObjectMobilityPolicy.Values;
 
     [YamlIgnore]
     public int PrefabIndex = -1;
@@ -243,6 +254,7 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
         Position = new Vec4(Position),
         Rotation = new Rotation(Rotation),
         Scale = new Vec4(Scale),
+        MobilityType = MobilityType,
         ParentIndex = ParentIndex,
         InstanceId = InstanceId,
         ComponentIndices = new List<int>(ComponentIndices),
@@ -288,6 +300,9 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
     [ObservableProperty]
     InstanceId instanceId = InstanceId.NullInstanceId;
+
+    [ObservableProperty]
+    string mobilityType = GameObjectMobilityPolicy.Stationary;
 
     [ObservableProperty]
     uint parentIndex = uint.MaxValue;

@@ -44,6 +44,8 @@ namespace Sailor::Workspace
 		const std::filesystem::path& GetGenerated() const noexcept { return m_generated; }
 		const std::filesystem::path& GetBuild() const noexcept { return m_build; }
 		const std::filesystem::path& GetLogicOutput() const noexcept { return m_logicOutput; }
+		std::filesystem::path GetProjectSettingsPath() const { return m_root / "ProjectSettings.yaml"; }
+		std::filesystem::path GetEditorSettingsPath() const { return m_cache / "EditorSettings.yaml"; }
 		const std::string& GetModuleName() const noexcept { return m_moduleName; }
 		const std::string& GetWorkspaceId() const noexcept { return m_workspaceId; }
 		const std::string& GetWorkspaceName() const noexcept { return m_workspaceName; }

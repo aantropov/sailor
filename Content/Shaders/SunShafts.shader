@@ -24,7 +24,7 @@ glslVertex: |
   
 glslFragment: |
   const float earthRadius = 6371000.0f;
-  const float sunAngularRadius = radians(0.545f);
+  const float sunAngularRadius = radians(0.266f);
 
   layout(set = 0, binding = 0) uniform FrameData
   {
@@ -53,6 +53,8 @@ glslFragment: |
   layout(set=1, binding=0) uniform PostProcessDataUBO
   {
     vec4 lightDirection;
+    vec4 sunIlluminance;
+    vec4 groundRadiance;
     float cloudsAttenuation1;
     float cloudsAttenuation2;
     float cloudsDensity;
@@ -62,7 +64,7 @@ glslFragment: |
     float eccentrisy1;
     float eccentrisy2;
     float fog;
-    float sunIntensity;
+    float cloudScatteringScale;
     float ambient;
     int   scatteringSteps;
     float scatteringDensity;
@@ -77,27 +79,15 @@ glslFragment: |
   layout(location=0) in vec2 fragTexcoord;
   layout(location=0) out vec4 outColor;
   
-  vec3 CalculateSunColor(vec3 sunDirection)
+  vec3 NormalizeSunColor()
   {
-      const vec3 GroundIlluminance = vec3(0.0499, 0.004, 4.10 * 0.00001);
-      const vec3 HalfIlluminance = vec3(0.6f, 0.4490196f, 0.1588f);
-      const vec3 ZenithIlluminance =  vec3(0.925, 0.861, 0.755);
-      
-      const float angle = dot(-sunDirection, vec3(0, 1, 0));
-      
-      const float border = 0.1f;
-      
-      const float artisticTune1 = sqrt(max((angle - border) / (1.0f - border), 0.0f));
-      const float normalizedGroundAngle = angle / border;
-      const float artisticTune2 = clamp(
-        normalizedGroundAngle * normalizedGroundAngle * normalizedGroundAngle,
-        0.0f,
-        1.0f);
-      
-      vec3 color = angle > border ? mix(HalfIlluminance, ZenithIlluminance, artisticTune1) : 
-      mix(GroundIlluminance, HalfIlluminance, artisticTune2);
-      
-      return color;
+      const vec3 illuminance = max(data.sunIlluminance.xyz, vec3(0.0f));
+      const float maximum = max(
+        max(illuminance.x, illuminance.y),
+        illuminance.z);
+      return maximum > 0.000001f
+        ? illuminance / maximum
+        : vec3(0.0f);
   }
 
   float SunDiskVisibility(vec3 dirToSun)
@@ -127,25 +117,37 @@ glslFragment: |
     const vec3 dirToSun = normalize(-data.lightDirection.xyz);
     const float sunVisibility = SunDiskVisibility(dirToSun);
     
-    vec4 uvView = ((frame.projection * frame.view * vec4(dirToSun, 0)) + 1.0f) * 0.5f;
-    uvView /= uvView.w;
-    
     outColor = vec4(0, 0, 0, 0);
     
-    if(data.sunShaftsIntensity == 0 || sunVisibility <= 0.0f)
+    if(data.sunShaftsIntensity == 0 ||
+       sunVisibility <= 0.0f ||
+       max(max(data.sunIlluminance.x, data.sunIlluminance.y), data.sunIlluminance.z) <= 0.0f)
     {
         return;
     }
+
+    const vec4 sunClip =
+      frame.projection * frame.view * vec4(dirToSun, 0.0f);
+    if(sunClip.w <= 0.000001f)
+    {
+        return;
+    }
+
+    const vec2 sunNdc = sunClip.xy / sunClip.w;
+    const vec2 sunUv = vec2(
+      sunNdc.x * 0.5f + 0.5f,
+      0.5f - sunNdc.y * 0.5f);
     
     vec2 texelSize = 1.0f / textureSize(cloudsSampler, 0);
-    vec2 blurDirection = (uvView.xy - fragTexcoord.xy) * texelSize.xy * blurRadius;
+    vec2 blurDirection =
+      (sunUv - fragTexcoord.xy) * texelSize.xy * blurRadius;
     vec2 uv = fragTexcoord.xy;
         
     const float border = 0.51f;
-    float fade = max(0, max(uvView.x - 1.0f, uvView.y - 1.0f));
+    float fade = max(0, max(sunUv.x - 1.0f, sunUv.y - 1.0f));
     
-    if(uvView.x > 1 + border || uvView.y > 1 + border ||
-       uvView.x < -border || uvView.y < -border)
+    if(sunUv.x > 1 + border || sunUv.y > 1 + border ||
+       sunUv.x < -border || sunUv.y < -border)
     {   
         return; 
     }
@@ -161,7 +163,7 @@ glslFragment: |
     outColor.a = 1 - clamp(1 - outColor.a * data.sunShaftsIntensity,0,1);
     
 
-    outColor.xyz = vec3(0.005) * CalculateSunColor(data.lightDirection.xyz);
+    outColor.xyz = vec3(0.005) * NormalizeSunColor();
     outColor = sunVisibility * outColor.a * outColor * mix(0, 1.0f, 1 - fade / border) * clamp(1 - outColor.r, 0, 1);
     outColor.a *= clamp(pow(texture(cloudsSampler, fragTexcoord.xy).g, 3), 0,1);    
   }

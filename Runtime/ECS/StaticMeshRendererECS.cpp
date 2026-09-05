@@ -7,6 +7,8 @@
 #include "RHI/Material.h"
 #include "Components/AnimatorComponent.h"
 #include "Components/MeshRendererComponent.h"
+#include "Core/StringHash.h"
+#include "Settings/GraphicsSettings.h"
 
 #include <algorithm>
 #include <cmath>
@@ -38,7 +40,7 @@ namespace
 	uint64_t CalculateMaterialRenderMetadataSignature(
 		const TVector<MaterialPtr>& materials)
 	{
-		size_t result = 1469598103934665603ull;
+		size_t result = Fnv1aOffsetBasis;
 		HashCombine(result, materials.Num());
 		for (const auto& material : materials)
 		{
@@ -88,22 +90,6 @@ namespace
 		return outWorldBounds.IsValid();
 	}
 
-	bool AreMatricesExactlyEqual(const glm::mat4& lhs, const glm::mat4& rhs)
-	{
-		for (glm::length_t column = 0; column < lhs.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < lhs[column].length(); ++row)
-			{
-				if (lhs[column][row] != rhs[column][row])
-				{
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
 	void GetConservativeOctreeBounds(
 		const Math::AABB& bounds,
 		glm::ivec3& outCenter,
@@ -145,7 +131,7 @@ namespace
 #if defined(__APPLE__)
 				lhsMesh.m_materialTextureSamplers != rhsMesh.m_materialTextureSamplers ||
 #endif
-				!AreMatricesExactlyEqual(lhsMesh.m_worldMatrix, rhsMesh.m_worldMatrix))
+				!Math::AreExactlyEqual(lhsMesh.m_worldMatrix, rhsMesh.m_worldMatrix))
 			{
 				return false;
 			}
@@ -164,8 +150,8 @@ namespace
 		uint32_t skeletonOffset,
 		size_t currentFrame)
 	{
-		const size_t opaqueQueueTag = GetHash(std::string("Opaque"));
-		const size_t maskedQueueTag = GetHash(std::string("Masked"));
+		const size_t opaqueQueueTag = "Opaque"_h.GetHash();
+		const size_t maskedQueueTag = "Masked"_h.GetHash();
 		auto textureImporter = App::GetSubmodule<TextureImporter>();
 
 		auto shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
@@ -287,7 +273,14 @@ uint32_t StaticMeshRendererData::ResolveLod(
 		selectedLod = static_cast<uint32_t>(thresholdIndex + 1u);
 	}
 
-	return (std::clamp)(selectedLod, minLod, maxLod);
+	const int32_t lodBias = App::GetInstance() ?
+		App::GetActiveGraphicsSettings().m_lodBias : 0;
+	return Settings::ApplyLodBias(
+		selectedLod,
+		numAvailableLods,
+		minLod,
+		maxLod,
+		lodBias);
 }
 
 void StaticMeshRendererData::SetLodSettings(
@@ -429,6 +422,24 @@ void StaticMeshRendererECS::MarkDirty(GameObjectPtr owner)
 	}
 }
 
+uint64_t StaticMeshRendererECS::GetGlobalIlluminationContributorRevision()
+	const noexcept
+{
+	if (!m_publishedSceneVersion ||
+		!m_publishedSceneVersion->m_sceneVersion)
+	{
+		return 0u;
+	}
+	const RHI::RHISceneVersion& version =
+		*m_publishedSceneVersion->m_sceneVersion;
+	uint64_t revision = version.m_staticRevision;
+	HashCombine(
+		revision,
+		version.m_stationaryRevision,
+		version.m_materialRevision);
+	return revision;
+}
+
 void StaticMeshRendererECS::OnComponentUnregistered(size_t index, StaticMeshRendererData& component)
 {
 	uint8_t spatialChangeMask = 0u;
@@ -485,8 +496,10 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		}
 
 		auto& data = m_components[componentIndex];
+		// A transform evaluated at frame zero is valid. Publication is tracked by
+		// the scene handle, not by the last observed transform timestamp.
 		bool bNeedsUpdate = data.m_bIsDirty ||
-			(data.GetModel() && data.m_frameLastChange == 0);
+			(data.GetModel() && !m_renderInstanceHandles.ContainsKey(componentIndex));
 		if (GameObjectPtr owner = data.m_owner.StaticCast<GameObject>())
 		{
 			bNeedsUpdate |= owner->GetTransformComponent().GetFrameLastChange() > data.m_frameLastChange;
@@ -536,7 +549,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			}
 
 			const bool bTopologyDirty = data.m_bIsDirty ||
-				(data.GetModel() && data.m_frameLastChange == 0);
+				!m_renderInstanceHandles.ContainsKey(componentIndex);
 			const bool bTransformDirty = owner->GetTransformComponent().GetFrameLastChange() > data.m_frameLastChange;
 			const bool bMaterialsDirty =
 				data.m_materialContentRevisions.Num() != data.GetMaterials().Num() + 1u ||

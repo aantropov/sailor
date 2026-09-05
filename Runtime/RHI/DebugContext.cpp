@@ -1,6 +1,7 @@
 #include "Types.h"
 #include "Mesh.h"
 #include "DebugContext.h"
+#include "Core/StringHash.h"
 #include "CommandList.h"
 #include "VertexDescription.h"
 #include "FrameGraph/ShadowPrepassNode.h"
@@ -160,20 +161,28 @@ void DebugContext::DrawFrustum(const Math::Frustum& frustum, const glm::vec4 col
 void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float duration)
 {
 	const float shadowFarPlane = (std::min)(zFar, LightingECS::ShadowMaxDistance);
+	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
+	const uint32_t activeCascadeCount = (std::clamp)(
+		graphicsProfile.m_shadowCascadeCount,
+		1u,
+		LightingECS::NumCascades);
 	TVector<Math::Frustum> cascades;
-	cascades.Reserve(LightingECS::NumCascades);
-	for (uint32_t i = 0; i < LightingECS::NumCascades; i++)
+	cascades.Reserve(activeCascadeCount);
+	for (uint32_t i = 0; i < activeCascadeCount; i++)
 	{
 		Math::Frustum cameraFrustum{};
 		float cascadeNear = zNear;
 		if (i > 0)
 		{
-			const float previousSplit = shadowFarPlane * LightingECS::ShadowCascadeLevels[i - 1];
-			const float previousNear = i > 1 ? shadowFarPlane * LightingECS::ShadowCascadeLevels[i - 2] : zNear;
+			const float previousSplit = shadowFarPlane *
+				LightingECS::GetShadowCascadeLevel(i - 1u, activeCascadeCount);
+			const float previousNear = i > 1 ? shadowFarPlane *
+				LightingECS::GetShadowCascadeLevel(i - 2u, activeCascadeCount) : zNear;
 			cascadeNear = (std::max)(zNear,
 				previousSplit - (previousSplit - previousNear) * LightingECS::ShadowCascadeBlendFraction);
 		}
-		const float cascadeFar = shadowFarPlane * LightingECS::ShadowCascadeLevels[i];
+		const float cascadeFar = shadowFarPlane *
+			LightingECS::GetShadowCascadeLevel(i, activeCascadeCount);
 		cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, cascadeNear, cascadeFar);
 		cascades.Emplace(std::move(cameraFrustum));
 	}
@@ -194,7 +203,7 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 		const glm::mat4 lightProjection = cascadeFrustum.CalculateOrthoMatrixByView(
 			lightView,
 			zMult,
-			LightingECS::ShadowCascadeResolutions[i],
+			glm::ivec2(graphicsProfile.GetShadowCascadeResolution(i)),
 			LightingECS::ShadowCasterDepthExtension);
 
 		// Create matrix and get all extents
@@ -242,6 +251,7 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 
 	if (m_lineVertices.Num() == 0)
 	{
+		m_numRenderedVertices = 0u;
 		return;
 	}
 
@@ -249,7 +259,7 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 
 	if (!m_material)
 	{
-		RenderState renderState = RHI::RenderState(true, true, 0.0f, true, ECullMode::Back, EBlendMode::None, EFillMode::Line, GetHash(std::string("Debug")), true);
+		RenderState renderState = RHI::RenderState(true, true, 0.0f, true, ECullMode::Back, EBlendMode::None, EFillMode::Line, "Debug"_h.GetHash(), true);
 
 		auto shaderFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;
@@ -379,15 +389,23 @@ DebugContext::DrawSnapshot DebugContext::GetDrawSnapshot() const
 	return snapshot;
 }
 
-void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const
+void DebugContext::DrawDebugMesh(
+	RHI::RHICommandListPtr secondaryDrawCmdList,
+	const glm::mat4x4& viewProjection,
+	const glm::ivec2& renderExtent) const
 {
-	DrawDebugMesh(secondaryDrawCmdList, viewProjection, GetDrawSnapshot());
+	DrawDebugMesh(
+		secondaryDrawCmdList,
+		viewProjection,
+		GetDrawSnapshot(),
+		renderExtent);
 }
 
 void DebugContext::DrawDebugMesh(
 	RHI::RHICommandListPtr secondaryDrawCmdList,
 	const glm::mat4x4& viewProjection,
-	const DrawSnapshot& snapshot) const
+	const DrawSnapshot& snapshot,
+	const glm::ivec2& renderExtent) const
 {
 	if (!snapshot.m_vertexBuffer ||
 		!snapshot.m_indexBuffer ||
@@ -398,9 +416,20 @@ void DebugContext::DrawDebugMesh(
 	}
 
 	auto commands = RHI::Renderer::GetDriverCommands();
+	const float renderWidth = static_cast<float>((std::max)(renderExtent.x, 1));
+	const float renderHeight = static_cast<float>((std::max)(renderExtent.y, 1));
 
 	commands->BindMaterial(secondaryDrawCmdList, snapshot.m_material);
-	commands->SetDefaultViewport(secondaryDrawCmdList);
+	commands->SetViewport(
+		secondaryDrawCmdList,
+		0.0f,
+		renderHeight,
+		renderWidth,
+		-renderHeight,
+		glm::vec2(0.0f),
+		glm::vec2(renderWidth, renderHeight),
+		0.0f,
+		1.0f);
 	commands->BindVertexBuffer(secondaryDrawCmdList, snapshot.m_vertexBuffer, snapshot.m_vertexBuffer->GetOffset());
 	commands->BindIndexBuffer(secondaryDrawCmdList, snapshot.m_indexBuffer, snapshot.m_indexBuffer->GetOffset());
 	commands->PushConstants(secondaryDrawCmdList, snapshot.m_material, sizeof(viewProjection), &viewProjection);

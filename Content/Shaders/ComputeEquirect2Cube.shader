@@ -18,7 +18,9 @@ glslCompute: |
   // See: OpenGL core profile specs, section 8.13.
   vec3 getSamplingVector()
   {
-      vec2 st = gl_GlobalInvocationID.xy/vec2(imageSize(dst));
+      vec2 st =
+        (vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) /
+        vec2(imageSize(dst));
       vec2 uv = 2.0 * vec2(st.x, 1.0-st.y) - vec2(1.0);
   
       vec3 ret;

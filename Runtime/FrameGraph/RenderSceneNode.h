@@ -8,6 +8,7 @@
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RenderSceneTextureCache.h"
 #include "RHI/Batch.hpp"
+#include "RHI/MotionHistory.h"
 
 namespace Sailor::Framegraph
 {
@@ -26,6 +27,7 @@ namespace Sailor::Framegraph
 			uint32_t bIsCulled = 0;
 			uint32_t padding = 0;
 			vec4 bakedVolumeScale = vec4(1.0f);
+			RHI::RHIObjectMotionData motion{};
 
 			bool operator==(const PerInstanceData& rhs) const
 			{
@@ -35,7 +37,7 @@ namespace Sailor::Framegraph
 					skeletonOffset == rhs.skeletonOffset &&
 					bIsCulled == rhs.bIsCulled &&
 					padding == rhs.padding &&
-					bakedVolumeScale == rhs.bakedVolumeScale;
+					bakedVolumeScale == rhs.bakedVolumeScale && motion == rhs.motion;
 			}
 
 		};
@@ -65,6 +67,7 @@ namespace Sailor::Framegraph
 			{
 				m_orderedDrawItems.Clear(false);
 				m_renderPassColorAttachments.Clear(false);
+				m_renderPassColorSurfaces.Clear(false);
 				m_cullingDispatchBindings.Clear(false);
 				m_arenaRangeInstances.Clear(false);
 				m_arenaRangeStableKeys.Clear(false);
@@ -89,8 +92,10 @@ namespace Sailor::Framegraph
 			RHI::RHIShaderBindingSetPtr m_nodeLightsBindings{};
 			RHI::RHIShaderBindingSetPtr m_nodeLightsSource{};
 			RHI::RHITexturePtr m_transmissionTexture{};
+			RHI::RHITexturePtr m_globalIlluminationProbeCellIndicesTexture{};
 			uint64_t m_nodeLightsSourceRevision = 0ull;
 			TVector<RHI::RHITexturePtr> m_renderPassColorAttachments{};
+			TVector<RHI::RHISurfacePtr> m_renderPassColorSurfaces{};
 			TVector<RHI::RHIShaderBindingSetPtr> m_cullingDispatchBindings{};
 			TVector<PerInstanceData> m_arenaRangeInstances{};
 			TVector<uint64_t> m_arenaRangeStableKeys{};

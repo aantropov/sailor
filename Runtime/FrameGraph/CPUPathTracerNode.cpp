@@ -202,7 +202,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	};
 
 	const bool bEnabled = getFloatParam("enabled", 0.0f) > 0.5f;
-	if (!bEnabled)
+	if (!bEnabled || IsSceneViewDebugVisualization(sceneView.m_renderMode))
 	{
 		commands->EndDebugRegion(commandList);
 		return;

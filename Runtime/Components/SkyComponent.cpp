@@ -4,7 +4,9 @@
 #include "ECS/TransformECS.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "FrameGraph/SkyNode.h"
+#include "Math/Math.h"
 #include "RHI/Renderer.h"
+#include "Raytracing/SkyEnvironmentGenerator.h"
 #include <glm/gtx/quaternion.hpp>
 #include <cmath>
 
@@ -51,15 +53,12 @@ namespace
 			: localMatrix;
 	}
 
-	bool IsFinite(const glm::vec3& value)
-	{
-		return Math::AllFinite(value);
-	}
 }
 
 SkyComponent::SkyComponent()
 {
 	UpdateLightDirection();
+	m_skyParams.m_sunIlluminance = glm::vec4(m_sunIlluminance, 0.0f);
 }
 
 void SkyComponent::BeginPlay()
@@ -137,9 +136,9 @@ void SkyComponent::Apply()
 		localPosition = glm::vec3(inverseParent * glm::vec4(worldPosition, 1.0f));
 	}
 
-	if (!IsFinite(localDirection) ||
-		!IsFinite(localUp) ||
-		!IsFinite(localPosition))
+	if (!Math::AllFinite(localDirection) ||
+		!Math::AllFinite(localUp) ||
+		!Math::AllFinite(localPosition))
 	{
 		return;
 	}
@@ -157,21 +156,43 @@ void SkyComponent::Apply()
 
 	m_directionalLight->SetLightType(ELightType::Directional);
 	m_directionalLight->SetIntensity(
-		m_sunAngleDegrees > 0.0f
-			? m_directionalLightIntensity
-			: glm::vec3(0.0f));
+		Raytracing::CalculateDirectSunIlluminance(m_skyParams));
 }
 
 void SkyComponent::UpdateLightDirection()
 {
 	const float sunAngleRadians = glm::radians(m_sunAngleDegrees);
-	m_skyParams.m_lightDirection = Math::SafeNormalize(
-		glm::vec4(
-			0.2f,
-			std::sin(-sunAngleRadians),
-			std::cos(sunAngleRadians),
-			0.0f),
-		Math::vec4_Down);
+	const glm::vec2 horizontalDirection = glm::normalize(glm::vec2(0.2f, 1.0f));
+	const float horizontalScale = std::cos(sunAngleRadians);
+	const glm::vec4 direction(
+		horizontalDirection.x * horizontalScale,
+		-std::sin(sunAngleRadians),
+		horizontalDirection.y * horizontalScale,
+		0.0f);
+	if (m_skyParams.m_lightDirection != direction)
+	{
+		m_skyParams.m_lightDirection = direction;
+		UpdateGroundRadiance();
+	}
+}
+
+void SkyComponent::UpdateGroundRadiance()
+{
+	// The sky integral runs only when its source or the authored albedo changes,
+	// not during the per-frame component-to-renderer parameter handoff.
+	m_skyParams.m_groundRadiance = glm::vec4(
+		Raytracing::CalculateSkyGroundRadiance(m_skyParams, m_groundAlbedo), 0.0f);
+}
+
+void SkyComponent::SetGroundAlbedo(const glm::vec3& value)
+{
+	const glm::vec3 albedo = Math::AllFinite(value)
+		? glm::clamp(value, glm::vec3(0.0f), glm::vec3(1.0f)) : glm::vec3(0.0f);
+	if (m_groundAlbedo != albedo)
+	{
+		m_groundAlbedo = albedo;
+		UpdateGroundRadiance();
+	}
 }
 
 void SkyComponent::SetSunAngle(float value)
@@ -225,14 +246,20 @@ void SkyComponent::SetCloudsHorizonBlend(float value)
 	m_skyParams.m_fog = glm::clamp(value, 0.0f, 20.0f);
 }
 
-void SkyComponent::SetSunIntensity(float value)
+void SkyComponent::SetCloudScatteringScale(float value)
 {
-	m_skyParams.m_sunIntensity = glm::clamp(value, 0.0f, 800.0f);
+	m_skyParams.m_cloudScatteringScale = glm::clamp(value, 0.0f, 8.0f);
 }
 
 void SkyComponent::SetAmbient(float value)
 {
 	m_skyParams.m_ambient = glm::clamp(value, 0.0f, 10.0f);
+}
+
+void SkyComponent::SetGiIndirectIntensity(float value)
+{
+	m_giIndirectIntensity = std::isfinite(value) ?
+		glm::clamp(value, 0.0f, 16.0f) : 0.0f;
 }
 
 void SkyComponent::SetScatteringSteps(int32_t value)
@@ -271,7 +298,13 @@ void SkyComponent::SetDirectionalLight(
 	m_directionalLight = value;
 }
 
-void SkyComponent::SetDirectionalLightIntensity(const glm::vec3& value)
+void SkyComponent::SetSunIlluminance(const glm::vec3& value)
 {
-	m_directionalLightIntensity = glm::max(value, glm::vec3(0.0f));
+	const glm::vec3 illuminance = glm::max(value, glm::vec3(0.0f));
+	if (m_sunIlluminance != illuminance)
+	{
+		m_sunIlluminance = illuminance;
+		m_skyParams.m_sunIlluminance = glm::vec4(m_sunIlluminance, 0.0f);
+		UpdateGroundRadiance();
+	}
 }

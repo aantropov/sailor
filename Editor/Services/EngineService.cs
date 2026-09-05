@@ -5,6 +5,7 @@ using SailorEditor.Protocol.Generated;
 using SailorEditor.Utility;
 using SailorEditor.Workspace;
 using SailorEditor.Scene;
+using SailorEditor.Settings;
 using System.Threading;
 using System.Globalization;
 
@@ -231,6 +232,7 @@ namespace SailorEditor.Services
         public event Action<AssetReloadCompletion> OnAssetReloadCompleted = delegate { };
         public event Action<IReadOnlyList<EditorViewportEvent>> OnEditorViewportEvents = delegate { };
         public event Action<bool> OnEditorSimulationStateChanged = delegate { };
+        public event Action<SceneViewRenderMode> OnEditorRenderModeChanged = delegate { };
 
         public string EngineContentDirectory => Path.Combine(repoRoot, "Content");
 
@@ -2955,6 +2957,505 @@ namespace SailorEditor.Services
                     ToProtocolSpace(space),
                     token),
                 cancellationToken: cancellationToken);
+
+        public Task<bool> SetEditorStatsModeAsync(
+            GraphicsStatsMode mode,
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.SetEditorStatsModeAsync(
+                    ToProtocolStatsMode(mode),
+                    token),
+                cancellationToken: cancellationToken);
+
+        public async Task<bool> SetEditorRenderModeAsync(
+            SceneViewRenderMode mode,
+            CancellationToken cancellationToken = default)
+        {
+            var succeeded = await InvokeRunningInteropAsync(
+                token => protocolClient.SetEditorRenderModeAsync(
+                    ToProtocolRenderMode(mode),
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (succeeded)
+            {
+                OnEditorRenderModeChanged?.Invoke(mode);
+            }
+            return succeeded;
+        }
+
+        public async Task<SceneViewRenderMode?> GetEditorRenderModeAsync(
+            CancellationToken cancellationToken = default)
+        {
+            var mode = EditorRenderMode.Unspecified;
+            var succeeded = await InvokeRunningInteropAsync(
+                async token =>
+                {
+                    mode = await protocolClient
+                        .GetEditorRenderModeAsync(token)
+                        .ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            return succeeded ? FromProtocolRenderMode(mode) : null;
+        }
+
+        public Task<bool> StartGIProbesBakeAsync(
+            GIProbesBakeRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(request.Settings);
+            var settings = request.Settings;
+            var protocolSettings =
+                new Protocol.Generated.GIProbesBakeSettings
+                {
+                    RaysPerProbe = settings.RaysPerProbe,
+                    BounceCount = settings.BounceCount,
+                    RandomSeed = settings.RandomSeed,
+                    MaxSubdivisionLevel = settings.MaxSubdivisionLevel,
+                    MinProbeSpacing = settings.MinProbeSpacing,
+                    NormalBias = settings.NormalBias,
+                    ViewBias = settings.ViewBias,
+                    MaxRayDistance = settings.MaxRayDistance,
+                    IncludeSky = settings.IncludeSky,
+                    IncludeEmissive = settings.IncludeEmissive,
+                    IncludeDirectLighting = settings.IncludeDirectLighting
+                };
+            var protocolRequest = new StartGIProbesBakeRequest
+            {
+                WorldFileId = request.WorldAsset?.Value ?? string.Empty,
+                OutputVirtualPath = request.OutputVirtualPath ?? string.Empty,
+                StateName = request.StateName ?? string.Empty,
+                LayoutSourceFileId = request.LayoutSource?.Value ?? string.Empty,
+                Settings = protocolSettings,
+                FallbackEnvironment = ToProtocolVector(
+                    request.FallbackEnvironment),
+                Overwrite = request.Overwrite,
+                ThreadCount = request.ThreadCount
+            };
+            return InvokeRunningInteropAsync(
+                token => protocolClient.StartGIProbesBakeAsync(
+                    protocolRequest,
+                    token),
+                cancellationToken: cancellationToken);
+        }
+
+        public async Task<GIProbesBakeStatus?> GetGIProbesBakeStatusAsync(
+            CancellationToken cancellationToken = default)
+        {
+            Protocol.Generated.GIProbesBakeStatusResult? protocolStatus = null;
+            var succeeded = await InvokeRunningInteropAsync(
+                async token =>
+                {
+                    protocolStatus = await protocolClient
+                        .GetGIProbesBakeStatusAsync(token)
+                        .ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!succeeded || protocolStatus is null)
+            {
+                return null;
+            }
+            return new GIProbesBakeStatus(
+                FromProtocolBakeState(protocolStatus.State),
+                protocolStatus.Progress,
+                protocolStatus.CompletedProbes,
+                protocolStatus.TotalProbes,
+                protocolStatus.BrickCount,
+                protocolStatus.ProbeCount,
+                protocolStatus.ElapsedSeconds,
+                protocolStatus.LayoutHash,
+                protocolStatus.TransportHash,
+                protocolStatus.LightingHash,
+                protocolStatus.Stage,
+                protocolStatus.OutputVirtualPath,
+                protocolStatus.Diagnostic);
+        }
+
+        public Task<bool> CancelGIProbesBakeAsync(
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.CancelGIProbesBakeAsync(token),
+                cancellationToken: cancellationToken);
+
+        public async Task<bool> SetGISettingsAsync(
+            GlobalIlluminationRuntimeMode mode,
+            RuntimeGIProbesSettingsDescriptor runtimeSettings,
+            IReadOnlyCollection<GlobalIlluminationBindingDescriptor> bindings,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(runtimeSettings);
+            ArgumentNullException.ThrowIfNull(bindings);
+            var protocolSettings = new SetGISettingsRequest
+            {
+                Mode = ToProtocolGlobalIlluminationRuntimeMode(mode),
+                RuntimeProbes = new Protocol.Generated.RuntimeGIProbesSettings
+                {
+                    Version = runtimeSettings.Version,
+                    IncludeSky = runtimeSettings.IncludeSky,
+                    IncludeEmissive = runtimeSettings.IncludeEmissive,
+                    IncludeDirectLighting =
+                        runtimeSettings.IncludeDirectLighting,
+                    BounceCount = runtimeSettings.BounceCount,
+                    MinProbeSpacing = runtimeSettings.MinProbeSpacing,
+                    NormalBias = runtimeSettings.NormalBias,
+                    ViewBias = runtimeSettings.ViewBias,
+                    MaxRayDistance = runtimeSettings.MaxRayDistance
+                }
+            };
+            foreach (var binding in bindings.OrderBy(
+                static value => value.Name,
+                StringComparer.Ordinal))
+            {
+                protocolSettings.Probes.Add(
+                    new Protocol.Generated.GlobalIlluminationProbeBinding
+                    {
+                        Name = binding.Name ?? string.Empty,
+                        AssetFileId = binding.Asset?.Value ?? string.Empty,
+                        Mode = ToProtocolGlobalIlluminationProbeMode(binding.Mode),
+                        InitialWeight = binding.InitialWeight,
+                        Preload = binding.Preload
+                    });
+            }
+            var succeeded = await InvokeRunningInteropAsync(
+                token => protocolClient.SetGISettingsAsync(
+                    protocolSettings,
+                    token),
+                invalidateQueuedWorldSnapshots: true,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (succeeded)
+            {
+                await RefreshCurrentWorldAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            return succeeded;
+        }
+
+        public async Task<GlobalIlluminationRuntimeState?>
+            GetGlobalIlluminationStateAsync(
+                CancellationToken cancellationToken = default)
+        {
+            Protocol.Generated.GlobalIlluminationStateResult? protocolState = null;
+            var succeeded = await InvokeRunningInteropAsync(
+                async token =>
+                {
+                    protocolState = await protocolClient
+                        .GetGlobalIlluminationStateAsync(token)
+                        .ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!succeeded || protocolState is null)
+            {
+                return null;
+            }
+            var runtimeSettings = protocolState.RuntimeProbes ??
+                throw new InvalidDataException(
+                    "Runtime GI probe settings are missing from the engine state.");
+            var runtimeState = protocolState.RuntimeState ??
+                throw new InvalidDataException(
+                    "Runtime GI probe status is missing from the engine state.");
+            return new GlobalIlluminationRuntimeState(
+                protocolState.MaxProbeStatesPerSnapshot,
+                FromProtocolGlobalIlluminationRuntimeMode(protocolState.Mode),
+                protocolState.Enabled,
+                new RuntimeGIProbesSettingsDescriptor(
+                    runtimeSettings.Version,
+                    runtimeSettings.IncludeSky,
+                    runtimeSettings.IncludeEmissive,
+                    runtimeSettings.IncludeDirectLighting,
+                    runtimeSettings.BounceCount,
+                    runtimeSettings.MinProbeSpacing,
+                    runtimeSettings.NormalBias,
+                    runtimeSettings.ViewBias,
+                    runtimeSettings.MaxRayDistance),
+                new RuntimeGIProbesRuntimeState(
+                    FromProtocolRuntimeGIProbesLifecycle(
+                        runtimeState.Lifecycle),
+                    runtimeState.Enabled,
+                    runtimeState.Paused,
+                    runtimeState.PreviewEnabled,
+                    FromProtocolRuntimeGIProbesPreviewBudget(
+                        runtimeState.PreviewBudget),
+                    runtimeState.SceneGeneration,
+                    runtimeState.LightingGeneration,
+                    runtimeState.PublishedRevision,
+                    runtimeState.Capacity,
+                    runtimeState.ActiveProbeCount,
+                    runtimeState.ReadyProbeCount,
+                    runtimeState.WorkerCount,
+                    runtimeState.PublishedBytes,
+                    runtimeState.Coverage,
+                    runtimeState.Refinement,
+                    runtimeState.Diagnostic),
+                protocolState.Probes.Select(
+                    static probe => new GlobalIlluminationProbeRuntimeState(
+                        probe.Name,
+                        new FileId(probe.AssetFileId),
+                        FromProtocolGlobalIlluminationProbeMode(probe.Mode),
+                        probe.Weight,
+                        FromProtocolGlobalIlluminationResidency(
+                            probe.Residency),
+                        probe.AssetRevision,
+                        probe.Diagnostic)).ToArray(),
+                protocolState.Diagnostic,
+                protocolState.CompositionCount,
+                protocolState.RejectedCompositionCount);
+        }
+
+        public Task<bool> SetRuntimeGIProbesPreviewAsync(
+            bool enabled,
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.SetRuntimeGIProbesPreviewAsync(
+                    enabled,
+                    token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> SetRuntimeGIProbesPausedAsync(
+            bool paused,
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.SetRuntimeGIProbesPausedAsync(
+                    paused,
+                    token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> SetRuntimeGIProbesPreviewBudgetAsync(
+            RuntimeGIProbesEditorBudget budget,
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.SetRuntimeGIProbesPreviewBudgetAsync(
+                    ToProtocolRuntimeGIProbesPreviewBudget(budget),
+                    token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> RestartRuntimeGIProbesAsync(
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.RestartRuntimeGIProbesAsync(token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> RebuildRuntimeGIProbesSceneAsync(
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.RebuildRuntimeGIProbesSceneAsync(token),
+                cancellationToken: cancellationToken);
+
+        static Protocol.Generated.Vector4 ToProtocolVector(
+            System.Numerics.Vector3 value) => new()
+        {
+            X = value.X,
+            Y = value.Y,
+            Z = value.Z
+        };
+
+        static GIProbesBakeLifecycleState FromProtocolBakeState(
+            Protocol.Generated.GIProbesBakeState state) => state switch
+        {
+            Protocol.Generated.GIProbesBakeState.Idle =>
+                GIProbesBakeLifecycleState.Idle,
+            Protocol.Generated.GIProbesBakeState.Preparing =>
+                GIProbesBakeLifecycleState.Preparing,
+            Protocol.Generated.GIProbesBakeState.Baking =>
+                GIProbesBakeLifecycleState.Baking,
+            Protocol.Generated.GIProbesBakeState.Saving =>
+                GIProbesBakeLifecycleState.Saving,
+            Protocol.Generated.GIProbesBakeState.Succeeded =>
+                GIProbesBakeLifecycleState.Succeeded,
+            Protocol.Generated.GIProbesBakeState.Failed =>
+                GIProbesBakeLifecycleState.Failed,
+            Protocol.Generated.GIProbesBakeState.Cancelled =>
+                GIProbesBakeLifecycleState.Cancelled,
+            _ => throw new InvalidDataException(
+                $"Unknown GI probe bake state: {state}.")
+        };
+
+        static Protocol.Generated.GlobalIlluminationProbeMode
+            ToProtocolGlobalIlluminationProbeMode(
+                GlobalIlluminationCompositionMode mode) => mode switch
+        {
+            GlobalIlluminationCompositionMode.Blend =>
+                Protocol.Generated.GlobalIlluminationProbeMode.Blend,
+            GlobalIlluminationCompositionMode.Additive =>
+                Protocol.Generated.GlobalIlluminationProbeMode.Additive,
+            _ => throw new ArgumentOutOfRangeException(nameof(mode))
+        };
+
+        static GlobalIlluminationCompositionMode
+            FromProtocolGlobalIlluminationProbeMode(
+                Protocol.Generated.GlobalIlluminationProbeMode mode) =>
+            mode switch
+            {
+                Protocol.Generated.GlobalIlluminationProbeMode.Blend =>
+                    GlobalIlluminationCompositionMode.Blend,
+                Protocol.Generated.GlobalIlluminationProbeMode.Additive =>
+                    GlobalIlluminationCompositionMode.Additive,
+                _ => throw new InvalidDataException(
+                    $"Unknown Global Illumination ECS probe mode: {mode}.")
+            };
+
+        static Protocol.Generated.GlobalIlluminationMode
+            ToProtocolGlobalIlluminationRuntimeMode(
+                GlobalIlluminationRuntimeMode mode) => mode switch
+        {
+            GlobalIlluminationRuntimeMode.NoGI =>
+                Protocol.Generated.GlobalIlluminationMode.NoGi,
+            GlobalIlluminationRuntimeMode.Runtime =>
+                Protocol.Generated.GlobalIlluminationMode.Runtime,
+            GlobalIlluminationRuntimeMode.Baked =>
+                Protocol.Generated.GlobalIlluminationMode.Baked,
+            _ => throw new ArgumentOutOfRangeException(nameof(mode))
+        };
+
+        static GlobalIlluminationRuntimeMode
+            FromProtocolGlobalIlluminationRuntimeMode(
+                Protocol.Generated.GlobalIlluminationMode mode) => mode switch
+        {
+            Protocol.Generated.GlobalIlluminationMode.NoGi =>
+                GlobalIlluminationRuntimeMode.NoGI,
+            Protocol.Generated.GlobalIlluminationMode.Runtime =>
+                GlobalIlluminationRuntimeMode.Runtime,
+            Protocol.Generated.GlobalIlluminationMode.Baked =>
+                GlobalIlluminationRuntimeMode.Baked,
+            Protocol.Generated.GlobalIlluminationMode.Unspecified =>
+                GlobalIlluminationRuntimeMode.Baked,
+            _ => throw new InvalidDataException(
+                $"Unknown Global Illumination runtime mode: {mode}.")
+        };
+
+        static RuntimeGIProbesLifecycleState
+            FromProtocolRuntimeGIProbesLifecycle(
+                Protocol.Generated.RuntimeGIProbesLifecycle lifecycle) =>
+            lifecycle switch
+            {
+                Protocol.Generated.RuntimeGIProbesLifecycle.Disabled =>
+                    RuntimeGIProbesLifecycleState.Disabled,
+                Protocol.Generated.RuntimeGIProbesLifecycle.PreparingScene =>
+                    RuntimeGIProbesLifecycleState.PreparingScene,
+                Protocol.Generated.RuntimeGIProbesLifecycle.Tracing =>
+                    RuntimeGIProbesLifecycleState.Tracing,
+                Protocol.Generated.RuntimeGIProbesLifecycle.Ready =>
+                    RuntimeGIProbesLifecycleState.Ready,
+                Protocol.Generated.RuntimeGIProbesLifecycle.Paused =>
+                    RuntimeGIProbesLifecycleState.Paused,
+                Protocol.Generated.RuntimeGIProbesLifecycle.Throttled =>
+                    RuntimeGIProbesLifecycleState.Throttled,
+                Protocol.Generated.RuntimeGIProbesLifecycle.Failed =>
+                    RuntimeGIProbesLifecycleState.Failed,
+                _ => throw new InvalidDataException(
+                    $"Unknown Runtime GI probe lifecycle: {lifecycle}.")
+            };
+
+        static Protocol.Generated.RuntimeGIProbesPreviewBudget
+            ToProtocolRuntimeGIProbesPreviewBudget(
+                RuntimeGIProbesEditorBudget budget) => budget switch
+            {
+                RuntimeGIProbesEditorBudget.Eco =>
+                    Protocol.Generated.RuntimeGIProbesPreviewBudget.Eco,
+                RuntimeGIProbesEditorBudget.Balanced =>
+                    Protocol.Generated.RuntimeGIProbesPreviewBudget.Balanced,
+                _ => throw new ArgumentOutOfRangeException(nameof(budget))
+            };
+
+        static RuntimeGIProbesEditorBudget
+            FromProtocolRuntimeGIProbesPreviewBudget(
+                Protocol.Generated.RuntimeGIProbesPreviewBudget budget) =>
+            budget switch
+            {
+                Protocol.Generated.RuntimeGIProbesPreviewBudget.Eco =>
+                    RuntimeGIProbesEditorBudget.Eco,
+                Protocol.Generated.RuntimeGIProbesPreviewBudget.Balanced =>
+                    RuntimeGIProbesEditorBudget.Balanced,
+                _ => throw new InvalidDataException(
+                    $"Unknown Runtime GI preview budget: {budget}.")
+            };
+
+        static GlobalIlluminationResidency
+            FromProtocolGlobalIlluminationResidency(
+                Protocol.Generated.GlobalIlluminationProbeResidency residency)
+            => residency switch
+            {
+                Protocol.Generated.GlobalIlluminationProbeResidency.Unloaded =>
+                    GlobalIlluminationResidency.Unloaded,
+                Protocol.Generated.GlobalIlluminationProbeResidency.Loading =>
+                    GlobalIlluminationResidency.Loading,
+                Protocol.Generated.GlobalIlluminationProbeResidency.Resident =>
+                    GlobalIlluminationResidency.Resident,
+                Protocol.Generated.GlobalIlluminationProbeResidency.Failed =>
+                    GlobalIlluminationResidency.Failed,
+                _ => throw new InvalidDataException(
+                    $"Unknown Global Illumination ECS residency: {residency}.")
+            };
+
+        static EditorRenderMode ToProtocolRenderMode(SceneViewRenderMode mode)
+            => mode switch
+            {
+                SceneViewRenderMode.Lit => EditorRenderMode.Lit,
+                SceneViewRenderMode.AmbientOcclusion =>
+                    EditorRenderMode.AmbientOcclusion,
+                SceneViewRenderMode.Cascades => EditorRenderMode.Cascades,
+                SceneViewRenderMode.LightTiles => EditorRenderMode.LightTiles,
+                SceneViewRenderMode.GlobalIlluminationOnly =>
+                    EditorRenderMode.GlobalIlluminationOnly,
+                SceneViewRenderMode.GlobalIlluminationProbes =>
+                    EditorRenderMode.GlobalIlluminationProbes,
+                SceneViewRenderMode.GlobalIlluminationBricks =>
+                    EditorRenderMode.GlobalIlluminationBricks,
+                SceneViewRenderMode.GlobalIlluminationValidity =>
+                    EditorRenderMode.GlobalIlluminationValidity,
+                SceneViewRenderMode.GlobalIlluminationVisibility =>
+                    EditorRenderMode.GlobalIlluminationVisibility,
+                SceneViewRenderMode.GlobalIlluminationResidency =>
+                    EditorRenderMode.GlobalIlluminationResidency,
+                SceneViewRenderMode.GlobalIlluminationAssetIdentity =>
+                    EditorRenderMode.GlobalIlluminationAssetIdentity,
+                SceneViewRenderMode.GlobalIlluminationFallback =>
+                    EditorRenderMode.GlobalIlluminationFallback,
+                SceneViewRenderMode.GlobalIlluminationSubdivisions =>
+                    EditorRenderMode.GlobalIlluminationSubdivisions,
+                _ => throw new ArgumentOutOfRangeException(nameof(mode))
+            };
+
+        static SceneViewRenderMode FromProtocolRenderMode(EditorRenderMode mode)
+            => mode switch
+            {
+                EditorRenderMode.Lit => SceneViewRenderMode.Lit,
+                EditorRenderMode.AmbientOcclusion =>
+                    SceneViewRenderMode.AmbientOcclusion,
+                EditorRenderMode.Cascades => SceneViewRenderMode.Cascades,
+                EditorRenderMode.LightTiles => SceneViewRenderMode.LightTiles,
+                EditorRenderMode.GlobalIlluminationOnly =>
+                    SceneViewRenderMode.GlobalIlluminationOnly,
+                EditorRenderMode.GlobalIlluminationProbes =>
+                    SceneViewRenderMode.GlobalIlluminationProbes,
+                EditorRenderMode.GlobalIlluminationBricks =>
+                    SceneViewRenderMode.GlobalIlluminationBricks,
+                EditorRenderMode.GlobalIlluminationValidity =>
+                    SceneViewRenderMode.GlobalIlluminationValidity,
+                EditorRenderMode.GlobalIlluminationVisibility =>
+                    SceneViewRenderMode.GlobalIlluminationVisibility,
+                EditorRenderMode.GlobalIlluminationResidency =>
+                    SceneViewRenderMode.GlobalIlluminationResidency,
+                EditorRenderMode.GlobalIlluminationAssetIdentity =>
+                    SceneViewRenderMode.GlobalIlluminationAssetIdentity,
+                EditorRenderMode.GlobalIlluminationFallback =>
+                    SceneViewRenderMode.GlobalIlluminationFallback,
+                EditorRenderMode.GlobalIlluminationSubdivisions =>
+                    SceneViewRenderMode.GlobalIlluminationSubdivisions,
+                _ => throw new ArgumentOutOfRangeException(nameof(mode))
+            };
+
+        static EditorStatsMode ToProtocolStatsMode(GraphicsStatsMode mode)
+            => mode switch
+            {
+                GraphicsStatsMode.None => EditorStatsMode.None,
+                GraphicsStatsMode.RenderStats => EditorStatsMode.RenderStats,
+                GraphicsStatsMode.RenderStatsAndQueries =>
+                    EditorStatsMode.RenderStatsAndQueries,
+                _ => throw new ArgumentOutOfRangeException(nameof(mode))
+            };
 
         public async Task<SceneViewportToolState?> GetViewportToolStateAsync(
             CancellationToken cancellationToken = default)

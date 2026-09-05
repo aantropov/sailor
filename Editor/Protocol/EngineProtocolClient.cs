@@ -51,7 +51,6 @@ internal readonly record struct EngineProtocolAnimatorState(
 internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
 {
     internal const uint ProtocolVersion = 1;
-    internal const uint StrictInstanceIdsProtocolVersion = 2;
     internal const uint MaxPayloadSize = 64u * 1024u * 1024u;
     const int CapabilityUnknown = -1;
     const int CapabilityUnsupported = 0;
@@ -444,6 +443,213 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                     cancellationToken)
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.GetEditorSimulationState));
+
+    public async Task<bool> SetEditorStatsModeAsync(
+        EditorStatsMode mode,
+        CancellationToken cancellationToken = default)
+    {
+        if (mode == EditorStatsMode.Unspecified || !Enum.IsDefined(mode))
+            throw new ArgumentOutOfRangeException(nameof(mode));
+
+        return ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetEditorStatsMode = new EditorStatsModeRequest
+                        {
+                            Mode = mode
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetEditorStatsMode));
+    }
+
+    public async Task<bool> SetEditorRenderModeAsync(
+        EditorRenderMode mode,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateEditorRenderMode(mode);
+
+        return ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetEditorRenderMode = new EditorRenderModeRequest
+                        {
+                            Mode = mode
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetEditorRenderMode));
+    }
+
+    public async Task<EditorRenderMode> GetEditorRenderModeAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = RequireResult<EditorRenderModeResult>(
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetEditorRenderMode = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).EditorRenderModeResult,
+            nameof(ProtocolRequest.GetEditorRenderMode));
+        return ValidateEditorRenderMode(result.Mode);
+    }
+
+    public async Task<bool> StartGIProbesBakeAsync(
+        StartGIProbesBakeRequest bake,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bake);
+        return ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        StartGiProbesBake = bake.Clone()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.StartGiProbesBake));
+    }
+
+    public async Task<GIProbesBakeStatusResult> GetGIProbesBakeStatusAsync(
+        CancellationToken cancellationToken = default)
+        => RequireResult<GIProbesBakeStatusResult>(
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetGiProbesBakeStatus = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).GiProbesBakeStatusResult,
+            nameof(ProtocolRequest.GetGiProbesBakeStatus));
+
+    public async Task<bool> CancelGIProbesBakeAsync(
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        CancelGiProbesBake = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.CancelGiProbesBake));
+
+    public async Task<bool> SetGISettingsAsync(
+        SetGISettingsRequest settings,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetGiSettings = settings.Clone()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetGiSettings));
+    }
+
+    public async Task<GlobalIlluminationStateResult> GetGlobalIlluminationStateAsync(
+        CancellationToken cancellationToken = default)
+        => RequireResult<GlobalIlluminationStateResult>(
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetGlobalIlluminationState = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).GlobalIlluminationStateResult,
+            nameof(ProtocolRequest.GetGlobalIlluminationState));
+
+    public async Task<bool> SetRuntimeGIProbesPreviewAsync(
+        bool enabled,
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetRuntimeGiProbesPreview =
+                            new RuntimeGIProbesPreviewRequest
+                            {
+                                Enabled = enabled
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetRuntimeGiProbesPreview));
+
+    public async Task<bool> SetRuntimeGIProbesPausedAsync(
+        bool paused,
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetRuntimeGiProbesPaused =
+                            new RuntimeGIProbesPauseRequest
+                            {
+                                Paused = paused
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetRuntimeGiProbesPaused));
+
+    public async Task<bool> SetRuntimeGIProbesPreviewBudgetAsync(
+        RuntimeGIProbesPreviewBudget budget,
+        CancellationToken cancellationToken = default)
+    {
+        if (budget == RuntimeGIProbesPreviewBudget.Unspecified ||
+            !Enum.IsDefined(budget))
+        {
+            throw new ArgumentOutOfRangeException(nameof(budget));
+        }
+
+        return ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetRuntimeGiProbesPreviewBudget =
+                            new RuntimeGIProbesPreviewBudgetRequest
+                            {
+                                Budget = budget
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetRuntimeGiProbesPreviewBudget));
+    }
+
+    public async Task<bool> RestartRuntimeGIProbesAsync(
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        RestartRuntimeGiProbes = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.RestartRuntimeGiProbes));
+
+    public async Task<bool> RebuildRuntimeGIProbesSceneAsync(
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        RebuildRuntimeGiProbesScene = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.RebuildRuntimeGiProbesScene));
 
     public async Task<bool> PreviewAudioAssetAsync(
         string fileId,
@@ -1065,7 +1271,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             prefabYaml,
             parentInstanceId,
             strictInstanceIds: false,
-            protocolVersion: ProtocolVersion,
             cancellationToken: cancellationToken);
 
     public async Task<EngineProtocolCreationResult> InstantiatePrefabFromYamlStrictAsync(
@@ -1090,7 +1295,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 prefabYaml,
                 parentInstanceId,
                 strictInstanceIds: true,
-                protocolVersion: StrictInstanceIdsProtocolVersion,
                 cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
@@ -1099,7 +1303,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         string prefabYaml,
         string parentInstanceId,
         bool strictInstanceIds,
-        uint protocolVersion,
         CancellationToken cancellationToken)
         => ReadCreation(
             await SendAsync(
@@ -1117,8 +1320,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                                 StrictInstanceIds = strictInstanceIds
                             }
                     },
-                    cancellationToken,
-                    protocolVersion)
+                    cancellationToken)
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.InstantiatePrefabFromYaml));
 
@@ -1435,6 +1637,28 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 nameof(space),
                 space,
                 "The viewport transform space is unsupported.");
+
+    static EditorRenderMode ValidateEditorRenderMode(
+        EditorRenderMode mode)
+        => mode is
+            EditorRenderMode.Lit or
+            EditorRenderMode.AmbientOcclusion or
+            EditorRenderMode.Cascades or
+            EditorRenderMode.LightTiles or
+            EditorRenderMode.GlobalIlluminationOnly or
+            EditorRenderMode.GlobalIlluminationProbes or
+            EditorRenderMode.GlobalIlluminationBricks or
+            EditorRenderMode.GlobalIlluminationValidity or
+            EditorRenderMode.GlobalIlluminationVisibility or
+            EditorRenderMode.GlobalIlluminationResidency or
+            EditorRenderMode.GlobalIlluminationAssetIdentity or
+            EditorRenderMode.GlobalIlluminationFallback or
+            EditorRenderMode.GlobalIlluminationSubdivisions
+            ? mode
+            : throw new ArgumentOutOfRangeException(
+                nameof(mode),
+                mode,
+                "The Editor render mode is unsupported.");
 
     static void RequireEmpty(ProtocolResponse response, string commandName)
         => RequireResult<Empty>(response.EmptyResult, commandName);

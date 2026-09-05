@@ -168,7 +168,7 @@ internal sealed class McpCSharpEvaluator
 
     static string CreateProjectSource()
     {
-        var editorAssembly = SecurityElement.Escape(typeof(McpCSharpEvaluator).Assembly.Location);
+        var editorAssembly = SecurityElement.Escape(ResolveEditorReferenceAssembly());
         return $$"""
             <Project Sdk="Microsoft.NET.Sdk">
               <PropertyGroup>
@@ -180,11 +180,40 @@ internal sealed class McpCSharpEvaluator
               <ItemGroup>
                 <Reference Include="SailorEditor"><HintPath>{{editorAssembly}}</HintPath><Private>false</Private></Reference>
               </ItemGroup>
+              <ItemGroup>
+                <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+                <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+              </ItemGroup>
             </Project>
             """;
     }
 
+    static string ResolveEditorReferenceAssembly()
+    {
+        var runtimeAssembly = typeof(McpCSharpEvaluator).Assembly.Location;
+        var runtimeAssemblyFile = new FileInfo(runtimeAssembly);
+        var monoBundle = runtimeAssemblyFile.Directory;
+        var contents = monoBundle?.Parent;
+        var appBundle = contents?.Parent;
+        if (string.Equals(monoBundle?.Name, "MonoBundle", StringComparison.Ordinal) &&
+            string.Equals(contents?.Name, "Contents", StringComparison.Ordinal) &&
+            appBundle?.Name.EndsWith(".app", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var buildOutputAssembly = Path.Combine(
+                appBundle.Parent?.FullName ?? string.Empty,
+                runtimeAssemblyFile.Name);
+            if (File.Exists(buildOutputAssembly))
+            {
+                return buildOutputAssembly;
+            }
+        }
+
+        return runtimeAssembly;
+    }
+
     static string CreateScriptSource(string code) => $$"""
+        using Microsoft.Extensions.DependencyInjection;
+
         namespace SailorMcpEval;
 
         public static class ScriptEntry

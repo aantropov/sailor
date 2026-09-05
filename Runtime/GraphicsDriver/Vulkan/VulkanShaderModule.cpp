@@ -103,6 +103,15 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	}
 
 	const uint32_t numBoundVertexAttributes = module.entry_points[0].input_variable_count;
+	m_fragmentOutputMask = 0u;
+	if (m_stage == VK_SHADER_STAGE_FRAGMENT_BIT)
+	{
+		for (uint32_t i = 0u; i < module.entry_points[0].output_variable_count; ++i)
+		{
+			const auto location = module.entry_points[0].output_variables[i]->location;
+			if (location < 32u) m_fragmentOutputMask |= 1u << location;
+		}
+	}
 	for (uint32_t i = 0; i < numBoundVertexAttributes; i++)
 	{
 		m_vertexAttributeBindings.Insert(module.entry_points[0].input_variables[i]->location);

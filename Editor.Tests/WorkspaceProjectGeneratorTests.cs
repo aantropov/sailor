@@ -1,4 +1,5 @@
 using SailorEditor.Workspace;
+using SailorEditor.Settings;
 
 namespace SailorEditor.Editor.Tests;
 
@@ -35,6 +36,8 @@ public sealed class WorkspaceProjectGeneratorTests
         Assert.True(File.Exists(workspace.File("Source/WorkspaceTypes.h")));
         Assert.True(File.Exists(workspace.File("Source/WorkspaceModule.cpp")));
         Assert.True(File.Exists(workspace.File(".gitignore")));
+        var projectSettingsPath = workspace.File(GraphicsSettingsPaths.ProjectFileName);
+        Assert.True(File.Exists(projectSettingsPath));
         var generatedState = new WorkspaceGeneratedProjectStateService().GetStatePath(workspace.Root);
         Assert.True(File.Exists(generatedState));
         Assert.Equal(generatedState, generated.CreatedFiles.Last());

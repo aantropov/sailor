@@ -16,13 +16,17 @@
 #include "Submodules/ImGuiApi.h"
 #include "RHI/Types.h"
 #include "RHI/CommandList.h"
+#include "RHI/GpuFrameTimeQueryRing.h"
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
+#include "Settings/GraphicsSettings.h"
 
 #include <imgui.h>
-#include <cstdio>
-#include <thread>
 #include <chrono>
+#include <cstdio>
+#include <limits>
+#include <string>
+#include <thread>
 
 using namespace Sailor;
 
@@ -37,7 +41,9 @@ namespace
 		float csmShadowMemoryMb,
 		float localShadowMemoryMb,
 		float shadowMemoryBudgetMb,
-		const RHI::Stats& stats)
+		const RHI::RHIGlobalIlluminationRenderStats& globalIlluminationStats,
+		const RHI::Stats& stats,
+		const char* gpuQueryText)
 	{
 		const ImGuiIO& io = ImGui::GetIO();
 		if (io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
@@ -46,13 +52,50 @@ namespace
 		}
 
 		constexpr float BytesToMb = 1.0f / (1024.0f * 1024.0f);
-		char text[512];
+		constexpr float BytesToKb = 1.0f / 1024.0f;
+		const uint32_t globalIlluminationFlightSlot =
+			globalIlluminationStats.m_flightSlot;
+		char globalIlluminationFlight[16];
+		if (globalIlluminationFlightSlot ==
+			(std::numeric_limits<uint32_t>::max)())
+		{
+			std::snprintf(
+				globalIlluminationFlight,
+				sizeof(globalIlluminationFlight),
+				"-");
+		}
+		else
+		{
+			std::snprintf(
+				globalIlluminationFlight,
+				sizeof(globalIlluminationFlight),
+				"%u",
+				globalIlluminationFlightSlot);
+		}
+
+		char text[2048];
+		const char* globalIlluminationStatus =
+			!globalIlluminationStats.m_bEnabled ||
+			globalIlluminationStats.m_mode == EGlobalIlluminationMode::NoGI
+				? "disabled"
+				: globalIlluminationStats.m_bActive
+					? globalIlluminationStats.m_mode ==
+						EGlobalIlluminationMode::Runtime
+						? "runtime"
+						: "baked"
+					: "fallback";
+		const std::string globalIlluminationModeName(
+			magic_enum::enum_name(globalIlluminationStats.m_mode));
 		std::snprintf(
 			text,
 			sizeof(text),
 			"CPU %u FPS\nGPU %u FPS\nBatches %u\nInstances %u\n"
 			"Shadows %.1f / %.0f MB\n  CSM %.1f MB\n  Local %.1f MB\n"
-			"GPU memory\n  Materials %.1f MB\n  Textures %.1f MB\n  Meshes %.1f MB\n  General %.1f MB",
+			"GI %s (%s) rev %llu flight %s\n"
+			"  States %u / %u, bricks %u / %u, probes %u\n"
+			"  CPU payload %.2f MB, GPU/flight %.2f MB\n"
+			"  Copy %.1f KB, upload %.1f KB\n"
+			"GPU memory\n  Materials %.1f MB\n  Textures %.1f MB\n  Meshes %.1f MB\n  General %.1f MB%s%s",
 			cpuFps,
 			gpuFps,
 			numBatches,
@@ -61,10 +104,26 @@ namespace
 			shadowMemoryBudgetMb,
 			csmShadowMemoryMb,
 			localShadowMemoryMb,
+			globalIlluminationStatus,
+			globalIlluminationModeName.c_str(),
+			static_cast<unsigned long long>(
+				globalIlluminationStats.m_activeRevision),
+			globalIlluminationFlight,
+			globalIlluminationStats.m_stateCount,
+			globalIlluminationStats.m_qualityBudget,
+			globalIlluminationStats.m_loadedBricks,
+			globalIlluminationStats.m_totalBricks,
+			globalIlluminationStats.m_probeCount,
+			globalIlluminationStats.m_cpuPayloadBytes * BytesToMb,
+			globalIlluminationStats.m_gpuAllocatedBytes * BytesToMb,
+			globalIlluminationStats.m_copiedCpuBytes * BytesToKb,
+			globalIlluminationStats.m_uploadedGpuBytes * BytesToKb,
 			stats.m_materialsMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
 			stats.m_texturesMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
 			stats.m_meshesMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
-			stats.m_generalMemoryUsage.load(std::memory_order_relaxed) * BytesToMb);
+			stats.m_generalMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
+			gpuQueryText && gpuQueryText[0] != '\0' ? "\n" : "",
+			gpuQueryText ? gpuQueryText : "");
 
 		constexpr float Margin = 10.0f;
 		const ImVec2 textSize = ImGui::CalcTextSize(text);
@@ -137,7 +196,20 @@ TSharedPtr<World> EngineLoop::InstantiateWorld(WorldPrefabPtr worldPrefab, EWorl
 		return {};
 	}
 
-	TSharedPtr<World> newWorld = TSharedPtr<World>::Make(worldPrefab->GetName(), mask);
+	TSharedPtr<World> newWorld = TSharedPtr<World>::Make(
+		worldPrefab->GetName(),
+		mask);
+	std::string globalIlluminationDiagnostic;
+	if (!newWorld->SetGISettings(
+			worldPrefab->GetGISettings(),
+			globalIlluminationDiagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Failed to initialize Global Illumination ECS for world '%s': %s",
+			worldPrefab->GetName().c_str(),
+			globalIlluminationDiagnostic.c_str());
+		return {};
+	}
 
 	for (const auto& prefab : worldPrefab->GetGameObjects())
 	{
@@ -217,6 +289,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	static uint32_t totalFramesCount = 0U;
 	static Utils::Timer timer;
+	const auto cpuFrameStartedAt = std::chrono::steady_clock::now();
 
 	timer.Start();
 
@@ -229,7 +302,8 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	}
 
 	const auto renderer = App::GetSubmodule<RHI::Renderer>();
-	if (renderer)
+	const Settings::ERenderStatsMode statsMode = App::GetRenderStatsMode();
+	if (renderer && statsMode != Settings::ERenderStatsMode::None)
 	{
 		float shadowMemoryMb = 0.0f;
 		float csmShadowMemoryMb = 0.0f;
@@ -247,16 +321,77 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		}
 
 		const auto& stats = renderer->GetStats();
+		const RHI::RHIGlobalIlluminationRenderStats globalIlluminationStats =
+			renderer->GetGlobalIlluminationRenderStats();
+		uint32_t displayedGpuFps =
+			stats.m_gpuFps.load(std::memory_order_relaxed);
+		std::string gpuQueryText;
+		if (statsMode == Settings::ERenderStatsMode::RenderStatsAndQueries)
+		{
+			if (!renderer->GetDriver()->SupportsGpuFrameTimeQueries())
+			{
+				gpuQueryText = "GPU queries unavailable";
+			}
+			else
+			{
+				float gpuFrameTimeMs = 0.0f;
+				if (renderer->GetDriver()->TryGetGpuFrameTimeMs(gpuFrameTimeMs))
+				{
+					char frameTimeText[64]{};
+					const uint32_t measuredGpuFps =
+						RHI::CalculateGpuFramesPerSecond(gpuFrameTimeMs);
+					if (measuredGpuFps > 0u)
+					{
+						displayedGpuFps = measuredGpuFps;
+					}
+					std::snprintf(
+						frameTimeText,
+						sizeof(frameTimeText),
+						"GPU frame %.2f ms",
+						gpuFrameTimeMs);
+					gpuQueryText = frameTimeText;
+
+					const TVector<RHI::GpuTiming> topGpuTimings =
+						renderer->GetSlowestGpuTimings();
+					if (topGpuTimings.IsEmpty())
+					{
+						gpuQueryText += "\nGPU nodes/ops pending";
+					}
+					else
+					{
+						gpuQueryText += "\nSlowest GPU nodes (avg):";
+						for (size_t i = 0u; i < topGpuTimings.Num(); ++i)
+						{
+							char timingText[128]{};
+							std::snprintf(
+								timingText,
+								sizeof(timingText),
+								"\n%zu. %.64s %.3f ms",
+								i + 1u,
+								topGpuTimings[i].m_name.c_str(),
+								topGpuTimings[i].m_durationMilliseconds);
+							gpuQueryText += timingText;
+						}
+					}
+				}
+				else
+				{
+					gpuQueryText = "GPU query pending";
+				}
+			}
+		}
 		DrawViewportStatsOverlay(
 			m_cpuFps,
-			stats.m_gpuFps.load(std::memory_order_relaxed),
+			displayedGpuFps,
 			stats.m_numBatches.load(std::memory_order_relaxed),
 			stats.m_numInstances.load(std::memory_order_relaxed),
 			shadowMemoryMb,
 			csmShadowMemoryMb,
 			localShadowMemoryMb,
 			shadowMemoryBudgetMb,
-			stats);
+			globalIlluminationStats,
+			stats,
+			gpuQueryText.c_str());
 	}
 
 	auto& task = currentInputState.GetDrawImGuiTask();
@@ -280,13 +415,14 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		}
 	}
 
+	ImGuiApi::PreparedFramePtr imguiFrame;
 	{
 		SAILOR_PROFILE_SCOPE("Record ImGui Update Command List");
 
 		auto transferCmdList = currentInputState.CreateCommandBuffer(1);
 		RHI::Renderer::GetDriver()->SetDebugName(transferCmdList, "ImGui Transfer CommandList");
 		RHI::Renderer::GetDriverCommands()->BeginCommandList(transferCmdList, true);
-		App::GetSubmodule<ImGuiApi>()->PrepareFrame(transferCmdList);
+		imguiFrame = App::GetSubmodule<ImGuiApi>()->PrepareFrame(transferCmdList);
 		RHI::Renderer::GetDriverCommands()->EndCommandList(transferCmdList);
 	}
 
@@ -296,13 +432,26 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 			RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record ImGui Draw Command List");
 			RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false, imguiColorFormat);
-			App::GetSubmodule<ImGuiApi>()->RenderFrame(cmdList);
+			ImGuiApi::RenderFrame(imguiFrame, cmdList);
 			RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 			return cmdList;
 		}, EThreadType::RHI);
 
 	task->Run();
+
+	if (m_fpsCap > 0u)
+	{
+		const auto targetCpuFrameTime =
+			std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+				std::chrono::duration<double>(1.0 / static_cast<double>(m_fpsCap)));
+		const auto cpuFrameDeadline = cpuFrameStartedAt + targetCpuFrameTime;
+		if (std::chrono::steady_clock::now() < cpuFrameDeadline)
+		{
+			SAILOR_PROFILE_SCOPE("Sleep Main Thread to cap CPU FPS");
+			std::this_thread::sleep_until(cpuFrameDeadline);
+		}
+	}
 
 	timer.Stop();
 

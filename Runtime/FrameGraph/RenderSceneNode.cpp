@@ -11,9 +11,11 @@
 #include "RHI/Buffer.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "Core/StringHash.h"
 #include "Core/SpinLock.h"
 
 #include <cmath>
+#include <initializer_list>
 #include <limits>
 
 using namespace Sailor;
@@ -29,13 +31,38 @@ const char* RenderSceneNode::m_name = "RenderScene";
 
 namespace
 {
-	RHIShaderBindingSetPtr CloneBindingsWithSampler(
-		const RHIShaderBindingSetPtr& source,
-		const std::string& samplerName,
-		const RHITexturePtr& sampler,
-		uint32_t samplerBinding)
+	RHIObjectMotionData ResolveMeshMotion(const RHISceneViewSnapshot& view,
+		const RHIVisibleSceneProxy& proxy, size_t meshIndex,
+		const RHIInstancedMeshGroup* group = nullptr, size_t instanceIndex = 0u)
 	{
-		if (!source || !sampler)
+		RHIVisibleSceneProxy previous;
+		const bool valid = ResolvePreviousMotionProxy(view, proxy, previous);
+		const auto currentModel = group ? proxy.ResolveInstancedMeshWorldMatrix(*group, instanceIndex, meshIndex) : proxy.ResolveMeshWorldMatrix(meshIndex);
+		const auto previousModel = valid ? (group ? previous.ResolveInstancedMeshWorldMatrix(*group, instanceIndex, meshIndex) : previous.ResolveMeshWorldMatrix(meshIndex)) : currentModel;
+		return MakeObjectMotionData(currentModel, previousModel, valid ? previous.GetSkeletonOffset() : 0xFFFFFFFFu, valid);
+	}
+
+	void HashMotionHistory(size_t& revision, const RHISceneViewSnapshot& view, const RHIVisibleSceneProxy& proxy)
+	{
+		RHIVisibleSceneProxy previous;
+		const bool valid = ResolvePreviousMotionProxy(view, proxy, previous);
+		HashCombine(revision, valid);
+		if (valid)
+			HashCombine(revision, std::hash<glm::mat4>{}(previous.GetWorldMatrix()), previous.GetSkeletonOffset());
+	}
+
+	struct SamplerOverride final
+	{
+		const char* m_name;
+		RHITexturePtr m_texture;
+		uint32_t m_binding;
+	};
+
+	RHIShaderBindingSetPtr CloneBindingsWithSamplers(
+		const RHIShaderBindingSetPtr& source,
+		std::initializer_list<SamplerOverride> overrides)
+	{
+		if (!source)
 		{
 			return source;
 		}
@@ -46,7 +73,13 @@ namespace
 		{
 			const auto& name = entry.m_first;
 			const auto& binding = entry.m_second;
-			if (!binding || name == samplerName)
+			bool bOverridden = false;
+			for (const SamplerOverride& samplerOverride : overrides)
+			{
+				bOverridden = bOverridden ||
+					(samplerOverride.m_texture && name == samplerOverride.m_name);
+			}
+			if (!binding || bOverridden)
 			{
 				continue;
 			}
@@ -76,13 +109,39 @@ namespace
 			}
 		}
 
-		driver->AddSamplerToShaderBindings(
-			result,
-			samplerName,
-			sampler,
-			samplerBinding);
+		for (const SamplerOverride& samplerOverride : overrides)
+		{
+			if (!samplerOverride.m_texture)
+			{
+				continue;
+			}
+			driver->AddSamplerToShaderBindings(
+				result,
+				samplerOverride.m_name,
+				samplerOverride.m_texture,
+				samplerOverride.m_binding);
+		}
 		result->RecalculateCompatibility();
 		return result;
+	}
+
+	RHITexturePtr GetBoundTexture(
+		const RHIShaderBindingSetPtr& bindings,
+		const std::string& samplerName)
+	{
+		if (!bindings)
+		{
+			return nullptr;
+		}
+
+		const auto& shaderBindings = bindings->GetShaderBindings();
+		const auto bindingIt = shaderBindings.Find(samplerName);
+		if (bindingIt == shaderBindings.end() || !bindingIt->m_second)
+		{
+			return nullptr;
+		}
+
+		return bindingIt->m_second->GetTextureBinding();
 	}
 }
 
@@ -342,7 +401,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 	SAILOR_PROFILE_FUNCTION();
 
 	const std::string QueueTag = GetString("Tag");
-	const size_t QueueTagHash = GetHash(QueueTag);
+	const size_t QueueTagHash = StringHash::Runtime(QueueTag).GetHash();
 	const bool bBackToFront = GetSortingOrder() == RHI::ESortingOrder::BackToFront;
 	std::string virtualizeInstancePayloadsSetting;
 	const bool bVirtualizeInstancePayloads =
@@ -373,7 +432,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 				requestedTextures.Reset();
 			}
 
-			constexpr size_t PayloadRevisionSeed = 1469598103934665603ull;
+			constexpr size_t PayloadRevisionSeed = Fnv1aOffsetBasis;
 			std::array<size_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
 				payloadRevisions{};
 			std::array<uint32_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
@@ -410,6 +469,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						QueueTagHash,
 						sceneViewSnapshot.m_submissionContext->GetMaterialRevision(),
 						sceneViewSnapshot.GetMobilityRevision(mobility));
+					HashCombine(payloadRevisions[payloadIndex], sceneViewSnapshot.m_previousMotionFrame ?
+						sceneViewSnapshot.m_previousMotionFrame->m_mobilityRevisions[static_cast<size_t>(mobility)] : 0ull);
 				}
 			}
 			for (const auto& proxy : sceneViewSnapshot.m_proxies)
@@ -478,6 +539,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 							std::hash<glm::mat4>{}(proxy.GetWorldMatrix()),
 							proxy.GetSkeletonOffset(),
 							proxy.GetRenderFlags());
+						HashMotionHistory(payloadRevisions[payloadIndex], sceneViewSnapshot, proxy);
 						for (size_t meshIndex = 0u; meshIndex < source->m_meshes.Num(); ++meshIndex)
 						{
 							if (meshIndex < source->m_renderQueueTags.Num() &&
@@ -604,6 +666,10 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 								proxy.GetSkeletonOffset());
 							if (proxy.m_record)
 							{
+								HashMotionHistory(rangeRevision, sceneViewSnapshot, proxy);
+							}
+							if (proxy.m_record)
+							{
 								HashCombine(
 									rangeRevision, proxy.m_record->m_materialRevision, proxy.m_record->m_renderFlags);
 							}
@@ -669,6 +735,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 								}
 								PerInstanceData data;
 								data.model = proxy.ResolveMeshWorldMatrix(meshIndex);
+								data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex);
+								data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 								data.skeletonOffset = proxy.GetSkeletonOffset();
 								data.materialInstance =
 									materialBinding ? materialBinding->GetStorageInstanceIndex() : 0u;
@@ -723,6 +791,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 										PerInstanceData data;
 										data.model =
 											proxy.ResolveInstancedMeshWorldMatrix(group, instanceIndex, meshIndex);
+										data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex, &group, instanceIndex);
+										data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 										data.skeletonOffset = proxy.GetSkeletonOffset();
 										data.materialInstance =
 											materialBinding ? materialBinding->GetStorageInstanceIndex() : 0u;
@@ -863,6 +933,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						const glm::mat4 meshWorldMatrix = proxy.ResolveMeshWorldMatrix(i);
 						RenderSceneNode::PerInstanceData data;
 						data.model = meshWorldMatrix;
+						data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, i);
+						data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 						data.skeletonOffset = proxy.GetSkeletonOffset();
 						data.materialInstance = shaderBinding.IsValid() ?
 							shaderBinding->GetStorageInstanceIndex() : 0u;
@@ -1015,6 +1087,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 								meshIndex);
 							RenderSceneNode::PerInstanceData data;
 							data.model = meshWorldMatrix;
+							data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex, &group, instanceIndex);
+							data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 							data.skeletonOffset = proxy.GetSkeletonOffset();
 							data.materialInstance = shaderBinding.IsValid() ?
 								shaderBinding->GetStorageInstanceIndex() : 0u;
@@ -1135,6 +1209,9 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	{
 		colorAttachment = colorSurface->GetTarget();
 	}
+	auto motionSurface = GetRHIResource("motionVectors").DynamicCast<RHI::RHISurface>();
+	auto motionAttachment = GetRHIResource("motionVectors").DynamicCast<RHI::RHIRenderTarget>();
+	if (motionSurface) motionAttachment = motionSurface->GetTarget();
 	auto depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
@@ -1148,30 +1225,63 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	RHIShaderBindingSetPtr nodeLightsData = sceneView.m_rhiLightsData;
 	RHI::RHITexturePtr transmissionFramebuffer = GetResolvedAttachment("transmissionFramebuffer");
-	if (transmissionFramebuffer)
+	RHI::RHITexturePtr globalIlluminationProbeCellIndicesTexture =
+		GetResolvedAttachment("globalIlluminationProbeCellIndicesSampler");
+	const RHITexturePtr defaultTexture = driver->GetDefaultTexture();
+	const RHITexturePtr desiredTransmissionTexture = transmissionFramebuffer ?
+		transmissionFramebuffer : defaultTexture;
+	const RHITexturePtr desiredGlobalIlluminationProbeCellIndicesTexture =
+		globalIlluminationProbeCellIndicesTexture ?
+			globalIlluminationProbeCellIndicesTexture : defaultTexture;
+	const bool bNeedsTransmissionOverride =
+		GetBoundTexture(
+			sceneView.m_rhiLightsData,
+			"g_transmissionFramebufferSampler") != desiredTransmissionTexture;
+	const bool bNeedsGlobalIlluminationProbeCellIndicesOverride =
+		GetBoundTexture(
+			sceneView.m_rhiLightsData,
+			"g_globalIlluminationProbeCellIndicesSampler") !=
+			desiredGlobalIlluminationProbeCellIndicesTexture;
+	if (bNeedsTransmissionOverride ||
+		bNeedsGlobalIlluminationProbeCellIndicesOverride)
 	{
-		constexpr const char* transmissionSamplerName = "g_transmissionFramebufferSampler";
 		const uint64_t sourceRevision = sceneView.m_rhiLightsData ?
 			sceneView.m_rhiLightsData->GetDescriptorRevision() : 0ull;
 		const bool bCloneOutdated = !resources->m_nodeLightsBindings ||
 			resources->m_nodeLightsSource != sceneView.m_rhiLightsData ||
 			resources->m_nodeLightsSourceRevision != sourceRevision ||
-			resources->m_transmissionTexture != transmissionFramebuffer;
+			resources->m_transmissionTexture != transmissionFramebuffer ||
+			resources->m_globalIlluminationProbeCellIndicesTexture !=
+				globalIlluminationProbeCellIndicesTexture;
 		if (bCloneOutdated)
 		{
-			resources->m_nodeLightsBindings = CloneBindingsWithSampler(
+			resources->m_nodeLightsBindings = CloneBindingsWithSamplers(
 				sceneView.m_rhiLightsData,
-				transmissionSamplerName,
-				transmissionFramebuffer,
-				10u);
+				{
+					{ "g_transmissionFramebufferSampler",
+						desiredTransmissionTexture, 10u },
+					{ "g_globalIlluminationProbeCellIndicesSampler",
+						desiredGlobalIlluminationProbeCellIndicesTexture, 18u }
+				});
 			resources->m_nodeLightsSource = sceneView.m_rhiLightsData;
 			resources->m_nodeLightsSourceRevision = sourceRevision;
 			resources->m_transmissionTexture = transmissionFramebuffer;
+			resources->m_globalIlluminationProbeCellIndicesTexture =
+				globalIlluminationProbeCellIndicesTexture;
 		}
 		nodeLightsData = resources->m_nodeLightsBindings;
+	}
+	if (transmissionFramebuffer)
+	{
 		commands->ImageMemoryBarrier(commandList, transmissionFramebuffer, RHI::EImageLayout::ShaderReadOnlyOptimal);
 	}
-
+	if (globalIlluminationProbeCellIndicesTexture)
+	{
+		commands->ImageMemoryBarrier(
+			commandList,
+			globalIlluminationProbeCellIndicesTexture,
+			RHI::EImageLayout::ShaderReadOnlyOptimal);
+	}
 	std::string gpuCullingSetting;
 	TryGetString("GPUCulling", gpuCullingSetting);
 	const bool bGpuCullingRequested = gpuCullingSetting == "true";
@@ -1279,26 +1389,67 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		std::string(GetName()) + " QueueTag:" + GetString("Tag") + " Packed",
 		DebugContext::Color_CmdGraphics);
 	commands->ImageMemoryBarrier(commandList, colorAttachment, EImageLayout::ColorAttachmentOptimal);
+	if (motionAttachment)
+	{
+		commands->ImageMemoryBarrier(commandList, motionAttachment, EImageLayout::ColorAttachmentOptimal);
+		if (motionSurface && motionSurface->NeedsResolve())
+			commands->ImageMemoryBarrier(commandList, motionSurface->GetResolved(), EImageLayout::ColorAttachmentOptimal);
+	}
+	if (colorSurface && colorSurface->NeedsResolve())
+	{
+		commands->ImageMemoryBarrier(
+			commandList,
+			colorSurface->GetResolved(),
+			EImageLayout::ColorAttachmentOptimal);
+	}
 	const auto depthLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ?
 		EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthLayout);
-	auto& renderPassColorAttachments =
-		resources->m_renderPassColorAttachments;
-	renderPassColorAttachments.Clear(false);
-	renderPassColorAttachments.Add(colorAttachment);
 	bool bRenderPassStarted = false;
-	auto beginRenderPass = [&]()
+	const auto beginRenderPass = [&]()
 		{
-			commands->BeginRenderPass(
-				commandList,
-				renderPassColorAttachments,
-				depthAttachment,
-				glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
-				glm::ivec2(0, 0),
-				false,
-				glm::vec4(0.0f),
-				0.0f,
-				true);
+			const glm::vec4 renderArea(
+				0,
+				0,
+				colorAttachment->GetExtent().x,
+				colorAttachment->GetExtent().y);
+			if (colorSurface)
+			{
+				auto& renderPassColorSurfaces =
+					resources->m_renderPassColorSurfaces;
+				renderPassColorSurfaces.Clear(false);
+				renderPassColorSurfaces.Add(colorSurface);
+				if (motionSurface) renderPassColorSurfaces.Add(motionSurface);
+				commands->BeginRenderPass(
+					commandList,
+					renderPassColorSurfaces,
+					depthAttachment,
+					renderArea,
+					glm::ivec2(0, 0),
+					false,
+					glm::vec4(0.0f),
+					0.0f,
+					true);
+			}
+			else
+			{
+				auto& renderPassColorAttachments =
+					resources->m_renderPassColorAttachments;
+				renderPassColorAttachments.Clear(false);
+				renderPassColorAttachments.Add(colorAttachment);
+				if (motionAttachment) renderPassColorAttachments.Add(motionAttachment);
+				commands->BeginRenderPass(
+					commandList,
+					renderPassColorAttachments,
+					depthAttachment,
+					renderArea,
+					glm::ivec2(0, 0),
+					false,
+					glm::vec4(0.0f),
+					0.0f,
+					true,
+					true);
+			}
 			bRenderPassStarted = true;
 		};
 
@@ -1313,7 +1464,8 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			sceneView.m_frameBindings };
 	}
 	const bool bCurrentDepthOcclusionEnabled =
-		bOcclusionCullingRequested && cullingShader && depthHighZ;
+		bOcclusionCullingRequested && cullingShader &&
+		frameGraph->HasCurrentDepthPyramid(depthHighZ);
 	if (bCurrentDepthOcclusionEnabled)
 	{
 		// Main-pass occlusion must execute on the graphics list after this frame's

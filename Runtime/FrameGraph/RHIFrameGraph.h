@@ -4,11 +4,14 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "Tasks/Tasks.h"
+#include "RHI/MotionHistory.h"
 
 using namespace Sailor::Framegraph;
 
 namespace Sailor::RHI
 {
+	struct RHIGlobalIlluminationRenderStats;
+
 	class RHIFrameGraph : public RHI::RHIResource
 	{
 	public:
@@ -31,9 +34,26 @@ namespace Sailor::RHI
 		SAILOR_API RHI::RHITexturePtr GetSampler(const std::string& name);
 		SAILOR_API RHI::RHIRenderTargetPtr GetRenderTarget(const std::string& name);
 		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name);
+		SAILOR_API glm::ivec2 GetSceneRenderExtent();
+
+		void ResetCurrentDepthPyramids() { m_currentDepthPyramids.Clear(); }
+		void MarkCurrentDepthPyramid(RHI::RHITexturePtr pyramid)
+		{
+			if (pyramid && !m_currentDepthPyramids.Contains(pyramid))
+			{
+				m_currentDepthPyramids.Add(pyramid);
+			}
+		}
+		bool HasCurrentDepthPyramid(RHI::RHITexturePtr pyramid) const
+		{
+			return pyramid && m_currentDepthPyramids.Contains(pyramid);
+		}
 
 		SAILOR_API RHI::RHIMeshPtr GetFullscreenNdcQuad() { return m_postEffectPlane; }
 		SAILOR_API RHI::DrawCallStats GetDrawCallStats() const { return m_drawCallStats; }
+		SAILOR_API const TVector<RHI::GpuTiming>& GetGpuTimings() const { return m_lastFrameGpuStats.m_timings; }
+		SAILOR_API RHIGlobalIlluminationRenderStats
+			GetGlobalIlluminationRenderStats() const;
 
 		template<typename T>
 		void SetValue(const std::string& name, T value)
@@ -56,22 +76,23 @@ namespace Sailor::RHI
 			RHISemaphorePtr& outWaitSemaphore);
 
 		SAILOR_API void Clear();
+		SAILOR_API void CompleteMotionHistory(RHI::RHISceneViewPtr sceneView, bool succeeded);
 
 	protected:
 
-		RHI::UboFrameData FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, const RHI::UboFrameData& previousFrame, float deltaTime, float worldTime) const;
+		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime);
 
 		TMap<std::string, RHI::RHITexturePtr> m_samplers;
 		TMap<std::string, RHI::RHIRenderTargetPtr> m_renderTargets;
 		TMap<std::string, RHI::RHISurfacePtr> m_surfaces;
 		TMap<std::string, glm::vec4> m_values;
 		TVector<Framegraph::FrameGraphNodePtr> m_graph;
+		// Cleared for every recorded view, including multiple cameras in one frame.
+		TVector<RHI::RHITexturePtr> m_currentDepthPyramids;
 
 		RHI::RHIMeshPtr m_postEffectPlane;
 
-		// TODO: Store/Handle that per snapshot
-		RHI::UboFrameData m_frameData{};
-		RHI::UboFrameData m_prevFrameData{};
+		TVector<TSharedPtr<RHIMotionHistoryFrame>> m_motionHistory{};
 
 		GpuStats m_lastFrameGpuStats{};
 		RHI::DrawCallStats m_drawCallStats{};

@@ -23,6 +23,7 @@
 #include "Math/Math.h"
 #include "Math/Transform.h"
 #include "Editor/EditorViewportController.h"
+#include "Editor/GlobalIlluminationBakeController.h"
 #if defined(_WIN32)
 #include <libloaderapi.h>
 #endif
@@ -75,42 +76,9 @@ namespace
 		return worldMatrix;
 	}
 
-	bool IsFiniteMatrix(const glm::mat4& matrix)
-	{
-		for (glm::length_t column = 0; column < matrix.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < matrix[column].length(); ++row)
-			{
-				if (!std::isfinite(matrix[column][row]))
-				{
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
-	bool AreMatricesNear(const glm::mat4& lhs, const glm::mat4& rhs, float tolerance = 0.0001f)
-	{
-		for (glm::length_t column = 0; column < lhs.length(); ++column)
-		{
-			for (glm::length_t row = 0; row < lhs[column].length(); ++row)
-			{
-				const float scale = std::max({ 1.0f, std::abs(lhs[column][row]), std::abs(rhs[column][row]) });
-				if (std::abs(lhs[column][row] - rhs[column][row]) > tolerance * scale)
-				{
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
 	bool TryInvertTransformMatrix(const glm::mat4& matrix, glm::mat4& outInverse)
 	{
-		if (!IsFiniteMatrix(matrix))
+		if (!Math::AllFinite(matrix))
 		{
 			return false;
 		}
@@ -128,13 +96,16 @@ namespace
 		}
 
 		outInverse = glm::inverse(matrix);
-		return IsFiniteMatrix(outInverse) &&
-			AreMatricesNear(matrix * outInverse, glm::identity<glm::mat4>(), 0.001f);
+		return Math::AllFinite(outInverse) &&
+			Math::AreNearlyEqual(
+				matrix * outInverse,
+				glm::identity<glm::mat4>(),
+				0.001f);
 	}
 
 	bool TryMakeExactTransform(const glm::mat4& matrix, Math::Transform& outTransform)
 	{
-		if (!IsFiniteMatrix(matrix))
+		if (!Math::AllFinite(matrix))
 		{
 			return false;
 		}
@@ -152,7 +123,7 @@ namespace
 			return false;
 		}
 
-		return AreMatricesNear(outTransform.Matrix(), matrix);
+		return Math::AreNearlyEqual(outTransform.Matrix(), matrix);
 	}
 
 	bool ResolveParent(World* world, const InstanceId& parentInstanceId, GameObjectPtr& outParent)
@@ -277,6 +248,7 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMai
 	m_editorHwnd(editorHwnd),
 	m_pMainWindow(pMainWindow),
 	m_viewportController(TUniquePtr<EditorViewport::EditorViewportController>::Make()),
+	m_giProbesBakeController(TUniquePtr<GlobalIlluminationBakeController>::Make()),
 	m_managedMutationState(TUniquePtr<EditorManagedMutationState>::Make())
 {
 
@@ -284,6 +256,9 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMai
 
 Editor::~Editor()
 {
+	std::string diagnostic;
+	m_giProbesBakeController->Cancel(diagnostic);
+	m_giProbesBakeController->Wait();
 	StopAudioPreview();
 }
 
@@ -336,6 +311,12 @@ void Editor::StopAudioPreview()
 
 void Editor::SetWorld(World* world)
 {
+	std::string diagnostic;
+	if (m_giProbesBakeController->GetStatus().IsRunning())
+	{
+		m_giProbesBakeController->Cancel(diagnostic);
+		m_giProbesBakeController->Wait();
+	}
 	m_world = world;
 	m_simulationSnapshot.clear();
 	m_bSimulationEnabled = false;
@@ -343,6 +324,27 @@ void Editor::SetWorld(World* world)
 	m_managedMutationState->m_objectRevisions.Clear();
 	m_viewportController->Reset();
 	m_viewportController->SetManagedMutationRevisions(0, 0);
+}
+
+bool Editor::StartGIProbesBake(
+	const EditorGIProbesBakeRequest& request,
+	std::string& outDiagnostic)
+{
+	return m_giProbesBakeController &&
+		m_giProbesBakeController->Start(m_world, request, outDiagnostic);
+}
+
+bool Editor::CancelGIProbesBake(std::string& outDiagnostic)
+{
+	return m_giProbesBakeController &&
+		m_giProbesBakeController->Cancel(outDiagnostic);
+}
+
+EditorGIProbesBakeStatus Editor::GetGIProbesBakeStatus() const
+{
+	return m_giProbesBakeController
+		? m_giProbesBakeController->GetStatus()
+		: EditorGIProbesBakeStatus{};
 }
 
 bool Editor::SetSimulationEnabled(bool bEnabled)
@@ -588,7 +590,7 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 			reflected.Deserialize(inData);
 
 			go->SetName(reflected.m_name);
-			//go->SetMobilityType(reflected.m_mobilityType);
+			go->SetMobilityType(reflected.m_mobilityType);
 
 			auto& transform = go->GetTransformComponent();
 			transform.SetPosition(reflected.m_position);

@@ -1,4 +1,5 @@
 ﻿#include "SceneView.h"
+#include "Core/StringHash.h"
 #include "ECS/CameraECS.h"
 #include "ECS/TransformECS.h"
 #include "ECS/StaticMeshRendererECS.h"
@@ -10,6 +11,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/DebugContext.h"
 #include "RHI/CommandList.h"
+#include "Settings/GraphicsSettings.h"
 
 #include <algorithm>
 #include <array>
@@ -31,10 +33,7 @@ namespace
 		}
 
 		const glm::mat4 inverseWorld = glm::inverse(referenceWorld);
-		if (!Math::AllFinite(inverseWorld[0]) ||
-			!Math::AllFinite(inverseWorld[1]) ||
-			!Math::AllFinite(inverseWorld[2]) ||
-			!Math::AllFinite(inverseWorld[3]))
+		if (!Math::AllFinite(inverseWorld))
 		{
 			return false;
 		}
@@ -59,6 +58,27 @@ namespace
 	void HashMatrix(size_t& result, const glm::mat4& matrix)
 	{
 		HashCombine(result, std::hash<glm::mat4>{}(matrix));
+	}
+
+	int32_t ResolveInstanceLodBias(
+		const RHIInstancedMeshGroup& group,
+		size_t instanceIndex)
+	{
+		return instanceIndex < group.m_instanceLodBiases.Num() ?
+			group.m_instanceLodBiases[instanceIndex] : 0;
+	}
+
+	float ResolveInstanceDistanceScale(
+		const TVector<float>& scales,
+		size_t instanceIndex)
+	{
+		if (instanceIndex >= scales.Num() ||
+			!std::isfinite(scales[instanceIndex]) ||
+			scales[instanceIndex] <= 0.0f)
+		{
+			return 1.0f;
+		}
+		return scales[instanceIndex];
 	}
 
 	void HashMaterialVersion(size_t& result, const RHIMaterialPtr& material)
@@ -93,7 +113,7 @@ namespace
 	void CalculateProxyResourceRevisions(RHISceneProxyResource& resource)
 	{
 		const auto& proxy = resource.m_proxy;
-		size_t geometryRevision = 1469598103934665603ull;
+		size_t geometryRevision = Fnv1aOffsetBasis;
 		HashCombine(
 			geometryRevision,
 			proxy.m_meshes.Num(),
@@ -104,6 +124,10 @@ namespace
 			proxy.m_lodPolicy.m_maxLod,
 			std::hash<float>{}(proxy.m_lodPolicy.m_maxCameraDistance));
 		for (float threshold : proxy.m_lodPolicy.m_screenCoverageThresholds)
+		{
+			HashCombine(geometryRevision, std::hash<float>{}(threshold));
+		}
+		for (float threshold : proxy.m_lodPolicy.m_cameraDistanceThresholds)
 		{
 			HashCombine(geometryRevision, std::hash<float>{}(threshold));
 		}
@@ -120,6 +144,9 @@ namespace
 			HashCombine(
 				geometryRevision,
 				group.m_instanceTransforms.Num(),
+				group.m_instanceLodBiases.Num(),
+				group.m_instanceCullDistanceScales.Num(),
+				group.m_instanceShadowDistanceScales.Num(),
 				group.m_meshes.Num(),
 				group.m_bCastShadows,
 				std::hash<float>{}(group.m_maxShadowDistance));
@@ -134,6 +161,18 @@ namespace
 			for (const auto& matrix : group.m_instanceTransforms)
 			{
 				HashMatrix(geometryRevision, matrix);
+			}
+			for (int32_t lodBias : group.m_instanceLodBiases)
+			{
+				HashCombine(geometryRevision, lodBias);
+			}
+			for (float scale : group.m_instanceCullDistanceScales)
+			{
+				HashCombine(geometryRevision, std::hash<float>{}(scale));
+			}
+			for (float scale : group.m_instanceShadowDistanceScales)
+			{
+				HashCombine(geometryRevision, std::hash<float>{}(scale));
 			}
 		}
 		resource.m_geometryRevision = geometryRevision;
@@ -164,7 +203,7 @@ namespace
 		}
 		resource.m_mainRevision = mainRevision;
 
-		const size_t maskedQueue = GetHash(std::string("Masked"));
+		const size_t maskedQueue = "Masked"_h.GetHash();
 		size_t depthRevision = geometryRevision;
 		auto hashDepthMaterial = [&](const RHIMaterialPtr& material,
 			size_t renderQueue,
@@ -393,6 +432,7 @@ RHIMeshPtr RHIVisibleSceneProxy::ResolveMesh(const RHIMeshPtr& sourceMesh) const
 	{
 		const uint32_t lod = source->m_lodPolicy.Resolve(
 			m_screenCoverage,
+			m_cameraDistance,
 			mesh->GetNumLods());
 		if (lod > 0u)
 		{
@@ -454,9 +494,15 @@ RHIMeshPtr RHIVisibleSceneProxy::ResolveInstancedMesh(
 		group,
 		instanceIndex,
 		meshIndex));
-	const uint32_t lod = source->m_lodPolicy.Resolve(
+	uint32_t lod = source->m_lodPolicy.Resolve(
 		CalculateScreenCoverage(worldBounds, viewMatrix, projectionMatrix),
 		mesh->GetNumLods());
+	lod = Settings::ApplyLodBias(
+		lod,
+		mesh->GetNumLods(),
+		source->m_lodPolicy.m_minLod,
+		source->m_lodPolicy.m_maxLod,
+		ResolveInstanceLodBias(group, instanceIndex));
 	if (lod > 0u)
 	{
 		if (auto lodMesh = mesh->GetLod(lod))
@@ -492,7 +538,10 @@ bool RHIVisibleSceneProxy::IsInstancedMeshWithinDistance(
 		cameraPosition,
 		worldBounds.m_min,
 		worldBounds.m_max);
-	return glm::distance(cameraPosition, closestPoint) <= maxDistance;
+	const float instanceMaxDistance = maxDistance * ResolveInstanceDistanceScale(
+		group.m_instanceCullDistanceScales,
+		instanceIndex);
+	return glm::distance(cameraPosition, closestPoint) <= instanceMaxDistance;
 }
 
 const RHIShadowCasterProxy* RHIVisibleShadowCaster::GetSource() const
@@ -593,7 +642,10 @@ RHIMeshPtr RHIVisibleShadowCaster::ResolveMesh(
 		GetWorldBounds(),
 		glm::mat4(1.0f),
 		shadowViewProjection);
-	const uint32_t lod = topology->m_lodPolicy.Resolve(coverage, mesh->GetNumLods());
+	const uint32_t lod = topology->m_lodPolicy.Resolve(
+		coverage,
+		m_cameraDistance,
+		mesh->GetNumLods());
 	if (lod > 0u)
 	{
 		if (auto lodMesh = mesh->GetLod(lod))
@@ -648,9 +700,15 @@ RHIMeshPtr RHIVisibleShadowCaster::ResolveInstancedMesh(
 		group,
 		instanceIndex,
 		meshIndex));
-	const uint32_t lod = topology->m_lodPolicy.Resolve(
+	uint32_t lod = topology->m_lodPolicy.Resolve(
 		CalculateScreenCoverage(worldBounds, glm::mat4(1.0f), shadowViewProjection),
 		mesh->GetNumLods());
+	lod = Settings::ApplyLodBias(
+		lod,
+		mesh->GetNumLods(),
+		topology->m_lodPolicy.m_minLod,
+		topology->m_lodPolicy.m_maxLod,
+		ResolveInstanceLodBias(group, instanceIndex));
 	if (lod > 0u)
 	{
 		if (auto lodMesh = mesh->GetLod(lod))
@@ -686,7 +744,10 @@ bool RHIVisibleShadowCaster::IsInstancedMeshWithinDistance(
 		cameraPosition,
 		worldBounds.m_min,
 		worldBounds.m_max);
-	return glm::distance(cameraPosition, closestPoint) <= maxDistance;
+	const float instanceMaxDistance = maxDistance * ResolveInstanceDistanceScale(
+		group.m_instanceShadowDistanceScales,
+		instanceIndex);
+	return glm::distance(cameraPosition, closestPoint) <= instanceMaxDistance;
 }
 
 float Sailor::RHI::CalculateScreenCoverage(
@@ -694,16 +755,9 @@ float Sailor::RHI::CalculateScreenCoverage(
 	const glm::mat4& viewMatrix,
 	const glm::mat4& projectionMatrix)
 {
-	const auto isMatrixFinite = [](const glm::mat4& matrix)
-		{
-			return Math::AllFinite(matrix[0]) &&
-				Math::AllFinite(matrix[1]) &&
-				Math::AllFinite(matrix[2]) &&
-				Math::AllFinite(matrix[3]);
-		};
 	if (!worldBounds.IsValid() ||
-		!isMatrixFinite(viewMatrix) ||
-		!isMatrixFinite(projectionMatrix))
+		!Math::AllFinite(viewMatrix) ||
+		!Math::AllFinite(projectionMatrix))
 	{
 		return 0.0f;
 	}
@@ -767,6 +821,14 @@ float Sailor::RHI::CalculateScreenCoverage(
 
 uint32_t RHI::RHILodPolicy::Resolve(float screenCoverage, uint32_t numAvailableLods) const
 {
+	return Resolve(screenCoverage, 0.0f, numAvailableLods);
+}
+
+uint32_t RHI::RHILodPolicy::Resolve(
+	float screenCoverage,
+	float cameraDistance,
+	uint32_t numAvailableLods) const
+{
 	if (numAvailableLods == 0u)
 	{
 		return 0u;
@@ -776,17 +838,41 @@ uint32_t RHI::RHILodPolicy::Resolve(float screenCoverage, uint32_t numAvailableL
 	const uint32_t minLod = (std::min)(m_minLod, highestAvailableLod);
 	const uint32_t maxLod = (std::max)(minLod, (std::min)(m_maxLod, highestAvailableLod));
 	uint32_t selectedLod = 0u;
-	const float coverage = (std::clamp)(screenCoverage, 0.0f, 1.0f);
-	for (size_t index = 0u; index < m_screenCoverageThresholds.Num(); ++index)
+	if (!m_cameraDistanceThresholds.IsEmpty())
 	{
-		if (!std::isfinite(m_screenCoverageThresholds[index]) ||
-			coverage >= m_screenCoverageThresholds[index])
+		const float distance = std::isfinite(cameraDistance) ?
+			(std::max)(cameraDistance, 0.0f) :
+			(std::numeric_limits<float>::infinity)();
+		for (float threshold : m_cameraDistanceThresholds)
 		{
-			break;
+			if (!std::isfinite(threshold) || distance < threshold)
+			{
+				break;
+			}
+			++selectedLod;
 		}
-		selectedLod = static_cast<uint32_t>(index + 1u);
 	}
-	return (std::clamp)(selectedLod, minLod, maxLod);
+	else
+	{
+		const float coverage = (std::clamp)(screenCoverage, 0.0f, 1.0f);
+		for (size_t index = 0u; index < m_screenCoverageThresholds.Num(); ++index)
+		{
+			if (!std::isfinite(m_screenCoverageThresholds[index]) ||
+				coverage >= m_screenCoverageThresholds[index])
+			{
+				break;
+			}
+			selectedLod = static_cast<uint32_t>(index + 1u);
+		}
+	}
+	const int32_t lodBias = App::GetInstance() ?
+		App::GetActiveGraphicsSettings().m_lodBias : 0;
+	return Settings::ApplyLodBias(
+		selectedLod,
+		numAvailableLods,
+		minLod,
+		maxLod,
+		lodBias);
 }
 
 namespace
@@ -809,7 +895,7 @@ namespace
 		return data.ResolveLod(screenCoverage, mesh->GetNumLods());
 	}
 
-	void ApplyCustomLodToMeshes(
+	[[maybe_unused]] void ApplyCustomLodToMeshes(
 		const RHILodPolicy& policy,
 		const Math::AABB& worldBounds,
 		const CameraData& camera,
@@ -834,7 +920,7 @@ namespace
 		}
 	}
 
-	void ApplyLodToMeshes(
+	[[maybe_unused]] void ApplyLodToMeshes(
 		const StaticMeshRendererData& data,
 		const Math::AABB& worldBounds,
 		const CameraData& camera,
@@ -857,7 +943,7 @@ namespace
 		}
 	}
 
-	RHIShadowCasterProxyPtr CreateLodShadowCaster(
+	[[maybe_unused]] RHIShadowCasterProxyPtr CreateLodShadowCaster(
 		const RHIShadowCasterProxyPtr& source,
 		WorldPtr world,
 		const CameraData& camera)
@@ -897,7 +983,9 @@ namespace
 	}
 }
 
-void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
+void RHISceneView::PrepareDebugDrawCommandLists(
+	WorldPtr world,
+	const glm::ivec2& renderExtent)
 {
 	m_debugDraw.Reserve(m_cameras.Num());
 	const DebugContext::DrawSnapshot debugDrawSnapshot = world->GetDebugContext()->GetDrawSnapshot();
@@ -913,7 +1001,11 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh");
 				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
-				world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix, debugDrawSnapshot);
+				world->GetDebugContext()->DrawDebugMesh(
+					secondaryCmdList,
+					matrix,
+					debugDrawSnapshot,
+					renderExtent);
 				commands->EndCommandList(secondaryCmdList);
 
 				return secondaryCmdList;
@@ -942,6 +1034,10 @@ void RHISceneView::Clear()
 	m_lightingRevision = 0ull;
 	m_cpuBoneMatrices.Clear();
 	m_animationRevision = 0ull;
+	m_globalIlluminationMode =
+		EGlobalIlluminationMode::Baked;
+	m_bGlobalIlluminationEnabled = true;
+	m_globalIllumination.Clear();
 
 	m_drawImGui.Clear();
 	m_debugDraw.Clear(false);
@@ -955,6 +1051,7 @@ void RHISceneView::Clear()
 	m_virtualSceneVersions.Clear(false);
 	m_retainedSceneVersions.Clear();
 	m_sceneRevision = 0ull;
+	m_renderMode = ESceneViewRenderMode::Lit;
 	m_shadowCastersRevision = 0ull;
 	m_bHasCustomDepthShadowCasters = false;
 	m_pathTracerProxies.Clear(false);
@@ -966,8 +1063,10 @@ void RHISceneView::Clear()
 void RHISceneViewSnapshot::ResetForReuse()
 {
 	m_submissionContext.Clear();
+	m_previousMotionFrame.Clear();
 	m_sceneVersions.Clear();
 	m_sceneRevision = 0ull;
+	m_renderMode = ESceneViewRenderMode::Lit;
 	m_deltaTime = 0.0f;
 	m_frame = 0ull;
 	m_cameraIndex = 0u;
@@ -991,13 +1090,17 @@ void RHISceneViewSnapshot::ResetForReuse()
 	m_boneMatrices.Clear();
 	m_cpuBoneMatrices.Clear();
 	m_animationRevision = 0ull;
+	m_globalIlluminationMode =
+		EGlobalIlluminationMode::Baked;
+	m_bGlobalIlluminationEnabled = true;
+	m_globalIllumination.Clear();
 	m_debugDrawSecondaryCmdList.Clear();
 	m_drawImGui.Clear();
 }
 
 uint64_t RHISceneViewSnapshot::GetMobilityRevision(EMobilityType mobility) const
 {
-	size_t result = 1469598103934665603ull;
+	size_t result = Fnv1aOffsetBasis;
 	HashCombine(result, static_cast<uint32_t>(mobility));
 	if (!m_sceneVersions)
 	{
@@ -1047,8 +1150,10 @@ void RHISceneView::AddSceneVersion(RHISpatialSceneVersionPtr sceneVersion)
 		return;
 	}
 
-	m_sceneRevision = m_sceneRevision * 1099511628211ull ^ sceneVersion->m_revision;
-	m_shadowCastersRevision = m_shadowCastersRevision * 1099511628211ull ^ sceneVersion->m_shadowCastersRevision;
+	HashCombine(m_sceneRevision, sceneVersion->m_revision);
+	HashCombine(
+		m_shadowCastersRevision,
+		sceneVersion->m_shadowCastersRevision);
 	m_bHasCustomDepthShadowCasters |= sceneVersion->m_bHasCustomDepthShadowCasters;
 	if (sceneVersion->m_sceneVersion)
 	{
@@ -1175,15 +1280,18 @@ void RHISceneView::TraceScene(
 
 }
 
-TVector<RHIVisibleShadowCaster> RHISceneView::TraceShadowCasters(const Math::Frustum& frustum) const
+TVector<RHIVisibleShadowCaster> RHISceneView::TraceShadowCasters(
+	const Math::Frustum& frustum,
+	const glm::vec3& lodReferencePosition) const
 {
 	TVector<RHIVisibleShadowCaster> result;
-	TraceShadowCasters(frustum, result);
+	TraceShadowCasters(frustum, lodReferencePosition, result);
 	return result;
 }
 
 void RHISceneView::TraceShadowCasters(
 	const Math::Frustum& frustum,
+	const glm::vec3& lodReferencePosition,
 	TVector<RHIVisibleShadowCaster>& result) const
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -1210,7 +1318,9 @@ void RHISceneView::TraceShadowCasters(
 			continue;
 		}
 
-		auto appendHandle = [&result, &sceneVersion = spatialVersion->m_sceneVersion](
+		auto appendHandle = [&result,
+			&lodReferencePosition,
+			&sceneVersion = spatialVersion->m_sceneVersion](
 			const RenderInstanceHandle& handle)
 			{
 				const RHISceneInstanceRecord* record = nullptr;
@@ -1230,6 +1340,13 @@ void RHISceneView::TraceShadowCasters(
 				visible.m_handle = handle;
 				visible.m_record = record;
 				visible.m_resource = resource;
+				const glm::vec3 closest = glm::clamp(
+					lodReferencePosition,
+					record->m_worldBounds.m_min,
+					record->m_worldBounds.m_max);
+				visible.m_cameraDistance = glm::distance(
+					lodReferencePosition,
+					closest);
 				result.Add(std::move(visible));
 		};
 		if (spatialVersion->m_dynamicOctree)
@@ -1261,6 +1378,7 @@ void RHISceneView::PrepareSnapshots()
 		res.m_submissionContext = m_submissionContext;
 		res.m_sceneVersions = GetRetainedSceneVersions();
 		res.m_sceneRevision = m_sceneRevision;
+		res.m_renderMode = m_renderMode;
 
 		Math::Frustum frustum;
 
@@ -1294,6 +1412,10 @@ void RHISceneView::PrepareSnapshots()
 		res.m_lightingRevision = m_lightingRevision;
 		res.m_cpuBoneMatrices = m_cpuBoneMatrices;
 		res.m_animationRevision = m_animationRevision;
+		res.m_globalIlluminationMode = m_globalIlluminationMode;
+		res.m_bGlobalIlluminationEnabled =
+			m_bGlobalIlluminationEnabled;
+		res.m_globalIllumination = m_globalIllumination;
 		TraceScene(frustum, res.m_proxies, false);
 		const glm::vec3 cameraPosition = glm::vec3(m_cameraTransforms[i].m_position);
 		size_t visibleProxyWriteIndex = 0u;
@@ -1304,13 +1426,17 @@ void RHISceneView::PrepareSnapshots()
 			auto& proxy = res.m_proxies[visibleProxyReadIndex];
 			const auto* source = proxy.GetSource();
 			bool bKeepProxy = source != nullptr;
-			if (source && std::isfinite(source->m_lodPolicy.m_maxCameraDistance))
+			if (source)
 			{
 				const glm::vec3 closest = glm::clamp(
 					cameraPosition,
 					proxy.GetWorldBounds().m_min,
 					proxy.GetWorldBounds().m_max);
-				bKeepProxy = glm::distance(cameraPosition, closest) <=
+				proxy.m_cameraDistance = glm::distance(cameraPosition, closest);
+			}
+			if (source && std::isfinite(source->m_lodPolicy.m_maxCameraDistance))
+			{
+				bKeepProxy = proxy.m_cameraDistance <=
 					source->m_lodPolicy.m_maxCameraDistance;
 			}
 			if (!bKeepProxy)

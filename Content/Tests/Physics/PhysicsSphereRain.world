@@ -2,6 +2,7 @@ name: PhysicsSphereRain
 prefabs:
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 0
           - 160
@@ -31,6 +32,7 @@ prefabs:
           instanceId: A1510000000000000000000000000001_A1510000000000000001
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 250
@@ -54,15 +56,16 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 8
-            - 8
-            - 8
+            - 8000
+            - 8000
+            - 8000
           lightType: Directional
           shadowType: PCF
           fileId: NullFileId
           instanceId: A1510000000000000000000000000002_A1510000000000000002
   - gameObjects:
       - name: StaticGround
+        mobilityType: Stationary
         position:
           - 0
           - -10
@@ -112,6 +115,7 @@ prefabs:
           instanceId: A1510000000000000000000000000005_A1510000000000000003
   - gameObjects:
       - name: LeftRamp
+        mobilityType: Stationary
         position:
           - -70
           - 30
@@ -161,6 +165,7 @@ prefabs:
           instanceId: A1510000000000000000000000000008_A1510000000000000004
   - gameObjects:
       - name: RightRamp
+        mobilityType: Stationary
         position:
           - 70
           - 50
@@ -210,6 +215,7 @@ prefabs:
           instanceId: A151000000000000000000000000000B_A1510000000000000005
   - gameObjects:
       - name: Ball_00_00
+        mobilityType: Stationary
         position:
           - -58.75
           - 100
@@ -261,6 +267,7 @@ prefabs:
           instanceId: A151000000000000000000000000000E_A1510000000000000006
   - gameObjects:
       - name: Ball_00_01
+        mobilityType: Stationary
         position:
           - -35.25
           - 100
@@ -312,6 +319,7 @@ prefabs:
           instanceId: A1510000000000000000000000000011_A1510000000000000007
   - gameObjects:
       - name: Ball_00_02
+        mobilityType: Stationary
         position:
           - -11.75
           - 100
@@ -363,6 +371,7 @@ prefabs:
           instanceId: A1510000000000000000000000000014_A1510000000000000008
   - gameObjects:
       - name: Ball_00_03
+        mobilityType: Stationary
         position:
           - 11.75
           - 100
@@ -414,6 +423,7 @@ prefabs:
           instanceId: A1510000000000000000000000000017_A1510000000000000009
   - gameObjects:
       - name: Ball_00_04
+        mobilityType: Stationary
         position:
           - 35.25
           - 100
@@ -465,6 +475,7 @@ prefabs:
           instanceId: A151000000000000000000000000001A_A151000000000000000A
   - gameObjects:
       - name: Ball_00_05
+        mobilityType: Stationary
         position:
           - 58.75
           - 100
@@ -516,6 +527,7 @@ prefabs:
           instanceId: A151000000000000000000000000001D_A151000000000000000B
   - gameObjects:
       - name: Ball_01_00
+        mobilityType: Stationary
         position:
           - -54.75
           - 122.5
@@ -567,6 +579,7 @@ prefabs:
           instanceId: A1510000000000000000000000000020_A151000000000000000C
   - gameObjects:
       - name: Ball_01_01
+        mobilityType: Stationary
         position:
           - -31.25
           - 122.5
@@ -618,6 +631,7 @@ prefabs:
           instanceId: A1510000000000000000000000000023_A151000000000000000D
   - gameObjects:
       - name: Ball_01_02
+        mobilityType: Stationary
         position:
           - -7.75
           - 122.5
@@ -669,6 +683,7 @@ prefabs:
           instanceId: A1510000000000000000000000000026_A151000000000000000E
   - gameObjects:
       - name: Ball_01_03
+        mobilityType: Stationary
         position:
           - 15.75
           - 122.5
@@ -720,6 +735,7 @@ prefabs:
           instanceId: A1510000000000000000000000000029_A151000000000000000F
   - gameObjects:
       - name: Ball_01_04
+        mobilityType: Stationary
         position:
           - 39.25
           - 122.5
@@ -771,6 +787,7 @@ prefabs:
           instanceId: A151000000000000000000000000002C_A1510000000000000010
   - gameObjects:
       - name: Ball_01_05
+        mobilityType: Stationary
         position:
           - 62.75
           - 122.5
@@ -822,6 +839,7 @@ prefabs:
           instanceId: A151000000000000000000000000002F_A1510000000000000011
   - gameObjects:
       - name: Ball_02_00
+        mobilityType: Stationary
         position:
           - -58.75
           - 145
@@ -873,6 +891,7 @@ prefabs:
           instanceId: A1510000000000000000000000000032_A1510000000000000012
   - gameObjects:
       - name: Ball_02_01
+        mobilityType: Stationary
         position:
           - -35.25
           - 145
@@ -924,6 +943,7 @@ prefabs:
           instanceId: A1510000000000000000000000000035_A1510000000000000013
   - gameObjects:
       - name: Ball_02_02
+        mobilityType: Stationary
         position:
           - -11.75
           - 145
@@ -975,6 +995,7 @@ prefabs:
           instanceId: A1510000000000000000000000000038_A1510000000000000014
   - gameObjects:
       - name: Ball_02_03
+        mobilityType: Stationary
         position:
           - 11.75
           - 145
@@ -1026,6 +1047,7 @@ prefabs:
           instanceId: A151000000000000000000000000003B_A1510000000000000015
   - gameObjects:
       - name: Ball_02_04
+        mobilityType: Stationary
         position:
           - 35.25
           - 145
@@ -1077,6 +1099,7 @@ prefabs:
           instanceId: A151000000000000000000000000003E_A1510000000000000016
   - gameObjects:
       - name: Ball_02_05
+        mobilityType: Stationary
         position:
           - 58.75
           - 145
@@ -1128,6 +1151,7 @@ prefabs:
           instanceId: A1510000000000000000000000000041_A1510000000000000017
   - gameObjects:
       - name: Ball_03_00
+        mobilityType: Stationary
         position:
           - -54.75
           - 167.5
@@ -1179,6 +1203,7 @@ prefabs:
           instanceId: A1510000000000000000000000000044_A1510000000000000018
   - gameObjects:
       - name: Ball_03_01
+        mobilityType: Stationary
         position:
           - -31.25
           - 167.5
@@ -1230,6 +1255,7 @@ prefabs:
           instanceId: A1510000000000000000000000000047_A1510000000000000019
   - gameObjects:
       - name: Ball_03_02
+        mobilityType: Stationary
         position:
           - -7.75
           - 167.5
@@ -1281,6 +1307,7 @@ prefabs:
           instanceId: A151000000000000000000000000004A_A151000000000000001A
   - gameObjects:
       - name: Ball_03_03
+        mobilityType: Stationary
         position:
           - 15.75
           - 167.5
@@ -1332,6 +1359,7 @@ prefabs:
           instanceId: A151000000000000000000000000004D_A151000000000000001B
   - gameObjects:
       - name: Ball_03_04
+        mobilityType: Stationary
         position:
           - 39.25
           - 167.5
@@ -1383,6 +1411,7 @@ prefabs:
           instanceId: A1510000000000000000000000000050_A151000000000000001C
   - gameObjects:
       - name: Ball_03_05
+        mobilityType: Stationary
         position:
           - 62.75
           - 167.5
@@ -1434,6 +1463,7 @@ prefabs:
           instanceId: A1510000000000000000000000000053_A151000000000000001D
   - gameObjects:
       - name: Ball_04_00
+        mobilityType: Stationary
         position:
           - -58.75
           - 190
@@ -1485,6 +1515,7 @@ prefabs:
           instanceId: A1510000000000000000000000000056_A151000000000000001E
   - gameObjects:
       - name: Ball_04_01
+        mobilityType: Stationary
         position:
           - -35.25
           - 190
@@ -1536,6 +1567,7 @@ prefabs:
           instanceId: A1510000000000000000000000000059_A151000000000000001F
   - gameObjects:
       - name: Ball_04_02
+        mobilityType: Stationary
         position:
           - -11.75
           - 190
@@ -1587,6 +1619,7 @@ prefabs:
           instanceId: A151000000000000000000000000005C_A1510000000000000020
   - gameObjects:
       - name: Ball_04_03
+        mobilityType: Stationary
         position:
           - 11.75
           - 190
@@ -1638,6 +1671,7 @@ prefabs:
           instanceId: A151000000000000000000000000005F_A1510000000000000021
   - gameObjects:
       - name: Ball_04_04
+        mobilityType: Stationary
         position:
           - 35.25
           - 190
@@ -1689,6 +1723,7 @@ prefabs:
           instanceId: A1510000000000000000000000000062_A1510000000000000022
   - gameObjects:
       - name: Ball_04_05
+        mobilityType: Stationary
         position:
           - 58.75
           - 190
@@ -1740,6 +1775,7 @@ prefabs:
           instanceId: A1510000000000000000000000000065_A1510000000000000023
   - gameObjects:
       - name: Ball_05_00
+        mobilityType: Stationary
         position:
           - -54.75
           - 212.5
@@ -1791,6 +1827,7 @@ prefabs:
           instanceId: A1510000000000000000000000000068_A1510000000000000024
   - gameObjects:
       - name: Ball_05_01
+        mobilityType: Stationary
         position:
           - -31.25
           - 212.5
@@ -1842,6 +1879,7 @@ prefabs:
           instanceId: A151000000000000000000000000006B_A1510000000000000025
   - gameObjects:
       - name: Ball_05_02
+        mobilityType: Stationary
         position:
           - -7.75
           - 212.5
@@ -1893,6 +1931,7 @@ prefabs:
           instanceId: A151000000000000000000000000006E_A1510000000000000026
   - gameObjects:
       - name: Ball_05_03
+        mobilityType: Stationary
         position:
           - 15.75
           - 212.5
@@ -1944,6 +1983,7 @@ prefabs:
           instanceId: A1510000000000000000000000000071_A1510000000000000027
   - gameObjects:
       - name: Ball_05_04
+        mobilityType: Stationary
         position:
           - 39.25
           - 212.5
@@ -1995,6 +2035,7 @@ prefabs:
           instanceId: A1510000000000000000000000000074_A1510000000000000028
   - gameObjects:
       - name: Ball_05_05
+        mobilityType: Stationary
         position:
           - 62.75
           - 212.5

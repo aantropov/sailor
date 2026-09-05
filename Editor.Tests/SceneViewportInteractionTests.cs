@@ -5,6 +5,46 @@ namespace Editor.Tests;
 public sealed class SceneViewportInteractionTests
 {
     [Theory]
+    [InlineData("lit", SceneViewRenderMode.Lit)]
+    [InlineData("ambient_occlusion", SceneViewRenderMode.AmbientOcclusion)]
+    [InlineData("Ambient Occlusion", SceneViewRenderMode.AmbientOcclusion)]
+    [InlineData("AO", SceneViewRenderMode.AmbientOcclusion)]
+    [InlineData("csm", SceneViewRenderMode.Cascades)]
+    [InlineData("light-tiles", SceneViewRenderMode.LightTiles)]
+    [InlineData("GI only", SceneViewRenderMode.GlobalIlluminationOnly)]
+    [InlineData("probes", SceneViewRenderMode.GlobalIlluminationProbes)]
+    [InlineData("GI bricks", SceneViewRenderMode.GlobalIlluminationBricks)]
+    [InlineData("gi_validity", SceneViewRenderMode.GlobalIlluminationValidity)]
+    [InlineData("GI visibility", SceneViewRenderMode.GlobalIlluminationVisibility)]
+    [InlineData("gi_residency", SceneViewRenderMode.GlobalIlluminationResidency)]
+    [InlineData(
+        "GI asset identity",
+        SceneViewRenderMode.GlobalIlluminationAssetIdentity)]
+    [InlineData("gi-fallback", SceneViewRenderMode.GlobalIlluminationFallback)]
+    [InlineData(
+        "gi-subdivisions",
+        SceneViewRenderMode.GlobalIlluminationSubdivisions)]
+    public void RenderModeName_ParsesMcpValues(
+        string value,
+        SceneViewRenderMode expected)
+    {
+        Assert.True(SceneViewRenderModeNames.TryParse(value, out var mode));
+        Assert.Equal(expected, mode);
+        Assert.Contains(
+            SceneViewRenderModeNames.ToExternalName(mode),
+            SceneViewRenderModeNames.Supported);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("depth")]
+    [InlineData("ambient")]
+    public void RenderModeName_RejectsUnsupportedValues(string value)
+    {
+        Assert.False(SceneViewRenderModeNames.TryParse(value, out _));
+    }
+
+    [Theory]
     [InlineData('Q', EditorViewportTransformOperation.Select)]
     [InlineData('W', EditorViewportTransformOperation.Translate)]
     [InlineData('E', EditorViewportTransformOperation.Rotate)]

@@ -2,6 +2,7 @@ name: PhysicsMixedShapes
 prefabs:
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 0
           - 150
@@ -31,6 +32,7 @@ prefabs:
           instanceId: A1520000000000000000000000000001_A1520000000000000001
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 250
@@ -54,15 +56,16 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 8
-            - 8
-            - 8
+            - 8000
+            - 8000
+            - 8000
           lightType: Directional
           shadowType: PCF
           fileId: NullFileId
           instanceId: A1520000000000000000000000000002_A1520000000000000002
   - gameObjects:
       - name: StaticGround
+        mobilityType: Stationary
         position:
           - 0
           - -10
@@ -112,6 +115,7 @@ prefabs:
           instanceId: A1520000000000000000000000000005_A1520000000000000003
   - gameObjects:
       - name: CollisionRamp
+        mobilityType: Stationary
         position:
           - 0
           - 30
@@ -161,6 +165,7 @@ prefabs:
           instanceId: A1520000000000000000000000000008_A1520000000000000004
   - gameObjects:
       - name: Box_00
+        mobilityType: Stationary
         position:
           - -100
           - 100
@@ -215,6 +220,7 @@ prefabs:
           instanceId: A152000000000000000000000000000B_A1520000000000000005
   - gameObjects:
       - name: Box_01
+        mobilityType: Stationary
         position:
           - -78
           - 112
@@ -269,6 +275,7 @@ prefabs:
           instanceId: A152000000000000000000000000000E_A1520000000000000006
   - gameObjects:
       - name: Box_02
+        mobilityType: Stationary
         position:
           - -56
           - 124
@@ -323,6 +330,7 @@ prefabs:
           instanceId: A1520000000000000000000000000011_A1520000000000000007
   - gameObjects:
       - name: Box_03
+        mobilityType: Stationary
         position:
           - -34
           - 136
@@ -377,6 +385,7 @@ prefabs:
           instanceId: A1520000000000000000000000000014_A1520000000000000008
   - gameObjects:
       - name: Box_04
+        mobilityType: Stationary
         position:
           - -12
           - 148
@@ -431,6 +440,7 @@ prefabs:
           instanceId: A1520000000000000000000000000017_A1520000000000000009
   - gameObjects:
       - name: Box_05
+        mobilityType: Stationary
         position:
           - 10
           - 160
@@ -485,6 +495,7 @@ prefabs:
           instanceId: A152000000000000000000000000001A_A152000000000000000A
   - gameObjects:
       - name: Box_06
+        mobilityType: Stationary
         position:
           - 32
           - 172
@@ -539,6 +550,7 @@ prefabs:
           instanceId: A152000000000000000000000000001D_A152000000000000000B
   - gameObjects:
       - name: Sphere_00
+        mobilityType: Stationary
         position:
           - 100
           - 120
@@ -590,6 +602,7 @@ prefabs:
           instanceId: A1520000000000000000000000000020_A152000000000000000C
   - gameObjects:
       - name: Sphere_01
+        mobilityType: Stationary
         position:
           - 79
           - 133.5
@@ -641,6 +654,7 @@ prefabs:
           instanceId: A1520000000000000000000000000023_A152000000000000000D
   - gameObjects:
       - name: Sphere_02
+        mobilityType: Stationary
         position:
           - 58
           - 147
@@ -692,6 +706,7 @@ prefabs:
           instanceId: A1520000000000000000000000000026_A152000000000000000E
   - gameObjects:
       - name: Sphere_03
+        mobilityType: Stationary
         position:
           - 37
           - 160.5
@@ -743,6 +758,7 @@ prefabs:
           instanceId: A1520000000000000000000000000029_A152000000000000000F
   - gameObjects:
       - name: Sphere_04
+        mobilityType: Stationary
         position:
           - 16
           - 174
@@ -794,6 +810,7 @@ prefabs:
           instanceId: A152000000000000000000000000002C_A1520000000000000010
   - gameObjects:
       - name: Sphere_05
+        mobilityType: Stationary
         position:
           - -5
           - 187.5
@@ -845,6 +862,7 @@ prefabs:
           instanceId: A152000000000000000000000000002F_A1520000000000000011
   - gameObjects:
       - name: Sphere_06
+        mobilityType: Stationary
         position:
           - -26
           - 201
@@ -896,6 +914,7 @@ prefabs:
           instanceId: A1520000000000000000000000000032_A1520000000000000012
   - gameObjects:
       - name: Sphere_07
+        mobilityType: Stationary
         position:
           - -47
           - 214.5
@@ -947,6 +966,7 @@ prefabs:
           instanceId: A1520000000000000000000000000035_A1520000000000000013
   - gameObjects:
       - name: Capsule_00
+        mobilityType: Stationary
         position:
           - -70
           - 190
@@ -999,6 +1019,7 @@ prefabs:
           instanceId: A1520000000000000000000000000038_A1520000000000000014
   - gameObjects:
       - name: Capsule_01
+        mobilityType: Stationary
         position:
           - -35
           - 205
@@ -1051,6 +1072,7 @@ prefabs:
           instanceId: A152000000000000000000000000003B_A1520000000000000015
   - gameObjects:
       - name: Capsule_02
+        mobilityType: Stationary
         position:
           - 0
           - 220
@@ -1103,6 +1125,7 @@ prefabs:
           instanceId: A152000000000000000000000000003E_A1520000000000000016
   - gameObjects:
       - name: Capsule_03
+        mobilityType: Stationary
         position:
           - 35
           - 235
@@ -1155,6 +1178,7 @@ prefabs:
           instanceId: A1520000000000000000000000000041_A1520000000000000017
   - gameObjects:
       - name: Capsule_04
+        mobilityType: Stationary
         position:
           - 70
           - 250
@@ -1207,6 +1231,7 @@ prefabs:
           instanceId: A1520000000000000000000000000044_A1520000000000000018
   - gameObjects:
       - name: CompoundBody
+        mobilityType: Stationary
         position:
           - 0
           - 240

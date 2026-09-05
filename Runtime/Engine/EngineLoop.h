@@ -23,8 +23,9 @@ namespace Sailor
 
 		SAILOR_API void ProcessCpuFrame(FrameState& currentInputState);
 		SAILOR_API uint32_t GetCpuFps() const { return m_cpuFps; }
+		SAILOR_API uint32_t GetFpsCap() const { return m_fpsCap; }
 
-		EngineLoop() = default;
+		explicit EngineLoop(uint32_t fpsCap) noexcept : m_fpsCap(fpsCap) {}
 		SAILOR_API ~EngineLoop() override;
 
 		SAILOR_API TSharedPtr<World> CreateEmptyWorld(std::string name, EWorldBehaviourMask mask);
@@ -38,6 +39,7 @@ namespace Sailor
 
 	protected:
 
+		uint32_t m_fpsCap = 0u;
 		uint32_t m_cpuFps = 0u;
 		TVector<TSharedPtr<World>> m_worlds;
 		TVector<WorldPtr> m_pendingWorldsToExit;

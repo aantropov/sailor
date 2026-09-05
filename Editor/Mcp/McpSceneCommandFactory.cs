@@ -2,6 +2,7 @@
 
 using System.Text.Json;
 using SailorEditor.Commands;
+using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using YamlDotNet.RepresentationModel;
 using ViewModelComponent = SailorEditor.ViewModels.Component;
@@ -14,6 +15,7 @@ internal static class McpSceneCommandFactory
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["name"] = "name",
+            ["mobilityType"] = "mobilityType",
             ["position"] = "position",
             ["rotation"] = "rotation",
             ["scale"] = "scale",
@@ -32,11 +34,28 @@ internal static class McpSceneCommandFactory
             {
                 throw new InvalidDataException(
                     $"GameObject property '{property.Key}' cannot be changed through MCP. " +
-                    "Allowed properties: name, position, rotation, scale.");
+                    "Allowed properties: name, mobilityType, position, rotation, scale.");
             }
 
-            mapping.Children[new YamlScalarNode(canonicalName)] =
-                McpYamlUtilities.FromJson(property.Value);
+            if (canonicalName == "mobilityType")
+            {
+                if (property.Value.ValueKind != JsonValueKind.String ||
+                    !GameObjectMobilityPolicy.TryNormalize(
+                        property.Value.GetString(),
+                        out var mobilityType))
+                {
+                    throw new InvalidDataException(
+                        "GameObject mobilityType must be Static, Stationary, or Dynamic.");
+                }
+
+                mapping.Children[new YamlScalarNode(canonicalName)] =
+                    new YamlScalarNode(mobilityType);
+            }
+            else
+            {
+                mapping.Children[new YamlScalarNode(canonicalName)] =
+                    McpYamlUtilities.FromJson(property.Value);
+            }
         }
 
         return new UpdateGameObjectCommand(

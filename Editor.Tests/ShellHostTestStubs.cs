@@ -26,6 +26,7 @@ namespace SailorEditor.Views
     public sealed class SceneView : Microsoft.Maui.Controls.ContentView;
     public sealed class HierarchyView : Microsoft.Maui.Controls.ContentView;
     public sealed class InspectorView : Microsoft.Maui.Controls.ContentView;
+    public sealed class LightingPanelView : Microsoft.Maui.Controls.ContentView;
     public sealed class ContentFolderView : Microsoft.Maui.Controls.ContentView;
     public sealed class ConsoleView : Microsoft.Maui.Controls.ContentView;
     public sealed class SettingsPanelView : Microsoft.Maui.Controls.ContentView;

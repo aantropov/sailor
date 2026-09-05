@@ -99,19 +99,11 @@ namespace Sailor::Framegraph
 			uint64_t sumHash = 0ull;
 			ForEachRequestedTexture([&](uint32_t textureIndex)
 				{
-					uint64_t elementHash =
-						static_cast<uint64_t>(textureIndex) + 0x9e3779b97f4a7c15ull;
-					elementHash =
-						(elementHash ^ (elementHash >> 30u)) *
-						0xbf58476d1ce4e5b9ull;
-					elementHash =
-						(elementHash ^ (elementHash >> 27u)) *
-						0x94d049bb133111ebull;
-					elementHash ^= elementHash >> 31u;
+					const uint64_t elementHash = MixHash(textureIndex);
 					xorHash ^= elementHash;
 					sumHash += elementHash;
 				});
-			size_t result = 1469598103934665603ull;
+			size_t result = Fnv1aOffsetBasis;
 			HashCombine(
 				result,
 				GetNumRequestedTextures(),

@@ -65,13 +65,26 @@ message ProtocolRequest {
 		EditorSimulationRequest set_editor_simulation = 61;
 		Empty get_editor_simulation_state = 62;
 		FileIdRequest preview_audio_asset = 63;
+		EditorStatsModeRequest set_editor_stats_mode = 64;
+		EditorRenderModeRequest set_editor_render_mode = 65;
+		Empty get_editor_render_mode = 66;
+		StartGIProbesBakeRequest start_gi_probes_bake = 67;
+		Empty get_gi_probes_bake_status = 68;
+		Empty cancel_gi_probes_bake = 69;
+		SetGISettingsRequest set_gi_settings = 70;
+		Empty get_global_illumination_state = 71;
+		RuntimeGIProbesPreviewRequest set_runtime_gi_probes_preview = 72;
+		RuntimeGIProbesPauseRequest set_runtime_gi_probes_paused = 73;
+		Empty restart_runtime_gi_probes = 74;
+		Empty rebuild_runtime_gi_probes_scene = 75;
+		RuntimeGIProbesPreviewBudgetRequest set_runtime_gi_probes_preview_budget = 76;
 	}
 
 	reserved 3 to 9;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
-	reserved 64 to 99;
+	reserved 77 to 99;
 }
 
 message ProtocolResponse {
@@ -95,10 +108,13 @@ message ProtocolResponse {
 		Vector4Result vector4_result = 20;
 		ViewportToolStateResult viewport_tool_state_result = 21;
 		AnimatorStateResult animator_state_result = 22;
+		EditorRenderModeResult editor_render_mode_result = 23;
+		GIProbesBakeStatusResult gi_probes_bake_status_result = 24;
+		GlobalIlluminationStateResult global_illumination_state_result = 25;
 	}
 
 	reserved 6 to 9;
-	reserved 23 to 99;
+	reserved 26 to 99;
 }
 
 message InitializeRequest {
@@ -145,6 +161,96 @@ message SizeRequest {
 
 message EditorSimulationRequest {
 	bool enabled = 1;
+}
+
+message EditorStatsModeRequest {
+	EditorStatsMode mode = 1;
+}
+
+message EditorRenderModeRequest {
+	EditorRenderMode mode = 1;
+}
+
+message EditorRenderModeResult {
+	EditorRenderMode mode = 1;
+}
+
+message GIProbesBakeSettings {
+	uint32 rays_per_probe = 1;
+	uint32 bounce_count = 2;
+	uint32 random_seed = 3;
+	uint32 max_subdivision_level = 4;
+	float min_probe_spacing = 5;
+	float normal_bias = 6;
+	float view_bias = 7;
+	float max_ray_distance = 8;
+	bool include_sky = 9;
+	bool include_emissive = 10;
+	bool include_direct_lighting = 11;
+	reserved 12;
+}
+
+message StartGIProbesBakeRequest {
+	string world_file_id = 1;
+	string output_virtual_path = 2;
+	string state_name = 3;
+	string layout_source_file_id = 4;
+	GIProbesBakeSettings settings = 5;
+	Vector4 fallback_environment = 6;
+	bool overwrite = 7;
+	optional uint32 thread_count = 8;
+}
+
+message GIProbesBakeStatusResult {
+	GIProbesBakeState state = 1;
+	float progress = 2;
+	uint32 completed_probes = 3;
+	uint32 total_probes = 4;
+	uint32 brick_count = 5;
+	uint32 probe_count = 6;
+	float elapsed_seconds = 7;
+	uint64 layout_hash = 8;
+	uint64 transport_hash = 9;
+	uint64 lighting_hash = 10;
+	string stage = 11;
+	string output_virtual_path = 12;
+	string diagnostic = 13;
+}
+
+message GlobalIlluminationProbeBinding {
+	string name = 1;
+	string asset_file_id = 2;
+	GlobalIlluminationProbeMode mode = 3;
+	float initial_weight = 4;
+	bool preload = 5;
+}
+
+message SetGISettingsRequest {
+	repeated GlobalIlluminationProbeBinding probes = 1;
+	optional GlobalIlluminationMode mode = 2;
+	RuntimeGIProbesSettings runtime_probes = 3;
+}
+
+message GlobalIlluminationProbeState {
+	string name = 1;
+	string asset_file_id = 2;
+	GlobalIlluminationProbeMode mode = 3;
+	float weight = 4;
+	GlobalIlluminationProbeResidency residency = 5;
+	uint64 asset_revision = 6;
+	string diagnostic = 7;
+}
+
+message GlobalIlluminationStateResult {
+	uint32 max_probe_states_per_snapshot = 1;
+	repeated GlobalIlluminationProbeState probes = 2;
+	string diagnostic = 3;
+	uint64 composition_count = 4;
+	uint64 rejected_composition_count = 5;
+	GlobalIlluminationMode mode = 6;
+	bool enabled = 7;
+	RuntimeGIProbesSettings runtime_probes = 8;
+	RuntimeGIProbesState runtime_state = 9;
 }
 
 message RemoteViewportRequest {
@@ -347,6 +453,79 @@ enum ViewportTransformSpace {
 	VIEWPORT_TRANSFORM_SPACE_LOCAL = 2;
 }
 
+enum EditorStatsMode {
+	EDITOR_STATS_MODE_UNSPECIFIED = 0;
+	EDITOR_STATS_MODE_NONE = 1;
+	EDITOR_STATS_MODE_RENDER_STATS = 2;
+	EDITOR_STATS_MODE_RENDER_STATS_AND_QUERIES = 3;
+}
+
+enum EditorRenderMode {
+	EDITOR_RENDER_MODE_UNSPECIFIED = 0;
+	EDITOR_RENDER_MODE_LIT = 1;
+	EDITOR_RENDER_MODE_AMBIENT_OCCLUSION = 2;
+	EDITOR_RENDER_MODE_CASCADES = 3;
+	EDITOR_RENDER_MODE_LIGHT_TILES = 4;
+	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ONLY = 5;
+	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_PROBES = 6;
+	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_BRICKS = 7;
+	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VALIDITY = 8;
+	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY = 9;
+	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_RESIDENCY = 10;
+	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY = 11;
+	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK = 12;
+	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_SUBDIVISIONS = 13;
+}
+
+enum GIProbesBakeState {
+	GI_PROBES_BAKE_STATE_UNSPECIFIED = 0;
+	GI_PROBES_BAKE_STATE_IDLE = 1;
+	GI_PROBES_BAKE_STATE_PREPARING = 2;
+	GI_PROBES_BAKE_STATE_BAKING = 3;
+	GI_PROBES_BAKE_STATE_SAVING = 4;
+	GI_PROBES_BAKE_STATE_SUCCEEDED = 5;
+	GI_PROBES_BAKE_STATE_FAILED = 6;
+	GI_PROBES_BAKE_STATE_CANCELLED = 7;
+}
+
+enum GlobalIlluminationProbeMode {
+	GLOBAL_ILLUMINATION_PROBE_MODE_UNSPECIFIED = 0;
+	GLOBAL_ILLUMINATION_PROBE_MODE_BLEND = 1;
+	GLOBAL_ILLUMINATION_PROBE_MODE_ADDITIVE = 2;
+}
+
+enum GlobalIlluminationMode {
+	GLOBAL_ILLUMINATION_MODE_UNSPECIFIED = 0;
+	GLOBAL_ILLUMINATION_MODE_NO_GI = 1;
+	GLOBAL_ILLUMINATION_MODE_RUNTIME = 2;
+	GLOBAL_ILLUMINATION_MODE_BAKED = 3;
+}
+
+enum RuntimeGIProbesLifecycle {
+	RUNTIME_GI_PROBES_LIFECYCLE_UNSPECIFIED = 0;
+	RUNTIME_GI_PROBES_LIFECYCLE_DISABLED = 1;
+	RUNTIME_GI_PROBES_LIFECYCLE_PREPARING_SCENE = 2;
+	RUNTIME_GI_PROBES_LIFECYCLE_TRACING = 3;
+	RUNTIME_GI_PROBES_LIFECYCLE_READY = 4;
+	RUNTIME_GI_PROBES_LIFECYCLE_PAUSED = 5;
+	RUNTIME_GI_PROBES_LIFECYCLE_THROTTLED = 6;
+	RUNTIME_GI_PROBES_LIFECYCLE_FAILED = 7;
+}
+
+enum RuntimeGIProbesPreviewBudget {
+	RUNTIME_GI_PROBES_PREVIEW_BUDGET_UNSPECIFIED = 0;
+	RUNTIME_GI_PROBES_PREVIEW_BUDGET_ECO = 1;
+	RUNTIME_GI_PROBES_PREVIEW_BUDGET_BALANCED = 2;
+}
+
+enum GlobalIlluminationProbeResidency {
+	GLOBAL_ILLUMINATION_PROBE_RESIDENCY_UNSPECIFIED = 0;
+	GLOBAL_ILLUMINATION_PROBE_RESIDENCY_UNLOADED = 1;
+	GLOBAL_ILLUMINATION_PROBE_RESIDENCY_LOADING = 2;
+	GLOBAL_ILLUMINATION_PROBE_RESIDENCY_RESIDENT = 3;
+	GLOBAL_ILLUMINATION_PROBE_RESIDENCY_FAILED = 4;
+}
+
 message Vector4 {
 	float x = 1;
 	float y = 2;
@@ -396,4 +575,47 @@ message ViewportEvent {
 
 message ViewportEventBatchResult {
 	repeated ViewportEvent events = 1;
+}
+
+message RuntimeGIProbesSettings {
+	uint32 version = 1;
+	bool include_sky = 2;
+	bool include_emissive = 3;
+	bool include_direct_lighting = 4;
+	uint32 bounce_count = 5;
+	float min_probe_spacing = 6;
+	float normal_bias = 7;
+	float view_bias = 8;
+	float max_ray_distance = 9;
+}
+
+message RuntimeGIProbesPreviewRequest {
+	bool enabled = 1;
+}
+
+message RuntimeGIProbesPauseRequest {
+	bool paused = 1;
+}
+
+message RuntimeGIProbesState {
+	RuntimeGIProbesLifecycle lifecycle = 1;
+	bool enabled = 2;
+	bool paused = 3;
+	bool preview_enabled = 4;
+	uint64 scene_generation = 5;
+	uint64 lighting_generation = 6;
+	uint64 published_revision = 7;
+	uint32 capacity = 8;
+	uint32 active_probe_count = 9;
+	uint32 ready_probe_count = 10;
+	uint32 worker_count = 11;
+	uint64 published_bytes = 12;
+	float coverage = 13;
+	float refinement = 14;
+	string diagnostic = 15;
+	RuntimeGIProbesPreviewBudget preview_budget = 16;
+}
+
+message RuntimeGIProbesPreviewBudgetRequest {
+	RuntimeGIProbesPreviewBudget budget = 1;
 }

@@ -11,6 +11,7 @@
 #include "AssetRegistry/Audio/AudioAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
+#include "AssetRegistry/GlobalIllumination/GIProbesAssetInfo.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
 #include "AssetRegistry/Model/ModelAssetInfo.h"
 #include "AssetRegistry/Prefab/PrefabAssetInfo.h"
@@ -99,6 +100,7 @@ namespace
 		nodes.Add(ExportAssetInfoType<MaterialAssetInfo>("Sailor::MaterialAssetInfo", { "mat" }));
 		nodes.Add(ExportAssetInfoType<ShaderAssetInfo>("Sailor::ShaderAssetInfo", { "shader", "glsl" }));
 		nodes.Add(ExportAssetInfoType<FrameGraphAssetInfo>("Sailor::FrameGraphAssetInfo", { "renderer" }));
+		nodes.Add(ExportAssetInfoType<GIProbesAssetInfo>("Sailor::GIProbesAssetInfo", { "probes" }));
 		nodes.Add(ExportAssetInfoType<PrefabAssetInfo>("Sailor::PrefabAssetInfo", { "prefab" }));
 		nodes.Add(ExportAssetInfoType<WorldPrefabAssetInfo>("Sailor::WorldPrefabAssetInfo", { "world" }));
 
@@ -696,6 +698,7 @@ YAML::Node Reflection::ExportEngineTypes()
 	nodes.Clear();
 	nodes.Add(ReflectEnumValues<EMobilityType>());
 	nodes.Add(ReflectEnumValues<ELightType>());
+	nodes.Add(ReflectEnumValues<ELightGlobalIlluminationMode>());
 	nodes.Add(ReflectEnumValues<ELightShadowQuality>());
 	nodes.Add(ReflectEnumValues<ELightShadowFilter>());
 	nodes.Add(ReflectEnumValues<EAnimationPlayMode>());

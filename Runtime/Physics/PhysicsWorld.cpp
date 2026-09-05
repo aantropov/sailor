@@ -43,15 +43,6 @@ namespace
 		return static_cast<uint8_t>(layer & 0x0f);
 	}
 
-	bool IsFinite(const glm::quat& value)
-	{
-		return Math::AllFinite(glm::vec4(
-			value.x,
-			value.y,
-			value.z,
-			value.w));
-	}
-
 	glm::quat SanitizeRotation(const glm::quat& value)
 	{
 		const glm::vec4 raw(value.x, value.y, value.z, value.w);
@@ -240,7 +231,7 @@ namespace
 	{
 		if (!Math::AllFinite(bodyScale) ||
 			!Math::AllFinite(desc.m_center) ||
-			!IsFinite(desc.m_rotation) ||
+			!Math::AllFinite(desc.m_rotation) ||
 			!Math::AllFinite(desc.m_size) ||
 			!std::isfinite(desc.m_radius) ||
 			!std::isfinite(desc.m_height))
@@ -535,7 +526,7 @@ bool Physics::PhysicsWorld::CreateBody(
 	outBodyId = JPH::BodyID::cInvalidBodyID;
 	if (!desc.m_instanceId ||
 		!Math::AllFinite(desc.m_position) ||
-		!IsFinite(desc.m_rotation) ||
+		!Math::AllFinite(desc.m_rotation) ||
 		!Math::AllFinite(desc.m_scale) ||
 		!Math::AllFinite(desc.m_linearVelocity) ||
 		!Math::AllFinite(desc.m_angularVelocity) ||
@@ -650,7 +641,7 @@ bool Physics::PhysicsWorld::SetBodyTransform(
 	{
 		return false;
 	}
-	if (!Math::AllFinite(position) || !IsFinite(rotation))
+	if (!Math::AllFinite(position) || !Math::AllFinite(rotation))
 	{
 		return false;
 	}

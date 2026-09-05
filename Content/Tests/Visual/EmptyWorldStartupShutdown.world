@@ -2,6 +2,7 @@ name: EmptyWorldStartupShutdown
 prefabs:
   - gameObjects:
       - name: EmptyWorldStartupShutdown
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -32,6 +33,7 @@ prefabs:
           instanceId: 71FF0747009317C8_D90C929A09C1F02781C7
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 0
           - 130
@@ -61,6 +63,7 @@ prefabs:
           instanceId: 93F034F9784C5265_1C686F709829826082C8
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 300
@@ -85,13 +88,9 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 5
-            - 5
-            - 5
-          attenuation:
-            - 1
-            - 0.0219999999
-            - 0.00190000003
+            - 5000
+            - 5000
+            - 5000
           lightType: Directional
           bounds:
             - 100
@@ -107,9 +106,9 @@ prefabs:
           m_directionalLight:
             fileId: NullFileId
             instanceId: 21EDB035AC31897E_210B5A989F3E1BF694FC
-          directionalLightIntensity:
-            - 5
-            - 5
-            - 5
+          sunIlluminance:
+            - 5000
+            - 5000
+            - 5000
           fileId: NullFileId
           instanceId: 2F509D4F456E4DAE946D4BF6EDD85E2E_210B5A989F3E1BF694FC
