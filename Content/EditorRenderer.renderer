@@ -47,6 +47,14 @@ renderTargets:
   bIsSurface: false
   bGenerateMips: true
 
+- name: MotionVectors
+  format: R16G16B16A16_SFLOAT
+  filtration: Nearest
+  clamping: Clamp
+  width: RenderWidth
+  height: RenderHeight
+  bIsSurface: true
+
 - name: AverageLuminance
   format: R32_SFLOAT
   filtration: Nearest
@@ -125,6 +133,12 @@ renderTargets:
 ############################
 frame:
 ############################
+
+- name: Clear
+  vec4:
+  - clearColor: [0, 0, 0, 0]
+  renderTargets:
+  - target: MotionVectors
 
 - name: Clear
   float:
@@ -318,6 +332,7 @@ frame:
   - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
+  - motionVectors: MotionVectors
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
   - globalIlluminationProbeCellIndicesSampler: GlobalIlluminationProbeCellIndices
@@ -344,6 +359,7 @@ frame:
   - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
+  - motionVectors: MotionVectors
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
   - globalIlluminationProbeCellIndicesSampler: GlobalIlluminationProbeCellIndices
@@ -367,6 +383,7 @@ frame:
   - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
+  - motionVectors: MotionVectors
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
   - transmissionFramebuffer: Secondary
@@ -384,6 +401,7 @@ frame:
   renderTargets:
   - color: Secondary
   - depthSampler: DepthBuffer
+  - motionSampler: MotionVectors
   - colorSampler: Main
 
 ############################

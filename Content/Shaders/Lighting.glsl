@@ -531,34 +531,69 @@ uint DecodeShadowAtlasIndex(uint packedTile)
   return packedTile >> 15u;
 }
 
+vec2 CalculateLocalShadowReceiverDepthGradient(
+  mat4 lightMatrix,
+  vec3 projectedPosition,
+  vec3 surfaceNormal)
+{
+  const vec3 lightW = vec3(lightMatrix[0][3], lightMatrix[1][3], lightMatrix[2][3]);
+  // Jacobian of perspective division. Its common 1/w scale cancels in the
+  // inverse-transpose normal ratios, so this also handles translated lights.
+  const vec3 lightX = vec3(lightMatrix[0][0], lightMatrix[1][0], lightMatrix[2][0]) -
+    projectedPosition.x * lightW;
+  const vec3 lightY = vec3(lightMatrix[0][1], lightMatrix[1][1], lightMatrix[2][1]) -
+    projectedPosition.y * lightW;
+  const vec3 lightZ = vec3(lightMatrix[0][2], lightMatrix[1][2], lightMatrix[2][2]) -
+    projectedPosition.z * lightW;
+  const vec3 normal = NormalizeOrFallback(surfaceNormal, vec3(0.0f, 1.0f, 0.0f));
+  const vec3 depthAxis = cross(lightX, lightY);
+  const float depthAxisLength = length(depthAxis);
+  const float planeDepth = dot(depthAxis, normal);
+  if(depthAxisLength <= 1e-12f || abs(planeDepth) < 0.001f * depthAxisLength)
+  {
+    return vec2(0.0f);
+  }
+
+  const vec2 planeXY = vec2(
+    dot(cross(lightY, lightZ), normal),
+    dot(cross(lightZ, lightX), normal));
+  return vec2(-2.0f, 2.0f) * planeXY / planeDepth;
+}
+
+float SampleLocalShadowReceiverPlane(
+  sampler2D shadowMap,
+  vec2 sampleUv,
+  vec2 receiverUv,
+  float receiverDepth,
+  vec2 receiverDepthGradient)
+{
+  const ivec2 mapSize = textureSize(shadowMap, 0);
+  const ivec2 texel = clamp(ivec2(floor(sampleUv * vec2(mapSize))),
+    ivec2(0), mapSize - ivec2(1));
+  const vec2 texelCenterUv = (vec2(texel) + 0.5f) / vec2(mapSize);
+  const float depthAtTexel = receiverDepth +
+    dot(receiverDepthGradient, texelCenterUv - receiverUv);
+  const float shadowDepth = texelFetch(shadowMap, texel, 0).r;
+  return shadowDepth == 0.0f || depthAtTexel > shadowDepth ? 1.0f : 0.0f;
+}
+
 float CalculateLocalPcfShadow(
   sampler2D shadowMap,
   mat4 lightMatrix,
   vec4 atlasRect,
   vec3 worldPosition,
   vec3 surfaceNormal,
-  vec3 surfaceToLightDirection,
-  float surfaceToLightDistance,
   bool softShadow,
   float receiverBiasScale)
 {
-  const vec3 normal = normalize(surfaceNormal);
-  const vec3 toLight = normalize(surfaceToLightDirection);
-  const float slope = 1.0f - clamp(dot(normal, toLight), 0.0f, 1.0f);
-  const float tileResolution = max(
-    float(textureSize(shadowMap, 0).x) * atlasRect.z,
-    1.0f);
-  const float receiverTexelWorldSize = max(
-    2.0f * surfaceToLightDistance / tileResolution,
-    0.001f);
-  const vec3 receiverOffset =
-    normal * receiverTexelWorldSize * (1.0f + slope) +
-    toLight * receiverTexelWorldSize * 0.25f;
-  const vec3 receiverPosition = worldPosition +
-    receiverOffset * receiverBiasScale;
-
-  const vec4 fragPosLightSpace = lightMatrix * vec4(receiverPosition, 1.0f);
+  const vec4 fragPosLightSpace = lightMatrix * vec4(worldPosition, 1.0f);
+  if(fragPosLightSpace.w <= 0.0f)
+  {
+    return 1.0f;
+  }
   vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+  const vec2 tileDepthGradient = CalculateLocalShadowReceiverDepthGradient(
+    lightMatrix, projCoords, surfaceNormal);
   projCoords.xy = projCoords.xy * 0.5f + 0.5f;
   projCoords.y = 1.0f - projCoords.y;
   if(any(lessThan(projCoords, vec3(0.0f))) ||
@@ -574,6 +609,11 @@ float CalculateLocalPcfShadow(
     atlasRect.xy + projCoords.xy * atlasRect.zw,
     tileMin,
     tileMax);
+  const vec2 receiverUv = atlasRect.xy + projCoords.xy * atlasRect.zw;
+  const vec2 receiverDepthGradient = tileDepthGradient / max(atlasRect.zw, atlasTexelSize);
+  // The atlas stores R16_UNORM color depth. World-space offsets can disappear
+  // after that quantization, and they displace shadows differently per triangle.
+  const float receiverDepth = projCoords.z + receiverBiasScale * PCF_DEPTH_QUANTIZATION;
   if(softShadow)
   {
     const vec2 poissonDisk[16] = vec2[](
@@ -592,14 +632,14 @@ float CalculateLocalPcfShadow(
         atlasUv + poissonDisk[sampleIndex] * 2.0f * atlasTexelSize,
         tileMin,
         tileMax);
-      const float shadowDepth = texture(shadowMap, sampleUv).r;
-      lit += projCoords.z > shadowDepth ? 1.0f : 0.0f;
+      lit += SampleLocalShadowReceiverPlane(shadowMap, sampleUv, receiverUv,
+        receiverDepth, receiverDepthGradient);
     }
     return lit / 16.0f;
   }
 
-  const float shadowDepth = texture(shadowMap, atlasUv).r;
-  return projCoords.z > shadowDepth ? 1.0f : 0.0f;
+  return SampleLocalShadowReceiverPlane(shadowMap, atlasUv, receiverUv,
+    receiverDepth, receiverDepthGradient);
 }
 
 

@@ -80,7 +80,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			const void* submitNext = nullptr);
 
 		SAILOR_API bool ShouldFixLostDevice(const Platform::Window* pViewport);
-		SAILOR_API void FixLostDevice(Platform::Window* pViewport);
+		SAILOR_API bool FixLostDevice(Platform::Window* pViewport);
 
 		SAILOR_API bool IsMultiDrawIndirectSupported() const { return m_bSupportsMultiDrawIndirect; };
 		SAILOR_API bool IsDescriptorUpdateAfterBindSupported() const { return m_bSupportsDescriptorUpdateAfterBind; }
@@ -212,6 +212,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		bool m_bNeedToTransitSwapchainToPresent = true;
 
 		std::atomic<bool> m_bIsSwapChainOutdated = true;
+		std::atomic<bool> m_bIsSwapChainSuboptimal = false;
 
 		TUniquePtr<VulkanSamplerCache> m_samplers;
 		TUniquePtr<VulkanPipelineStateBuilder> m_pipelineBuilder;

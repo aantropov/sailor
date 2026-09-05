@@ -742,21 +742,23 @@ bool VulkanGraphicsDriver::FixLostDevice(Win32::Window* pViewport)
 
 	if (m_vkInstance->GetMainDevice()->ShouldFixLostDevice(pViewport))
 	{
-		auto fixLostDevice_RenderThread = [this, pViewport = pViewport]() mutable
+		bool recovered = false;
+		auto fixLostDevice_RenderThread = [this, pViewport, &recovered]()
 			{
 				SAILOR_PROFILE_SCOPE("Fix lost device");
 				m_vkInstance->WaitIdle();
-				m_vkInstance->GetMainDevice()->FixLostDevice(pViewport);
+				if (!m_vkInstance->GetMainDevice()->FixLostDevice(pViewport)) return;
 				RefreshSwapchainTargets();
 				m_cachedMsaaRenderTargets.Clear();
 				m_temporaryRenderTargets.Clear();
+				recovered = true;
 			};
 
 		auto task = Tasks::CreateTask("Fix lost device", fixLostDevice_RenderThread, EThreadType::Render);
 		task->Run();
 		task->Wait();
 
-		return true;
+		return recovered;
 	}
 
 	return false;
@@ -2840,9 +2842,11 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 	return result;
 }
 
-RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
+RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent, uint32_t attachmentIndex)
 {
-	size_t hash = (size_t)((size_t)textureFormat | (extent.x << 1) | (extent.y << 5));
+	size_t hash = Fnv1aOffsetBasis;
+	HashCombine(hash, static_cast<uint32_t>(textureFormat), extent.x, extent.y, attachmentIndex,
+		static_cast<uint32_t>(m_vkInstance->GetMainDevice()->GetCurrentMsaaSamples()));
 	if (m_cachedMsaaRenderTargets.ContainsKey(hash))
 	{
 		return m_cachedMsaaRenderTargets[hash];

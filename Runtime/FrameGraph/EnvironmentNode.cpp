@@ -105,6 +105,8 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		commands->EndDebugRegion(commandList);
 	}
 
+	ProcessLocalReflection(frameGraph, commandList);
+
 	if (m_bIsDirty)
 	{
 		if (!m_envMapTexture)
@@ -418,4 +420,128 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 void EnvironmentNode::Clear()
 {
+	ResetLocalReflection();
+}
+
+bool EnvironmentNode::SetLocalReflection(LocalReflectionImage image)
+{
+	if (!image.IsValid()) return false;
+	image.m_parameters.m_minEnabled.w = 1.0f;
+	auto owned = std::make_shared<const LocalReflectionImage>(std::move(image));
+	std::lock_guard<std::mutex> lock(m_localReflectionLock);
+	m_pendingLocalReflection = std::move(owned);
+	++m_pendingLocalRevision;
+	// Refinement keeps the current capture valid during upload. Producers reset
+	// explicitly when its scene or lighting becomes obsolete.
+	return true;
+}
+
+void EnvironmentNode::ResetLocalReflection()
+{
+	std::lock_guard<std::mutex> lock(m_localReflectionLock);
+	m_pendingLocalReflection.reset();
+	++m_pendingLocalRevision;
+	m_localReflectionReady.store(false);
+	m_localReflectionSamples.store(0u);
+}
+
+void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICommandListPtr commandList)
+{
+	{
+		std::lock_guard<std::mutex> lock(m_localReflectionLock);
+		if (m_localRevision != m_pendingLocalRevision)
+		{
+			m_localRevision = m_pendingLocalRevision;
+			m_uploadLocalReflection = m_pendingLocalReflection;
+			m_localUploadTexture = {};
+			if (!m_uploadLocalReflection)
+			{
+				m_localParameters = {};
+				frameGraph->SetSampler("g_localEnvCubemap", {});
+				frameGraph->SetSampler("g_localSheenEnvCubemap", {});
+			}
+		}
+	}
+	if (!m_uploadLocalReflection || !m_pComputeSpecularShader || !m_pComputeSheenShader) return;
+	auto& driver = RHI::Renderer::GetDriver();
+	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	if (!m_localUploadTexture)
+	{
+		const auto& source = *m_uploadLocalReflection;
+		m_localUploadTexture = driver->CreateTexture(source.m_pixels.GetData(),
+			source.m_pixels.Num() * sizeof(glm::vec4), glm::ivec3(source.m_extent, 1), 1u,
+			ETextureType::Texture2D, ETextureFormat::R32G32B32A32_SFLOAT,
+			ETextureFiltration::Linear, ETextureClamping::Repeat);
+		return;
+	}
+	if (!m_localUploadTexture->IsReady()) return;
+
+	constexpr uint32_t size = 128u, levels = 8u;
+	const ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit |
+		ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Storage_Bit | ETextureUsageBit::Sampled_Bit;
+	const auto createCube = [&]()
+	{
+		return driver->CreateCubemap(glm::ivec2(size), levels, EFormat::R16G16B16A16_SFLOAT,
+			ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
+	};
+	auto raw = createCube();
+	commands->BeginDebugRegion(commandList, "Local scene reflection", DebugContext::Color_CmdCompute);
+	commands->ImageMemoryBarrier(commandList, raw, EImageLayout::ComputeWrite);
+	commands->ConvertEquirect2Cubemap(commandList, m_localUploadTexture, raw);
+	commands->ImageMemoryBarrier(commandList, raw, EImageLayout::TransferDstOptimal);
+	commands->GenerateMipMaps(commandList, raw);
+
+	const auto prefilter = [&](bool sheen)
+	{
+		auto filtered = createCube();
+		auto bindings = driver->CreateShaderBindings();
+		if (!sheen)
+		{
+			commands->ImageMemoryBarrier(commandList, raw, EImageLayout::TransferSrcOptimal);
+			commands->ImageMemoryBarrier(commandList, filtered, EImageLayout::TransferDstOptimal);
+			commands->BlitImage(commandList, raw, filtered, glm::ivec4(0, 0, size, size), glm::ivec4(0, 0, size, size));
+		}
+		commands->ImageMemoryBarrier(commandList, raw, EImageLayout::ShaderReadOnlyOptimal);
+		commands->ImageMemoryBarrier(commandList, filtered, EImageLayout::ComputeWrite);
+		TVector<RHITexturePtr> mips;
+		const uint32_t first = sheen ? 0u : 1u;
+		for (uint32_t level = first; level < levels; ++level)
+			mips.Add(level == 0u ? filtered : filtered->GetMipLevel(level));
+		// The existing GGX shader declares nine outputs; unused tail bindings
+		// remain valid even though this bounded capture has fewer mip levels.
+		while (mips.Num() < (sheen ? 8u : 9u)) mips.Add(filtered->GetMipLevel(levels - 1u));
+		driver->AddSamplerToShaderBindings(bindings, "rawEnvMap", raw, 0u);
+		driver->AddStorageImageToShaderBindings(bindings, sheen ? "sheenEnvMap" : "envMap", mips, 1u);
+		bindings->RecalculateCompatibility();
+		for (uint32_t level = first; level < levels; ++level)
+		{
+			struct PushConstants { int32_t level; float roughness; };
+			const PushConstants push{ int32_t(level - first), float(level) / float(levels - 1u) };
+			const uint32_t groupSize = sheen ? 16u : 32u;
+			const uint32_t groups = std::max(1u, ((size >> level) + groupSize - 1u) / groupSize);
+			commands->Dispatch(commandList,
+				(sheen ? m_pComputeSheenShader : m_pComputeSpecularShader)->GetComputeShaderRHI(),
+				groups, groups, 6u, { bindings }, &push, sizeof(push));
+		}
+		commands->ImageMemoryBarrier(commandList, filtered, EImageLayout::ShaderReadOnlyOptimal);
+		return filtered;
+	};
+	auto specular = prefilter(false);
+	auto sheen = prefilter(true);
+	{
+		std::lock_guard<std::mutex> lock(m_localReflectionLock);
+		// A world/lighting reset may have arrived while commands were recorded.
+		// Never publish that now-obsolete capture or report it as ready.
+		if (m_localRevision == m_pendingLocalRevision && m_pendingLocalReflection)
+		{
+			frameGraph->SetSampler("g_localEnvCubemap", specular);
+			frameGraph->SetSampler("g_localSheenEnvCubemap", sheen);
+			m_localParameters = m_uploadLocalReflection->m_parameters;
+			m_localReflectionSamples.store(m_uploadLocalReflection->m_samplesPerPixel);
+			m_localReflectionReady.store(true);
+		}
+	}
+	m_uploadLocalReflection.reset();
+	m_localUploadTexture = {};
+	commands->EndDebugRegion(commandList);
 }

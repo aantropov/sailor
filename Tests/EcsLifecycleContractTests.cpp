@@ -13,6 +13,7 @@
 
 #include "Containers/Octree.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Components/AnimatorComponent.h"
 #include "Components/Component.h"
@@ -25,6 +26,8 @@
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "RHI/SceneView.h"
+#include "RHI/Material.h"
+#include "RHI/VertexDescription.h"
 #include "Submodules/Editor.h"
 
 using namespace Sailor;
@@ -177,6 +180,7 @@ namespace
 	public:
 
 		PrefabTestWorld() : World("PrefabRollbackTests", 0, CreateEcs()) {}
+		void AdvanceFrame() { ++m_currentFrame; }
 		size_t GetPendingDependencyCount() const { return GetNumPendingDependencyResolutions(); }
 		bool RemovePrefabMetadataForTest(
 			const InstanceId& rootInstanceId)
@@ -199,6 +203,35 @@ namespace
 			systems.Add(TUniquePtr<StaticMeshRendererECS>::Make());
 			return systems;
 		}
+	};
+
+	class PublishedMeshTestModel final : public Model
+	{
+	public:
+		PublishedMeshTestModel() : Model(FileId::Invalid)
+		{
+			auto mesh = RHI::RHIMeshPtr::Make();
+			mesh->m_vertexDescription = RHI::RHIVertexDescriptionPtr::Make();
+			mesh->m_bounds = Math::AABB(glm::vec3(-1.0f), glm::vec3(1.0f));
+			m_boundsAabb = mesh->m_bounds;
+			m_meshes.Add(mesh);
+			m_renderInstances.Add(RenderInstance{});
+		}
+		bool IsReady() const override { return m_ready; }
+		bool m_ready = false;
+	};
+
+	class PublishedMeshTestMaterial final : public Material
+	{
+	public:
+		PublishedMeshTestMaterial() : Material(FileId::Invalid)
+		{
+			// CPU scene publication needs a material identity, not a GPU pipeline.
+			m_rhiMaterials.At_Lock(0u) = RHI::RHIMaterialPtr::Make(
+				RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+			m_rhiMaterials.Unlock(0u);
+		}
+		bool IsReady() const override { return true; }
 	};
 
 	class EditorModelInstanceTestModel final : public Model
@@ -800,6 +833,62 @@ namespace
 			});
 		Require(callbackCount == 1,
 			"callback frustum tracing should visit the matching element exactly once");
+	}
+
+	void TestFrameZeroMeshPublicationStaysStable()
+	{
+		PrefabTestWorld world;
+		auto object = world.Instantiate("UnchangedIdentityMesh");
+		object->SetMobilityType(EMobilityType::Static);
+		auto* transforms = world.GetECS<TransformECS>();
+		Require(object->GetTransformComponent().GetFrameLastChange() == 0u,
+			"the fixture must use a legitimate frame-zero transform");
+		auto* meshes = world.GetECS<StaticMeshRendererECS>();
+		meshes->BeginPlay();
+		const auto slot = meshes->RegisterComponent();
+		auto& data = meshes->GetComponentData(slot);
+		data.SetOwner(object);
+		auto model = TObjectPtr<PublishedMeshTestModel>::Make(world.GetAllocator());
+		data.SetModel(model);
+		data.GetMaterials().Add(TObjectPtr<PublishedMeshTestMaterial>::Make(world.GetAllocator()));
+		meshes->Tick(0.016f);
+		Require(meshes->GetRHIScene()->GetCurrentVersion()->m_staticHandles->IsEmpty(),
+			"a pending model must not publish a render instance");
+		model->m_ready = true;
+		world.AdvanceFrame();
+		meshes->Tick(0.016f);
+		const auto published = meshes->GetRHIScene()->GetCurrentVersion();
+		Require(published->m_staticHandles->Num() == 1u,
+			"a ready frame-zero model must be published exactly once");
+		const auto handle = (*published->m_staticHandles)[0];
+		const auto revision = meshes->GetGlobalIlluminationContributorRevision();
+		const RHI::RHISceneInstanceRecord* original = nullptr;
+		Require(published->Resolve(handle, original) && original,
+			"the published instance must resolve");
+		for (size_t frame = 0; frame < 32; ++frame)
+		{
+			world.AdvanceFrame();
+			meshes->Tick(0.016f);
+			Require(meshes->GetRHIScene()->GetCurrentVersion() == published &&
+				meshes->GetGlobalIlluminationContributorRevision() == revision,
+				"unchanged frame-zero geometry must not republish or invalidate GI");
+		}
+		world.AdvanceFrame();
+		object->GetTransformComponent().SetPosition(glm::vec3(2.0f, 0.0f, 0.0f));
+		transforms->Tick(0.016f);
+		transforms->PostTick();
+		meshes->Tick(0.016f);
+		const auto moved = meshes->GetRHIScene()->GetCurrentVersion();
+		const RHI::RHISceneInstanceRecord* current = nullptr;
+		Require(moved != published && moved->Resolve(handle, current) && current &&
+			current->m_worldMatrix[3].x == 2.0f &&
+			current->m_topology == original->m_topology &&
+			meshes->GetGlobalIlluminationContributorRevision() != revision,
+			"a later transform must update bounds and GI while retaining mesh topology");
+		meshes->UnregisterComponent(slot);
+		Require(meshes->GetRHIScene()->GetCurrentVersion()->m_staticHandles->IsEmpty(),
+			"unregistering the component must remove its published instance");
+		world.Clear();
 	}
 
 	void TestClearingMeshModelAlsoClearsMaterials()
@@ -3715,6 +3804,7 @@ int main()
 		{ "EditorKeepWorldReparentRejectsShearedCandidateWithoutMutation", TestEditorKeepWorldReparentRejectsShearedCandidateWithoutMutation },
 		{ "OctreeRelocationPreservesElementCount", TestOctreeRelocationPreservesElementCount },
 		{ "ClearingMeshModelAlsoClearsMaterials", TestClearingMeshModelAlsoClearsMaterials },
+		{ "FrameZeroMeshPublicationStaysStable", TestFrameZeroMeshPublicationStaysStable },
 		{ "StaticMeshLodSelectionUsesScreenCoverage", TestStaticMeshLodSelectionUsesScreenCoverage },
 		{ "LocalLightShadowContract", TestLocalLightShadowContract },
 		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },

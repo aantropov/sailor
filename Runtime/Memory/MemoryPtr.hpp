@@ -25,6 +25,9 @@ namespace Sailor::Memory
 		{}
 
 		operator bool() const { return (bool)m_ptr; }
+		// Container keys identify the allocation, not just pointer validity.
+		// Without this overload, two live ranges compare through operator bool.
+		bool operator==(const TMemoryPtr& rhs) const = default;
 
 		const TPtr operator*() const { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }
 		TPtr operator*() { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }

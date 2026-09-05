@@ -909,6 +909,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					submissionBeginState->m_bMaterialCaptureActive = false;
 				}
 
+				rhiFrameGraph->CompleteMotionHistory(rhiSceneView, bSubmissionResourcesSucceeded);
 				rhiSceneView->CompleteSubmissionResources(
 					bSubmissionResourcesSucceeded);
 

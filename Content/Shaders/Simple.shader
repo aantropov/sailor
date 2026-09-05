@@ -2,9 +2,11 @@
 includes:
 - Shaders/Constants.glsl
 - Shaders/Math.glsl
+- Shaders/Motions.glsl
 
 defines:
 - ALPHA_CUTOUT
+- MOTIONS
 glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable
@@ -19,6 +21,7 @@ glslVertex: |
     uint isCulled;
     uint padding;
     vec4 bakedVolumeScale;
+    ObjectMotionData motion;
   };
   
   struct MaterialData
@@ -85,6 +88,11 @@ glslVertex: |
   {
       uint instanceIndex = instanceIndices.instance[gl_InstanceIndex];
       gl_Position = frame.projection * frame.view * data.instance[instanceIndex].model * vec4(inPosition, 1.0);
+    #ifdef MOTIONS
+      ObjectMotionData motion = data.instance[instanceIndex].motion;
+      WriteMotionVertex(gl_Position, previousFrame.projection *
+        (previousFrame.view * (motion.previousModel * vec4(inPosition, 1.0))), motion.state.y != 0u, motion.state.z != 0u);
+    #endif
       vec4 worldNormal = data.instance[instanceIndex].model * vec4(inNormal, 0.0);
   
       fragColor = 1 - inColor * gl_Position.z / 3000;
@@ -116,4 +124,7 @@ glslFragment: |
   
       outColor.xyz *= max(0.2, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz));
       outColor.xyz += 0.007;
+    #ifdef MOTIONS
+      WriteMotionFragment(outColor.a);
+    #endif
   }

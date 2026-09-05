@@ -165,6 +165,7 @@ namespace
 	{
 		HashVec4(hash, sky.m_lightDirection);
 		HashVec4(hash, sky.m_sunIlluminance);
+		HashVec4(hash, sky.m_groundRadiance);
 		HashValue(hash, sky.m_cloudsAttenuation1);
 		HashValue(hash, sky.m_cloudsAttenuation2);
 		HashValue(hash, sky.m_cloudsDensity);

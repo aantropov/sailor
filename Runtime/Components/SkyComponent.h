@@ -81,16 +81,21 @@ namespace Sailor
 		SAILOR_API const glm::vec3& GetSunIlluminance() const { return m_sunIlluminance; }
 		SAILOR_API void SetSunIlluminance(const glm::vec3& value);
 
+		SAILOR_API const glm::vec3& GetGroundAlbedo() const { return m_groundAlbedo; }
+		SAILOR_API void SetGroundAlbedo(const glm::vec3& value);
+
 		SAILOR_API const SkyParameters& GetSkyParameters() const { return m_skyParams; }
 
 	protected:
 
 		void Apply();
 		void UpdateLightDirection();
+		void UpdateGroundRadiance();
 
 		SkyParameters m_skyParams{};
 		TObjectPtr<LightComponent> m_directionalLight{};
 		glm::vec3 m_sunIlluminance = glm::vec3(120000.0f);
+		glm::vec3 m_groundAlbedo = glm::vec3(0.0f);
 		float m_sunAngleDegrees = 60.0f;
 		float m_giIndirectIntensity = 1.0f;
 	};
@@ -162,5 +167,8 @@ REFL_AUTO(
 	func(SetDirectionalLight, property("m_directionalLight")),
 
 	func(GetSunIlluminance, property("sunIlluminance")),
-	func(SetSunIlluminance, property("sunIlluminance"))
+	func(SetSunIlluminance, property("sunIlluminance")),
+
+	func(GetGroundAlbedo, property("groundAlbedo")),
+	func(SetGroundAlbedo, property("groundAlbedo"))
 )

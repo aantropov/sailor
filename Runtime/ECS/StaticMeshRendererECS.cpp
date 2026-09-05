@@ -496,8 +496,10 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		}
 
 		auto& data = m_components[componentIndex];
+		// A transform evaluated at frame zero is valid. Publication is tracked by
+		// the scene handle, not by the last observed transform timestamp.
 		bool bNeedsUpdate = data.m_bIsDirty ||
-			(data.GetModel() && data.m_frameLastChange == 0);
+			(data.GetModel() && !m_renderInstanceHandles.ContainsKey(componentIndex));
 		if (GameObjectPtr owner = data.m_owner.StaticCast<GameObject>())
 		{
 			bNeedsUpdate |= owner->GetTransformComponent().GetFrameLastChange() > data.m_frameLastChange;
@@ -547,7 +549,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			}
 
 			const bool bTopologyDirty = data.m_bIsDirty ||
-				(data.GetModel() && data.m_frameLastChange == 0);
+				!m_renderInstanceHandles.ContainsKey(componentIndex);
 			const bool bTransformDirty = owner->GetTransformComponent().GetFrameLastChange() > data.m_frameLastChange;
 			const bool bMaterialsDirty =
 				data.m_materialContentRevisions.Num() != data.GetMaterials().Num() + 1u ||

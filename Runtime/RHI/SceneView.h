@@ -8,6 +8,7 @@
 #include "RHI/RenderDebugView.h"
 #include "RHI/RenderSubmission.h"
 #include "RHI/Scene.h"
+#include "RHI/MotionHistory.h"
 #include "RHI/Lighting.h"
 #include "RHI/GlobalIllumination.h"
 #include "ECS/CameraECS.h"
@@ -383,6 +384,7 @@ namespace Sailor::RHI
 		}
 
 		RHIRenderSubmissionContextPtr m_submissionContext{};
+		TSharedPtr<RHIMotionHistoryFrame> m_previousMotionFrame{};
 		TSharedPtr<TVector<RHISceneVersionPtr>> m_sceneVersions{};
 		uint64_t m_sceneRevision = 0ull;
 		ESceneViewRenderMode m_renderMode = ESceneViewRenderMode::Lit;

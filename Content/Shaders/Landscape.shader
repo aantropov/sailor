@@ -4,10 +4,12 @@ includes:
 - Shaders/Math.glsl
 - Shaders/Lighting.glsl
 - Shaders/GlobalIllumination.glsl
+- Shaders/Motions.glsl
 - Shaders/ForwardLighting.glsl
 
 defines:
 - SUPPORT_LIGHTS_OVERFLOW
+- MOTIONS
 
 glslCommon: |
   #version 460
@@ -51,6 +53,11 @@ glslVertex: |
     vout.color = inColor;
     vout.texcoord = inTexcoord;
     materialInstance = data.instance[instanceIndex].materialInstance;
+  #ifdef MOTIONS
+    ObjectMotionData motion = data.instance[instanceIndex].motion;
+    WriteMotionVertex(gl_Position, previousFrame.projection *
+      (previousFrame.view * (motion.previousModel * vec4(inPosition, 1.0))), motion.state.y != 0u, motion.state.z != 0u);
+  #endif
   }
 
 glslFragment: |
@@ -192,4 +199,7 @@ glslFragment: |
     }
 
     outColor.a = material.albedo.a;
+  #ifdef MOTIONS
+    WriteMotionFragment(outColor.a);
+  #endif
   }

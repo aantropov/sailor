@@ -2001,6 +2001,60 @@ namespace
 			"positions outside all bricks must select the environment fallback");
 	}
 
+	void TestConstantIrradianceReceiverSelection()
+	{
+		for (const float spacing : { 0.5f, 1.5f, 6.0f })
+		{
+			auto data = MakeVolume(1.0f, 32u);
+			data.m_volumeMax = glm::vec3(spacing);
+			data.m_bricks[0].m_max = data.m_volumeMax;
+			data.m_bakeSettings.m_normalBias = 0.04f;
+			data.m_bakeSettings.m_minProbeSpacing = spacing;
+			for (auto& probe : data.m_probes) probe.m_position *= spacing;
+			for (int latitude = 1; latitude < 32; ++latitude)
+			{
+				for (int longitude = 0; longitude < 64; ++longitude)
+				{
+					const float polar = glm::pi<float>() * latitude / 32.0f;
+					const float azimuth = glm::two_pi<float>() * longitude / 64.0f;
+					const glm::vec3 normal(std::sin(polar) * std::cos(azimuth),
+						std::cos(polar), std::sin(polar) * std::sin(azimuth));
+					const auto position = glm::vec3(spacing * 0.5f) + normal * spacing * 0.31f;
+					glm::vec3 irradiance;
+					Require(SampleGIProbesIrradiance(data, position, normal, irradiance) &&
+						glm::length(irradiance - glm::vec3(0.2820947918f)) < 0.0001f,
+						"a constant unoccluded field must not acquire normal-dependent bands");
+				}
+			}
+			for (auto& probe : data.m_probes)
+				probe.m_irradiance[0] = glm::vec3(probe.m_position.x == 0.0f ? 100.0f : 1.0f);
+			glm::vec3 previous;
+			for (int degree = 0; degree <= 360; ++degree)
+			{
+				const float angle = glm::radians(static_cast<float>(degree));
+				glm::vec3 current;
+				Require(SampleGIProbesIrradiance(data, glm::vec3(spacing * 0.5f),
+					glm::vec3(std::cos(angle), std::sin(angle), 0), current),
+					"the normal-rotation fixture must retain probe support");
+				if (degree != 0)
+					Require(std::abs(current.x - previous.x) < 0.04f * 99.0f * 0.2820947918f,
+						"one-degree normal changes must not abruptly swap contrasting probes");
+				previous = current;
+			}
+			for (auto& probe : data.m_probes)
+			{
+				probe.m_irradiance[0] = glm::vec3(1.0f);
+				probe.m_flags |= GIProbeBlockedDirectionMask;
+				for (auto& moment : probe.m_visibility)
+					moment = glm::vec2(0.1f * spacing, 0.01001f * spacing * spacing);
+			}
+			glm::vec3 occluded;
+			Require(!SampleGIProbesIrradiance(data, glm::vec3(spacing * 0.5f),
+				glm::vec3(0, 1, 0), occluded) || glm::length(occluded) < 0.01f,
+				"normalization must not restore irradiance rejected by blocker moments");
+		}
+	}
+
 	void TestReceiverPlaneProbeRejection()
 	{
 		GIProbesData data;
@@ -2078,13 +2132,12 @@ namespace
 			sampled,
 			&debug),
 			"low receiver coverage should retain its same-side probe support");
-		Require(IsNear(sampled.x, 0.2f * 0.2820947918f, 0.0001f),
-			"ten percent surviving receiver support must not be amplified to a "
-			"full bright probe contribution");
+		Require(IsNear(sampled.x, 0.2820947918f, 0.0001f),
+			"normal-facing selection must not dim an unoccluded same-side field");
 		float lowCoverageWeight = 0.0f;
 		for (float weight : debug.m_weights) lowCoverageWeight += weight;
-		Require(IsNear(lowCoverageWeight, 0.2f, 0.0001f),
-			"debug weights must expose conservative low-coverage normalization");
+		Require(IsNear(lowCoverageWeight, 1.0f, 0.0001f),
+			"debug weights must normalize unoccluded normal-facing support");
 
 		data.m_probes[0].m_visibility[4u] = glm::vec2(0.25f, 0.0625f);
 		data.m_probes[0].m_flags |= GIProbeBlockedDirectionBit(4u);
@@ -6318,6 +6371,7 @@ int main(int argc, char** argv)
 		RunTest("AtomicFileAndPortableIdentityBoundary", TestAtomicFileAndPortableIdentityBoundary);
 		RunTest("BlendAndAdditiveComposition", TestBlendAndAdditiveComposition);
 		RunTest("SphericalHarmonicsAndSpatialSampling", TestSphericalHarmonicsAndSpatialSampling);
+		RunTest("ConstantIrradianceReceiverSelection", TestConstantIrradianceReceiverSelection);
 		RunTest(
 			"ReceiverPlaneProbeRejection",
 			TestReceiverPlaneProbeRejection);

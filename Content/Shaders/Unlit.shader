@@ -3,9 +3,11 @@ includes:
 - Shaders/Constants.glsl
 - Shaders/Math.glsl
 - Shaders/Lighting.glsl
+- Shaders/Motions.glsl
 
 defines:
 - SHADOW
+- MOTIONS
 
 glslCommon: |
   #version 460
@@ -40,6 +42,7 @@ glslVertex: |
       uint isCulled;
       uint padding;
       vec4 bakedVolumeScale;
+      ObjectMotionData motion;
   };
   
   struct MaterialData
@@ -146,6 +149,11 @@ glslVertex: |
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
     gl_Position = frame.projection * (frame.view * (data.instance[instanceIndex].model * vec4(inPosition, 1.0)));
+  #if defined(MOTIONS) && !defined(SHADOW)
+    ObjectMotionData motion = data.instance[instanceIndex].motion;
+    WriteMotionVertex(gl_Position, previousFrame.projection *
+      (previousFrame.view * (motion.previousModel * vec4(inPosition, 1.0))), motion.state.y != 0u, motion.state.z != 0u);
+  #endif
     
     #if defined(SHADOW)
         gl_Position = lightsMatrices.instance[0] * data.instance[instanceIndex].model * vec4(inPosition, 1.0);
@@ -188,6 +196,7 @@ glslFragment: |
       uint isCulled;
       uint padding;
       vec4 bakedVolumeScale;
+      ObjectMotionData motion;
   };
   
   struct MaterialData
@@ -294,5 +303,9 @@ glslFragment: |
     #else
         MaterialData material = GetMaterialData();
         outColor.xyz = material.emission.xyz;
+        outColor.a = material.albedo.a;
+      #ifdef MOTIONS
+        WriteMotionFragment(outColor.a);
+      #endif
     #endif
   }

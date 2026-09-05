@@ -367,6 +367,42 @@ glm::vec3 Sailor::Raytracing::CalculateDirectSunIlluminance(
 	return Math::AllFinite(result) ? result : glm::vec3(0.0f);
 }
 
+glm::vec3 Sailor::Raytracing::CalculateSkyGroundRadiance(
+	const SkyParameters& parameters, const glm::vec3& albedo)
+{
+	if (!Math::AllFinite(albedo)) return glm::vec3(0.0f);
+	const glm::vec3 reflectance = glm::clamp(albedo, glm::vec3(0.0f), glm::vec3(1.0f));
+	if (reflectance == glm::vec3(0.0f)) return glm::vec3(0.0f);
+	const glm::vec3 lightDirection = Math::SafeNormalize(
+		glm::vec3(parameters.m_lightDirection), Math::vec3_Down);
+	const glm::vec3 sunIlluminance = glm::max(
+		glm::vec3(parameters.m_sunIlluminance), glm::vec3(0.0f));
+	constexpr uint32_t RadialSamples = 8u;
+	constexpr uint32_t AzimuthSamples = 16u;
+	glm::vec3 diffuseSkyRadiance(0.0f);
+	for (uint32_t radial = 0u; radial < RadialSamples; ++radial)
+	{
+		// Cosine-weighted hemisphere quadrature: the average already includes
+		// the irradiance integral's cosine and Lambert's division by pi.
+		const float cosine = std::sqrt((static_cast<float>(radial) + 0.5f) / RadialSamples);
+		const float sine = std::sqrt(1.0f - cosine * cosine);
+		for (uint32_t azimuth = 0u; azimuth < AzimuthSamples; ++azimuth)
+		{
+			const float phi = glm::two_pi<float>() *
+				(static_cast<float>(azimuth) + 0.5f + 0.5f * (radial % 2u)) / AzimuthSamples;
+			diffuseSkyRadiance += EvaluateClearSky(
+				glm::vec3(std::cos(phi) * sine, cosine, std::sin(phi) * sine),
+				lightDirection, sunIlluminance);
+		}
+	}
+	diffuseSkyRadiance /= static_cast<float>(RadialSamples * AzimuthSamples);
+	const glm::vec3 directHorizontal = CalculateDirectSunIlluminance(parameters) *
+		(std::max)(-lightDirection.y, 0.0f);
+	const glm::vec3 result = reflectance * (diffuseSkyRadiance + directHorizontal / glm::pi<float>());
+	return Math::AllFinite(result)
+		? glm::clamp(result, glm::vec3(0.0f), glm::vec3(MaxHalfFloat)) : glm::vec3(0.0f);
+}
+
 bool Sailor::Raytracing::GenerateSkyEnvironmentEquirectangular(
 	const SkyParameters& parameters,
 	const glm::uvec2& extent,
@@ -385,6 +421,9 @@ bool Sailor::Raytracing::GenerateSkyEnvironmentEquirectangular(
 	const glm::vec3 sunIlluminance = glm::max(
 		glm::vec3(parameters.m_sunIlluminance),
 		glm::vec3(0.0f));
+	const glm::vec3 groundRadiance = Math::AllFinite(parameters.m_groundRadiance)
+		? glm::clamp(glm::vec3(parameters.m_groundRadiance), glm::vec3(0.0f), glm::vec3(MaxHalfFloat))
+		: glm::vec3(0.0f);
 	outEnvironment.Resize(
 		static_cast<size_t>(extent.x) * static_cast<size_t>(extent.y));
 	const float pi = glm::pi<float>();
@@ -412,7 +451,7 @@ bool Sailor::Raytracing::GenerateSkyEnvironmentEquirectangular(
 				cosTheta,
 				std::sin(phi) * sinTheta);
 			outEnvironment[x + y * extent.x] = glm::vec4(
-				EvaluateClearSky(
+				cosTheta < 0.0f ? groundRadiance : EvaluateClearSky(
 						direction,
 						lightDirection,
 						sunIlluminance),

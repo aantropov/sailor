@@ -164,11 +164,35 @@ void SkyComponent::UpdateLightDirection()
 	const float sunAngleRadians = glm::radians(m_sunAngleDegrees);
 	const glm::vec2 horizontalDirection = glm::normalize(glm::vec2(0.2f, 1.0f));
 	const float horizontalScale = std::cos(sunAngleRadians);
-	m_skyParams.m_lightDirection = glm::vec4(
+	const glm::vec4 direction(
 		horizontalDirection.x * horizontalScale,
 		-std::sin(sunAngleRadians),
 		horizontalDirection.y * horizontalScale,
 		0.0f);
+	if (m_skyParams.m_lightDirection != direction)
+	{
+		m_skyParams.m_lightDirection = direction;
+		UpdateGroundRadiance();
+	}
+}
+
+void SkyComponent::UpdateGroundRadiance()
+{
+	// The sky integral runs only when its source or the authored albedo changes,
+	// not during the per-frame component-to-renderer parameter handoff.
+	m_skyParams.m_groundRadiance = glm::vec4(
+		Raytracing::CalculateSkyGroundRadiance(m_skyParams, m_groundAlbedo), 0.0f);
+}
+
+void SkyComponent::SetGroundAlbedo(const glm::vec3& value)
+{
+	const glm::vec3 albedo = Math::AllFinite(value)
+		? glm::clamp(value, glm::vec3(0.0f), glm::vec3(1.0f)) : glm::vec3(0.0f);
+	if (m_groundAlbedo != albedo)
+	{
+		m_groundAlbedo = albedo;
+		UpdateGroundRadiance();
+	}
 }
 
 void SkyComponent::SetSunAngle(float value)
@@ -276,6 +300,11 @@ void SkyComponent::SetDirectionalLight(
 
 void SkyComponent::SetSunIlluminance(const glm::vec3& value)
 {
-	m_sunIlluminance = glm::max(value, glm::vec3(0.0f));
-	m_skyParams.m_sunIlluminance = glm::vec4(m_sunIlluminance, 0.0f);
+	const glm::vec3 illuminance = glm::max(value, glm::vec3(0.0f));
+	if (m_sunIlluminance != illuminance)
+	{
+		m_sunIlluminance = illuminance;
+		m_skyParams.m_sunIlluminance = glm::vec4(m_sunIlluminance, 0.0f);
+		UpdateGroundRadiance();
+	}
 }

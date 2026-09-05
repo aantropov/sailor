@@ -3,6 +3,8 @@
 #include "AssetRegistry/Shader/ShaderDependencyFingerprint.h"
 #include "AssetRegistry/Shader/ShaderYamlIncludeResolver.h"
 #include "FrameGraph/RenderSceneNode.h"
+#include "FrameGraph/SkyParameters.h"
+#include "FrameGraph/LocalReflection.h"
 #include "RHI/GlobalIllumination.h"
 #include "RHI/Lighting.h"
 #include "Workspace/WorkspaceCacheContract.h"
@@ -163,6 +165,23 @@ namespace
 				", binding " + std::to_string(binding));
 	}
 
+	void RequireLocalReflectionUniformLayout(const RHI::ShaderByteCode& byteCode)
+	{
+		SpvReflectShaderModule module{};
+		Require(spvReflectCreateShaderModule(byteCode.Num() * sizeof(uint32_t), byteCode.GetData(),
+			&module) == SPV_REFLECT_RESULT_SUCCESS, "local reflection shader should reflect");
+		SpvReflectResult status;
+		const auto* binding = spvReflectGetDescriptorBinding(&module, 20u, 1u, &status);
+		const bool valid = status == SPV_REFLECT_RESULT_SUCCESS && binding &&
+			binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER &&
+			binding->block.size == sizeof(Framegraph::LocalReflectionParameters) && binding->block.member_count == 3u &&
+			binding->block.members[0].offset == offsetof(Framegraph::LocalReflectionParameters, m_positionBlend) &&
+			binding->block.members[1].offset == offsetof(Framegraph::LocalReflectionParameters, m_minEnabled) &&
+			binding->block.members[2].offset == offsetof(Framegraph::LocalReflectionParameters, m_max);
+		spvReflectDestroyShaderModule(&module);
+		Require(valid, "local reflection uniform must match the three packed CPU vec4 fields");
+	}
+
 	void RequireSpirvStorageImageBinding(
 		const RHI::ShaderByteCode& byteCode,
 		uint32_t set,
@@ -268,6 +287,53 @@ namespace
 				std::to_string(set) + ", binding " + std::to_string(binding) +
 				": reflected=" + std::to_string(reflectedStride) +
 				", expected=" + std::to_string(expectedStride));
+	}
+
+	void RequireSkyUniformLayout(const RHI::ShaderByteCode& byteCode)
+	{
+		SpvReflectShaderModule module{};
+		Require(spvReflectCreateShaderModule(byteCode.Num() * sizeof(byteCode[0]),
+			&byteCode[0], &module) == SPV_REFLECT_RESULT_SUCCESS,
+			"sky shader should support SPIR-V reflection");
+		SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
+		const auto* binding = spvReflectGetDescriptorBinding(&module, 0u, 1u, &result);
+		const std::pair<const char*, size_t> expected[] = {
+			{ "lightDirection", offsetof(SkyParameters, m_lightDirection) },
+			{ "sunIlluminance", offsetof(SkyParameters, m_sunIlluminance) },
+			{ "groundRadiance", offsetof(SkyParameters, m_groundRadiance) },
+			{ "cloudsAttenuation1", offsetof(SkyParameters, m_cloudsAttenuation1) },
+			{ "cloudsAttenuation2", offsetof(SkyParameters, m_cloudsAttenuation2) },
+			{ "cloudsDensity", offsetof(SkyParameters, m_cloudsDensity) },
+			{ "cloudsCoverage", offsetof(SkyParameters, m_cloudsCoverage) },
+			{ "phaseInfluence1", offsetof(SkyParameters, m_phaseInfluence1) },
+			{ "phaseInfluence2", offsetof(SkyParameters, m_phaseInfluence2) },
+			{ "eccentrisy1", offsetof(SkyParameters, m_eccentrisy1) },
+			{ "eccentrisy2", offsetof(SkyParameters, m_eccentrisy2) },
+			{ "fog", offsetof(SkyParameters, m_fog) },
+			{ "cloudScatteringScale", offsetof(SkyParameters, m_cloudScatteringScale) },
+			{ "ambient", offsetof(SkyParameters, m_ambient) },
+			{ "scatteringSteps", offsetof(SkyParameters, m_scatteringSteps) },
+			{ "scatteringDensity", offsetof(SkyParameters, m_scatteringDensity) },
+			{ "scatteringIntensity", offsetof(SkyParameters, m_scatteringIntensity) },
+			{ "scatteringPhase", offsetof(SkyParameters, m_scatteringPhase) },
+			{ "sunShaftsIntensity", offsetof(SkyParameters, m_sunShaftsIntensity) },
+			{ "sunShaftsDistance", offsetof(SkyParameters, m_sunShaftsDistance) }
+		};
+		bool matches = result == SPV_REFLECT_RESULT_SUCCESS && binding &&
+			binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER &&
+			binding->block.member_count == std::size(expected);
+		std::string diagnostic = binding ? " memberCount=" + std::to_string(binding->block.member_count) : " missing binding";
+		if (matches)
+			for (size_t index = 0u; index < std::size(expected); ++index)
+			{
+				const auto& member = binding->block.members[index];
+				// Release SPIR-V strips debug names but retains the full block layout.
+				matches &= member.offset == expected[index].second;
+				diagnostic += " " + std::string(expected[index].first) + ":" +
+					std::to_string(member.offset) + "/" + std::to_string(expected[index].second);
+			}
+		spvReflectDestroyShaderModule(&module);
+		Require(matches, "every compiled sky uniform must match its C++ upload offset;" + diagnostic);
 	}
 
 	void RequireSpirvDescriptorBindingAbsent(
@@ -1264,6 +1330,8 @@ namespace
 				compileRuntimeFragment(shaderPaths[shaderIndex], {});
 			if (shaderIndex < 3u)
 			{
+				RequireLocalReflectionUniformLayout(byteCode);
+				RequireSpirvCombinedImageSamplerBinding(byteCode, 1u, 21u);
 				RequireSpirvStorageBufferArrayStride(
 					byteCode,
 					1u,
@@ -1315,8 +1383,7 @@ namespace
 					1u,
 					18u);
 				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 19u);
-				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 20u);
-				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 21u);
+				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 22u);
 			}
 		}
 		compileRuntimeFragment(
@@ -1333,6 +1400,9 @@ namespace
 			materialExtensionsByteCode,
 			1u,
 			19u);
+		RequireLocalReflectionUniformLayout(materialExtensionsByteCode);
+		RequireSpirvCombinedImageSamplerBinding(materialExtensionsByteCode, 1u, 21u);
+		RequireSpirvCombinedImageSamplerBinding(materialExtensionsByteCode, 1u, 22u);
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
 			{ "MATERIAL_IOR" });
@@ -1342,6 +1412,37 @@ namespace
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
 			{ "DISABLE_SCREEN_SPACE_AO" });
+		for (const auto* path : { "Shaders/Standard.shader", "Shaders/Standard_glTF.shader", "Shaders/Landscape.shader", "Shaders/Unlit.shader", "Shaders/Simple.shader" })
+		{
+			const auto vertex = compileRuntimeVertex(path, { "MOTIONS" });
+			RequireSpirvStorageBufferArrayStride(vertex, 2u, 0u, sizeof(Framegraph::RenderSceneNode::PerInstanceData));
+			for (const bool motions : { false, true })
+			{
+				const auto fragment = motions ? compileRuntimeFragment(path, { "MOTIONS" }) : compileRuntimeFragment(path, {});
+				SpvReflectShaderModule module{};
+				Require(spvReflectCreateShaderModule(fragment.Num() * sizeof(uint32_t), fragment.GetData(), &module) == SPV_REFLECT_RESULT_SUCCESS,
+					"MRT shader must expose a compiled fragment interface");
+				bool hasMotionOutput = false;
+				for (uint32_t i = 0u; i < module.entry_points[0].output_variable_count; ++i)
+				{
+					const auto* output = module.entry_points[0].output_variables[i];
+					if (output->location == 1u)
+					{
+						hasMotionOutput = true;
+						Require(output->numeric.vector.component_count == 4u, "velocity MRT must carry XY motion, depth and coverage");
+					}
+				}
+				spvReflectDestroyShaderModule(&module);
+				Require(hasMotionOutput == motions, "MOTIONS must control the second MRT output without a separate geometry pass");
+			}
+		}
+		const auto skinnedMotion = compileRuntimeVertex("Shaders/Standard_glTF.shader", { "MOTIONS", "SKINNING", "TRANSMISSION" });
+		RequireSpirvStorageBufferArrayStride(skinnedMotion, 0u, 2u, sizeof(glm::mat4));
+		RequireSpirvStorageBufferArrayStride(skinnedMotion, 2u, 0u, sizeof(Framegraph::RenderSceneNode::PerInstanceData));
+		compileRuntimeFragment("Shaders/Standard_glTF.shader", { "MOTIONS", "ALPHA_CUTOUT", "TRANSMISSION", "CLEAR_COAT", "SHEEN" });
+		const auto motionBlur = compileRuntimeFragment("Shaders/MotionBlur.shader", {});
+		RequireSpirvCombinedImageSamplerBinding(motionBlur, 1u, 3u);
+		compileRuntimeFragment("Shaders/MotionBlur.shader", { "DEBUG_MOTIONS" });
 		const RHI::ShaderByteCode hbaoByteCode = compileRuntimeFragment(
 			"Shaders/HBAO.shader",
 			{});
@@ -1358,13 +1459,13 @@ namespace
 			8u);
 		compileRuntimeFragment("Shaders/Debug.shader", { "CASCADES" });
 		compileRuntimeFragment("Shaders/Debug.shader", { "LIGHT_TILES" });
-		compileRuntimeFragment("Shaders/Sky.shader", { "ATMOSPHERE" });
-		compileRuntimeFragment("Shaders/Sky.shader", { "SUN" });
-		compileRuntimeFragment("Shaders/Sky.shader", { "CLOUDS" });
-		compileRuntimeFragment(
+		RequireSkyUniformLayout(compileRuntimeFragment("Shaders/Sky.shader", { "ATMOSPHERE" }));
+		RequireSkyUniformLayout(compileRuntimeFragment("Shaders/Sky.shader", { "SUN" }));
+		RequireSkyUniformLayout(compileRuntimeFragment("Shaders/Sky.shader", { "CLOUDS" }));
+		RequireSkyUniformLayout(compileRuntimeFragment(
 			"Shaders/Sky.shader",
-			{ "CLOUDS", "DITHER" });
-		compileRuntimeFragment("Shaders/SunShafts.shader", {});
+			{ "CLOUDS", "DITHER" }));
+		RequireSkyUniformLayout(compileRuntimeFragment("Shaders/SunShafts.shader", {}));
 		compileRuntimeFragment("Shaders/Tonemapping.shader", { "AGX" });
 		compileRuntimeFragment("Shaders/Tonemapping.shader", { "ACES" });
 		compileRuntimeFragment(

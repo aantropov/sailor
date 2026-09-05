@@ -21,10 +21,15 @@ namespace Sailor::Raytracing
 	SAILOR_SHARED_API glm::vec3 CalculateDirectSunIlluminance(
 		const SkyParameters& parameters);
 
+	// Unobstructed, horizontal Lambertian terrain under this clear sky and sun.
+	// This is a distant environment boundary, not a local scene reflection capture.
+	SAILOR_SHARED_API glm::vec3 CalculateSkyGroundRadiance(
+		const SkyParameters& parameters, const glm::vec3& albedo);
+
 	// Generates the same physically scaled clear-atmosphere lighting used by the
 	// runtime sky environment. Clouds, stars, and the explicit sun disk are
 	// intentionally excluded: clouds are dynamic, while direct sun comes from
-	// LightComponent.
+	// LightComponent. Configured ground radiance is the lower-hemisphere boundary.
 	SAILOR_SHARED_API bool GenerateSkyEnvironmentEquirectangular(
 		const SkyParameters& parameters,
 		const glm::uvec2& extent,

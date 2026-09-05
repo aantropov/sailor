@@ -34,6 +34,8 @@ glslCompute: |
       uint isCulled;
       uint padding;
       vec4 bakedVolumeScale;
+      mat4 previousModel;
+      uvec4 motionState;
   #endif
   };
   

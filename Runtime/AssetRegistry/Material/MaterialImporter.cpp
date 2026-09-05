@@ -35,6 +35,17 @@ namespace
 	constexpr const char* StandardGltfShaderUid =
 		"1A4BA353-FDA4-4F65-941F-D9FFEE4630A0";
 
+	TVector<std::string> ResolveForwardDefines(const MaterialAsset& material)
+	{
+		auto defines = material.GetShaderDefines();
+		auto shader = App::GetSubmodule<ShaderCompiler>()->LoadShaderAsset(material.GetShader()).TryLock();
+		const auto tag = material.GetRenderState().GetTag();
+		const bool forward = tag == "Opaque"_h.GetHash() || tag == "Masked"_h.GetHash() || tag == "Transparent"_h.GetHash();
+		if (forward && shader && shader->GetSupportedDefines().Contains("MOTIONS") && !defines.Contains("MOTIONS"))
+			defines.Add("MOTIONS");
+		return defines;
+	}
+
 	bool IsBaseColorMetadataUniform(const std::string& name)
 	{
 		return name == "material.baseColorFactor" ||
@@ -708,7 +719,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 					pMaterial->ClearUniforms();
 
 					ShaderSetPtr pShader;
-					auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines());
+					auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, ResolveForwardDefines(*pMaterialAsset));
 
 					pMaterial->SetRenderState(pMaterialAsset->GetRenderState());
 
@@ -901,7 +912,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 		MaterialPtr pMaterial = MaterialPtr::Make(m_allocator, uid);
 
 		ShaderSetPtr pShader;
-		auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines());
+		auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, ResolveForwardDefines(*pMaterialAsset));
 
 		pMaterial->SetRenderState(pMaterialAsset->GetRenderState());
 		pMaterial->SetShader(pShader);

@@ -61,6 +61,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API const TVector<TVector<RHI::ShaderLayoutBinding>>& GetBindings() const { return m_bindings; }
 		SAILOR_API const TVector<uint32_t>& GetPushConstants() const { return m_pushConstants; }
 		SAILOR_API const TSet<uint32_t>& GetVertexAttributesBindings() const { return m_vertexAttributeBindings; }
+		SAILOR_API uint32_t GetFragmentOutputMask() const { return m_fragmentOutputMask; }
 
 	protected:
 
@@ -68,6 +69,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code);
 
 		TSet<uint32_t> m_vertexAttributeBindings;
+		uint32_t m_fragmentOutputMask = 0u;
 		TVector<TVector<VkDescriptorSetLayoutBinding>> m_layoutBindings;
 		TVector<TVector<RHI::ShaderLayoutBinding>> m_bindings;
 		TVector<uint32_t> m_pushConstants;
