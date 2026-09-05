@@ -189,16 +189,35 @@ namespace
 	void TestPcfRasterShadowBiasContract()
 	{
 		constexpr float configuredBias = 1.25f;
-		Require(
-			std::abs(ShadowPrepassNode::GetRasterShadowBias(
-				RHI::EShadowType::PCF,
-				configuredBias) - configuredBias) < 0.0001f,
-			"the configured raster bias must apply to PCF shadow maps");
-		Require(
-			ShadowPrepassNode::GetRasterShadowBias(
-				RHI::EShadowType::EVSM,
-				configuredBias) == 0.0f,
-			"EVSM shadow maps must retain their unbiased rasterization path");
+		constexpr float receiverDepth = 0.75f;
+		constexpr float depthUnit = 1.0f / 16777216.0f;
+		const auto biasedCasterDepth = [=](float casterDepth, float bias)
+		{
+			return casterDepth + depthUnit * ShadowPrepassNode::GetRasterShadowBias(
+				RHI::EShadowType::PCF, bias);
+		};
+
+		// A coplanar receiver must stop shadowing itself after the caster offset.
+		const float selfShadowDepth = receiverDepth;
+		Require(receiverDepth <= biasedCasterDepth(selfShadowDepth, 0.0f) &&
+			receiverDepth > biasedCasterDepth(selfShadowDepth, configuredBias),
+			"positive bias must reduce self-shadowing with reverse-Z depth comparison");
+		Require(biasedCasterDepth(selfShadowDepth, 0.0f) == selfShadowDepth,
+			"zero configured bias must preserve the caster depth");
+
+		const float initiallyLitDepth = receiverDepth - depthUnit;
+		Require(receiverDepth > initiallyLitDepth &&
+			receiverDepth <= biasedCasterDepth(initiallyLitDepth, -configuredBias),
+			"negative configured bias must reverse the caster offset toward the light");
+		Require(receiverDepth < biasedCasterDepth(0.8f, configuredBias),
+			"the default raster bias must preserve a separated blocker shadow");
+
+		for (float bias : { -configuredBias, 0.0f, configuredBias })
+		{
+			Require(ShadowPrepassNode::GetRasterShadowBias(
+				RHI::EShadowType::EVSM, bias) == 0.0f,
+				"EVSM shadow maps must retain their unbiased rasterization path");
+		}
 	}
 
 

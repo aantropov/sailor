@@ -1443,6 +1443,8 @@ namespace
 		const auto motionBlur = compileRuntimeFragment("Shaders/MotionBlur.shader", {});
 		RequireSpirvCombinedImageSamplerBinding(motionBlur, 1u, 3u);
 		compileRuntimeFragment("Shaders/MotionBlur.shader", { "DEBUG_MOTIONS" });
+		compileRuntimeVertex("Experimental/MeshParticles/Particle.shader", {});
+		compileRuntimeFragment("Experimental/MeshParticles/Particle.shader", {});
 		const RHI::ShaderByteCode hbaoByteCode = compileRuntimeFragment(
 			"Shaders/HBAO.shader",
 			{});

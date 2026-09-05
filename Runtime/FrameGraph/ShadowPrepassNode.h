@@ -51,7 +51,8 @@ namespace Sailor
 			RHI::EShadowType shadowType,
 			float configuredBias) noexcept
 		{
-			return shadowType == RHI::EShadowType::PCF ? configuredBias : 0.0f;
+			// Reverse Z moves casters away from the light by decreasing their depth.
+			return shadowType == RHI::EShadowType::PCF ? -configuredBias : 0.0f;
 		}
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;

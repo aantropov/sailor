@@ -2,6 +2,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -12,6 +13,7 @@
 #include <vector>
 
 #include "AssetRegistry/Prefab/PrefabImporter.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "Components/LightComponent.h"
 #include "Components/SkyComponent.h"
 #include "Core/Reflection.h"
@@ -22,6 +24,7 @@
 #include "Engine/World.h"
 #include "FrameGraph/SkyNode.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
+#include "RHI/Texture.h"
 
 using namespace Sailor;
 
@@ -144,7 +147,93 @@ namespace
 		using Framegraph::SkyNode::ConsumePendingSkyParams;
 		using Framegraph::SkyNode::CreateEnvironmentProjectionMatrix;
 		using Framegraph::SkyNode::CreateEnvironmentViewMatrices;
+		using Framegraph::SkyNode::LoadCloudsNoise;
+		using Framegraph::SkyNode::AreCloudsResourcesReady;
+
+		void SetCloudTextures(RHI::RHITexturePtr map, RHI::RHITexturePtr low, RHI::RHITexturePtr high)
+		{
+			m_pCloudsMapTexture = map;
+			m_pCloudsNoiseLowTexture = low;
+			m_pCloudsNoiseHighTexture = high;
+		}
 	};
+
+	void TestCloudsWaitForAllTextureUploads()
+	{
+		class PendingTexture final : public RHI::RHITexture
+		{
+		public:
+			PendingTexture() : RHITexture(RHI::ETextureFiltration::Linear,
+				RHI::ETextureClamping::Repeat, false) {}
+			bool IsReady() const override { return ready; }
+			bool ready = false;
+		};
+		SkyNodeMailboxProbe node;
+		Require(!node.AreCloudsResourcesReady(), "clouds must be skipped before noise generation completes");
+		auto map = TRefPtr<PendingTexture>::Make();
+		auto low = TRefPtr<PendingTexture>::Make();
+		auto high = TRefPtr<PendingTexture>::Make();
+		node.SetCloudTextures(map, low, high);
+		Require(!node.AreCloudsResourcesReady(), "scheduled GPU uploads are not yet renderable");
+		map->ready = true;
+		high->ready = true;
+		Require(!node.AreCloudsResourcesReady(), "one completed noise volume must not enable clouds");
+		low->ready = true;
+		Require(node.AreCloudsResourcesReady(), "clouds become renderable when all uploads complete");
+		map->ready = false;
+		Require(!node.AreCloudsResourcesReady(), "clouds also require the weather map upload");
+		node.SetCloudTextures(map, nullptr, high);
+		Require(!node.AreCloudsResourcesReady(), "missing noise must disable clouds again");
+	}
+
+	void TestCloudNoiseCacheRecovery()
+	{
+		struct TemporaryCache
+		{
+			std::filesystem::path path = std::filesystem::temp_directory_path() /
+				("sailor-cloud-noise-" + FileId::CreateNewFileId().ToString());
+			TemporaryCache() { std::filesystem::create_directory(path); }
+			~TemporaryCache()
+			{
+				std::error_code error;
+				std::filesystem::remove_all(path, error);
+			}
+		} cache;
+		static uint32_t generationCount = 0;
+		generationCount = 0;
+		auto generate = +[]() -> TVector<uint8_t>
+		{
+			generationCount++;
+			return { 3, 17, 42, 65, 90, 127, 180, 255 };
+		};
+		const auto path = cache.path / "noise.bin";
+		auto verify = [](const TVector<uint8_t>& noise)
+		{
+			const TVector<uint8_t> expected{ 3, 17, 42, 65, 90, 127, 180, 255 };
+			Require(noise.Num() == expected.Num(), "noise must contain the entire volume");
+			for (size_t i = 0; i < expected.Num(); ++i)
+			{
+				Require(noise[i] == expected[i], "noise payload must survive the cache round trip");
+			}
+		};
+
+		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		Require(generationCount == 1, "a cold cache should generate the noise");
+		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		Require(generationCount == 1, "a valid cache should not regenerate noise");
+
+		AssetRegistry::WriteBinaryFile(path, TVector<uint8_t>{ 1, 2 });
+		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		Require(generationCount == 2, "a truncated cache should be regenerated");
+		AssetRegistry::WriteBinaryFile(path, TVector<uint8_t>{ 1, 2, 3, 4, 5, 6, 7, 8, 9 });
+		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		Require(generationCount == 3, "an oversized cache should be regenerated");
+
+		// A regular file cannot be used as a parent directory, even when run as root.
+		verify(SkyNodeMailboxProbe::LoadCloudsNoise((path / "unwritable.bin").string(), 2, generate));
+		Require(generationCount == 4,
+			"an unwritable cache must still return the generated in-memory volume");
+	}
 
 	glm::vec3 ReconstructEnvironmentDirection(
 		const glm::mat4& projection,
@@ -1270,6 +1359,8 @@ int main()
 		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
 		{ "GroundEnvironmentUsesTheSameSkyAndSun", TestGroundEnvironmentUsesTheSameSkyAndSun },
 		{ "SkyNodeMailboxHandoff", TestSkyNodeMailboxHandoff },
+		{ "CloudNoiseCacheRecovery", TestCloudNoiseCacheRecovery },
+		{ "CloudsWaitForAllTextureUploads", TestCloudsWaitForAllTextureUploads },
 		{ "EnvironmentCubemapOrientation", TestEnvironmentCubemapOrientation },
 		{ "ExplicitDirectionalLightSynchronization", TestExplicitDirectionalLightSynchronization },
 		{ "DestroyedLightReferencesSerializeAsNull", TestDestroyedLightReferencesSerializeAsNull },
