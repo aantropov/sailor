@@ -185,8 +185,7 @@ uint ResolveTextureSamplerIndex(uint globalTextureIndex)
 float CalculateCascadedDirectionalShadow(
   LightData lightData,
   vec3 worldPosition,
-  vec3 surfaceNormal,
-  vec3 surfaceToLightDirection)
+  vec3 surfaceNormal)
 {
   const uint activeCascadeCount = clamp(
     lightData.activeCascadeCount,
@@ -205,15 +204,14 @@ float CalculateCascadedDirectionalShadow(
   const uint cascadeShadowType = GetDirectionalCascadeShadowType(
     lightData.shadowType,
     cascadeLayer);
-  const vec3 shadowReceiverPosition = OffsetDirectionalShadowReceiver(
-    worldPosition,
-    surfaceNormal,
-    surfaceToLightDirection);
   const mat4 cascadeLightMatrix = lightsMatrices.instance[cascadeLayer];
   float shadow = CalculateDirectionalShadow(
     cascadeShadowType,
     shadowMaps[cascadeLayer],
-    cascadeLightMatrix * vec4(shadowReceiverPosition, 1.0),
+    cascadeLightMatrix,
+    worldPosition,
+    surfaceNormal,
+    lightData.shadowBias,
     cascadeLayer);
 
   const float cascadeBlend = CalculateCascadeBlend(
@@ -228,16 +226,15 @@ float CalculateCascadedDirectionalShadow(
     const uint nextCascadeShadowType = GetDirectionalCascadeShadowType(
       lightData.shadowType,
       nextCascadeLayer);
-    const vec3 nextShadowReceiverPosition = OffsetDirectionalShadowReceiver(
-      worldPosition,
-      surfaceNormal,
-      surfaceToLightDirection);
     const mat4 nextCascadeLightMatrix =
       lightsMatrices.instance[nextCascadeLayer];
     const float nextShadow = CalculateDirectionalShadow(
       nextCascadeShadowType,
       shadowMaps[nextCascadeLayer],
-      nextCascadeLightMatrix * vec4(nextShadowReceiverPosition, 1.0),
+      nextCascadeLightMatrix,
+      worldPosition,
+      surfaceNormal,
+      lightData.shadowBias,
       nextCascadeLayer);
     shadow = mix(shadow, nextShadow, cascadeBlend);
   }
@@ -314,8 +311,7 @@ ForwardLightSample ResolveForwardLightSample(
     result.shadow = CalculateCascadedDirectionalShadow(
       lightData,
       worldPosition,
-      geometricNormal,
-      result.direction);
+      geometricNormal);
   }
   else if(lightData.type == 1u || lightData.type == 2u)
   {

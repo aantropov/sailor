@@ -1342,6 +1342,8 @@ namespace
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
 			{ "DISABLE_SCREEN_SPACE_AO" });
+		compileRuntimeVertex("Experimental/MeshParticles/Particle.shader", {});
+		compileRuntimeFragment("Experimental/MeshParticles/Particle.shader", {});
 		const RHI::ShaderByteCode hbaoByteCode = compileRuntimeFragment(
 			"Shaders/HBAO.shader",
 			{});
