@@ -1676,6 +1676,17 @@ void World::DestroyImmediate(GameObjectPtr object)
 
 void World::Clear()
 {
+	if (m_bIsClearing)
+	{
+		return;
+	}
+	m_bIsClearing = true;
+	struct ClearScope
+	{
+		bool& m_flag;
+		~ClearScope() { m_flag = false; }
+	} clearScope{ m_bIsClearing };
+
 	ComponentsToResolveDependencies.Clear();
 
 	TVector<GameObjectPtr> objectsToDestroy = m_objects;

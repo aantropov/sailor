@@ -111,13 +111,17 @@ glslFragment: |
     {
       float t = (float(i) + 0.5) / float(sampleCount) - 0.5;
       vec2 uv = fragTexcoord + velocity * t;
-      if(any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) continue;
-      vec4 sampleMotion = textureLod(motionSampler, uv, 0.0);
-      float sampleDepth = ViewDepth(uv, sampleMotion);
-      float relativeDepth = abs(sampleDepth - centerDepth) / max(min(centerDepth, sampleDepth), 0.1);
-      float sampleWeight = (1.0 - smoothstep(0.02, 0.10, relativeDepth)) * (1.0 - abs(t));
-      color += textureLod(colorSampler, uv, 0.0).rgb * sampleWeight;
-      weight += sampleWeight;
+      // Keep sampling in a structured branch: a loop continue here crashes
+      // the NVIDIA Windows pipeline compiler on this variable-length loop.
+      if(all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0))))
+      {
+        vec4 sampleMotion = textureLod(motionSampler, uv, 0.0);
+        float sampleDepth = ViewDepth(uv, sampleMotion);
+        float relativeDepth = abs(sampleDepth - centerDepth) / max(min(centerDepth, sampleDepth), 0.1);
+        float sampleWeight = (1.0 - smoothstep(0.02, 0.10, relativeDepth)) * (1.0 - abs(t));
+        color += textureLod(colorSampler, uv, 0.0).rgb * sampleWeight;
+        weight += sampleWeight;
+      }
     }
     // Bloom and other HDR consumers keep the current pixel's metadata.
     outColor = vec4(color / weight, source.a);

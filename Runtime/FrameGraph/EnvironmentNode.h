@@ -79,7 +79,7 @@ namespace Sailor::Framegraph
 		bool m_environmentUsesSky = false;
 
 		bool m_bIsDirty = false;
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 	};
 
 	template class TFrameGraphNode<EnvironmentNode>;

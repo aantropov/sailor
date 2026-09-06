@@ -21,7 +21,7 @@ namespace Sailor::Framegraph
 
 	protected:
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 
 		ShaderSetPtr m_pComputeHistogramShader{};
 		ShaderSetPtr m_pComputeAverageShader{};

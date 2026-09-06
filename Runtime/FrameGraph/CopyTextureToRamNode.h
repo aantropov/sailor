@@ -27,7 +27,7 @@ namespace Sailor::Framegraph
 		RHI::RHITexturePtr m_texture;
 
 		std::atomic<bool> m_captureThisFrame;
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 	};
 
 	template class TFrameGraphNode<CopyTextureToRamNode>;

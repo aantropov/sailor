@@ -108,8 +108,10 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 	{
 		m_shaderBindings = driver->CreateShaderBindings();
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, true };
-		m_blitToMsaaTargetMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pShader, m_shaderBindings);
+		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
+		m_blitToTextureMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pShader, m_shaderBindings);
+		RenderState msaaRenderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, true };
+		m_blitToMsaaTargetMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, msaaRenderState, m_pShader, m_shaderBindings);
 	}
 
 	RHI::RHITexturePtr src = GetResolvedAttachment("src");
@@ -142,7 +144,7 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 	const bool bUseFullscreenColorBlit =
 		!bIsDepthFormat &&
 		!dstSurface &&
-		m_blitToMsaaTargetMaterial &&
+		m_blitToTextureMaterial &&
 		(src->GetExtent() != dst->GetExtent() || bForceShaderConversion);
 	bool bResolvedBlitSuccessful = false;
 	if (bUseFullscreenColorBlit)
@@ -152,7 +154,7 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 		// of relying on cross-format vkCmdBlitImage scaling.
 		commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::ShaderReadOnlyOptimal);
 		commands->ImageMemoryBarrier(commandList, dst, RHI::EImageLayout::ColorAttachmentOptimal);
-		BlitRaw(commandList, frameGraph, sceneView, src, dst);
+		BlitRaw(commandList, frameGraph, sceneView, src, dst, m_blitToTextureMaterial);
 		bResolvedBlitSuccessful = true;
 	}
 	else
@@ -199,7 +201,7 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 			commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
 			commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::ShaderReadOnlyOptimal);
 
-			BlitRaw(commandList, frameGraph, sceneView, src, dstSurface->GetTarget());
+			BlitRaw(commandList, frameGraph, sceneView, src, dstSurface->GetTarget(), m_blitToMsaaTargetMaterial);
 		}
 	}
 
@@ -219,7 +221,8 @@ void BlitNode::BlitRaw(RHI::RHICommandListPtr commandList,
 	RHI::RHIFrameGraphPtr frameGraph,
 	const RHI::RHISceneViewSnapshot& sceneView,
 	RHI::RHITexturePtr src,
-	RHI::RHITexturePtr dst)
+	RHI::RHITexturePtr dst,
+	RHI::RHIMaterialPtr material)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -244,10 +247,10 @@ void BlitNode::BlitRaw(RHI::RHICommandListPtr commandList,
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
 	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
 
-	commands->BindMaterial(commandList, m_blitToMsaaTargetMaterial);
+	commands->BindMaterial(commandList, material);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_blitToMsaaTargetMaterial, { sceneView.m_frameBindings, m_shaderBindings });
+	commands->BindShaderBindings(commandList, material, { sceneView.m_frameBindings, m_shaderBindings });
 
 	// TODO: Support regions
 	commands->SetViewport(commandList,

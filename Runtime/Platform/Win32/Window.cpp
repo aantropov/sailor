@@ -472,7 +472,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 
 	if (m_parentHwnd == nullptr)
 	{
-		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+		AdjustWindowRectExForDpi(&rect, style, FALSE, exStyle, GetDpiForSystem());
 	}
 
 	// Create window
@@ -610,7 +610,9 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 
 	if (m_parentHwnd == 0)
 	{
-		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+		// The requested size is the client area in physical pixels, not DIPs
+		// or the outer window rectangle (which includes DPI-scaled borders).
+		AdjustWindowRectExForDpi(&rect, style, FALSE, exStyle, GetDpiForWindow(m_hWnd));
 	}
 
 	SetWindowLong(m_hWnd, GWL_STYLE, style);
@@ -696,7 +698,7 @@ void Window::RecalculateWindowSize()
 
 	RECT rect;
 
-	if (GetWindowRect(m_hWnd, &rect))
+	if (GetClientRect(m_hWnd, &rect))
 	{
 		m_width = rect.right - rect.left;
 		m_height = rect.bottom - rect.top;
@@ -919,6 +921,16 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 
 	switch (msg)
 	{
+	case WM_DPICHANGED:
+	{
+		const auto* suggestedRect = reinterpret_cast<const RECT*>(lParam);
+		::SetWindowPos(hWnd, nullptr,
+			suggestedRect->left, suggestedRect->top,
+			suggestedRect->right - suggestedRect->left,
+			suggestedRect->bottom - suggestedRect->top,
+			SWP_NOZORDER | SWP_NOACTIVATE);
+		return 0;
+	}
 	case WM_SIZE:
 	{
 		pWindow->SetIsIconic(wParam == SIZE_MINIMIZED);
