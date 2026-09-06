@@ -155,7 +155,7 @@ void LightingECS::PrepareCSMPasses(const RHI::RHISceneViewPtr& sceneView,
 				cameraData.GetAspect(),
 				cameraData.GetFov(),
 				cameraData.GetZNear(),
-				(std::min)(cameraData.GetZFar(), ShadowMaxDistance),
+				(std::min)(cameraData.GetZFar(), App::GetActiveGraphicsSettings().m_shadowDistance),
 				10.0f,
 				glm::ivec2(0),
 				ShadowCasterDepthExtension) *

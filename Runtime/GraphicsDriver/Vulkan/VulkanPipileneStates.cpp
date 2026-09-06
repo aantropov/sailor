@@ -233,7 +233,7 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 	auto mask = VkColorComponentFlagBits::VK_COLOR_COMPONENT_A_BIT | VkColorComponentFlagBits::VK_COLOR_COMPONENT_R_BIT |
 		VkColorComponentFlagBits::VK_COLOR_COMPONENT_G_BIT | VkColorComponentFlagBits::VK_COLOR_COMPONENT_B_BIT;
 
-	m_blendModes.Resize(4);
+	m_blendModes.Resize(5);
 
 	m_blendModes[(size_t)RHI::EBlendMode::None] = VulkanStateColorBlendingPtr::Make(false, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD,
 		VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD, mask);
@@ -244,6 +244,10 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 
 	m_blendModes[(size_t)RHI::EBlendMode::AlphaBlending] = VulkanStateColorBlendingPtr::Make(true, VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_ADD,
 		VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_SUBTRACT, mask);
+
+	m_blendModes[(size_t)RHI::EBlendMode::AlphaBlendingPreserveAlpha] = VulkanStateColorBlendingPtr::Make(true,
+		VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_OP_ADD,
+		VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ONE, VK_BLEND_OP_ADD, mask);
 
 	m_blendModes[(size_t)RHI::EBlendMode::Multiply] = VulkanStateColorBlendingPtr::Make(true,
 		VK_BLEND_FACTOR_ONE,

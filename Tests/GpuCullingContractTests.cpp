@@ -6,6 +6,9 @@
 #include "FrameGraph/DepthPrepassNode.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/ShadowPrepassNode.h"
+#include "FrameGraph/AtmosphericFogNode.h"
+#include "GraphicsDriver/Vulkan/VulkanPipileneStates.h"
+#include "Settings/GraphicsSettings.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "RHI/GpuCulling.h"
 #include "Core/StringHash.h"
@@ -33,6 +36,13 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 namespace
 {
+	class BlendStateProbe : public VulkanPipelineStateBuilder
+	{
+	public:
+		BlendStateProbe() : VulkanPipelineStateBuilder(nullptr) {}
+		using VulkanPipelineStateBuilder::GetBlendState;
+	};
+
 	class RenderSceneNodeProbe : public Framegraph::RenderSceneNode
 	{
 	public:
@@ -1100,9 +1110,55 @@ namespace
 	}
 }
 
+namespace
+{
+	void TestAtmosphericFogBlendAndDisabledPass()
+	{
+		BlendStateProbe builder;
+		VkGraphicsPipelineCreateInfo pipeline{};
+		builder.GetBlendState(RHI::EBlendMode::AlphaBlendingPreserveAlpha)->Apply(pipeline);
+		Require(pipeline.pColorBlendState && pipeline.pColorBlendState->attachmentCount == 1,
+			"Fog compositing must affect a single colour attachment");
+		const auto& blend = pipeline.pColorBlendState->pAttachments[0];
+		Require(blend.blendEnable && blend.srcColorBlendFactor == VK_BLEND_FACTOR_SRC_ALPHA &&
+			blend.dstColorBlendFactor == VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA && blend.colorBlendOp == VK_BLEND_OP_ADD &&
+			blend.srcAlphaBlendFactor == VK_BLEND_FACTOR_ZERO && blend.dstAlphaBlendFactor == VK_BLEND_FACTOR_ONE &&
+			blend.alphaBlendOp == VK_BLEND_OP_ADD, "Fog must composite RGB without changing HDR alpha metadata");
+
+		Framegraph::AtmosphericFogNode node;
+		RHI::RHISceneViewSnapshot scene{};
+		// A disabled or invalid optional node must need no renderer/resources and issue no draw.
+		for (float density : { 0.0f, -1.0f, std::numeric_limits<float>::quiet_NaN() })
+		{
+			node.SetVec4("fog", glm::vec4(density, 0, 0, 0));
+			node.Process(nullptr, nullptr, nullptr, scene);
+			Require(node.GetDrawCallStats().m_numBatches == 0, "Disabled fog must not submit a pass");
+		}
+	}
+
+	void TestShadowDistanceSettings()
+	{
+		const auto path = std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "ProjectSettings.yaml";
+		const auto source = YAML::Load(ReadText(path));
+		for (float distance : { 1.0f, 600.0f, 10000.0f, 0.0f, 10001.0f,
+			std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() })
+		{
+			auto document = YAML::Clone(source);
+			document["graphics"]["presets"]["Ultra"]["shadowDistance"] = distance;
+			const auto parsed = Settings::ParseProjectGraphicsSettings(YAML::Dump(document), path.string());
+			const bool valid = std::isfinite(distance) && distance >= 1 && distance <= 10000;
+			Require(parsed.IsLoaded() == valid, "Native shadow distance must require a finite value in [1, 10000]");
+			if (valid) Require(parsed.m_settings.GetProfile(Settings::EGraphicsQuality::Ultra).m_shadowDistance == distance,
+				"Native shadow distance parser must preserve the requested range");
+		}
+	}
+}
+
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "AtmosphericFogBlendAndDisabledPass", TestAtmosphericFogBlendAndDisabledPass },
+		{ "ShadowDistanceSettings", TestShadowDistanceSettings },
 		{ "RendererGpuCullingPassContract", TestRendererGpuCullingPassContract },
 		{ "CurrentDepthPyramidReadiness", TestCurrentDepthPyramidReadiness },
 		{ "GpuCullingDispatchOrdering", TestGpuCullingDispatchOrdering },

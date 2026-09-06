@@ -204,7 +204,8 @@ float CalculateCascadedDirectionalShadow(
     frame.view,
     worldPosition,
     frame.cameraZNearZFar,
-    activeCascadeCount);
+    activeCascadeCount,
+    lightData.shadowDistance);
   if(cascadeLayer >= int(activeCascadeCount))
   {
     return 1.0;
@@ -228,7 +229,8 @@ float CalculateCascadedDirectionalShadow(
     worldPosition,
     frame.cameraZNearZFar,
     cascadeLayer,
-    activeCascadeCount);
+    activeCascadeCount,
+    lightData.shadowDistance);
   if(cascadeBlend > 0.0)
   {
     const int nextCascadeLayer = cascadeLayer + 1;
@@ -253,7 +255,8 @@ float CalculateCascadedDirectionalShadow(
     worldPosition,
     frame.cameraZNearZFar,
     cascadeLayer,
-    activeCascadeCount);
+    activeCascadeCount,
+    lightData.shadowDistance);
   return mix(shadow, 1.0, shadowDistanceFade);
 }
 

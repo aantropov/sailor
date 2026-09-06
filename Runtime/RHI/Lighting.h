@@ -16,12 +16,15 @@ namespace Sailor::RHI
 		uint32_t m_activeCascadeCount = 1u;
 		float m_shadowBias = 0.0f;
 		alignas(16) glm::vec3 m_worldPosition{};
+		float m_shadowDistance = 0.0f;
 		alignas(16) glm::vec3 m_direction{};
 		alignas(16) glm::vec3 m_intensity{};
 		alignas(16) glm::vec2 m_cutOff{};
 		alignas(16) glm::vec3 m_bounds{};
 	};
 
+	static_assert(offsetof(RHILightShaderData, m_shadowDistance) == 28u);
+	static_assert(offsetof(RHILightShaderData, m_direction) == 32u);
 	static_assert(offsetof(RHILightShaderData, m_cutOff) == 64u);
 	static_assert(offsetof(RHILightShaderData, m_bounds) == 80u);
 	static_assert(sizeof(RHILightShaderData) == 96u);

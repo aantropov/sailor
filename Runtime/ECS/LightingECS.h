@@ -144,7 +144,6 @@ namespace Sailor
 		// EVSM is based on https://www.cg.tuwien.ac.at/research/publications/2013/ADORJAN-2013-ASE/ADORJAN-2013-ASE-thesis.pdf
 		// Also handy paper: https://dl.acm.org/doi/pdf/10.5555/1375714.1375739
 		static constexpr uint32_t NumCascades = 4;
-		static constexpr float ShadowMaxDistance = 200.0f;
 		static constexpr float ShadowCasterDepthExtension = 200.0f;
 		static constexpr float ShadowCascadeBlendFraction = 0.1f;
 		static constexpr float ShadowCascadeLevels[NumCascades] = { 0.025f, 0.075f, 0.2f, 1.0f };

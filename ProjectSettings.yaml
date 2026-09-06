@@ -8,6 +8,7 @@ graphics:
       msaaSamples: 8
       shadowQuality: High
       shadowBias: 1.25
+      shadowDistance: 200
       shadowCascadeCount: 4
       shadowCascadeResolutions:
       - 4096
@@ -41,6 +42,7 @@ graphics:
       msaaSamples: 4
       shadowQuality: High
       shadowBias: 1.25
+      shadowDistance: 200
       shadowCascadeCount: 4
       shadowCascadeResolutions:
       - 2048
@@ -74,6 +76,7 @@ graphics:
       msaaSamples: 2
       shadowQuality: Medium
       shadowBias: 1.25
+      shadowDistance: 200
       shadowCascadeCount: 3
       shadowCascadeResolutions:
       - 2048
@@ -106,6 +109,7 @@ graphics:
       msaaSamples: 1
       shadowQuality: Low
       shadowBias: 1.25
+      shadowDistance: 200
       shadowCascadeCount: 2
       shadowCascadeResolutions:
       - 1024
@@ -137,6 +141,7 @@ graphics:
       msaaSamples: 1
       shadowQuality: VeryLow
       shadowBias: 1.25
+      shadowDistance: 200
       shadowCascadeCount: 1
       shadowCascadeResolutions:
       - 512

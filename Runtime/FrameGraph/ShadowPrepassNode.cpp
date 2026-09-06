@@ -1415,8 +1415,8 @@ void ShadowPrepassNode::CalculateLightProjectionForCascades(
 	TVector<glm::mat4>& outMatrices)
 {
 	SAILOR_PROFILE_FUNCTION();
-	const float shadowFarPlane = (std::min)(cameraFarPlane, LightingECS::ShadowMaxDistance);
 	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
+	const float shadowFarPlane = (std::min)(cameraFarPlane, graphicsProfile.m_shadowDistance);
 	const uint32_t activeCascadeCount = (std::clamp)(
 		graphicsProfile.m_shadowCascadeCount,
 		1u,

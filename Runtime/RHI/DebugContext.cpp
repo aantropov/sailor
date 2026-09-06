@@ -160,8 +160,8 @@ void DebugContext::DrawFrustum(const Math::Frustum& frustum, const glm::vec4 col
 
 void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float duration)
 {
-	const float shadowFarPlane = (std::min)(zFar, LightingECS::ShadowMaxDistance);
 	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
+	const float shadowFarPlane = (std::min)(zFar, graphicsProfile.m_shadowDistance);
 	const uint32_t activeCascadeCount = (std::clamp)(
 		graphicsProfile.m_shadowCascadeCount,
 		1u,

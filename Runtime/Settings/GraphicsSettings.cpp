@@ -439,6 +439,25 @@ namespace
 			return false;
 		}
 
+		if (!ReadConvertedScalar(
+				profile,
+				"shadowDistance",
+				source,
+				profilePath + ".shadowDistance",
+				"a finite number",
+				outProfile.m_shadowDistance,
+				outDiagnostic) ||
+			!std::isfinite(outProfile.m_shadowDistance) ||
+			outProfile.m_shadowDistance < 1.0f || outProfile.m_shadowDistance > 10000.0f)
+		{
+			if (outDiagnostic.empty())
+			{
+				outDiagnostic = InvalidField(source, profilePath + ".shadowDistance",
+					"must be a finite number in the range [1, 10000]");
+			}
+			return false;
+		}
+
 		if (!ReadUint32(
 				profile,
 				"shadowCascadeCount",

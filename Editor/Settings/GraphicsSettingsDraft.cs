@@ -36,6 +36,7 @@ public sealed record GraphicsQualityPresetDraft(
     int MsaaSamples,
     GraphicsShadowQuality ShadowQuality,
     string ShadowBias,
+    string ShadowDistance,
     int ShadowCascadeCount,
     string ShadowCascadeResolutions,
     bool SupportSoftShadows,
@@ -56,6 +57,7 @@ public sealed record GraphicsQualityPresetDraft(
             settings.MsaaSamples,
             settings.ShadowQuality,
             FormatDouble(settings.ShadowBias),
+            FormatDouble(settings.ShadowDistance),
             settings.ShadowCascadeCount,
             string.Join(", ", settings.ShadowCascadeResolutions),
             settings.SupportSoftShadows,
@@ -105,6 +107,12 @@ public sealed record GraphicsQualityPresetDraft(
             "Clouds resolution multiplier",
             issues,
             out var cloudsResolutionMultiplier);
+        valid &= TryParseDouble(
+            ShadowDistance,
+            $"{path}.shadowDistance",
+            "Shadow distance",
+            issues,
+            out var shadowDistance);
         valid &= TryParseInt(
             SkyResolution,
             $"{path}.skyResolution",
@@ -148,6 +156,7 @@ public sealed record GraphicsQualityPresetDraft(
             MsaaSamples = MsaaSamples,
             ShadowQuality = ShadowQuality,
             ShadowBias = shadowBias,
+            ShadowDistance = shadowDistance,
             ShadowCascadeCount = ShadowCascadeCount,
             ShadowCascadeResolutions = cascadeResolutions,
             SupportSoftShadows = SupportSoftShadows,

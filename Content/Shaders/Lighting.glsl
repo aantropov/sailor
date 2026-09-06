@@ -31,6 +31,7 @@ struct LightData
   uint activeCascadeCount;
   float shadowBias;
   vec3 worldPosition;
+  float shadowDistance;
   vec3 direction;
   vec3 intensity;
   vec2 cutOff;
@@ -663,11 +664,12 @@ int SelectCascade(
   mat4 view,
   vec3 worldPosition,
   vec2 cameraZNearZFar,
-  uint activeCascadeCount)
+  uint activeCascadeCount,
+  float shadowDistance)
 {
   vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0);
   float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
-  float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
+  float shadowFarPlane = min(cameraZNearZFar.y, shadowDistance);
   const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
   
   int layer = int(safeCascadeCount);
@@ -689,7 +691,8 @@ float CalculateCascadeBlend(
   vec3 worldPosition,
   vec2 cameraZNearZFar,
   int cascadeLayer,
-  uint activeCascadeCount)
+  uint activeCascadeCount,
+  float shadowDistance)
 {
   const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
   if(cascadeLayer < 0 || cascadeLayer >= int(safeCascadeCount) - 1)
@@ -699,7 +702,7 @@ float CalculateCascadeBlend(
 
   vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0f);
   float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
-  float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
+  float shadowFarPlane = min(cameraZNearZFar.y, shadowDistance);
   float cascadeNear = cascadeLayer == 0 ?
     cameraZNearZFar.x :
     shadowFarPlane * GetActiveShadowCascadeLevel(
@@ -716,7 +719,8 @@ float CalculateShadowDistanceFade(
   vec3 worldPosition,
   vec2 cameraZNearZFar,
   int cascadeLayer,
-  uint activeCascadeCount)
+  uint activeCascadeCount,
+  float shadowDistance)
 {
   const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
   if(cascadeLayer != int(safeCascadeCount) - 1)
@@ -726,7 +730,7 @@ float CalculateShadowDistanceFade(
 
   const vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0f);
   const float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
-  const float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
+  const float shadowFarPlane = min(cameraZNearZFar.y, shadowDistance);
   const float cascadeNear = safeCascadeCount > 1u ?
     shadowFarPlane * GetActiveShadowCascadeLevel(
       int(safeCascadeCount) - 2, safeCascadeCount) :

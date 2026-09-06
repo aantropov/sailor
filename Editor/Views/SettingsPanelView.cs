@@ -914,6 +914,7 @@ public sealed class SettingsPanelView : ContentView
         readonly Picker _msaaSamples;
         readonly Picker _shadowQuality;
         readonly Entry _shadowBias;
+        readonly Entry _shadowDistance;
         readonly Picker _shadowCascadeCount;
         readonly Entry _shadowCascadeResolutions;
         readonly Switch _supportSoftShadows;
@@ -952,6 +953,7 @@ public sealed class SettingsPanelView : ContentView
                 ShadowQualityOptions.Cast<object>().ToArray(),
                 ShadowQualityOptions.Single(x => x.Value == draft.ShadowQuality));
             _shadowBias = CreateEntry(draft.ShadowBias);
+            _shadowDistance = CreateEntry(draft.ShadowDistance);
             _shadowCascadeCount = CreatePicker(
                 new object[] { 1, 2, 3, 4 },
                 draft.ShadowCascadeCount);
@@ -1030,6 +1032,7 @@ public sealed class SettingsPanelView : ContentView
                     ? shadow.Value
                     : (GraphicsShadowQuality)(-1),
                 _shadowBias.Text ?? string.Empty,
+                _shadowDistance.Text ?? string.Empty,
                 _shadowCascadeCount.SelectedItem is int count ? count : 0,
                 _shadowCascadeResolutions.Text ?? string.Empty,
                 _supportSoftShadows.IsToggled,
@@ -1065,6 +1068,7 @@ public sealed class SettingsPanelView : ContentView
                     CreatePresetField("MSAA", "Supported sample count", _msaaSamples),
                     CreatePresetField("Shadow Quality Cap", "Global cap over authored light quality", _shadowQuality),
                     CreatePresetField("PCF Shadow Bias", "PCF caster and receiver bias, -16–16", _shadowBias),
+                    CreatePresetField("Shadow Distance", "Directional shadow range in meters, 1–10000", _shadowDistance),
                     CreatePresetField("Shadow Cascade Count", "Active directional cascades, 1–4", _shadowCascadeCount),
                     CreatePresetField("Cascade Resolutions", "Comma-separated powers of two, one per active cascade", _shadowCascadeResolutions),
                     CreatePresetField("Soft Shadows", "Enable soft shadow filtering", _supportSoftShadows),
@@ -1179,6 +1183,12 @@ public sealed class SettingsPanelView : ContentView
                 "Shadow bias",
                 issues,
                 out var shadowBias);
+            valid &= TryParseDouble(
+                _shadowDistance.Text,
+                $"{path}.shadowDistance",
+                "Shadow distance",
+                issues,
+                out var shadowDistance);
             valid &= TryParseCascadeResolutions(
                 _shadowCascadeResolutions.Text,
                 $"{path}.shadowCascadeResolutions",
@@ -1244,6 +1254,7 @@ public sealed class SettingsPanelView : ContentView
                 MsaaSamples = msaaSamples,
                 ShadowQuality = shadowQuality,
                 ShadowBias = shadowBias,
+                ShadowDistance = shadowDistance,
                 ShadowCascadeCount = cascadeCount,
                 ShadowCascadeResolutions = cascadeResolutions,
                 SupportSoftShadows = _supportSoftShadows.IsToggled,

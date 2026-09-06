@@ -24,6 +24,5 @@
 #define MAX_SHADOW_MAP_SAMPLERS 128
 #define MAX_TEXTURES_IN_SCENE 8192
 #define NUM_CSM_CASCADES 4
-const float ShadowMaxDistance = 200;
 const float ShadowCascadeBlendFraction = 0.1;
 const float ShadowCascadeLevels[4] = { 0.025,0.075,0.2,1};
