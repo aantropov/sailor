@@ -178,7 +178,6 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 	}
 
 	const uint32_t instanceBudget = (std::min)(App::GetActiveGraphicsSettings().m_vegetationInstanceBudget, 1048576u);
-	const size_t numCandidates = m_grassCandidatesScratch.Num();
 	SelectLandscapeGrassResidency(m_grassCandidatesScratch, instanceBudget, m_grassSelectionsScratch);
 	for (auto& selection : m_grassSelectionsScratch)
 	{
@@ -323,7 +322,6 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 	}
 
 	bool bChanged = false;
-	uint32_t activeInstances = 0u;
 	const uint64_t frame = GetWorld()->GetCurrentFrame();
 	auto findBuildRequest =
 		[this](size_t componentIndex, size_t chunkIndex, size_t profileIndex) -> GrassTransformBuildRequest*
@@ -491,7 +489,6 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 			}
 		}
 		component.m_activeGrassInstances = componentActiveInstances;
-		activeInstances += componentActiveInstances;
 	}
 	for (auto& buildRequest : m_grassBuildRequestsScratch)
 	{
@@ -500,11 +497,6 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 	if (bChanged)
 	{
 		++m_shadowCastersRevision;
-		SAILOR_LOG("LandscapeECS: grass residency changed to %u of %u graphics-quality instances across %zu visible "
-				   "candidates.",
-			activeInstances,
-			instanceBudget,
-			numCandidates);
 	}
 	return bChanged;
 }

@@ -5,6 +5,30 @@ namespace SailorEditor.Tests;
 public sealed class WorkspaceBuildPlanTests
 {
     [Fact]
+    public void CreateConfigure_OnlyCreatesCMakeProjectInvocation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "Sailor Workspace");
+        var session = new WorkspaceSession(
+            root,
+            Path.Combine(root, "workspace.sailor"),
+            WorkspaceManifest.CreateDefault("Game", root),
+            Path.Combine(root, "Content"),
+            Path.Combine(root, "Source"),
+            Path.Combine(root, "Generated"),
+            Path.Combine(root, "Cache"))
+        {
+            BuildDirectory = Path.Combine(root, "Cache", "Build"),
+            LogicOutputDirectory = Path.Combine(root, "Binaries"),
+        };
+
+        var plan = WorkspaceBuildPlan.CreateConfigure(session, "Release");
+
+        Assert.Single(plan.Invocations);
+        Assert.Equal("-S", plan.Invocations[0].Arguments[0]);
+        Assert.DoesNotContain("--build", plan.Invocations[0].Arguments);
+    }
+
+    [Fact]
     public void Create_BuildsConfigureAndTargetInvocationsWithoutShellQuoting()
     {
         var root = Path.Combine(Path.GetTempPath(), "Sailor Workspace");

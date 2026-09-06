@@ -5,6 +5,9 @@ namespace SailorEditor.Protocol;
 internal static class EngineProtocolNative
 {
 #if MACCATALYST
+    // Keep one engine handle for the editor process, including runtime restarts.
+    static readonly Lazy<nint> bundledEngine = new(LoadBundledEngine);
+
     static EngineProtocolNative()
     {
         NativeLibrary.SetDllImportResolver(
@@ -16,17 +19,15 @@ internal static class EngineProtocolNative
                     return nint.Zero;
                 }
 
-                var bundledPath = Path.Combine(
-                    AppContext.BaseDirectory,
-                    "..",
-                    "Resources",
-                    $"{EngineLibrary}.dylib");
-                bundledPath = Path.GetFullPath(bundledPath);
-
-                return File.Exists(bundledPath)
-                    ? NativeLibrary.Load(bundledPath)
-                    : nint.Zero;
+                return bundledEngine.Value;
             });
+    }
+
+    static nint LoadBundledEngine()
+    {
+        var bundledPath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "Resources", $"{EngineLibrary}.dylib"));
+        return MacEngineLibraryLoader.Load(bundledPath);
     }
 #endif
 
