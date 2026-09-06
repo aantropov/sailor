@@ -15,6 +15,10 @@ public class AppDelegate : MauiUIApplicationDelegate
     static readonly Selector OpenRecentWorkspaceSelector = new("openRecentWorkspace:");
     static readonly Selector NewSceneSelector = new("newScene:");
     static readonly Selector ReloadAssetsSelector = new("reloadAssets:");
+    static readonly Selector CompileWorkspaceSelector = new("compileWorkspace:");
+    static readonly Selector ReconfigureWorkspaceSelector = new("reconfigureWorkspace:");
+    static readonly Selector ClearWorkspaceCacheSelector = new("clearWorkspaceCache:");
+    static readonly Selector RerunEngineSelector = new("rerunEngine:");
     static IReadOnlyList<WorkspaceRecentItem> recentWorkspaces = [];
 
     protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
@@ -73,6 +77,30 @@ public class AppDelegate : MauiUIApplicationDelegate
             });
 
         builder.InsertChildMenuAtStart(workspaceMenu, UIMenuIdentifier.File.GetConstant().ToString());
+
+        var buildMenu = UIMenu.Create(
+            "Build",
+            null,
+            new NSString("com.sailor.build"),
+            0,
+            new UIMenuElement[]
+            {
+                UICommand.Create("Compile", null, CompileWorkspaceSelector, null),
+                UICommand.Create("Reconfigure", null, ReconfigureWorkspaceSelector, null),
+                UIMenu.Create(
+                    string.Empty,
+                    null,
+                    new NSString("com.sailor.build.maintenance"),
+                    UIMenuOptions.DisplayInline,
+                    new UIMenuElement[]
+                    {
+                        UICommand.Create("Clear Cache", null, ClearWorkspaceCacheSelector, null),
+                        UICommand.Create("Rerun Engine", null, RerunEngineSelector, null)
+                    })
+            });
+        builder.InsertSiblingMenuAfter(
+            buildMenu,
+            UIMenuIdentifier.File.GetConstant().ToString());
     }
 
     public static void RequestMenuRebuild()
@@ -129,6 +157,25 @@ public class AppDelegate : MauiUIApplicationDelegate
     public void ReloadAssets(NSObject sender)
         => _ = MauiProgram.GetService<EngineService>().RequestAssetReloadAsync();
 
+    [Export("compileWorkspace:")]
+    public void CompileWorkspace(NSObject sender)
+        => RunWorkspaceAction(workspace => workspace.CompileWorkspaceAsync());
+
+    [Export("reconfigureWorkspace:")]
+    public void ReconfigureWorkspace(NSObject sender)
+        => RunWorkspaceAction(workspace => workspace.ReconfigureWorkspaceAsync());
+
+    [Export("clearWorkspaceCache:")]
+    public void ClearWorkspaceCache(NSObject sender)
+        => RunWorkspaceAction(workspace => workspace.ClearWorkspaceCacheAsync());
+
+    [Export("rerunEngine:")]
+    public void RerunEngine(NSObject sender)
+        => RunWorkspaceAction(async workspace =>
+        {
+            await workspace.RestartEngineAsync();
+        });
+
     static UIMenu BuildRecentWorkspacesMenu()
     {
         var recent = recentWorkspaces;
@@ -166,7 +213,15 @@ public class AppDelegate : MauiUIApplicationDelegate
     {
         _ = MainThread.InvokeOnMainThreadAsync(async () =>
         {
-            await action(MauiProgram.GetService<WorkspaceUiService>());
+            try
+            {
+                await action(MauiProgram.GetService<WorkspaceUiService>());
+            }
+            catch (Exception exception)
+            {
+                if (Microsoft.Maui.Controls.Shell.Current?.CurrentPage is { } page)
+                    await page.DisplayAlert("Workspace", exception.Message, "OK");
+            }
         });
     }
 }

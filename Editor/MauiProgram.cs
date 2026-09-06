@@ -136,6 +136,7 @@ namespace SailorEditor
             builder.Services.AddSingleton<McpCSharpEvaluator>();
             builder.Services.AddSingleton<IWorkspaceProcessRunner, WorkspaceProcessRunner>();
             builder.Services.AddSingleton<WorkspaceBuildService>();
+            builder.Services.AddSingleton<WorkspaceCacheService>();
             builder.Services.AddSingleton<McpEditorHostService>();
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<ContentFolderView>();

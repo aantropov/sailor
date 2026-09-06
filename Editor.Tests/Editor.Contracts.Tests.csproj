@@ -59,6 +59,8 @@
     <Compile Include="McpBridgeOptionsTests.cs" />
     <Compile Include="McpBridgeIntegrationTests.cs" />
     <Compile Include="WorkspaceBuildPlanTests.cs" />
+    <Compile Include="WorkspaceBuildServiceTests.cs" />
+    <Compile Include="WorkspaceCacheServiceTests.cs" />
     <Compile Include="McpYamlUtilitiesTests.cs" />
     <Compile Include="YamlHelperTests.cs" />
     <Compile Include="LandscapeVegetationBinaryTests.cs" />
@@ -99,6 +101,8 @@
     <Compile Include="EditorEngineProtocolTests.cs" />
     <Compile Include="EngineProtocolClientTests.cs" />
     <Compile Include="LocalEngineProtocolTransportTests.cs" />
+    <Compile Include="MacEngineLibraryLoaderTests.cs" />
+    <Compile Include="..\Editor\Protocol\MacEngineLibraryLoader.cs" Link="Protocol\MacEngineLibraryLoader.cs" />
     <Compile Include="..\Editor\Protocol\ClientWebSocketEngineProtocolTransport.cs" Link="Protocol\ClientWebSocketEngineProtocolTransport.cs" />
     <Compile Include="..\Editor\Protocol\EngineProtocolClient.cs" Link="Protocol\EngineProtocolClient.cs" />
     <Compile Include="..\Editor\Protocol\EngineProtocolNative.cs" Link="Protocol\EngineProtocolNative.cs" />
@@ -133,6 +137,7 @@
     <Compile Include="..\Editor\Workspace\WorkspaceYamlVersionProbe.cs" Link="Workspace\WorkspaceYamlVersionProbe.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceGeneratedProjectState.cs" Link="Workspace\WorkspaceGeneratedProjectState.cs" />
     <Compile Include="..\Editor\Workspace\WorkspacePathPolicy.cs" Link="Workspace\WorkspacePathPolicy.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspaceCacheService.cs" Link="Workspace\WorkspaceCacheService.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceLifecycle.cs" Link="Workspace\WorkspaceLifecycle.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceActivationContracts.cs" Link="Workspace\WorkspaceActivationContracts.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceActivationCoordinator.cs" Link="Workspace\WorkspaceActivationCoordinator.cs" />

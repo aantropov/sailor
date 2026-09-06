@@ -22,6 +22,18 @@ public sealed record WorkspaceBuildPlan(
     string Configuration,
     IReadOnlyList<WorkspaceProcessInvocation> Invocations)
 {
+    public static WorkspaceBuildPlan CreateConfigure(
+        WorkspaceSession session,
+        string configuration,
+        string cmakeExecutable = "cmake")
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        var normalizedConfiguration = NormalizeConfiguration(configuration);
+        return new WorkspaceBuildPlan(
+            normalizedConfiguration,
+            [CreateConfigureInvocation(session, normalizedConfiguration, cmakeExecutable)]);
+    }
+
     public static WorkspaceBuildPlan Create(
         WorkspaceSession session,
         string configuration,
@@ -32,21 +44,7 @@ public sealed record WorkspaceBuildPlan(
         var normalizedConfiguration = NormalizeConfiguration(configuration);
         var invocations = new List<WorkspaceProcessInvocation>(configure ? 2 : 1);
         if (configure)
-        {
-            var configureArguments = new List<string>
-            {
-                "-S",
-                session.GeneratedProjectDirectory,
-                "-B",
-                session.BuildDirectory,
-                "-DCMAKE_BUILD_TYPE=" + normalizedConfiguration,
-            };
-            AddVcpkgArguments(session, configureArguments);
-            invocations.Add(new WorkspaceProcessInvocation(
-                cmakeExecutable,
-                configureArguments,
-                session.WorkspaceRoot));
-        }
+            invocations.Add(CreateConfigureInvocation(session, normalizedConfiguration, cmakeExecutable));
 
         invocations.Add(new WorkspaceProcessInvocation(
             cmakeExecutable,
@@ -62,6 +60,26 @@ public sealed record WorkspaceBuildPlan(
             ],
             session.WorkspaceRoot));
         return new WorkspaceBuildPlan(normalizedConfiguration, invocations);
+    }
+
+    static WorkspaceProcessInvocation CreateConfigureInvocation(
+        WorkspaceSession session,
+        string configuration,
+        string cmakeExecutable)
+    {
+        var arguments = new List<string>
+        {
+            "-S",
+            session.GeneratedProjectDirectory,
+            "-B",
+            session.BuildDirectory,
+            "-DCMAKE_BUILD_TYPE=" + configuration,
+        };
+        AddVcpkgArguments(session, arguments);
+        return new WorkspaceProcessInvocation(
+            cmakeExecutable,
+            arguments,
+            session.WorkspaceRoot);
     }
 
     static void AddVcpkgArguments(
@@ -253,6 +271,17 @@ internal sealed class WorkspaceBuildService
                 string.Empty,
                 "An active workspace is required for a workspace build.");
         }
+
+        return await BuildAsync(session, configuration, configure, cancellationToken);
+    }
+
+    public async Task<WorkspaceBuildResult> BuildAsync(
+        WorkspaceSession session,
+        string configuration,
+        bool configure,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
         if (session.GeneratedProjectState.RequiresAttention)
         {
             return new WorkspaceBuildResult(
@@ -282,6 +311,52 @@ internal sealed class WorkspaceBuildService
                 exception.Message);
         }
 
+        return await RunAsync(session, plan, cancellationToken);
+    }
+
+    public Task<WorkspaceBuildResult> ConfigureAsync(
+        WorkspaceSession session,
+        string configuration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (session.GeneratedProjectState.RequiresAttention)
+        {
+            return Task.FromResult(new WorkspaceBuildResult(
+                false,
+                configuration,
+                null,
+                TimeSpan.Zero,
+                Array.Empty<string>(),
+                string.Empty,
+                session.GeneratedProjectState.Guidance));
+        }
+
+        WorkspaceBuildPlan plan;
+        try
+        {
+            plan = WorkspaceBuildPlan.CreateConfigure(session, configuration);
+        }
+        catch (ArgumentException exception)
+        {
+            return Task.FromResult(new WorkspaceBuildResult(
+                false,
+                configuration,
+                null,
+                TimeSpan.Zero,
+                Array.Empty<string>(),
+                string.Empty,
+                exception.Message));
+        }
+
+        return RunAsync(session, plan, cancellationToken);
+    }
+
+    async Task<WorkspaceBuildResult> RunAsync(
+        WorkspaceSession session,
+        WorkspaceBuildPlan plan,
+        CancellationToken cancellationToken)
+    {
         await _buildGate.WaitAsync(cancellationToken);
         try
         {
