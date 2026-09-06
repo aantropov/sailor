@@ -81,6 +81,7 @@ public sealed record GraphicsQualityPresetSettings
     public int MsaaSamples { get; init; }
     public GraphicsShadowQuality ShadowQuality { get; init; }
     public double ShadowBias { get; init; }
+    public double ShadowDistance { get; init; } = 200.0;
     public int ShadowCascadeCount { get; init; }
     public IReadOnlyList<int> ShadowCascadeResolutions { get; init; } = [];
     public bool SupportSoftShadows { get; init; }
@@ -454,6 +455,12 @@ public static class GraphicsSettingsValidator
         if (preset.ShadowCascadeCount is < 1 or > 4)
         {
             AddRangeIssue(issues, $"{path}.shadowCascadeCount", "Shadow cascade count", "1 and 4");
+        }
+
+        if (!double.IsFinite(preset.ShadowDistance) ||
+            preset.ShadowDistance is < 1.0 or > 10000.0)
+        {
+            AddRangeIssue(issues, $"{path}.shadowDistance", "Shadow distance", "1 and 10000 meters");
         }
 
         if (preset.ShadowCascadeResolutions is null ||
@@ -894,6 +901,7 @@ public static class GraphicsSettingsYamlCodec
             MsaaSamples = ReadInt(preset, "msaaSamples", $"{path}.msaaSamples", issues),
             ShadowQuality = ReadEnum<GraphicsShadowQuality>(preset, "shadowQuality", $"{path}.shadowQuality", issues),
             ShadowBias = ReadDouble(preset, "shadowBias", $"{path}.shadowBias", issues),
+            ShadowDistance = ReadDouble(preset, "shadowDistance", $"{path}.shadowDistance", issues),
             ShadowCascadeCount = ReadInt(preset, "shadowCascadeCount", $"{path}.shadowCascadeCount", issues),
             ShadowCascadeResolutions = ReadIntSequence(preset, "shadowCascadeResolutions", $"{path}.shadowCascadeResolutions", issues),
             SupportSoftShadows = ReadBool(preset, "supportSoftShadows", $"{path}.supportSoftShadows", issues),
@@ -956,6 +964,7 @@ public static class GraphicsSettingsYamlCodec
         SetScalar(preset, "msaaSamples", settings.MsaaSamples);
         SetScalar(preset, "shadowQuality", settings.ShadowQuality);
         SetScalar(preset, "shadowBias", settings.ShadowBias);
+        SetScalar(preset, "shadowDistance", settings.ShadowDistance);
         SetScalar(preset, "shadowCascadeCount", settings.ShadowCascadeCount);
         SetNode(
             preset,

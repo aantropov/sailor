@@ -412,7 +412,8 @@ namespace Sailor::RHI
 		None = 0,
 		Additive = 0x00000001,
 		AlphaBlending = 0x00000002,
-		Multiply = 0x00000003
+		Multiply = 0x00000003,
+		AlphaBlendingPreserveAlpha = 0x00000004
 	};
 
 	enum class EDepthCompare : uint8_t

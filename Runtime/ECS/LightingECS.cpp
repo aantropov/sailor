@@ -175,6 +175,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 				shaderData.m_shadowType = (uint32_t)effectiveShadowType;
 				shaderData.m_activeCascadeCount = (std::clamp)(graphicsProfile.m_shadowCascadeCount, 1u, NumCascades);
 				shaderData.m_shadowBias = graphicsProfile.m_shadowBias;
+				shaderData.m_shadowDistance = graphicsProfile.m_shadowDistance;
 				shaderData.m_bounds = glm::vec3(data.m_radius);
 				shaderData.m_intensity = data.m_intensity;
 				shaderData.m_direction = glm::normalize(ownerTransform.GetForwardVector());

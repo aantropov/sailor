@@ -28,6 +28,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/Material.h"
 #include "RHI/VertexDescription.h"
+#include "Settings/GraphicsSettings.h"
 #include "Submodules/Editor.h"
 
 using namespace Sailor;
@@ -985,8 +986,8 @@ namespace
 	{
 		Require(std::abs(LightingECS::ShadowCascadeLevels[LightingECS::NumCascades - 1] - 1.0f) <= 0.0001f,
 			"the last shadow cascade must reach the configured shadow distance");
-		Require(LightingECS::ShadowMaxDistance == 200.0f,
-			"the meter-based editor scene should keep CSM coverage bounded to 200 meters");
+		Require(Settings::GraphicsQualityProfile{}.m_shadowDistance == 200.0f,
+			"the default profile should preserve 200 meter CSM coverage");
 		Require(LightingECS::ShadowCascadeBlendFraction > 0.0f,
 			"adjacent CSM projections must overlap for seam-free transitions");
 
@@ -1251,6 +1252,8 @@ namespace
 			"released GPU light payload should use an explicit invalid marker");
 		Require(offsetof(LightingECS::LightShaderData, m_shadowBias) == 12u,
 			"the profile shadow bias must occupy the existing std430 light padding");
+		Require(offsetof(LightingECS::LightShaderData, m_shadowDistance) == 28u,
+			"shadow distance must occupy the world-position padding without shifting GPU light fields");
 		Require(
 			offsetof(LightingECS::LightShaderData, m_cutOff) == 64u &&
 			offsetof(LightingECS::LightShaderData, m_bounds) == 80u &&

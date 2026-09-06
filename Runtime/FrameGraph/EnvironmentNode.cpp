@@ -162,13 +162,16 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 
 		SkyEnvironmentKey skyHash{};
+		m_environmentUsesSky = false;
 		TRefPtr<SkyNode> pSkyNode{};
 		if (auto node = frameGraph->GetGraphNode("Sky"))
 		{
 			pSkyNode = node.DynamicCast<SkyNode>();
-			if (!bLoadedEnvironmentMap)
+			if (!bLoadedEnvironmentMap && pSkyNode)
 			{
-				skyHash = pSkyNode->GetSkyParams().GetEnvironmentKey();
+				m_environmentSkyParams = pSkyNode->GetSkyParams();
+				m_environmentUsesSky = true;
+				skyHash = m_environmentSkyParams.GetEnvironmentKey();
 			}
 		}
 

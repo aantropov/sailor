@@ -31,6 +31,14 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Clear() override;
 
 		SAILOR_API void MarkDirty() { m_bIsDirty = true; };
+		// Render-thread lighting source paired with the prepared diffuse fallback. Authored HDR
+		// maps may already contain a sun, so they do not add the analytic Sky sun.
+		SAILOR_API bool GetEnvironmentSkyParams(SkyParameters& parameters) const
+		{
+			if (!m_environmentUsesSky) return false;
+			parameters = m_environmentSkyParams;
+			return true;
+		}
 
 		// CPU producers hand off owned pixels. Only Process touches GPU resources.
 		SAILOR_SHARED_API bool SetLocalReflection(LocalReflectionImage image);
@@ -67,6 +75,8 @@ namespace Sailor::Framegraph
 		RHI::RHITexturePtr m_brdfSampler{};
 
 		TexturePtr m_envMapTexture;
+		SkyParameters m_environmentSkyParams{};
+		bool m_environmentUsesSky = false;
 
 		bool m_bIsDirty = false;
 		static const char* m_name;

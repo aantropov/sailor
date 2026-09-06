@@ -4,6 +4,7 @@
 #include "AssetRegistry/Shader/ShaderYamlIncludeResolver.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/SkyParameters.h"
+#include "FrameGraph/AtmosphericFogNode.h"
 #include "FrameGraph/LocalReflection.h"
 #include "RHI/GlobalIllumination.h"
 #include "RHI/Lighting.h"
@@ -1323,6 +1324,29 @@ namespace
 				permutationDefines,
 				RHI::EShaderStage::Vertex);
 		};
+
+		const auto fogByteCode = compileRuntimeFragment("Shaders/AtmosphericFog.shader", {});
+		compileRuntimeVertex("Shaders/AtmosphericFog.shader", {});
+		RequireSpirvCombinedImageSamplerBinding(fogByteCode, 1u, 1u);
+		RequireSpirvCombinedImageSamplerBinding(fogByteCode, 1u, 2u);
+		RequireSpirvCombinedImageSamplerBinding(fogByteCode, 1u, 3u);
+		RequireSpirvDescriptorBindingAbsent(fogByteCode, 1u, 4u);
+		SpvReflectShaderModule fogModule{};
+		Require(spvReflectCreateShaderModule(fogByteCode.Num() * sizeof(uint32_t), fogByteCode.GetData(),
+			&fogModule) == SPV_REFLECT_RESULT_SUCCESS, "Fog shader must support reflection");
+		SpvReflectResult fogStatus;
+		const auto* fogBinding = spvReflectGetDescriptorBinding(&fogModule, 0u, 1u, &fogStatus);
+		const bool fogLayoutValid = fogStatus == SPV_REFLECT_RESULT_SUCCESS && fogBinding &&
+			fogBinding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER &&
+			fogBinding->block.size == sizeof(Framegraph::AtmosphericFogNode::ShaderParameters) && fogBinding->block.member_count == 6 &&
+			fogBinding->block.members[0].offset == 0 && fogBinding->block.members[1].offset == 16 &&
+			fogBinding->block.members[2].offset == offsetof(Framegraph::AtmosphericFogNode::ShaderParameters, m_directionToSun) &&
+			fogBinding->block.members[3].offset == offsetof(Framegraph::AtmosphericFogNode::ShaderParameters, m_sunIlluminance) &&
+			fogBinding->block.members[4].offset == offsetof(Framegraph::AtmosphericFogNode::ShaderParameters, m_previousDirectionToSun) &&
+			fogBinding->block.members[5].offset == offsetof(Framegraph::AtmosphericFogNode::ShaderParameters, m_previousSunIlluminance) &&
+			fogModule.push_constant_block_count == 0 && fogModule.output_variable_count == 1;
+		spvReflectDestroyShaderModule(&fogModule);
+		Require(fogLayoutValid, "Fog shader must match the CPU medium/lighting snapshots and one colour output");
 
 		for (size_t shaderIndex = 0u;
 			shaderIndex < shaderPaths.size();

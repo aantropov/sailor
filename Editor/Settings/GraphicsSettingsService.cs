@@ -934,6 +934,7 @@ static class GraphicsSettingsEquality
             left.MsaaSamples == right.MsaaSamples &&
             left.ShadowQuality == right.ShadowQuality &&
             left.ShadowBias.Equals(right.ShadowBias) &&
+            left.ShadowDistance.Equals(right.ShadowDistance) &&
             left.ShadowCascadeCount == right.ShadowCascadeCount &&
             left.ShadowCascadeResolutions.SequenceEqual(
                 right.ShadowCascadeResolutions) &&

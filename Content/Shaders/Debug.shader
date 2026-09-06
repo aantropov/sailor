@@ -142,11 +142,10 @@ glslFragment: |
         outColor.xyz += vec3(0.05,0.05,0.05);
     }
   #elif defined(CASCADES)
+    if(light.instance.length() == 0 || light.instance[0].activeCascadeCount == 0u) return;
     float linearDepth = texture(linearDepthSampler, fragTexcoord).r;
-    float shadowFarPlane = min(frame.cameraZNearZFar.y, ShadowMaxDistance);
-    const uint activeCascadeCount = light.instance.length() > 0 ?
-      clamp(light.instance[0].activeCascadeCount, 1u, uint(NUM_CSM_CASCADES)) :
-      uint(NUM_CSM_CASCADES);
+    float shadowFarPlane = min(frame.cameraZNearZFar.y, light.instance[0].shadowDistance);
+    const uint activeCascadeCount = clamp(light.instance[0].activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
     int layer = int(activeCascadeCount);
     for (int i = 0; i < int(activeCascadeCount); ++i)
     {

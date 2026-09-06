@@ -99,6 +99,7 @@ namespace Sailor::Settings
 		uint32_t m_msaaSamples = 1u;
 		ELightShadowQuality m_shadowQuality = ELightShadowQuality::Medium;
 		float m_shadowBias = 1.25f;
+		float m_shadowDistance = 200.0f;
 		uint32_t m_shadowCascadeCount = 1u;
 		std::array<uint32_t, MaxShadowCascades> m_shadowCascadeResolutions
 		{

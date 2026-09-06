@@ -5,6 +5,57 @@ namespace SailorEditor.Editor.Tests;
 public class SettingsContractsTests
 {
     [Fact]
+    public void ShadowDistance_RoundTripsThroughYamlAndEditorDraft()
+    {
+        var preset = GraphicsSettingsDefaults.Project.Graphics.Presets.Ultra with
+        {
+            ShadowDistance = 600
+        };
+        var source = GraphicsSettingsDefaults.Project with
+        {
+            Graphics = GraphicsSettingsDefaults.Project.Graphics with
+            {
+                Presets = GraphicsSettingsDefaults.Project.Graphics.Presets.With(
+                    GraphicsQualityLevel.Ultra, preset)
+            }
+        };
+        var diagnostics = new List<string>();
+        var parsed = GraphicsSettingsYamlCodec.ParseProject(
+            GraphicsSettingsYamlCodec.SerializeProject(source), diagnostics, "shadow-distance");
+        Assert.Empty(diagnostics);
+        Assert.Equal(1, parsed.SettingsVersion);
+        Assert.Equal(600, parsed.Graphics.Presets.Ultra.ShadowDistance);
+        Assert.Equal(200, parsed.Graphics.Presets.High.ShadowDistance);
+
+        var draft = GraphicsQualityPresetDraft.FromSettings(parsed.Graphics.Presets.Ultra);
+        var issues = new List<GraphicsSettingsValidationIssue>();
+        Assert.True(draft.TryBuild(GraphicsQualityLevel.Ultra, out var built, issues));
+        Assert.Empty(issues);
+        Assert.Equal(preset.ShadowDistance, built.ShadowDistance);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(10001)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void ShadowDistance_RejectsNonFiniteOrOutOfRangeValues(double distance)
+    {
+        var source = GraphicsSettingsDefaults.Project with
+        {
+            Graphics = GraphicsSettingsDefaults.Project.Graphics with
+            {
+                Presets = GraphicsSettingsDefaults.Project.Graphics.Presets.With(
+                    GraphicsQualityLevel.Ultra,
+                    GraphicsSettingsDefaults.Project.Graphics.Presets.Ultra with { ShadowDistance = distance })
+            }
+        };
+        var result = GraphicsSettingsValidator.Validate(source);
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, issue => issue.Path == "graphics.presets.Ultra.shadowDistance");
+    }
+
+    [Fact]
     public void SettingsCategory_ExposesHierarchyAndEntries()
     {
         var entry = new SettingsEntry("engine.vsync", "VSync", SettingsValueKind.Boolean, SettingsScope.Engine);
