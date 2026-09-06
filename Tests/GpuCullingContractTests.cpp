@@ -17,6 +17,7 @@
 #include "RHI/Material.h"
 #include "RHI/Mesh.h"
 #include "RHI/Texture.h"
+#include "RHI/VertexDescription.h"
 
 #include <algorithm>
 #include <cmath>
@@ -36,13 +37,6 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 namespace
 {
-	class BlendStateProbe : public VulkanPipelineStateBuilder
-	{
-	public:
-		BlendStateProbe() : VulkanPipelineStateBuilder(nullptr) {}
-		using VulkanPipelineStateBuilder::GetBlendState;
-	};
-
 	class RenderSceneNodeProbe : public Framegraph::RenderSceneNode
 	{
 	public:
@@ -1114,9 +1108,19 @@ namespace
 {
 	void TestAtmosphericFogBlendAndDisabledPass()
 	{
-		BlendStateProbe builder;
+		VulkanPipelineStateBuilder builder(nullptr);
+		auto vertices = RHI::RHIVertexDescriptionPtr::Make();
+		vertices->SetVertexStride(sizeof(glm::vec3));
+		vertices->AddAttribute(0, 0, RHI::EFormat::R32G32B32_SFLOAT, 0);
+		const RHI::RenderState renderState(false, false, 0, false, RHI::ECullMode::None,
+			RHI::EBlendMode::AlphaBlendingPreserveAlpha, RHI::EFillMode::Fill, 0, false);
+		const auto& states = builder.BuildPipeline(vertices, { 0u }, RHI::EPrimitiveTopology::TriangleList,
+			renderState, { VK_FORMAT_R16G16B16A16_SFLOAT }, VK_FORMAT_UNDEFINED);
 		VkGraphicsPipelineCreateInfo pipeline{};
-		builder.GetBlendState(RHI::EBlendMode::AlphaBlendingPreserveAlpha)->Apply(pipeline);
+		for (const auto& state : states)
+		{
+			state->Apply(pipeline);
+		}
 		Require(pipeline.pColorBlendState && pipeline.pColorBlendState->attachmentCount == 1,
 			"Fog compositing must affect a single colour attachment");
 		const auto& blend = pipeline.pColorBlendState->pAttachments[0];
@@ -1126,6 +1130,8 @@ namespace
 			blend.alphaBlendOp == VK_BLEND_OP_ADD, "Fog must composite RGB without changing HDR alpha metadata");
 
 		Framegraph::AtmosphericFogNode node;
+		Require(std::string(Framegraph::AtmosphericFogNode::GetName()) == "AtmosphericFog" &&
+			node.GetDebugName() == "AtmosphericFog", "Fog node identity must be accessible across the runtime library boundary");
 		RHI::RHISceneViewSnapshot scene{};
 		// A disabled or invalid optional node must need no renderer/resources and issue no draw.
 		for (float density : { 0.0f, -1.0f, std::numeric_limits<float>::quiet_NaN() })

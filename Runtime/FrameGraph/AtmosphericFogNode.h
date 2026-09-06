@@ -31,7 +31,7 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Clear() override;
 
 	private:
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 		ShaderSetPtr m_shader;
 		RHI::RHIMaterialPtr m_material;
 		RHI::RHIShaderBindingSetPtr m_bindings;
