@@ -460,7 +460,12 @@ void StaticMeshRendererECS::OnComponentUnregistered(size_t index, StaticMeshRend
 		component.m_shadowCaster.Clear();
 		++m_shadowCastersRevision;
 	}
-	PublishSceneVersion(spatialChangeMask);
+	// Whole-world teardown retires the scene in EndPlay. Publishing after every
+	// removal would rebuild the remaining octree once per object (quadratic work).
+	if (!GetWorld() || !GetWorld()->IsClearing())
+	{
+		PublishSceneVersion(spatialChangeMask);
+	}
 }
 
 Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)

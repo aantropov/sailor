@@ -21,6 +21,14 @@ namespace Sailor::RHI
 	class RHIBatch
 	{
 	public:
+		// Bound both an instanced indirect command and a submitted draw run.
+		// GPU compaction processes each command independently; a single large
+		// vegetation group must not leave all of that work on one invocation.
+#if defined(_WIN32)
+		static constexpr uint32_t MaxInstancesPerBatch = 2048u;
+#else
+		static constexpr uint32_t MaxInstancesPerBatch = (std::numeric_limits<uint32_t>::max)();
+#endif
 
 		RHIMaterialPtr m_material;
 		RHIMaterialVersionPtr m_materialVersion;
@@ -151,6 +159,29 @@ namespace Sailor::RHI
 		uint32_t m_firstInstance = 0u;
 		uint32_t m_numInstances = 0u;
 	};
+
+	inline uint32_t GetPackedDrawRunEnd(const TVector<PackedDrawGroup>& groups, uint32_t runBegin)
+	{
+#if defined(_WIN32)
+		constexpr uint32_t MaxMeshesPerIndirectBatch = 16384u;
+#else
+		constexpr uint32_t MaxMeshesPerIndirectBatch = 128u;
+#endif
+		const auto& firstGroup = groups[runBegin];
+		const uint32_t runLimit = (std::max)(1u,
+			(std::min)(MaxMeshesPerIndirectBatch, firstGroup.m_batch.m_supportedMeshesPerBatch));
+		uint32_t runInstances = firstGroup.m_numInstances;
+		uint32_t runEnd = runBegin + 1u;
+		while (runEnd < groups.Num() &&
+			runEnd - runBegin < runLimit &&
+			groups[runEnd].m_numInstances <= RHIBatch::MaxInstancesPerBatch - runInstances &&
+			firstGroup.m_batch == groups[runEnd].m_batch)
+		{
+			runInstances += groups[runEnd].m_numInstances;
+			++runEnd;
+		}
+		return runEnd;
+	}
 
 	struct PackedDrawPacketMetrics
 	{
@@ -1179,6 +1210,7 @@ namespace Sailor::RHI
 					const auto& item = segment.m_items[itemIndex];
 					const bool bAppendToGroup = !bPreserveInstanceOrder &&
 						!groups.IsEmpty() &&
+						groups.Last()->m_numInstances < RHIBatch::MaxInstancesPerBatch &&
 						groups.Last()->m_mesh == item.m_mesh &&
 						groups.Last()->m_batch == item.m_batch;
 					if (!bAppendToGroup)
@@ -1673,26 +1705,12 @@ namespace Sailor::RHI
 
 		beforeDraw();
 
-#if defined(_WIN32)
-		constexpr uint32_t MaxMeshesPerIndirectBatch = 16384u;
-#else
-		constexpr uint32_t MaxMeshesPerIndirectBatch = 128u;
-#endif
-
 		uint32_t runBegin = 0u;
 		auto& drawBindingSets = packet.m_drawBindingSets;
 		while (runBegin < groups.Num())
 		{
 			const auto& firstGroup = groups[runBegin];
-			const uint32_t runLimit = (std::max)(1u,
-				(std::min)(MaxMeshesPerIndirectBatch, firstGroup.m_batch.m_supportedMeshesPerBatch));
-			uint32_t runEnd = runBegin + 1u;
-			while (runEnd < groups.Num() &&
-				runEnd - runBegin < runLimit &&
-				firstGroup.m_batch == groups[runEnd].m_batch)
-			{
-				++runEnd;
-			}
+			const uint32_t runEnd = GetPackedDrawRunEnd(groups, runBegin);
 
 			const auto& batch = firstGroup.m_batch;
 			commands->BindMaterial(graphicsCmdList, batch.m_material);

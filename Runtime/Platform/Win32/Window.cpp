@@ -472,7 +472,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 
 	if (m_parentHwnd == nullptr)
 	{
-		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+		AdjustWindowRectExForDpi(&rect, style, FALSE, exStyle, GetDpiForSystem());
 	}
 
 	// Create window
@@ -504,27 +504,8 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		return false;
 	}
 
-	PIXELFORMATDESCRIPTOR pfd;
-	int32_t format;
-
-	// Pixel format description
-	memset(&pfd, 0, sizeof(pfd));
-	pfd.nSize = sizeof(pfd);
-	pfd.nVersion = 1;
-	pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-	pfd.iPixelType = PFD_TYPE_RGBA;
-	pfd.cColorBits = 32;
-	pfd.cDepthBits = 24;
-
-	// Get pixel format for format which is described above
-	format = ChoosePixelFormat(m_hDC, &pfd);
-	if (!format || !SetPixelFormat(m_hDC, format, &pfd))
-	{
-		char message[MAXCHAR];
-		sprintf_s(message, "Setting pixel format fail (%d)", GetLastError());
-		Destroy();
-		return false;
-	}
+	// Vulkan selects its formats when creating the swapchain. Selecting an
+	// OpenGL pixel format here unnecessarily initializes the OpenGL driver.
 
 	{
 		const std::lock_guard<std::mutex> lock(g_windowsMutex);
@@ -610,7 +591,9 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 
 	if (m_parentHwnd == 0)
 	{
-		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+		// The requested size is the client area in physical pixels, not DIPs
+		// or the outer window rectangle (which includes DPI-scaled borders).
+		AdjustWindowRectExForDpi(&rect, style, FALSE, exStyle, GetDpiForWindow(m_hWnd));
 	}
 
 	SetWindowLong(m_hWnd, GWL_STYLE, style);
@@ -696,7 +679,7 @@ void Window::RecalculateWindowSize()
 
 	RECT rect;
 
-	if (GetWindowRect(m_hWnd, &rect))
+	if (GetClientRect(m_hWnd, &rect))
 	{
 		m_width = rect.right - rect.left;
 		m_height = rect.bottom - rect.top;
@@ -919,6 +902,16 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 
 	switch (msg)
 	{
+	case WM_DPICHANGED:
+	{
+		const auto* suggestedRect = reinterpret_cast<const RECT*>(lParam);
+		::SetWindowPos(hWnd, nullptr,
+			suggestedRect->left, suggestedRect->top,
+			suggestedRect->right - suggestedRect->left,
+			suggestedRect->bottom - suggestedRect->top,
+			SWP_NOZORDER | SWP_NOACTIVATE);
+		return 0;
+	}
 	case WM_SIZE:
 	{
 		pWindow->SetIsIconic(wParam == SIZE_MINIMIZED);

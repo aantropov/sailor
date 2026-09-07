@@ -1,12 +1,14 @@
 namespace SailorEditor.Services;
 
-internal sealed class LatestQueuedCommand<T>
+internal sealed class LatestQueuedCommand<T>(bool deduplicateSuccessfulValues = false)
 {
     readonly object gate = new();
     T latest = default!;
     bool hasValue;
     bool scheduled;
     long epoch;
+    T lastSuccessful = default!;
+    bool hasSuccessfulValue;
 
     public bool Enqueue(
         T value,
@@ -59,9 +61,24 @@ internal sealed class LatestQueuedCommand<T>
             // queue immediately and therefore keeps its order relative to
             // later edge commands.
             scheduled = false;
+            if (deduplicateSuccessfulValues && hasSuccessfulValue &&
+                EqualityComparer<T>.Default.Equals(lastSuccessful, value))
+            {
+                return true;
+            }
+            hasSuccessfulValue = false;
         }
 
-        return await execute(value).ConfigureAwait(false);
+        var succeeded = await execute(value).ConfigureAwait(false);
+        lock (gate)
+        {
+            if (scheduledEpoch == epoch)
+            {
+                hasSuccessfulValue = succeeded;
+                lastSuccessful = succeeded ? value : default!;
+            }
+        }
+        return succeeded;
     }
 
     public void Reset()
@@ -72,11 +89,13 @@ internal sealed class LatestQueuedCommand<T>
             hasValue = false;
             scheduled = false;
             latest = default!;
+            lastSuccessful = default!;
+            hasSuccessfulValue = false;
         }
     }
 }
 
-internal sealed class KeyedLatestQueuedCommand<TKey, TValue>
+internal sealed class KeyedLatestQueuedCommand<TKey, TValue>(bool deduplicateSuccessfulValues = false)
     where TKey : notnull
 {
     readonly object gate = new();
@@ -92,7 +111,7 @@ internal sealed class KeyedLatestQueuedCommand<TKey, TValue>
         {
             if (!commands.TryGetValue(key, out var command))
             {
-                command = new LatestQueuedCommand<TValue>();
+                command = new LatestQueuedCommand<TValue>(deduplicateSuccessfulValues);
                 commands.Add(key, command);
             }
 

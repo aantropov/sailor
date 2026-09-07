@@ -1,5 +1,5 @@
 if(WIN32)
-	add_executable(SailorExec WIN32 Main.cpp)
+	add_executable(SailorExec WIN32 Main.cpp SailorEngine.manifest)
 else()
 	add_executable(SailorExec Main.cpp)
 endif()

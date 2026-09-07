@@ -41,6 +41,13 @@ void GlobalIlluminationResolveNode::Process(
 	{
 		return;
 	}
+	if (const auto depthTarget = depthTexture.DynamicCast<RHIRenderTarget>())
+	{
+		if (const auto depthAspect = depthTarget->GetDepthAspect())
+		{
+			depthTexture = depthAspect;
+		}
+	}
 
 	if (!m_shader)
 	{

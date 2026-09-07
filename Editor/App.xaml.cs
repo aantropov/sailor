@@ -24,7 +24,6 @@ namespace SailorEditor
                 await MauiProgram.GetService<McpEditorHostService>().StopAsync();
 #if MACCATALYST
             MacCatalystWindowChrome.SetTitle(window.Title);
-            MacCatalystWindowChrome.UseCompactTitlebar(window);
 #endif
 
             return window;

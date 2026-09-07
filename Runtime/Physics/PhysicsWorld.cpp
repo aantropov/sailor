@@ -250,7 +250,10 @@ namespace
 			const glm::vec3 halfExtent = glm::max(
 				glm::abs(desc.m_size) * absoluteScale * 0.5f,
 				glm::vec3(c_minShapeExtent));
-			return new JPH::BoxShape(ToJolt(halfExtent));
+			const float convexRadius = std::min({
+				JPH::cDefaultConvexRadius,
+				halfExtent.x, halfExtent.y, halfExtent.z });
+			return new JPH::BoxShape(ToJolt(halfExtent), convexRadius);
 		}
 		case Physics::ECollisionShapeType::Sphere:
 		{

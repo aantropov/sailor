@@ -934,19 +934,17 @@ namespace
 		snapshot.m_rhiLightsData = resources->m_lightsBindings;
 
 		const size_t numBoneMatrices = snapshot.m_cpuBoneMatrices ? snapshot.m_cpuBoneMatrices->Num() : 0u;
-		if (numBoneMatrices == 0u)
-		{
-			snapshot.m_boneMatrices.Clear();
-			return;
-		}
+		// Skinned mesh shaders still declare the bones set when no animation is
+		// assigned. Keep a valid identity buffer for their invalid-offset path.
+		const size_t requiredBoneCapacity = (std::max)(size_t{ 1u }, numBoneMatrices);
 
 		const bool bRecreateBones = !sharedResources->m_boneBindings ||
-			sharedResources->m_boneCapacity < numBoneMatrices;
+			sharedResources->m_boneCapacity < requiredBoneCapacity;
 		if (bRecreateBones)
 		{
 			sharedResources->m_boneCapacity = GrowSubmissionCapacity(
 				sharedResources->m_boneCapacity,
-				numBoneMatrices);
+				requiredBoneCapacity);
 			sharedResources->m_boneBindings = driver->CreateShaderBindings();
 			driver->AddSsboToShaderBindings(
 				sharedResources->m_boneBindings,
@@ -964,11 +962,12 @@ namespace
 			(sharedResources->m_bonesSource != snapshot.m_cpuBoneMatrices ||
 				sharedResources->m_uploadedAnimationRevision != snapshot.m_animationRevision))
 		{
+			const glm::mat4 identity(1.0f);
 			commands->UpdateShaderBinding(
 				transferCommandList,
 				sharedResources->m_boneBindings->GetOrAddShaderBinding("bones"),
-				snapshot.m_cpuBoneMatrices->GetData(),
-				numBoneMatrices * sizeof(glm::mat4),
+				numBoneMatrices ? snapshot.m_cpuBoneMatrices->GetData() : &identity,
+				requiredBoneCapacity * sizeof(glm::mat4),
 				0u);
 			sharedResources->m_bonesSource = snapshot.m_cpuBoneMatrices;
 			sharedResources->m_uploadedAnimationRevision = snapshot.m_animationRevision;

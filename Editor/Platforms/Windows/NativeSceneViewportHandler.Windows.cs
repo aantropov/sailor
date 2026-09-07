@@ -100,6 +100,14 @@ public sealed class NativeSceneViewportHandler :
             return;
         }
 
+        // MAUI can reparent the same loaded panel during a dock layout rebuild.
+        // Reconcile its host even when no size change or new Loaded event follows.
+        if (platformView.IsLoaded)
+        {
+            AttachKeyboardRoot(platformView);
+            PublishHostHandle(platformView);
+        }
+
         PublishLayout(
             platformView,
             platformView.ActualWidth > 1 ? platformView.ActualWidth : width,
@@ -191,7 +199,7 @@ public sealed class NativeSceneViewportHandler :
 
     void PublishHostHandle(SwapChainPanel panel)
     {
-        if (hostHandle != nint.Zero)
+        if (VirtualView?.Handler != this || hostHandle != nint.Zero)
         {
             return;
         }
@@ -207,7 +215,12 @@ public sealed class NativeSceneViewportHandler :
             return;
         }
 
-        VirtualView?.UpdateHostHandle(nint.Zero);
+        // A layout rebuild can load the replacement handler before the old
+        // panel unloads. Retiring that old panel must not clear the new host.
+        if (VirtualView?.Handler == this)
+        {
+            VirtualView.UpdateHostHandle(nint.Zero);
+        }
         Marshal.Release(hostHandle);
         hostHandle = nint.Zero;
     }

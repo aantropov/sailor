@@ -5,7 +5,7 @@
              xmlns:controls="clr-namespace:SailorEditor.Controls"
              xmlns:content="clr-namespace:SailorEditor.Content">
 
-    <Frame>
+    <Border Style="{StaticResource DockPanelBorder}">
         <Grid x:Name="ContentDropSurface"
               RowSpacing="0"
               ColumnSpacing="0"
@@ -17,5 +17,5 @@
                             VerticalOptions="Fill"
                             HorizontalOptions="Fill" />
         </Grid>
-    </Frame>
+    </Border>
 </ContentView>

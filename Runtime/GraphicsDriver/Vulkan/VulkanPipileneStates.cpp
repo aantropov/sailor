@@ -267,10 +267,20 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	// We don't expect collisions in the dictionary
+	// Keep state fields separate: RenderState's compact hash overlaps blend and
+	// cull bits, so source-over fog can otherwise reuse an opaque pipeline state.
 	size_t hashCode = 0;
 	Sailor::HashCombine(hashCode,
-		renderState,
+		renderState.IsDepthTestEnabled(),
+		renderState.IsEnabledZWrite(),
+		renderState.GetDepthBias(),
+		renderState.IsRequiredCustomDepthShader(),
+		renderState.GetCullMode(),
+		renderState.GetBlendMode(),
+		renderState.GetFillMode(),
+		renderState.GetDepthCompare(),
+		renderState.GetTag(),
+		renderState.SupportMultisampling(),
 		topology,
 		depthStencilFormat,
 		vertexDescription->GetVertexStride());

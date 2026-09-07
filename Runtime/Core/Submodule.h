@@ -18,7 +18,7 @@ namespace Sailor
 	};
 
 	template<typename T>
-	class SAILOR_API TSubmodule : public SubmoduleBase
+	class SAILOR_SHARED_API TSubmodule : public SubmoduleBase
 	{
 	public:
 

@@ -41,7 +41,6 @@ public sealed class SettingsPanelView : ContentView
         _workspaceUiService = MauiProgram.GetService<WorkspaceUiService>();
         _scopePicker = new Picker
         {
-            Title = "Category",
             ItemsSource = new[] { GraphicsCategory }
                 .Concat(Enum.GetNames<SettingsScope>())
                 .Cast<object>()
@@ -52,6 +51,8 @@ public sealed class SettingsPanelView : ContentView
             MinimumHeightRequest = 32,
             HorizontalOptions = LayoutOptions.Fill
         };
+        ToolTipProperties.SetText(_scopePicker, "Category");
+        SemanticProperties.SetDescription(_scopePicker, "Settings category");
         _searchBar = new Entry
         {
             Placeholder = "Search settings",

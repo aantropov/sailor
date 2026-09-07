@@ -17,16 +17,20 @@ public partial class MainPage : ContentPage
     bool _workspaceUiInitialized;
     bool _commandLineWorkspaceHandled;
 
+#if WINDOWS
+    public void UpdateMenus()
+    {
+        WindowsMenuHost.IsVisible = true;
+        WindowsMenuHost.Content = new Platforms.Windows.WindowsMenuBarView(MenuBarItems);
+    }
+#endif
+
     public MainPage(EditorShellHost shellHost)
     {
         _shellHost = shellHost;
         _workspaceUi = MauiProgram.GetService<WorkspaceUiService>();
         _mcpHost = MauiProgram.GetService<McpEditorHostService>();
         InitializeComponent();
-#if MACCATALYST
-        ToolbarHost.IsVisible = false;
-        ToolbarHost.HeightRequest = 0;
-#endif
         ShellLayoutHost.Host = _shellHost;
         _shellHost.PropertyChanged += OnShellHostPropertyChanged;
         _workspaceUi.ProjectionChanged += OnWorkspaceProjectionChanged;
@@ -36,6 +40,10 @@ public partial class MainPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+#if WINDOWS
+        if (Microsoft.Maui.Controls.Shell.Current is AppShell appShell)
+            appShell.AttachMenus(this);
+#endif
         if (!_workspaceUiInitialized)
         {
             _workspaceUiInitialized = true;

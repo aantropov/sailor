@@ -1,9 +1,85 @@
 using SailorEditor.Settings;
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
 
 namespace SailorEditor.Editor.Tests;
 
 public class SettingsContractsTests
 {
+    [Theory]
+    [InlineData(GraphicsQualityLevel.High)]
+    [InlineData(GraphicsQualityLevel.Medium)]
+    [InlineData(GraphicsQualityLevel.VeryLow)]
+    public async Task ApplyResolutionFactor_DetachesAliasedPresetsAndRestartsEngine(
+        GraphicsQualityLevel quality)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "SailorGraphicsSettings-" + Guid.NewGuid().ToString("N"));
+        var paths = GraphicsSettingsPaths.Create(directory, Path.Combine(directory, "Cache"));
+        Directory.CreateDirectory(paths.CacheDirectory);
+        try
+        {
+            var diagnostics = new List<string>();
+            Assert.True(GraphicsSettingsYamlCodec.TryLoadRoot(
+                GraphicsSettingsYamlCodec.SerializeProject(GraphicsSettingsDefaults.Project),
+                "aliased-presets", diagnostics, out var root));
+            var presets = (YamlMappingNode)((YamlMappingNode)root["graphics"])["presets"];
+            var shared = (YamlMappingNode)presets["High"];
+            shared.Anchor = new AnchorName("presentation");
+            shared.Add("customNote", "retain me");
+            foreach (var name in new[] { "Medium", "Low", "VeryLow" })
+                presets.Children[new YamlScalarNode(name)] = shared;
+            await File.WriteAllTextAsync(paths.ProjectSettingsPath, GraphicsSettingsYamlCodec.Save(root));
+            await File.WriteAllTextAsync(paths.EditorSettingsPath,
+                GraphicsSettingsYamlCodec.SerializeEditor(GraphicsSettingsDefaults.Editor));
+            var restarts = 0;
+            var service = new GraphicsSettingsService(() => paths, _ =>
+            {
+                restarts++;
+                return Task.FromResult(true);
+            });
+            var before = await service.EnsureLoadedAsync();
+            Assert.Empty(before.Diagnostics);
+            var preset = before.Project.Graphics.Presets.Get(quality);
+            var changed = preset with
+            {
+                ResolutionFactor = 0.5,
+                RuntimeGIProbes = preset.RuntimeGIProbes with { WorkerCount = 3 }
+            };
+            var project = before.Project with
+            {
+                Graphics = before.Project.Graphics with
+                {
+                    Presets = before.Project.Graphics.Presets.With(quality, changed)
+                }
+            };
+
+            var result = await service.ApplyAsync(project, before.Editor, before);
+
+            Assert.True(result.EngineRestarted);
+            Assert.True(result.QualityChanged);
+            Assert.Equal(1, restarts);
+            var after = await service.ReloadAsync();
+            Assert.Empty(after.Diagnostics);
+            foreach (var level in Enum.GetValues<GraphicsQualityLevel>())
+            {
+                var expected = level == quality ? changed : before.Project.Graphics.Presets.Get(level);
+                var actual = after.Project.Graphics.Presets.Get(level);
+                Assert.Equal(expected.ResolutionFactor, actual.ResolutionFactor);
+                Assert.Equal(expected.RuntimeGIProbes, actual.RuntimeGIProbes);
+            }
+            Assert.True(GraphicsSettingsYamlCodec.TryLoadRoot(
+                await File.ReadAllTextAsync(paths.ProjectSettingsPath),
+                "saved-presets", diagnostics, out var saved));
+            var savedPresets = (YamlMappingNode)((YamlMappingNode)saved["graphics"])["presets"];
+            foreach (var name in new[] { "High", "Medium", "Low", "VeryLow" })
+                Assert.Equal("retain me", ((YamlScalarNode)((YamlMappingNode)savedPresets[name])["customNote"]).Value);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public void ShadowDistance_RoundTripsThroughYamlAndEditorDraft()
     {

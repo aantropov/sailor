@@ -7,6 +7,12 @@
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/ShadowPrepassNode.h"
 #include "FrameGraph/AtmosphericFogNode.h"
+#include "FrameGraph/BlitNode.h"
+#include "FrameGraph/BloomNode.h"
+#include "FrameGraph/CopyTextureToRamNode.h"
+#include "FrameGraph/EnvironmentNode.h"
+#include "FrameGraph/EyeAdaptationNode.h"
+#include "FrameGraph/PostProcessNode.h"
 #include "GraphicsDriver/Vulkan/VulkanPipileneStates.h"
 #include "Settings/GraphicsSettings.h"
 #include "FrameGraph/RHIFrameGraph.h"
@@ -403,6 +409,116 @@ namespace
 			"the final mip must clamp both dimensions to one");
 		Require(MakeMipTexture(1u, 720u, 9u)->GetExtent() == glm::ivec2(1, 1),
 			"a one-pixel dimension must never become zero");
+	}
+
+	void TestPackedDrawBatchInstanceLimit()
+	{
+		struct TestInstance
+		{
+			uint32_t m_value = 0u;
+		};
+		constexpr uint32_t limit = RHI::RHIBatch::MaxInstancesPerBatch;
+#if defined(_WIN32)
+		Require(limit == 2048u, "Windows draw batches must be limited to 2048 instances");
+#endif
+		auto validate = [&](const RHI::TPackedDrawPacket<TestInstance>& packet, uint32_t count)
+		{
+			Require(packet.GetNumDrawInstances() == count,
+				"batch splitting must not drop or duplicate instances");
+			const auto& groups = packet.GetGroups();
+			uint32_t firstInstance = 0u;
+			for (const auto& group : groups)
+			{
+				Require(group.m_numInstances > 0u && group.m_numInstances <= limit &&
+					group.m_firstInstance == firstInstance,
+					"indirect commands must cover contiguous, bounded instance ranges");
+				firstInstance += group.m_numInstances;
+			}
+			Require(firstInstance == count, "indirect ranges must cover the complete packet");
+			for (uint32_t begin = 0u; begin < groups.Num();)
+			{
+				const uint32_t end = RHI::GetPackedDrawRunEnd(groups, begin);
+				Require(end > begin && end <= groups.Num(), "draw runs must make bounded progress");
+				uint64_t numInstances = 0u;
+				for (uint32_t index = begin; index < end; ++index)
+				{
+					numInstances += groups[index].m_numInstances;
+				}
+				Require(numInstances <= limit, "indirect submission must not rejoin oversized batches");
+				begin = end;
+			}
+		};
+
+		for (uint32_t count : { 0u, 1u, 2047u, 2048u, 2049u, 4096u, 4097u, 40001u })
+		{
+			RHI::TPackedDrawPacket<TestInstance> packet;
+			for (uint32_t index = count; index > 0u; --index)
+			{
+				packet.Add({}, {}, { index - 1u }, index - 1u, EMobilityType::Static);
+			}
+			packet.Finalize(false);
+			validate(packet, count);
+			Require(packet.GetGroups().Num() == count / limit + (count % limit != 0u),
+				"identical instances must split only at the platform batch limit");
+			for (uint32_t index = 0u; index < count; ++index)
+			{
+				Require(packet.GetPayload(EMobilityType::Static).m_instances[index].m_value == index &&
+					packet.GetInstanceIndices()[index] == index,
+					"batch boundaries must preserve sorted payload and index correspondence");
+			}
+
+			RHI::TPackedDrawPacket<TestInstance> nextFlight;
+			nextFlight.UseSharedPayload(EMobilityType::Static, packet.SharePayload(EMobilityType::Static));
+			nextFlight.Finalize(false);
+			validate(nextFlight, count);
+			Require(nextFlight.GetInstanceIndices() == packet.GetInstanceIndices(),
+				"shared payload reuse must retain split command offsets across flights");
+		}
+
+		constexpr uint32_t orderedCount = 4097u;
+		RHI::TPackedDrawPacket<TestInstance> ordered;
+		for (uint32_t index = 0u; index < orderedCount; ++index)
+		{
+			ordered.Add({}, {}, { orderedCount - index }, orderedCount - index);
+		}
+		ordered.Finalize(true);
+		validate(ordered, orderedCount);
+		for (uint32_t index = 0u; index < orderedCount; ++index)
+		{
+			Require(ordered.GetPayload(EMobilityType::Dynamic).m_instances[index].m_value == orderedCount - index,
+				"transparent draw splitting must preserve the supplied back-to-front order");
+		}
+
+		RHI::TPackedDrawPacket<TestInstance> arena;
+		for (uint32_t index = 0u; index < orderedCount * 2u; ++index)
+		{
+			Require(arena.AddArenaInstance({ index }, index), "arena keys must be unique");
+		}
+		RHI::TPackedDrawPacket<TestInstance> view;
+		view.UseSharedArenaPayload(EMobilityType::Static, arena.ShareArenaPayload(EMobilityType::Static));
+		for (uint32_t index = orderedCount; index > 0u; --index)
+		{
+			Require(view.AddArenaView({}, {}, (index - 1u) * 2u), "visible keys must resolve");
+		}
+		view.Finalize(false);
+		validate(view, orderedCount);
+		Require(view.GetNumStorageInstances() == orderedCount * 2u,
+			"splitting must retain invisible records in the shared arena");
+		for (uint32_t index = 0u; index < orderedCount; ++index)
+		{
+			Require(view.GetInstanceIndices()[index] == index * 2u,
+				"split arena commands must retain sparse visible-to-storage indices");
+		}
+
+		TVector<RHI::PackedDrawGroup> textureLimited;
+		textureLimited.Resize(3u);
+		for (auto& group : textureLimited)
+		{
+			group.m_numInstances = 1u;
+			group.m_batch.m_supportedMeshesPerBatch = 2u;
+		}
+		Require(RHI::GetPackedDrawRunEnd(textureLimited, 0u) == 2u,
+			"a smaller platform texture/command limit must still take precedence");
 	}
 
 	void TestPackedDrawMobilityPayloadVirtualization()
@@ -1106,12 +1222,35 @@ namespace
 
 namespace
 {
+	void TestWorkspaceFrameGraphNodeExports()
+	{
+		const std::pair<const char*, const char*> names[] = {
+			{ Framegraph::BlitNode::GetName(), "Blit" },
+			{ Framegraph::BloomNode::GetName(), "Bloom" },
+			{ Framegraph::CopyTextureToRamNode::GetName(), "CopyTextureToRam" },
+			{ Framegraph::EnvironmentNode::GetName(), "Environment" },
+			{ Framegraph::EyeAdaptationNode::GetName(), "EyeAdaptation" },
+			{ Framegraph::PostProcessNode::GetName(), "PostProcess" }
+		};
+		for (const auto& [actual, expected] : names)
+		{
+			Require(actual && std::string(actual) == expected,
+				"workspace consumers must resolve frame-graph node identities across the runtime library boundary");
+		}
+	}
+
 	void TestAtmosphericFogBlendAndDisabledPass()
 	{
 		VulkanPipelineStateBuilder builder(nullptr);
 		auto vertices = RHI::RHIVertexDescriptionPtr::Make();
 		vertices->SetVertexStride(sizeof(glm::vec3));
 		vertices->AddAttribute(0, 0, RHI::EFormat::R32G32B32_SFLOAT, 0);
+		// Prime the cache with a different blend/cull combination that previously
+		// aliased the fog state. Validate the compiled pipeline, not its hash.
+		const RHI::RenderState opaqueState(false, false, 0, false, RHI::ECullMode::Front,
+			RHI::EBlendMode::None, RHI::EFillMode::Fill, 0, false);
+		builder.BuildPipeline(vertices, { 0u }, RHI::EPrimitiveTopology::TriangleList,
+			opaqueState, { VK_FORMAT_R16G16B16A16_SFLOAT }, VK_FORMAT_UNDEFINED);
 		const RHI::RenderState renderState(false, false, 0, false, RHI::ECullMode::None,
 			RHI::EBlendMode::AlphaBlendingPreserveAlpha, RHI::EFillMode::Fill, 0, false);
 		const auto& states = builder.BuildPipeline(vertices, { 0u }, RHI::EPrimitiveTopology::TriangleList,
@@ -1163,6 +1302,7 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "WorkspaceFrameGraphNodeExports", TestWorkspaceFrameGraphNodeExports },
 		{ "AtmosphericFogBlendAndDisabledPass", TestAtmosphericFogBlendAndDisabledPass },
 		{ "ShadowDistanceSettings", TestShadowDistanceSettings },
 		{ "RendererGpuCullingPassContract", TestRendererGpuCullingPassContract },
@@ -1173,6 +1313,7 @@ int main()
 		{ "PcfRasterShadowBiasContract", TestPcfRasterShadowBiasContract },
 		{ "MipExtentUsesVulkanFloorAndClamp", TestMipExtentUsesVulkanFloorAndClamp },
 		{ "PackedDrawMobilityPayloadVirtualization", TestPackedDrawMobilityPayloadVirtualization },
+		{ "PackedDrawBatchInstanceLimit", TestPackedDrawBatchInstanceLimit },
 		{ "MaterialVersionPublicationContract", TestMaterialVersionPublicationContract },
 		{ "DynamicSpatialRootIsolation", TestDynamicSpatialRootIsolation },
 		{ "InstancedViewLodAndDistanceContract", TestInstancedViewLodAndDistanceContract },

@@ -137,7 +137,10 @@ namespace SailorEditor.Services
         readonly object remoteViewportStateLock = new();
         readonly Dictionary<ulong, RemoteViewportSessionState> remoteViewportStates = [];
         readonly Dictionary<ulong, string> remoteViewportDiagnostics = [];
-        readonly KeyedLatestQueuedCommand<ulong, RemoteViewportUpdate> remoteViewportUpdates = new();
+        // Windows acknowledges an upsert after applying it. Other native hosts
+        // can defer an update and still need the next layout retry.
+        readonly KeyedLatestQueuedCommand<ulong, RemoteViewportUpdate> remoteViewportUpdates = new(
+            deduplicateSuccessfulValues: OperatingSystem.IsWindows());
         readonly LatestQueuedCommand<Rect> editorViewportUpdate = new();
         readonly LatestQueuedCommand<(uint Width, uint Height)> renderTargetUpdate = new();
         readonly KeyedLatestQueuedCommand<ulong, RemoteViewportInput> pointerMoves = new();
@@ -270,7 +273,8 @@ namespace SailorEditor.Services
             get
             {
 #if WINDOWS
-                return Path.Combine(EngineWorkingDirectory, "SailorEngine-Debug.exe");
+                return EngineLaunchContract.ResolveExecutable(
+                    EngineWorkingDirectory, workspaceLifecycle.Current?.LogicOutputDirectory, "Debug", windows: true);
 #elif MACCATALYST
                 return Path.Combine(
                     EngineWorkingDirectory,
@@ -288,7 +292,8 @@ namespace SailorEditor.Services
             get
             {
 #if WINDOWS
-                return Path.Combine(EngineWorkingDirectory, "SailorEngine-Release.exe");
+                return EngineLaunchContract.ResolveExecutable(
+                    EngineWorkingDirectory, workspaceLifecycle.Current?.LogicOutputDirectory, "Release", windows: true);
 #elif MACCATALYST
                 return Path.Combine(
                     EngineWorkingDirectory,
@@ -782,72 +787,6 @@ namespace SailorEditor.Services
 #endif
         }
 
-        async Task<bool> TryRefreshSceneRemoteViewportAsync(
-            long generation,
-            CancellationToken cancellationToken = default)
-        {
-#if WINDOWS
-            SceneViewportStateSnapshot<Rect> viewportState;
-            lock (sceneViewportStateLock)
-            {
-                viewportState = sceneViewportState.Capture();
-            }
-            if (!IsGenerationActive(generation))
-            {
-                return false;
-            }
-            if (await TryUpdateRemoteViewportAsync(
-                    SceneViewportId,
-                    viewportState.Rect,
-                    viewportState.Visible,
-                    viewportState.Focused,
-                    cancellationToken).ConfigureAwait(false))
-            {
-                return true;
-            }
-
-            if (!viewportState.Rect.IsEmpty)
-            {
-                await protocolClient.SetViewportAsync(
-                        (uint)viewportState.Rect.X,
-                        (uint)viewportState.Rect.Y,
-                        (uint)viewportState.Rect.Width,
-                        (uint)viewportState.Rect.Height,
-                        cancellationToken).ConfigureAwait(false);
-            }
-
-            return false;
-#else
-            await Task.CompletedTask;
-            return false;
-#endif
-        }
-
-        async Task<bool> TryUpdateRemoteViewportAsync(
-            ulong viewportId,
-            Rect rect,
-            bool visible,
-            bool focused,
-            CancellationToken cancellationToken = default)
-        {
-#if WINDOWS || MACCATALYST
-            return IsInteropRunning() &&
-                !rect.IsEmpty &&
-                await protocolClient.UpsertRemoteViewportAsync(
-                    viewportId,
-                    (uint)rect.X,
-                    (uint)rect.Y,
-                    (uint)rect.Width,
-                    (uint)rect.Height,
-                    visible,
-                    focused,
-                    cancellationToken).ConfigureAwait(false);
-#else
-            await Task.CompletedTask;
-            return false;
-#endif
-        }
-
         public void SetViewport(Rect rect)
         {
             if (rect.IsEmpty)
@@ -912,6 +851,7 @@ namespace SailorEditor.Services
         public void DestroyRemoteViewport(ulong viewportId)
         {
 #if WINDOWS || MACCATALYST
+            remoteViewportUpdates.Reset(viewportId);
             viewportStatusRefreshes.Reset(viewportId);
             lock (remoteViewportStateLock)
             {
@@ -960,6 +900,7 @@ namespace SailorEditor.Services
         public void RetryRemoteViewport(ulong viewportId)
         {
 #if WINDOWS || MACCATALYST
+            remoteViewportUpdates.Reset(viewportId);
             QueuePlatformInterop(cancellationToken =>
                 new ValueTask<bool>(
                     protocolClient.RetryRemoteViewportAsync(
@@ -1339,14 +1280,6 @@ namespace SailorEditor.Services
                 var pollCancellation = new CancellationTokenSource();
                 var backgroundCancellation = new CancellationTokenSource();
                 var pollTasks = new List<Task>();
-#if !MACCATALYST
-                pollTasks.Add(RunPeriodicTaskAsync(async () =>
-                {
-                    await TryRefreshSceneRemoteViewportAsync(
-                        generation,
-                        pollCancellation.Token).ConfigureAwait(false);
-                }, 500, 100, pollCancellation.Token, generation));
-#endif
                 pollTasks.Add(RunPeriodicTaskAsync(async () =>
                 {
                     var messages = await PullMessagesAsync(
@@ -1866,7 +1799,7 @@ namespace SailorEditor.Services
                     "--editor"
                 }.Concat(commandLineArgs ?? Array.Empty<string>());
                 return launchContext.BuildInteropArguments(
-                    bDebug ? PathToEngineExecDebug : PathToEngineExec,
+                    "SailorEditor",
                     launchContext.StartupWorld,
                     extraArguments).ToArray();
             });
@@ -3781,6 +3714,7 @@ namespace SailorEditor.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"Cannot run SailorEngine process: {ex.Message}");
+                throw;
             }
         }
 

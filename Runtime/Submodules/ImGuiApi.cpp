@@ -22,6 +22,16 @@
 
 using namespace Sailor;
 
+ImGuiContext* ImGuiApi::GetCurrentContext()
+{
+	return ImGui::GetCurrentContext();
+}
+
+void ImGuiApi::GetAllocatorFunctions(ImGuiMemAllocFunc* alloc, ImGuiMemFreeFunc* free, void** userData)
+{
+	ImGui::GetAllocatorFunctions(alloc, free, userData);
+}
+
 #if defined(_WIN32)
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #endif

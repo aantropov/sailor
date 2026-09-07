@@ -488,6 +488,28 @@ namespace
 		}
 	}
 
+	void TestThinScaledBoxPreservesCollisionExtent()
+	{
+		Physics::PhysicsWorld world;
+		for (const glm::vec3 scale : { glm::vec3(1.0f), glm::vec3(0.1f, -0.5f, 2.0f) })
+		{
+			auto desc = MakeBox(
+				InstanceId::GenerateNewInstanceId(),
+				Physics::ERigidBodyMotionType::Static,
+				glm::vec3(0.0f),
+				glm::vec3(2.0f, 0.01f, 3.0f));
+			desc.m_scale = scale;
+			uint32_t body = ~0u;
+			Require(world.CreateBody(desc, body), "thin scaled boxes should be valid physics shapes");
+			Physics::PhysicsRaycastHit hit{};
+			Require(world.Raycast(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 2.0f, hit),
+				"a ray should hit the thin box");
+			Require(IsNear(hit.m_position.y, 0.005f * std::abs(scale.y), 0.0001f),
+				"limiting the convex radius must preserve the authored outer extent");
+			world.DestroyBody(body);
+		}
+	}
+
 	void TestLifecycleAndInputValidation()
 	{
 		Physics::PhysicsWorld world;
@@ -730,6 +752,7 @@ int main()
 		{ "CollisionLayersAndQueryMask", TestCollisionLayersAndQueryMask },
 		{ "SensorEventsAndQueuedContactDestruction", TestSensorEventsAndQueuedContactDestruction },
 		{ "LifecycleAndInputValidation", TestLifecycleAndInputValidation },
+		{ "ThinScaledBoxPreservesCollisionExtent", TestThinScaledBoxPreservesCollisionExtent },
 		{ "SameBuildRepeatability", TestSameBuildRepeatability },
 		{ "WorldPoseToLocalForTransformedParent", TestWorldPoseToLocalForTransformedParent },
 		{ "ReflectedPhysicsAuthoringContract", TestReflectedPhysicsAuthoringContract },

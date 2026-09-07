@@ -29,6 +29,12 @@ namespace Sailor
 		ImGuiApi(void* hWnd);
 		virtual ~ImGuiApi();
 
+		// Workspace DLLs statically link ImGui and must bind the engine's context
+		// and allocators before issuing UI commands on the CPU frame thread.
+		SAILOR_SHARED_API static ImGuiContext* GetCurrentContext();
+		SAILOR_SHARED_API static void GetAllocatorFunctions(ImGuiMemAllocFunc* alloc,
+			ImGuiMemFreeFunc* free, void** userData);
+
 		void NewFrame();
 		PreparedFramePtr PrepareFrame(RHI::RHICommandListPtr transferCmdList);
 		static void RenderFrame(const PreparedFramePtr& frame, RHI::RHICommandListPtr drawCmdList);

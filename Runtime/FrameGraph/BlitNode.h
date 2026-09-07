@@ -26,13 +26,15 @@ namespace Sailor::Framegraph
 			RHI::RHIFrameGraphPtr frameGraph,
 			const RHI::RHISceneViewSnapshot& sceneView,
 			RHI::RHITexturePtr src,
-			RHI::RHITexturePtr dst);
+			RHI::RHITexturePtr dst,
+			RHI::RHIMaterialPtr material);
 
 		ShaderSetPtr m_pShader{};
+		RHI::RHIMaterialPtr m_blitToTextureMaterial{};
 		RHI::RHIMaterialPtr m_blitToMsaaTargetMaterial{};
 		RHI::RHIShaderBindingSetPtr m_shaderBindings{};
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 	};
 
 	template class TFrameGraphNode<BlitNode>;

@@ -24,6 +24,16 @@ if(WIN32)
             VERBATIM
         )
     endfunction()
+
+    add_executable(WindowsWindowSizingTests
+        WindowsWindowSizingTests.cpp
+        "${PROJECT_SOURCE_DIR}/Exec/SailorEngine.manifest"
+    )
+    target_compile_features(WindowsWindowSizingTests PRIVATE cxx_std_20)
+    target_include_directories(WindowsWindowSizingTests PRIVATE ${SAILOR_RUNTIME_DIR})
+    target_link_libraries(WindowsWindowSizingTests PRIVATE Sailor::Runtime)
+    sailor_stage_workspace_test_runtime(WindowsWindowSizingTests)
+    add_test(NAME WindowsWindowSizingTests COMMAND WindowsWindowSizingTests)
 endif()
 
 add_executable(RemoteViewportFoundationTests
