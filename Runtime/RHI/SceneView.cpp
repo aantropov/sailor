@@ -781,15 +781,21 @@ void RHISceneView::Clear()
 
 	m_drawImGui.Clear();
 	m_debugDraw.Clear(false);
-	for (auto& snapshot : m_snapshots)
 	{
-		snapshot.ResetForReuse();
+		SAILOR_PROFILE_SCOPE("Reset submitted view snapshots");
+		for (auto& snapshot : m_snapshots)
+		{
+			snapshot.ResetForReuse();
+		}
 	}
 	m_submissionContext.Clear();
 	m_submissionCompletionToken.Clear();
-	m_sceneVersions.Clear(false);
-	m_virtualSceneVersions.Clear(false);
-	m_retainedSceneVersions.Clear();
+	{
+		SAILOR_PROFILE_SCOPE("Release submitted scene versions");
+		m_sceneVersions.Clear(false);
+		m_virtualSceneVersions.Clear(false);
+		m_retainedSceneVersions.Clear();
+	}
 	m_sceneRevision = 0ull;
 	m_renderMode = ESceneViewRenderMode::Lit;
 	m_shadowCastersRevision = 0ull;
@@ -802,6 +808,7 @@ void RHISceneView::Clear()
 
 void RHISceneViewSnapshot::ResetForReuse()
 {
+	SAILOR_PROFILE_FUNCTION();
 	m_submissionContext.Clear();
 	m_previousMotionFrame.Clear();
 	m_sceneVersions.Clear();
@@ -811,9 +818,12 @@ void RHISceneViewSnapshot::ResetForReuse()
 	m_frame = 0ull;
 	m_cameraIndex = 0u;
 	m_cameraTransform = {};
-	m_proxies.Clear(false);
-	m_lodMeshes.Clear(false);
-	m_instancedLodOffsets.Clear(false);
+	{
+		SAILOR_PROFILE_SCOPE("Release visible proxies and LOD meshes");
+		m_proxies.Clear(false);
+		m_lodMeshes.Clear(false);
+		m_instancedLodOffsets.Clear(false);
+	}
 	m_pathTracerProxies.Clear(false);
 	m_pathTracerTLASInstances.Clear(false);
 	m_pathTracerMaterials.Clear(false);

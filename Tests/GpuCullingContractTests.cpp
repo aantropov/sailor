@@ -907,9 +907,11 @@ namespace
 
 	void TestMaterialVersionsSurviveConcurrentWorldUpdates()
 	{
+		constexpr uint32_t NumInstances = 64u;
 		auto material = RHI::RHIMaterialPtr::Make(RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
 		std::array<RHI::RHIMaterialVersionPtr, 3u> versions;
 		std::array<RHI::RHIShaderBindingSetPtr, 3u> bindings;
+		std::array<std::array<RHI::TPackedDrawPacket<uint32_t>, 3u>, 3u> packets;
 		for (size_t frame = 0u; frame < versions.size(); ++frame)
 		{
 			bindings[frame] = RHI::RHIShaderBindingSetPtr::Make();
@@ -931,10 +933,30 @@ namespace
 						// the game thread has started publishing later materials.
 						for (size_t pass = 0u; pass < 3u; ++pass)
 						{
-							RHI::RHIBatch batch(material, {}, 400ull + frame);
+							auto& packet = packets[frame][pass];
+							packet.Reset();
+							for (uint32_t index = 0u; index < NumInstances; ++index)
+							{
+								packet.Add(RHI::RHIBatch(material, {}, 400ull + frame), {},
+									NumInstances - index, NumInstances - index);
+							}
+							packet.Finalize(false);
+							if (packet.GetGroups().Num() != 1u || packet.GetNumDrawInstances() != NumInstances)
+							{
+								valid.store(false);
+								continue;
+							}
+							const auto& batch = packet.GetGroups()[0].m_batch;
 							if (batch.m_materialVersion != versions[frame] || batch.GetMaterialBindings() != bindings[frame])
 							{
 								valid.store(false);
+							}
+							for (uint32_t index = 0u; index < NumInstances; ++index)
+							{
+								if (packet.GetPayload(EMobilityType::Dynamic).m_instances[index] != index + 1u)
+								{
+									valid.store(false);
+								}
 							}
 						}
 						sync.arrive_and_wait();
@@ -958,8 +980,11 @@ namespace
 		Require(valid.load(), "three in-flight frames must bind their saved material generations during concurrent publication");
 		for (size_t frame = 0u; frame < versions.size(); ++frame)
 		{
-			Require(versions[frame]->GetBindings() == bindings[frame],
-				"retained draw-packet versions must own their descriptors after the submission cutoff is released");
+			for (const auto& packet : packets[frame])
+			{
+				Require(packet.GetGroups()[0].m_batch.GetMaterialBindings() == bindings[frame],
+					"finalized draw packets must own their descriptors after the submission cutoff is released");
+			}
 		}
 	}
 
