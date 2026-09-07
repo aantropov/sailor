@@ -27,6 +27,7 @@ void GlobalIlluminationECS::BeginPlay()
 
 Tasks::ITaskPtr GlobalIlluminationECS::Tick(float deltaTime)
 {
+	SAILOR_PROFILE_FUNCTION();
 	InitializeFromWorld();
 	const bool bEnabled = IsEnabled();
 	if (bEnabled != m_bObservedEnabled)
@@ -604,6 +605,7 @@ void GlobalIlluminationECS::InitializeFromWorld()
 
 void GlobalIlluminationECS::TickBakedProvider()
 {
+	SAILOR_PROFILE_FUNCTION();
 	if (HasRuntimeProviderState())
 	{
 		StopRuntimeProvider(true);
@@ -614,6 +616,7 @@ void GlobalIlluminationECS::TickBakedProvider()
 
 void GlobalIlluminationECS::TickRuntimeProvider(float deltaTime)
 {
+	SAILOR_PROFILE_FUNCTION();
 	if (!ShouldRunRuntimeProvider())
 	{
 		if (HasRuntimeProviderState())
@@ -709,6 +712,7 @@ void GlobalIlluminationECS::TickRuntimeProvider(float deltaTime)
 bool GlobalIlluminationECS::BeginRuntimeScenePreparation(
 	std::string& outDiagnostic)
 {
+	SAILOR_PROFILE_FUNCTION();
 	if (!GetWorld())
 	{
 		outDiagnostic = "runtime GI scene capture requires an active world";
@@ -810,6 +814,7 @@ bool GlobalIlluminationECS::BeginRuntimeScenePreparation(
 void GlobalIlluminationECS::ConsumeRuntimeScenePreparation(
 	const glm::vec3& priorityPosition)
 {
+	SAILOR_PROFILE_FUNCTION();
 	if (!m_runtimeScenePreparationTask ||
 		!m_runtimeScenePreparationTask->IsFinished())
 	{
@@ -875,6 +880,7 @@ bool GlobalIlluminationECS::StartRuntimeSolver(
 	const glm::vec3& priorityPosition,
 	std::string& outDiagnostic)
 {
+	SAILOR_PROFILE_FUNCTION();
 	if (!m_runtimePreparedScene || !m_runtimePreparedScene->m_sampler)
 	{
 		outDiagnostic = "runtime GI scene has no prepared ray sampler";
@@ -903,6 +909,7 @@ bool GlobalIlluminationECS::StartRuntimeSolver(
 
 void GlobalIlluminationECS::PublishRuntimeSnapshotIfNeeded()
 {
+	SAILOR_PROFILE_FUNCTION();
 	const RuntimeGIProbesStatus status = m_runtimeProbes.GetStatus();
 	if (status.m_publishedRevision == 0u ||
 		status.m_publishedRevision == m_runtimePublishedRevision)
@@ -1079,6 +1086,7 @@ bool GlobalIlluminationECS::StartLoad(
 
 void GlobalIlluminationECS::RefreshResidency()
 {
+	SAILOR_PROFILE_FUNCTION();
 	for (const auto& entry : m_bindings)
 	{
 		RuntimeBinding& binding = *entry.m_second;
@@ -1111,6 +1119,7 @@ void GlobalIlluminationECS::RefreshResidency()
 
 void GlobalIlluminationECS::RecomposeIfNeeded()
 {
+	SAILOR_PROFILE_FUNCTION();
 	if (!m_bCompositionDirty)
 	{
 		return;
@@ -1238,6 +1247,7 @@ void GlobalIlluminationECS::RecomposeIfNeeded()
 
 void GlobalIlluminationECS::DrawDebugVisualization() const
 {
+	SAILOR_PROFILE_FUNCTION();
 	if (!GetWorld())
 	{
 		return;

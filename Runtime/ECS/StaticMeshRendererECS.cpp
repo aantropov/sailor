@@ -108,6 +108,10 @@ namespace
 		const RHI::RHIShadowCasterProxy& lhs,
 		const RHI::RHIShadowCasterProxy& rhs)
 	{
+		if (&lhs == &rhs)
+		{
+			return true;
+		}
 		if (lhs.m_staticMeshEcs != rhs.m_staticMeshEcs ||
 			lhs.m_worldAabb != rhs.m_worldAabb ||
 			lhs.m_skeletonOffset != rhs.m_skeletonOffset ||
@@ -311,6 +315,7 @@ void StaticMeshRendererECS::BeginPlay()
 
 void StaticMeshRendererECS::PublishSceneVersion(uint8_t spatialChangeMask)
 {
+	SAILOR_PROFILE_FUNCTION();
 	auto version = RHI::RHISpatialSceneVersionPtr::Make();
 	version->m_revision = ++m_sceneVersionRevision;
 	if (spatialChangeMask != 0u || !m_publishedSceneVersion)
@@ -364,6 +369,7 @@ void StaticMeshRendererECS::PublishSceneVersion(uint8_t spatialChangeMask)
 		auto rebuildSpatialRoot = [&](const TSharedPtr<TVector<RHI::RenderInstanceHandle>>& handles,
 			const TSharedPtr<TOctree<RHI::RenderInstanceHandle>>& octree)
 			{
+				SAILOR_PROFILE_SCOPE("Rebuild scene spatial root");
 				if (!handles || !octree)
 				{
 					return;
@@ -536,7 +542,12 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	}
 
 	const size_t currentFrame = GetWorld()->GetCurrentFrame();
-	auto prepareProxyUpdate = [this, currentFrame](size_t componentIndex)
+	// Dirty-proxy workers only read the last published scene. Keep that immutable
+	// version alive through the join instead of serializing every record lookup
+	// on the mutable scene's lock.
+	const auto previousSceneVersion = m_rhiScene ?
+		m_rhiScene->GetCurrentVersion() : RHI::RHISceneVersionPtr{};
+	auto prepareProxyUpdate = [this, currentFrame, &previousSceneVersion](size_t componentIndex)
 		{
 			PreparedProxyUpdate result;
 			result.m_componentIndex = componentIndex;
@@ -643,13 +654,14 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			if (!bTopologyDirty && !bMaterialsDirty && m_rhiScene)
 			{
 				RHI::RenderInstanceHandle* renderHandle = nullptr;
-				RHI::RHISceneInstanceRecord previousRecord;
+				const RHI::RHISceneInstanceRecord* previousRecord = nullptr;
 				if (m_renderInstanceHandles.Find(componentIndex, renderHandle) &&
 					renderHandle &&
-					m_rhiScene->ResolveCurrent(*renderHandle, previousRecord))
+					previousSceneVersion &&
+					previousSceneVersion->Resolve(*renderHandle, previousRecord) && previousRecord)
 				{
-					const auto previousResource =
-						previousRecord.m_topology.DynamicCast<RHI::RHISceneProxyResource>();
+					const auto* previousResource = dynamic_cast<const RHI::RHISceneProxyResource*>(
+						previousRecord->m_topology.GetRawPtr());
 					Math::AABB worldBounds = model->GetBoundsAABB(data.GetMeshIndex());
 					worldBounds.Apply(ownerWorldMatrix);
 					if (previousResource && previousResource->m_bMeshTransformsAreLocal &&
@@ -805,6 +817,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				"StaticMeshRendererECS:Prepare Dirty Proxies",
 				[beginIndex, endIndex, &dirtyComponents, &preparedUpdates, prepareProxyUpdate]()
 				{
+					SAILOR_PROFILE_SCOPE("Prepare dirty mesh proxies");
 					for (size_t index = beginIndex; index < endIndex; ++index)
 					{
 						preparedUpdates[index] = prepareProxyUpdate(dirtyComponents[index]);

@@ -31,6 +31,7 @@ namespace Sailor
 		std::string diagnostic,
 		double elapsedMilliseconds)
 	{
+		SAILOR_PROFILE_FUNCTION();
 		const std::lock_guard<std::mutex> lock(m_mutex);
 		const std::shared_ptr<Generation>& generation = job.m_generation;
 		if (!m_generation || m_generation != generation || generation->m_cancel.load(std::memory_order_acquire))
@@ -125,6 +126,7 @@ namespace Sailor
 
 	void RuntimeGIProbesService::Impl::PublishIfNeeded()
 	{
+		SAILOR_PROFILE_FUNCTION();
 		const std::lock_guard<std::mutex> lock(m_mutex);
 		if (!m_generation || m_generation->m_bFailed || m_generation->m_dirtyCount == 0u)
 		{

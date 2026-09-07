@@ -521,6 +521,56 @@ namespace
 			"a smaller platform texture/command limit must still take precedence");
 	}
 
+	void TestPackedDrawMixedMaterialSort()
+	{
+		struct Instance { uint32_t m_id = 0u; };
+		std::array<RHI::RHIMaterialPtr, 4> materials;
+		for (auto& material : materials)
+		{
+			material = RHI::RHIMaterialPtr::Make(
+				RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+		}
+		std::array<RHI::RHIMeshPtr, 2> meshes{
+			RHI::RHIMeshPtr::Make(), RHI::RHIMeshPtr::Make() };
+		RHI::TPackedDrawPacket<Instance> packet;
+		constexpr uint32_t count = 4097u;
+		for (uint32_t flight = 0u; flight < 2u; ++flight)
+		{
+			packet.Reset();
+			for (auto& material : materials)
+			{
+				material->SetBindings(RHI::RHIShaderBindingSetPtr::Make());
+			}
+			for (uint32_t index = 0u; index < count; ++index)
+			{
+				const uint32_t id = (index * 37u) % count;
+				const auto& mesh = meshes[(id / materials.size()) % meshes.size()];
+				packet.Add(RHI::RHIBatch(materials[id % materials.size()], mesh), mesh, {id}, id);
+			}
+			packet.Finalize(false);
+			std::array<bool, count> seen{};
+			uint32_t visited = 0u;
+			for (const auto& group : packet.GetGroups())
+			{
+				uint32_t previousId = 0u;
+				for (uint32_t offset = 0u; offset < group.m_numInstances; ++offset)
+				{
+					const uint32_t storageIndex = packet.GetInstanceIndices()[group.m_firstInstance + offset];
+					const uint32_t id = packet.GetPayload(EMobilityType::Dynamic).m_instances[storageIndex].m_id;
+					Require(id < count && !seen[id], "sorted packets must retain every instance exactly once");
+					seen[id] = true;
+					++visited;
+					Require(group.m_batch.m_materialVersion == materials[id % materials.size()]->GetVersion() &&
+						group.m_mesh == meshes[(id / materials.size()) % meshes.size()],
+						"sorting and packet reuse must preserve each instance's mesh and material generation");
+					Require(offset == 0u || previousId < id, "instances sharing a draw must retain stable key order");
+					previousId = id;
+				}
+			}
+			Require(visited == count, "all mixed-material instances must reach the draw packet");
+		}
+	}
+
 	void TestPackedDrawMobilityPayloadVirtualization()
 	{
 		struct TestInstance
@@ -1314,6 +1364,7 @@ int main()
 		{ "MipExtentUsesVulkanFloorAndClamp", TestMipExtentUsesVulkanFloorAndClamp },
 		{ "PackedDrawMobilityPayloadVirtualization", TestPackedDrawMobilityPayloadVirtualization },
 		{ "PackedDrawBatchInstanceLimit", TestPackedDrawBatchInstanceLimit },
+		{ "PackedDrawMixedMaterialSort", TestPackedDrawMixedMaterialSort },
 		{ "MaterialVersionPublicationContract", TestMaterialVersionPublicationContract },
 		{ "DynamicSpatialRootIsolation", TestDynamicSpatialRootIsolation },
 		{ "InstancedViewLodAndDistanceContract", TestInstancedViewLodAndDistanceContract },
