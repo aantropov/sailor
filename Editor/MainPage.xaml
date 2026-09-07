@@ -11,15 +11,16 @@
     <Grid RowSpacing="0" ColumnSpacing="0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <views:ToolbarView x:Name="ToolbarHost" Grid.Row="0"/>
+        <views:ToolbarView x:Name="ToolbarHost" Grid.Row="1"/>
         <ContentView x:Name="WindowsMenuHost" Grid.Row="0" IsVisible="False"/>
-        <shell:ShellLayoutView x:Name="ShellLayoutHost" Grid.Row="1"/>
+        <shell:ShellLayoutView x:Name="ShellLayoutHost" Grid.Row="2"/>
 
-        <Border Grid.Row="2" StrokeThickness="1" Stroke="DimGray" BackgroundColor="#1E1E1E" Padding="10,6">
+        <Border Grid.Row="3" StrokeThickness="1" Stroke="DimGray" BackgroundColor="#1E1E1E" Padding="10,6">
             <VerticalStackLayout Spacing="2">
                 <Grid ColumnDefinitions="Auto,*">
                     <Label Text="Status" FontAttributes="Bold" Margin="0,0,8,0"/>

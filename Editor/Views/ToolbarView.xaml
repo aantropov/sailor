@@ -1,165 +1,65 @@
-﻿<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Name="this"
              x:Class="SailorEditor.Views.ToolbarView">
-
     <ContentView.Resources>
-        <Style x:Key="ToolbarIconButtonStyle" TargetType="ImageButton">
+        <Style TargetType="ImageButton">
             <Setter Property="BackgroundColor" Value="Transparent"/>
             <Setter Property="BorderWidth" Value="0"/>
-            <Setter Property="CornerRadius" Value="0"/>
-            <Setter Property="Padding" Value="0"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6"/>
             <Setter Property="Margin" Value="0"/>
-            <Setter Property="HeightRequest" Value="18"/>
-            <Setter Property="WidthRequest" Value="18"/>
-            <Setter Property="MinimumHeightRequest" Value="18"/>
-            <Setter Property="MinimumWidthRequest" Value="18"/>
+            <Setter Property="HeightRequest" Value="32"/>
+            <Setter Property="WidthRequest" Value="32"/>
+            <Setter Property="MinimumHeightRequest" Value="32"/>
+            <Setter Property="MinimumWidthRequest" Value="32"/>
             <Setter Property="Aspect" Value="AspectFit"/>
-            <Setter Property="HorizontalOptions" Value="Center"/>
             <Setter Property="VerticalOptions" Value="Center"/>
-        </Style>
-
-        <Style x:Key="ToolbarGlyphButtonStyle" TargetType="Button">
-            <Setter Property="BackgroundColor" Value="Transparent"/>
-            <Setter Property="BorderWidth" Value="0"/>
-            <Setter Property="CornerRadius" Value="0"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Margin" Value="0"/>
-            <Setter Property="WidthRequest" Value="22"/>
-            <Setter Property="HeightRequest" Value="22"/>
-            <Setter Property="MinimumWidthRequest" Value="22"/>
-            <Setter Property="MinimumHeightRequest" Value="22"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="TextColor" Value="#CFCFD2"/>
         </Style>
     </ContentView.Resources>
 
-    <Border StrokeThickness="1"
-            Stroke="#363A40"
-            BackgroundColor="#202328"
-            Padding="8,5"
-            Margin="0"
-            MinimumHeightRequest="36"
-            StrokeShape="RoundRectangle 0">
-        <Grid ColumnSpacing="8"
-              RowSpacing="0"
-              Margin="0"
-              Padding="0"
-              HeightRequest="26"
-              VerticalOptions="Center"
-              HorizontalOptions="FillAndExpand">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <Label Grid.Column="0"
-                   Text="SAILOR"
-                   FontSize="11"
-                   FontAttributes="Bold"
-                   TextColor="#8F949C"
-                   VerticalTextAlignment="Center"
-                   Margin="0,0,2,0"/>
-
-            <Border Grid.Column="1"
-                    StrokeThickness="1"
-                    Stroke="#3B3F46"
-                    BackgroundColor="#2A2E35"
-                    Padding="6,3"
-                    StrokeShape="RoundRectangle 3">
-                <ImageButton Source="disk_24.png"
-                             Style="{StaticResource ToolbarIconButtonStyle}"
+    <Border StrokeThickness="1" Stroke="#363A40" BackgroundColor="#202328"
+            Padding="8,4" StrokeShape="RoundRectangle 0">
+        <Grid ColumnDefinitions="*,Auto,*" ColumnSpacing="16">
+            <HorizontalStackLayout Grid.Column="0" Spacing="4" HorizontalOptions="Start">
+                <ImageButton Source="toolbar_save.png"
+                             ToolTipProperties.Text="Save Scene" SemanticProperties.Description="Save Scene"
                              Clicked="OnSaveButtonClicked"/>
-            </Border>
-
-            <HorizontalStackLayout Grid.Column="2"
-                                   HorizontalOptions="Center"
-                                   VerticalOptions="Center"
-                                   Spacing="4">
-                <Border StrokeThickness="1"
-                        Stroke="#3B3F46"
-                        BackgroundColor="#2A2E35"
-                        Padding="6,3"
-                        StrokeShape="RoundRectangle 3">
-                    <HorizontalStackLayout Spacing="4">
-                        <Button Text="↶"
-                                Style="{StaticResource ToolbarGlyphButtonStyle}"
-                                Clicked="OnUndoButtonClicked"/>
-                        <Button Text="↷"
-                                Style="{StaticResource ToolbarGlyphButtonStyle}"
-                                Clicked="OnRedoButtonClicked"/>
-                    </HorizontalStackLayout>
-                </Border>
-
-                <Border StrokeThickness="1"
-                        Stroke="#3B3F46"
-                        BackgroundColor="#2A2E35"
-                        Padding="6,3"
-                        StrokeShape="RoundRectangle 3">
-                    <HorizontalStackLayout Spacing="4">
-                        <ImageButton Source="arrow_24.png"
-                                     Style="{StaticResource ToolbarIconButtonStyle}"
-                                     Clicked="OnPlayButtonClicked"/>
-                        <ImageButton Source="bug__arrow.png"
-                                     Style="{StaticResource ToolbarIconButtonStyle}"
-                                     Clicked="OnPlayDebugButtonClicked"/>
-                        <Button x:Name="SimulationButton"
-                                Text="Simulate"
-                                ImageSource="control.png"
-                                ContentLayout="Left,4"
-                                Style="{StaticResource ToolbarGlyphButtonStyle}"
-                                WidthRequest="82"
-                                MinimumWidthRequest="82"
-                                Clicked="OnSimulationButtonClicked"/>
-                    </HorizontalStackLayout>
-                </Border>
+                <ImageButton Source="toolbar_undo.png"
+                             ToolTipProperties.Text="Undo" SemanticProperties.Description="Undo"
+                             Clicked="OnUndoButtonClicked"/>
+                <ImageButton Source="toolbar_redo.png"
+                             ToolTipProperties.Text="Redo" SemanticProperties.Description="Redo"
+                             Clicked="OnRedoButtonClicked"/>
             </HorizontalStackLayout>
-
-            <Border Grid.Column="3"
-                    StrokeThickness="1"
-                    Stroke="#3B3F46"
-                    BackgroundColor="#2A2E35"
-                    Padding="6,3"
-                    StrokeShape="RoundRectangle 3">
-                <HorizontalStackLayout Spacing="4">
-                    <ImageButton Source="application_export_24.png"
-                                 Style="{StaticResource ToolbarIconButtonStyle}"
-                                 Clicked="OnPathTraceSceneButtonClicked"/>
-
-                    <ImageButton Source="application_export.png"
-                                 Style="{StaticResource ToolbarIconButtonStyle}"
-                                 Clicked="OnPathTraceSelectionButtonClicked"/>
-                </HorizontalStackLayout>
-            </Border>
-
-            <Border Grid.Column="4"
-                    StrokeThickness="1"
-                    Stroke="#3B3F46"
-                    BackgroundColor="#2A2E35"
-                    Padding="8,3"
-                    StrokeShape="RoundRectangle 3">
-                <HorizontalStackLayout Spacing="6">
-                    <Button Text="Save Layout"
-                            Style="{StaticResource ToolbarGlyphButtonStyle}"
-                            WidthRequest="86"
-                            MinimumWidthRequest="86"
-                            Clicked="OnSaveLayoutButtonClicked"/>
-                    <Button Text="Reset Layout"
-                            Style="{StaticResource ToolbarGlyphButtonStyle}"
-                            WidthRequest="92"
-                            MinimumWidthRequest="92"
-                            Clicked="OnResetLayoutButtonClicked"/>
-                    <Button Text="Settings"
-                            Style="{StaticResource ToolbarGlyphButtonStyle}"
-                            WidthRequest="68"
-                            MinimumWidthRequest="68"
-                            Clicked="OnSettingsButtonClicked"/>
-                </HorizontalStackLayout>
-            </Border>
+            <HorizontalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="Center">
+                <ImageButton Source="toolbar_play.png"
+                             ToolTipProperties.Text="Play" SemanticProperties.Description="Play"
+                             Clicked="OnPlayButtonClicked"/>
+                <ImageButton Source="toolbar_debug.png"
+                             ToolTipProperties.Text="Debug Play" SemanticProperties.Description="Debug Play"
+                             Clicked="OnPlayDebugButtonClicked"/>
+                <ImageButton x:Name="SimulationButton" Source="toolbar_simulate.png"
+                             ToolTipProperties.Text="Simulate" SemanticProperties.Description="Simulate"
+                             Clicked="OnSimulationButtonClicked"/>
+            </HorizontalStackLayout>
+            <HorizontalStackLayout Grid.Column="2" Spacing="4" HorizontalOptions="End">
+                <ImageButton Source="toolbar_trace_scene.png"
+                             ToolTipProperties.Text="Trace Scene" SemanticProperties.Description="Trace Scene"
+                             Clicked="OnPathTraceSceneButtonClicked"/>
+                <ImageButton Source="toolbar_trace_selection.png"
+                             ToolTipProperties.Text="Trace Selection" SemanticProperties.Description="Trace Selection"
+                             Clicked="OnPathTraceSelectionButtonClicked"/>
+                <ImageButton Source="toolbar_save_layout.png"
+                             ToolTipProperties.Text="Save Layout" SemanticProperties.Description="Save Layout"
+                             Clicked="OnSaveLayoutButtonClicked"/>
+                <ImageButton Source="toolbar_reset_layout.png"
+                             ToolTipProperties.Text="Reset Layout" SemanticProperties.Description="Reset Layout"
+                             Clicked="OnResetLayoutButtonClicked"/>
+                <ImageButton Source="toolbar_settings.png"
+                             ToolTipProperties.Text="Settings" SemanticProperties.Description="Settings"
+                             Clicked="OnSettingsButtonClicked"/>
+            </HorizontalStackLayout>
         </Grid>
     </Border>
-
 </ContentView>

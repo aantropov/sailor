@@ -69,6 +69,30 @@ public sealed record EngineLaunchContext(
 
 public static class EngineLaunchContract
 {
+    public static string ResolveExecutable(
+        string engineRoot,
+        string? workspaceOutputDirectory,
+        string configuration,
+        bool windows)
+    {
+        if (configuration is not ("Debug" or "Release"))
+            throw new ArgumentOutOfRangeException(nameof(configuration));
+
+        var filename = $"SailorEngine-{configuration}" + (windows ? ".exe" : string.Empty);
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(workspaceOutputDirectory))
+        {
+            candidates.Add(Path.Combine(workspaceOutputDirectory, configuration, "Runtime", filename));
+            candidates.Add(Path.Combine(workspaceOutputDirectory, configuration, filename));
+        }
+        candidates.Add(Path.Combine(engineRoot, "Binaries", configuration, filename));
+        candidates.Add(Path.Combine(engineRoot, "Binaries", filename));
+        return candidates.FirstOrDefault(File.Exists) ??
+            throw new FileNotFoundException(
+                $"The {configuration} engine executable is missing. Build SailorExec and the workspace module in {configuration} before launching. Checked: " +
+                string.Join(", ", candidates));
+    }
+
     public static EngineLaunchContext Resolve(
         string? activeWorkspaceRoot,
         string? activeWorkspaceManifestPath,

@@ -87,14 +87,13 @@ namespace SailorEditor.Views
 
         void UpdateSimulationButton(bool isSimulating)
         {
-            SimulationButton.Text = isSimulating ? "Stop" : "Simulate";
-            SimulationButton.ImageSource = ImageSource.FromFile(
+            var label = isSimulating ? "Stop Simulation" : "Simulate";
+            SimulationButton.Source = ImageSource.FromFile(
                 isSimulating
-                    ? "control_stop_square.png"
-                    : "control.png");
-            SimulationButton.TextColor = isSimulating
-                ? Color.FromArgb("#F06B6B")
-                : Color.FromArgb("#CFCFD2");
+                    ? "toolbar_stop.png"
+                    : "toolbar_simulate.png");
+            ToolTipProperties.SetText(SimulationButton, label);
+            SemanticProperties.SetDescription(SimulationButton, label);
         }
     }
 }

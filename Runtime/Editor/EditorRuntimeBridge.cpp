@@ -427,8 +427,8 @@ namespace
 		MacViewportLoopbackBinding m_binding{ m_descriptor, m_surfaceProvider, m_presenter };
 #endif
 		RECT m_lastRect{};
-		bool m_created = false;
-		bool m_visible = true;
+		std::atomic_bool m_created = false;
+		std::atomic_bool m_visible = true;
 		bool m_focused = false;
 		uint64_t m_nowMs = 0;
 		Failure m_lastPumpFailure = Failure::Ok();
@@ -594,20 +594,13 @@ namespace
 			return false;
 		}
 
-		std::lock_guard bindingLock(binding->m_mutex);
 		if (!IsCurrentRemoteViewportBinding(input.m_viewportId, binding))
 		{
 			return false;
 		}
 
-		const auto& runtimeSession = binding->m_binding.GetRuntimeSession();
-		const auto state = runtimeSession.GetState();
 		return binding->m_created &&
-			state != SessionState::Terminating &&
-			state != SessionState::Disposed &&
-			runtimeSession.GetViewportId() == input.m_viewportId &&
-			runtimeSession.GetConnectionEpoch() == input.m_connectionEpoch &&
-			runtimeSession.GetGeneration() == input.m_generation;
+			binding->m_binding.GetRuntimeSession().IsInputCurrent(input);
 	}
 
 	void SyncEditorMouseButtons(const InputPacket& input, ImGuiApi* imGui)
@@ -980,7 +973,6 @@ void Sailor::EditorRuntime::UpdateRuntimeGIWorkAllowanceOnEngineThread()
 	bool bHasVisibleViewport = false;
 	for (const auto& binding : bindings)
 	{
-		std::lock_guard bindingLock(binding->m_mutex);
 		if (binding->m_created && binding->m_visible)
 		{
 			bHasVisibleViewport = true;
@@ -1592,18 +1584,13 @@ bool App::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, floa
 		return false;
 	}
 
-	std::lock_guard bindingLock(binding->m_mutex);
-	if (!IsCurrentRemoteViewportBinding(viewportId, binding))
+	if (!binding->m_created || !IsCurrentRemoteViewportBinding(viewportId, binding))
 	{
 		return false;
 	}
 
 	auto& runtimeSession = binding->m_binding.GetRuntimeSession();
-	input.m_viewportId = runtimeSession.GetViewportId();
-	input.m_connectionEpoch = runtimeSession.GetConnectionEpoch();
-	input.m_generation = runtimeSession.GetGeneration();
-	input.m_timestampNs = ++binding->m_nowMs;
-	if (!runtimeSession.HandleInput(input).IsOk())
+	if (!runtimeSession.StampAndHandleInput(input).IsOk())
 	{
 		return false;
 	}

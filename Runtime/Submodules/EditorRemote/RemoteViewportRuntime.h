@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -51,6 +52,7 @@ namespace Sailor::EditorRemote
 	public:
 		explicit RemoteViewportSession(const ViewportDescriptor& descriptor, ConnectionEpoch epoch = 1) :
 			m_descriptor(descriptor),
+			m_inputViewportId(descriptor.m_viewportId),
 			m_connectionEpoch(epoch),
 			m_guards(epoch, 1)
 		{
@@ -66,8 +68,8 @@ namespace Sailor::EditorRemote
 		bool HasFailure() const { return !m_failure.IsOk(); }
 		const Failure& GetFailure() const { return m_failure; }
 		SessionState GetState() const { return m_state.GetState(); }
-		size_t GetInputCount() const { return m_inputCount; }
-		const std::optional<InputPacket>& GetLastInput() const { return m_lastInput; }
+		size_t GetInputCount() const { std::lock_guard lock(m_inputMutex); return m_inputCount; }
+		std::optional<InputPacket> GetLastInput() const { std::lock_guard lock(m_inputMutex); return m_lastInput; }
 		const SessionDiagnostics& GetDiagnostics() const { return m_diagnostics; }
 		const FramePacket& GetLastFrame() const { return m_lastFrame; }
 
@@ -146,7 +148,10 @@ namespace Sailor::EditorRemote
 			}
 
 			m_descriptor = descriptor;
-			m_guards.AdvanceGeneration();
+			{
+				std::lock_guard lock(m_inputMutex);
+				m_guards.AdvanceGeneration();
+			}
 			m_lastPublishedFrameIndex = 0;
 			++m_diagnostics.m_resizeCount;
 			ArmTransportReadyTimeout(0);
@@ -205,16 +210,26 @@ namespace Sailor::EditorRemote
 
 		Failure HandleInput(const InputPacket& input)
 		{
-			auto decision = m_guards.AcceptInput(input);
-			if (decision != GuardDecision::Accept)
-			{
-				return Failure::FromDomain(ErrorDomain::Session, static_cast<int32_t>(decision), "Input rejected by session guards");
-			}
+			std::lock_guard lock(m_inputMutex);
+			return HandleInputLocked(input);
+		}
 
-			m_lastInput = input;
-			++m_inputCount;
-			RefreshDiagnostics();
-			return Failure::Ok();
+		// Input only needs session identity, never the frame transport's GPU lock.
+		Failure StampAndHandleInput(InputPacket& input)
+		{
+			std::lock_guard lock(m_inputMutex);
+			input.m_viewportId = m_inputViewportId;
+			input.m_connectionEpoch = m_connectionEpoch;
+			input.m_generation = m_guards.GetGeneration();
+			input.m_timestampNs = ++m_inputTimestamp;
+			return HandleInputLocked(input);
+		}
+
+		bool IsInputCurrent(const InputPacket& input) const
+		{
+			std::lock_guard lock(m_inputMutex);
+			return !m_inputDisposed && input.m_viewportId == m_inputViewportId &&
+				m_guards.AcceptInput(input) == GuardDecision::Accept;
 		}
 
 		Failure SetVisible(bool visible)
@@ -243,8 +258,12 @@ namespace Sailor::EditorRemote
 		Failure Recreate(ConnectionEpoch epoch)
 		{
 			++m_recoveryAttemptCount;
-			m_connectionEpoch = epoch;
-			m_guards.BeginNewConnectionEpoch(epoch);
+			{
+				std::lock_guard lock(m_inputMutex);
+				m_connectionEpoch = epoch;
+				m_guards.BeginNewConnectionEpoch(epoch);
+				m_inputDisposed = false;
+			}
 			m_transportType = TransportType::Unknown;
 			m_transportReadyTimeout.Reset();
 			m_reconnectTimeout.Reset();
@@ -272,7 +291,11 @@ namespace Sailor::EditorRemote
 
 		Failure Destroy()
 		{
-			m_lastInput.reset();
+			{
+				std::lock_guard lock(m_inputMutex);
+				m_inputDisposed = true;
+				m_lastInput.reset();
+			}
 			m_transportReadyTimeout.Reset();
 			m_reconnectTimeout.Reset();
 			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "Destroy");
@@ -308,6 +331,18 @@ namespace Sailor::EditorRemote
 		}
 
 	private:
+		Failure HandleInputLocked(const InputPacket& input)
+		{
+			const auto decision = m_guards.AcceptInput(input);
+			if (m_inputDisposed || input.m_viewportId != m_inputViewportId || decision != GuardDecision::Accept)
+			{
+				return Failure::FromDomain(ErrorDomain::Session, static_cast<int32_t>(decision), "Input rejected by session guards");
+			}
+			m_lastInput = input;
+			++m_inputCount;
+			return Failure::Ok();
+		}
+
 		void RefreshDiagnostics()
 		{
 			m_diagnostics.m_viewportId = m_descriptor.m_viewportId;
@@ -336,6 +371,10 @@ namespace Sailor::EditorRemote
 		void ArmReconnectTimeout(uint64_t nowMs) { m_reconnectTimeout.Arm(nowMs, m_timeoutPolicy.m_reconnectTimeoutMs); }
 
 		ViewportDescriptor m_descriptor{};
+		const ViewportId m_inputViewportId;
+		mutable std::mutex m_inputMutex{};
+		bool m_inputDisposed = false;
+		uint64_t m_inputTimestamp = 0;
 		ConnectionEpoch m_connectionEpoch = 1;
 		SessionStateMachine m_state{};
 		SessionGuards m_guards{};

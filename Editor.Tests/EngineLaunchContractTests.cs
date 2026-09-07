@@ -3,6 +3,39 @@ using SailorEditor.Workspace;
 
 public class EngineLaunchContractTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ResolveExecutable_PrefersWorkspaceRuntimeAndKeepsConfigurationsSeparate(bool windows)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "SailorLaunch-" + Guid.NewGuid().ToString("N"));
+        var engine = Path.Combine(root, "Engine Source");
+        var workspaceOutput = Path.Combine(root, "Workspace", "Binaries");
+        var suffix = windows ? ".exe" : string.Empty;
+        var engineRelease = Path.Combine(engine, "Binaries", "Release", "SailorEngine-Release" + suffix);
+        var workspaceRelease = Path.Combine(workspaceOutput, "Release", "Runtime", "SailorEngine-Release" + suffix);
+        var engineDebug = Path.Combine(engine, "Binaries", "Debug", "SailorEngine-Debug" + suffix);
+        void Create(string path)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, string.Empty);
+        }
+        try
+        {
+            Create(engineRelease);
+            Assert.Equal(engineRelease, EngineLaunchContract.ResolveExecutable(engine, workspaceOutput, "Release", windows));
+            Create(workspaceRelease);
+            Assert.Equal(workspaceRelease, EngineLaunchContract.ResolveExecutable(engine, workspaceOutput, "Release", windows));
+            Assert.Throws<FileNotFoundException>(() => EngineLaunchContract.ResolveExecutable(engine, workspaceOutput, "Debug", windows));
+            Create(engineDebug);
+            Assert.Equal(engineDebug, EngineLaunchContract.ResolveExecutable(engine, workspaceOutput, "Debug", windows));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public void Resolve_UsesResolvedActiveWorkspacePaths()
     {

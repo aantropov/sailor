@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <functional>
+#include <future>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -180,6 +181,66 @@ namespace
 		Require(!session.IsVisible(), "visibility flag should update");
 		Require(session.SetVisible(true).IsOk(), "session should resume when visible");
 		Require(session.GetState() == SessionState::Active, "visible session should return active");
+	}
+
+	void TestRemoteViewportInputWhileFrameExportIsBlocked()
+	{
+		class BlockingBackend final : public FakeViewportTransportBackend
+		{
+		public:
+			std::promise<void> m_entered;
+			std::promise<void> m_release;
+			Failure ExportFrame(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, FramePacket& frame) override
+			{
+				m_entered.set_value();
+				m_release.get_future().wait();
+				return FakeViewportTransportBackend::ExportFrame(viewport, epoch, generation, frame);
+			}
+		};
+
+		RemoteViewportSession session{ MakeViewport(), 7 };
+		BlockingBackend backend;
+		Require(session.BeginNegotiation().IsOk(), "negotiation should succeed");
+		Require(session.EnsureBackendTransport(backend).IsOk(), "transport should become ready");
+		auto frame = std::async(std::launch::async, [&]() { return session.PublishFrameFromBackend(backend); });
+		backend.m_entered.get_future().wait();
+		auto input = std::async(std::launch::async, [&]()
+		{
+			auto packet = MakeInput(1, 0, 0);
+			return session.StampAndHandleInput(packet).IsOk() && session.IsInputCurrent(packet);
+		});
+		const bool inputCompleted = input.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+		backend.m_release.set_value();
+		Require(input.get(), "input should be stamped and accepted");
+		Require(frame.get().IsOk(), "frame export should complete after release");
+		Require(inputCompleted, "input must complete before the blocked frame export is released");
+		Require(session.GetInputCount() == 1, "concurrent input should be recorded once");
+	}
+
+	void TestRemoteViewportInputInvalidation()
+	{
+		auto viewport = MakeViewport();
+		RemoteViewportSession session{ viewport, 7 };
+		Require(session.BeginNegotiation().IsOk(), "negotiation should succeed");
+		Require(session.MarkTransportReady(MakeTransport(viewport)).IsOk(), "transport should become ready");
+		auto oldInput = MakeInput(1, 0, 0);
+		Require(session.StampAndHandleInput(oldInput).IsOk(), "current input should be accepted");
+		Require(oldInput.m_connectionEpoch == 7 && oldInput.m_generation == 1, "input should use the current session identity");
+		viewport.m_width += 100;
+		Require(session.HandleResize(viewport).IsOk(), "resize should succeed");
+		Require(!session.IsInputCurrent(oldInput) && !session.HandleInput(oldInput).IsOk(), "resize must reject queued input from the old surface");
+		auto resizedInput = oldInput;
+		Require(session.StampAndHandleInput(resizedInput).IsOk() && resizedInput.m_generation == 2, "new input should use the resized surface");
+		Require(resizedInput.m_timestampNs > oldInput.m_timestampNs, "input stamps should increase");
+		Require(session.MarkFailure(Failure::FromDomain(ErrorDomain::Connection, 1, "Disconnected")).IsOk(), "disconnect should enter the lost state");
+		Require(session.Recreate(8).IsOk(), "recreate should succeed");
+		Require(!session.IsInputCurrent(resizedInput), "reconnect must invalidate the previous epoch");
+		auto recreatedInput = oldInput;
+		Require(session.StampAndHandleInput(recreatedInput).IsOk(), "new epoch should accept input");
+		Require(recreatedInput.m_connectionEpoch == 8 && recreatedInput.m_generation == 1, "recreated input should use the new epoch");
+		Require(session.Destroy().IsOk(), "destroy should succeed");
+		Require(!session.IsInputCurrent(recreatedInput) && !session.StampAndHandleInput(recreatedInput).IsOk(), "destroyed sessions must reject input");
+		Require(!session.GetLastInput().has_value(), "destroy must clear retained input");
 	}
 
 	void TestRemoteViewportSessionBackendContract()
@@ -543,6 +604,8 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "RemoteViewportSessionLifecycle", TestRemoteViewportSessionLifecycle },
+		{ "RemoteViewportInputWhileFrameExportIsBlocked", TestRemoteViewportInputWhileFrameExportIsBlocked },
+		{ "RemoteViewportInputInvalidation", TestRemoteViewportInputInvalidation },
 		{ "RemoteViewportSessionBackendContract", TestRemoteViewportSessionBackendContract },
 		{ "RemoteViewportSessionBackendFailurePropagation", TestRemoteViewportSessionBackendFailurePropagation },
 		{ "RemoteViewportSessionResizeFailureAndRecreate", TestRemoteViewportSessionResizeFailureAndRecreate },

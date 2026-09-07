@@ -31,10 +31,6 @@ public partial class MainPage : ContentPage
         _workspaceUi = MauiProgram.GetService<WorkspaceUiService>();
         _mcpHost = MauiProgram.GetService<McpEditorHostService>();
         InitializeComponent();
-#if MACCATALYST || WINDOWS
-        ToolbarHost.IsVisible = false;
-        ToolbarHost.HeightRequest = 0;
-#endif
         ShellLayoutHost.Host = _shellHost;
         _shellHost.PropertyChanged += OnShellHostPropertyChanged;
         _workspaceUi.ProjectionChanged += OnWorkspaceProjectionChanged;
