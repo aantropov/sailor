@@ -55,11 +55,12 @@
         <Setter Property="BackgroundColor" Value="{StaticResource BackgroundColor}" />
     </Style>
 
-    <Style TargetType="Frame">
-        <Setter Property="HasShadow" Value="False" />
+    <Style x:Key="DockPanelBorder" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource ContentBackgroundColor}" />
-        <Setter Property="BorderColor" Value="{StaticResource BorderColor}" />
-        <Setter Property="CornerRadius" Value="2"/>
+        <Setter Property="Stroke" Value="{StaticResource BorderColor}" />
+        <Setter Property="StrokeThickness" Value="1"/>
+        <Setter Property="StrokeShape" Value="RoundRectangle 2"/>
+        <Setter Property="Padding" Value="20"/>
         <Setter Property="Margin" Value="1"/>
     </Style>
 

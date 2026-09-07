@@ -13,6 +13,15 @@ namespace SailorEditor
     {
         readonly EditorShellHost _shellHost;
         readonly WorkspaceUiService _workspaceUi;
+#if WINDOWS
+        Page? menuPage;
+
+        public void AttachMenus(Page page)
+        {
+            menuPage = page;
+            BuildMenus();
+        }
+#endif
 
         public AppShell()
         {
@@ -38,7 +47,15 @@ namespace SailorEditor
 
         void BuildMenus()
         {
-            MenuBarItems.Clear();
+            // Windows presents menus from the active ContentPage, not its Shell.
+#if WINDOWS
+            if (menuPage is null)
+                return;
+            var menus = menuPage.MenuBarItems;
+#else
+            var menus = MenuBarItems;
+#endif
+            menus.Clear();
 
             var history = MauiProgram.GetService<ICommandHistoryService>();
 
@@ -50,6 +67,8 @@ namespace SailorEditor
             file.Add(BuildRecentWorkspacesMenu());
             file.Add(new MenuFlyoutSeparator());
             file.Add(CreateWorkspaceMenuItem("New Scene", () => MauiProgram.GetService<EditorToolbarActions>().NewSceneAsync()));
+            file.Add(CreateWorkspaceMenuItem("Save Scene", () => MauiProgram.GetService<EditorToolbarActions>().SaveAsync()));
+            file.Add(CreateWorkspaceMenuItem("Reload Assets", () => MauiProgram.GetService<EngineService>().RequestAssetReloadAsync()));
             file.Add(new MenuFlyoutSeparator());
 #endif
             file.Add(new MenuFlyoutItem { Text = "Undo", Command = new Command(async () => await history.UndoAsync(new CommandOrigin(CommandOriginKind.Menu, "Undo"))) });
@@ -58,7 +77,7 @@ namespace SailorEditor
             file.Add(new MenuFlyoutItem { Text = "Save Layout", Command = new Command(async () => await _shellHost.SaveLayoutAsync()) });
             file.Add(new MenuFlyoutItem { Text = "Reset Layout", Command = new Command(async () => await _shellHost.ResetLayoutAsync()) });
             file.Add(new MenuFlyoutSeparator());
-            file.Add(new MenuFlyoutItem { Text = "Exit" });
+            file.Add(new MenuFlyoutItem { Text = "Exit", Command = new Command(() => Application.Current?.Quit()) });
 
 #if !MACCATALYST
             var build = new MenuBarItem { Text = "Build" };
@@ -83,15 +102,22 @@ namespace SailorEditor
             }
 
             var preferences = new MenuBarItem { Text = "Preferences" };
+            preferences.Add(CreateWorkspaceMenuItem("Settings", () => MauiProgram.GetService<EditorToolbarActions>().OpenSettingsAsync()));
             preferences.Add(new MenuFlyoutItem { Text = "Light Theme", Command = new Command(() => ChangeTheme("LightThemeStyle")) });
             preferences.Add(new MenuFlyoutItem { Text = "Dark Theme", Command = new Command(() => ChangeTheme("DarkThemeStyle")) });
 
-            MenuBarItems.Add(file);
+            menus.Add(file);
 #if !MACCATALYST
-            MenuBarItems.Add(build);
+            menus.Add(build);
 #endif
-            MenuBarItems.Add(window);
-            MenuBarItems.Add(preferences);
+            menus.Add(window);
+            menus.Add(preferences);
+#if WINDOWS
+            // The hidden Shell navigation bar also hides MAUI's menu presenter.
+            // Host the same menu actions in a persistent native Windows menu bar.
+            if (menuPage is MainPage mainPage)
+                mainPage.UpdateMenus();
+#endif
         }
 
         MenuFlyoutSubItem BuildRecentWorkspacesMenu()

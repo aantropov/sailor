@@ -37,6 +37,9 @@ namespace SailorEditor
                 .ConfigureMauiHandlers(handlers =>
                 {
                     handlers.AddHandler<NativeSceneViewport, NativeSceneViewportHandler>();
+#if WINDOWS
+                    handlers.AddHandler<WindowsMenuBarView, WindowsMenuBarHandler>();
+#endif
                 })
 #endif
                 .ConfigureFonts(fonts =>

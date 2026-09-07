@@ -16,6 +16,7 @@ namespace SailorEditor.Views
     public partial class SceneView : ContentView
     {
         bool isRunning = false;
+        int viewportLoadGeneration;
         bool isFocused = false;
         bool isInputCaptured = false;
         bool isPlayMode = false;
@@ -169,6 +170,7 @@ namespace SailorEditor.Views
             Loaded += (sender, args) =>
             {
                 isRunning = true;
+                var loadGeneration = ++viewportLoadGeneration;
                 SubscribeToEngineLifecycle();
                 _ = RefreshViewportToolStateAsync();
                 _ = RefreshGraphicsSettingsAsync(reload: false);
@@ -186,7 +188,7 @@ namespace SailorEditor.Views
                 {
                     try
                     {
-                        if (!isRunning)
+                        if (!isRunning || loadGeneration != viewportLoadGeneration)
                         {
                             return false;
                         }
@@ -1339,6 +1341,11 @@ namespace SailorEditor.Views
             {
                 if (nativeHostHandle == nint.Zero)
                 {
+                    RequestNativeViewportLayout();
+                }
+
+                if (nativeHostHandle == nint.Zero)
+                {
                     if (ViewportStatusOverlay.IsVisible)
                         SetLabelText(ViewportStatusText, "Waiting for native viewport host...");
                     return;
@@ -1473,7 +1480,8 @@ namespace SailorEditor.Views
             }
 
             var scale = nativeViewportScale > 0 ? nativeViewportScale : 1;
-            if (Math.Abs(lastRequestedNativeViewportWidth - width) < 0.5 &&
+            if (nativeHostHandle != nint.Zero &&
+                Math.Abs(lastRequestedNativeViewportWidth - width) < 0.5 &&
                 Math.Abs(lastRequestedNativeViewportHeight - height) < 0.5 &&
                 Math.Abs(lastRequestedNativeViewportScale - scale) < 0.01)
             {

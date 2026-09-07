@@ -1,7 +1,7 @@
 ﻿<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="SailorEditor.Views.HierarchyView">
-    <Frame>
+    <Border Style="{StaticResource DockPanelBorder}">
         <Grid x:Name="HierarchyDropSurface"
               RowSpacing="0"
               BackgroundColor="Transparent">
@@ -18,5 +18,5 @@
                          HorizontalOptions="Fill"
                          VerticalOptions="Start" />
         </Grid>
-    </Frame>
+    </Border>
 </ContentView>

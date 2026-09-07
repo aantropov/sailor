@@ -44,7 +44,7 @@
         </ResourceDictionary>
     </ContentView.Resources>
 
-    <Frame Padding="8">
+    <Border Style="{StaticResource DockPanelBorder}" Padding="8">
         <Grid RowSpacing="0" ColumnSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -64,5 +64,5 @@
                 </VerticalStackLayout>
             </ScrollView>
         </Grid>
-    </Frame>
+    </Border>
 </ContentView>

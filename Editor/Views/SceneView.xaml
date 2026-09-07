@@ -10,7 +10,9 @@
                 Stroke="#2A2A2A"
                 StrokeThickness="1"
                 Padding="3,2">
-            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto"
+            <ScrollView Orientation="Horizontal"
+                        HorizontalScrollBarVisibility="Never">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto"
                   ColumnSpacing="4">
                 <HorizontalStackLayout Spacing="3"
                                        Grid.Column="0"
@@ -128,6 +130,7 @@
                                  Clicked="OnRestartEngineClicked" />
                 </Border>
             </Grid>
+            </ScrollView>
         </Border>
 
         <Border x:Name="Viewport"

@@ -5,7 +5,7 @@
              x:Class="SailorEditor.Views.ConsoleView"
              x:DataType="local:ConsoleView">
 
-    <Frame>
+    <Border Style="{StaticResource DockPanelBorder}">
         <Grid>
             <CollectionView x:Name="MessagesCollection"
                             Grid.Row="0"
@@ -26,5 +26,5 @@
                 </CollectionView.ItemTemplate>
             </CollectionView>
         </Grid>
-    </Frame>
+    </Border>
 </ContentView>
