@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Defines.h"
+#include "Core/SpinLock.h"
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
@@ -55,6 +56,7 @@ namespace Sailor
 			return shadowType == RHI::EShadowType::PCF ? -configuredBias : 0.0f;
 		}
 
+		SAILOR_API virtual Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 
@@ -173,6 +175,7 @@ namespace Sailor
 		Framegraph::TextureBindingCache m_textureBindingCache{};
 		RHI::TPackedDrawPacketPayloadCache<PerInstanceData> m_packetPayloadCache{};
 		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache{};
+		SpinLock m_syncSharedResources{};
 
 		SAILOR_SHARED_API static const char* m_name;
 	};

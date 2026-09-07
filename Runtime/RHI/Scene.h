@@ -248,6 +248,13 @@ namespace Sailor::RHI
 		uint32_t m_nextOffset = 0u;
 	};
 
+	struct RHISceneInstanceUpdate
+	{
+		RenderInstanceHandle m_handle{};
+		RHISceneInstanceRecord m_record{};
+		SceneChangeMask m_changeMask = ToMask(ESceneChangeBit::None);
+	};
+
 	class RHIScene final : public RHIResource
 	{
 	public:
@@ -260,6 +267,9 @@ namespace Sailor::RHI
 			const RHISceneInstanceRecord& record,
 			SceneChangeMask changeMask);
 		SAILOR_SHARED_API bool RemoveInstance(RenderInstanceHandle handle);
+		// Commit prepared records under one lock. Stale handles are skipped;
+		// the result counts valid updates, including valid no-op updates.
+		SAILOR_SHARED_API size_t UpdateInstances(const TVector<RHISceneInstanceUpdate>& updates);
 		SAILOR_SHARED_API bool ResolveCurrent(
 			RenderInstanceHandle handle,
 			RHISceneInstanceRecord& outRecord) const;
@@ -290,6 +300,8 @@ namespace Sailor::RHI
 		bool ResolveSlot(RenderInstanceHandle handle, LogicalSlot*& outSlot);
 		bool ResolveSlot(RenderInstanceHandle handle, const LogicalSlot*& outSlot) const;
 		void AppendChange(RenderInstanceHandle handle, SceneChangeMask mask);
+		bool UpdateInstanceLocked(RenderInstanceHandle handle,
+			const RHISceneInstanceRecord& record, SceneChangeMask changeMask);
 		void BumpMobilityRevision(EMobilityType mobility);
 		void RebuildHandleLists(RHISceneVersion& version);
 		RHISceneRecordRootPtr BuildRecordRoot();

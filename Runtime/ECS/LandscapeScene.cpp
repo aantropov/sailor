@@ -185,14 +185,14 @@ void LandscapeECS::PublishSceneVersion()
 		}
 
 		auto rebuildSpatialTree =
-			[this](EMobilityType mobility, bool bHasEntries, TSharedPtr<TOctree<RHI::RenderInstanceHandle>>& tree)
+			[this](EMobilityType mobility, bool bHasEntries, TSharedPtr<RHI::RHISceneSpatialIndex>& tree)
 		{
 			if (!bHasEntries)
 			{
 				tree.Clear();
 				return;
 			}
-			tree = TSharedPtr<TOctree<RHI::RenderInstanceHandle>>::Make(glm::ivec3(0, 0, 0), 16536 * 16, 4);
+			tree = TSharedPtr<RHI::RHISceneSpatialIndex>::Make(glm::ivec3(0, 0, 0), 16536 * 16, 4);
 			auto appendSpatialEntry = [this, &tree](const RHI::RHISceneProxyResourcePtr& resource,
 										  const glm::ivec3& center,
 										  const glm::ivec3& extents)

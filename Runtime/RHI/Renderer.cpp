@@ -916,16 +916,22 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				{
 					SAILOR_PROFILE_SCOPE("Clear after Present");
 
-					rhiSceneView->Clear();
-
-					auto& list = m_cachedSceneViews.At_Lock(rhiSceneView->m_world);
-					auto it = list.FindIf([&](const auto& el) { return el.m_first == rhiSceneView; });
-					if (it != list.end())
 					{
-						(*it).m_second = true;
+						SAILOR_PROFILE_SCOPE("Clear submitted scene view");
+						rhiSceneView->Clear();
 					}
 
-					m_cachedSceneViews.Unlock(rhiSceneView->m_world);
+					{
+						SAILOR_PROFILE_SCOPE("Return scene view to cache");
+						auto& list = m_cachedSceneViews.At_Lock(rhiSceneView->m_world);
+						auto it = list.FindIf([&](const auto& el) { return el.m_first == rhiSceneView; });
+						if (it != list.end())
+						{
+							(*it).m_second = true;
+						}
+
+						m_cachedSceneViews.Unlock(rhiSceneView->m_world);
+					}
 
 					GetDriver()->CollectGarbage_RenderThread();
 				}

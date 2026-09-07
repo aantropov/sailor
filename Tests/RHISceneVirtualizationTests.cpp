@@ -90,6 +90,58 @@ namespace
 			"collecting older versions must not invalidate a recycled live handle");
 	}
 
+	void TestBatchUpdatesPreserveVersionsAndFlightReplay()
+	{
+		auto scene = RHIScenePtr::Make(2u);
+		TVector<RenderInstanceHandle> handles;
+		for (size_t i = 0u; i < 150u; ++i)
+		{
+			handles.Add(scene->AddInstance(MakeRecord(i, EMobilityType::Dynamic, float(i))));
+		}
+		auto before = scene->PublishVersion();
+		scene->PrepareFlight(0u, before);
+		TVector<RHISceneInstanceUpdate> updates;
+		for (size_t i = 0u; i < handles.Num(); ++i)
+		{
+			const auto mobility = i % 3u == 0u ? EMobilityType::Stationary : EMobilityType::Dynamic;
+			updates.Add({ handles[i], MakeRecord(i, mobility, float(i + 1000u)),
+				ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds) |
+				ToMask(ESceneChangeBit::Mobility) });
+		}
+		const uint64_t revision = scene->GetRevision();
+		Require(scene->UpdateInstances(updates) == handles.Num(), "a batch must update every live handle");
+		Require(scene->GetRevision() == revision + handles.Num(), "each changed handle must retain its journal revision");
+		auto after = scene->PublishVersion();
+		Require(after->m_stationaryHandles->Num() == 50u && after->m_dynamicHandles->Num() == 100u,
+			"batch mobility changes must rebuild the published handle lists");
+		for (size_t i = 0u; i < handles.Num(); ++i)
+		{
+			const RHISceneInstanceRecord* oldRecord = nullptr;
+			const RHISceneInstanceRecord* newRecord = nullptr;
+			Require(before->Resolve(handles[i], oldRecord) && after->Resolve(handles[i], newRecord),
+				"both retained versions must resolve records across multiple copy-on-write pages");
+			Require(oldRecord->m_worldMatrix[3].x == float(i) &&
+				oldRecord->m_mobility == EMobilityType::Dynamic &&
+				newRecord->m_worldMatrix[3].x == float(i + 1000u),
+				"batch publication must preserve the old transform and mobility");
+		}
+		const auto replay = scene->PrepareFlight(0u, after);
+		Require(replay->m_appliedRevision == after->m_sceneRevision, "a retained flight must replay the complete batch");
+
+		updates.Clear();
+		auto stale = handles[0];
+		++stale.m_generation;
+		updates.Add({ stale, MakeRecord(999u, EMobilityType::Static), ToMask(ESceneChangeBit::Transform) });
+		updates.Add({ stale, {}, ToMask(ESceneChangeBit::None) });
+		updates.Add({ handles[1], {}, ToMask(ESceneChangeBit::None) });
+		const auto unchangedRevision = scene->GetRevision();
+		Require(scene->UpdateInstances(updates) == 1u && scene->GetRevision() == unchangedRevision,
+			"stale generations must be skipped and live no-ops must not replace records or append journal entries");
+		Require(scene->PublishVersion() == after, "a no-op batch must reuse the published version");
+		updates.Clear();
+		Require(scene->UpdateInstances(updates) == 0u, "an empty batch must be a no-op");
+	}
+
 	void TestCopyOnWritePageSharing()
 	{
 		auto scene = RHIScenePtr::Make();
@@ -505,6 +557,7 @@ int main()
 	try
 	{
 		TestGenerationalHandlesAndImmutableVersions();
+		TestBatchUpdatesPreserveVersionsAndFlightReplay();
 		TestCopyOnWritePageSharing();
 		TestRenderedMotionHistoryReleasesOldScenePages();
 		TestTwoAndThreeFlightRevisionReplay();

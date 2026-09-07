@@ -239,11 +239,65 @@ namespace Sailor::RHI
 	 * Immutable after publication. ECS producers rebuild this adapter only when
 	 * their scene data changes; render views retain and share it across submissions.
 	 */
+	class RHISceneSpatialIndex
+	{
+	public:
+		RHISceneSpatialIndex(glm::ivec3 center, uint32_t size, uint32_t minSize,
+			size_t numPartitions = 1u, size_t partitionCapacity = 64u) :
+			m_center(center), m_size(size), m_minSize(minSize), m_partitionCapacity(partitionCapacity)
+		{
+			m_partitions.Resize(numPartitions);
+		}
+
+		// Each partition has one writer during construction. Readers start only
+		// after all writers join; published indices are never modified.
+		bool Update(const glm::ivec3& center, const glm::ivec3& extents,
+			RenderInstanceHandle handle, size_t partitionIndex = 0u)
+		{
+			auto& partition = m_partitions[partitionIndex];
+			if (!partition)
+			{
+				partition = TSharedPtr<TOctree<RenderInstanceHandle>>::Make(
+					m_center, m_size, m_minSize, m_partitionCapacity);
+			}
+			return partition->Update(center, extents, handle);
+		}
+
+		size_t Num() const
+		{
+			size_t count = 0u;
+			for (const auto& partition : m_partitions)
+			{
+				count += partition ? partition->Num() : 0u;
+			}
+			return count;
+		}
+
+		template<typename TCallback>
+		void Trace(const Math::Frustum& frustum, TCallback&& callback) const
+		{
+			for (const auto& partition : m_partitions)
+			{
+				if (partition)
+				{
+					partition->Trace(frustum, callback);
+				}
+			}
+		}
+
+	private:
+		TVector<TSharedPtr<TOctree<RenderInstanceHandle>>> m_partitions{};
+		glm::ivec3 m_center{};
+		uint32_t m_size = 0u;
+		uint32_t m_minSize = 0u;
+		size_t m_partitionCapacity = 0u;
+	};
+
 	struct RHISpatialSceneVersion
 	{
-		TSharedPtr<TOctree<RenderInstanceHandle>> m_dynamicOctree{};
-		TSharedPtr<TOctree<RenderInstanceHandle>> m_stationaryOctree{};
-		TSharedPtr<TOctree<RenderInstanceHandle>> m_staticOctree{};
+		TSharedPtr<RHISceneSpatialIndex> m_dynamicOctree{};
+		TSharedPtr<RHISceneSpatialIndex> m_stationaryOctree{};
+		TSharedPtr<RHISceneSpatialIndex> m_staticOctree{};
 		uint64_t m_revision = 0ull;
 		uint64_t m_shadowCastersRevision = 0ull;
 		bool m_bHasCustomDepthShadowCasters = false;

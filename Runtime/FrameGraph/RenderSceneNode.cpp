@@ -1052,7 +1052,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			}
 			m_orderedDrawItems.Clear(false);
 			syncSharedResources.Unlock();
-		}, EThreadType::RHI);
+		}, EThreadType::Worker);
 
 	return res;
 }

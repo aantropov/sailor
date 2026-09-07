@@ -8,6 +8,7 @@
 #include "Memory/Memory.h"
 #include "RHI/SceneView.h"
 #include "Memory/UniquePtr.hpp"
+#include <optional>
 
 namespace Sailor
 {
@@ -95,11 +96,20 @@ namespace Sailor
 			size_t m_componentIndex = ECS::InvalidIndex;
 			EPreparedProxyState m_state = EPreparedProxyState::Remove;
 			uint32_t m_skeletonOffset = StaticMeshRendererData::InvalidSkeletonOffset;
-			RHI::RHISceneViewProxy m_staticProxy{};
+			std::optional<RHI::RHISceneViewProxy> m_staticProxy{};
+			RHI::RHISceneInstanceUpdate m_sceneUpdate{};
 			RHI::RHIShadowCasterProxyPtr m_shadowCaster{};
 			Math::AABB m_worldBounds{};
 			RHI::SceneChangeMask m_changeMask = RHI::ToMask(RHI::ESceneChangeBit::None);
 			bool m_bStateOnly = false;
+			uint8_t m_spatialChangeMask = 0u;
+		};
+
+		struct PreparedProxyBatch
+		{
+			TVector<PreparedProxyUpdate> m_updates{};
+			TVector<RHI::RHISceneInstanceUpdate> m_sceneUpdates{};
+			bool m_bHasCustomDepthShadowCasters = false;
 		};
 
 		SAILOR_API virtual void OnComponentUnregistered(size_t index, StaticMeshRendererData& component) override;
@@ -112,8 +122,7 @@ namespace Sailor
 		uint64_t m_spatialRevision = 0ull;
 		uint64_t m_shadowCastersRevision = 0ull;
 		uint64_t m_lastMaterialContentRevision = 0;
-		TVector<size_t> m_componentScanScratch{};
-		TVector<PreparedProxyUpdate> m_preparedUpdatesScratch{};
+		TVector<PreparedProxyBatch> m_preparedBatchesScratch{};
 		TVector<Tasks::ITaskPtr> m_prepareTasksScratch{};
 		bool m_bHasCustomDepthShadowCasters = false;
 	};

@@ -101,7 +101,8 @@ namespace Sailor
 	public:
 
 		// Constructors & Destructor
-		TOctree(glm::ivec3 center = glm::ivec3(0, 0, 0), uint32_t size = 16536u, uint32_t minSize = 4) : m_map(size)
+		TOctree(glm::ivec3 center = glm::ivec3(0, 0, 0), uint32_t size = 16536u, uint32_t minSize = 4,
+			size_t initialCapacity = 64u) : m_map(initialCapacity)
 		{
 			m_minSize = minSize;
 			m_root = Memory::New<TNode>(m_allocator);
