@@ -143,6 +143,32 @@ namespace
 			"non-array storage blocks must fall back to their reflected padded size");
 	}
 
+	void TestMaterialInstanceIndexIncludesAllocationPadding()
+	{
+		using Allocation = Memory::TMemoryPtr<Memory::VulkanBufferMemoryPtr>;
+		const Memory::VulkanBufferMemoryPtr storage({}, 0u, 65536u);
+		const Allocation glass(12960u, 64u, 176u, storage, 0u);
+		Require(SsboLayout::ResolveInstanceIndex(glass, 176u) == 74u,
+			"glass at byte 13024 must use material index 74, not the preceding record");
+
+		for (const size_t stride : { 16u, 144u, 176u, 192u })
+		{
+			for (size_t offset = 0u; offset < 2048u; ++offset)
+			{
+				uint32_t padding = 0u;
+				Require(Memory::Align(stride, stride,
+					Memory::Shift(storage, offset), storage.m_size - offset, padding),
+					"the material record must fit after alignment");
+				const Allocation allocation(offset, padding, stride, storage, 0u);
+				const uint32_t index = SsboLayout::ResolveInstanceIndex(allocation, stride);
+				Require(static_cast<size_t>(index) * stride == (*allocation).m_offset,
+					"shader indexing and buffer uploads must address the same aligned record");
+				Require(index == (offset + stride - 1u) / stride,
+					"mixed material strides must round the byte offset up, including already aligned records");
+			}
+		}
+	}
+
 	void TestDescriptorCacheKeyKeepsItsCompatibilitySnapshot()
 	{
 		using DescriptorCacheKey =
@@ -393,6 +419,8 @@ int main()
 			TestStagingAllocationIdentityKeepsEveryRange },
 		{ "SsboElementAlignmentPreservesStd430Stride",
 			TestSsboElementAlignmentPreservesStd430Stride },
+		{ "MaterialInstanceIndexIncludesAllocationPadding",
+			TestMaterialInstanceIndexIncludesAllocationPadding },
 		{ "DescriptorCacheKeyKeepsItsCompatibilitySnapshot",
 			TestDescriptorCacheKeyKeepsItsCompatibilitySnapshot },
 		{ "ConcurrentMapConstFindDoesNotExposeEndIterator",

@@ -2093,10 +2093,8 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 				binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(storageAllocator->Allocate(paddedSize, paddedSize), storageAllocator);
 				binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
 
-				check(((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % paddedSize) == 0);
-				uint32_t instanceIndex = (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / paddedSize);
-
-				binding->m_vulkan.m_storageInstanceIndex = instanceIndex;
+				binding->m_vulkan.m_storageInstanceIndex = SsboLayout::ResolveInstanceIndex(
+					binding->m_vulkan.m_valueBinding->Get(), paddedSize);
 				binding->SetLayout(layoutBinding);
 			}
 		}
@@ -2374,10 +2372,8 @@ RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CloneMaterialShaderBindings(
 				TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
 					allocator->Allocate(paddedSize, paddedSize),
 					allocator);
-			const auto& allocation = targetBinding->m_vulkan.m_valueBinding->Get();
-			check((allocation.m_offset % paddedSize) == 0u);
-			targetBinding->m_vulkan.m_storageInstanceIndex =
-				static_cast<uint32_t>(allocation.m_offset / paddedSize);
+			targetBinding->m_vulkan.m_storageInstanceIndex = SsboLayout::ResolveInstanceIndex(
+				targetBinding->m_vulkan.m_valueBinding->Get(), paddedSize);
 		}
 	}
 
