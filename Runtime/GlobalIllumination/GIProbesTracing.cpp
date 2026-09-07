@@ -331,6 +331,7 @@ bool Sailor::TraceGIProbeTransport(
 	GIProbe& probe,
 	std::string& outDiagnostic)
 {
+	SAILOR_PROFILE_FUNCTION();
 	outDiagnostic.clear();
 	if (!Math::AllFinite(request.m_volumeMin) ||
 		!Math::AllFinite(request.m_volumeMax) ||
@@ -497,6 +498,7 @@ bool Sailor::AccumulateGIProbeIrradianceRange(
 	GIProbeIrradianceAccumulator& accumulator,
 	std::string& outDiagnostic)
 {
+	SAILOR_PROFILE_FUNCTION();
 	outDiagnostic.clear();
 	if (sequenceSampleCount == 0u ||
 		sequenceSampleCount > GIProbesMaxRaysPerProbe ||

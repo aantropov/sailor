@@ -53,6 +53,7 @@ GIProbesCompositionPlan GIProbesComposer::BuildPlan(
 	uint32_t maxStatesPerSnapshot,
 	EGIProbesCompositionValidation validation) noexcept
 {
+	SAILOR_PROFILE_FUNCTION();
 	try
 	{
 		TVector<const GIProbesCompositionInput*> active;
@@ -207,6 +208,7 @@ GIProbesCompositionResult GIProbesComposer::Compose(
 	const TVector<GIProbesCompositionInput>& inputs,
 	uint32_t maxStatesPerSnapshot) noexcept
 {
+	SAILOR_PROFILE_FUNCTION();
 	GIProbesCompositionPlan plan = BuildPlan(
 		inputs,
 		maxStatesPerSnapshot,

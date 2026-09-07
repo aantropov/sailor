@@ -17,6 +17,7 @@ using namespace Sailor::Tasks;
 bool CSMLightState::CanReuse(uint32_t componentIndex,
 	RHI::EShadowType shadowType,
 	const glm::mat4& lightMatrix,
+	size_t lodCameraRevision,
 	uint64_t sceneRevision,
 	const TSharedPtr<TVector<RHI::RHISceneVersionPtr>>& sceneVersions,
 	const Math::Frustum& shadowFrustum,
@@ -34,6 +35,10 @@ bool CSMLightState::CanReuse(uint32_t componentIndex,
 		return false;
 	}
 	if (m_bContainsDynamicCasters && m_submissionToken != currentSubmissionToken)
+	{
+		return false;
+	}
+	if (m_bContainsCameraLodCasters && m_lodCameraRevision != lodCameraRevision)
 	{
 		return false;
 	}
@@ -84,6 +89,7 @@ void LightingECS::PrepareCSMPasses(const RHI::RHISceneViewPtr& sceneView,
 
 	outUpdateShadowMaps.Reserve(outUpdateShadowMaps.Num() + directionalLights.Num() * NumCascades);
 	const auto casterSceneVersions = sceneView->GetRetainedSceneVersions();
+	const size_t lodCameraRevision = CalculateShadowLodCameraRevision(cameraData);
 	const auto submissionToken = sceneView->GetOrCreateSubmissionCompletionToken();
 	auto& csmSnapshots = flightResources.m_csmSnapshots;
 	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
@@ -121,6 +127,7 @@ void LightingECS::PrepareCSMPasses(const RHI::RHISceneViewPtr& sceneView,
 										  csmSnapshots[currentSnapshotIndex].CanReuse(directionalLight.m_index,
 											  shadowType,
 											  lightMatrices[cascadeIndex],
+											  lodCameraRevision,
 											  sceneView->m_shadowCastersRevision,
 											  casterSceneVersions,
 											  frustums[cascadeIndex],
@@ -162,7 +169,7 @@ void LightingECS::PrepareCSMPasses(const RHI::RHISceneViewPtr& sceneView,
 			directionalLight.m_lightMatrix;
 		Math::Frustum broadFrustum;
 		broadFrustum.ExtractFrustumPlanes(broadLightMatrix);
-		sceneView->TraceShadowCasters(broadFrustum, glm::vec3(cameraTransform.m_position), m_csmBroadCastersScratch);
+		sceneView->TraceShadowCasters(broadFrustum, m_csmBroadCastersScratch);
 		const auto& shadowCasters = m_csmBroadCastersScratch;
 		std::array<Tasks::TaskPtr<TVector<RHI::RHIVisibleShadowCaster>>, NumCascades> cascadeCasterTasks{};
 		for (uint32_t cascadeIndex = 0; cascadeIndex < numCascades; ++cascadeIndex)
@@ -220,11 +227,13 @@ void LightingECS::PrepareCSMPasses(const RHI::RHISceneViewPtr& sceneView,
 			snapshot.m_componentIndex = directionalLight.m_index;
 			snapshot.m_shadowType = cascade.m_shadowType;
 			snapshot.m_lightMatrix = lightMatrices[k];
+			snapshot.m_lodCameraRevision = lodCameraRevision;
 			snapshot.m_sceneRevision = sceneView->m_shadowCastersRevision;
 			snapshot.m_animationRevision = sceneView->m_animationRevision;
 			snapshot.m_casterSceneVersions = casterSceneVersions;
 			ResolveShadowCasterUpdatePolicy(
-				cascade.m_meshList, snapshot.m_bContainsDynamicCasters, snapshot.m_bContainsAnimatedCasters);
+				cascade.m_meshList, snapshot.m_bContainsDynamicCasters, snapshot.m_bContainsAnimatedCasters,
+				snapshot.m_bContainsCameraLodCasters);
 
 			const bool bEvsmCascade = cascade.m_shadowType == RHI::EShadowType::EVSM;
 			const glm::ivec2 shadowMapExtent(graphicsProfile.GetShadowCascadeResolution(k));

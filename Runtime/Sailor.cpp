@@ -903,6 +903,7 @@ void App::Start()
 
 			//Frame successfully pushed
 			frameCounter++;
+			SAILOR_PROFILE_END_FRAME();
 			if (bRunsInsideEditor)
 			{
 				EditorRuntime::PumpEditorRemoteViewportsOnEngineThread();
@@ -971,7 +972,6 @@ void App::Start()
 		systemInputState = Win32::GlobalInput::GetInputState();
 		systemInputState.TrackForChanges(oldInputState);
 
-		SAILOR_PROFILE_END_FRAME();
 	}
 
 	pMainWindow->SetActive(false);

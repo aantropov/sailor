@@ -13,6 +13,7 @@ namespace Sailor
 
 	bool RuntimeGIProbesService::Start(const RuntimeGIProbesStartRequest& request, std::string& outDiagnostic)
 	{
+		SAILOR_PROFILE_FUNCTION();
 		if (!request.m_worldSettings.Validate(outDiagnostic) || !request.m_qualitySettings.Validate(outDiagnostic))
 		{
 			return false;
@@ -125,6 +126,7 @@ namespace Sailor
 
 	void RuntimeGIProbesService::Tick(float deltaTimeSeconds)
 	{
+		SAILOR_PROFILE_FUNCTION();
 		{
 			const std::lock_guard<std::mutex> lock(m_impl->m_mutex);
 			if (m_impl->m_generation && std::isfinite(deltaTimeSeconds) && deltaTimeSeconds > 0.0f)
@@ -149,6 +151,7 @@ namespace Sailor
 
 	RuntimeGIProbesStatus RuntimeGIProbesService::GetStatus() const
 	{
+		SAILOR_PROFILE_FUNCTION();
 		const std::lock_guard<std::mutex> lock(m_impl->m_mutex);
 		m_impl->UpdateStatusLocked();
 		return m_impl->m_status;

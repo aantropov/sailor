@@ -625,6 +625,7 @@ RHISceneVersionPtr RHIScene::PublishVersion(
 	uint64_t shadowRevision,
 	uint64_t spatialRevision)
 {
+	SAILOR_PROFILE_FUNCTION();
 	m_lock.Lock();
 	if (m_currentVersion &&
 		m_lastPublishedRevision == m_revision &&

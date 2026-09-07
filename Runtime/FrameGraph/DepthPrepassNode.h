@@ -113,9 +113,6 @@ namespace Sailor
 			TVector<CustomPerInstanceData> m_customArenaRangeInstances{};
 			TVector<uint64_t> m_customArenaRangeStableKeys{};
 			TVector<RHI::PackedDrawArenaMaterialRun> m_customArenaRangeMaterialVersionRuns{};
-			std::array<Framegraph::TextureDependencyCollector,
-				RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
-				m_requestedPacketTextures{};
 		};
 
 		struct DepthMaterialKey

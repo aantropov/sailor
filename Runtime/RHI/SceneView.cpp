@@ -1,4 +1,4 @@
-﻿#include "SceneView.h"
+#include "SceneView.h"
 #include "Core/StringHash.h"
 #include "ECS/CameraECS.h"
 #include "ECS/TransformECS.h"
@@ -412,39 +412,6 @@ uint64_t RHIVisibleSceneProxy::GetContentRevision() const
 	return m_record ? m_record->m_topologyRevision : 0ull;
 }
 
-RHIMeshPtr RHIVisibleSceneProxy::ResolveMesh(size_t meshIndex) const
-{
-	const auto* source = GetSource();
-	if (!source || meshIndex >= source->m_meshes.Num())
-	{
-		return {};
-	}
-
-	auto mesh = source->m_meshes[meshIndex];
-	return ResolveMesh(mesh);
-}
-
-RHIMeshPtr RHIVisibleSceneProxy::ResolveMesh(const RHIMeshPtr& sourceMesh) const
-{
-	auto mesh = sourceMesh;
-	const auto* source = GetSource();
-	if (mesh && source && source->m_lodPolicy.m_bEnabled)
-	{
-		const uint32_t lod = source->m_lodPolicy.Resolve(
-			m_screenCoverage,
-			m_cameraDistance,
-			mesh->GetNumLods());
-		if (lod > 0u)
-		{
-			if (auto lodMesh = mesh->GetLod(lod))
-			{
-				mesh = std::move(lodMesh);
-			}
-		}
-	}
-	return mesh;
-}
-
 glm::mat4 RHIVisibleSceneProxy::ResolveMeshWorldMatrix(size_t meshIndex) const
 {
 	const auto* source = GetSource();
@@ -469,48 +436,6 @@ glm::mat4 RHIVisibleSceneProxy::ResolveInstancedMeshWorldMatrix(
 	const glm::mat4 meshTransform = meshIndex < group.m_meshTransforms.Num() ?
 		group.m_meshTransforms[meshIndex] : glm::mat4(1.0f);
 	return GetWorldMatrix() * group.m_instanceTransforms[instanceIndex] * meshTransform;
-}
-
-RHIMeshPtr RHIVisibleSceneProxy::ResolveInstancedMesh(
-	const RHIInstancedMeshGroup& group,
-	size_t instanceIndex,
-	size_t meshIndex,
-	const glm::mat4& viewMatrix,
-	const glm::mat4& projectionMatrix) const
-{
-	if (meshIndex >= group.m_meshes.Num())
-	{
-		return {};
-	}
-	auto mesh = group.m_meshes[meshIndex];
-	const auto* source = GetSource();
-	if (!mesh || !source || !source->m_lodPolicy.m_bEnabled)
-	{
-		return mesh;
-	}
-
-	Math::AABB worldBounds = mesh->m_bounds;
-	worldBounds.Apply(ResolveInstancedMeshWorldMatrix(
-		group,
-		instanceIndex,
-		meshIndex));
-	uint32_t lod = source->m_lodPolicy.Resolve(
-		CalculateScreenCoverage(worldBounds, viewMatrix, projectionMatrix),
-		mesh->GetNumLods());
-	lod = Settings::ApplyLodBias(
-		lod,
-		mesh->GetNumLods(),
-		source->m_lodPolicy.m_minLod,
-		source->m_lodPolicy.m_maxLod,
-		ResolveInstanceLodBias(group, instanceIndex));
-	if (lod > 0u)
-	{
-		if (auto lodMesh = mesh->GetLod(lod))
-		{
-			mesh = std::move(lodMesh);
-		}
-	}
-	return mesh;
 }
 
 bool RHIVisibleSceneProxy::IsInstancedMeshWithinDistance(
@@ -620,42 +545,6 @@ uint64_t RHIVisibleShadowCaster::GetContentRevision() const
 	return m_resource ? m_resource->m_shadowRevision : 0ull;
 }
 
-RHIMeshPtr RHIVisibleShadowCaster::ResolveMesh(
-	const RHIShadowMeshProxy& shadowMesh,
-	const glm::mat4& shadowViewProjection) const
-{
-	return ResolveMesh(shadowMesh.m_mesh, shadowViewProjection);
-}
-
-RHIMeshPtr RHIVisibleShadowCaster::ResolveMesh(
-	const RHIMeshPtr& sourceMesh,
-	const glm::mat4& shadowViewProjection) const
-{
-	auto mesh = sourceMesh;
-	const auto* topology = m_resource ? &m_resource->m_proxy : nullptr;
-	if (!mesh || !topology || !topology->m_lodPolicy.m_bEnabled)
-	{
-		return mesh;
-	}
-
-	const float coverage = CalculateScreenCoverage(
-		GetWorldBounds(),
-		glm::mat4(1.0f),
-		shadowViewProjection);
-	const uint32_t lod = topology->m_lodPolicy.Resolve(
-		coverage,
-		m_cameraDistance,
-		mesh->GetNumLods());
-	if (lod > 0u)
-	{
-		if (auto lodMesh = mesh->GetLod(lod))
-		{
-			mesh = std::move(lodMesh);
-		}
-	}
-	return mesh;
-}
-
 glm::mat4 RHIVisibleShadowCaster::ResolveMeshWorldMatrix(
 	const RHIShadowMeshProxy& shadowMesh) const
 {
@@ -676,47 +565,6 @@ glm::mat4 RHIVisibleShadowCaster::ResolveInstancedMeshWorldMatrix(
 	const glm::mat4 meshTransform = meshIndex < group.m_meshTransforms.Num() ?
 		group.m_meshTransforms[meshIndex] : glm::mat4(1.0f);
 	return GetWorldMatrix() * group.m_instanceTransforms[instanceIndex] * meshTransform;
-}
-
-RHIMeshPtr RHIVisibleShadowCaster::ResolveInstancedMesh(
-	const RHIInstancedMeshGroup& group,
-	size_t instanceIndex,
-	size_t meshIndex,
-	const glm::mat4& shadowViewProjection) const
-{
-	if (meshIndex >= group.m_meshes.Num())
-	{
-		return {};
-	}
-	auto mesh = group.m_meshes[meshIndex];
-	const auto* topology = m_resource ? &m_resource->m_proxy : nullptr;
-	if (!mesh || !topology || !topology->m_lodPolicy.m_bEnabled)
-	{
-		return mesh;
-	}
-
-	Math::AABB worldBounds = mesh->m_bounds;
-	worldBounds.Apply(ResolveInstancedMeshWorldMatrix(
-		group,
-		instanceIndex,
-		meshIndex));
-	uint32_t lod = topology->m_lodPolicy.Resolve(
-		CalculateScreenCoverage(worldBounds, glm::mat4(1.0f), shadowViewProjection),
-		mesh->GetNumLods());
-	lod = Settings::ApplyLodBias(
-		lod,
-		mesh->GetNumLods(),
-		topology->m_lodPolicy.m_minLod,
-		topology->m_lodPolicy.m_maxLod,
-		ResolveInstanceLodBias(group, instanceIndex));
-	if (lod > 0u)
-	{
-		if (auto lodMesh = mesh->GetLod(lod))
-		{
-			mesh = std::move(lodMesh);
-		}
-	}
-	return mesh;
 }
 
 bool RHIVisibleShadowCaster::IsInstancedMeshWithinDistance(
@@ -875,114 +723,6 @@ uint32_t RHI::RHILodPolicy::Resolve(
 		lodBias);
 }
 
-namespace
-{
-	uint32_t ResolveProxyLod(
-		const StaticMeshRendererData& data,
-		const Math::AABB& worldBounds,
-		const CameraData& camera,
-		const RHIMeshPtr& mesh)
-	{
-		if (!mesh)
-		{
-			return 0u;
-		}
-
-		const float screenCoverage = CalculateScreenCoverage(
-			worldBounds,
-			camera.GetViewMatrix(),
-			camera.GetProjectionMatrix());
-		return data.ResolveLod(screenCoverage, mesh->GetNumLods());
-	}
-
-	[[maybe_unused]] void ApplyCustomLodToMeshes(
-		const RHILodPolicy& policy,
-		const Math::AABB& worldBounds,
-		const CameraData& camera,
-		TVector<RHIMeshPtr>& meshes)
-	{
-		const float coverage = CalculateScreenCoverage(
-			worldBounds, camera.GetViewMatrix(), camera.GetProjectionMatrix());
-		for (auto& mesh : meshes)
-		{
-			if (!mesh)
-			{
-				continue;
-			}
-			const uint32_t lod = policy.Resolve(coverage, mesh->GetNumLods());
-			if (lod > 0u)
-			{
-				if (RHIMeshPtr lodMesh = mesh->GetLod(lod))
-				{
-					mesh = std::move(lodMesh);
-				}
-			}
-		}
-	}
-
-	[[maybe_unused]] void ApplyLodToMeshes(
-		const StaticMeshRendererData& data,
-		const Math::AABB& worldBounds,
-		const CameraData& camera,
-		TVector<RHIMeshPtr>& meshes)
-	{
-		for (auto& mesh : meshes)
-		{
-			const uint32_t lod = ResolveProxyLod(
-				data,
-				worldBounds,
-				camera,
-				mesh);
-			if (lod > 0u)
-			{
-				if (RHIMeshPtr lodMesh = mesh->GetLod(lod))
-				{
-					mesh = std::move(lodMesh);
-				}
-			}
-		}
-	}
-
-	[[maybe_unused]] RHIShadowCasterProxyPtr CreateLodShadowCaster(
-		const RHIShadowCasterProxyPtr& source,
-		WorldPtr world,
-		const CameraData& camera)
-	{
-		if (!source || !world)
-		{
-			return source;
-		}
-
-		auto* meshEcs = world->GetECS<StaticMeshRendererECS>();
-		const bool bUseStaticMeshSettings = meshEcs &&
-			meshEcs->IsComponentRegistered(source->m_staticMeshEcs);
-		if (!source->m_lodPolicy.m_bEnabled && !bUseStaticMeshSettings)
-		{
-			return source;
-		}
-
-		RHIShadowCasterProxyPtr result = RHIShadowCasterProxyPtr::Make(*source);
-		const float coverage = CalculateScreenCoverage(
-			source->m_worldAabb, camera.GetViewMatrix(), camera.GetProjectionMatrix());
-		for (auto& shadowMesh : result->m_meshes)
-		{
-			const uint32_t lod = source->m_lodPolicy.m_bEnabled ?
-				source->m_lodPolicy.Resolve(coverage,
-					shadowMesh.m_mesh ? shadowMesh.m_mesh->GetNumLods() : 0u) :
-				ResolveProxyLod(meshEcs->GetComponentData(source->m_staticMeshEcs),
-					source->m_worldAabb, camera, shadowMesh.m_mesh);
-			if (lod > 0u)
-			{
-				if (RHIMeshPtr lodMesh = shadowMesh.m_mesh->GetLod(lod))
-				{
-					shadowMesh.m_mesh = std::move(lodMesh);
-				}
-			}
-		}
-		return result;
-	}
-}
-
 void RHISceneView::PrepareDebugDrawCommandLists(
 	WorldPtr world,
 	const glm::ivec2& renderExtent)
@@ -1072,6 +812,8 @@ void RHISceneViewSnapshot::ResetForReuse()
 	m_cameraIndex = 0u;
 	m_cameraTransform = {};
 	m_proxies.Clear(false);
+	m_lodMeshes.Clear(false);
+	m_instancedLodOffsets.Clear(false);
 	m_pathTracerProxies.Clear(false);
 	m_pathTracerTLASInstances.Clear(false);
 	m_pathTracerMaterials.Clear(false);
@@ -1096,6 +838,195 @@ void RHISceneViewSnapshot::ResetForReuse()
 	m_globalIllumination.Clear();
 	m_debugDrawSecondaryCmdList.Clear();
 	m_drawImGui.Clear();
+}
+
+const RHIMeshPtr& RHISceneViewSnapshot::ResolveMesh(const RHIVisibleSceneProxy& proxy, size_t meshIndex) const
+{
+	const auto* source = proxy.GetSource();
+	if (!source || meshIndex >= source->m_meshes.Num())
+	{
+		static const RHIMeshPtr empty;
+		return empty;
+	}
+	return proxy.m_meshLodOffset == RHIVisibleSceneProxy::InvalidIndex ?
+		source->m_meshes[meshIndex] : m_lodMeshes[proxy.m_meshLodOffset + meshIndex];
+}
+
+const RHIMeshPtr& RHISceneViewSnapshot::ResolveMesh(const RHIVisibleShadowCaster& proxy, size_t meshIndex) const
+{
+	const auto* source = proxy.GetSource();
+	if (!source || meshIndex >= source->m_meshes.Num())
+	{
+		static const RHIMeshPtr empty;
+		return empty;
+	}
+	return proxy.m_meshLodOffset == RHIVisibleSceneProxy::InvalidIndex ?
+		source->m_meshes[meshIndex].m_mesh : m_lodMeshes[proxy.m_meshLodOffset + meshIndex];
+}
+
+void RHISceneViewSnapshot::PrepareLods(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix)
+{
+	SAILOR_PROFILE_FUNCTION();
+	m_lodMeshes.Clear(false);
+	m_instancedLodOffsets.Clear(false);
+	struct LodOffsets
+	{
+		uint32_t m_main = RHIVisibleSceneProxy::InvalidIndex;
+		uint32_t m_shadow = RHIVisibleSceneProxy::InvalidIndex;
+		uint32_t m_instanced = RHIVisibleSceneProxy::InvalidIndex;
+	};
+	TMap<const void*, LodOffsets> preparedInstances;
+	TMap<const RHISceneProxyResource*, bool> topologyHasLods;
+	const glm::vec3 cameraPosition(m_cameraTransform.m_position);
+	auto prepare = [&](const RHIVisibleSceneProxy& proxy)
+		{
+			LodOffsets offsets;
+			const auto* source = proxy.GetSource();
+			if (!source || !source->m_lodPolicy.m_bEnabled)
+			{
+				return offsets;
+			}
+			bool* hasLods = nullptr;
+			if (!topologyHasLods.Find(proxy.m_resource, hasLods))
+			{
+				bool bHasLods = false;
+				for (const auto& mesh : source->m_meshes)
+				{
+					bHasLods |= mesh && mesh->GetNumLods() > 1u;
+				}
+				if (source->m_shadowCaster)
+				{
+					for (const auto& mesh : source->m_shadowCaster->m_meshes)
+					{
+						bHasLods |= mesh.m_mesh && mesh.m_mesh->GetNumLods() > 1u;
+					}
+				}
+				for (const auto& group : source->m_instancedGroups)
+				{
+					for (const auto& mesh : group.m_meshes)
+					{
+						bHasLods |= mesh && mesh->GetNumLods() > 1u;
+					}
+				}
+				topologyHasLods.Insert(proxy.m_resource, bHasLods);
+				if (!bHasLods)
+				{
+					return offsets;
+				}
+			}
+			else if (!*hasLods)
+			{
+				return offsets;
+			}
+			// Record identity also distinguishes equal handles in different scene roots.
+			const void* key = proxy.m_record ? static_cast<const void*>(proxy.m_record) : proxy.m_resource;
+			LodOffsets* existing = nullptr;
+			if (preparedInstances.Find(key, existing))
+			{
+				return *existing;
+			}
+			const auto& policy = source->m_lodPolicy;
+			const float coverage = policy.m_cameraDistanceThresholds.IsEmpty() ?
+				CalculateScreenCoverage(proxy.GetWorldBounds(), viewMatrix, projectionMatrix) : 1.0f;
+			const float cameraDistance = glm::distance(cameraPosition,
+				glm::clamp(cameraPosition, proxy.GetWorldBounds().m_min, proxy.GetWorldBounds().m_max));
+			auto selectMesh = [&](const RHIMeshPtr& mesh, float meshCoverage, float distance, int32_t instanceBias)
+				{
+					if (!mesh || mesh->GetNumLods() <= 1u)
+					{
+						return mesh;
+					}
+					uint32_t lod = policy.Resolve(meshCoverage, distance, mesh->GetNumLods());
+					if (instanceBias != 0)
+					{
+						lod = Settings::ApplyLodBias(lod, mesh->GetNumLods(),
+							policy.m_minLod, policy.m_maxLod, instanceBias);
+					}
+					if (lod > 0u)
+					{
+						if (auto selected = mesh->GetLod(lod))
+						{
+							return selected;
+						}
+					}
+					return mesh;
+				};
+			offsets.m_main = static_cast<uint32_t>(m_lodMeshes.Num());
+			for (const auto& mesh : source->m_meshes)
+			{
+				m_lodMeshes.Add(selectMesh(mesh, coverage, cameraDistance, 0));
+			}
+			offsets.m_shadow = static_cast<uint32_t>(m_lodMeshes.Num());
+			if (source->m_shadowCaster)
+			{
+				for (const auto& shadowMesh : source->m_shadowCaster->m_meshes)
+				{
+					RHIMeshPtr selected;
+					bool bSelected = false;
+					for (size_t meshIndex = 0u; meshIndex < source->m_meshes.Num(); ++meshIndex)
+					{
+						if (source->m_meshes[meshIndex] == shadowMesh.m_mesh)
+						{
+							selected = m_lodMeshes[offsets.m_main + meshIndex];
+							bSelected = true;
+							break;
+						}
+					}
+					if (!bSelected)
+					{
+						selected = selectMesh(shadowMesh.m_mesh, coverage, cameraDistance, 0);
+					}
+					m_lodMeshes.Add(std::move(selected));
+				}
+			}
+			offsets.m_instanced = static_cast<uint32_t>(m_instancedLodOffsets.Num());
+			for (const auto& group : source->m_instancedGroups)
+			{
+				m_instancedLodOffsets.Add(static_cast<uint32_t>(m_lodMeshes.Num()));
+				for (size_t meshIndex = 0u; meshIndex < group.m_meshes.Num(); ++meshIndex)
+				{
+					const auto& mesh = group.m_meshes[meshIndex];
+					for (size_t instanceIndex = 0u; instanceIndex < group.m_instanceTransforms.Num(); ++instanceIndex)
+					{
+						if (!mesh || mesh->GetNumLods() <= 1u)
+						{
+							m_lodMeshes.Add(mesh);
+							continue;
+						}
+						Math::AABB bounds = mesh->m_bounds;
+						bounds.Apply(proxy.ResolveInstancedMeshWorldMatrix(group, instanceIndex, meshIndex));
+						const float instanceCoverage = policy.m_cameraDistanceThresholds.IsEmpty() ?
+							CalculateScreenCoverage(bounds, viewMatrix, projectionMatrix) : 1.0f;
+						const float distance = glm::distance(cameraPosition,
+							glm::clamp(cameraPosition, bounds.m_min, bounds.m_max));
+						m_lodMeshes.Add(selectMesh(mesh, instanceCoverage, distance,
+							ResolveInstanceLodBias(group, instanceIndex)));
+					}
+				}
+			}
+			preparedInstances.Insert(key, offsets);
+			return offsets;
+		};
+
+	for (auto& proxy : m_proxies)
+	{
+		const auto offsets = prepare(proxy);
+		proxy.m_meshLodOffset = offsets.m_main;
+		proxy.m_instancedLodOffset = offsets.m_instanced;
+	}
+	for (auto& pass : m_shadowMapsToUpdate)
+	{
+		for (auto& caster : pass.m_meshList)
+		{
+			RHIVisibleSceneProxy proxy;
+			proxy.m_handle = caster.m_handle;
+			proxy.m_record = caster.m_record;
+			proxy.m_resource = caster.m_resource;
+			const auto offsets = prepare(proxy);
+			caster.m_meshLodOffset = offsets.m_shadow;
+			caster.m_instancedLodOffset = offsets.m_instanced;
+		}
+	}
 }
 
 uint64_t RHISceneViewSnapshot::GetMobilityRevision(EMobilityType mobility) const
@@ -1281,17 +1212,15 @@ void RHISceneView::TraceScene(
 }
 
 TVector<RHIVisibleShadowCaster> RHISceneView::TraceShadowCasters(
-	const Math::Frustum& frustum,
-	const glm::vec3& lodReferencePosition) const
+	const Math::Frustum& frustum) const
 {
 	TVector<RHIVisibleShadowCaster> result;
-	TraceShadowCasters(frustum, lodReferencePosition, result);
+	TraceShadowCasters(frustum, result);
 	return result;
 }
 
 void RHISceneView::TraceShadowCasters(
 	const Math::Frustum& frustum,
-	const glm::vec3& lodReferencePosition,
 	TVector<RHIVisibleShadowCaster>& result) const
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -1319,7 +1248,6 @@ void RHISceneView::TraceShadowCasters(
 		}
 
 		auto appendHandle = [&result,
-			&lodReferencePosition,
 			&sceneVersion = spatialVersion->m_sceneVersion](
 			const RenderInstanceHandle& handle)
 			{
@@ -1340,13 +1268,6 @@ void RHISceneView::TraceShadowCasters(
 				visible.m_handle = handle;
 				visible.m_record = record;
 				visible.m_resource = resource;
-				const glm::vec3 closest = glm::clamp(
-					lodReferencePosition,
-					record->m_worldBounds.m_min,
-					record->m_worldBounds.m_max);
-				visible.m_cameraDistance = glm::distance(
-					lodReferencePosition,
-					closest);
 				result.Add(std::move(visible));
 		};
 		if (spatialVersion->m_dynamicOctree)
@@ -1426,17 +1347,18 @@ void RHISceneView::PrepareSnapshots()
 			auto& proxy = res.m_proxies[visibleProxyReadIndex];
 			const auto* source = proxy.GetSource();
 			bool bKeepProxy = source != nullptr;
+			float cameraDistance = 0.0f;
 			if (source)
 			{
 				const glm::vec3 closest = glm::clamp(
 					cameraPosition,
 					proxy.GetWorldBounds().m_min,
 					proxy.GetWorldBounds().m_max);
-				proxy.m_cameraDistance = glm::distance(cameraPosition, closest);
+				cameraDistance = glm::distance(cameraPosition, closest);
 			}
 			if (source && std::isfinite(source->m_lodPolicy.m_maxCameraDistance))
 			{
-				bKeepProxy = proxy.m_cameraDistance <=
+				bKeepProxy = cameraDistance <=
 					source->m_lodPolicy.m_maxCameraDistance;
 			}
 			if (!bKeepProxy)
@@ -1478,13 +1400,6 @@ void RHISceneView::PrepareSnapshots()
 				return reinterpret_cast<uintptr_t>(lhs.m_resource) <
 					reinterpret_cast<uintptr_t>(rhs.m_resource);
 			});
-		for (auto& proxy : res.m_proxies)
-		{
-			proxy.m_screenCoverage = CalculateScreenCoverage(
-				proxy.GetWorldBounds(),
-				camera.GetViewMatrix(),
-				camera.GetProjectionMatrix());
-		}
 		if (i < m_debugDraw.Num())
 		{
 			res.m_debugDrawSecondaryCmdList = m_debugDraw[i];

@@ -100,9 +100,6 @@ namespace Sailor::Framegraph
 			TVector<PerInstanceData> m_arenaRangeInstances{};
 			TVector<uint64_t> m_arenaRangeStableKeys{};
 			TVector<RHI::PackedDrawArenaMaterialRun> m_arenaRangeMaterialVersionRuns{};
-			std::array<TextureDependencyCollector,
-				RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
-				m_requestedPacketTextures{};
 		};
 
 		SAILOR_SHARED_API static const char* m_name;
