@@ -75,6 +75,8 @@ namespace Sailor::RHI
 		uint64_t GetVersionId() const { return m_versionId; }
 		uint64_t GetPublicationRevision() const { return m_publicationRevision; }
 		RHIShaderBindingSetPtr GetBindings() const { return m_bindings; }
+		// A borrowed view is valid while this immutable version remains retained.
+		const RHIShaderBindingSet* GetBindingsRaw() const { return m_bindings.GetRawPtr(); }
 
 	private:
 		uint64_t m_versionId = 0ull;

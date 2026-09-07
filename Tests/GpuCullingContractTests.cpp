@@ -21,6 +21,7 @@
 #include "Raytracing/MaterialUtils.h"
 #include "RHI/Buffer.h"
 #include "RHI/Material.h"
+#include "RHI/MaterialPreparationCache.h"
 #include "RHI/Mesh.h"
 #include "RHI/Texture.h"
 #include "RHI/VertexDescription.h"
@@ -537,6 +538,8 @@ namespace
 		}
 		std::array<RHI::RHIMeshPtr, 2> meshes{
 			RHI::RHIMeshPtr::Make(), RHI::RHIMeshPtr::Make() };
+		std::array<RHI::RHIShaderBindingSetPtr, 2> textures{
+			RHI::RHIShaderBindingSetPtr::Make(), RHI::RHIShaderBindingSetPtr::Make() };
 		RHI::TPackedDrawPacket<Instance> packet;
 		constexpr uint32_t count = 4097u;
 		for (uint32_t flight = 0u; flight < 2u; ++flight)
@@ -550,7 +553,10 @@ namespace
 			{
 				const uint32_t id = (index * 37u) % count;
 				const auto& mesh = meshes[(id / materials.size()) % meshes.size()];
-				packet.Add(RHI::RHIBatch(materials[id % materials.size()], mesh), mesh, {id}, id);
+				RHI::RHIBatch batch(materials[id % materials.size()], mesh);
+				batch.m_textureBindings = textures[(id / (materials.size() * meshes.size())) % textures.size()];
+				const uint64_t stableKey = (uint64_t(id) << 40u) | (count - id);
+				packet.Add(std::move(batch), mesh, {id}, stableKey);
 			}
 			packet.Finalize(false);
 			std::array<bool, count> seen{};
@@ -566,13 +572,43 @@ namespace
 					seen[id] = true;
 					++visited;
 					Require(group.m_batch.m_materialVersion == materials[id % materials.size()]->GetVersion() &&
-						group.m_mesh == meshes[(id / materials.size()) % meshes.size()],
-						"sorting and packet reuse must preserve each instance's mesh and material generation");
+						group.m_mesh == meshes[(id / materials.size()) % meshes.size()] &&
+						group.m_batch.m_textureBindings == textures[(id / (materials.size() * meshes.size())) % textures.size()],
+						"sorting and packet reuse must preserve each instance's mesh, textures and material generation");
 					Require(offset == 0u || previousId < id, "instances sharing a draw must retain stable key order");
 					previousId = id;
 				}
 			}
 			Require(visited == count, "all mixed-material instances must reach the draw packet");
+		}
+	}
+
+	void TestPackedDrawEqualKeysPreserveBindingOrder()
+	{
+		std::array<RHI::RHIMaterialPtr, 2u> materials;
+		for (auto& material : materials)
+		{
+			material = RHI::RHIMaterialPtr::Make(
+				RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+		}
+		materials[0]->SetBindings(RHI::RHIShaderBindingSetPtr::Make());
+		const auto version = materials[0]->GetVersion();
+		RHI::TPackedDrawPacket<uint32_t> packet;
+		for (uint32_t index = 0u; index < 32u; ++index)
+		{
+			RHI::RHIBatch batch(materials[index % materials.size()], {});
+			batch.m_materialVersion = version;
+			packet.Add(std::move(batch), {}, index, 17ull);
+		}
+		packet.Finalize(false);
+		Require(packet.GetGroups().Num() == 32u,
+			"equal sort keys must not merge distinct binding owners across intervening draws");
+		for (uint32_t index = 0u; index < 32u; ++index)
+		{
+			Require(packet.GetPayload(EMobilityType::Dynamic).m_instances[index] == index &&
+				packet.GetGroups()[index].m_batch.m_material == materials[index % materials.size()] &&
+				packet.GetGroups()[index].m_batch.m_materialVersion == version,
+				"equal sort keys must preserve insertion order and each draw's retained binding owner");
 		}
 	}
 
@@ -915,6 +951,8 @@ namespace
 		for (size_t frame = 0u; frame < versions.size(); ++frame)
 		{
 			bindings[frame] = RHI::RHIShaderBindingSetPtr::Make();
+			bindings[frame]->GetOrAddShaderBinding("material")->m_vulkan.m_storageInstanceIndex =
+				static_cast<uint32_t>(100u + frame);
 			material->SetBindings(bindings[frame]);
 			versions[frame] = material->GetVersion();
 			RHI::RHIMaterial::BeginSubmissionVersionCapture(400ull + frame);
@@ -926,6 +964,7 @@ namespace
 		{
 			renderWorkers.emplace_back([&, frame]()
 				{
+					RHI::RHIMaterialPreparationCache preparedMaterials(400ull + frame);
 					for (size_t nextFrame = 0u; nextFrame < 32u; ++nextFrame)
 					{
 						sync.arrive_and_wait();
@@ -937,7 +976,7 @@ namespace
 							packet.Reset();
 							for (uint32_t index = 0u; index < NumInstances; ++index)
 							{
-								packet.Add(RHI::RHIBatch(material, {}, 400ull + frame), {},
+								packet.Add(preparedMaterials.MakeBatch(material, {}), {},
 									NumInstances - index, NumInstances - index);
 							}
 							packet.Finalize(false);
@@ -947,7 +986,9 @@ namespace
 								continue;
 							}
 							const auto& batch = packet.GetGroups()[0].m_batch;
-							if (batch.m_materialVersion != versions[frame] || batch.GetMaterialBindings() != bindings[frame])
+							if (batch.m_materialVersion != versions[frame] || batch.GetMaterialBindings() != bindings[frame] ||
+								preparedMaterials.Get(material).m_materialInstance != 100u + frame ||
+								batch.GetMaterialBindingsRaw() != bindings[frame].GetRawPtr())
 							{
 								valid.store(false);
 							}
@@ -1620,6 +1661,7 @@ int main()
 		{ "PackedDrawMixedMaterialSort", TestPackedDrawMixedMaterialSort },
 		{ "MaterialVersionPublicationContract", TestMaterialVersionPublicationContract },
 		{ "MaterialVersionsSurviveConcurrentWorldUpdates", TestMaterialVersionsSurviveConcurrentWorldUpdates },
+		{ "PackedDrawEqualKeysPreserveBindingOrder", TestPackedDrawEqualKeysPreserveBindingOrder },
 		{ "DynamicSpatialRootIsolation", TestDynamicSpatialRootIsolation },
 		{ "ParallelSpatialIndexVisibility", TestParallelSpatialIndexVisibility },
 		{ "InstancedViewLodAndDistanceContract", TestInstancedViewLodAndDistanceContract },
