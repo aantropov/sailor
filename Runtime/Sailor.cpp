@@ -954,14 +954,14 @@ void App::Start()
 				stats.m_numSubmittedCommandBuffers
 			);
 
-#if defined(__APPLE__)
 			if (!bRunsInsideEditor)
 			{
+				// The embedded renderer's hidden window belongs to the editor UI
+				// thread on Windows. SetWindowText sends a synchronous message to
+				// that thread, stalling the engine when the UI is busy and deadlocking
+				// it when an editor command is waiting for the engine main thread.
 				pMainWindow->SetWindowTitle(Buff);
 			}
-#else
-			pMainWindow->SetWindowTitle(Buff);
-#endif
 
 			frameCounter = 0U;
 			timer.Clear();
