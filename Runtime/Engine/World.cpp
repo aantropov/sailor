@@ -803,6 +803,7 @@ bool World::CanReparentPrefabObject(
 
 void World::Tick(FrameState& frameState)
 {
+	SAILOR_PROFILE_FUNCTION();
 	const bool bShouldCallBeginPlay = (m_mask & (uint8_t)EWorldBehaviourBit::CallBeginPlay) != 0;
 	const bool bShouldTick = (m_mask & (uint8_t)EWorldBehaviourBit::Tickable) != 0;
 	const bool bShouldEcsTick = (m_mask & (uint8_t)EWorldBehaviourBit::EcsTickable) != 0;

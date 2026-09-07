@@ -215,9 +215,11 @@ void Scheduler::Initialize()
 		1u,
 		(std::min)(MaxGIThreads, coresCount));
 	const unsigned numReservedThreads = 8u + numRHIThreads;
-	const unsigned numThreads = coresCount > numReservedThreads
-		? coresCount - numReservedThreads
-		: 1u;
+	// Dedicated queues are often idle or throttled. Reserving all of their
+	// threads must not prevent an eight-way gameplay batch from running.
+	const unsigned minimumWorkers = (std::min)(8u, (std::max)(1u, coresCount));
+	const unsigned numThreads = (std::max)(minimumWorkers,
+		coresCount > numReservedThreads ? coresCount - numReservedThreads : 1u);
 
 	WorkerThread* newRenderingThread = new WorkerThread(
 		"Render Thread",
@@ -310,7 +312,8 @@ void Scheduler::Initialize()
 	m_threadTypes[m_audioThreadId] = EThreadType::Audio;
 	m_workerThreads.Emplace(newAudioThread);
 
-	SAILOR_LOG("Initialize Tasks::Scheduler. Cores count: %d, Worker threads count: %zd", coresCount, m_workerThreads.Num());
+	SAILOR_LOG("Initialize Tasks::Scheduler. Logical cores: %u, Worker threads: %u, GI threads: %u, total threads: %zd",
+		coresCount, numThreads, numGIThreads, m_workerThreads.Num());
 }
 
 void Scheduler::AttachCurrentThreadAsMainThread()

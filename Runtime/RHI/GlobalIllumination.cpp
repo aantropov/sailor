@@ -383,6 +383,7 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 	RHIGlobalIlluminationGpuLayout& outLayout,
 	std::string& outDiagnostic) noexcept
 {
+	SAILOR_PROFILE_FUNCTION();
 	outLayout = {};
 	outDiagnostic.clear();
 	try
@@ -521,6 +522,7 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuCoefficients(
 	TVector<RHIGlobalIlluminationGpuCoefficients>& outCoefficients,
 	std::string& outDiagnostic) noexcept
 {
+	SAILOR_PROFILE_FUNCTION();
 	outCoefficients.Clear();
 	outDiagnostic.clear();
 	try
@@ -619,6 +621,7 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuStates(
 	TVector<RHIGlobalIlluminationGpuState>& outStates,
 	std::string& outDiagnostic) noexcept
 {
+	SAILOR_PROFILE_FUNCTION();
 	outStates.Clear();
 	outDiagnostic.clear();
 	try
