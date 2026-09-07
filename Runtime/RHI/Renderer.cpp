@@ -169,7 +169,7 @@ Renderer::~Renderer()
 	{
 		if (App::GetSubmodule<Tasks::Scheduler>())
 		{
-			Renderer::GetDriver()->WaitIdle();
+			WaitIdle();
 		}
 	}
 
@@ -179,6 +179,7 @@ Renderer::~Renderer()
 	// reference can be released from a late shader-module destructor after the
 	// instance has already been destroyed (MoltenVK crashes in that ordering).
 	m_previousRenderFrame.Clear();
+	m_previousSceneVersionRelease.Clear();
 	m_frameGraph.Clear();
 	m_cachedSceneViews.Clear();
 	m_submissionContexts.Clear();
@@ -370,19 +371,14 @@ void Renderer::BeginConditionalDestroy()
 	if (!m_bIsInitialized)
 	{
 		m_previousRenderFrame.Clear();
+		m_previousSceneVersionRelease.Clear();
 		m_frameGraph.Clear();
 		m_cachedSceneViews.Clear();
 		m_submissionContexts.Clear();
 		return;
 	}
 
-	if (m_previousRenderFrame.IsValid())
-	{
-		m_previousRenderFrame->Wait();
-		m_previousRenderFrame.Clear();
-	}
-
-	Renderer::GetDriver()->WaitIdle();
+	WaitIdle();
 
 	m_frameGraph.Clear();
 	m_cachedSceneViews.Clear();
@@ -918,7 +914,36 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 					{
 						SAILOR_PROFILE_SCOPE("Clear submitted scene view");
+						// Bound deferred ownership to one older frame. Normally its release
+						// overlaps the next frame's setup and is already complete here.
+						if (m_previousSceneVersionRelease)
+						{
+							SAILOR_PROFILE_SCOPE("Wait previous scene version release");
+							m_previousSceneVersionRelease->Wait();
+							m_previousSceneVersionRelease.Clear();
+						}
+						if (!rhiSceneView->m_sceneVersions.IsEmpty() ||
+							!rhiSceneView->m_virtualSceneVersions.IsEmpty() ||
+							rhiSceneView->m_retainedSceneVersions)
+						{
+							m_previousSceneVersionRelease = Tasks::CreateTask("Release submitted scene versions",
+								[spatial = std::move(rhiSceneView->m_sceneVersions),
+									versions = std::move(rhiSceneView->m_virtualSceneVersions),
+									retained = std::move(rhiSceneView->m_retainedSceneVersions)]() mutable
+								{
+									SAILOR_PROFILE_SCOPE("Reclaim submitted scene versions");
+									spatial.Clear();
+									versions.Clear();
+									retained.Clear();
+								}, EThreadType::Worker);
+						}
+						// Drop snapshot references before the worker runs, so the last
+						// reference (and expensive root destruction) stays with the task.
 						rhiSceneView->Clear();
+						if (m_previousSceneVersionRelease)
+						{
+							m_previousSceneVersionRelease->Run();
+						}
 					}
 
 					{
@@ -962,6 +987,11 @@ void Renderer::WaitIdle()
 	{
 		m_previousRenderFrame->Wait();
 		m_previousRenderFrame.Clear();
+	}
+	if (m_previousSceneVersionRelease)
+	{
+		m_previousSceneVersionRelease->Wait();
+		m_previousSceneVersionRelease.Clear();
 	}
 
 	if (m_driverInstance)

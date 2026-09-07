@@ -6,6 +6,7 @@
 #include "RHI/Texture.h"
 #include "RHI/Types.h"
 #include "RHI/Batch.hpp"
+#include "RHI/MaterialPreparationCache.h"
 #include "RHI/VertexDescription.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -87,6 +88,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 			}
 			const uint64_t materialSubmissionId =
 				sceneViewSnapshot.m_submissionContext->GetSubmissionId();
+			RHIMaterialPreparationCache preparedMaterials(materialSubmissionId);
 
 			auto submissionResources = sceneViewSnapshot.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(
 				this,
@@ -281,8 +283,9 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						{
 							depthMaterial = sourceMaterial;
 						}
-						const bool bReady = depthMaterial && depthMaterial->GetVertexShader() &&
-							depthMaterial->GetFragmentShader() && depthMaterial->GetRenderState().IsEnabledZWrite();
+						const bool bReady = depthMaterial &&
+							preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders &&
+							depthMaterial->GetRenderState().IsEnabledZWrite();
 						if (!bReady)
 						{
 							if (bRequiredCustomDepth)
@@ -296,7 +299,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							return;
 						}
 
-						RHIBatch batch(depthMaterial, mesh, materialSubmissionId);
+						RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
 						PerInstanceData data;
 						data.model = model;
 						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
@@ -304,12 +307,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)();
 						if (bRequiredCustomDepth)
 						{
-							const auto bindings = batch.GetMaterialBindings();
-							if (bindings && bindings->GetShaderBindings().ContainsKey("material"))
-							{
-								const auto binding = bindings->GetShaderBindings()["material"];
-								data.materialInstance = binding ? binding->GetStorageInstanceIndex() : 0u;
-							}
+							data.materialInstance = preparedMaterials.Get(depthMaterial).m_materialInstance;
 						}
 						else if (bMaskedQueue)
 						{
@@ -581,8 +579,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					}
 
 					const bool bIsDepthMaterialReady = depthMaterial &&
-						depthMaterial->GetVertexShader() &&
-						depthMaterial->GetFragmentShader() &&
+						preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders &&
 						depthMaterial->GetRenderState().IsEnabledZWrite();
 
 					if (!bIsDepthMaterialReady)
@@ -597,7 +594,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						}
 						continue;
 					}
-					RHIBatch batch(depthMaterial, mesh, materialSubmissionId);
+					RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
 
 					const glm::mat4 meshWorldMatrix = proxy.ResolveMeshWorldMatrix(i);
 					DepthPrepassNode::PerInstanceData data;
@@ -607,13 +604,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 
 					if (bRequiredCustomDepth)
 					{
-						RHIShaderBindingPtr shaderBinding;
-						const auto materialBindings = batch.GetMaterialBindings();
-						if (materialBindings && materialBindings->GetShaderBindings().ContainsKey("material"))
-						{
-							shaderBinding = materialBindings->GetShaderBindings()["material"];
-						}
-						data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
+						data.materialInstance = preparedMaterials.Get(depthMaterial).m_materialInstance;
 					}
 					else if (bMaskedQueue)
 					{
@@ -787,8 +778,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						}
 
 						const bool bIsDepthMaterialReady = depthMaterial &&
-							depthMaterial->GetVertexShader() &&
-							depthMaterial->GetFragmentShader() &&
+							preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders &&
 							depthMaterial->GetRenderState().IsEnabledZWrite();
 						if (!bIsDepthMaterialReady)
 						{
@@ -803,20 +793,11 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							continue;
 						}
 
-						RHIBatch batchTemplate(
-							depthMaterial,
-							sourceMesh,
-							materialSubmissionId);
+						RHIBatch batchTemplate = preparedMaterials.MakeBatch(depthMaterial, sourceMesh);
 						uint32_t materialInstance = 0u;
 						if (bRequiredCustomDepth)
 						{
-							const auto materialBindings = batchTemplate.GetMaterialBindings();
-							if (materialBindings && materialBindings->GetShaderBindings().ContainsKey("material"))
-							{
-								const auto shaderBinding = materialBindings->GetShaderBindings()["material"];
-								materialInstance = shaderBinding.IsValid() ?
-									shaderBinding->GetStorageInstanceIndex() : 0u;
-							}
+							materialInstance = preparedMaterials.Get(depthMaterial).m_materialInstance;
 						}
 						else if (bMaskedQueue && meshIndex < group.m_baseColorSamplers.Num())
 						{

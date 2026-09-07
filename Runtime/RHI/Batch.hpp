@@ -59,6 +59,11 @@ namespace Sailor::RHI
 			return m_materialVersion ? m_materialVersion->GetBindings() : RHIShaderBindingSetPtr{};
 		}
 
+		const RHIShaderBindingSet* GetMaterialBindingsRaw() const
+		{
+			return m_materialVersion ? m_materialVersion->GetBindingsRaw() : nullptr;
+		}
+
 		bool operator==(const RHIBatch& rhs) const
 		{
 			// Shared meshes in a traffic/vegetation run already have identical
@@ -69,8 +74,8 @@ namespace Sailor::RHI
 			{
 				return true;
 			}
-			const auto bindings = GetMaterialBindings();
-			const auto rhsBindings = rhs.GetMaterialBindings();
+			const auto* bindings = GetMaterialBindingsRaw();
+			const auto* rhsBindings = rhs.GetMaterialBindingsRaw();
 			if (!m_material || !rhs.m_material || !m_mesh || !rhs.m_mesh ||
 				!m_mesh->m_vertexBuffer || !rhs.m_mesh->m_vertexBuffer ||
 				!m_mesh->m_indexBuffer || !rhs.m_mesh->m_indexBuffer ||
@@ -97,7 +102,7 @@ namespace Sailor::RHI
 
 		size_t GetHash() const
 		{
-			const auto bindings = GetMaterialBindings();
+			const auto* bindings = GetMaterialBindingsRaw();
 			size_t hash = bindings ? bindings->GetCompatibilityHashCode() : 0u;
 
 			HashCombine(hash, m_materialVersion);

@@ -1,4 +1,5 @@
 #include "RenderSceneNode.h"
+#include "RHI/MaterialPreparationCache.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
@@ -416,6 +417,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			}
 			const uint64_t materialSubmissionId =
 				sceneViewSnapshot.m_submissionContext->GetSubmissionId();
+			RHIMaterialPreparationCache preparedMaterials(materialSubmissionId);
 
 			auto submissionResources = sceneViewSnapshot.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(
 				this,
@@ -594,32 +596,27 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 								{
 									continue;
 								}
-								if (!mesh || !material->GetVertexShader() || !material->GetFragmentShader())
+								if (!mesh || !preparedMaterials.Get(material).m_bHasGraphicsShaders)
 								{
 									bRangeComplete = false;
 									continue;
 								}
 
-								RHIBatch batch(material, mesh, materialSubmissionId);
-								const auto materialBindings = batch.GetMaterialBindings();
+								RHIBatch batch = preparedMaterials.MakeBatch(material, mesh);
+								const auto* materialBindings = batch.GetMaterialBindingsRaw();
 								if (!materialBindings || materialBindings->GetShaderBindings().Num() == 0u)
 								{
 									bRangeComplete = false;
 									continue;
 								}
 
-								RHIShaderBindingPtr materialBinding;
-								if (materialBindings->GetShaderBindings().ContainsKey("material"))
-								{
-									materialBinding = materialBindings->GetShaderBindings()["material"];
-								}
+								const uint32_t materialInstance = preparedMaterials.Get(material).m_materialInstance;
 								PerInstanceData data;
 								data.model = proxy.ResolveMeshWorldMatrix(meshIndex);
 								data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex);
 								data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 								data.skeletonOffset = proxy.GetSkeletonOffset();
-								data.materialInstance =
-									materialBinding ? materialBinding->GetStorageInstanceIndex() : 0u;
+								data.materialInstance = materialInstance;
 								data.bIsCulled = 0u;
 								data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 								data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
@@ -646,25 +643,21 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 									{
 										continue;
 									}
-									if (!mesh || !material->GetVertexShader() || !material->GetFragmentShader())
+									if (!mesh || !preparedMaterials.Get(material).m_bHasGraphicsShaders)
 									{
 										bRangeComplete = false;
 										continue;
 									}
 
-									RHIBatch batch(material, mesh, materialSubmissionId);
-									const auto materialBindings = batch.GetMaterialBindings();
+									RHIBatch batch = preparedMaterials.MakeBatch(material, mesh);
+									const auto* materialBindings = batch.GetMaterialBindingsRaw();
 									if (!materialBindings || materialBindings->GetShaderBindings().Num() == 0u)
 									{
 										bRangeComplete = false;
 										continue;
 									}
 
-									RHIShaderBindingPtr materialBinding;
-									if (materialBindings->GetShaderBindings().ContainsKey("material"))
-									{
-										materialBinding = materialBindings->GetShaderBindings()["material"];
-									}
+									const uint32_t materialInstance = preparedMaterials.Get(material).m_materialInstance;
 									for (size_t instanceIndex = 0u; instanceIndex < group.m_instanceTransforms.Num();
 										++instanceIndex)
 									{
@@ -674,8 +667,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 										data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex, &group, instanceIndex);
 										data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 										data.skeletonOffset = proxy.GetSkeletonOffset();
-										data.materialInstance =
-											materialBinding ? materialBinding->GetStorageInstanceIndex() : 0u;
+										data.materialInstance = materialInstance;
 										data.bIsCulled = 0u;
 										data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 										data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
@@ -745,8 +737,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 					const bool bRelevantMaterial = material &&
 						material->GetRenderState().GetTag() == QueueTagHash;
 					const bool bHasMaterialShaders = mesh && bRelevantMaterial &&
-						material->GetVertexShader() &&
-						material->GetFragmentShader();
+						preparedMaterials.Get(material).m_bHasGraphicsShaders;
 
 					if (!bHasMaterialShaders)
 					{
@@ -756,8 +747,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						}
 						continue;
 					}
-					RHI::RHIBatch batch(material, mesh, materialSubmissionId);
-					const auto materialBindings = batch.GetMaterialBindings();
+					RHIBatch batch = preparedMaterials.MakeBatch(material, mesh);
+					const auto* materialBindings = batch.GetMaterialBindingsRaw();
 					if (!materialBindings || materialBindings->GetShaderBindings().Num() == 0u)
 					{
 						bPayloadComplete[payloadIndex] = false;
@@ -766,11 +757,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 
 					if (bRelevantMaterial)
 					{
-						RHIShaderBindingPtr shaderBinding;
-						if (materialBindings->GetShaderBindings().ContainsKey("material"))
-						{
-							shaderBinding = materialBindings->GetShaderBindings()["material"];
-						}
+						const uint32_t materialInstance = preparedMaterials.Get(material).m_materialInstance;
 
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
 #if defined(__APPLE__)
@@ -816,8 +803,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, i);
 						data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 						data.skeletonOffset = proxy.GetSkeletonOffset();
-						data.materialInstance = shaderBinding.IsValid() ?
-							shaderBinding->GetStorageInstanceIndex() : 0u;
+						data.materialInstance = materialInstance;
 						data.bIsCulled = 0u;
 						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 						data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
@@ -869,8 +855,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						const bool bRelevantMaterial = material &&
 							material->GetRenderState().GetTag() == QueueTagHash;
 						const bool bHasMaterialShaders = sourceMesh && bRelevantMaterial &&
-							material->GetVertexShader() &&
-							material->GetFragmentShader();
+							preparedMaterials.Get(material).m_bHasGraphicsShaders;
 						if (!bHasMaterialShaders)
 						{
 							if (bRelevantMaterial)
@@ -880,22 +865,15 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 							continue;
 						}
 
-						RHI::RHIBatch batchTemplate(
-							material,
-							sourceMesh,
-							materialSubmissionId);
-						const auto materialBindings = batchTemplate.GetMaterialBindings();
+						RHIBatch batchTemplate = preparedMaterials.MakeBatch(material, sourceMesh);
+						const auto* materialBindings = batchTemplate.GetMaterialBindingsRaw();
 						if (!materialBindings || materialBindings->GetShaderBindings().Num() == 0u)
 						{
 							bPayloadComplete[payloadIndex] = false;
 							continue;
 						}
 
-						RHIShaderBindingPtr shaderBinding;
-						if (materialBindings->GetShaderBindings().ContainsKey("material"))
-						{
-							shaderBinding = materialBindings->GetShaderBindings()["material"];
-						}
+						const uint32_t materialInstance = preparedMaterials.Get(material).m_materialInstance;
 
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
 #if defined(__APPLE__)
@@ -966,8 +944,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 							data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex, &group, instanceIndex);
 							data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
 							data.skeletonOffset = proxy.GetSkeletonOffset();
-							data.materialInstance = shaderBinding.IsValid() ?
-								shaderBinding->GetStorageInstanceIndex() : 0u;
+							data.materialInstance = materialInstance;
 							data.bIsCulled = 0u;
 							data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 							data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);

@@ -1,6 +1,7 @@
 #include "ShadowPrepassNode.h"
 #include "Core/StringHash.h"
 #include "RHI/Batch.hpp"
+#include "RHI/MaterialPreparationCache.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
@@ -183,6 +184,9 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 		{
 			SAILOR_PROFILE_SCOPE("Prepare shadow packets");
 			const uint64_t materialSubmissionId = sceneView.m_submissionContext->GetSubmissionId();
+			// These are immutable pass materials; custom derivatives already retain
+			// the source generation resolved below with materialSubmissionId.
+			RHIMaterialPreparationCache preparedMaterials(0ull);
 			auto submissionResources = sceneView.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(
 				this, sceneView.m_cameraIndex, 0u);
 			m_syncSharedResources.Lock();
@@ -444,8 +448,7 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 												depthMaterial = customShadowMaterial;
 											}
 										}
-										if (!depthMaterial || !depthMaterial->GetVertexShader() ||
-											!depthMaterial->GetFragmentShader())
+										if (!depthMaterial || !preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders)
 										{
 											bShadowPayloadComplete[passIndex][arenaPayloadIndex] = false;
 											return;
@@ -453,13 +456,12 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 
 										// Shadow materials are immutable derivatives of the exact source
 										// version resolved for this submission.
-										RHIBatch batch(depthMaterial, mesh);
-										const auto materialBindings = batch.GetMaterialBindings();
+										RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
 										PerInstanceData data;
 										data.model = model;
 										data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 										data.materialInstance =
-											materialBindings ? materialBindings->GetStorageInstanceIndex("material") : 0u;
+											preparedMaterials.Get(depthMaterial).m_materialInstance;
 										data.skeletonOffset =
 											bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)();
 										data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
@@ -621,21 +623,20 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 						}
 
 						const bool bIsDepthMaterialReady =
-							depthMaterial && depthMaterial->GetVertexShader() && depthMaterial->GetFragmentShader();
+							depthMaterial && preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders;
 
 						if (!bIsDepthMaterialReady)
 						{
 							bShadowPayloadComplete[passIndex][payloadIndex] = false;
 							continue;
 						}
-						RHIBatch batch(depthMaterial, mesh);
+						RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
 
 						ShadowPrepassNode::PerInstanceData data;
 						data.model = meshWorldMatrix;
 						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-						const auto materialBindings = batch.GetMaterialBindings();
 						data.materialInstance =
-							materialBindings ? materialBindings->GetStorageInstanceIndex("material") : 0u;
+							preparedMaterials.Get(depthMaterial).m_materialInstance;
 						data.skeletonOffset = bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)();
 						data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
 						data.baseColorAlpha = shadowMesh.m_baseColorFactor.a;
@@ -734,17 +735,16 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 							}
 
 							const bool bIsDepthMaterialReady =
-								depthMaterial && depthMaterial->GetVertexShader() && depthMaterial->GetFragmentShader();
+								depthMaterial && preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders;
 							if (!bIsDepthMaterialReady)
 							{
 								bShadowPayloadComplete[passIndex][payloadIndex] = false;
 								continue;
 							}
 
-							RHIBatch batchTemplate(depthMaterial, sourceMesh);
-							const auto materialBindings = batchTemplate.GetMaterialBindings();
+							RHIBatch batchTemplate = preparedMaterials.MakeBatch(depthMaterial, sourceMesh);
 							const uint32_t materialInstance =
-								materialBindings ? materialBindings->GetStorageInstanceIndex("material") : 0u;
+								preparedMaterials.Get(depthMaterial).m_materialInstance;
 							if (bMasked || depthMaterial->GetRenderState().IsRequiredCustomDepthShader())
 							{
 								uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
