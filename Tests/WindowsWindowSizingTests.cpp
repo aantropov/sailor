@@ -39,6 +39,10 @@ int main()
 		Require(window.Create("Sailor window sizing test", "SailorWindowSizingTest", 640, 400),
 			"the native test window must be created");
 		window.Show(false);
+		Require(window.GetHDC() != nullptr, "the native window must retain a valid device context");
+		Require(GetPixelFormat(window.GetHDC()) == 0,
+			"a Vulkan window must leave the OpenGL pixel format unset");
+		std::cout << "[PASS] Native window creation requires no OpenGL pixel format\n";
 		Require(AreDpiAwarenessContextsEqual(GetWindowDpiAwarenessContext(window.GetHWND()),
 			DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2), "the native window must inherit PerMonitorV2");
 		CheckClientExtent(window, 640, 400);

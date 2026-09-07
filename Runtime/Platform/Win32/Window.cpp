@@ -504,27 +504,8 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		return false;
 	}
 
-	PIXELFORMATDESCRIPTOR pfd;
-	int32_t format;
-
-	// Pixel format description
-	memset(&pfd, 0, sizeof(pfd));
-	pfd.nSize = sizeof(pfd);
-	pfd.nVersion = 1;
-	pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-	pfd.iPixelType = PFD_TYPE_RGBA;
-	pfd.cColorBits = 32;
-	pfd.cDepthBits = 24;
-
-	// Get pixel format for format which is described above
-	format = ChoosePixelFormat(m_hDC, &pfd);
-	if (!format || !SetPixelFormat(m_hDC, format, &pfd))
-	{
-		char message[MAXCHAR];
-		sprintf_s(message, "Setting pixel format fail (%d)", GetLastError());
-		Destroy();
-		return false;
-	}
+	// Vulkan selects its formats when creating the swapchain. Selecting an
+	// OpenGL pixel format here unnecessarily initializes the OpenGL driver.
 
 	{
 		const std::lock_guard<std::mutex> lock(g_windowsMutex);
