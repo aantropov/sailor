@@ -456,17 +456,37 @@ bool RHIScene::UpdateInstance(
 	const RHISceneInstanceRecord& record,
 	SceneChangeMask changeMask)
 {
-	if (changeMask == ToMask(ESceneChangeBit::None))
-	{
-		return true;
-	}
-
 	m_lock.Lock();
+	const bool updated = UpdateInstanceLocked(handle, record, changeMask);
+	m_lock.Unlock();
+	return updated;
+}
+
+size_t RHIScene::UpdateInstances(const TVector<RHISceneInstanceUpdate>& updates)
+{
+	SAILOR_PROFILE_FUNCTION();
+	m_lock.Lock();
+	size_t numUpdated = 0u;
+	for (const auto& update : updates)
+	{
+		numUpdated += UpdateInstanceLocked(update.m_handle, update.m_record, update.m_changeMask) ? 1u : 0u;
+	}
+	m_lock.Unlock();
+	return numUpdated;
+}
+
+bool RHIScene::UpdateInstanceLocked(RenderInstanceHandle handle,
+	const RHISceneInstanceRecord& record, SceneChangeMask changeMask)
+{
 	LogicalSlot* slot = nullptr;
 	if (!ResolveSlot(handle, slot))
 	{
-		m_lock.Unlock();
 		return false;
+	}
+
+	if (changeMask == ToMask(ESceneChangeBit::None))
+	{
+		return true;
 	}
 
 	const EMobilityType oldMobility = slot->m_record.m_mobility;
@@ -482,7 +502,6 @@ bool RHIScene::UpdateInstance(
 	{
 		m_bHandleListsDirty = true;
 	}
-	m_lock.Unlock();
 	return true;
 }
 

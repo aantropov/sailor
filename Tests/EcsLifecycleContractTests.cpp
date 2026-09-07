@@ -176,6 +176,12 @@ namespace
 		uint32_t GetNextBoneOffsetForTest() const { return m_nextBoneOffset; }
 	};
 
+	class PublishedMeshTestSystem final : public StaticMeshRendererECS
+	{
+	public:
+		const RHI::RHISpatialSceneVersionPtr& GetSpatialVersion() const { return m_publishedSceneVersion; }
+	};
+
 	class PrefabTestWorld final : public World
 	{
 	public:
@@ -201,7 +207,7 @@ namespace
 		{
 			TVector<ECS::TBaseSystemPtr> systems;
 			systems.Add(TUniquePtr<TransformECS>::Make());
-			systems.Add(TUniquePtr<StaticMeshRendererECS>::Make());
+			systems.Add(TUniquePtr<PublishedMeshTestSystem>::Make());
 			return systems;
 		}
 	};
@@ -904,6 +910,70 @@ namespace
 		Require(meshes->GetRHIScene()->GetCurrentVersion()->m_staticHandles->IsEmpty(),
 			"unregistering the component must remove its published instance");
 		world.Clear();
+	}
+
+	void TestMeshBatchesWithSharedOwnerAndRegistrationHoles()
+	{
+		PrefabTestWorld world;
+		auto owner = world.Instantiate("MultipleMeshBatches");
+		owner->SetMobilityType(EMobilityType::Dynamic);
+		auto* meshes = world.GetECS<StaticMeshRendererECS>();
+		meshes->BeginPlay();
+		auto model = TObjectPtr<PublishedMeshTestModel>::Make(world.GetAllocator());
+		model->m_ready = true;
+		auto material = TObjectPtr<PublishedMeshTestMaterial>::Make(world.GetAllocator());
+		TVector<size_t> slots;
+		for (size_t i = 0u; i < 1031u; ++i)
+		{
+			const auto slot = meshes->RegisterComponent();
+			slots.Add(slot);
+			auto& data = meshes->GetComponentData(slot);
+			data.SetOwner(owner);
+			data.SetModel(model);
+			data.GetMaterials().Add(material);
+		}
+		meshes->Tick(0.016f);
+		auto before = meshes->GetRHIScene()->GetCurrentVersion();
+		Require(before->m_dynamicHandles->Num() == slots.Num(), "initial publication must include every component batch");
+		auto retainedView = RHI::RHISceneViewPtr::Make();
+		retainedView->AddSceneVersion(static_cast<PublishedMeshTestSystem*>(meshes)->GetSpatialVersion());
+		size_t removed = 0u;
+		for (size_t i = 0u; i < slots.Num(); i += 17u)
+		{
+			meshes->UnregisterComponent(slots[i]);
+			++removed;
+		}
+		world.AdvanceFrame();
+		owner->GetTransformComponent().SetPosition(glm::vec3(4.0f, 0.0f, 0.0f));
+		auto* transforms = world.GetECS<TransformECS>();
+		transforms->Tick(0.016f);
+		transforms->PostTick();
+		meshes->Tick(0.016f);
+		auto moved = meshes->GetRHIScene()->GetCurrentVersion();
+		Require(moved->m_dynamicHandles->Num() == slots.Num() - removed,
+			"registration holes and a partial last batch must preserve exactly the live instances");
+		auto currentView = RHI::RHISceneViewPtr::Make();
+		currentView->AddSceneVersion(static_cast<PublishedMeshTestSystem*>(meshes)->GetSpatialVersion());
+		Math::Frustum narrowView;
+		narrowView.ExtractFrustumPlanes(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 5.0f)),
+			1.0f, 20.0f, 0.1f, 10.0f);
+		Require(retainedView->TraceScene(narrowView, false).Num() == slots.Num() &&
+			currentView->TraceScene(narrowView, false).IsEmpty(),
+			"a delayed render view must retain its old spatial root after the world moves and removes instances");
+		for (const auto handle : *moved->m_dynamicHandles)
+		{
+			const RHI::RHISceneInstanceRecord* oldRecord = nullptr;
+			const RHI::RHISceneInstanceRecord* newRecord = nullptr;
+			Require(before->Resolve(handle, oldRecord) && moved->Resolve(handle, newRecord) &&
+				oldRecord->m_worldMatrix[3].x == 0.0f && newRecord->m_worldMatrix[3].x == 4.0f &&
+				oldRecord->m_topology == newRecord->m_topology,
+				"every batch must publish the new transform and retain immutable topology and old snapshots");
+		}
+		world.AdvanceFrame();
+		meshes->Tick(0.016f);
+		Require(meshes->GetRHIScene()->GetCurrentVersion() == moved,
+			"reused batch scratch must not replay old changes when the scene is unchanged");
+		meshes->EndPlay();
 	}
 
 	void TestClearingMeshModelAlsoClearsMaterials()
@@ -3846,6 +3916,7 @@ int main()
 		{ "EditorKeepWorldReparentRejectsShearedCandidateWithoutMutation", TestEditorKeepWorldReparentRejectsShearedCandidateWithoutMutation },
 		{ "OctreeRelocationPreservesElementCount", TestOctreeRelocationPreservesElementCount },
 		{ "ClearingMeshModelAlsoClearsMaterials", TestClearingMeshModelAlsoClearsMaterials },
+		{ "MeshBatchesWithSharedOwnerAndRegistrationHoles", TestMeshBatchesWithSharedOwnerAndRegistrationHoles },
 		{ "FrameZeroMeshPublicationStaysStable", TestFrameZeroMeshPublicationStaysStable },
 		{ "StaticMeshLodSelectionUsesScreenCoverage", TestStaticMeshLodSelectionUsesScreenCoverage },
 		{ "LocalLightShadowContract", TestLocalLightShadowContract },

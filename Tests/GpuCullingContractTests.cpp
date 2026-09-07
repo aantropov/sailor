@@ -26,6 +26,11 @@
 #include "RHI/VertexDescription.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <barrier>
+#include <thread>
+#include <vector>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -900,6 +905,110 @@ namespace
 			"ending an active submission must release material history that is no longer retained by a packet");
 	}
 
+	void TestMaterialVersionsSurviveConcurrentWorldUpdates()
+	{
+		auto material = RHI::RHIMaterialPtr::Make(RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+		std::array<RHI::RHIMaterialVersionPtr, 3u> versions;
+		std::array<RHI::RHIShaderBindingSetPtr, 3u> bindings;
+		for (size_t frame = 0u; frame < versions.size(); ++frame)
+		{
+			bindings[frame] = RHI::RHIShaderBindingSetPtr::Make();
+			material->SetBindings(bindings[frame]);
+			versions[frame] = material->GetVersion();
+			RHI::RHIMaterial::BeginSubmissionVersionCapture(400ull + frame);
+		}
+		std::barrier sync(4);
+		std::atomic<bool> valid{ true };
+		std::vector<std::thread> renderWorkers;
+		for (size_t frame = 0u; frame < versions.size(); ++frame)
+		{
+			renderWorkers.emplace_back([&, frame]()
+				{
+					for (size_t nextFrame = 0u; nextFrame < 32u; ++nextFrame)
+					{
+						sync.arrive_and_wait();
+						// Simulate main, depth, and shadow packets prepared after
+						// the game thread has started publishing later materials.
+						for (size_t pass = 0u; pass < 3u; ++pass)
+						{
+							RHI::RHIBatch batch(material, {}, 400ull + frame);
+							if (batch.m_materialVersion != versions[frame] || batch.GetMaterialBindings() != bindings[frame])
+							{
+								valid.store(false);
+							}
+						}
+						sync.arrive_and_wait();
+					}
+				});
+		}
+		for (size_t nextFrame = 0u; nextFrame < 32u; ++nextFrame)
+		{
+			sync.arrive_and_wait();
+			material->SetBindings(RHI::RHIShaderBindingSetPtr::Make());
+			sync.arrive_and_wait();
+		}
+		for (auto& worker : renderWorkers)
+		{
+			worker.join();
+		}
+		for (size_t frame = 0u; frame < versions.size(); ++frame)
+		{
+			RHI::RHIMaterial::EndSubmissionVersionCapture(400ull + frame);
+		}
+		Require(valid.load(), "three in-flight frames must bind their saved material generations during concurrent publication");
+		for (size_t frame = 0u; frame < versions.size(); ++frame)
+		{
+			Require(versions[frame]->GetBindings() == bindings[frame],
+				"retained draw-packet versions must own their descriptors after the submission cutoff is released");
+		}
+	}
+
+	void TestParallelSpatialIndexVisibility()
+	{
+		constexpr size_t NumPartitions = 8u;
+		constexpr size_t NumElements = 768u;
+		const auto centerFor = [](size_t i)
+			{
+				return glm::ivec3(int(i % 32u) * 6 - 96, int(i % 5u) - 2, -int(i / 32u) * 8 - 4);
+			};
+		const auto extentsFor = [](size_t i) { return glm::ivec3(i % 11u == 0u ? 9 : 1); };
+		auto spatial = TSharedPtr<RHI::RHISceneSpatialIndex>::Make(glm::ivec3(0), 4096u, 4u, NumPartitions);
+		std::vector<std::thread> workers;
+		for (size_t partition = 0u; partition < NumPartitions; ++partition)
+		{
+			workers.emplace_back([&, partition]()
+				{
+					for (size_t i = partition; i < NumElements; i += NumPartitions)
+					{
+						spatial->Update(centerFor(i), extentsFor(i), { uint32_t(i), 1u }, partition);
+					}
+				});
+		}
+		for (auto& worker : workers)
+		{
+			worker.join();
+		}
+		Require(spatial->Num() == NumElements, "independent writers must preserve every spatial handle");
+		for (float cameraX : { -80.0f, 0.0f, 80.0f })
+		{
+			Math::Frustum frustum;
+			frustum.ExtractFrustumPlanes(glm::translate(glm::mat4(1.0f), glm::vec3(cameraX, 0.0f, 0.0f)),
+				1.0f, 60.0f, 0.1f, 150.0f);
+			std::vector<uint32_t> expected, visible;
+			for (size_t i = 0u; i < NumElements; ++i)
+			{
+				if (frustum.OverlapsAABB(Math::AABB(centerFor(i), extentsFor(i))))
+				{
+					expected.push_back(uint32_t(i));
+				}
+			}
+			spatial->Trace(frustum, [&](const RHI::RenderInstanceHandle& handle) { visible.push_back(handle.m_slot); });
+			std::sort(visible.begin(), visible.end());
+			Require(!expected.empty() && expected.size() < NumElements && visible == expected,
+				"partitioned culling must match brute-force bounds with no missing or duplicated handles");
+		}
+	}
+
 	void TestDynamicSpatialRootIsolation()
 	{
 		RHI::RHISceneViewProxy proxy;
@@ -923,7 +1032,7 @@ namespace
 		spatial->m_scene = scene;
 		spatial->m_sceneVersion = scene->PublishVersion();
 		spatial->m_dynamicOctree =
-			TSharedPtr<TOctree<RHI::RenderInstanceHandle>>::Make(
+			TSharedPtr<RHI::RHISceneSpatialIndex>::Make(
 				glm::ivec3(0), 128, 4);
 		Require(spatial->m_dynamicOctree->Update(
 			glm::ivec3(0, 0, -5),
@@ -1485,7 +1594,9 @@ int main()
 		{ "PackedDrawBatchInstanceLimit", TestPackedDrawBatchInstanceLimit },
 		{ "PackedDrawMixedMaterialSort", TestPackedDrawMixedMaterialSort },
 		{ "MaterialVersionPublicationContract", TestMaterialVersionPublicationContract },
+		{ "MaterialVersionsSurviveConcurrentWorldUpdates", TestMaterialVersionsSurviveConcurrentWorldUpdates },
 		{ "DynamicSpatialRootIsolation", TestDynamicSpatialRootIsolation },
+		{ "ParallelSpatialIndexVisibility", TestParallelSpatialIndexVisibility },
 		{ "InstancedViewLodAndDistanceContract", TestInstancedViewLodAndDistanceContract },
 		{ "SnapshotCameraLodContract", TestSnapshotCameraLodContract },
 		{ "BatchTextureBindingIdentityContract", TestBatchTextureBindingIdentityContract },
