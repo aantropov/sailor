@@ -61,6 +61,14 @@ namespace Sailor::RHI
 
 		bool operator==(const RHIBatch& rhs) const
 		{
+			// Shared meshes in a traffic/vegetation run already have identical
+			// resource identities. Avoid retaining bindings and shaders per instance.
+			if (m_material == rhs.m_material &&
+				m_materialVersion == rhs.m_materialVersion &&
+				m_mesh == rhs.m_mesh && m_textureBindings == rhs.m_textureBindings)
+			{
+				return true;
+			}
 			const auto bindings = GetMaterialBindings();
 			const auto rhsBindings = rhs.GetMaterialBindings();
 			if (!m_material || !rhs.m_material || !m_mesh || !rhs.m_mesh ||
@@ -150,6 +158,7 @@ namespace Sailor::RHI
 		RHIMeshPtr m_mesh{};
 		uint32_t m_instanceIndex = 0u;
 		uint64_t m_stableSortKey = 0ull;
+		size_t m_batchSortHash = 0u;
 	};
 
 	struct PackedDrawGroup
@@ -859,6 +868,7 @@ namespace Sailor::RHI
 			for (auto& segment : m_segments)
 			{
 				segment.m_items.Clear(false);
+				segment.m_sortedItemIndices.Clear(false);
 				segment.m_reorderVisited.Clear(false);
 				segment.m_viewInstanceIndices.Clear(false);
 				segment.m_groups.Clear(false);
@@ -1124,6 +1134,7 @@ namespace Sailor::RHI
 
 		void Finalize(bool bPreserveInstanceOrder = false)
 		{
+			SAILOR_PROFILE_FUNCTION();
 			for (auto& segment : m_segments)
 			{
 				segment.m_viewInstanceIndices.Clear(false);
@@ -1141,10 +1152,23 @@ namespace Sailor::RHI
 
 				if (!bPreserveInstanceOrder)
 				{
-					segment.m_items.Sort([](const auto& lhs, const auto& rhs)
+					SAILOR_PROFILE_SCOPE("Sort packed draw items");
+					// A batch is immutable during finalization. Calculate its key once
+					// instead of retaining shared material bindings on every comparison.
+					segment.m_sortedItemIndices.Resize(segment.m_items.Num());
+					for (uint32_t index = 0u; index < segment.m_items.Num(); ++index)
 					{
-						const size_t lhsBatchHash = lhs.m_batch.GetHash();
-						const size_t rhsBatchHash = rhs.m_batch.GetHash();
+						segment.m_items[index].m_batchSortHash = segment.m_items[index].m_batch.GetHash();
+						segment.m_sortedItemIndices[index] = index;
+					}
+					// Sort indices so shared resource references stay in place. Moving
+					// the owning items repeatedly contends with other render passes.
+					segment.m_sortedItemIndices.Sort([&items = segment.m_items](uint32_t lhsIndex, uint32_t rhsIndex)
+					{
+						const auto& lhs = items[lhsIndex];
+						const auto& rhs = items[rhsIndex];
+						const size_t lhsBatchHash = lhs.m_batchSortHash;
+						const size_t rhsBatchHash = rhs.m_batchSortHash;
 						if (lhsBatchHash != rhsBatchHash)
 						{
 							return lhsBatchHash < rhsBatchHash;
@@ -1190,10 +1214,10 @@ namespace Sailor::RHI
 
 							uint32_t destination = start;
 							TPerInstanceData displaced = std::move(instances[destination]);
-							while (segment.m_items[destination].m_instanceIndex != start)
+							while (segment.m_items[segment.m_sortedItemIndices[destination]].m_instanceIndex != start)
 							{
 								const uint32_t source =
-									segment.m_items[destination].m_instanceIndex;
+									segment.m_items[segment.m_sortedItemIndices[destination]].m_instanceIndex;
 								instances[destination] = std::move(instances[source]);
 								segment.m_reorderVisited[destination] = 1u;
 								destination = source;
@@ -1207,7 +1231,8 @@ namespace Sailor::RHI
 				groups.Reserve(segment.m_items.Num());
 				for (uint32_t itemIndex = 0u; itemIndex < segment.m_items.Num(); ++itemIndex)
 				{
-					const auto& item = segment.m_items[itemIndex];
+					const auto& item = segment.m_items[bPreserveInstanceOrder ?
+						itemIndex : segment.m_sortedItemIndices[itemIndex]];
 					const bool bAppendToGroup = !bPreserveInstanceOrder &&
 						!groups.IsEmpty() &&
 						groups.Last()->m_numInstances < RHIBatch::MaxInstancesPerBatch &&
@@ -1299,6 +1324,7 @@ namespace Sailor::RHI
 		struct Segment
 		{
 			TVector<TPackedDrawItem<TPerInstanceData>> m_items{};
+			TVector<uint32_t> m_sortedItemIndices{};
 			TVector<uint8_t> m_reorderVisited{};
 			TVector<uint32_t> m_viewInstanceIndices{};
 			TVector<PackedDrawGroup> m_groups{};

@@ -886,6 +886,20 @@ namespace
 			current->m_topology == original->m_topology &&
 			meshes->GetGlobalIlluminationContributorRevision() != revision,
 			"a later transform must update bounds and GI while retaining mesh topology");
+		Require(original->m_worldMatrix[3].x == 0.0f &&
+			current->m_worldBounds != original->m_worldBounds,
+			"transform publication must leave retained records unchanged");
+		world.AdvanceFrame();
+		object->GetTransformComponent().SetPosition(glm::vec3(4.0f, 0.0f, 0.0f));
+		transforms->Tick(0.016f);
+		transforms->PostTick();
+		meshes->Tick(0.016f);
+		const auto movedAgain = meshes->GetRHIScene()->GetCurrentVersion();
+		const RHI::RHISceneInstanceRecord* latest = nullptr;
+		Require(movedAgain->Resolve(handle, latest) && latest &&
+			latest->m_worldMatrix[3].x == 4.0f && current->m_worldMatrix[3].x == 2.0f &&
+			latest->m_topology == original->m_topology,
+			"successive transform updates must retain topology without lagging a frame");
 		meshes->UnregisterComponent(slot);
 		Require(meshes->GetRHIScene()->GetCurrentVersion()->m_staticHandles->IsEmpty(),
 			"unregistering the component must remove its published instance");

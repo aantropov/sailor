@@ -22,6 +22,7 @@ bool GIProbesPathTracer::Initialize(
 	const PathTracer::ScenePreparationProgressCallback& progress,
 	const PathTracer::ScenePreparationWarningCallback& warning)
 {
+	SAILOR_PROFILE_FUNCTION();
 	TVector<LightProxy> bakedLights;
 	bakedLights.Reserve(lights.Num());
 	for (const LightProxy& source : lights)

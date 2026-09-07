@@ -16,6 +16,7 @@ namespace Sailor
 
 	void RuntimeGIProbesService::Impl::StopWorkerTasks() noexcept
 	{
+		SAILOR_PROFILE_FUNCTION();
 		std::vector<Tasks::ITaskPtr> workerTasks;
 		{
 			const std::lock_guard<std::mutex> lock(m_mutex);
@@ -37,6 +38,7 @@ namespace Sailor
 
 	bool RuntimeGIProbesService::Impl::TryTakeJob(const std::shared_ptr<Generation>& generation, Job& outJob)
 	{
+		SAILOR_PROFILE_FUNCTION();
 		const std::lock_guard<std::mutex> lock(m_mutex);
 		if (!CanDispatchWorkLocked() || m_generation != generation)
 		{
@@ -80,12 +82,14 @@ namespace Sailor
 
 	RuntimeGIProbesService::Impl::DispatchBatch RuntimeGIProbesService::Impl::GetDispatchBatch() const noexcept
 	{
+		SAILOR_PROFILE_FUNCTION();
 		const std::lock_guard<std::mutex> lock(m_mutex);
 		return CanDispatchWorkLocked() ? DispatchBatch{m_generation, m_workerCount} : DispatchBatch{};
 	}
 
 	void RuntimeGIProbesService::Impl::WorkerBatch(std::shared_ptr<Generation> generation, uint32_t maximumJobCount)
 	{
+		SAILOR_PROFILE_FUNCTION();
 		for (uint32_t completedJobCount = 0u; completedJobCount < maximumJobCount; ++completedJobCount)
 		{
 			Job job;
@@ -107,6 +111,7 @@ namespace Sailor
 					(std::min)(100.0, elapsedMilliseconds * (1.0 / static_cast<double>(duty) - 1.0));
 				if (sleepMilliseconds > 0.05)
 				{
+					SAILOR_PROFILE_SCOPE("Runtime GI duty-cycle sleep");
 					std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(sleepMilliseconds));
 				}
 			}
@@ -115,6 +120,7 @@ namespace Sailor
 
 	void RuntimeGIProbesService::Impl::PumpWorkerTasks()
 	{
+		SAILOR_PROFILE_FUNCTION();
 		m_workerTasks.erase(std::remove_if(m_workerTasks.begin(),
 								m_workerTasks.end(),
 								[](const Tasks::ITaskPtr& task) { return !task || task->IsFinished(); }),

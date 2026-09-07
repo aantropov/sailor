@@ -362,6 +362,7 @@ bool Sailor::ObserveGIProbesSceneRevision(
 	GIProbesSceneRevision& outRevision,
 	std::string& outDiagnostic)
 {
+	SAILOR_PROFILE_FUNCTION();
 	outRevision = {};
 	outDiagnostic.clear();
 	if (!world)
@@ -440,6 +441,7 @@ bool Sailor::CaptureGIProbesScene(
 	std::string& outDiagnostic,
 	const GIProbesSceneWarningCallback& warning)
 {
+	SAILOR_PROFILE_FUNCTION();
 	outScene = {};
 	outDiagnostic.clear();
 	if (!world)
@@ -764,6 +766,7 @@ bool Sailor::PrepareGIProbesScene(
 	const Raytracing::PathTracer::ScenePreparationProgressCallback& progress,
 	const GIProbesSceneWarningCallback& warning)
 {
+	SAILOR_PROFILE_FUNCTION();
 	outPreparedScene = {};
 	outDiagnostic.clear();
 	const auto isCancelled = [cancel]() noexcept

@@ -54,6 +54,7 @@ namespace Sailor
 
 	std::vector<uint32_t> RuntimeGIProbesService::Impl::BuildProgressiveProbeOrder(const Generation& generation)
 	{
+		SAILOR_PROFILE_FUNCTION();
 		std::vector<uint32_t> result;
 		result.reserve(generation.m_probes.size());
 		if (generation.m_data->m_bricks.IsEmpty())
@@ -135,6 +136,7 @@ namespace Sailor
 		uint64_t generationId,
 		std::string& outDiagnostic)
 	{
+		SAILOR_PROFILE_FUNCTION();
 		outDiagnostic.clear();
 		if (!Math::AllFinite(request.m_priorityPosition))
 		{
@@ -235,6 +237,7 @@ namespace Sailor
 
 	void RuntimeGIProbesService::Impl::ReuseGenerationState(Generation& next, const Generation& previous)
 	{
+		SAILOR_PROFILE_FUNCTION();
 		std::vector<uint32_t> progressiveOrder = std::move(next.m_initialQueue);
 		next.m_initialQueue.reserve(progressiveOrder.size());
 		next.m_warmingQueue.clear();
@@ -325,6 +328,7 @@ namespace Sailor
 
 	bool RuntimeGIProbesService::Impl::ExecuteJob(Job& job, std::string& outDiagnostic)
 	{
+		SAILOR_PROFILE_FUNCTION();
 		Generation& generation = *job.m_generation;
 		ProbeWork& work = job.m_work;
 		GIProbeTraceRequest traceRequest;
