@@ -253,6 +253,7 @@ namespace Sailor::EditorRemote
 			FrameIndex m_frameIndex = 0;
 			bool m_ownedByExternal = false;
 			std::string m_lastSourceName{};
+			glm::ivec2 m_lastSourceExtent{};
 
 			~Allocation()
 			{
@@ -294,7 +295,7 @@ namespace Sailor::EditorRemote
 			description.Height = height;
 			description.MipLevels = 1;
 			description.ArraySize = 1;
-			description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+			description.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
 			description.SampleDesc = { 1, 0 };
 			description.Usage = D3D11_USAGE_DEFAULT;
 			description.BindFlags =
@@ -389,7 +390,7 @@ namespace Sailor::EditorRemote
 		auto texture = driver->ImportD3D11Texture(
 			sharedHandle,
 			{ static_cast<int32_t>(viewport.m_width), static_cast<int32_t>(viewport.m_height) },
-			RHI::ETextureFormat::B8G8R8A8_UNORM,
+			RHI::ETextureFormat::B8G8R8A8_SRGB,
 			usage,
 			RHI::EImageLayout::General);
 		if (!texture)
@@ -517,11 +518,13 @@ namespace Sailor::EditorRemote
 				return m_impl->m_lastFailure;
 			}
 			allocation->m_lastSourceName = source.m_debugName;
+			allocation->m_lastSourceExtent = { sourceExtent.x, sourceExtent.y };
 		}
 		else
 		{
 			commands->ClearImage(commandList, allocation->m_texture, glm::vec4(0.0f));
 			allocation->m_lastSourceName = "unavailable";
+			allocation->m_lastSourceExtent = {};
 		}
 
 		commandList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
@@ -650,6 +653,7 @@ namespace Sailor::EditorRemote
 		summary << "windowsSurface=1 allocation=" << allocation->m_allocationId
 			<< " frame=" << allocation->m_frameIndex
 			<< " source='" << allocation->m_lastSourceName << "'"
+			<< " srcSize=" << allocation->m_lastSourceExtent.x << "x" << allocation->m_lastSourceExtent.y
 			<< " externalOwned=" << (allocation->m_ownedByExternal ? 1 : 0);
 		return summary.str();
 	}
@@ -815,7 +819,7 @@ namespace Sailor::EditorRemote
 		m_impl->m_sharedTexture->GetDesc(&textureDescription);
 		if (textureDescription.Width != viewport.m_width ||
 			textureDescription.Height != viewport.m_height ||
-			textureDescription.Format != DXGI_FORMAT_B8G8R8A8_UNORM)
+			textureDescription.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
 		{
 			m_impl->m_lastFailure = Failure::FromDomain(
 				ErrorDomain::Protocol,
@@ -907,6 +911,8 @@ namespace Sailor::EditorRemote
 				return m_impl->m_lastFailure;
 			}
 
+			// CopyResource preserves the sRGB-encoded bytes in the UNORM composition
+			// back buffer. The Vulkan destination must therefore also use sRGB.
 			m_impl->m_context->CopyResource(backBuffer.Get(), m_impl->m_sharedTexture.Get());
 			m_impl->m_context->End(m_impl->m_copyCompleteQuery.Get());
 			m_impl->m_context->Flush();

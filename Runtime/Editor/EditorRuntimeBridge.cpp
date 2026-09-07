@@ -1214,11 +1214,17 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 	rect.top = windowPosY;
 	rect.bottom = windowPosY + height;
 
+#if defined(_WIN32)
+	// Protocol updates run off the UI thread. Wait for an in-flight presentation
+	// so a resize cannot be acknowledged while the shared surface keeps its old size.
+	std::unique_lock bindingLock(binding->m_mutex);
+#else
 	std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
 	if (!bindingLock.owns_lock())
 	{
 		return true;
 	}
+#endif
 
 #if defined(__APPLE__)
 	std::optional<MacNativeHostHandle> hostHandle{};
