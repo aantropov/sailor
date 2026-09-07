@@ -34,6 +34,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 				elementSize :
 				elementSize + SsboElementAlignment - remainder;
 		}
+
+		inline uint32_t ResolveInstanceIndex(
+			const Memory::TMemoryPtr<Memory::VulkanBufferMemoryPtr>& allocation,
+			size_t stride)
+		{
+			// The buffer address includes padding before the allocated record.
+			const auto bufferRange = *allocation;
+			check(bufferRange.m_offset % stride == 0u);
+			return static_cast<uint32_t>(bufferRange.m_offset / stride);
+		}
 	}
 
 	class VulkanGraphicsDriver : public RHI::IGraphicsDriver, public RHI::IGraphicsDriverCommands

@@ -10,6 +10,7 @@
 #include "RHI/Lighting.h"
 #include "RHI/GpuCulling.h"
 #include "FrameGraph/DepthPrepassNode.h"
+#include "GraphicsDriver/Vulkan/VulkanShaderModule.h"
 #include "Workspace/WorkspaceCacheContract.h"
 
 #include <array>
@@ -28,6 +29,12 @@
 namespace
 {
 	using namespace Sailor;
+
+	class ShaderLayoutProbe final : public GraphicsDriver::Vulkan::VulkanShaderStage
+	{
+	public:
+		using VulkanShaderStage::ReflectDescriptorSetBindings;
+	};
 
 	class FixedShaderSourceStateProvider final : public IShaderSourceStateProvider
 	{
@@ -290,6 +297,70 @@ namespace
 				std::to_string(set) + ", binding " + std::to_string(binding) +
 				": reflected=" + std::to_string(reflectedStride) +
 				", expected=" + std::to_string(expectedStride));
+	}
+
+	void RequireGltfMaterialLayout(const RHI::ShaderByteCode& byteCode,
+		const RHI::ShaderByteCode& reflectionByteCode,
+		uint32_t payloadSize, uint32_t stride)
+	{
+		RequireSpirvStorageBufferArrayStride(byteCode, 3u, 0u, stride);
+		ShaderLayoutProbe shader;
+		shader.ReflectDescriptorSetBindings(reflectionByteCode);
+		const RHI::ShaderLayoutBinding* material = nullptr;
+		for (const auto& set : shader.GetBindings())
+		{
+			for (const auto& binding : set)
+			{
+				if (binding.m_set == 3u && binding.m_binding == 0u)
+					material = &binding;
+			}
+		}
+		Require(material && material->m_size == payloadSize && material->m_paddedSize == stride,
+			"material upload size and array stride must retain internal and trailing std430 padding");
+		ShaderLayoutProbe optimizedShader;
+		optimizedShader.ReflectDescriptorSetBindings(byteCode);
+		for (const auto& set : optimizedShader.GetBindings())
+		{
+			for (const auto& binding : set)
+			{
+				if (binding.m_set != 3u || binding.m_binding != 0u)
+					continue;
+				Require(binding.m_members.Num() == material->m_members.Num(),
+					"optimized and reflection shaders must retain the same material fields");
+				for (size_t i = 0u; i < binding.m_members.Num(); ++i)
+				{
+					Require(binding.m_members[i].m_absoluteOffset == material->m_members[i].m_absoluteOffset &&
+						binding.m_members[i].m_size == material->m_members[i].m_size,
+						"CPU reflection and optimized GPU shader must agree on every material field offset and size");
+				}
+			}
+		}
+		auto binding = RHI::RHIShaderBindingPtr::Make();
+		binding->SetLayout(*material);
+		auto requireMember = [&](const char* name, uint32_t offset, uint32_t size)
+		{
+			RHI::ShaderLayoutBindingMember member;
+			Require(binding->FindVariableInUniformBuffer(name, member) &&
+				member.m_absoluteOffset == offset && member.m_size == size,
+				std::string("CPU material packing must preserve the reflected offset and size of ") + name);
+		};
+		requireMember("baseColorFactor", 0u, 16u);
+		requireMember("sheenRoughnessFactor", 84u, 4u);
+		requireMember("sheenColorFactor", 96u, 16u);
+		requireMember("sheenRoughnessSampler", 128u, 4u);
+		if (payloadSize == 176u)
+		{
+			requireMember("transmissionFactor", 132u, 4u);
+			requireMember("thicknessFactor", 140u, 4u);
+			requireMember("attenuationDistance", 144u, 4u);
+			requireMember("indexOfRefraction", 148u, 4u);
+			requireMember("thicknessSampler", 152u, 4u);
+			requireMember("attenuationColor", 160u, 16u);
+		}
+		else if (payloadSize == 136u)
+		{
+			requireMember("indexOfRefraction", 132u, 4u);
+		}
 	}
 
 	void RequireSkyUniformLayout(const RHI::ShaderByteCode& byteCode)
@@ -1248,7 +1319,8 @@ namespace
 		auto compileRuntimeStage = [&contentRoot](
 			const char* shaderPath,
 			std::initializer_list<const char*> permutationDefines,
-			RHI::EShaderStage stage)
+			RHI::EShaderStage stage,
+			bool bIsDebug = false)
 			-> RHI::ShaderByteCode
 		{
 			const std::filesystem::path sourcePath = contentRoot / shaderPath;
@@ -1298,7 +1370,7 @@ namespace
 					source,
 					stage,
 					byteCode,
-					false),
+					bIsDebug),
 				std::string("runtime shader stage should compile: ") + shaderPath +
 					" " + stageDefine);
 			Require(!byteCode.IsEmpty(),
@@ -1308,12 +1380,14 @@ namespace
 		};
 		auto compileRuntimeFragment = [&compileRuntimeStage](
 			const char* shaderPath,
-			std::initializer_list<const char*> permutationDefines)
+			std::initializer_list<const char*> permutationDefines,
+			bool bIsDebug = false)
 		{
 			return compileRuntimeStage(
 				shaderPath,
 				permutationDefines,
-				RHI::EShaderStage::Fragment);
+				RHI::EShaderStage::Fragment,
+				bIsDebug);
 		};
 		auto compileRuntimeVertex = [&compileRuntimeStage](
 			const char* shaderPath,
@@ -1354,6 +1428,9 @@ namespace
 		{
 			const RHI::ShaderByteCode byteCode =
 				compileRuntimeFragment(shaderPaths[shaderIndex], {});
+			if (shaderIndex == 1u)
+				RequireGltfMaterialLayout(byteCode,
+					compileRuntimeFragment(shaderPaths[shaderIndex], {}, true), 132u, 144u);
 			if (shaderIndex < 3u)
 			{
 				RequireLocalReflectionUniformLayout(byteCode);
@@ -1427,11 +1504,17 @@ namespace
 			1u,
 			19u);
 		RequireLocalReflectionUniformLayout(materialExtensionsByteCode);
+		RequireGltfMaterialLayout(materialExtensionsByteCode, compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader", { "CLEAR_COAT", "SHEEN", "TRANSMISSION" }, true), 176u, 176u);
+		RequireGltfMaterialLayout(compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader", { "TRANSMISSION", "MOTIONS" }), compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader", { "TRANSMISSION", "MOTIONS" }, true), 176u, 176u);
 		RequireSpirvCombinedImageSamplerBinding(materialExtensionsByteCode, 1u, 21u);
 		RequireSpirvCombinedImageSamplerBinding(materialExtensionsByteCode, 1u, 22u);
-		compileRuntimeFragment(
+		RequireGltfMaterialLayout(compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
-			{ "MATERIAL_IOR" });
+			{ "MATERIAL_IOR" }), compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader", { "MATERIAL_IOR" }, true), 136u, 144u);
 		compileRuntimeVertex(
 			"Shaders/Standard_glTF.shader",
 			{ "SKINNING", "TRANSMISSION" });
