@@ -344,8 +344,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		auto& shadowPayloadRevisions = submissionResources->m_shadowPayloadRevisions;
 		auto& bBuildShadowPayloads = submissionResources->m_buildShadowPayloads;
 		auto& bShadowPayloadComplete = submissionResources->m_shadowPayloadComplete;
-		auto& requestedPacketTextures =
-			submissionResources->m_requestedPacketTextures;
 		shadowPayloadRevisions.Clear(false);
 		bBuildShadowPayloads.Clear(false);
 		bShadowPayloadComplete.Clear(false);
@@ -354,10 +352,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		bShadowPayloadComplete.Resize(NumShadowPasses);
 		for (uint32_t passIndex = 0u; passIndex < NumShadowPasses; ++passIndex)
 		{
-			for (auto& requestedTextures : requestedPacketTextures)
-			{
-				requestedTextures.Reset();
-			}
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[passIndex];
 			size_t viewKey = Fnv1aOffsetBasis;
 			HashCombine(
@@ -372,8 +366,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			viewResources->Begin(viewKey);
 			submissionResources->m_activeShadowViews.Add(viewResources);
 
-			std::array<uint32_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
-				numRelevantCasters{};
 			for (size_t index = 0u; index < shadowPayloadRevisions[passIndex].size(); ++index)
 			{
 				auto& revision = shadowPayloadRevisions[passIndex][index];
@@ -407,101 +399,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				}
 			}
 
-			for (const auto& proxy : shadowPass.m_meshList)
-			{
-				const auto* source = proxy.GetSource();
-				if (!source || !proxy.m_resource)
-				{
-					continue;
-				}
-				const EMobilityType mobility = proxy.GetMobility();
-				const size_t payloadIndex =
-					RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-				auto& revision = shadowPayloadRevisions[passIndex][payloadIndex];
-				++numRelevantCasters[payloadIndex];
-				if (!usesPagedArena(payloadIndex))
-				{
-					HashCombine(
-						revision,
-						proxy.m_handle.m_slot,
-						proxy.m_handle.m_generation,
-						proxy.m_resource->m_shadowRevision,
-						proxy.GetProducerKey(),
-						std::hash<glm::mat4>{}(proxy.GetWorldMatrix()),
-						proxy.GetSkeletonOffset());
-				}
-
-				for (const auto& shadowMesh : source->m_meshes)
-				{
-					if (shadowMesh.m_renderQueueTag != opaqueQueueTag &&
-						shadowMesh.m_renderQueueTag != maskedQueueTag)
-					{
-						continue;
-					}
-					if (!usesPagedArena(payloadIndex))
-					{
-						HashCombine(revision, proxy.ResolveMesh(shadowMesh, shadowPass.m_lightMatrix));
-					}
-#if defined(__APPLE__)
-					if (shadowMesh.m_renderQueueTag == maskedQueueTag ||
-						shadowMesh.m_customDepthMaterial)
-					{
-						for (uint32_t texture : shadowMesh.m_materialTextureSamplers)
-						{
-							requestedPacketTextures[payloadIndex].Insert(texture);
-						}
-					}
-#endif
-				}
-				const auto* topology = &proxy.m_resource->m_proxy;
-				for (const auto& group : topology->m_instancedGroups)
-				{
-					if (!group.m_bCastShadows)
-					{
-						continue;
-					}
-					for (size_t meshIndex = 0u; meshIndex < group.m_meshes.Num(); ++meshIndex)
-					{
-						const size_t renderQueueTag = meshIndex < group.m_renderQueueTags.Num() ?
-							group.m_renderQueueTags[meshIndex] : 0u;
-						if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
-						{
-							continue;
-						}
-						if (!usesPagedArena(payloadIndex))
-						{
-							HashCombine(
-								revision,
-								proxy.ResolveMesh(group.m_meshes[meshIndex], shadowPass.m_lightMatrix));
-						}
-#if defined(__APPLE__)
-						const bool bCustomDepth = meshIndex < group.m_materials.Num() &&
-							group.m_materials[meshIndex] &&
-							group.m_materials[meshIndex]->GetRenderState().IsRequiredCustomDepthShader();
-						if ((renderQueueTag == maskedQueueTag || bCustomDepth) &&
-							meshIndex < group.m_materialTextureSamplers.Num())
-						{
-							for (uint32_t texture : group.m_materialTextureSamplers[meshIndex])
-							{
-								requestedPacketTextures[payloadIndex].Insert(texture);
-							}
-						}
-#endif
-					}
-				}
-			}
-
-			for (size_t index = 0u; index < shadowPayloadRevisions[passIndex].size(); ++index)
-			{
-				if (!usesPagedArena(index))
-				{
-					HashCombine(
-						shadowPayloadRevisions[passIndex][index],
-						numRelevantCasters[index],
-						Framegraph::Details::CalculateTextureDependencyRevision(
-							requestedPacketTextures[index].GetIndices()));
-				}
-			}
 			if (bVirtualizeInstancePayloads)
 			{
 				for (const EMobilityType mobility :
@@ -791,7 +688,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				for (size_t shadowMeshIndex = 0u; shadowMeshIndex < source->m_meshes.Num(); ++shadowMeshIndex)
 				{
 					const auto& shadowMesh = source->m_meshes[shadowMeshIndex];
-					const auto mesh = proxy.ResolveMesh(shadowMesh, shadowPass.m_lightMatrix);
+					const auto& mesh = sceneView.ResolveMesh(proxy, shadowMeshIndex);
 					if (!mesh)
 					{
 						if (shadowMesh.m_renderQueueTag == opaqueQueueTag ||
@@ -1000,8 +897,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 							{
 								continue;
 							}
-							const auto mesh =
-								proxy.ResolveInstancedMesh(group, instanceIndex, meshIndex, shadowPass.m_lightMatrix);
+							const auto& mesh =
+								sceneView.ResolveInstancedMesh(proxy, groupIndex, instanceIndex, meshIndex);
 							if (!mesh)
 							{
 								bShadowPayloadComplete[passIndex][payloadIndex] = false;

@@ -1130,6 +1130,7 @@ TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHIScene
 	auto frameRefPtr = this->ToRefPtr<RHIFrameGraph>();
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
+		snapshot.PrepareLods(snapshot.m_camera->GetViewMatrix(), snapshot.m_camera->GetProjectionMatrix());
 		snapshot.m_previousMotionFrame.Clear();
 		if (snapshot.m_cameraIndex < m_motionHistory.Num() && m_motionHistory[snapshot.m_cameraIndex])
 		{

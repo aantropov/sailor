@@ -96,27 +96,15 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 			auto& m_customPacket = submissionResources->m_customPacket;
 
 			syncSharedResources.Lock();
-			auto& requestedPacketTextures =
-				submissionResources->m_requestedPacketTextures;
-			for (auto& requestedTextures : requestedPacketTextures)
-			{
-				requestedTextures.Reset();
-			}
-
 			SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
 
 			constexpr size_t PayloadRevisionSeed = Fnv1aOffsetBasis;
 			std::array<size_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
 				payloadRevisions{};
-			std::array<uint32_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
-				numRelevantProxies{};
-			std::array<bool, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
-				bUsesPacketTextures{};
 			for (size_t index = 0u; index < payloadRevisions.size(); ++index)
 			{
 				payloadRevisions[index] = PayloadRevisionSeed;
 				HashCombine(payloadRevisions[index], index);
-				bUsesPacketTextures[index] = bMaskedQueue;
 			}
 			const size_t staticPayloadIndex =
 				RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(
@@ -146,116 +134,6 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						bMaskedQueue,
 						sceneViewSnapshot.m_submissionContext->GetMaterialRevision(),
 						sceneViewSnapshot.GetMobilityRevision(mobility));
-				}
-			}
-			for (const auto& proxy : sceneViewSnapshot.m_proxies)
-			{
-				const auto* source = proxy.GetSource();
-				if (!source || !proxy.m_resource)
-				{
-					continue;
-				}
-				const EMobilityType payloadMobility = proxy.GetMobility();
-				const size_t payloadIndex =
-					RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(payloadMobility);
-				bool bContributesToQueue = false;
-				for (size_t materialIndex = 0u;
-					materialIndex < source->GetMaterials().Num(); ++materialIndex)
-				{
-					const auto& material = source->GetMaterials()[materialIndex];
-					const bool bRelevant = material &&
-						material->GetRenderState().GetTag() == QueueTagHash;
-					bContributesToQueue |= bRelevant;
-					const bool bCustom = bRelevant &&
-						material->GetRenderState().IsRequiredCustomDepthShader();
-					bUsesPacketTextures[payloadIndex] =
-						bUsesPacketTextures[payloadIndex] || bCustom;
-#if defined(__APPLE__)
-					if ((bMaskedQueue || bCustom) &&
-						materialIndex < source->m_materialTextureSamplers.Num())
-					{
-						for (uint32_t texture : source->m_materialTextureSamplers[materialIndex])
-						{
-							requestedPacketTextures[payloadIndex].Insert(texture);
-						}
-					}
-#endif
-				}
-				for (const auto& group : source->m_instancedGroups)
-				{
-					for (size_t materialIndex = 0u;
-						materialIndex < group.m_materials.Num(); ++materialIndex)
-					{
-						const auto& material = group.m_materials[materialIndex];
-						const bool bRelevant = material &&
-							material->GetRenderState().GetTag() == QueueTagHash;
-						bContributesToQueue |= bRelevant;
-						const bool bCustom = bRelevant &&
-							material->GetRenderState().IsRequiredCustomDepthShader();
-						bUsesPacketTextures[payloadIndex] =
-							bUsesPacketTextures[payloadIndex] || bCustom;
-#if defined(__APPLE__)
-						if ((bMaskedQueue || bCustom) &&
-							materialIndex < group.m_materialTextureSamplers.Num())
-						{
-							for (uint32_t texture : group.m_materialTextureSamplers[materialIndex])
-							{
-								requestedPacketTextures[payloadIndex].Insert(texture);
-							}
-						}
-#endif
-					}
-				}
-				if (bContributesToQueue)
-				{
-					++numRelevantProxies[payloadIndex];
-					if (!usesPagedArena(payloadIndex))
-					{
-						HashCombine(
-							payloadRevisions[payloadIndex],
-							proxy.m_handle.m_slot,
-							proxy.m_handle.m_generation,
-							proxy.m_resource->m_depthRevision,
-							source->m_staticMeshEcs,
-							std::hash<glm::mat4>{}(proxy.GetWorldMatrix()),
-							proxy.GetSkeletonOffset());
-						for (size_t meshIndex = 0u; meshIndex < source->m_meshes.Num(); ++meshIndex)
-						{
-							if (meshIndex < source->GetMaterials().Num() &&
-								source->GetMaterials()[meshIndex] &&
-								source->GetMaterials()[meshIndex]->GetRenderState().GetTag() == QueueTagHash)
-							{
-								HashCombine(payloadRevisions[payloadIndex], proxy.ResolveMesh(meshIndex));
-							}
-						}
-						for (const auto& group : source->m_instancedGroups)
-						{
-							for (size_t meshIndex = 0u; meshIndex < group.m_meshes.Num(); ++meshIndex)
-							{
-								if (meshIndex < group.m_materials.Num() &&
-									group.m_materials[meshIndex] &&
-									group.m_materials[meshIndex]->GetRenderState().GetTag() == QueueTagHash)
-								{
-									HashCombine(payloadRevisions[payloadIndex], proxy.ResolveMesh(group.m_meshes[meshIndex]));
-							}
-						}
-						}
-					}
-				}
-			}
-			for (size_t index = 0u; index < payloadRevisions.size(); ++index)
-			{
-				const uint64_t textureDescriptorRevision = bUsesPacketTextures[index] ?
-					Framegraph::Details::CalculateTextureDependencyRevision(
-						requestedPacketTextures[index].GetIndices()) : 0ull;
-				if (!usesPagedArena(index))
-				{
-					HashCombine(
-						payloadRevisions[index],
-						numRelevantProxies[index],
-						QueueTagHash,
-						bMaskedQueue,
-						textureDescriptorRevision);
 				}
 			}
 			m_packet.Reset();
@@ -663,7 +541,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						continue;
 					}
 
-					const auto mesh = proxy.ResolveMesh(i);
+					const auto& mesh = sceneViewSnapshot.ResolveMesh(proxy, i);
 					if (!mesh)
 					{
 						const bool bExpectedCustomDepth = !bMaskedQueue &&
@@ -999,12 +877,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							{
 								continue;
 							}
-							const auto mesh = proxy.ResolveInstancedMesh(
-								group,
-								instanceIndex,
-								meshIndex,
-								sceneViewSnapshot.m_camera->GetViewMatrix(),
-								sceneViewSnapshot.m_camera->GetProjectionMatrix());
+							const auto& mesh = sceneViewSnapshot.ResolveInstancedMesh(
+								proxy, groupIndex, instanceIndex, meshIndex);
 							if (!mesh)
 							{
 								if (bRequiredCustomDepth)

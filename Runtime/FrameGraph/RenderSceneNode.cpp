@@ -425,18 +425,9 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			auto& m_orderedDrawItems = submissionResources->m_orderedDrawItems;
 
 			syncSharedResources.Lock();
-			auto& requestedPacketTextures =
-				submissionResources->m_requestedPacketTextures;
-			for (auto& requestedTextures : requestedPacketTextures)
-			{
-				requestedTextures.Reset();
-			}
-
 			constexpr size_t PayloadRevisionSeed = Fnv1aOffsetBasis;
 			std::array<size_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
 				payloadRevisions{};
-			std::array<uint32_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
-				numRelevantProxies{};
 			for (size_t index = 0u; index < payloadRevisions.size(); ++index)
 			{
 				payloadRevisions[index] = PayloadRevisionSeed;
@@ -472,117 +463,6 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 					HashCombine(payloadRevisions[payloadIndex], sceneViewSnapshot.m_previousMotionFrame ?
 						sceneViewSnapshot.m_previousMotionFrame->m_mobilityRevisions[static_cast<size_t>(mobility)] : 0ull);
 				}
-			}
-			for (const auto& proxy : sceneViewSnapshot.m_proxies)
-			{
-				const auto* source = proxy.GetSource();
-				if (!source || !proxy.m_resource)
-				{
-					continue;
-				}
-				bool bContributesToQueue = false;
-				for (size_t renderQueueTag : source->m_renderQueueTags)
-				{
-					bContributesToQueue |= renderQueueTag == QueueTagHash;
-				}
-				for (const auto& group : source->m_instancedGroups)
-				{
-					for (size_t renderQueueTag : group.m_renderQueueTags)
-					{
-						bContributesToQueue |= renderQueueTag == QueueTagHash;
-					}
-				}
-				const EMobilityType payloadMobility = bBackToFront ?
-					EMobilityType::Dynamic : proxy.GetMobility();
-				const size_t payloadIndex =
-					RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(payloadMobility);
-#if defined(__APPLE__)
-				for (size_t materialIndex = 0u;
-					materialIndex < source->m_materialTextureSamplers.Num(); ++materialIndex)
-				{
-					if (materialIndex < source->m_renderQueueTags.Num() &&
-						source->m_renderQueueTags[materialIndex] == QueueTagHash)
-					{
-						for (uint32_t texture : source->m_materialTextureSamplers[materialIndex])
-						{
-							requestedPacketTextures[payloadIndex].Insert(texture);
-						}
-					}
-				}
-				for (const auto& group : source->m_instancedGroups)
-				{
-					for (size_t materialIndex = 0u;
-						materialIndex < group.m_materialTextureSamplers.Num(); ++materialIndex)
-					{
-						if (materialIndex < group.m_renderQueueTags.Num() &&
-							group.m_renderQueueTags[materialIndex] == QueueTagHash)
-						{
-							for (uint32_t texture : group.m_materialTextureSamplers[materialIndex])
-							{
-								requestedPacketTextures[payloadIndex].Insert(texture);
-							}
-						}
-					}
-				}
-#endif
-				if (bContributesToQueue)
-				{
-					++numRelevantProxies[payloadIndex];
-					if (!usesPagedArena(payloadIndex))
-					{
-						HashCombine(
-							payloadRevisions[payloadIndex],
-							proxy.m_handle.m_slot,
-							proxy.m_handle.m_generation,
-							proxy.m_resource->m_mainRevision,
-							source->m_staticMeshEcs,
-							std::hash<glm::mat4>{}(proxy.GetWorldMatrix()),
-							proxy.GetSkeletonOffset(),
-							proxy.GetRenderFlags());
-						HashMotionHistory(payloadRevisions[payloadIndex], sceneViewSnapshot, proxy);
-						for (size_t meshIndex = 0u; meshIndex < source->m_meshes.Num(); ++meshIndex)
-						{
-							if (meshIndex < source->m_renderQueueTags.Num() &&
-								source->m_renderQueueTags[meshIndex] == QueueTagHash)
-							{
-								HashCombine(payloadRevisions[payloadIndex], proxy.ResolveMesh(meshIndex));
-							}
-						}
-						for (const auto& group : source->m_instancedGroups)
-						{
-							for (size_t meshIndex = 0u; meshIndex < group.m_meshes.Num(); ++meshIndex)
-							{
-								if (meshIndex < group.m_renderQueueTags.Num() &&
-									group.m_renderQueueTags[meshIndex] == QueueTagHash)
-								{
-									HashCombine(payloadRevisions[payloadIndex], proxy.ResolveMesh(group.m_meshes[meshIndex]));
-								}
-							}
-						}
-					}
-				}
-			}
-			for (size_t index = 0u; index < payloadRevisions.size(); ++index)
-			{
-				const uint64_t textureDescriptorRevision =
-					Details::CalculateTextureDependencyRevision(
-						requestedPacketTextures[index].GetIndices());
-				if (!usesPagedArena(index))
-				{
-					HashCombine(
-						payloadRevisions[index],
-						numRelevantProxies[index],
-						QueueTagHash,
-						bBackToFront,
-						textureDescriptorRevision);
-				}
-			}
-			if (bBackToFront)
-			{
-				HashCombine(
-					payloadRevisions[RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(
-						EMobilityType::Dynamic)],
-					std::hash<glm::mat4>{}(sceneViewSnapshot.m_camera->GetViewMatrix()));
 			}
 			m_packet.Reset();
 			m_orderedDrawItems.Clear(false);
@@ -859,7 +739,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						break;
 					}
 
-					const auto mesh = proxy.ResolveMesh(i);
+					const auto& mesh = sceneViewSnapshot.ResolveMesh(proxy, i);
 					const auto& material = source->GetMaterials()[i];
 
 					const bool bRelevantMaterial = material &&
@@ -1045,12 +925,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 							{
 								continue;
 							}
-							const auto mesh = proxy.ResolveInstancedMesh(
-								group,
-								instanceIndex,
-								meshIndex,
-								sceneViewSnapshot.m_camera->GetViewMatrix(),
-								sceneViewSnapshot.m_camera->GetProjectionMatrix());
+							const auto& mesh = sceneViewSnapshot.ResolveInstancedMesh(
+								proxy, groupIndex, instanceIndex, meshIndex);
 							if (!mesh)
 							{
 								bPayloadComplete[payloadIndex] = false;

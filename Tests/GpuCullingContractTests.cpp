@@ -998,8 +998,21 @@ namespace
 
 		RHI::RHIVisibleSceneProxy cameraView;
 		cameraView.m_resource = resource.GetRawPtr();
-		Require(cameraView.ResolveInstancedMesh(group, 0u, 0u, view, projection) == baseMesh &&
-			cameraView.ResolveInstancedMesh(group, 1u, 0u, view, projection) == lodMesh,
+		RHI::RHISceneViewSnapshot snapshot;
+		snapshot.m_proxies.Add(cameraView);
+		snapshot.m_shadowMapsToUpdate.Resize(2u);
+		RHI::RHIVisibleShadowCaster shadowView;
+		shadowView.m_resource = resource.GetRawPtr();
+		for (auto& pass : snapshot.m_shadowMapsToUpdate)
+		{
+			pass.m_meshList.Add(shadowView);
+		}
+		snapshot.m_shadowMapsToUpdate[0].m_lightMatrix = glm::mat4(1.0f);
+		snapshot.m_shadowMapsToUpdate[1].m_lightMatrix = projection * glm::scale(glm::mat4(1.0f), glm::vec3(10.0f));
+		snapshot.PrepareLods(view, projection);
+		cameraView = snapshot.m_proxies[0];
+		Require(snapshot.ResolveInstancedMesh(cameraView, 0u, 0u, 0u) == baseMesh &&
+			snapshot.ResolveInstancedMesh(cameraView, 0u, 1u, 0u) == lodMesh,
 			"main and depth view classification must select LOD per vegetation instance instead of per chunk");
 		Require(cameraView.IsInstancedMeshWithinDistance(
 				group, 0u, 0u, glm::vec3(0.0f), 10.0f) &&
@@ -1007,14 +1020,120 @@ namespace
 				group, 1u, 0u, glm::vec3(0.0f), 10.0f),
 			"vegetation distance culling must use per-instance bounds");
 
-		RHI::RHIVisibleShadowCaster shadowView;
-		shadowView.m_resource = resource.GetRawPtr();
-		const glm::mat4 shadowViewProjection = projection * view;
-		Require(shadowView.ResolveInstancedMesh(
-				group, 0u, 0u, shadowViewProjection) == baseMesh &&
-			shadowView.ResolveInstancedMesh(
-				group, 1u, 0u, shadowViewProjection) == lodMesh,
-			"shadow views must retain independent per-instance LOD classification");
+		for (const auto& pass : snapshot.m_shadowMapsToUpdate)
+		{
+			Require(&snapshot.ResolveInstancedMesh(pass.m_meshList[0], 0u, 1u, 0u) ==
+				&snapshot.ResolveInstancedMesh(cameraView, 0u, 1u, 0u),
+				"every shadow projection must read the camera snapshot's shared per-instance mesh selection");
+		}
+
+		auto biasedProxy = resource->m_proxy;
+		biasedProxy.m_instancedGroups[0].m_instanceLodBiases = { 1, -1 };
+		auto biasedResource = RHI::RHISceneProxyResourcePtr::Make(std::move(biasedProxy));
+		RHI::RHISceneViewSnapshot biasedSnapshot;
+		cameraView.m_resource = biasedResource.GetRawPtr();
+		biasedSnapshot.m_proxies.Add(cameraView);
+		biasedSnapshot.PrepareLods(view, projection);
+		Require(biasedSnapshot.ResolveInstancedMesh(biasedSnapshot.m_proxies[0], 0u, 0u, 0u) == lodMesh &&
+			biasedSnapshot.ResolveInstancedMesh(biasedSnapshot.m_proxies[0], 0u, 1u, 0u) == baseMesh,
+			"snapshot preparation must retain positive and negative vegetation instance LOD biases");
+		auto distanceProxy = resource->m_proxy;
+		distanceProxy.m_lodPolicy.m_cameraDistanceThresholds = { 10.0f };
+		distanceProxy.m_lodPolicy.m_screenCoverageThresholds = { 0.0f };
+		auto distanceResource = RHI::RHISceneProxyResourcePtr::Make(std::move(distanceProxy));
+		biasedSnapshot.m_proxies[0].m_resource = distanceResource.GetRawPtr();
+		biasedSnapshot.PrepareLods(view, projection);
+		Require(biasedSnapshot.ResolveInstancedMesh(biasedSnapshot.m_proxies[0], 0u, 0u, 0u) == baseMesh &&
+			biasedSnapshot.ResolveInstancedMesh(biasedSnapshot.m_proxies[0], 0u, 1u, 0u) == lodMesh,
+			"camera distance policies must classify instances by their own world bounds");
+	}
+
+	void TestSnapshotCameraLodContract()
+	{
+		auto baseMesh = RHI::RHIMeshPtr::Make();
+		auto lod1 = RHI::RHIMeshPtr::Make();
+		auto lod2 = RHI::RHIMeshPtr::Make();
+		baseMesh->m_lods = { lod1, lod2 };
+		auto shorterMesh = RHI::RHIMeshPtr::Make();
+		shorterMesh->m_lods = { lod1 };
+		auto missingLodMesh = RHI::RHIMeshPtr::Make();
+		missingLodMesh->m_lods = { lod1, {} };
+		RHI::RHISceneViewProxy source;
+		source.m_worldMatrix = glm::mat4(1.0f);
+		source.m_lodPolicy.m_bEnabled = true;
+		source.m_lodPolicy.m_cameraDistanceThresholds = { 5.0f, 15.0f };
+		source.m_meshes = { baseMesh, shorterMesh, missingLodMesh, {} };
+		source.m_shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
+		for (const auto& mesh : { shorterMesh, baseMesh, missingLodMesh })
+		{
+			RHI::RHIShadowMeshProxy shadowMesh;
+			shadowMesh.m_mesh = mesh;
+			source.m_shadowCaster->m_meshes.Add(shadowMesh);
+		}
+		auto resource = RHI::RHISceneProxyResourcePtr::Make(std::move(source));
+		RHI::RHISceneInstanceRecord farRecord;
+		farRecord.m_worldBounds = Math::AABB(glm::vec3(0.0f, 0.0f, -20.0f), glm::vec3(0.5f));
+		RHI::RHISceneInstanceRecord nearRecord;
+		nearRecord.m_worldBounds = Math::AABB(glm::vec3(0.0f, 0.0f, -2.0f), glm::vec3(0.5f));
+		RHI::RHIVisibleSceneProxy visible;
+		visible.m_resource = resource.GetRawPtr();
+		visible.m_record = &farRecord;
+		RHI::RHISceneViewSnapshot snapshot;
+		snapshot.m_proxies.Add(visible);
+		RHI::RHIVisibleShadowCaster caster;
+		caster.m_resource = resource.GetRawPtr();
+		caster.m_record = &farRecord;
+		snapshot.m_shadowMapsToUpdate.Resize(2u);
+		for (auto& pass : snapshot.m_shadowMapsToUpdate)
+		{
+			pass.m_meshList.Add(caster);
+			caster.m_record = &nearRecord;
+			pass.m_meshList.Add(caster);
+			caster.m_record = &farRecord;
+		}
+		const glm::mat4 projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
+		snapshot.PrepareLods(glm::mat4(1.0f), projection);
+		Require(snapshot.ResolveMesh(snapshot.m_proxies[0], 0u) == lod2 &&
+			snapshot.ResolveMesh(snapshot.m_proxies[0], 1u) == lod1 &&
+			snapshot.ResolveMesh(snapshot.m_proxies[0], 2u) == missingLodMesh &&
+			!snapshot.ResolveMesh(snapshot.m_proxies[0], 3u),
+			"camera LOD selection must respect each mesh's available chain and preserve missing meshes");
+		for (const auto& pass : snapshot.m_shadowMapsToUpdate)
+		{
+			Require(snapshot.ResolveMesh(pass.m_meshList[0], 0u) == lod1 &&
+				snapshot.ResolveMesh(pass.m_meshList[0], 1u) == lod2,
+				"shadow mesh order must not change the camera's selected LOD");
+			Require(snapshot.ResolveMesh(pass.m_meshList[1], 1u) == baseMesh,
+				"shadow-only records must select from the camera independently of another record sharing their topology and handle");
+		}
+		RHI::RHISceneViewSnapshot movedSnapshot;
+		movedSnapshot.m_proxies = snapshot.m_proxies;
+		movedSnapshot.m_shadowMapsToUpdate = snapshot.m_shadowMapsToUpdate;
+		movedSnapshot.m_cameraTransform.m_position.z = -20.0f;
+		movedSnapshot.PrepareLods(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 20.0f)), projection);
+		Require(movedSnapshot.ResolveMesh(movedSnapshot.m_proxies[0], 0u) == baseMesh &&
+			snapshot.ResolveMesh(snapshot.m_proxies[0], 0u) == lod2,
+			"a second camera or submission must not overwrite the retained snapshot's LOD selection");
+		movedSnapshot.ResetForReuse();
+		Require(snapshot.ResolveMesh(snapshot.m_proxies[0], 0u) == lod2,
+			"recycling another snapshot must not release this submission's selected meshes");
+		auto disabledSource = resource->m_proxy;
+		disabledSource.m_lodPolicy.m_bEnabled = false;
+		auto disabledResource = RHI::RHISceneProxyResourcePtr::Make(std::move(disabledSource));
+		visible.m_resource = disabledResource.GetRawPtr();
+		movedSnapshot.m_proxies.Add(visible);
+		movedSnapshot.PrepareLods(glm::mat4(1.0f), projection);
+		Require(movedSnapshot.ResolveMesh(movedSnapshot.m_proxies[0], 0u) == baseMesh,
+			"disabling LOD must preserve base geometry regardless of camera distance");
+		RHI::RHISceneViewProxy baseOnlySource;
+		auto baseOnlyMesh = RHI::RHIMeshPtr::Make();
+		baseOnlySource.m_lodPolicy.m_bEnabled = true;
+		baseOnlySource.m_meshes.Add(baseOnlyMesh);
+		auto baseOnlyResource = RHI::RHISceneProxyResourcePtr::Make(std::move(baseOnlySource));
+		movedSnapshot.m_proxies[0].m_resource = baseOnlyResource.GetRawPtr();
+		movedSnapshot.PrepareLods(glm::mat4(1.0f), projection);
+		Require(movedSnapshot.ResolveMesh(movedSnapshot.m_proxies[0], 0u) == baseOnlyMesh,
+			"meshes without an LOD chain must remain drawable with LOD enabled");
 	}
 	void TestBatchTextureBindingIdentityContract()
 	{
@@ -1368,6 +1487,7 @@ int main()
 		{ "MaterialVersionPublicationContract", TestMaterialVersionPublicationContract },
 		{ "DynamicSpatialRootIsolation", TestDynamicSpatialRootIsolation },
 		{ "InstancedViewLodAndDistanceContract", TestInstancedViewLodAndDistanceContract },
+		{ "SnapshotCameraLodContract", TestSnapshotCameraLodContract },
 		{ "BatchTextureBindingIdentityContract", TestBatchTextureBindingIdentityContract },
 		{ "RenderResourceVirtualizationContract", TestRenderResourceVirtualizationContract },
 		{ "ShaderReadOnlyBarrierSynchronizesShaderSampling", TestShaderReadOnlyBarrierSynchronizesShaderSampling },

@@ -41,19 +41,30 @@ namespace Sailor::LightingECSInternal
 
 	void ResolveShadowCasterUpdatePolicy(const TVector<RHI::RHIVisibleShadowCaster>& casters,
 		bool& outContainsDynamicCasters,
-		bool& outContainsAnimatedCasters)
+		bool& outContainsAnimatedCasters,
+		bool& outContainsCameraLodCasters)
 	{
 		outContainsDynamicCasters = false;
 		outContainsAnimatedCasters = false;
+		outContainsCameraLodCasters = false;
 		for (const auto& caster : casters)
 		{
 			outContainsDynamicCasters |= caster.GetMobility() == EMobilityType::Dynamic;
 			outContainsAnimatedCasters |= caster.GetSkeletonOffset() != (std::numeric_limits<uint32_t>::max)();
-			if (outContainsDynamicCasters && outContainsAnimatedCasters)
+			outContainsCameraLodCasters |= caster.m_resource && caster.m_resource->m_proxy.m_lodPolicy.m_bEnabled;
+			if (outContainsDynamicCasters && outContainsAnimatedCasters && outContainsCameraLodCasters)
 			{
 				return;
 			}
 		}
+	}
+
+	size_t CalculateShadowLodCameraRevision(const CameraData& camera)
+	{
+		size_t revision = 0u;
+		HashCombine(revision, std::hash<glm::mat4>{}(camera.GetViewMatrix()),
+			std::hash<glm::mat4>{}(camera.GetProjectionMatrix()), App::GetActiveGraphicsSettings().m_lodBias);
+		return revision;
 	}
 
 	RHI::RHISubmissionCompletionTokenPtr AcquireShadowPayloadToken(

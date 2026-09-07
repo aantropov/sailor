@@ -50,8 +50,10 @@ namespace Sailor
 		uint64_t m_sceneRevision = 0;
 		uint64_t m_animationRevision = 0;
 		uint64_t m_resourceRevision = 0;
+		size_t m_lodCameraRevision = 0u;
 		bool m_bContainsDynamicCasters = false;
 		bool m_bContainsAnimatedCasters = false;
+		bool m_bContainsCameraLodCasters = false;
 		TSharedPtr<TVector<RHI::RHISceneVersionPtr>> m_casterSceneVersions{};
 		RHI::RHIRenderTargetPtr m_shadowMap{};
 		RHI::RHISubmissionCompletionTokenPtr m_submissionToken{};
@@ -61,6 +63,7 @@ namespace Sailor
 			uint32_t componentIndex,
 			RHI::EShadowType shadowType,
 			const glm::mat4& lightMatrix,
+			size_t lodCameraRevision,
 			uint64_t sceneRevision,
 			const TSharedPtr<TVector<RHI::RHISceneVersionPtr>>& sceneVersions,
 			const Math::Frustum& shadowFrustum,
