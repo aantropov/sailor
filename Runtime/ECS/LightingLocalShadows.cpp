@@ -578,6 +578,7 @@ void LightingECS::PrepareLocalShadowPasses(const RHI::RHISceneViewPtr& sceneView
 {
 	const uint64_t frame = GetWorld()->GetCurrentFrame();
 	const auto casterSceneVersions = sceneView->GetRetainedSceneVersions();
+	const size_t lodCameraRevision = CalculateShadowLodCameraRevision(cameraData);
 	const auto submissionToken = sceneView->GetOrCreateSubmissionCompletionToken();
 	outUpdateShadowMaps.Reserve(outUpdateShadowMaps.Num() + spotLights.Num() + pointLights.Num() * 6u);
 
@@ -690,6 +691,7 @@ void LightingECS::PrepareLocalShadowPasses(const RHI::RHISceneViewPtr& sceneView
 				if (cachedState.m_resourceRevision == allocation.m_revision && cachedState.CanReuse(lightProxy.m_index,
 																				   RHI::EShadowType::PCF,
 																				   lightMatrices[face],
+																				   lodCameraRevision,
 																				   sceneView->m_shadowCastersRevision,
 																				   casterSceneVersions,
 																				   shadowFrustum,
@@ -708,18 +710,20 @@ void LightingECS::PrepareLocalShadowPasses(const RHI::RHISceneViewPtr& sceneView
 				shadowPass.m_lighMatrixIndex = shadowSlot;
 				shadowPass.m_shadowType = RHI::EShadowType::PCF;
 				shadowPass.m_meshList =
-					sceneView->TraceShadowCasters(shadowFrustum, glm::vec3(cameraTransform.m_position));
+					sceneView->TraceShadowCasters(shadowFrustum);
 
 				CSMLightState snapshot{};
 				snapshot.m_componentIndex = lightProxy.m_index;
 				snapshot.m_shadowType = RHI::EShadowType::PCF;
 				snapshot.m_lightMatrix = lightMatrices[face];
+				snapshot.m_lodCameraRevision = lodCameraRevision;
 				snapshot.m_sceneRevision = sceneView->m_shadowCastersRevision;
 				snapshot.m_animationRevision = sceneView->m_animationRevision;
 				snapshot.m_resourceRevision = allocation.m_revision;
 				snapshot.m_casterSceneVersions = casterSceneVersions;
 				ResolveShadowCasterUpdatePolicy(
-					shadowPass.m_meshList, snapshot.m_bContainsDynamicCasters, snapshot.m_bContainsAnimatedCasters);
+					shadowPass.m_meshList, snapshot.m_bContainsDynamicCasters, snapshot.m_bContainsAnimatedCasters,
+					snapshot.m_bContainsCameraLodCasters);
 				shadowPass.m_shadowMap = m_localShadowAtlases[allocation.m_atlasIndex].m_texture;
 				snapshot.m_submissionToken = submissionToken;
 				snapshot.m_payloadCompletionToken = AcquireShadowPayloadToken(cachedState.m_payloadCompletionToken);

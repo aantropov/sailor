@@ -130,9 +130,6 @@ namespace Sailor
 			TVector<std::array<bool, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>>
 				m_shadowPayloadComplete{};
 			uint32_t m_numActiveShadowViews = 0u;
-			std::array<Framegraph::TextureDependencyCollector,
-				RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
-				m_requestedPacketTextures{};
 			TVector<RHI::RHITexturePtr> m_renderPassColorAttachments{};
 			TVector<RHI::RHIShaderBindingSetPtr> m_blurDrawBindingSets{};
 			TVector<PerInstanceData> m_arenaRangeInstances{};

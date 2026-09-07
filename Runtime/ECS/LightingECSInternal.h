@@ -10,7 +10,10 @@ namespace Sailor::LightingECSInternal
 
 	void ResolveShadowCasterUpdatePolicy(const TVector<RHI::RHIVisibleShadowCaster>& casters,
 		bool& outContainsDynamicCasters,
-		bool& outContainsAnimatedCasters);
+		bool& outContainsAnimatedCasters,
+		bool& outContainsCameraLodCasters);
+
+	size_t CalculateShadowLodCameraRevision(const CameraData& camera);
 
 	RHI::RHISubmissionCompletionTokenPtr AcquireShadowPayloadToken(
 		const RHI::RHISubmissionCompletionTokenPtr& cachedToken);

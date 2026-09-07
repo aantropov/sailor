@@ -1026,6 +1026,7 @@ namespace
 			cachedState.m_componentIndex,
 			cachedState.m_shadowType,
 			cachedState.m_lightMatrix,
+			0u,
 			cachedState.m_sceneRevision,
 			cachedState.m_casterSceneVersions,
 			shadowFrustum),
@@ -1034,17 +1035,34 @@ namespace
 			cachedState.m_componentIndex,
 			cachedState.m_shadowType,
 			movedLightMatrix,
+			0u,
 			cachedState.m_sceneRevision,
 			cachedState.m_casterSceneVersions,
 			shadowFrustum),
 			"a changed cascade projection must invalidate the cached shadow map even for camera motion below the old threshold");
 
 		CSMLightState pendingState = cachedState;
+		CSMLightState cameraLodState = cachedState;
+		cameraLodState.m_bContainsCameraLodCasters = true;
+		cameraLodState.m_lodCameraRevision = 5u;
+		Require(cameraLodState.CanReuse(cameraLodState.m_componentIndex, cameraLodState.m_shadowType,
+			cameraLodState.m_lightMatrix, 5u, cameraLodState.m_sceneRevision,
+			cameraLodState.m_casterSceneVersions, shadowFrustum) &&
+			!cameraLodState.CanReuse(cameraLodState.m_componentIndex, cameraLodState.m_shadowType,
+				cameraLodState.m_lightMatrix, 6u, cameraLodState.m_sceneRevision,
+				cameraLodState.m_casterSceneVersions, shadowFrustum),
+			"camera-dependent LOD must invalidate both local and directional shadow caches when its camera reference changes");
+		cameraLodState.m_bContainsCameraLodCasters = false;
+		Require(cameraLodState.CanReuse(cameraLodState.m_componentIndex, cameraLodState.m_shadowType,
+			cameraLodState.m_lightMatrix, 6u, cameraLodState.m_sceneRevision,
+			cameraLodState.m_casterSceneVersions, shadowFrustum),
+			"camera changes must preserve cached shadows whose casters have no camera-dependent LOD");
 		pendingState.m_submissionToken = RHI::RHISubmissionCompletionTokenPtr::Make();
 		Require(!pendingState.CanReuse(
 			pendingState.m_componentIndex,
 			pendingState.m_shadowType,
 			pendingState.m_lightMatrix,
+			0u,
 			pendingState.m_sceneRevision,
 			pendingState.m_casterSceneVersions,
 			shadowFrustum),
@@ -1053,6 +1071,7 @@ namespace
 			pendingState.m_componentIndex,
 			pendingState.m_shadowType,
 			pendingState.m_lightMatrix,
+			0u,
 			pendingState.m_sceneRevision,
 			pendingState.m_casterSceneVersions,
 			shadowFrustum,
@@ -1067,6 +1086,7 @@ namespace
 			incompletePayloadState.m_componentIndex,
 			incompletePayloadState.m_shadowType,
 			incompletePayloadState.m_lightMatrix,
+			0u,
 			incompletePayloadState.m_sceneRevision,
 			incompletePayloadState.m_casterSceneVersions,
 			shadowFrustum),
@@ -1079,6 +1099,7 @@ namespace
 			pendingPayloadState.m_componentIndex,
 			pendingPayloadState.m_shadowType,
 			pendingPayloadState.m_lightMatrix,
+			0u,
 			pendingPayloadState.m_sceneRevision,
 			pendingPayloadState.m_casterSceneVersions,
 			shadowFrustum,
@@ -1092,6 +1113,7 @@ namespace
 			dynamicState.m_componentIndex,
 			dynamicState.m_shadowType,
 			dynamicState.m_lightMatrix,
+			0u,
 			dynamicState.m_sceneRevision,
 			dynamicState.m_casterSceneVersions,
 			shadowFrustum,
@@ -1101,6 +1123,7 @@ namespace
 			dynamicState.m_componentIndex,
 			dynamicState.m_shadowType,
 			dynamicState.m_lightMatrix,
+			0u,
 			dynamicState.m_sceneRevision,
 			dynamicState.m_casterSceneVersions,
 			shadowFrustum,
@@ -1114,6 +1137,7 @@ namespace
 			animatedState.m_componentIndex,
 			animatedState.m_shadowType,
 			animatedState.m_lightMatrix,
+			0u,
 			animatedState.m_sceneRevision,
 			animatedState.m_casterSceneVersions,
 			shadowFrustum,
@@ -1124,6 +1148,7 @@ namespace
 			animatedState.m_componentIndex,
 			animatedState.m_shadowType,
 			animatedState.m_lightMatrix,
+			0u,
 			animatedState.m_sceneRevision,
 			animatedState.m_casterSceneVersions,
 			shadowFrustum,

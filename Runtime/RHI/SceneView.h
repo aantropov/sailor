@@ -177,8 +177,9 @@ namespace Sailor::RHI
 		// RHISceneViewSnapshot::m_sceneVersions for the whole submission.
 		const RHISceneInstanceRecord* m_record = nullptr;
 		const RHISceneProxyResource* m_resource = nullptr;
-		float m_screenCoverage = 1.0f;
-		float m_cameraDistance = 0.0f;
+		uint32_t m_meshLodOffset = InvalidIndex;
+		uint32_t m_instancedLodOffset = InvalidIndex;
+		static constexpr uint32_t InvalidIndex = (std::numeric_limits<uint32_t>::max)();
 
 		SAILOR_API const RHISceneViewProxy* GetSource() const;
 		SAILOR_API const glm::mat4& GetWorldMatrix() const;
@@ -187,19 +188,11 @@ namespace Sailor::RHI
 		SAILOR_API uint32_t GetSkeletonOffset() const;
 		SAILOR_API uint32_t GetRenderFlags() const;
 		SAILOR_API uint64_t GetContentRevision() const;
-		SAILOR_API RHIMeshPtr ResolveMesh(size_t meshIndex) const;
-		SAILOR_API RHIMeshPtr ResolveMesh(const RHIMeshPtr& mesh) const;
 		SAILOR_API glm::mat4 ResolveMeshWorldMatrix(size_t meshIndex) const;
 		SAILOR_API glm::mat4 ResolveInstancedMeshWorldMatrix(
 			const RHIInstancedMeshGroup& group,
 			size_t instanceIndex,
 			size_t meshIndex) const;
-		SAILOR_API RHIMeshPtr ResolveInstancedMesh(
-			const RHIInstancedMeshGroup& group,
-			size_t instanceIndex,
-			size_t meshIndex,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix) const;
 		SAILOR_API bool IsInstancedMeshWithinDistance(
 			const RHIInstancedMeshGroup& group,
 			size_t instanceIndex,
@@ -214,7 +207,8 @@ namespace Sailor::RHI
 		// The owning RHISceneVersion is retained by the submission snapshot.
 		const RHISceneInstanceRecord* m_record = nullptr;
 		const RHISceneProxyResource* m_resource = nullptr;
-		float m_cameraDistance = 0.0f;
+		uint32_t m_meshLodOffset = RHIVisibleSceneProxy::InvalidIndex;
+		uint32_t m_instancedLodOffset = RHIVisibleSceneProxy::InvalidIndex;
 
 		SAILOR_API const RHIShadowCasterProxy* GetSource() const;
 		SAILOR_API const glm::mat4& GetWorldMatrix() const;
@@ -223,22 +217,11 @@ namespace Sailor::RHI
 		SAILOR_API uint32_t GetSkeletonOffset() const;
 		SAILOR_API uint64_t GetProducerKey() const;
 		SAILOR_API uint64_t GetContentRevision() const;
-		SAILOR_API RHIMeshPtr ResolveMesh(
-			const RHIShadowMeshProxy& shadowMesh,
-			const glm::mat4& shadowViewProjection) const;
-		SAILOR_API RHIMeshPtr ResolveMesh(
-			const RHIMeshPtr& mesh,
-			const glm::mat4& shadowViewProjection) const;
 		SAILOR_API glm::mat4 ResolveMeshWorldMatrix(const RHIShadowMeshProxy& shadowMesh) const;
 		SAILOR_API glm::mat4 ResolveInstancedMeshWorldMatrix(
 			const RHIInstancedMeshGroup& group,
 			size_t instanceIndex,
 			size_t meshIndex) const;
-		SAILOR_API RHIMeshPtr ResolveInstancedMesh(
-			const RHIInstancedMeshGroup& group,
-			size_t instanceIndex,
-			size_t meshIndex,
-			const glm::mat4& shadowViewProjection) const;
 		SAILOR_API bool IsInstancedMeshWithinDistance(
 			const RHIInstancedMeshGroup& group,
 			size_t instanceIndex,
@@ -304,6 +287,23 @@ namespace Sailor::RHI
 	struct RHISceneViewSnapshot
 	{
 		SAILOR_API void ResetForReuse();
+		SAILOR_API void PrepareLods(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+		SAILOR_API const RHIMeshPtr& ResolveMesh(const RHIVisibleSceneProxy& proxy, size_t meshIndex) const;
+		SAILOR_API const RHIMeshPtr& ResolveMesh(const RHIVisibleShadowCaster& proxy, size_t meshIndex) const;
+
+		template<typename TProxy>
+		const RHIMeshPtr& ResolveInstancedMesh(const TProxy& proxy,
+			size_t groupIndex, size_t instanceIndex, size_t meshIndex) const
+		{
+			const auto& group = proxy.m_resource->m_proxy.m_instancedGroups[groupIndex];
+			if (proxy.m_instancedLodOffset == RHIVisibleSceneProxy::InvalidIndex)
+			{
+				return group.m_meshes[meshIndex];
+			}
+			return m_lodMeshes[m_instancedLodOffsets[proxy.m_instancedLodOffset + groupIndex] +
+				meshIndex * group.m_instanceTransforms.Num() + instanceIndex];
+		}
+
 		SAILOR_API uint64_t GetMobilityRevision(EMobilityType mobility) const;
 
 		template<typename TCallback>
@@ -394,6 +394,9 @@ namespace Sailor::RHI
 		Math::Transform m_cameraTransform{};
 		TUniquePtr<CameraData> m_camera{};
 		TVector<RHIVisibleSceneProxy> m_proxies{};
+		// Camera-selected meshes shared by main, depth and every shadow pass.
+		TVector<RHIMeshPtr> m_lodMeshes{};
+		TVector<uint32_t> m_instancedLodOffsets{};
 		TVector<RHIPathTracerProxy> m_pathTracerProxies{};
 		TVector<Sailor::Raytracing::PathTracer::TLASInstance> m_pathTracerTLASInstances{};
 		TVector<MaterialPtr> m_pathTracerMaterials{};
@@ -431,11 +434,9 @@ namespace Sailor::RHI
 			TVector<RHIVisibleSceneProxy>& outVisibleProxies,
 			bool bSkipMaterials) const;
 		SAILOR_API TVector<RHIVisibleShadowCaster> TraceShadowCasters(
-			const Math::Frustum& frustum,
-			const glm::vec3& lodReferencePosition) const;
+			const Math::Frustum& frustum) const;
 		SAILOR_API void TraceShadowCasters(
 			const Math::Frustum& frustum,
-			const glm::vec3& lodReferencePosition,
 			TVector<RHIVisibleShadowCaster>& outVisibleCasters) const;
 		SAILOR_API void PrepareSnapshots();
 		SAILOR_API void PrepareDebugDrawCommandLists(
