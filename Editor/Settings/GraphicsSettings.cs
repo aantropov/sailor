@@ -817,12 +817,12 @@ public static class GraphicsSettingsYamlCodec
         ProjectSettingsDocument document)
     {
         SetScalar(root, "settingsVersion", document.SettingsVersion);
-        var graphics = GetOrCreateMapping(root, "graphics");
+        var graphics = GetWritableMapping(root, "graphics");
         SetScalar(graphics, "defaultQuality", document.Graphics.DefaultQuality);
-        var presets = GetOrCreateMapping(graphics, "presets");
+        var presets = GetWritableMapping(graphics, "presets");
         foreach (var quality in QualityLevels)
         {
-            var preset = GetOrCreateMapping(presets, quality.ToString());
+            var preset = GetWritableMapping(presets, quality.ToString());
             PatchPreset(preset, document.Graphics.Presets.Get(quality));
         }
     }
@@ -832,7 +832,7 @@ public static class GraphicsSettingsYamlCodec
         WorkspaceEditorSettingsDocument document)
     {
         SetScalar(root, "settingsVersion", document.SettingsVersion);
-        var graphics = GetOrCreateMapping(root, "graphics");
+        var graphics = GetWritableMapping(root, "graphics");
         SetScalar(graphics, "selectedQuality", document.Graphics.SelectedQuality);
         SetScalar(graphics, "statsMode", document.Graphics.StatsMode);
         SetScalar(
@@ -985,7 +985,7 @@ public static class GraphicsSettingsYamlCodec
             preset,
             "maxGiProbeStatesPerSnapshot",
             settings.MaxGiProbeStatesPerSnapshot);
-        var runtime = GetOrCreateMapping(preset, "runtimeGIProbes");
+        var runtime = GetWritableMapping(preset, "runtimeGIProbes");
         SetScalar(runtime, "version", settings.RuntimeGIProbes.Version);
         SetScalar(runtime, "enabled", settings.RuntimeGIProbes.Enabled);
         SetScalar(runtime, "maxActiveProbes", settings.RuntimeGIProbes.MaxActiveProbes);
@@ -1154,18 +1154,17 @@ public static class GraphicsSettingsYamlCodec
         return values;
     }
 
-    static YamlMappingNode GetOrCreateMapping(
+    static YamlMappingNode GetWritableMapping(
         YamlMappingNode parent,
         string key)
     {
         var yamlKey = new YamlScalarNode(key);
-        if (parent.Children.TryGetValue(yamlKey, out var existing) &&
-            existing is YamlMappingNode mapping)
-        {
-            return mapping;
-        }
-
-        var created = new YamlMappingNode();
+        // YAML aliases share node instances. Detach each mapping we patch so
+        // editing one preset cannot overwrite another preset or its nested settings.
+        var created = parent.Children.TryGetValue(yamlKey, out var existing) &&
+            existing is YamlMappingNode mapping
+                ? new YamlMappingNode(mapping.Children) { Style = mapping.Style, Tag = mapping.Tag }
+                : new YamlMappingNode();
         parent.Children[yamlKey] = created;
         return created;
     }

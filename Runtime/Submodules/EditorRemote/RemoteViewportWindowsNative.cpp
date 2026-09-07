@@ -254,6 +254,7 @@ namespace Sailor::EditorRemote
 			bool m_ownedByExternal = false;
 			std::string m_lastSourceName{};
 			glm::ivec2 m_lastSourceExtent{};
+			glm::ivec2 m_lastSceneRenderExtent{};
 
 			~Allocation()
 			{
@@ -519,12 +520,16 @@ namespace Sailor::EditorRemote
 			}
 			allocation->m_lastSourceName = source.m_debugName;
 			allocation->m_lastSourceExtent = { sourceExtent.x, sourceExtent.y };
+			auto frameGraph = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph();
+			allocation->m_lastSceneRenderExtent = frameGraph && frameGraph->GetRHI()
+				? frameGraph->GetRHI()->GetSceneRenderExtent() : glm::ivec2{};
 		}
 		else
 		{
 			commands->ClearImage(commandList, allocation->m_texture, glm::vec4(0.0f));
 			allocation->m_lastSourceName = "unavailable";
 			allocation->m_lastSourceExtent = {};
+			allocation->m_lastSceneRenderExtent = {};
 		}
 
 		commandList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
@@ -654,6 +659,7 @@ namespace Sailor::EditorRemote
 			<< " frame=" << allocation->m_frameIndex
 			<< " source='" << allocation->m_lastSourceName << "'"
 			<< " srcSize=" << allocation->m_lastSourceExtent.x << "x" << allocation->m_lastSourceExtent.y
+			<< " renderSize=" << allocation->m_lastSceneRenderExtent.x << "x" << allocation->m_lastSceneRenderExtent.y
 			<< " externalOwned=" << (allocation->m_ownedByExternal ? 1 : 0);
 		return summary.str();
 	}
