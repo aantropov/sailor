@@ -73,13 +73,13 @@ int main()
 		// DefWindowProc limits overlapped windows to the desktop tracking size.
 		// A CI desktop can be smaller than the requested 1280x800 client area.
 		const SIZE maximum = GetMaximumClientExtent(window.GetHWND());
-		const int largeWidth = std::min(1280L, maximum.cx);
-		const int largeHeight = std::min(800L, maximum.cy);
+		const int largeWidth = std::min<LONG>(1280, maximum.cx);
+		const int largeHeight = std::min<LONG>(800, maximum.cy);
 		window.ChangeWindowSize(largeWidth, largeHeight);
 		window.Show(false);
 		CheckClientExtent(window, largeWidth, largeHeight);
-		const int smallWidth = std::min(853L, maximum.cx);
-		const int smallHeight = std::min(479L, maximum.cy);
+		const int smallWidth = std::min<LONG>(853, maximum.cx);
+		const int smallHeight = std::min<LONG>(479, maximum.cy);
 		window.ChangeWindowSize(smallWidth, smallHeight);
 		window.Show(false);
 		CheckClientExtent(window, smallWidth, smallHeight);
