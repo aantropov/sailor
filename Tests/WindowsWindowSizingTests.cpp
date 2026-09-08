@@ -1,5 +1,6 @@
 #include "Platform/Win32/Window.h"
 #include <windows.h>
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -18,13 +19,34 @@ namespace
 	{
 		RECT client{};
 		Require(GetClientRect(window.GetHWND(), &client), "client rectangle must be readable");
+		std::cout << "[INFO] Expected client " << width << 'x' << height
+			<< ", native " << client.right - client.left << 'x' << client.bottom - client.top
+			<< ", renderer " << window.GetWidth() << 'x' << window.GetHeight()
+			<< ", DPI " << GetDpiForWindow(window.GetHWND()) << '\n';
 		Require(client.right - client.left == width && client.bottom - client.top == height,
-			"the physical client area must match the requested render dimensions");
+			"the physical client area must match the expected render dimensions");
 		Require(window.GetWidth() == width && window.GetHeight() == height,
 			"the renderer must receive client dimensions without DPI scaling or window borders");
 		window.RecalculateWindowSize();
 		Require(window.GetWidth() == width && window.GetHeight() == height,
 			"recalculating the window size must preserve client dimensions");
+	}
+
+	SIZE GetMaximumClientExtent(HWND window)
+	{
+		const UINT dpi = GetDpiForWindow(window);
+		RECT frame{};
+		Require(AdjustWindowRectExForDpi(&frame,
+			static_cast<DWORD>(GetWindowLongPtr(window, GWL_STYLE)), FALSE,
+			static_cast<DWORD>(GetWindowLongPtr(window, GWL_EXSTYLE)), dpi),
+			"the native window frame must have valid physical dimensions");
+		const SIZE maximum{
+			GetSystemMetricsForDpi(SM_CXMAXTRACK, dpi) - (frame.right - frame.left),
+			GetSystemMetricsForDpi(SM_CYMAXTRACK, dpi) - (frame.bottom - frame.top)
+		};
+		Require(maximum.cx > 0 && maximum.cy > 0,
+			"the desktop must allow a non-empty client area");
+		return maximum;
 	}
 }
 
@@ -48,13 +70,25 @@ int main()
 		CheckClientExtent(window, 640, 400);
 		std::cout << "[PASS] Startup client extent at DPI " << GetDpiForWindow(window.GetHWND()) << '\n';
 
-		window.ChangeWindowSize(1280, 800);
+		// DefWindowProc limits overlapped windows to the desktop tracking size.
+		// A CI desktop can be smaller than the requested 1280x800 client area.
+		const SIZE maximum = GetMaximumClientExtent(window.GetHWND());
+		const int largeWidth = std::min<LONG>(1280, maximum.cx);
+		const int largeHeight = std::min<LONG>(800, maximum.cy);
+		window.ChangeWindowSize(largeWidth, largeHeight);
 		window.Show(false);
-		CheckClientExtent(window, 1280, 800);
-		window.ChangeWindowSize(853, 479);
+		CheckClientExtent(window, largeWidth, largeHeight);
+		const int smallWidth = std::min<LONG>(853, maximum.cx);
+		const int smallHeight = std::min<LONG>(479, maximum.cy);
+		window.ChangeWindowSize(smallWidth, smallHeight);
 		window.Show(false);
-		CheckClientExtent(window, 853, 479);
+		CheckClientExtent(window, smallWidth, smallHeight);
 		std::cout << "[PASS] Resizing preserves exact physical client dimensions\n";
+
+		window.ChangeWindowSize(maximum.cx + 128, maximum.cy + 128);
+		window.Show(false);
+		CheckClientExtent(window, maximum.cx, maximum.cy);
+		std::cout << "[PASS] Renderer dimensions follow OS-limited window sizes\n";
 
 		RECT suggested{ 100, 100, 740, 500 };
 		const UINT dpi = GetDpiForWindow(window.GetHWND());
