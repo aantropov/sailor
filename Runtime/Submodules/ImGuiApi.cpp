@@ -140,26 +140,18 @@ void ImGuiApi::HandleWindowsEditorInput(const WindowsEditorInputEvent& event)
 #elif defined(__APPLE__)
 static ImGuiKey SailorMapMacVirtualKey(uint32_t key)
 {
+	if (key >= '0' && key <= '9') return static_cast<ImGuiKey>(ImGuiKey_0 + key - '0');
+	if (key >= 'A' && key <= 'Z') return static_cast<ImGuiKey>(ImGuiKey_A + key - 'A');
 	switch (key)
 	{
-	case 'A': return ImGuiKey_A;
-	case 'B': return ImGuiKey_B;
-	case 'C': return ImGuiKey_C;
-	case 'D': return ImGuiKey_D;
-	case 'E': return ImGuiKey_E;
-	case 'F': return ImGuiKey_F;
-	case 'G': return ImGuiKey_G;
-	case 'H': return ImGuiKey_H;
-	case 'Q': return ImGuiKey_Q;
-	case 'R': return ImGuiKey_R;
-	case 'S': return ImGuiKey_S;
-	case 'T': return ImGuiKey_T;
-	case 'U': return ImGuiKey_U;
-	case 'V': return ImGuiKey_V;
-	case 'W': return ImGuiKey_W;
-	case 'X': return ImGuiKey_X;
-	case 'Y': return ImGuiKey_Y;
-	case 'Z': return ImGuiKey_Z;
+	case 0x09: return ImGuiKey_Tab;
+	case 0x20: return ImGuiKey_Space;
+	case 0x0D: return ImGuiKey_Enter;
+	case 0x08: return ImGuiKey_Backspace;
+	case 0x25: return ImGuiKey_LeftArrow;
+	case 0x27: return ImGuiKey_RightArrow;
+	case 0x26: return ImGuiKey_UpArrow;
+	case 0x28: return ImGuiKey_DownArrow;
 	case VK_SHIFT: return ImGuiKey_ModShift;
 	case VK_CONTROL: return ImGuiKey_ModCtrl;
 	case VK_MENU: return ImGuiKey_ModAlt;
@@ -237,6 +229,7 @@ ImGuiApi::~ImGuiApi()
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_preparedFrames.clear();
+	m_textureBindings.clear();
 
 #if defined(_WIN32)
 	ImGui_ImplWin32_Shutdown();
@@ -314,6 +307,28 @@ ImGuiApi::PreparedFramePtr ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transfe
 	const Data* bd = ImGui_GetBackendData();
 	frame->Material = bd->Material;
 	frame->ShaderBindings = bd->ShaderBindings;
+	// ImTextureID stores an RHITexture pointer. Retain each texture through its
+	// bindings while this immutable draw snapshot is in flight on the GPU.
+	frame->TextureBindings.emplace((ImTextureID)bd->FontTexture.GetRawPtr(), bd->ShaderBindings);
+	const auto& drawData = frame->DrawData.GetDrawData();
+	for (int list = 0; list < drawData.CmdListsCount; ++list)
+	{
+		for (const auto& command : drawData.CmdLists[list]->CmdBuffer)
+		{
+			const auto textureId = command.GetTexID();
+			if (!textureId || command.UserCallback || frame->TextureBindings.contains(textureId)) continue;
+			if (const auto cached = m_textureBindings.find(textureId); cached != m_textureBindings.end())
+			{
+				frame->TextureBindings.emplace(textureId, cached->second);
+				continue;
+			}
+			auto texture = reinterpret_cast<RHI::RHITexture*>(textureId)->ToRefPtr<RHI::RHITexture>();
+			auto bindings = RHI::Renderer::GetDriver()->CreateShaderBindings();
+			RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(bindings, "sTexture", texture, 0u);
+			frame->TextureBindings.emplace(textureId, std::move(bindings));
+		}
+	}
+	m_textureBindings = frame->TextureBindings;
 	ImGui_UpdateDrawData(*frame, transferCmdList);
 	m_preparedFrames.push_back(frame);
 	return frame;
@@ -510,17 +525,9 @@ void ImGuiApi::ImGui_RenderDrawData(const PreparedFrame& frame, RHI::RHICommandL
 					glm::ivec2(clipMaxX - clipMinX, clipMaxY - clipMinY),
 					0, 1.0f);
 
-				// Bind DescriptorSet with font or user texture
-				// TODO: Support custom textures
-				/*VkDescriptorSet desc_set[1] = {(VkDescriptorSet)pcmd->TextureId};
-				if (sizeof(ImTextureID) < sizeof(ImU64))
-				{
-					// We don't support texture switches if ImTextureID hasn't been redefined to be 64-bit. Do a flaky check that other textures haven't been used.
-					//IM_ASSERT(pcmd->TextureId == (ImTextureID)bd->FontDescriptorSet);
-					desc_set[0] = *bd->Material->GetBindings()->m_vulkan.m_descriptorSet;
-				}*/
-
-				RHI::Renderer::GetDriverCommands()->BindShaderBindings(drawCmdList, frame.Material, { frame.ShaderBindings });
+				const auto texture = frame.TextureBindings.find(pcmd->GetTexID());
+				const auto& bindings = texture != frame.TextureBindings.end() ? texture->second : frame.ShaderBindings;
+				RHI::Renderer::GetDriverCommands()->BindShaderBindings(drawCmdList, frame.Material, { bindings });
 				RHI::Renderer::GetDriverCommands()->DrawIndexed(drawCmdList,
 					pcmd->ElemCount,
 					1,
