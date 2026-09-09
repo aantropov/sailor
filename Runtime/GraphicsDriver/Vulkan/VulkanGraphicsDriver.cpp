@@ -2947,9 +2947,11 @@ void VulkanGraphicsDriver::ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, R
 	AddSamplerToShaderBindings(computeEquirect2Cubemap, "src", equirect, 0);
 	AddStorageImageToShaderBindings(computeEquirect2Cubemap, "dst", cubemap, 1);
 
+	// Every destination texel needs a ray, independently of the source resolution.
+	const auto extent = cubemap->GetExtent();
 	Dispatch(cmd, m_pEquirect2Cubemap->GetComputeShaderRHI(),
-		(uint32_t)(equirect->GetExtent().x / 32.0f),
-		(uint32_t)(equirect->GetExtent().y / 32.0f),
+		(static_cast<uint32_t>(extent.x) + 31u) / 32u,
+		(static_cast<uint32_t>(extent.y) + 31u) / 32u,
 		6u,
 		{ computeEquirect2Cubemap },
 		nullptr, 0);

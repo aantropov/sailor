@@ -74,24 +74,6 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 					return;
 				}
 
-				// Hack: MSAA render targets are resolved inside the VulkanDriver
-				// We need to clear internal msaa depth target
-				if (*r.Second() == "DepthBuffer" && renderer->GetMsaaSamples() != EMsaaSamples::Samples_1)
-				{
-					auto msaaDepthTarget = renderer->GetDriver()->GetOrAddMsaaFramebufferRenderTarget(dst->GetFormat(), dst->GetExtent());
-					check(msaaDepthTarget && msaaDepthTarget.IsValid() && RHI::IsDepthFormat(dst->GetFormat()));
-
-					float clearDepth = GetFloat("clearDepth");
-					float clearStencil = GetFloat("clearStencil");
-
-					commands->ImageMemoryBarrier(commandList, msaaDepthTarget, RHI::EImageLayout::TransferDstOptimal);
-					commands->BeginDebugRegion(commandList, "Clear internal MSAA depth render target", glm::vec4(1.0f));
-					commands->ClearDepthStencil(commandList, msaaDepthTarget, clearDepth, (uint32_t)clearStencil);
-					commands->EndDebugRegion(commandList);
-
-					commands->ImageMemoryBarrier(commandList, msaaDepthTarget, RHI::EImageLayout::General);
-				}
-
 				break;
 			}
 		}
@@ -103,6 +85,22 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 			"ClearNode '%s' cannot resolve its target render texture.",
 			GetTag().c_str());
 		return;
+	}
+
+	// The driver keeps the multisampled depth attachment separately from its
+	// resolved texture. Clear it for explicitly declared graph targets too;
+	// otherwise previous frames keep rejecting moving geometry's fragments.
+	if (dst == frameGraph->GetRenderTarget("DepthBuffer") &&
+		RHI::IsDepthFormat(dst->GetFormat()) && renderer->GetMsaaSamples() != EMsaaSamples::Samples_1)
+	{
+		auto msaaDepth = renderer->GetDriver()->GetOrAddMsaaFramebufferRenderTarget(dst->GetFormat(), dst->GetExtent());
+		commands->ImageMemoryBarrier(commandList, msaaDepth, EImageLayout::TransferDstOptimal);
+		commands->BeginDebugRegion(commandList, "Clear internal MSAA depth render target", glm::vec4(1.0f));
+		commands->ClearDepthStencil(commandList, msaaDepth, GetFloat("clearDepth"), static_cast<uint32_t>(GetFloat("clearStencil")));
+		commands->EndDebugRegion(commandList);
+		const auto layout = RHI::IsDepthStencilFormat(dst->GetFormat()) ?
+			EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
+		commands->ImageMemoryBarrier(commandList, msaaDepth, layout);
 	}
 
 	commands->ImageMemoryBarrier(commandList, dst, EImageLayout::TransferDstOptimal);

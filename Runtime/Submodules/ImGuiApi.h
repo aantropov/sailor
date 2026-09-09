@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <unordered_map>
 
 namespace Sailor
 {
@@ -23,6 +24,7 @@ namespace Sailor
 			RHI::RHIBufferPtr IndexBuffer;
 			RHI::RHIMaterialPtr Material;
 			RHI::RHIShaderBindingSetPtr ShaderBindings;
+			std::unordered_map<ImTextureID, RHI::RHIShaderBindingSetPtr> TextureBindings;
 		};
 		using PreparedFramePtr = std::shared_ptr<const PreparedFrame>;
 
@@ -91,6 +93,7 @@ namespace Sailor
 		// Keep the final owner on the CPU thread: ImGui allocation accounting is
 		// context-owned too. RHI tasks only release their shared references.
 		std::vector<PreparedFramePtr> m_preparedFrames;
+		std::unordered_map<ImTextureID, RHI::RHIShaderBindingSetPtr> m_textureBindings;
 
 		struct InitInfo
 		{

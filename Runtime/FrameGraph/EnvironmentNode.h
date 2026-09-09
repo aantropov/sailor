@@ -78,7 +78,8 @@ namespace Sailor::Framegraph
 		SkyParameters m_environmentSkyParams{};
 		bool m_environmentUsesSky = false;
 
-		bool m_bIsDirty = false;
+		// Authored HDR environments must initialize without a Sky node to trigger them.
+		bool m_bIsDirty = true;
 		SAILOR_SHARED_API static const char* m_name;
 	};
 

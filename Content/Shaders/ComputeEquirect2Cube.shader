@@ -38,6 +38,10 @@ glslCompute: |
   layout(local_size_x=32, local_size_y=32, local_size_z=1) in;
   void main(void)
   {
+    if(any(greaterThanEqual(gl_GlobalInvocationID.xy, uvec2(imageSize(dst)))))
+    {
+      return;
+    }
     vec3 v = getSamplingVector();
   
     // Convert Cartesian direction vector to spherical coordinates.
