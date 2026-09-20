@@ -13,6 +13,7 @@ namespace Sailor::Framegraph
 	class SkyNode : public TFrameGraphNode<SkyNode>
 	{
 		const uint32_t EnvCubemapSize = 256u;
+		static constexpr uint32_t EnvCubemapFaceCount = 6u;
 		const uint32_t SunResolution = 32u;
 		static constexpr uint32_t CloudsNoiseHighResolution = 32u;
 		static constexpr uint32_t CloudsNoiseLowResolution = 128u;
@@ -57,10 +58,11 @@ namespace Sailor::Framegraph
 
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_pShaderBindings; }
 		SAILOR_API void SetLocation(float latitudeDegrees, float longitudeDegrees);
-		SAILOR_API void MarkDirty() { m_bIsDirty = true;  m_updateEnvCubemapPattern = 0; }
+		SAILOR_API void MarkDirty() { m_bIsDirty = true; }
 		SAILOR_API void SetSkyParams(const SkyParameters& skyParams);
 		SAILOR_API void ResetSkyParams();
 		SAILOR_API SkyParameters GetSkyParams() const;
+		SAILOR_API bool GetEnvironmentSkyParams(SkyParameters& skyParams) const;
 
 	protected:
 
@@ -79,6 +81,9 @@ namespace Sailor::Framegraph
 		mutable SpinLock m_skyParamsLock;
 		SkyParameters m_skyParams{};
 		SkyParameters m_pendingSkyParams{};
+		SkyParameters m_capturedEnvironmentParams{};
+		SkyParameters m_readyEnvironmentParams{};
+		bool m_bEnvironmentReady = false;
 		uint64_t m_skyParamsRevision = 0;
 		uint64_t m_pendingSkyParamsRevision = 0;
 
@@ -103,6 +108,8 @@ namespace Sailor::Framegraph
 		RHI::RHIMaterialPtr m_pBlitCloudsMaterial{};
 
 		RHI::RHIShaderBindingSetPtr m_pShaderBindings{};
+		RHI::RHIShaderBindingSetPtr m_pEnvironmentBindings{};
+		RHI::RHICubemapPtr m_pEnvironmentCapture{};
 		RHI::RHIShaderBindingSetPtr m_pBlitCloudsBindings{};
 		RHI::RHIShaderBindingSetPtr m_pEnvCubemapBindings[6]{};
 
@@ -144,7 +151,8 @@ namespace Sailor::Framegraph
 		static TVector<uint8_t> GenerateCloudsNoiseHigh();
 
 		uint32_t m_ditherPatternIndex = 0;
-		uint32_t m_updateEnvCubemapPattern = 0;
+		// Capture the faces first, then generate mipmaps. The next step is idle.
+		uint32_t m_environmentCaptureStep = EnvCubemapFaceCount + 1u;
 		bool m_bIsDirty = true;
 	};
 

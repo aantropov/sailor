@@ -352,6 +352,13 @@ Scheduler::~Scheduler()
 	}
 
 	m_workerThreads.Clear();
+
+	// Pending tasks return their sync handles when their last reference is released.
+	// Drop the queues while the synchronization pool and free list are still alive.
+	for (auto& queue : m_pSharedTaskQueue)
+	{
+		queue.Clear();
+	}
 }
 
 uint32_t Scheduler::GetNumWorkerThreads() const

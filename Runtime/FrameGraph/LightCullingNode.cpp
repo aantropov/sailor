@@ -56,6 +56,12 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 
 		pushConstants.m_invViewProjection = sceneView.m_camera->GetInvViewProjection();
 		pushConstants.m_lightsNum = sceneView.m_totalNumLights;
+		// Transparent surfaces may be absent from the opaque depth prepass.
+		std::string depthBounds;
+		if (TryGetString("DepthBounds", depthBounds) && depthBounds == "false")
+		{
+			pushConstants.m_useDepthBounds = 0;
+		}
 		pushConstants.m_viewportSize = linearDepthAttachment->GetExtent();
 		pushConstants.m_numTiles.x = (linearDepthAttachment->GetExtent().x - 1) / (int32_t)TileSize + 1;
 		pushConstants.m_numTiles.y = (linearDepthAttachment->GetExtent().y - 1) / (int32_t)TileSize + 1;

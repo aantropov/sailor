@@ -4,6 +4,7 @@
 #include "Platform/Win32/Input.h"
 
 #import <Cocoa/Cocoa.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <dispatch/dispatch.h>
 
@@ -26,6 +27,7 @@ namespace
 {
 	constexpr int32_t TestWidth = 321;
 	constexpr int32_t TestHeight = 177;
+	constexpr const char* WorkerTitle = "Sailor | Шторм — Storm";
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -50,7 +52,19 @@ namespace
 		return predicate();
 	}
 
-	struct BackgroundResizeState
+	void DrainMainQueue()
+	{
+		auto completed = std::make_shared<std::atomic_bool>(false);
+		dispatch_async(dispatch_get_main_queue(), ^
+		{
+			completed->store(true, std::memory_order_release);
+		});
+		Require(PumpMainRunLoopUntil(
+			[completed]() { return completed->load(std::memory_order_acquire); },
+			std::chrono::seconds(2)), "main queue should complete pending window updates");
+	}
+
+	struct BackgroundWindowUpdateState
 	{
 		std::shared_ptr<Window> m_window;
 		std::mutex m_mutex;
@@ -59,13 +73,13 @@ namespace
 		bool m_completed = false;
 	};
 
-	bool IsBackgroundResizeComplete(const std::shared_ptr<BackgroundResizeState>& state)
+	bool IsBackgroundWindowUpdateComplete(const std::shared_ptr<BackgroundWindowUpdateState>& state)
 	{
 		std::lock_guard lock(state->m_mutex);
 		return state->m_completed;
 	}
 
-	void TestWindowResizeFromWorkerDoesNotWaitForMainQueue()
+	void TestWindowUpdatesFromWorkerDoNotWaitForMainQueue()
 	{
 		Require([NSThread isMainThread], "mac window threading test must start on the main thread");
 
@@ -77,14 +91,17 @@ namespace
 		NSWindow* nativeWindow = (__bridge NSWindow*)window->GetHWND();
 		Require(nativeWindow != nil, "created Sailor window should expose an NSWindow");
 
-		auto state = std::make_shared<BackgroundResizeState>();
+		auto state = std::make_shared<BackgroundWindowUpdateState>();
 		state->m_window = window;
-		std::thread resizeThread([state]()
+		std::thread updateThread([state]()
 			{
 				@autoreleasepool
 				{
 					try
 					{
+						std::string temporaryTitle = WorkerTitle;
+						state->m_window->SetWindowTitle(temporaryTitle.c_str());
+						temporaryTitle.assign("Caller reused its title buffer");
 						state->m_window->ChangeWindowSize(TestWidth, TestHeight, false);
 					}
 					catch (...)
@@ -110,12 +127,12 @@ namespace
 		}
 
 		// A dispatch_sync(main) regression leaves the worker blocked. Pump the
-		// main run loop before failing so the queued resize can finish and join.
+		// main run loop before failing so the queued updates can finish and join.
 		bool completedEventually = completedWithoutMainQueuePump;
 		if (!completedEventually)
 		{
 			completedEventually = PumpMainRunLoopUntil(
-				[state]() { return IsBackgroundResizeComplete(state); },
+				[state]() { return IsBackgroundWindowUpdateComplete(state); },
 				std::chrono::seconds(2));
 		}
 
@@ -123,32 +140,19 @@ namespace
 		{
 			// The shared state owns the Window, so detaching cannot leave the
 			// worker with stack references while this standalone test exits.
-			resizeThread.detach();
-			throw std::runtime_error("background window resize did not complete during cleanup");
+			updateThread.detach();
+			throw std::runtime_error("background window updates did not complete during cleanup");
 		}
 
-		resizeThread.join();
+		updateThread.join();
 
-		// Drain all main-queue work submitted before this fence. This applies an
-		// asynchronous resize before inspecting or destroying the native window.
-		auto mainQueueFence = std::make_shared<std::atomic_bool>(false);
-		dispatch_async(dispatch_get_main_queue(), ^
-			{
-				mainQueueFence->store(true, std::memory_order_release);
-			});
-		const bool drainedMainQueue = PumpMainRunLoopUntil(
-			[mainQueueFence]() { return mainQueueFence->load(std::memory_order_acquire); },
-			std::chrono::seconds(2));
-
-		if (!drainedMainQueue)
-		{
-			throw std::runtime_error("main queue did not drain during window resize cleanup");
-		}
+		DrainMainQueue();
 
 		const NSSize contentSize = nativeWindow.contentView.bounds.size;
 		const bool nativeSizeApplied = std::abs(contentSize.width - TestWidth) < 0.5 &&
 			std::abs(contentSize.height - TestHeight) < 0.5;
 		const bool trackedSizeApplied = window->GetWidth() == TestWidth && window->GetHeight() == TestHeight;
+		const bool titleApplied = [nativeWindow.title isEqualToString:[NSString stringWithUTF8String:WorkerTitle]];
 		CAMetalLayer* metalLayer = (__bridge CAMetalLayer*)window->GetMetalLayer();
 		const CGFloat backingScale = std::max<CGFloat>(nativeWindow.backingScaleFactor, 1.0);
 		const bool drawableSizeApplied = metalLayer &&
@@ -166,10 +170,136 @@ namespace
 			std::rethrow_exception(backgroundFailure);
 		}
 		Require(completedWithoutMainQueuePump,
-			"background ChangeWindowSize must not synchronously wait for the main queue");
+			"background window updates must not synchronously wait for the main queue");
+		Require(titleApplied, "queued window title must preserve UTF-8 after the caller reuses its buffer");
 		Require(trackedSizeApplied, "background ChangeWindowSize should update tracked dimensions");
 		Require(nativeSizeApplied, "queued main-thread resize should update the NSWindow content size");
 		Require(drawableSizeApplied, "queued resize must update the Metal drawable to the current backing-pixel size");
+	}
+
+	void TestWindowTitleOnMainThread()
+	{
+		Window window;
+		window.SetWindowTitle("Before creation");
+		Require(window.Create("Sailor title test", "SailorTitleTest", 128, 96, false, false, nullptr),
+			"title test should create a real macOS window");
+		window.Show(false);
+		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetHWND();
+		nativeWindow.delegate = nil;
+		window.SetWindowTitle(WorkerTitle);
+		Require([nativeWindow.title isEqualToString:[NSString stringWithUTF8String:WorkerTitle]],
+			"main-thread title update should immediately reach AppKit");
+		window.SetWindowTitle("\xFF");
+		Require([nativeWindow.title isEqualToString:[NSString stringWithUTF8String:WorkerTitle]],
+			"invalid UTF-8 must leave the existing title intact");
+		window.SetWindowTitle(nullptr);
+		Require([nativeWindow.title isEqualToString:@""], "null title should clear the title");
+		window.Destroy();
+		window.SetWindowTitle("After destruction");
+	}
+
+	void TestQueuedWindowUpdatesSurviveDestruction()
+	{
+		auto window = std::make_unique<Window>();
+		Require(window->Create("Sailor queued update test", "SailorQueuedUpdateTest", 128, 96, false, true, nullptr),
+			"queued update test should create a real macOS window");
+		window->Show(false);
+		NSWindow* nativeWindow = [(__bridge NSWindow*)window->GetHWND() retain];
+		nativeWindow.delegate = nil;
+
+		std::thread updateThread([&window]()
+		{
+			window->SetWindowTitle(WorkerTitle);
+			window->ChangeWindowSize(TestWidth, TestHeight, false);
+		});
+		updateThread.join();
+		window.reset();
+		DrainMainQueue();
+
+		const bool titleApplied = [nativeWindow.title isEqualToString:[NSString stringWithUTF8String:WorkerTitle]];
+		const NSSize contentSize = nativeWindow.contentView.bounds.size;
+		const bool sizeApplied = std::abs(contentSize.width - TestWidth) < 0.5 &&
+			std::abs(contentSize.height - TestHeight) < 0.5;
+		CAMetalLayer* metalLayer = (CAMetalLayer*)nativeWindow.contentView.layer;
+		const bool vsyncPreserved = metalLayer.displaySyncEnabled;
+		[nativeWindow release];
+
+		Require(titleApplied, "queued title should own its native window until the update completes");
+		Require(sizeApplied, "queued resize should survive destruction of the C++ window");
+		Require(vsyncPreserved, "queued resize should preserve the requested vsync setting");
+	}
+
+	bool TestMouseCaptureLifecycle()
+	{
+		Window window;
+		window.RequestMouseCapture(true);
+		window.UpdateMouseCapture();
+		Require(!window.IsMouseCaptured(), "capture should require a native window");
+		window.AddMouseDelta(10.0f, -5.0f);
+		Require(window.ConsumeMouseDelta() == glm::vec2(0.0f), "uncaptured mouse movement should be ignored");
+		window.RequestMouseCapture(false);
+
+		Require(window.Create("Sailor mouse capture test", "SailorMouseCaptureTest", 128, 96, false, false, nullptr),
+			"mouse capture test should create a real macOS window");
+		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetHWND();
+		const bool bHasFocus = PumpMainRunLoopUntil([&window]()
+		{
+			window.ProcessSystemMessages();
+			return window.IsActive();
+		}, std::chrono::seconds(2));
+		if (!bHasFocus)
+		{
+			return false;
+		}
+
+		std::thread requestThread([&window]() { window.RequestMouseCapture(true); });
+		requestThread.join();
+		Require(!window.IsMouseCaptured(), "worker capture requests should wait for the window thread");
+		window.UpdateMouseCapture();
+		if (!window.IsMouseCaptured())
+		{
+			return false;
+		}
+
+		// Window's destructor releases capture even if a check below fails.
+		CGEventRef mouseEvent = CGEventCreateMouseEvent(nullptr, kCGEventMouseMoved, CGPointZero, kCGMouseButtonLeft);
+		Require(mouseEvent != nullptr, "native relative mouse event should be constructible");
+		CGEventSetIntegerValueField(mouseEvent, kCGMouseEventDeltaX, 12);
+		CGEventSetIntegerValueField(mouseEvent, kCGMouseEventDeltaY, -7);
+		NSEvent* event = [NSEvent eventWithCGEvent:mouseEvent];
+		CFRelease(mouseEvent);
+		Require(event != nil, "native relative mouse event should reach AppKit");
+		[nativeWindow.contentView mouseMoved:event];
+		window.AddMouseDelta(-2.0f, 3.0f);
+		Require(window.ConsumeMouseDelta() == glm::vec2(10.0f, -4.0f),
+			"captured native movement should accumulate relative deltas");
+		Require(window.ConsumeMouseDelta() == glm::vec2(0.0f), "consuming movement should clear the accumulated delta");
+
+		window.AddMouseDelta(100.0f, 100.0f);
+		window.Show(false);
+		Require(!window.IsActive() && !window.IsMouseCaptured(), "losing native focus should immediately release capture");
+		Require(window.ConsumeMouseDelta() == glm::vec2(0.0f), "losing focus should discard pending movement");
+		window.UpdateMouseCapture();
+		Require(!window.IsMouseCaptured(), "an unfocused window must not recapture the mouse");
+
+		window.Show(true);
+		Require(window.IsMouseCaptured(), "regaining focus should restore requested capture");
+		window.UpdateMouseCapture();
+		window.UpdateMouseCapture();
+		window.RequestMouseCapture(false);
+		window.UpdateMouseCapture();
+		Require(!window.IsMouseCaptured(), "canceling a request should release capture");
+		window.AddMouseDelta(100.0f, 100.0f);
+		Require(window.ConsumeMouseDelta() == glm::vec2(0.0f), "released mouse movement should be ignored");
+
+		window.RequestMouseCapture(true);
+		window.UpdateMouseCapture();
+		Require(window.IsMouseCaptured(), "capture should work again after an explicit release");
+		window.AddMouseDelta(100.0f, 100.0f);
+		window.Destroy();
+		Require(!window.IsMouseCaptured(), "destroying a captured window should release the cursor");
+		Require(window.ConsumeMouseDelta() == glm::vec2(0.0f), "destroying a window should discard pending movement");
+		return true;
 	}
 
 	void TestNativeKeyboardDispatchPreservesGameplayControls()
@@ -230,8 +360,20 @@ int main()
 	{
 		try
 		{
-			TestWindowResizeFromWorkerDoesNotWaitForMainQueue();
-			std::cout << "[PASS] WindowResizeFromWorkerDoesNotWaitForMainQueue" << std::endl;
+			TestWindowUpdatesFromWorkerDoNotWaitForMainQueue();
+			std::cout << "[PASS] WindowUpdatesFromWorkerDoNotWaitForMainQueue" << std::endl;
+			TestWindowTitleOnMainThread();
+			std::cout << "[PASS] WindowTitleOnMainThread" << std::endl;
+			TestQueuedWindowUpdatesSurviveDestruction();
+			std::cout << "[PASS] QueuedWindowUpdatesSurviveDestruction" << std::endl;
+			if (TestMouseCaptureLifecycle())
+			{
+				std::cout << "[PASS] MouseCaptureLifecycle" << std::endl;
+			}
+			else
+			{
+				std::cout << "[SKIP] MouseCaptureLifecycle: foreground desktop or cursor capture is unavailable" << std::endl;
+			}
 			TestNativeKeyboardDispatchPreservesGameplayControls();
 			std::cout << "[PASS] NativeKeyboardDispatchPreservesGameplayControls" << std::endl;
 			return 0;

@@ -6,6 +6,7 @@
 #if defined(__APPLE__)
 
 #import <Cocoa/Cocoa.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <objc/runtime.h>
 
@@ -195,12 +196,24 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 - (void)windowDidBecomeKey:(NSNotification*)notification
 {
 	(void)notification;
+	if (self.sailorWindow && !App::IsEditorMode())
+	{
+		self.sailorWindow->SetActive(true);
+		self.sailorWindow->UpdateMouseCapture();
+	}
+
 	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Focus, 0.0f, 0.0f, 0, -1, true, nullptr });
 }
 
 - (void)windowDidResignKey:(NSNotification*)notification
 {
 	(void)notification;
+	if (self.sailorWindow && !App::IsEditorMode())
+	{
+		self.sailorWindow->SetActive(false);
+		self.sailorWindow->UpdateMouseCapture();
+	}
+
 	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Focus, 0.0f, 0.0f, 0, -1, false, nullptr });
 }
 
@@ -244,6 +257,13 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 
 - (void)updateCursorFromEvent:(NSEvent*)event
 {
+	if (self.sailorWindow && (event.type == NSEventTypeMouseMoved ||
+		event.type == NSEventTypeLeftMouseDragged || event.type == NSEventTypeRightMouseDragged ||
+		event.type == NSEventTypeOtherMouseDragged))
+	{
+		self.sailorWindow->AddMouseDelta((float)event.deltaX, (float)event.deltaY);
+	}
+
 	NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
 	const float viewHeight = self.bounds.size.height;
 	const float x = (float)point.x;
@@ -417,6 +437,35 @@ void Window::Show(bool bShowWindow)
 	m_bIsShown = bShowWindow;
 }
 
+void Window::SetWindowTitle(LPCSTR lString)
+{
+	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	if (!window)
+	{
+		return;
+	}
+
+	@autoreleasepool
+	{
+		NSString* title = [NSString stringWithUTF8String:lString ? lString : ""];
+		if (!title)
+		{
+			return;
+		}
+
+		if (![NSThread isMainThread])
+		{
+			dispatch_async(dispatch_get_main_queue(), ^
+			{
+				window.title = title;
+			});
+			return;
+		}
+
+		window.title = title;
+	}
+}
+
 void Window::TrackParentWindowPosition(const RECT& viewport)
 {
 	(void)viewport;
@@ -524,16 +573,17 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	m_bIsFullscreen = bInIsFullScreen;
 
 	const bool bRunsInsideEditor = App::IsEditorMode();
+	const bool bIsVsyncRequested = m_bIsVsyncRequested;
 	if (![NSThread isMainThread])
 	{
 		dispatch_async(dispatch_get_main_queue(), ^
 		{
-			SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor, m_bIsVsyncRequested);
+			SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor, bIsVsyncRequested);
 		});
 		return;
 	}
 
-	SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor, m_bIsVsyncRequested);
+	SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor, bIsVsyncRequested);
 }
 
 void Sailor::Win32::Window::ProcessMacMsgs()
@@ -565,7 +615,13 @@ void Sailor::Win32::Window::ProcessMacMsgs()
 			}
 
 			NSWindow* window = (__bridge NSWindow*)pWindow->m_hWnd;
-			pWindow->SetIsIconic(window ? [window isMiniaturized] : false);
+			pWindow->SetIsIconic(window.isMiniaturized);
+			if (!App::IsEditorMode())
+			{
+				pWindow->SetActive(window.isKeyWindow && NSApp.isActive && !window.isMiniaturized);
+			}
+
+			pWindow->UpdateMouseCapture();
 		}
 	}
 }
@@ -573,6 +629,42 @@ void Sailor::Win32::Window::ProcessMacMsgs()
 void Window::ProcessSystemMessages()
 {
 	ProcessMacMsgs();
+}
+
+void Window::UpdateMouseCapture()
+{
+	check([NSThread isMainThread]);
+
+	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	const bool bShouldCapture = m_bMouseCaptureRequested && !App::IsEditorMode() && m_bIsActive &&
+		window && window.isKeyWindow && NSApp.isActive && !window.isMiniaturized;
+	if (bShouldCapture == m_bMouseCaptured)
+	{
+		return;
+	}
+
+	if (bShouldCapture)
+	{
+		if (CGAssociateMouseAndMouseCursorPosition(false) != kCGErrorSuccess)
+		{
+			return;
+		}
+
+		if (CGDisplayHideCursor(kCGDirectMainDisplay) != kCGErrorSuccess)
+		{
+			CGAssociateMouseAndMouseCursorPosition(true);
+			return;
+		}
+	}
+	else
+	{
+		CGAssociateMouseAndMouseCursorPosition(true);
+		CGDisplayShowCursor(kCGDirectMainDisplay);
+	}
+
+	const std::lock_guard<std::mutex> lock(m_mouseDeltaMutex);
+	m_mouseDelta = {};
+	m_bMouseCaptured = bShouldCapture;
 }
 
 glm::ivec2 Window::GetCenterPointScreen() const
@@ -627,6 +719,8 @@ void Window::Destroy()
 		return;
 	}
 
+	RequestMouseCapture(false);
+	UpdateMouseCapture();
 	NSWindow* window = (__bridge NSWindow*)m_hWnd;
 	m_hWnd = nullptr;
 	g_windows.Remove(this);
@@ -675,6 +769,8 @@ void Window::HandleNativeWindowWillClose(HWND nativeWindow)
 		return;
 	}
 
+	RequestMouseCapture(false);
+	UpdateMouseCapture();
 	m_hWnd = nullptr;
 	g_windows.Remove(this);
 	m_bIsShown = false;

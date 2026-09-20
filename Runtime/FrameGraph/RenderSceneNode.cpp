@@ -1078,11 +1078,38 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	RHIShaderBindingSetPtr nodeLightsData = sceneView.m_rhiLightsData;
 	RHI::RHITexturePtr transmissionFramebuffer = GetResolvedAttachment("transmissionFramebuffer");
+	RHI::RHITexturePtr sceneDepth = GetResolvedAttachment("sceneDepth");
+	RHI::RHITexturePtr sampledSceneDepth = sceneDepth;
+	if (sceneDepth)
+	{
+		// sceneDepth is a snapshot from an earlier pass, not the depth target we write here.
+		bool bAliasesDepthAttachment = sceneDepth == depthAttachment;
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+		bAliasesDepthAttachment |= sceneDepth->m_vulkan.m_image &&
+			sceneDepth->m_vulkan.m_image == depthAttachment->m_vulkan.m_image;
+#endif
+		if (bAliasesDepthAttachment)
+		{
+			SAILOR_LOG_ERROR("RenderScene: sceneDepth must not alias the depth attachment. Copy depth before this pass.");
+			m_syncSharedResources.Unlock();
+			return;
+		}
+
+		if (auto depthTarget = sceneDepth.DynamicCast<RHI::RHIRenderTarget>())
+		{
+			if (auto depthAspect = depthTarget->GetDepthAspect())
+			{
+				sampledSceneDepth = depthAspect;
+			}
+		}
+	}
 	RHI::RHITexturePtr globalIlluminationProbeCellIndicesTexture =
 		GetResolvedAttachment("globalIlluminationProbeCellIndicesSampler");
 	const RHITexturePtr defaultTexture = driver->GetDefaultTexture();
 	const RHITexturePtr desiredTransmissionTexture = transmissionFramebuffer ?
 		transmissionFramebuffer : defaultTexture;
+	const bool bNeedsSceneDepthOverride = sceneDepth &&
+		GetBoundTexture(sceneView.m_rhiLightsData, "g_sceneDepthSampler") != sampledSceneDepth;
 	const RHITexturePtr desiredGlobalIlluminationProbeCellIndicesTexture =
 		globalIlluminationProbeCellIndicesTexture ?
 			globalIlluminationProbeCellIndicesTexture : defaultTexture;
@@ -1095,7 +1122,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			sceneView.m_rhiLightsData,
 			"g_globalIlluminationProbeCellIndicesSampler") !=
 			desiredGlobalIlluminationProbeCellIndicesTexture;
-	if (bNeedsTransmissionOverride ||
+	if (bNeedsTransmissionOverride || bNeedsSceneDepthOverride ||
 		bNeedsGlobalIlluminationProbeCellIndicesOverride)
 	{
 		const uint64_t sourceRevision = sceneView.m_rhiLightsData ?
@@ -1104,6 +1131,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			resources->m_nodeLightsSource != sceneView.m_rhiLightsData ||
 			resources->m_nodeLightsSourceRevision != sourceRevision ||
 			resources->m_transmissionTexture != transmissionFramebuffer ||
+			resources->m_sceneDepthTexture != sceneDepth ||
 			resources->m_globalIlluminationProbeCellIndicesTexture !=
 				globalIlluminationProbeCellIndicesTexture;
 		if (bCloneOutdated)
@@ -1113,12 +1141,14 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				{
 					{ "g_transmissionFramebufferSampler",
 						desiredTransmissionTexture, 10u },
+					{ "g_sceneDepthSampler", sampledSceneDepth, 23u },
 					{ "g_globalIlluminationProbeCellIndicesSampler",
 						desiredGlobalIlluminationProbeCellIndicesTexture, 18u }
 				});
 			resources->m_nodeLightsSource = sceneView.m_rhiLightsData;
 			resources->m_nodeLightsSourceRevision = sourceRevision;
 			resources->m_transmissionTexture = transmissionFramebuffer;
+			resources->m_sceneDepthTexture = sceneDepth;
 			resources->m_globalIlluminationProbeCellIndicesTexture =
 				globalIlluminationProbeCellIndicesTexture;
 		}
@@ -1127,6 +1157,10 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	if (transmissionFramebuffer)
 	{
 		commands->ImageMemoryBarrier(commandList, transmissionFramebuffer, RHI::EImageLayout::ShaderReadOnlyOptimal);
+	}
+	if (sceneDepth)
+	{
+		commands->ImageMemoryBarrier(commandList, sceneDepth, RHI::EImageLayout::ShaderReadOnlyOptimal);
 	}
 	if (globalIlluminationProbeCellIndicesTexture)
 	{

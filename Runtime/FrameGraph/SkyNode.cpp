@@ -161,6 +161,18 @@ void SkyNode::ConsumePendingSkyParams()
 	m_skyParamsLock.Unlock();
 }
 
+bool SkyNode::GetEnvironmentSkyParams(SkyParameters& skyParams) const
+{
+	m_skyParamsLock.Lock();
+	const bool bReady = m_bEnvironmentReady;
+	if (bReady)
+	{
+		skyParams = m_readyEnvironmentParams;
+	}
+	m_skyParamsLock.Unlock();
+	return bReady;
+}
+
 float Remap(float value, float minValue, float maxValue, float newMinValue, float newMaxValue)
 {
 	return newMinValue + (value - minValue) / (maxValue - minValue) * (newMaxValue - newMinValue);
@@ -890,9 +902,24 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 	}
 	commands->EndDebugRegion(commandList);
 
-	if (m_bIsDirty)
+	// Keep the published cubemap intact until this capture's faces and mipmaps are ready.
+	if (m_bIsDirty && m_environmentCaptureStep > EnvCubemapFaceCount)
 	{
-		RHI::RHICubemapPtr cubemap = frameGraph->GetSampler("g_skyCubemap").DynamicCast<RHICubemap>();
+		m_capturedEnvironmentParams = m_skyParams;
+		m_environmentCaptureStep = 0;
+		m_bIsDirty = false;
+		m_pEnvironmentCapture.Clear();
+		m_pEnvironmentBindings = driver->CreateShaderBindings();
+		driver->FillShadersLayout(m_pEnvironmentBindings,
+			{ m_pSkyEnvShader->GetDebugVertexShaderRHI(), m_pSkyEnvShader->GetDebugFragmentShaderRHI() }, 1);
+		auto skyBinding = driver->AddBufferToShaderBindings(m_pEnvironmentBindings, "data", sizeof(SkyParameters), 0,
+			RHI::EShaderBindingType::UniformBuffer);
+		commands->UpdateShaderBinding(transferCommandList, skyBinding,
+			&m_capturedEnvironmentParams, sizeof(SkyParameters));
+	}
+	if (m_environmentCaptureStep <= EnvCubemapFaceCount)
+	{
+		auto& cubemap = m_pEnvironmentCapture;
 
 		if (!cubemap)
 		{
@@ -901,16 +928,14 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 			commands->ImageMemoryBarrier(commandList, cubemap, EImageLayout::ShaderReadOnlyOptimal);
 			cubemap->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
-
-			frameGraph->SetSampler("g_skyCubemap", cubemap);
 		}
 
 		if (cubemap)
 		{
 			commands->BeginDebugRegion(commandList, "Generate Environment Map", DebugContext::Color_CmdGraphics);
 
-			uint32_t face = m_updateEnvCubemapPattern;
-			if (face < 6)
+			const uint32_t face = m_environmentCaptureStep;
+			if (face < EnvCubemapFaceCount)
 			{
 				RHITexturePtr targetFace = cubemap->GetFace(face, 0);
 
@@ -927,7 +952,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 					false);
 
 				commands->BindMaterial(commandList, m_pSkyEnvMaterial);
-				commands->BindShaderBindings(commandList, m_pSkyEnvMaterial, { m_pEnvCubemapBindings[face], m_pShaderBindings });
+				commands->BindShaderBindings(commandList, m_pSkyEnvMaterial, { m_pEnvCubemapBindings[face], m_pEnvironmentBindings });
 
 				commands->SetViewport(commandList,
 					0, 0,
@@ -940,7 +965,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 				RecordDrawCallStats(1);
 				commands->EndRenderPass(commandList);
 			}
-			else if (face == 6)
+			else
 			{
 				commands->ImageMemoryBarrier(commandList, cubemap, EImageLayout::TransferDstOptimal);
 				commands->GenerateMipMaps(commandList, cubemap);
@@ -949,9 +974,13 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			commands->EndDebugRegion(commandList);
 		}
 
-		if (m_updateEnvCubemapPattern == 6)
+		if (m_environmentCaptureStep == EnvCubemapFaceCount)
 		{
-			m_bIsDirty = false;
+			frameGraph->SetSampler("g_skyCubemap", cubemap);
+			m_skyParamsLock.Lock();
+			m_readyEnvironmentParams = m_capturedEnvironmentParams;
+			m_bEnvironmentReady = true;
+			m_skyParamsLock.Unlock();
 
 			if (auto node = frameGraph->GetGraphNode("Environment").DynamicCast<EnvironmentNode>())
 			{
@@ -959,7 +988,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			}
 
 		}
-		m_updateEnvCubemapPattern++;
+		m_environmentCaptureStep++;
 	}
 
 	commands->EndDebugRegion(commandList);
@@ -969,6 +998,13 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 void SkyNode::Clear()
 {
+	m_pEnvironmentBindings.Clear();
+	m_pEnvironmentCapture.Clear();
+	m_environmentCaptureStep = EnvCubemapFaceCount + 1u;
+	m_bIsDirty = true;
+	m_skyParamsLock.Lock();
+	m_bEnvironmentReady = false;
+	m_skyParamsLock.Unlock();
 	m_pSkyTexture.Clear();
 	m_pSunTexture.Clear();
 	m_pSkyShader.Clear();

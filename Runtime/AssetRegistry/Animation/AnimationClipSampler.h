@@ -2,6 +2,7 @@
 
 #include "Core/Defines.h"
 #include "Memory/LockFreeHeapAllocator.h"
+#include "Memory/MallocAllocator.hpp"
 #include "Containers/Vector.h"
 #include <glm/vec4.hpp>
 #include <glm/gtc/quaternion.hpp>

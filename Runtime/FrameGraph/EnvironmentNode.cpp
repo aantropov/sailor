@@ -169,7 +169,11 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			pSkyNode = node.DynamicCast<SkyNode>();
 			if (!bLoadedEnvironmentMap && pSkyNode)
 			{
-				m_environmentSkyParams = pSkyNode->GetSkyParams();
+				if (!pSkyNode->GetEnvironmentSkyParams(m_environmentSkyParams))
+				{
+					commands->EndDebugRegion(commandList);
+					return;
+				}
 				m_environmentUsesSky = true;
 				skyHash = m_environmentSkyParams.GetEnvironmentKey();
 			}

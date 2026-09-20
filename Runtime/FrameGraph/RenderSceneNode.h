@@ -92,6 +92,7 @@ namespace Sailor::Framegraph
 			RHI::RHIShaderBindingSetPtr m_nodeLightsBindings{};
 			RHI::RHIShaderBindingSetPtr m_nodeLightsSource{};
 			RHI::RHITexturePtr m_transmissionTexture{};
+			RHI::RHITexturePtr m_sceneDepthTexture{};
 			RHI::RHITexturePtr m_globalIlluminationProbeCellIndicesTexture{};
 			uint64_t m_nodeLightsSourceRevision = 0ull;
 			TVector<RHI::RHITexturePtr> m_renderPassColorAttachments{};

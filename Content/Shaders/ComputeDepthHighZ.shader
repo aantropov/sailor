@@ -5,7 +5,6 @@ defines:
 glslCommon: |
   #version 450
   #extension GL_ARB_separate_shader_objects : enable
-  #extension GL_EXT_shader_atomic_float : enable
 glslCompute: |
   // Inspired by https://vkguide.dev/docs/gpudriven/compute_culling/
 
@@ -39,6 +38,24 @@ glslCompute: |
     }
 
     ivec2 inputSize = InputSize();
+    // Most texels belong to the 1:1 depth copy or an even 2x2 mip.
+    // Keep those paths free of integer division and dynamic loops.
+    if (all(equal(inputSize, outputSize)))
+    {
+      imageStore(outputDepth, pos, vec4(ReadDepth(pos)));
+      return;
+    }
+
+    if (all(equal(inputSize, outputSize * 2)))
+    {
+      ivec2 source = pos * 2;
+      float depth = min(ReadDepth(source), ReadDepth(source + ivec2(1, 0)));
+      depth = min(depth, ReadDepth(source + ivec2(0, 1)));
+      depth = min(depth, ReadDepth(source + ivec2(1, 1)));
+      imageStore(outputDepth, pos, vec4(depth));
+      return;
+    }
+
     ivec2 sourceBegin = (pos * inputSize) / outputSize;
     ivec2 sourceEnd = (((pos + ivec2(1)) * inputSize) + outputSize - ivec2(1)) / outputSize;
     sourceEnd = min(sourceEnd, inputSize);

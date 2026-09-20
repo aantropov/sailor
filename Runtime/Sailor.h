@@ -35,6 +35,7 @@ namespace Sailor
 	{
 		bool m_bWaitForDebugger = false;
 		bool m_bRunConsole = true;
+		bool m_bUpdateWindowTitle = true;
 		bool m_bIsEditor = false;
 		bool m_bEnableRenderValidationLayers = true;
 		bool m_bRunPathTracer = false;

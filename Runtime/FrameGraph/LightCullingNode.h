@@ -28,6 +28,7 @@ namespace Sailor::Framegraph
 			alignas(8) glm::ivec2 m_viewportSize;
 			alignas(8) glm::ivec2 m_numTiles;
 			alignas(8) int32_t m_lightsNum;
+			int32_t m_useDepthBounds = 1;
 		};
 
 		static const char* m_name;

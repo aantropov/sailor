@@ -49,6 +49,7 @@ namespace Sailor::RHI
 
 		SAILOR_API const Stats& GetStats() const { return m_stats; }
 		SAILOR_API TVector<GpuTiming> GetSlowestGpuTimings() const;
+		SAILOR_API TVector<GpuTiming> GetGpuTimings() const;
 		SAILOR_API RHIGlobalIlluminationRenderStats
 			GetGlobalIlluminationRenderStats() const;
 
@@ -88,7 +89,7 @@ namespace Sailor::RHI
 
 		mutable std::mutex m_gpuTimingsMutex;
 		TVector<GpuTimingHistory> m_gpuTimingHistory;
-		TVector<GpuTiming> m_slowestGpuTimings;
+		TVector<GpuTiming> m_gpuTimings;
 		uint64_t m_gpuTimingGeneration = 0u;
 
 		class Win32::Window* m_pViewport;

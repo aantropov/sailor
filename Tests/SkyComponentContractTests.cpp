@@ -1027,6 +1027,10 @@ namespace
 	{
 		auto node = TRefPtr<SkyNodeMailboxProbe>::Make();
 		const SkyParameters defaults = node->GetSkyParams();
+		SkyParameters environment = defaults;
+		environment.m_ambient = 17.0f;
+		Require(!node->GetEnvironmentSkyParams(environment) && environment.m_ambient == 17.0f,
+			"an uncaptured sky must not expose default lighting as a completed environment");
 
 		SkyParameters first = defaults;
 		first.m_ambient = 2.0f;
@@ -1039,6 +1043,8 @@ namespace
 		Require(
 			node->GetSkyParams() == first,
 			"the render-side consume should atomically publish pending sky parameters");
+		Require(!node->GetEnvironmentSkyParams(environment) && environment.m_ambient == 17.0f,
+			"consuming sky parameters must not publish an environment before the cubemap is captured");
 
 		SkyParameters second = first;
 		second.m_ambient = 3.0f;
