@@ -36,7 +36,7 @@ namespace Sailor
 		}
 	}
 
-	bool RuntimeGIProbesService::Impl::TryTakeJob(const std::shared_ptr<Generation>& generation, Job& outJob)
+	bool RuntimeGIProbesService::Impl::TryTakeJob(const TSharedPtr<Generation>& generation, Job& outJob)
 	{
 		SAILOR_PROFILE_FUNCTION();
 		const std::lock_guard<std::mutex> lock(m_mutex);
@@ -87,7 +87,7 @@ namespace Sailor
 		return CanDispatchWorkLocked() ? DispatchBatch{m_generation, m_workerCount} : DispatchBatch{};
 	}
 
-	void RuntimeGIProbesService::Impl::WorkerBatch(std::shared_ptr<Generation> generation, uint32_t maximumJobCount)
+	void RuntimeGIProbesService::Impl::WorkerBatch(TSharedPtr<Generation> generation, uint32_t maximumJobCount)
 	{
 		SAILOR_PROFILE_FUNCTION();
 		for (uint32_t completedJobCount = 0u; completedJobCount < maximumJobCount; ++completedJobCount)
@@ -140,7 +140,7 @@ namespace Sailor
 
 		while (m_workerTasks.size() < dispatch.m_workerCount)
 		{
-			const std::shared_ptr<Generation> generation = dispatch.m_generation;
+			const TSharedPtr<Generation> generation = dispatch.m_generation;
 			Tasks::ITaskPtr workerTask = Tasks::CreateTask(
 				"Runtime GI Probe Trace", [this, generation]() { WorkerBatch(generation); }, EThreadType::GI);
 			m_workerTasks.push_back(workerTask);

@@ -129,8 +129,6 @@ namespace Sailor
 		{
 			if (m_pRawPtr == static_cast<T*>(pPtr.m_pRawPtr))
 			{
-				// Don't waste the object
-				pPtr.m_pRawPtr = nullptr;
 				return;
 			}
 

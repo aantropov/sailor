@@ -5,7 +5,7 @@
 
 namespace Sailor
 {
-	RuntimeGIProbesService::RuntimeGIProbesService() : m_impl(std::make_unique<Impl>())
+	RuntimeGIProbesService::RuntimeGIProbesService() : m_impl(TUniquePtr<Impl>::Make())
 	{
 	}
 
@@ -35,7 +35,7 @@ namespace Sailor
 			const std::lock_guard<std::mutex> lock(m_impl->m_mutex);
 			generationId = m_impl->m_nextGenerationId++;
 		}
-		std::shared_ptr<Impl::Generation> generation = m_impl->BuildGeneration(request, generationId, outDiagnostic);
+		TSharedPtr<Impl::Generation> generation = m_impl->BuildGeneration(request, generationId, outDiagnostic);
 		if (!generation)
 		{
 			return false;
@@ -95,7 +95,7 @@ namespace Sailor
 			{
 				m_impl->m_generation->m_cancel.store(true, std::memory_order_release);
 			}
-			m_impl->m_generation.reset();
+			m_impl->m_generation.Clear();
 			m_impl->m_workerCount = 0u;
 			m_impl->m_publishedData.Clear();
 			m_impl->m_status = {};

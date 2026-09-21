@@ -2,6 +2,8 @@
 
 #include "Platform/Win32/Window.h"
 #include "Platform/Win32/Input.h"
+#include "Memory/SharedPtr.hpp"
+#include "Memory/UniquePtr.hpp"
 
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
@@ -15,7 +17,6 @@
 #include <condition_variable>
 #include <exception>
 #include <iostream>
-#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -54,7 +55,7 @@ namespace
 
 	void DrainMainQueue()
 	{
-		auto completed = std::make_shared<std::atomic_bool>(false);
+		auto completed = Sailor::TSharedPtr<std::atomic_bool>::Make(false);
 		dispatch_async(dispatch_get_main_queue(), ^
 		{
 			completed->store(true, std::memory_order_release);
@@ -66,14 +67,14 @@ namespace
 
 	struct BackgroundWindowUpdateState
 	{
-		std::shared_ptr<Window> m_window;
+		Sailor::TSharedPtr<Window> m_window;
 		std::mutex m_mutex;
 		std::condition_variable m_completedCondition;
 		std::exception_ptr m_failure;
 		bool m_completed = false;
 	};
 
-	bool IsBackgroundWindowUpdateComplete(const std::shared_ptr<BackgroundWindowUpdateState>& state)
+	bool IsBackgroundWindowUpdateComplete(const Sailor::TSharedPtr<BackgroundWindowUpdateState>& state)
 	{
 		std::lock_guard lock(state->m_mutex);
 		return state->m_completed;
@@ -83,7 +84,7 @@ namespace
 	{
 		Require([NSThread isMainThread], "mac window threading test must start on the main thread");
 
-		auto window = std::make_shared<Window>();
+		auto window = Sailor::TSharedPtr<Window>::Make();
 		Require(window->Create("Sailor window threading test", "SailorWindowThreadingTest", 128, 96, false, false, nullptr),
 			"test should create a real macOS window");
 		window->Show(false);
@@ -91,7 +92,7 @@ namespace
 		NSWindow* nativeWindow = (__bridge NSWindow*)window->GetHWND();
 		Require(nativeWindow != nil, "created Sailor window should expose an NSWindow");
 
-		auto state = std::make_shared<BackgroundWindowUpdateState>();
+		auto state = Sailor::TSharedPtr<BackgroundWindowUpdateState>::Make();
 		state->m_window = window;
 		std::thread updateThread([state]()
 			{
@@ -200,7 +201,7 @@ namespace
 
 	void TestQueuedWindowUpdatesSurviveDestruction()
 	{
-		auto window = std::make_unique<Window>();
+		auto window = Sailor::TUniquePtr<Window>::Make();
 		Require(window->Create("Sailor queued update test", "SailorQueuedUpdateTest", 128, 96, false, true, nullptr),
 			"queued update test should create a real macOS window");
 		window->Show(false);
@@ -213,7 +214,7 @@ namespace
 			window->ChangeWindowSize(TestWidth, TestHeight, false);
 		});
 		updateThread.join();
-		window.reset();
+		window.Clear();
 		DrainMainQueue();
 
 		const bool titleApplied = [nativeWindow.title isEqualToString:[NSString stringWithUTF8String:WorkerTitle]];

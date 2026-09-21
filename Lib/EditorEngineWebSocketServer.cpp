@@ -1,6 +1,7 @@
 #include "EditorEngineWebSocketServer.h"
 
 #include "EditorEngineProtocolInternal.h"
+#include "Memory/UniquePtr.hpp"
 
 #include <ixwebsocket/IXConnectionState.h>
 #include <ixwebsocket/IXNetSystem.h>
@@ -86,13 +87,14 @@ namespace
 			: m_authorizationHeader(
 				"Bearer " + std::move(authorizationToken))
 			, m_server(
-				std::make_unique<ix::WebSocketServer>(
+				Sailor::TUniquePtr<ix::WebSocketServer>::Make(
 					static_cast<int>(port),
 					"127.0.0.1",
 					c_listenBacklog,
 					c_maxConnections))
 		{
 			m_server->disablePerMessageDeflate();
+			// ixwebsocket owns connection states through its std::shared_ptr API.
 			m_server->setConnectionStateFactory([]()
 				{
 					return std::make_shared<TEditorEngineConnectionState>();
@@ -301,13 +303,13 @@ namespace
 		}
 
 		std::string m_authorizationHeader{};
-		std::unique_ptr<ix::WebSocketServer> m_server{};
+		Sailor::TUniquePtr<ix::WebSocketServer> m_server{};
 	};
 
 	struct TEditorEngineWebSocketServerState final
 	{
 		std::mutex m_mutex{};
-		std::unique_ptr<TEditorEngineWebSocketServer> m_server{};
+		Sailor::TUniquePtr<TEditorEngineWebSocketServer> m_server{};
 		bool m_bNetworkSystemInitialized = false;
 	};
 
@@ -364,13 +366,13 @@ int32_t Sailor::Protocol::StartEditorEngineWebSocketServer(
 		}
 		state.m_bNetworkSystemInitialized = true;
 
-		auto candidate = std::make_unique<TEditorEngineWebSocketServer>(
+		auto candidate = Sailor::TUniquePtr<TEditorEngineWebSocketServer>::Make(
 			port,
 			std::string(token));
 		std::string error;
 		if (!candidate->Start(error))
 		{
-			candidate.reset();
+			candidate.Clear();
 			ix::uninitNetSystem();
 			state.m_bNetworkSystemInitialized = false;
 			return static_cast<int32_t>(
@@ -383,7 +385,7 @@ int32_t Sailor::Protocol::StartEditorEngineWebSocketServer(
 	}
 	catch (...)
 	{
-		state.m_server.reset();
+		state.m_server.Clear();
 		if (state.m_bNetworkSystemInitialized)
 		{
 			ix::uninitNetSystem();
@@ -402,7 +404,7 @@ void Sailor::Protocol::StopEditorEngineWebSocketServer() noexcept
 		std::lock_guard lock(state.m_mutex);
 		if (state.m_server)
 		{
-			state.m_server.reset();
+			state.m_server.Clear();
 		}
 		if (state.m_bNetworkSystemInitialized)
 		{

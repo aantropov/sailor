@@ -4,7 +4,7 @@ find_package(imgui CONFIG REQUIRED)
 add_executable(ImGuiDrawDataSnapshotTests ImGuiDrawDataSnapshotTests.cpp)
 target_compile_features(ImGuiDrawDataSnapshotTests PRIVATE cxx_std_20)
 target_include_directories(ImGuiDrawDataSnapshotTests PRIVATE ${SAILOR_RUNTIME_DIR})
-target_link_libraries(ImGuiDrawDataSnapshotTests PRIVATE imgui::imgui)
+target_link_libraries(ImGuiDrawDataSnapshotTests PRIVATE Sailor::Runtime imgui::imgui)
 add_test(NAME ImGuiDrawDataSnapshotTests COMMAND ImGuiDrawDataSnapshotTests)
 
 if(NOT TARGET ixwebsocket::ixwebsocket)
@@ -543,6 +543,7 @@ if(APPLE)
         "-framework Metal"
         "-framework IOSurface")
     target_link_libraries(RemoteViewportMacNativeBridgeTests PRIVATE
+        Sailor::Runtime
         "-framework Cocoa"
         "-framework QuartzCore"
         "-framework Metal"

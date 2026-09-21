@@ -1,8 +1,7 @@
-#include "Submodules/ImGuiDrawDataSnapshot.h"
+#include "Submodules/ImGuiApi.h"
 #include <atomic>
 #include <cstring>
 #include <iostream>
-#include <memory>
 #include <stdexcept>
 #include <thread>
 
@@ -43,8 +42,9 @@ namespace
 		ImGui::Render();
 
 		const ImDrawData* source = ImGui::GetDrawData();
-		Sailor::ImGuiDrawDataSnapshot snapshot(source);
-		const ImDrawData& retained = snapshot.GetDrawData();
+		Sailor::ImGuiApi::PreparedFramePtr snapshot =
+			Sailor::TSharedPtr<Sailor::ImGuiApi::PreparedFrame>::Make(source);
+		const ImDrawData& retained = snapshot->DrawData.GetDrawData();
 		Require(retained.Valid && retained.CmdListsCount == 2, "Both draw layers must be captured");
 		Require(retained.TotalVtxCount == source->TotalVtxCount && retained.TotalVtxCount > 65536,
 			"Large vertex payload must survive capture");
@@ -75,8 +75,9 @@ namespace
 		ImGui::GetForegroundDrawList()->AddText({ 50, 60 }, IM_COL32_WHITE, "Replacement");
 		ImGui::Render();
 		std::atomic<bool> changed{ false };
-		std::jthread consumer([&]
+		std::jthread consumer([snapshot, expectedVertices, expectedX, &changed]
 			{
+				const ImDrawData& retained = snapshot->DrawData.GetDrawData();
 				for (int i = 0; i < 100000; ++i)
 				{
 					if (retained.TotalVtxCount != expectedVertices ||
@@ -94,6 +95,7 @@ namespace
 			ImGui::Render();
 		}
 		consumer.join();
+		Require(!snapshot.IsShared(), "Completed render consumer must leave the CPU as the last snapshot owner");
 		Require(!changed.load(), "A newer CPU frame must not change the retained frame");
 		Require(retained.DisplaySize.x == 640, "Resize must not alter an older projection");
 		bool readCallback = false;

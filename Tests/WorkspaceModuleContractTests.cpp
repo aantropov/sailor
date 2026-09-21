@@ -2,6 +2,7 @@
 #include "Components/CameraComponent.h"
 #include "Core/Reflection.h"
 #include "Memory/ObjectAllocator.hpp"
+#include "Memory/SharedPtr.hpp"
 #include "Workspace/WorkspaceModuleApi.h"
 
 #include <algorithm>
@@ -11,7 +12,6 @@
 #include <functional>
 #include <future>
 #include <iostream>
-#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -348,7 +348,7 @@ namespace
 		Require(defaultObject["defaultValues"].IsMap(),
 			"workspace fixture should expose reflected defaults for lease validation");
 
-		const auto gate = std::make_shared<FactoryInvocationGate>();
+		const auto gate = TSharedPtr<FactoryInvocationGate>::Make();
 		const TWorkspacePlacementFactoryV1 placementFactory = capture.m_descriptor.placementFactory;
 		Reflection::WorkspaceTypeRegistration registration;
 		registration.m_typeInfo = typeInfo;
