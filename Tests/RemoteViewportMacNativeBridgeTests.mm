@@ -9,7 +9,6 @@
 #include <condition_variable>
 #include <functional>
 #include <iostream>
-#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -17,6 +16,7 @@
 #include <utility>
 
 #include "Submodules/EditorRemote/RemoteViewportMacNativeBridge.h"
+#include "Memory/SharedPtr.hpp"
 
 using namespace Sailor::EditorRemote;
 
@@ -249,7 +249,7 @@ namespace
 			bool m_completed = false;
 		};
 
-		auto state = std::make_shared<BackgroundBindState>();
+		auto state = Sailor::TSharedPtr<BackgroundBindState>::Make();
 		std::thread binder([state, hostHandle]()
 			{
 				@autoreleasepool
@@ -345,7 +345,7 @@ namespace
 			bool m_completed = false;
 		};
 
-		auto state = std::make_shared<BackgroundPresentState>();
+		auto state = Sailor::TSharedPtr<BackgroundPresentState>::Make();
 		Require(BindMacNativeLayer(hostHandle, 64, 64, PixelFormat::B8G8R8A8_UNorm, state->m_binding).IsOk(),
 			"background-present test should bind a real CAMetalLayer on the main thread");
 		state->m_frame.m_viewportId = 1;

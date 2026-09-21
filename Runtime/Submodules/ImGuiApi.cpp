@@ -242,7 +242,7 @@ void ImGuiApi::NewFrame()
 	SAILOR_PROFILE_FUNCTION();
 	std::erase_if(m_preparedFrames, [](const PreparedFramePtr& frame)
 		{
-			return frame.use_count() == 1;
+			return !frame.IsShared();
 		});
 
 	Data* bd = ImGui_GetBackendData();
@@ -303,7 +303,7 @@ ImGuiApi::PreparedFramePtr ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transfe
 {
 	SAILOR_PROFILE_FUNCTION();
 	ImGui::Render();
-	auto frame = std::make_shared<PreparedFrame>(ImGui::GetDrawData());
+	auto frame = TSharedPtr<PreparedFrame>::Make(ImGui::GetDrawData());
 	const Data* bd = ImGui_GetBackendData();
 	frame->Material = bd->Material;
 	frame->ShaderBindings = bd->ShaderBindings;

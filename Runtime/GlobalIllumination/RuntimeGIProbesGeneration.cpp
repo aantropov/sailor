@@ -131,7 +131,7 @@ namespace Sailor
 		return result;
 	}
 
-	std::shared_ptr<RuntimeGIProbesService::Impl::Generation> RuntimeGIProbesService::Impl::BuildGeneration(
+	TSharedPtr<RuntimeGIProbesService::Impl::Generation> RuntimeGIProbesService::Impl::BuildGeneration(
 		const RuntimeGIProbesStartRequest& request,
 		uint64_t generationId,
 		std::string& outDiagnostic)
@@ -156,7 +156,7 @@ namespace Sailor
 			return {};
 		}
 
-		auto generation = std::make_shared<Generation>();
+		auto generation = TSharedPtr<Generation>::Make();
 		generation->m_request = request;
 		generation->m_id = generationId;
 		generation->m_started = std::chrono::steady_clock::now();

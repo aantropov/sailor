@@ -4,9 +4,9 @@
 #include "GlobalIllumination/RuntimeGIProbesSettings.h"
 #include "Math/Bounds.h"
 #include "Memory/SharedPtr.hpp"
+#include "Memory/UniquePtr.hpp"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 
 namespace Sailor
@@ -78,6 +78,7 @@ namespace Sailor
 
 	private:
 		struct Impl;
-		std::unique_ptr<Impl> m_impl;
+		// GetStatus refreshes cached progress under the implementation lock.
+		mutable TUniquePtr<Impl> m_impl;
 	};
 }

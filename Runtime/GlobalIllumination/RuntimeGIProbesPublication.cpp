@@ -33,7 +33,7 @@ namespace Sailor
 	{
 		SAILOR_PROFILE_FUNCTION();
 		const std::lock_guard<std::mutex> lock(m_mutex);
-		const std::shared_ptr<Generation>& generation = job.m_generation;
+		const TSharedPtr<Generation>& generation = job.m_generation;
 		if (!m_generation || m_generation != generation || generation->m_cancel.load(std::memory_order_acquire))
 		{
 			return;
@@ -82,7 +82,7 @@ namespace Sailor
 
 	void RuntimeGIProbesService::Impl::UpdateStatusLocked()
 	{
-		m_status.m_bEnabled = m_generation != nullptr;
+		m_status.m_bEnabled = m_generation.IsValid();
 		m_status.m_bPaused = m_bPaused;
 		m_status.m_workerCount = m_workerCount;
 		if (!m_generation)

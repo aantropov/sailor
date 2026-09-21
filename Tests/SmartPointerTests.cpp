@@ -4,6 +4,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 
 #include "Memory/SharedPtr.hpp"
@@ -38,16 +39,19 @@ namespace
 		{
 			--s_liveCount;
 			++s_destroyedCount;
+			s_destroyedOn = std::this_thread::get_id();
 		}
 
 		static void Reset()
 		{
 			s_liveCount = 0;
 			s_destroyedCount = 0;
+			s_destroyedOn = {};
 		}
 
 		static inline int s_liveCount = 0;
 		static inline int s_destroyedCount = 0;
+		static inline std::thread::id s_destroyedOn;
 		int m_value = 0;
 	};
 
@@ -104,6 +108,58 @@ namespace
 
 		Require(LifetimeProbe::s_liveCount == 0, "shared pointers should destroy their pointees exactly once");
 		Require(LifetimeProbe::s_destroyedCount == 2, "shared pointer destruction count should match allocations");
+	}
+
+	void TestSharedPtrRetainedAcrossThreads()
+	{
+		LifetimeProbe::Reset();
+		auto writable = TSharedPtr<LifetimeProbe>::Make(19);
+		TSharedPtr<const LifetimeProbe> frame = std::move(writable);
+		Require(!writable && !frame.IsShared(), "publishing a const frame should transfer ownership");
+
+		bool bConsumerRetained = false;
+		std::jthread consumer([frame, &bConsumerRetained]()
+			{
+				auto copy = frame;
+				bConsumerRetained = copy.IsShared() && copy->m_value == 19;
+			});
+		consumer.join();
+
+		Require(bConsumerRetained, "consumer should retain the immutable frame");
+		Require(!frame.IsShared(), "owner should be the last reference after the consumer completes");
+		Require(LifetimeProbe::s_liveCount == 1 && LifetimeProbe::s_destroyedCount == 0,
+			"consumer completion must not destroy the owner's retained frame");
+		frame.Clear();
+		Require(LifetimeProbe::s_liveCount == 0 && LifetimeProbe::s_destroyedCount == 1,
+			"the last owner should destroy the frame exactly once");
+		Require(LifetimeProbe::s_destroyedOn == std::this_thread::get_id(),
+			"retained frame should be destroyed on the owner thread");
+	}
+
+	void TestUniquePtrScalarMoveAndClear()
+	{
+		LifetimeProbe::Reset();
+		{
+			auto pointer = TUniquePtr<LifetimeProbe>::Make(17);
+			auto moved = std::move(pointer);
+			Require(!pointer && moved->m_value == 17, "scalar move construction should transfer ownership");
+
+			auto& samePointer = moved;
+			moved = std::move(samePointer);
+			Require(moved && moved->m_value == 17, "scalar self-move should preserve ownership");
+			Require(LifetimeProbe::s_liveCount == 1 && LifetimeProbe::s_destroyedCount == 0,
+				"scalar self-move must neither delete nor lose the object");
+
+			auto replacement = TUniquePtr<LifetimeProbe>::Make(23);
+			replacement = std::move(moved);
+			Require(!moved && replacement->m_value == 17, "scalar move assignment should transfer ownership");
+			Require(LifetimeProbe::s_liveCount == 1 && LifetimeProbe::s_destroyedCount == 1,
+				"scalar move assignment should destroy the replaced object");
+			replacement.Clear();
+			replacement.Clear();
+		}
+		Require(LifetimeProbe::s_liveCount == 0 && LifetimeProbe::s_destroyedCount == 2,
+			"cleared scalar owners should destroy each object exactly once");
 	}
 
 	void TestUniquePtrScalarRelease()
@@ -190,6 +246,8 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "SharedPtrConstObserversAndComparison", TestSharedPtrConstObserversAndComparison },
+		{ "SharedPtrRetainedAcrossThreads", TestSharedPtrRetainedAcrossThreads },
+		{ "UniquePtrScalarMoveAndClear", TestUniquePtrScalarMoveAndClear },
 		{ "UniquePtrScalarRelease", TestUniquePtrScalarRelease },
 		{ "UniquePtrArrayLifetimeMoveAndRelease", TestUniquePtrArrayLifetimeMoveAndRelease },
 		{ "UniquePtrArrayValueInitialization", TestUniquePtrArrayValueInitialization },

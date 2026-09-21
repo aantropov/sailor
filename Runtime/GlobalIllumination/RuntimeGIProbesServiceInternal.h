@@ -8,7 +8,6 @@
 #include <chrono>
 #include <deque>
 #include <limits>
-#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -64,20 +63,20 @@ namespace Sailor
 
 		struct Job final
 		{
-			std::shared_ptr<Generation> m_generation{};
+			TSharedPtr<Generation> m_generation{};
 			ProbeWork m_work{};
 			uint32_t m_probeIndex = 0u;
 		};
 
 		struct DispatchBatch final
 		{
-			std::shared_ptr<Generation> m_generation{};
+			TSharedPtr<Generation> m_generation{};
 			uint32_t m_workerCount = 0u;
 		};
 
 		mutable std::mutex m_mutex;
 		std::vector<Tasks::ITaskPtr> m_workerTasks{};
-		std::shared_ptr<Generation> m_generation{};
+		TSharedPtr<Generation> m_generation{};
 		GIProbesDataPtr m_publishedData{};
 		RuntimeGIProbesStartRequest m_lastRequest{};
 		RuntimeGIProbesStatus m_status{};
@@ -99,16 +98,16 @@ namespace Sailor
 		static bool AreIrradianceSettingsCompatible(const GIProbesBakeSettings& lhs,
 			const GIProbesBakeSettings& rhs) noexcept;
 		static std::vector<uint32_t> BuildProgressiveProbeOrder(const Generation& generation);
-		std::shared_ptr<Generation> BuildGeneration(const RuntimeGIProbesStartRequest& request,
+		TSharedPtr<Generation> BuildGeneration(const RuntimeGIProbesStartRequest& request,
 			uint64_t generationId,
 			std::string& outDiagnostic);
 		void ReuseGenerationState(Generation& next, const Generation& previous);
 
-		bool TryTakeJob(const std::shared_ptr<Generation>& generation, Job& outJob);
+		bool TryTakeJob(const TSharedPtr<Generation>& generation, Job& outJob);
 		static bool HasQueuedWork(const Generation& generation) noexcept;
 		bool CanDispatchWorkLocked() const noexcept;
 		DispatchBatch GetDispatchBatch() const noexcept;
-		void WorkerBatch(std::shared_ptr<Generation> generation,
+		void WorkerBatch(TSharedPtr<Generation> generation,
 			uint32_t maximumJobCount = (std::numeric_limits<uint32_t>::max)());
 		void PumpWorkerTasks();
 		bool ExecuteJob(Job& job, std::string& outDiagnostic);

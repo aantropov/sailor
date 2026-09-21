@@ -4,8 +4,8 @@
 #include <imgui.h>
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "ImGuiDrawDataSnapshot.h"
+#include "Memory/SharedPtr.hpp"
 #include <cstdint>
-#include <memory>
 #include <vector>
 #include <unordered_map>
 
@@ -26,7 +26,7 @@ namespace Sailor
 			RHI::RHIShaderBindingSetPtr ShaderBindings;
 			std::unordered_map<ImTextureID, RHI::RHIShaderBindingSetPtr> TextureBindings;
 		};
-		using PreparedFramePtr = std::shared_ptr<const PreparedFrame>;
+		using PreparedFramePtr = TSharedPtr<const PreparedFrame>;
 
 		ImGuiApi(void* hWnd);
 		virtual ~ImGuiApi();
