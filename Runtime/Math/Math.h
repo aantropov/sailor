@@ -166,6 +166,12 @@ namespace Sailor::Math
 	template<>
 	SAILOR_API Transform Lerp<Transform>(const Transform& a, const Transform& b, float t);
 
+	// Maps between ranges without clamping; minValue and maxValue must differ.
+	inline float Remap(float value, float minValue, float maxValue, float newMinValue, float newMaxValue)
+	{
+		return newMinValue + (value - minValue) / (maxValue - minValue) * (newMaxValue - newMinValue);
+	}
+
 	SAILOR_API __forceinline glm::mat4 PerspectiveInfiniteRH(float fovRadians, float aspectWbyH, float zNear);
 	SAILOR_API __forceinline glm::mat4 PerspectiveRH(float fovRadians, float aspectWbyH, float zNear, float zFar);
 }

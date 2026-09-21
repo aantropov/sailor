@@ -62,6 +62,7 @@ namespace Sailor::Framegraph
 		SAILOR_API void SetSkyParams(const SkyParameters& skyParams);
 		SAILOR_API void ResetSkyParams();
 		SAILOR_API SkyParameters GetSkyParams() const;
+		// Render-thread only; read alongside the published g_skyCubemap sampler.
 		SAILOR_API bool GetEnvironmentSkyParams(SkyParameters& skyParams) const;
 
 	protected:
@@ -78,6 +79,7 @@ namespace Sailor::Framegraph
 		SAILOR_API static glm::mat4 CreateEnvironmentProjectionMatrix();
 		SAILOR_API static TVector<glm::mat4x4> CreateEnvironmentViewMatrices();
 
+		// Synchronizes the existing game-to-render parameter mailbox.
 		mutable SpinLock m_skyParamsLock;
 		SkyParameters m_skyParams{};
 		SkyParameters m_pendingSkyParams{};

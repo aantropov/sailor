@@ -241,7 +241,7 @@ void Renderer::UpdateMemoryStats()
 
 TVector<GpuTiming> Renderer::GetSlowestGpuTimings() const
 {
-	std::lock_guard<std::mutex> lock(m_gpuTimingsMutex);
+	m_gpuTimingsLock.Lock();
 	TVector<GpuTiming> timings;
 	const size_t count = std::min<size_t>(3u, m_gpuTimings.Num());
 	timings.Reserve(count);
@@ -249,13 +249,16 @@ TVector<GpuTiming> Renderer::GetSlowestGpuTimings() const
 	{
 		timings.Add(m_gpuTimings[i]);
 	}
+	m_gpuTimingsLock.Unlock();
 	return timings;
 }
 
 TVector<GpuTiming> Renderer::GetGpuTimings() const
 {
-	std::lock_guard<std::mutex> lock(m_gpuTimingsMutex);
-	return m_gpuTimings;
+	m_gpuTimingsLock.Lock();
+	TVector<GpuTiming> timings = m_gpuTimings;
+	m_gpuTimingsLock.Unlock();
+	return timings;
 }
 
 void Renderer::PublishGpuTimings(const TVector<GpuTiming>& timings)
@@ -324,8 +327,9 @@ void Renderer::PublishGpuTimings(const TVector<GpuTiming>& timings)
 		{
 			return lhs.m_durationMilliseconds > rhs.m_durationMilliseconds;
 		});
-	std::lock_guard<std::mutex> lock(m_gpuTimingsMutex);
+	m_gpuTimingsLock.Lock();
 	m_gpuTimings = std::move(averagedTimings);
+	m_gpuTimingsLock.Unlock();
 }
 
 RHIGlobalIlluminationRenderStats

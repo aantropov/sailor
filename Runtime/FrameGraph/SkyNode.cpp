@@ -163,19 +163,13 @@ void SkyNode::ConsumePendingSkyParams()
 
 bool SkyNode::GetEnvironmentSkyParams(SkyParameters& skyParams) const
 {
-	m_skyParamsLock.Lock();
-	const bool bReady = m_bEnvironmentReady;
-	if (bReady)
+	if (!m_bEnvironmentReady)
 	{
-		skyParams = m_readyEnvironmentParams;
+		return false;
 	}
-	m_skyParamsLock.Unlock();
-	return bReady;
-}
 
-float Remap(float value, float minValue, float maxValue, float newMinValue, float newMaxValue)
-{
-	return newMinValue + (value - minValue) / (maxValue - minValue) * (newMaxValue - newMinValue);
+	skyParams = m_readyEnvironmentParams;
+	return true;
 }
 
 TVector<uint8_t> SkyNode::LoadCloudsNoise(
@@ -217,7 +211,7 @@ TVector<uint8_t> SkyNode::GenerateCloudsNoiseLow()
 				const float cellularNoiseMid = Math::fBmTiledWorley(uv * tiling * 2.0f, 4, (int32_t)tiling * 2);
 				const float cellularNoiseHigh = Math::fBmTiledWorley(uv * tiling * 3.0f, 4, (int32_t)tiling * 3);
 
-				const float noise = Remap(perlinNoiseLow, (cellularNoiseLow * 0.625f + cellularNoiseMid * 0.25f + cellularNoiseHigh * 0.125f) - 1.0f, 1.0f, 0.0f, 1.0f);
+				const float noise = Math::Remap(perlinNoiseLow, (cellularNoiseLow * 0.625f + cellularNoiseMid * 0.25f + cellularNoiseHigh * 0.125f) - 1.0f, 1.0f, 0.0f, 1.0f);
 
 				value = uint8_t(noise * 255.0f);
 			}
@@ -910,6 +904,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		m_bIsDirty = false;
 		m_pEnvironmentCapture.Clear();
 		m_pEnvironmentBindings = driver->CreateShaderBindings();
+		// Debug bytecode retains the names required by binding reflection.
 		driver->FillShadersLayout(m_pEnvironmentBindings,
 			{ m_pSkyEnvShader->GetDebugVertexShaderRHI(), m_pSkyEnvShader->GetDebugFragmentShaderRHI() }, 1);
 		auto skyBinding = driver->AddBufferToShaderBindings(m_pEnvironmentBindings, "data", sizeof(SkyParameters), 0,
@@ -977,10 +972,8 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		if (m_environmentCaptureStep == EnvCubemapFaceCount)
 		{
 			frameGraph->SetSampler("g_skyCubemap", cubemap);
-			m_skyParamsLock.Lock();
 			m_readyEnvironmentParams = m_capturedEnvironmentParams;
 			m_bEnvironmentReady = true;
-			m_skyParamsLock.Unlock();
 
 			if (auto node = frameGraph->GetGraphNode("Environment").DynamicCast<EnvironmentNode>())
 			{
@@ -1002,9 +995,7 @@ void SkyNode::Clear()
 	m_pEnvironmentCapture.Clear();
 	m_environmentCaptureStep = EnvCubemapFaceCount + 1u;
 	m_bIsDirty = true;
-	m_skyParamsLock.Lock();
 	m_bEnvironmentReady = false;
-	m_skyParamsLock.Unlock();
 	m_pSkyTexture.Clear();
 	m_pSunTexture.Clear();
 	m_pSkyShader.Clear();

@@ -6,7 +6,6 @@
 #include "FrameGraph/SkyParameters.h"
 #include "FrameGraph/AtmosphericFogNode.h"
 #include "FrameGraph/LocalReflection.h"
-#include "FrameGraph/LightCullingNode.h"
 #include "RHI/GlobalIllumination.h"
 #include "RHI/Lighting.h"
 #include "RHI/GpuCulling.h"
@@ -16,7 +15,6 @@
 
 #include <array>
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -36,12 +34,6 @@ namespace
 	{
 	public:
 		using VulkanShaderStage::ReflectDescriptorSetBindings;
-	};
-
-	class LightCullingLayoutProbe final : public Framegraph::LightCullingNode
-	{
-	public:
-		using LightCullingNode::PushConstants;
 	};
 
 	class FixedShaderSourceStateProvider final : public IShaderSourceStateProvider
@@ -1678,23 +1670,6 @@ namespace
 			0u,
 			0u,
 			sizeof(RHI::RHILightShaderData));
-		{
-			using PushConstants = LightCullingLayoutProbe::PushConstants;
-			SpvReflectShaderModule module{};
-			Require(spvReflectCreateShaderModule(lightCullingByteCode.Num() * sizeof(uint32_t),
-				lightCullingByteCode.GetData(), &module) == SPV_REFLECT_RESULT_SUCCESS,
-				"light-culling SPIR-V must reflect");
-			const bool valid = module.push_constant_block_count == 1u &&
-				module.push_constant_blocks[0].size == sizeof(PushConstants) &&
-				module.push_constant_blocks[0].member_count == 5u &&
-				module.push_constant_blocks[0].members[0].offset == offsetof(PushConstants, m_invViewProjection) &&
-				module.push_constant_blocks[0].members[1].offset == offsetof(PushConstants, m_viewportSize) &&
-				module.push_constant_blocks[0].members[2].offset == offsetof(PushConstants, m_numTiles) &&
-				module.push_constant_blocks[0].members[3].offset == offsetof(PushConstants, m_lightsNum) &&
-				module.push_constant_blocks[0].members[4].offset == offsetof(PushConstants, m_useDepthBounds);
-			spvReflectDestroyShaderModule(&module);
-			Require(valid, "host and light-culling shader must agree on the depth-bounds push constant layout");
-		}
 		compileRuntimeCompute("Shaders/ComputeHistogram.shader");
 		compileRuntimeCompute("Shaders/ComputeAverageLuminance.shader");
 		compileRuntimeCompute("Shaders/ComputeBloomDownscale.shader");

@@ -1,10 +1,10 @@
 #pragma once
 #include <functional>
 #include <atomic>
-#include <mutex>
 #include <thread>
 
 #include "Core/Defines.h"
+#include "Core/SpinLock.h"
 #include "Math/Math.h"
 #include "Engine/Types.h"
 #include "RHI/Types.h"
@@ -87,7 +87,7 @@ namespace Sailor::RHI
 			uint64_t m_lastSeenGeneration = 0u;
 		};
 
-		mutable std::mutex m_gpuTimingsMutex;
+		mutable SpinLock m_gpuTimingsLock;
 		TVector<GpuTimingHistory> m_gpuTimingHistory;
 		TVector<GpuTiming> m_gpuTimings;
 		uint64_t m_gpuTimingGeneration = 0u;

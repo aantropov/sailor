@@ -23,6 +23,7 @@
 #include "FrameGraph/SkyParameters.h"
 #include "Engine/World.h"
 #include "FrameGraph/SkyNode.h"
+#include "Math/Math.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
 #include "RHI/Texture.h"
 
@@ -184,6 +185,21 @@ namespace
 		Require(!node.AreCloudsResourcesReady(), "clouds also require the weather map upload");
 		node.SetCloudTextures(map, nullptr, high);
 		Require(!node.AreCloudsResourcesReady(), "missing noise must disable clouds again");
+	}
+
+	void TestCloudNoiseRemapping()
+	{
+		Require(IsNear(Math::Remap(-0.5f, -0.5f, 1.0f, 0.0f, 1.0f), 0.0f) &&
+			IsNear(Math::Remap(1.0f, -0.5f, 1.0f, 0.0f, 1.0f), 1.0f),
+			"cloud noise remapping must map both source endpoints to the output endpoints");
+		Require(IsNear(Math::Remap(0.25f, -0.5f, 1.0f, 0.0f, 1.0f), 0.5f),
+			"cloud noise remapping must interpolate within the source range");
+		Require(IsNear(Math::Remap(4.0f, 2.0f, 6.0f, -1.0f, 3.0f), 1.0f),
+			"remapping must support non-unit input and output ranges");
+		Require(IsNear(Math::Remap(8.0f, 2.0f, 6.0f, -1.0f, 3.0f), 5.0f),
+			"remapping must extrapolate rather than clamp values outside the source range");
+		Require(IsNear(Math::Remap(3.0f, 6.0f, 2.0f, -1.0f, 3.0f), 2.0f),
+			"remapping must support a reversed source range");
 	}
 
 	void TestCloudNoiseCacheRecovery()
@@ -1365,6 +1381,7 @@ int main()
 		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
 		{ "GroundEnvironmentUsesTheSameSkyAndSun", TestGroundEnvironmentUsesTheSameSkyAndSun },
 		{ "SkyNodeMailboxHandoff", TestSkyNodeMailboxHandoff },
+		{ "CloudNoiseRemapping", TestCloudNoiseRemapping },
 		{ "CloudNoiseCacheRecovery", TestCloudNoiseCacheRecovery },
 		{ "CloudsWaitForAllTextureUploads", TestCloudsWaitForAllTextureUploads },
 		{ "EnvironmentCubemapOrientation", TestEnvironmentCubemapOrientation },

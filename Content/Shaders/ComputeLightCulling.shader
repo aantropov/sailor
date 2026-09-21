@@ -15,7 +15,6 @@ glslCompute: |
     ivec2 viewportSize;
     ivec2 numTiles;
     int lightsNum;
-    int useDepthBounds;
   } PushConstants;
 
   layout(std430, set = 0, binding = 0) readonly buffer LightDataSSBO
@@ -115,8 +114,7 @@ glslCompute: |
           return true;
       }
 
-      if(PushConstants.useDepthBounds != 0 &&
-          (lightPosition.z - radius > zFar || lightPosition.z + radius < zNear))
+      if(lightPosition.z - radius > zFar || lightPosition.z + radius < zNear)
       {
           return false;
       }
