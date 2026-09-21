@@ -1,6 +1,5 @@
 #pragma once
 #include "Core/Defines.h"
-#include "Core/SpinLock.h"
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
@@ -13,6 +12,7 @@ namespace Sailor::Framegraph
 	class SkyNode : public TFrameGraphNode<SkyNode>
 	{
 		const uint32_t EnvCubemapSize = 256u;
+		static constexpr uint32_t EnvCubemapFaceCount = 6u;
 		const uint32_t SunResolution = 32u;
 		static constexpr uint32_t CloudsNoiseHighResolution = 32u;
 		static constexpr uint32_t CloudsNoiseLowResolution = 128u;
@@ -57,10 +57,13 @@ namespace Sailor::Framegraph
 
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_pShaderBindings; }
 		SAILOR_API void SetLocation(float latitudeDegrees, float longitudeDegrees);
-		SAILOR_API void MarkDirty() { m_bIsDirty = true;  m_updateEnvCubemapPattern = 0; }
+		SAILOR_API void MarkDirty() { m_bIsDirty = true; }
+		// Sky state is owned by the Render thread.
 		SAILOR_API void SetSkyParams(const SkyParameters& skyParams);
 		SAILOR_API void ResetSkyParams();
 		SAILOR_API SkyParameters GetSkyParams() const;
+		// Render-thread only; read alongside the published g_skyCubemap sampler.
+		SAILOR_API bool GetEnvironmentSkyParams(SkyParameters& skyParams) const;
 
 	protected:
 
@@ -71,16 +74,14 @@ namespace Sailor::Framegraph
 			mat4 m_starsModelView{};
 		};
 
-		SAILOR_API void ConsumePendingSkyParams();
 		SAILOR_API bool AreCloudsResourcesReady() const;
 		SAILOR_API static glm::mat4 CreateEnvironmentProjectionMatrix();
 		SAILOR_API static TVector<glm::mat4x4> CreateEnvironmentViewMatrices();
 
-		mutable SpinLock m_skyParamsLock;
 		SkyParameters m_skyParams{};
-		SkyParameters m_pendingSkyParams{};
-		uint64_t m_skyParamsRevision = 0;
-		uint64_t m_pendingSkyParamsRevision = 0;
+		SkyParameters m_capturedEnvironmentParams{};
+		SkyParameters m_readyEnvironmentParams{};
+		bool m_bEnvironmentReady = false;
 
 		mat4 m_starsModelView{};
 
@@ -103,6 +104,8 @@ namespace Sailor::Framegraph
 		RHI::RHIMaterialPtr m_pBlitCloudsMaterial{};
 
 		RHI::RHIShaderBindingSetPtr m_pShaderBindings{};
+		RHI::RHIShaderBindingSetPtr m_pEnvironmentBindings{};
+		RHI::RHICubemapPtr m_pEnvironmentCapture{};
 		RHI::RHIShaderBindingSetPtr m_pBlitCloudsBindings{};
 		RHI::RHIShaderBindingSetPtr m_pEnvCubemapBindings[6]{};
 
@@ -144,7 +147,8 @@ namespace Sailor::Framegraph
 		static TVector<uint8_t> GenerateCloudsNoiseHigh();
 
 		uint32_t m_ditherPatternIndex = 0;
-		uint32_t m_updateEnvCubemapPattern = 0;
+		// Capture the faces first, then generate mipmaps. The next step is idle.
+		uint32_t m_environmentCaptureStep = EnvCubemapFaceCount + 1u;
 		bool m_bIsDirty = true;
 	};
 

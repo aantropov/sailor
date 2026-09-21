@@ -543,7 +543,6 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	if (bInIsFullScreen && !m_bIsFullscreen)
 	{
 		ChangeDisplaySettings(NULL, CDS_RESET);
-		ShowCursor(TRUE);
 	}
 
 	m_bIsFullscreen = bInIsFullScreen;
@@ -569,7 +568,6 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 
 	if (m_bIsFullscreen)
 	{
-		ShowCursor(FALSE);
 		style = WS_POPUP;
 		exStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
@@ -646,12 +644,51 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 			}
 			DispatchMessage(&msg);
 		}
+		pWindow->UpdateMouseCapture();
 	}
 }
 
 void Window::ProcessSystemMessages()
 {
 	ProcessWin32Msgs();
+}
+
+void Window::UpdateMouseCapture()
+{
+	check(!m_hWnd || ::GetWindowThreadProcessId(m_hWnd, nullptr) == ::GetCurrentThreadId());
+
+	const bool bShouldCapture = m_bMouseCaptureRequested && !App::IsEditorMode() &&
+		m_hWnd && m_bIsActive && GetForegroundWindow() == m_hWnd && !IsIconic();
+	if (bShouldCapture != m_bMouseCaptured)
+	{
+		RAWINPUTDEVICE mouse{};
+		mouse.usUsagePage = 0x01;
+		mouse.usUsage = 0x02;
+		mouse.dwFlags = bShouldCapture ? 0 : RIDEV_REMOVE;
+		mouse.hwndTarget = bShouldCapture ? m_hWnd : nullptr;
+		if (!RegisterRawInputDevices(&mouse, 1, sizeof(mouse)) && bShouldCapture)
+		{
+			return;
+		}
+
+		ShowCursor(bShouldCapture ? FALSE : TRUE);
+		if (!bShouldCapture)
+		{
+			ClipCursor(nullptr);
+		}
+
+		const std::lock_guard<std::mutex> lock(m_mouseDeltaMutex);
+		m_mouseDelta = {};
+		m_bMouseCaptured = bShouldCapture;
+	}
+
+	if (bShouldCapture)
+	{
+		RECT client{};
+		GetClientRect(m_hWnd, &client);
+		MapWindowPoints(m_hWnd, nullptr, reinterpret_cast<POINT*>(&client), 2);
+		ClipCursor(&client);
+	}
 }
 
 glm::ivec2 Window::GetCenterPointScreen() const
@@ -727,6 +764,8 @@ void Window::Destroy()
 	}
 
 	check(!hWnd || ::GetWindowThreadProcessId(hWnd, nullptr) == ::GetCurrentThreadId());
+	RequestMouseCapture(false);
+	UpdateMouseCapture();
 
 	if (m_editorViewportDropTarget ||
 		m_bEditorViewportDropOleInitialized)
@@ -782,7 +821,6 @@ void Window::Destroy()
 	if (bWasFullscreen)
 	{
 		ChangeDisplaySettings(NULL, CDS_RESET);
-		ShowCursor(TRUE);
 	}
 
 	if (hWnd && hDC && ReleaseDC(hWnd, hDC) == 0)
@@ -984,14 +1022,30 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	case WM_SETFOCUS:
 	case WM_KILLFOCUS:
 		pWindow->SetActive(msg == WM_SETFOCUS);
+		pWindow->UpdateMouseCapture();
 		return FALSE;
 
 	case WM_ACTIVATE:
-		pWindow->SetActive(LOWORD(wParam) == WA_INACTIVE);
+		pWindow->SetActive(LOWORD(wParam) != WA_INACTIVE);
+		pWindow->UpdateMouseCapture();
 		return FALSE;
+
+	case WM_INPUT:
+	{
+		RAWINPUT input{};
+		UINT size = sizeof(input);
+		if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, &input, &size, sizeof(RAWINPUTHEADER)) != UINT(-1) &&
+			input.header.dwType == RIM_TYPEMOUSE && !(input.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE))
+		{
+			pWindow->AddMouseDelta((float)input.data.mouse.lLastX, (float)input.data.mouse.lLastY);
+		}
+		return DefWindowProc(hWnd, msg, wParam, lParam);
+	}
 
 	case WM_CLOSE:
 	{
+		pWindow->RequestMouseCapture(false);
+		pWindow->UpdateMouseCapture();
 		pWindow->SetActive(false);
 		pWindow->SetRunning(false);
 
@@ -1004,6 +1058,8 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 
 	case WM_NCDESTROY:
 	{
+		pWindow->RequestMouseCapture(false);
+		pWindow->UpdateMouseCapture();
 		if (pWindow->m_editorViewportDropTarget ||
 			pWindow->m_bEditorViewportDropOleInitialized)
 		{

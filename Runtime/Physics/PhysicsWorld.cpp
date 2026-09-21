@@ -11,6 +11,8 @@
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyLock.h>
+#include <Jolt/Physics/SoftBody/SoftBodyCreationSettings.h>
+#include <Jolt/Physics/SoftBody/SoftBodyMotionProperties.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
@@ -502,6 +504,19 @@ public:
 		return true;
 	}
 
+	bool IsRigidBody(uint32_t bodyId) const
+	{
+		if (!m_bodyInstances.ContainsKey(bodyId))
+		{
+			return false;
+		}
+
+		JPH::BodyLockRead lock(
+			m_physicsSystem.GetBodyLockInterface(),
+			JPH::BodyID(bodyId));
+		return lock.SucceededAndIsInBroadPhase() && lock.GetBody().IsRigidBody();
+	}
+
 	BroadPhaseLayerInterface m_broadPhaseLayerInterface{};
 	ObjectVsBroadPhaseLayerFilter m_objectVsBroadPhaseLayerFilter{};
 	ObjectLayerPairFilter m_objectLayerPairFilter{};
@@ -510,6 +525,7 @@ public:
 	JPH::PhysicsSystem m_physicsSystem{};
 	ContactListener m_contactListener;
 	TMap<uint32_t, InstanceId> m_bodyInstances{};
+	TMap<uint32_t, JPH::Ref<JPH::SoftBodySharedSettings>> m_softBodySettings{};
 	concurrency::concurrent_queue<PhysicsContactEvent> m_contactEvents{};
 };
 
@@ -612,6 +628,452 @@ bool Physics::PhysicsWorld::CreateBody(
 	return true;
 }
 
+bool Physics::PhysicsWorld::CreateSoftBody(
+	const SoftBodyDesc& desc,
+	uint32_t& outBodyId)
+{
+	outBodyId = JPH::BodyID::cInvalidBodyID;
+	const size_t numVertices = desc.m_vertices.Num();
+	const bool bSkinned = !desc.m_maxDistances.IsEmpty();
+	if (!desc.m_instanceId || numVertices < 3 || numVertices > 65535 ||
+		desc.m_indices.Num() < 3 || desc.m_indices.Num() % 3 != 0 ||
+		desc.m_inverseMasses.Num() != numVertices ||
+		(bSkinned && desc.m_maxDistances.Num() != numVertices) ||
+		!Math::AllFinite(desc.m_position) || !Math::AllFinite(desc.m_rotation) ||
+		desc.m_numIterations == 0 || desc.m_numIterations > 32 ||
+		desc.m_collisionLayer >= c_numCollisionLayers)
+	{
+		return false;
+	}
+
+	for (const float value : { desc.m_edgeCompliance, desc.m_shearCompliance,
+		desc.m_bendCompliance, desc.m_vertexRadius, desc.m_friction, desc.m_restitution,
+		desc.m_linearDamping, desc.m_maxLinearVelocity })
+	{
+		if (!std::isfinite(value) || value < 0.0f)
+		{
+			return false;
+		}
+	}
+	if (!std::isfinite(desc.m_gravityFactor) || desc.m_maxLinearVelocity == 0.0f ||
+		desc.m_linearDamping > 1.0f || desc.m_restitution > 1.0f)
+	{
+		return false;
+	}
+
+	JPH::Ref<JPH::SoftBodySharedSettings> sharedSettings = new JPH::SoftBodySharedSettings();
+	sharedSettings->mVertexRadius = desc.m_vertexRadius;
+	for (size_t i = 0; i < numVertices; ++i)
+	{
+		const glm::vec3& position = desc.m_vertices[i];
+		if (!Math::AllFinite(position) ||
+			!std::isfinite(desc.m_inverseMasses[i]) || desc.m_inverseMasses[i] < 0.0f)
+		{
+			return false;
+		}
+
+		sharedSettings->mVertices.emplace_back(
+			JPH::Float3(position.x, position.y, position.z),
+			JPH::Float3(0.0f, 0.0f, 0.0f),
+			desc.m_inverseMasses[i]);
+		if (bSkinned)
+		{
+			const float maxDistance = desc.m_maxDistances[i];
+			if (!std::isfinite(maxDistance) || maxDistance < 0.0f)
+			{
+				return false;
+			}
+			if (maxDistance == 0.0f)
+			{
+				sharedSettings->mVertices.back().mInvMass = 0.0f;
+			}
+
+			const auto vertexIndex = static_cast<uint32_t>(i);
+			sharedSettings->mInvBindMatrices.emplace_back(
+				vertexIndex,
+				JPH::Mat44::sTranslation(-ToJolt(position)));
+			JPH::SoftBodySharedSettings::Skinned constraint(vertexIndex, maxDistance, FLT_MAX, 0.0f);
+			constraint.mWeights[0] = JPH::SoftBodySharedSettings::SkinWeight(vertexIndex, 1.0f);
+			sharedSettings->mSkinnedConstraints.push_back(constraint);
+		}
+	}
+
+	// Constraint generation requires a consistently wound manifold surface.
+	TMap<uint64_t, int32_t> edgeDirections;
+	TVector<bool> usedVertices;
+	usedVertices.Resize(numVertices);
+	for (size_t i = 0; i < desc.m_indices.Num(); i += 3)
+	{
+		const uint32_t a = desc.m_indices[i];
+		const uint32_t b = desc.m_indices[i + 1];
+		const uint32_t c = desc.m_indices[i + 2];
+		if (a >= numVertices || b >= numVertices || c >= numVertices || a == b || b == c || a == c)
+		{
+			return false;
+		}
+
+		const glm::vec3 normal = glm::cross(
+			desc.m_vertices[b] - desc.m_vertices[a],
+			desc.m_vertices[c] - desc.m_vertices[a]);
+		const float areaSquared = glm::dot(normal, normal);
+		if (!std::isfinite(areaSquared) || areaSquared < 1e-12f)
+		{
+			return false;
+		}
+
+		const uint32_t triangle[] = { a, b, c, a };
+		for (uint32_t edge = 0; edge < 3; ++edge)
+		{
+			const uint32_t from = triangle[edge];
+			const uint32_t to = triangle[edge + 1];
+			const uint64_t key = (static_cast<uint64_t>(std::min(from, to)) << 32) | std::max(from, to);
+			const int32_t direction = from < to ? 1 : -1;
+			int32_t* previousDirection = nullptr;
+			if (edgeDirections.Find(key, previousDirection))
+			{
+				if (*previousDirection != -direction)
+				{
+					return false;
+				}
+				*previousDirection = 0;
+			}
+			else
+			{
+				edgeDirections.Insert(key, direction);
+			}
+			usedVertices[from] = true;
+		}
+		sharedSettings->AddFace({ a, b, c });
+	}
+	for (const bool bUsed : usedVertices)
+	{
+		if (!bUsed)
+		{
+			return false;
+		}
+	}
+
+	const JPH::SoftBodySharedSettings::VertexAttributes attributes(
+		desc.m_edgeCompliance, desc.m_shearCompliance, desc.m_bendCompliance);
+	sharedSettings->CreateConstraints(&attributes, 1, JPH::SoftBodySharedSettings::EBendType::Dihedral);
+	if (bSkinned)
+	{
+		sharedSettings->CalculateSkinnedConstraintNormals();
+	}
+	sharedSettings->Optimize();
+
+	JPH::SoftBodyCreationSettings settings(
+		sharedSettings,
+		ToJoltPosition(desc.m_position),
+		ToJolt(desc.m_rotation),
+		MakeObjectLayer(ERigidBodyMotionType::Dynamic, desc.m_collisionLayer));
+	settings.mMakeRotationIdentity = false;
+	settings.mNumIterations = desc.m_numIterations;
+	settings.mLinearDamping = desc.m_linearDamping;
+	settings.mMaxLinearVelocity = desc.m_maxLinearVelocity;
+	settings.mFriction = desc.m_friction;
+	settings.mRestitution = desc.m_restitution;
+	settings.mGravityFactor = desc.m_gravityFactor;
+	settings.mAllowSleeping = desc.m_bAllowSleeping;
+
+	const JPH::BodyID bodyId = m_pImpl->m_physicsSystem.GetBodyInterface().CreateAndAddSoftBody(
+		settings,
+		JPH::EActivation::Activate);
+	if (bodyId.IsInvalid())
+	{
+		return false;
+	}
+
+	outBodyId = bodyId.GetIndexAndSequenceNumber();
+	m_pImpl->m_bodyInstances[outBodyId] = desc.m_instanceId;
+	m_pImpl->m_softBodySettings[outBodyId] = sharedSettings;
+	if (bSkinned)
+	{
+		TVector<glm::vec3> targets;
+		targets.Reserve(numVertices);
+		const glm::quat rotation = SanitizeRotation(desc.m_rotation);
+		for (const auto& vertex : desc.m_vertices)
+		{
+			targets.Add(desc.m_position + rotation * vertex);
+		}
+		if (!SetSoftBodyTargets(outBodyId, targets, 1.0f, true))
+		{
+			DestroyBody(outBodyId);
+			outBodyId = JPH::BodyID::cInvalidBodyID;
+			return false;
+		}
+	}
+	return true;
+}
+
+bool Physics::PhysicsWorld::SetSoftBodyRestPose(
+	uint32_t bodyId,
+	const TVector<glm::vec3>& positions,
+	bool bPreserveEdgeLengths)
+{
+	JPH::Ref<JPH::SoftBodySharedSettings>* sharedSettings = nullptr;
+	if (!m_pImpl->m_softBodySettings.Find(bodyId, sharedSettings))
+	{
+		return false;
+	}
+
+	{
+		JPH::BodyLockWrite lock(
+			m_pImpl->m_physicsSystem.GetBodyLockInterface(),
+			JPH::BodyID(bodyId));
+		if (!lock.SucceededAndIsInBroadPhase() || !lock.GetBody().IsSoftBody())
+		{
+			return false;
+		}
+
+		auto& settings = **sharedSettings;
+		if (positions.Num() != settings.mVertices.size())
+		{
+			return false;
+		}
+		for (const auto& position : positions)
+		{
+			if (!Math::AllFinite(position))
+			{
+				return false;
+			}
+		}
+		for (const auto& face : settings.mFaces)
+		{
+			const glm::vec3 normal = glm::cross(
+				positions[face.mVertex[1]] - positions[face.mVertex[0]],
+				positions[face.mVertex[2]] - positions[face.mVertex[0]]);
+			const float areaSquared = glm::dot(normal, normal);
+			if (!std::isfinite(areaSquared) || areaSquared < 1e-12f)
+			{
+				return false;
+			}
+		}
+		for (const auto& edge : settings.mEdgeConstraints)
+		{
+			if (!std::isfinite(glm::length(positions[edge.mVertex[1]] - positions[edge.mVertex[0]])))
+			{
+				return false;
+			}
+		}
+
+		// Jolt also uses these positions for skin binds; keep the original bind pose.
+		auto bindVertices = settings.mVertices;
+		for (size_t i = 0; i < positions.Num(); ++i)
+		{
+			settings.mVertices[i].mPosition = JPH::Float3(positions[i].x, positions[i].y, positions[i].z);
+		}
+		if (!bPreserveEdgeLengths)
+		{
+			settings.CalculateEdgeLengths();
+		}
+		settings.CalculateBendConstraintConstants();
+		settings.mVertices.swap(bindVertices);
+	}
+	m_pImpl->m_physicsSystem.GetBodyInterface().ActivateBody(JPH::BodyID(bodyId));
+	return true;
+}
+
+bool Physics::PhysicsWorld::SetSoftBodyTargets(
+	uint32_t bodyId,
+	const TVector<glm::vec3>& targets,
+	float maxDistanceMultiplier,
+	bool bReset)
+{
+	if (!m_pImpl->m_bodyInstances.ContainsKey(bodyId) ||
+		!std::isfinite(maxDistanceMultiplier) || maxDistanceMultiplier < 0.0f)
+	{
+		return false;
+	}
+	for (const auto& target : targets)
+	{
+		if (!Math::AllFinite(target))
+		{
+			return false;
+		}
+	}
+
+	{
+		JPH::BodyLockWrite lock(
+			m_pImpl->m_physicsSystem.GetBodyLockInterface(),
+			JPH::BodyID(bodyId));
+		if (!lock.SucceededAndIsInBroadPhase() || !lock.GetBody().IsSoftBody())
+		{
+			return false;
+		}
+
+		auto& body = lock.GetBody();
+		auto* motion = static_cast<JPH::SoftBodyMotionProperties*>(body.GetMotionProperties());
+		if (targets.Num() != motion->GetVertices().size() || motion->GetSettings()->mSkinnedConstraints.empty())
+		{
+			return false;
+		}
+
+		const auto transform = body.GetCenterOfMassTransform();
+		const auto inverseTransform = transform.InversedRotationTranslation();
+		JPH::Array<JPH::Mat44> joints;
+		joints.reserve(targets.Num());
+		for (const auto& target : targets)
+		{
+			const JPH::Vec3 localPosition(inverseTransform * ToJoltPosition(target));
+			if (!Math::AllFinite(FromJoltVector(localPosition)))
+			{
+				return false;
+			}
+			joints.push_back(JPH::Mat44::sTranslation(localPosition));
+		}
+
+		if ((motion->GetSkinnedMaxDistanceMultiplier() == 0.0f) != (maxDistanceMultiplier == 0.0f))
+		{
+			// Contacts run after skin constraints, so hard-skinned vertices must be kinematic.
+			auto& vertices = motion->GetVertices();
+			for (size_t i = 0; i < vertices.size(); ++i)
+			{
+				vertices[i].mInvMass = maxDistanceMultiplier == 0.0f
+					? 0.0f
+					: motion->GetSettings()->mVertices[i].mInvMass;
+			}
+			motion->CalculateMassAndInertia();
+		}
+		motion->SetSkinnedMaxDistanceMultiplier(maxDistanceMultiplier);
+		motion->SkinVertices(
+			transform,
+			joints.data(),
+			static_cast<JPH::uint>(joints.size()),
+			bReset,
+			m_pImpl->m_tempAllocator);
+	}
+	m_pImpl->m_physicsSystem.GetBodyInterface().ActivateBody(JPH::BodyID(bodyId));
+	return true;
+}
+
+bool Physics::PhysicsWorld::ApplySoftBodyWind(
+	uint32_t bodyId,
+	const glm::vec3& velocity,
+	float airDensity,
+	float drag,
+	float deltaTime)
+{
+	if (!m_pImpl->m_bodyInstances.ContainsKey(bodyId) || !Math::AllFinite(velocity) ||
+		!std::isfinite(airDensity) || airDensity < 0.0f || !std::isfinite(drag) || drag < 0.0f ||
+		!std::isfinite(deltaTime) || deltaTime <= 0.0f)
+	{
+		return false;
+	}
+
+	{
+		JPH::BodyLockWrite lock(
+			m_pImpl->m_physicsSystem.GetBodyLockInterface(),
+			JPH::BodyID(bodyId));
+		if (!lock.SucceededAndIsInBroadPhase() || !lock.GetBody().IsSoftBody())
+		{
+			return false;
+		}
+
+		auto& body = lock.GetBody();
+		auto* motion = static_cast<JPH::SoftBodyMotionProperties*>(body.GetMotionProperties());
+		auto& vertices = motion->GetVertices();
+		const JPH::Vec3 wind = body.GetRotation().Conjugated() * ToJolt(velocity);
+		JPH::Array<JPH::Vec3> impulses(vertices.size(), JPH::Vec3::sZero());
+		for (const auto& face : motion->GetFaces())
+		{
+			const auto& a = vertices[face.mVertex[0]];
+			const auto& b = vertices[face.mVertex[1]];
+			const auto& c = vertices[face.mVertex[2]];
+			const JPH::Vec3 cross = (b.mPosition - a.mPosition).Cross(c.mPosition - a.mPosition);
+			const float twiceArea = cross.Length();
+			if (twiceArea < 1e-8f)
+			{
+				continue;
+			}
+
+			const JPH::Vec3 normal = cross / twiceArea;
+			const float speed = (wind - (a.mVelocity + b.mVelocity + c.mVelocity) / 3.0f).Dot(normal);
+			const JPH::Vec3 impulse = normal * (speed * std::abs(speed) * twiceArea * airDensity * drag * deltaTime / 12.0f);
+			for (const auto index : face.mVertex)
+			{
+				impulses[index] += impulse;
+			}
+		}
+		for (size_t i = 0; i < vertices.size(); ++i)
+		{
+			const auto& vertex = vertices[i];
+			JPH::Vec3 change = impulses[i] * vertex.mInvMass;
+			const float length = change.Length();
+			const float relativeSpeed = (wind - vertex.mVelocity).Length();
+			if (!std::isfinite(length) || !std::isfinite(relativeSpeed))
+			{
+				return false;
+			}
+
+			// Drag must not overshoot the air velocity at a large time step.
+			if (length > relativeSpeed)
+			{
+				change *= relativeSpeed / length;
+			}
+			impulses[i] = change;
+		}
+		for (size_t i = 0; i < vertices.size(); ++i)
+		{
+			vertices[i].mVelocity += impulses[i];
+		}
+	}
+	m_pImpl->m_physicsSystem.GetBodyInterface().ActivateBody(JPH::BodyID(bodyId));
+	return true;
+}
+
+bool Physics::PhysicsWorld::GetSoftBodyVertices(
+	uint32_t bodyId,
+	TVector<SoftBodyVertex>& outVertices) const
+{
+	if (!m_pImpl->m_bodyInstances.ContainsKey(bodyId))
+	{
+		return false;
+	}
+
+	JPH::BodyLockRead lock(
+		m_pImpl->m_physicsSystem.GetBodyLockInterface(),
+		JPH::BodyID(bodyId));
+	if (!lock.SucceededAndIsInBroadPhase() || !lock.GetBody().IsSoftBody())
+	{
+		return false;
+	}
+
+	const auto& body = lock.GetBody();
+	const auto* motion = static_cast<const JPH::SoftBodyMotionProperties*>(body.GetMotionProperties());
+	const auto& vertices = motion->GetVertices();
+	outVertices.Resize(vertices.size());
+	const auto transform = body.GetCenterOfMassTransform();
+	for (size_t i = 0; i < vertices.size(); ++i)
+	{
+		outVertices[i].m_position = FromJoltVector(transform * vertices[i].mPosition);
+		outVertices[i].m_velocity = FromJoltVector(body.GetRotation() * vertices[i].mVelocity);
+		outVertices[i].m_normal = glm::vec3(0.0f);
+	}
+	for (const auto& face : motion->GetFaces())
+	{
+		// Local differences retain small faces even far from the world origin.
+		const glm::vec3 normal = FromJoltVector(
+			(vertices[face.mVertex[1]].mPosition - vertices[face.mVertex[0]].mPosition).Cross(
+			vertices[face.mVertex[2]].mPosition - vertices[face.mVertex[0]].mPosition));
+		for (const auto index : face.mVertex)
+		{
+			outVertices[index].m_normal += normal;
+		}
+	}
+	for (auto& vertex : outVertices)
+	{
+		const glm::vec3 normal = vertex.m_normal;
+		const float scale = std::max({ std::abs(normal.x), std::abs(normal.y), std::abs(normal.z) });
+		// Scale area-weighted normals before normalization to retain small faces.
+		const glm::vec3 localNormal = scale > 0.0f && Math::AllFinite(normal)
+			? glm::normalize(normal / scale)
+			: glm::vec3(0.0f, 0.0f, 1.0f);
+		vertex.m_normal = FromJoltVector(body.GetRotation() * ToJolt(localNormal));
+	}
+	return true;
+}
+
 void Physics::PhysicsWorld::DestroyBody(uint32_t bodyId)
 {
 	if (bodyId == JPH::BodyID::cInvalidBodyID)
@@ -631,6 +1093,7 @@ void Physics::PhysicsWorld::DestroyBody(uint32_t bodyId)
 	}
 	bodyInterface.DestroyBody(id);
 	m_pImpl->m_bodyInstances.Remove(bodyId);
+	m_pImpl->m_softBodySettings.Remove(bodyId);
 }
 
 bool Physics::PhysicsWorld::SetBodyTransform(
@@ -640,7 +1103,7 @@ bool Physics::PhysicsWorld::SetBodyTransform(
 	bool bKinematic,
 	float deltaTime)
 {
-	if (bodyId == JPH::BodyID::cInvalidBodyID)
+	if (!m_pImpl->IsRigidBody(bodyId))
 	{
 		return false;
 	}
@@ -679,7 +1142,7 @@ bool Physics::PhysicsWorld::GetBodyPose(
 	uint32_t bodyId,
 	PhysicsBodyPose& outPose) const
 {
-	if (bodyId == JPH::BodyID::cInvalidBodyID)
+	if (!m_pImpl->m_bodyInstances.ContainsKey(bodyId))
 	{
 		return false;
 	}
@@ -707,7 +1170,7 @@ bool Physics::PhysicsWorld::SetBodyVelocity(
 	const glm::vec3& linearVelocity,
 	const glm::vec3& angularVelocity)
 {
-	if (bodyId == JPH::BodyID::cInvalidBodyID)
+	if (!m_pImpl->IsRigidBody(bodyId))
 	{
 		return false;
 	}
@@ -735,7 +1198,7 @@ bool Physics::PhysicsWorld::AddForceAtPosition(
 	const glm::vec3& force,
 	const glm::vec3& position)
 {
-	if (bodyId == JPH::BodyID::cInvalidBodyID ||
+	if (!m_pImpl->IsRigidBody(bodyId) ||
 		!Math::AllFinite(force) || !Math::AllFinite(position))
 	{
 		return false;

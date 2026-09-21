@@ -65,6 +65,10 @@ namespace Sailor::Platform
 		SAILOR_API virtual void RecalculateWindowSize() = 0;
 		SAILOR_API virtual void ChangeWindowSize(int32_t width, int32_t height, bool bIsFullScreen = false) = 0;
 		SAILOR_API virtual void ProcessSystemMessages() = 0;
+
+		SAILOR_API virtual void RequestMouseCapture(bool value) = 0;
+		SAILOR_API virtual bool IsMouseCaptured() const = 0;
+		SAILOR_API virtual glm::vec2 ConsumeMouseDelta() = 0;
 	};
 }
 
@@ -109,8 +113,12 @@ namespace Sailor::Win32
 		std::atomic<bool> m_bIsIconic = false;
 		std::atomic<bool> m_bIsResizing = false;
 		std::atomic<bool> m_bIsVsyncRequested = false;
+		std::atomic<bool> m_bMouseCaptureRequested = false;
+		std::atomic<bool> m_bMouseCaptured = false;
 
 		glm::ivec2 m_renderArea{};
+		std::mutex m_mouseDeltaMutex;
+		glm::vec2 m_mouseDelta{};
 
 	public:
 
@@ -131,6 +139,9 @@ namespace Sailor::Win32
 		SAILOR_API void SetActive(bool value) override { m_bIsActive = value; }
 		SAILOR_API void SetRunning(bool value) override { m_bIsRunning = value; }
 		SAILOR_API void SetFullscreen(bool value) override { m_bIsFullscreen = value; }
+#if defined(__APPLE__)
+		SAILOR_API void SetWindowTitle(LPCSTR lString) override;
+#else
 		SAILOR_API void SetWindowTitle(LPCSTR lString) override {
 #if defined(_WIN32)
 			SetWindowText(m_hWnd, lString);
@@ -138,6 +149,7 @@ namespace Sailor::Win32
 			(void)lString;
 #endif
 		}
+#endif
 
 		SAILOR_API HWND GetHWND() const override { return m_hWnd; }
 		SAILOR_API HDC GetHDC() const override { return m_hDC; }
@@ -170,6 +182,28 @@ namespace Sailor::Win32
 		SAILOR_API void RecalculateWindowSize() override;
 		SAILOR_API void ChangeWindowSize(int32_t width, int32_t height, bool bIsFullScreen = false) override;
 		SAILOR_API void ProcessSystemMessages() override;
+
+		SAILOR_API void RequestMouseCapture(bool value) override { m_bMouseCaptureRequested = value; }
+		SAILOR_API bool IsMouseCaptured() const override { return m_bMouseCaptured; }
+		SAILOR_API glm::vec2 ConsumeMouseDelta() override
+		{
+			const std::lock_guard<std::mutex> lock(m_mouseDeltaMutex);
+			const glm::vec2 delta = m_mouseDelta;
+			m_mouseDelta = {};
+			return m_bMouseCaptured ? delta : glm::vec2(0.0f);
+		}
+
+		SAILOR_API void AddMouseDelta(float x, float y)
+		{
+			const std::lock_guard<std::mutex> lock(m_mouseDeltaMutex);
+			if (m_bMouseCaptured)
+			{
+				m_mouseDelta += glm::vec2(x, y);
+			}
+		}
+
+		// Called on the window thread after processing focus and input events.
+		SAILOR_API void UpdateMouseCapture();
 
 		SAILOR_API static void ProcessWin32Msgs();
 		SAILOR_API static bool IsWindowAlive(const Window* pWindow);

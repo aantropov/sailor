@@ -408,6 +408,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		TConcurrentMap<ComputePipelineCacheKey, VulkanComputePipelinePtr> m_cachedComputePipelines{};
 		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, uint32_t>> m_cachedDescriptorSets{ 24 };
+		// Binding updates call UpdateDescriptorSet while holding this lock.
+		// Sailor SpinLock is not recursive and would deadlock on that nested acquisition.
 		mutable std::recursive_mutex m_descriptorUpdateMutex;
 
 			GraphicsDriver::Vulkan::VulkanApi* m_vkInstance{};

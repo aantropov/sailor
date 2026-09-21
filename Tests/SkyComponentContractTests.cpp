@@ -8,7 +8,6 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -23,6 +22,7 @@
 #include "FrameGraph/SkyParameters.h"
 #include "Engine/World.h"
 #include "FrameGraph/SkyNode.h"
+#include "Math/Math.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
 #include "RHI/Texture.h"
 
@@ -139,16 +139,18 @@ namespace
 		}
 	};
 
-	class SkyNodeMailboxProbe final :
+	class SkyNodeProbe final :
 		public Framegraph::SkyNode
 	{
 	public:
 
-		using Framegraph::SkyNode::ConsumePendingSkyParams;
 		using Framegraph::SkyNode::CreateEnvironmentProjectionMatrix;
 		using Framegraph::SkyNode::CreateEnvironmentViewMatrices;
 		using Framegraph::SkyNode::LoadCloudsNoise;
 		using Framegraph::SkyNode::AreCloudsResourcesReady;
+
+		bool IsEnvironmentDirty() const { return m_bIsDirty; }
+		void ClearEnvironmentDirty() { m_bIsDirty = false; }
 
 		void SetCloudTextures(RHI::RHITexturePtr map, RHI::RHITexturePtr low, RHI::RHITexturePtr high)
 		{
@@ -168,7 +170,7 @@ namespace
 			bool IsReady() const override { return ready; }
 			bool ready = false;
 		};
-		SkyNodeMailboxProbe node;
+		SkyNodeProbe node;
 		Require(!node.AreCloudsResourcesReady(), "clouds must be skipped before noise generation completes");
 		auto map = TRefPtr<PendingTexture>::Make();
 		auto low = TRefPtr<PendingTexture>::Make();
@@ -184,6 +186,21 @@ namespace
 		Require(!node.AreCloudsResourcesReady(), "clouds also require the weather map upload");
 		node.SetCloudTextures(map, nullptr, high);
 		Require(!node.AreCloudsResourcesReady(), "missing noise must disable clouds again");
+	}
+
+	void TestCloudNoiseRemapping()
+	{
+		Require(IsNear(Math::Remap(-0.5f, -0.5f, 1.0f, 0.0f, 1.0f), 0.0f) &&
+			IsNear(Math::Remap(1.0f, -0.5f, 1.0f, 0.0f, 1.0f), 1.0f),
+			"cloud noise remapping must map both source endpoints to the output endpoints");
+		Require(IsNear(Math::Remap(0.25f, -0.5f, 1.0f, 0.0f, 1.0f), 0.5f),
+			"cloud noise remapping must interpolate within the source range");
+		Require(IsNear(Math::Remap(4.0f, 2.0f, 6.0f, -1.0f, 3.0f), 1.0f),
+			"remapping must support non-unit input and output ranges");
+		Require(IsNear(Math::Remap(8.0f, 2.0f, 6.0f, -1.0f, 3.0f), 5.0f),
+			"remapping must extrapolate rather than clamp values outside the source range");
+		Require(IsNear(Math::Remap(3.0f, 6.0f, 2.0f, -1.0f, 3.0f), 2.0f),
+			"remapping must support a reversed source range");
 	}
 
 	void TestCloudNoiseCacheRecovery()
@@ -217,20 +234,20 @@ namespace
 			}
 		};
 
-		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		verify(SkyNodeProbe::LoadCloudsNoise(path.string(), 2, generate));
 		Require(generationCount == 1, "a cold cache should generate the noise");
-		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		verify(SkyNodeProbe::LoadCloudsNoise(path.string(), 2, generate));
 		Require(generationCount == 1, "a valid cache should not regenerate noise");
 
 		AssetRegistry::WriteBinaryFile(path, TVector<uint8_t>{ 1, 2 });
-		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		verify(SkyNodeProbe::LoadCloudsNoise(path.string(), 2, generate));
 		Require(generationCount == 2, "a truncated cache should be regenerated");
 		AssetRegistry::WriteBinaryFile(path, TVector<uint8_t>{ 1, 2, 3, 4, 5, 6, 7, 8, 9 });
-		verify(SkyNodeMailboxProbe::LoadCloudsNoise(path.string(), 2, generate));
+		verify(SkyNodeProbe::LoadCloudsNoise(path.string(), 2, generate));
 		Require(generationCount == 3, "an oversized cache should be regenerated");
 
 		// A regular file cannot be used as a parent directory, even when run as root.
-		verify(SkyNodeMailboxProbe::LoadCloudsNoise((path / "unwritable.bin").string(), 2, generate));
+		verify(SkyNodeProbe::LoadCloudsNoise((path / "unwritable.bin").string(), 2, generate));
 		Require(generationCount == 4,
 			"an unwritable cache must still return the generated in-memory volume");
 	}
@@ -251,9 +268,9 @@ namespace
 	void TestEnvironmentCubemapOrientation()
 	{
 		const glm::mat4 projection =
-			SkyNodeMailboxProbe::CreateEnvironmentProjectionMatrix();
+			SkyNodeProbe::CreateEnvironmentProjectionMatrix();
 		const auto views =
-			SkyNodeMailboxProbe::CreateEnvironmentViewMatrices();
+			SkyNodeProbe::CreateEnvironmentViewMatrices();
 		Require(views.Num() == 6,
 			"the procedural environment should define all six cubemap faces");
 
@@ -1023,90 +1040,65 @@ namespace
 		world.Clear();
 	}
 
-	void TestSkyNodeMailboxHandoff()
+	void TestSkyNodeRenderState()
 	{
-		auto node = TRefPtr<SkyNodeMailboxProbe>::Make();
-		const SkyParameters defaults = node->GetSkyParams();
+		SkyNodeProbe node;
+		const SkyParameters defaults{};
+		Require(node.GetSkyParams() == defaults && node.IsEnvironmentDirty(),
+			"a new sky must use default parameters and require an initial environment capture");
+		SkyParameters unchanged = defaults;
+		unchanged.m_ambient = 17.0f;
+		SkyParameters environment = unchanged;
+		Require(!node.GetEnvironmentSkyParams(environment) && environment == unchanged,
+			"an uncaptured sky must not expose default lighting as a completed environment");
 
-		SkyParameters first = defaults;
-		first.m_ambient = 2.0f;
-		first.m_cloudsCoverage = 1.2f;
-		node->SetSkyParams(first);
-		Require(
-			node->GetSkyParams() == defaults,
-			"SetSkyParams should publish through the pending mailbox");
-		node->ConsumePendingSkyParams();
-		Require(
-			node->GetSkyParams() == first,
-			"the render-side consume should atomically publish pending sky parameters");
+		node.ClearEnvironmentDirty();
+		node.SetSkyParams(defaults);
+		Require(!node.IsEnvironmentDirty(),
+			"reapplying unchanged parameters must not request another environment capture");
 
-		SkyParameters second = first;
-		second.m_ambient = 3.0f;
-		SkyParameters latest = second;
-		latest.m_ambient = 4.0f;
-		node->SetSkyParams(second);
-		node->SetSkyParams(latest);
-		node->ConsumePendingSkyParams();
-		Require(
-			node->GetSkyParams() == latest,
-			"the sky mailbox should publish the latest pending update");
+		SkyParameters clouds = defaults;
+		clouds.m_ambient = 2.0f;
+		clouds.m_cloudsCoverage = 1.2f;
+		node.SetSkyParams(clouds);
+		Require(node.GetSkyParams() == clouds && !node.IsEnvironmentDirty(),
+			"cloud and ambient changes must update render state without recapturing the clear-sky environment");
 
-		std::atomic<bool> bStart = false;
-		std::atomic<bool> bWriterDone = false;
-		std::atomic<bool> bSawInvalidValue = false;
-		std::thread writer([&]()
-			{
-				while (!bStart.load(std::memory_order_acquire))
-				{
-				}
+		SkyParameters lighting = clouds;
+		lighting.m_sunIlluminance = glm::vec4(60000.0f, 50000.0f, 40000.0f, 0.0f);
+		node.SetSkyParams(lighting);
+		Require(node.GetSkyParams() == lighting && node.IsEnvironmentDirty(),
+			"changed sunlight must update render state and request an environment capture");
+		Require(!node.GetEnvironmentSkyParams(environment) && environment == unchanged,
+			"assigning sky parameters must not publish an environment before the cubemap is captured");
+		node.SetSkyParams(lighting);
+		Require(node.IsEnvironmentDirty(),
+			"reapplying unchanged parameters must not cancel a pending environment capture");
+		node.ClearEnvironmentDirty();
+		node.SetSkyParams(lighting);
+		Require(!node.IsEnvironmentDirty(),
+			"unchanged lighting must not dirty an already captured environment");
 
-				for (int32_t index = 0; index < 2000; ++index)
-				{
-					SkyParameters params = defaults;
-					params.m_ambient =
-						static_cast<float>(index % 11);
-					params.m_scatteringSteps =
-						(index % 10) + 1;
-					node->SetSkyParams(params);
-				}
-				bWriterDone.store(
-					true,
-					std::memory_order_release);
-			});
-		std::thread reader([&]()
-			{
-				bStart.store(true, std::memory_order_release);
-				while (!bWriterDone.load(
-					std::memory_order_acquire))
-				{
-					node->ConsumePendingSkyParams();
-					const SkyParameters params =
-						node->GetSkyParams();
-					if (params.m_ambient < 0.0f ||
-						params.m_ambient > 10.0f ||
-						params.m_scatteringSteps < 1 ||
-						params.m_scatteringSteps > 10)
-					{
-						bSawInvalidValue.store(
-							true,
-							std::memory_order_release);
-					}
-				}
-			});
-		writer.join();
-		reader.join();
-		Require(
-			!bSawInvalidValue.load(std::memory_order_acquire),
-			"concurrent mailbox publication should not expose torn sky parameters");
+		SkyParameters ground = lighting;
+		ground.m_groundRadiance = glm::vec4(10.0f, 20.0f, 30.0f, 0.0f);
+		node.SetSkyParams(ground);
+		Require(node.GetSkyParams() == ground && node.IsEnvironmentDirty(),
+			"changed ground radiance must request an environment capture");
 
-		node->ResetSkyParams();
-		Require(
-			!(node->GetSkyParams() == defaults),
-			"ResetSkyParams should also use the pending mailbox");
-		node->ConsumePendingSkyParams();
-		Require(
-			node->GetSkyParams() == defaults,
-			"consuming a reset should restore default sky parameters");
+		node.ClearEnvironmentDirty();
+		node.ResetSkyParams();
+		Require(node.GetSkyParams() == defaults && node.IsEnvironmentDirty(),
+			"reset must restore default render state and recapture changed lighting");
+		Require(!node.GetEnvironmentSkyParams(environment) && environment == unchanged,
+			"resetting parameters must not publish an uncaptured environment");
+		node.ClearEnvironmentDirty();
+		node.ResetSkyParams();
+		Require(!node.IsEnvironmentDirty(),
+			"resetting default parameters must not request a redundant capture");
+		node.Clear();
+		Require(node.IsEnvironmentDirty() &&
+			!node.GetEnvironmentSkyParams(environment) && environment == unchanged,
+			"clearing sky resources must require recapture without exposing a ready environment");
 	}
 
 	void TestExplicitDirectionalLightSynchronization()
@@ -1358,7 +1350,8 @@ int main()
 		{ "EnvironmentKeyHashEquality", TestEnvironmentKeyHashEquality },
 		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
 		{ "GroundEnvironmentUsesTheSameSkyAndSun", TestGroundEnvironmentUsesTheSameSkyAndSun },
-		{ "SkyNodeMailboxHandoff", TestSkyNodeMailboxHandoff },
+		{ "SkyNodeRenderState", TestSkyNodeRenderState },
+		{ "CloudNoiseRemapping", TestCloudNoiseRemapping },
 		{ "CloudNoiseCacheRecovery", TestCloudNoiseCacheRecovery },
 		{ "CloudsWaitForAllTextureUploads", TestCloudsWaitForAllTextureUploads },
 		{ "EnvironmentCubemapOrientation", TestEnvironmentCubemapOrientation },

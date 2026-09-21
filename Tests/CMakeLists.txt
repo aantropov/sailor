@@ -119,6 +119,14 @@ add_executable(PhysicsRuntimeTests
     PhysicsRuntimeTests.cpp
 )
 
+add_executable(SoftBodyTests
+    SoftBodyTests.cpp
+)
+
+add_executable(SchedulerShutdownTests
+    SchedulerShutdownTests.cpp
+)
+
 add_executable(AudioContractTests
     AudioContractTests.cpp
 )
@@ -266,6 +274,8 @@ target_compile_features(VulkanDescriptorCacheTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportControllerContractTests PRIVATE cxx_std_20)
 target_compile_features(SkyComponentContractTests PRIVATE cxx_std_20)
 target_compile_features(PhysicsRuntimeTests PRIVATE cxx_std_20)
+target_compile_features(SoftBodyTests PRIVATE cxx_std_20)
+target_compile_features(SchedulerShutdownTests PRIVATE cxx_std_20)
 target_compile_features(AudioContractTests PRIVATE cxx_std_20)
 target_compile_features(GpuFrameTimeQueryTests PRIVATE cxx_std_20)
 target_compile_features(GlobalIlluminationContractTests PRIVATE cxx_std_20)
@@ -326,6 +336,8 @@ target_link_libraries(VulkanDescriptorCacheTests PRIVATE Sailor::Runtime)
 target_link_libraries(EditorViewportControllerContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(SkyComponentContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(PhysicsRuntimeTests PRIVATE Sailor::Runtime)
+target_link_libraries(SoftBodyTests PRIVATE Sailor::Runtime)
+target_link_libraries(SchedulerShutdownTests PRIVATE Sailor::Runtime)
 target_link_libraries(AudioContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(GpuFrameTimeQueryTests PRIVATE Sailor::Runtime)
 target_link_libraries(GlobalIlluminationContractTests PRIVATE Sailor::Runtime)
@@ -378,6 +390,8 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(EditorViewportControllerContractTests)
     sailor_stage_workspace_test_runtime(SkyComponentContractTests)
     sailor_stage_workspace_test_runtime(PhysicsRuntimeTests)
+    sailor_stage_workspace_test_runtime(SoftBodyTests)
+    sailor_stage_workspace_test_runtime(SchedulerShutdownTests)
     sailor_stage_workspace_test_runtime(AudioContractTests)
     sailor_stage_workspace_test_runtime(GpuFrameTimeQueryTests)
     sailor_stage_workspace_test_runtime(GlobalIlluminationContractTests)
@@ -458,6 +472,12 @@ target_include_directories(SkyComponentContractTests PRIVATE
 target_include_directories(PhysicsRuntimeTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
+target_include_directories(SoftBodyTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(SchedulerShutdownTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
 target_include_directories(AudioContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
@@ -515,6 +535,7 @@ if(APPLE)
     )
     target_link_libraries(MacWindowThreadingTests PRIVATE
         "-framework Cocoa"
+        "-framework CoreGraphics"
         "-framework QuartzCore")
     target_link_libraries(RemoteViewportMacTransportTests PRIVATE
         "-framework Cocoa"
@@ -635,6 +656,16 @@ add_test(
 )
 
 add_test(
+    NAME SoftBodyTests
+    COMMAND SoftBodyTests
+)
+
+add_test(
+    NAME SchedulerShutdownTests
+    COMMAND SchedulerShutdownTests
+)
+
+add_test(
     NAME AudioContractTests
     COMMAND AudioContractTests
 )
@@ -723,6 +754,8 @@ set_tests_properties(
     EditorViewportControllerContractTests
     SkyComponentContractTests
     PhysicsRuntimeTests
+    SoftBodyTests
+    SchedulerShutdownTests
     AudioContractTests
     GpuFrameTimeQueryTests
     EditorEngineProtocolTests

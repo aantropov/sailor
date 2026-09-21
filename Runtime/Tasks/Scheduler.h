@@ -89,7 +89,6 @@ namespace Sailor
 			WorkerThread& operator =(WorkerThread& rhs) = delete;
 
 			SAILOR_API void SetExecFlag();
-			SAILOR_API std::mutex& GetExecMutex() { return m_execMutex; }
 			SAILOR_API DWORD GetThreadId() const { return m_threadId; }
 			SAILOR_API bool IsBusy() const { return m_bIsBusy.load(); }
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
@@ -114,7 +113,6 @@ namespace Sailor
 
 			size_t m_bExecFlag = 0;
 			std::atomic<bool> m_bIsBusy;
-			std::mutex m_execMutex;
 
 			// Specific tasks for this thread
 			mutable std::mutex m_queueMutex;

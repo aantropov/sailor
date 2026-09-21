@@ -1,0 +1,18 @@
+name: SkyEnvironmentCapture
+prefabs:
+  - gameObjects:
+      - name: Sky environment capture validation
+        mobilityType: Stationary
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: 21200000000000000001
+        components: [0]
+    components:
+      - typename: Sailor::SkyEnvironmentCaptureTestComponent
+        overrideProperties:
+          testName: SkyEnvironmentCapture
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 21200000000040008000000000000001_21200000000000000001

@@ -35,16 +35,20 @@ namespace
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
 		const EMemoryPropertyFlags hostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
-		for (uint32_t scenario = 0u; scenario != 8u; ++scenario)
+		for (uint32_t scenario = 0u; scenario != 16u; ++scenario)
 		{
-			const uint32_t pattern = scenario < 6u ? scenario / 2u : (scenario == 6u ? 1u : 0u);
-			const bool occlusion = scenario >= 6u || (scenario % 2u) != 0u;
-			const bool cameraBack = scenario >= 6u;
-			const glm::ivec2 inputExtent(63, 35);
+			const uint32_t cullingScenario = scenario % 8u;
+			const uint32_t pattern = cullingScenario < 6u ? cullingScenario / 2u : (cullingScenario == 6u ? 1u : 0u);
+			const bool occlusion = cullingScenario >= 6u || (cullingScenario % 2u) != 0u;
+			const bool cameraBack = cullingScenario >= 6u;
+			// Cover the odd footprint reduction as well as the 1:1 copy and even 2x2 mips.
+			const bool fullResolution = scenario >= 8u;
+			const glm::ivec2 inputExtent = fullResolution ? glm::ivec2(64, 36) : glm::ivec2(63, 35);
+			const glm::ivec2 pyramidExtent = fullResolution ? inputExtent : glm::ivec2(31, 17);
 			TVector<float> depth(inputExtent.x * inputExtent.y);
 			for (uint32_t i = 0u; i < depth.Num(); ++i)
 			{
-				depth[i] = pattern == 1u || (pattern == 2u && i % inputExtent.x >= 31u) ? 0.1f : 0.0f;
+				depth[i] = pattern == 1u || (pattern == 2u && i % inputExtent.x >= inputExtent.x / 2u) ? 0.1f : 0.0f;
 			}
 			auto source = driver->CreateTexture(depth.GetData(), depth.Num() * sizeof(float),
 				glm::ivec3(inputExtent, 1), 1u, ETextureType::Texture2D, ETextureFormat::R32_SFLOAT,
@@ -52,7 +56,7 @@ namespace
 
 			auto cmd = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(cmd, true);
-			auto pyramid = driver->CreateRenderTarget(cmd, glm::ivec2(31, 17), 5u,
+			auto pyramid = driver->CreateRenderTarget(cmd, pyramidExtent, fullResolution ? 7u : 5u,
 				ETextureFormat::R32_SFLOAT, ETextureFiltration::Nearest, ETextureClamping::Clamp,
 				ETextureUsageBit::Storage_Bit | ETextureUsageBit::Sampled_Bit);
 			for (uint32_t mip = 0u; mip != pyramid->GetMipLevels(); ++mip)
@@ -113,7 +117,8 @@ namespace
 				{ 36u, 1u, 0u, 0, OutputStart + 512u } };
 			UboFrameData frame{};
 			frame.m_view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, cameraBack ? -30.0f : 0.0f));
-			frame.m_projection = Math::PerspectiveInfiniteRH(glm::radians(90.0f), 63.0f / 35.0f, 1.0f);
+			frame.m_projection = Math::PerspectiveInfiniteRH(glm::radians(90.0f),
+				static_cast<float>(inputExtent.x) / inputExtent.y, 1.0f);
 			frame.m_invProjection = glm::inverse(frame.m_projection);
 			frame.m_cameraPosition = glm::vec4(0.0f, 0.0f, cameraBack ? 30.0f : 0.0f, 1.0f);
 			frame.m_viewportSize = inputExtent;
@@ -189,7 +194,7 @@ void GpuOcclusionTestCaseComponent::Tick(float)
 		const auto& error = m_validation->GetResult();
 		if (!error.empty()) { MarkFailed(error); return; }
 		AddJournalEvent("GpuOcclusionEvidence",
-			"8 GPU scenarios passed; 513 instances, 3 batches, nonzero offsets, NPOT Hi-Z, masked edge, near plane, shear, camera change",
+			"16 GPU scenarios passed; 513 instances, 3 batches, nonzero offsets, odd/1:1/2x2 Hi-Z, masked edge, near plane, shear, camera change",
 			Utils::GetCurrentTimeMs() - m_gpuStartTimeMs);
 		MarkPassed();
 		return;

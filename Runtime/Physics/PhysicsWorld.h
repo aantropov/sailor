@@ -2,6 +2,7 @@
 #include "Core/Defines.h"
 #include "Memory/UniquePtr.hpp"
 #include "Physics/PhysicsTypes.h"
+#include "Physics/SoftBodyTypes.h"
 
 namespace Sailor::Physics
 {
@@ -17,6 +18,32 @@ namespace Sailor::Physics
 		SAILOR_API bool CreateBody(
 			const RigidBodyDesc& desc,
 			uint32_t& outBodyId);
+
+		// Soft-body methods run between Step calls on the world's owner thread.
+		SAILOR_API bool CreateSoftBody(
+			const SoftBodyDesc& desc,
+			uint32_t& outBodyId);
+		// Targets and readback use world space and the descriptor's vertex order.
+		SAILOR_API bool SetSoftBodyTargets(
+			uint32_t bodyId,
+			const TVector<glm::vec3>& targets,
+			float maxDistanceMultiplier = 1.0f,
+			bool bReset = false);
+		// Refit local-space constraints without resetting particles or skin binds.
+		SAILOR_API bool SetSoftBodyRestPose(
+			uint32_t bodyId,
+			const TVector<glm::vec3>& positions,
+			bool bPreserveEdgeLengths = false);
+		SAILOR_API bool ApplySoftBodyWind(
+			uint32_t bodyId,
+			const glm::vec3& velocity,
+			float airDensity,
+			float drag,
+			float deltaTime);
+		SAILOR_API bool GetSoftBodyVertices(
+			uint32_t bodyId,
+			TVector<SoftBodyVertex>& outVertices) const;
+
 		SAILOR_API void DestroyBody(uint32_t bodyId);
 		SAILOR_API bool SetBodyTransform(
 			uint32_t bodyId,

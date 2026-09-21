@@ -73,6 +73,7 @@ std::string App::s_workspace = "../";
 namespace
 {
 	Settings::GraphicsSettingsState g_graphicsSettingsState{};
+	bool g_updateWindowTitle = true;
 	std::atomic<Settings::ERenderStatsMode> g_renderStatsMode{ Settings::ERenderStatsMode::None };
 	std::atomic<RHI::ESceneViewRenderMode> g_editorRenderMode{ RHI::ESceneViewRenderMode::Lit };
 }
@@ -395,6 +396,10 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 		{
 			params.m_bRunConsole = false;
 		}
+		else if (arg == "--no-title-stats")
+		{
+			params.m_bUpdateWindowTitle = false;
+		}
 		else if (arg == "--world")
 		{
 			params.m_world = Utils::GetArgValue(args, i, num);
@@ -444,6 +449,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	timeBeginPeriod(1);
 #endif
 	const AppArgs params = ParseCommandLineArgs(commandLineArgs, num);
+	g_updateWindowTitle = params.m_bUpdateWindowTitle;
 	if (params.m_bWaitForDebugger)
 	{
 		int32_t timeout = 5000;
@@ -955,7 +961,7 @@ void App::Start()
 				stats.m_numSubmittedCommandBuffers
 			);
 
-			if (!bRunsInsideEditor)
+			if (!bRunsInsideEditor && g_updateWindowTitle)
 			{
 				// The embedded renderer's hidden window belongs to the editor UI
 				// thread on Windows. SetWindowText sends a synchronous message to

@@ -241,8 +241,24 @@ void Renderer::UpdateMemoryStats()
 
 TVector<GpuTiming> Renderer::GetSlowestGpuTimings() const
 {
-	std::lock_guard<std::mutex> lock(m_gpuTimingsMutex);
-	return m_slowestGpuTimings;
+	m_gpuTimingsLock.Lock();
+	TVector<GpuTiming> timings;
+	const size_t count = std::min<size_t>(3u, m_gpuTimings.Num());
+	timings.Reserve(count);
+	for (size_t i = 0; i < count; ++i)
+	{
+		timings.Add(m_gpuTimings[i]);
+	}
+	m_gpuTimingsLock.Unlock();
+	return timings;
+}
+
+TVector<GpuTiming> Renderer::GetGpuTimings() const
+{
+	m_gpuTimingsLock.Lock();
+	TVector<GpuTiming> timings = m_gpuTimings;
+	m_gpuTimingsLock.Unlock();
+	return timings;
 }
 
 void Renderer::PublishGpuTimings(const TVector<GpuTiming>& timings)
@@ -297,27 +313,23 @@ void Renderer::PublishGpuTimings(const TVector<GpuTiming>& timings)
 			return history.m_lastSeenGeneration != generation;
 		});
 
-	TVector<GpuTiming> slowest;
-	slowest.Reserve(m_gpuTimingHistory.Num());
+	TVector<GpuTiming> averagedTimings;
+	averagedTimings.Reserve(m_gpuTimingHistory.Num());
 	for (const auto& history : m_gpuTimingHistory)
 	{
 		GpuTiming timing;
 		timing.m_name = history.m_name;
 		timing.m_durationMilliseconds = history.m_average.GetAverage();
-		slowest.Emplace(std::move(timing));
+		averagedTimings.Emplace(std::move(timing));
 	}
-	slowest.Sort(
+	averagedTimings.Sort(
 		[](const GpuTiming& lhs, const GpuTiming& rhs)
 		{
 			return lhs.m_durationMilliseconds > rhs.m_durationMilliseconds;
 		});
-	if (slowest.Num() > 3u)
-	{
-		slowest.Resize(3u);
-	}
-
-	std::lock_guard<std::mutex> lock(m_gpuTimingsMutex);
-	m_slowestGpuTimings = std::move(slowest);
+	m_gpuTimingsLock.Lock();
+	m_gpuTimings = std::move(averagedTimings);
+	m_gpuTimingsLock.Unlock();
 }
 
 RHIGlobalIlluminationRenderStats

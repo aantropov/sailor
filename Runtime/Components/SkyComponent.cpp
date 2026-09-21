@@ -7,6 +7,7 @@
 #include "Math/Math.h"
 #include "RHI/Renderer.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
+#include "Tasks/Tasks.h"
 #include <glm/gtx/quaternion.hpp>
 #include <cmath>
 
@@ -70,7 +71,10 @@ void SkyComponent::EndPlay()
 {
 	if (auto skyNode = GetSkyNode())
 	{
-		skyNode->ResetSkyParams();
+		Tasks::CreateTask("Reset sky parameters", [skyNode]() mutable
+			{
+				skyNode->ResetSkyParams();
+			}, EThreadType::Render)->Run();
 	}
 }
 
@@ -90,7 +94,10 @@ void SkyComponent::Apply()
 
 	if (auto skyNode = GetSkyNode())
 	{
-		skyNode->SetSkyParams(m_skyParams);
+		Tasks::CreateTask("Update sky parameters", [skyNode, skyParams = m_skyParams]() mutable
+			{
+				skyNode->SetSkyParams(skyParams);
+			}, EThreadType::Render)->Run();
 	}
 
 	if (!m_directionalLight)
