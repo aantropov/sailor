@@ -1080,27 +1080,11 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	RHI::RHITexturePtr transmissionFramebuffer = GetResolvedAttachment("transmissionFramebuffer");
 	RHI::RHITexturePtr sceneDepth = GetResolvedAttachment("sceneDepth");
 	RHI::RHITexturePtr sampledSceneDepth = sceneDepth;
-	if (sceneDepth)
+	if (auto depthTarget = sceneDepth.DynamicCast<RHI::RHIRenderTarget>())
 	{
-		// sceneDepth is a snapshot from an earlier pass, not the depth target we write here.
-		bool bAliasesDepthAttachment = sceneDepth == depthAttachment;
-#if defined(SAILOR_BUILD_WITH_VULKAN)
-		bAliasesDepthAttachment |= sceneDepth->m_vulkan.m_image &&
-			sceneDepth->m_vulkan.m_image == depthAttachment->m_vulkan.m_image;
-#endif
-		if (bAliasesDepthAttachment)
+		if (auto depthAspect = depthTarget->GetDepthAspect())
 		{
-			SAILOR_LOG_ERROR("RenderScene: sceneDepth must not alias the depth attachment. Copy depth before this pass.");
-			m_syncSharedResources.Unlock();
-			return;
-		}
-
-		if (auto depthTarget = sceneDepth.DynamicCast<RHI::RHIRenderTarget>())
-		{
-			if (auto depthAspect = depthTarget->GetDepthAspect())
-			{
-				sampledSceneDepth = depthAspect;
-			}
+			sampledSceneDepth = depthAspect;
 		}
 	}
 	RHI::RHITexturePtr globalIlluminationProbeCellIndicesTexture =
