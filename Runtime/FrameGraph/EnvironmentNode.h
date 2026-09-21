@@ -1,15 +1,14 @@
 #pragma once
 #include "Core/Defines.h"
 #include "Memory/RefPtr.hpp"
+#include "Memory/SharedPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/SkyNode.h"
 #include "FrameGraph/LocalReflection.h"
-#include <memory>
 #include <atomic>
-#include <mutex>
 
 namespace Sailor::Framegraph
 {
@@ -40,7 +39,7 @@ namespace Sailor::Framegraph
 			return true;
 		}
 
-		// CPU producers hand off owned pixels. Only Process touches GPU resources.
+		// Updates are queued to Render. The game thread may read the published status.
 		SAILOR_SHARED_API bool SetLocalReflection(LocalReflectionImage image);
 		SAILOR_SHARED_API void ResetLocalReflection();
 		bool IsLocalReflectionReady() const { return m_localReflectionReady.load(); }
@@ -50,10 +49,8 @@ namespace Sailor::Framegraph
 
 	protected:
 		void ProcessLocalReflection(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr commandList);
-		std::mutex m_localReflectionLock;
-		std::shared_ptr<const LocalReflectionImage> m_pendingLocalReflection;
-		std::shared_ptr<const LocalReflectionImage> m_uploadLocalReflection;
-		uint64_t m_pendingLocalRevision = 0u, m_localRevision = 0u;
+		TSharedPtr<const LocalReflectionImage> m_localReflection;
+		bool m_bLocalReflectionDirty = false;
 		std::atomic<bool> m_localReflectionReady{ false };
 		std::atomic<uint32_t> m_localReflectionSamples{ 0u };
 		RHI::RHITexturePtr m_localUploadTexture;

@@ -11,6 +11,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "FrameGraph/SkyNode.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "Tasks/Tasks.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -427,54 +428,58 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 void EnvironmentNode::Clear()
 {
-	ResetLocalReflection();
+	m_localReflection.Clear();
+	m_localUploadTexture.Clear();
+	m_localParameters = {};
+	m_bLocalReflectionDirty = true;
+	m_localReflectionReady.store(false);
+	m_localReflectionSamples.store(0u);
 }
 
 bool EnvironmentNode::SetLocalReflection(LocalReflectionImage image)
 {
-	if (!image.IsValid()) return false;
+	if (!image.IsValid())
+	{
+		return false;
+	}
 	image.m_parameters.m_minEnabled.w = 1.0f;
-	auto owned = std::make_shared<const LocalReflectionImage>(std::move(image));
-	std::lock_guard<std::mutex> lock(m_localReflectionLock);
-	m_pendingLocalReflection = std::move(owned);
-	++m_pendingLocalRevision;
-	// Refinement keeps the current capture valid during upload. Producers reset
-	// explicitly when its scene or lighting becomes obsolete.
+	Tasks::CreateTask("Update local reflection",
+		[node = TRefPtr<EnvironmentNode>(this), image = TSharedPtr<const LocalReflectionImage>::Make(std::move(image))]() mutable
+		{
+			node->m_localReflection = std::move(image);
+			node->m_localUploadTexture.Clear();
+			node->m_bLocalReflectionDirty = true;
+		}, EThreadType::Render)->Run();
 	return true;
 }
 
 void EnvironmentNode::ResetLocalReflection()
 {
-	std::lock_guard<std::mutex> lock(m_localReflectionLock);
-	m_pendingLocalReflection.reset();
-	++m_pendingLocalRevision;
-	m_localReflectionReady.store(false);
-	m_localReflectionSamples.store(0u);
+	Tasks::CreateTask("Reset local reflection", [node = TRefPtr<EnvironmentNode>(this)]() mutable
+		{
+			node->Clear();
+		}, EThreadType::Render)->Run();
 }
 
 void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICommandListPtr commandList)
 {
+	if (!m_bLocalReflectionDirty)
 	{
-		std::lock_guard<std::mutex> lock(m_localReflectionLock);
-		if (m_localRevision != m_pendingLocalRevision)
-		{
-			m_localRevision = m_pendingLocalRevision;
-			m_uploadLocalReflection = m_pendingLocalReflection;
-			m_localUploadTexture = {};
-			if (!m_uploadLocalReflection)
-			{
-				m_localParameters = {};
-				frameGraph->SetSampler("g_localEnvCubemap", {});
-				frameGraph->SetSampler("g_localSheenEnvCubemap", {});
-			}
-		}
+		return;
 	}
-	if (!m_uploadLocalReflection || !m_pComputeSpecularShader || !m_pComputeSheenShader) return;
+	if (!m_localReflection)
+	{
+		frameGraph->SetSampler("g_localEnvCubemap", {});
+		frameGraph->SetSampler("g_localSheenEnvCubemap", {});
+		m_bLocalReflectionDirty = false;
+		return;
+	}
+	if (!m_pComputeSpecularShader || !m_pComputeSheenShader) return;
 	auto& driver = RHI::Renderer::GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	if (!m_localUploadTexture)
 	{
-		const auto& source = *m_uploadLocalReflection;
+		const auto& source = *m_localReflection;
 		m_localUploadTexture = driver->CreateTexture(source.m_pixels.GetData(),
 			source.m_pixels.Num() * sizeof(glm::vec4), glm::ivec3(source.m_extent, 1), 1u,
 			ETextureType::Texture2D, ETextureFormat::R32G32B32A32_SFLOAT,
@@ -535,20 +540,13 @@ void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICom
 	};
 	auto specular = prefilter(false);
 	auto sheen = prefilter(true);
-	{
-		std::lock_guard<std::mutex> lock(m_localReflectionLock);
-		// A world/lighting reset may have arrived while commands were recorded.
-		// Never publish that now-obsolete capture or report it as ready.
-		if (m_localRevision == m_pendingLocalRevision && m_pendingLocalReflection)
-		{
-			frameGraph->SetSampler("g_localEnvCubemap", specular);
-			frameGraph->SetSampler("g_localSheenEnvCubemap", sheen);
-			m_localParameters = m_uploadLocalReflection->m_parameters;
-			m_localReflectionSamples.store(m_uploadLocalReflection->m_samplesPerPixel);
-			m_localReflectionReady.store(true);
-		}
-	}
-	m_uploadLocalReflection.reset();
-	m_localUploadTexture = {};
+	frameGraph->SetSampler("g_localEnvCubemap", specular);
+	frameGraph->SetSampler("g_localSheenEnvCubemap", sheen);
+	m_localParameters = m_localReflection->m_parameters;
+	m_localReflectionSamples.store(m_localReflection->m_samplesPerPixel);
+	m_localReflectionReady.store(true);
+	m_localReflection.Clear();
+	m_localUploadTexture.Clear();
+	m_bLocalReflectionDirty = false;
 	commands->EndDebugRegion(commandList);
 }

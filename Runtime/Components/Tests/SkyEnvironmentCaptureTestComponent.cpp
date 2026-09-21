@@ -13,6 +13,29 @@
 
 using namespace Sailor;
 
+namespace
+{
+	Framegraph::LocalReflectionParameters LocalParameters(uint32_t samples)
+	{
+		const float x = static_cast<float>(samples);
+		return { { x, 0.0f, 0.0f, 1.0f }, { x - 2.0f, -2.0f, -2.0f, 1.0f }, { x + 2.0f, 2.0f, 2.0f, 0.0f } };
+	}
+
+	Framegraph::LocalReflectionImage LocalImage(uint32_t samples)
+	{
+		Framegraph::LocalReflectionImage image;
+		image.m_parameters = LocalParameters(samples);
+		image.m_extent = { 8u, 4u };
+		image.m_samplesPerPixel = samples;
+		image.m_pixels.Resize(32);
+		for (auto& pixel : image.m_pixels)
+		{
+			pixel = glm::vec4(0.25f * static_cast<float>(samples), 0.5f, 1.0f, 1.0f);
+		}
+		return image;
+	}
+}
+
 struct SkyEnvironmentCaptureTestComponent::CaptureState
 {
 	enum class Stage { Initialize, Baseline, FirstCapture, LatestCapture };
@@ -144,15 +167,133 @@ struct SkyEnvironmentCaptureTestComponent::CaptureState
 			m_pendingObservations[0], m_pendingObservations[1]) };
 	}
 
+	bool MatchesLocalPublication(uint32_t samples, const std::array<RHI::RHITexturePtr, 2>& textures)
+	{
+		auto environment = m_frameGraph->GetGraphNode("Environment").DynamicCast<Framegraph::EnvironmentNode>();
+		const auto actual = environment->GetLocalReflectionParameters();
+		const auto expected = samples ? LocalParameters(samples) : Framegraph::LocalReflectionParameters{};
+		return environment->IsLocalReflectionReady() == (samples != 0) &&
+			environment->GetLocalReflectionSamples() == samples &&
+			actual.m_positionBlend == expected.m_positionBlend && actual.m_minEnabled == expected.m_minEnabled &&
+			actual.m_max == expected.m_max &&
+			m_frameGraph->GetSampler("g_localEnvCubemap") == textures[0] &&
+			m_frameGraph->GetSampler("g_localSheenEnvCubemap") == textures[1];
+	}
+
+	bool MatchesPendingLocalPublication(uint32_t previousSamples, uint32_t pendingSamples)
+	{
+		if (MatchesLocalPublication(previousSamples, m_localTextures))
+		{
+			return true;
+		}
+		const std::array<RHI::RHITexturePtr, 2> textures = {
+			m_frameGraph->GetSampler("g_localEnvCubemap"), m_frameGraph->GetSampler("g_localSheenEnvCubemap")
+		};
+		return textures[0] && textures[1] && textures[0] != m_localTextures[0] && textures[1] != m_localTextures[1] &&
+			MatchesLocalPublication(pendingSamples, textures);
+	}
+
+	CheckResult CheckLocalReflection(uint32_t samples)
+	{
+		if (m_bCancelled)
+		{
+			return {};
+		}
+		auto environment = m_frameGraph->GetGraphNode("Environment").DynamicCast<Framegraph::EnvironmentNode>();
+		if (samples && environment->GetLocalReflectionSamples() != samples)
+		{
+			const bool bCoherent = samples == 1u ? MatchesLocalPublication(0u, m_localTextures) :
+				MatchesPendingLocalPublication(1u, 2u);
+			return bCoherent ? CheckResult{} :
+				CheckResult{ false, "Pending local reflection has neither the prior nor a coherent intermediate publication." };
+		}
+		const std::array<RHI::RHITexturePtr, 2> textures = {
+			m_frameGraph->GetSampler("g_localEnvCubemap"), m_frameGraph->GetSampler("g_localSheenEnvCubemap")
+		};
+		if (!MatchesLocalPublication(samples, textures))
+		{
+			return { false, "Local reflection samples, readiness and box parameters disagree." };
+		}
+		if (!samples)
+		{
+			if (textures[0] || textures[1])
+			{
+				return m_bLocalResetObserved ? CheckResult{ false, "Local reflection cubemaps reappeared after reset." } :
+					CheckResult{};
+			}
+			if (!m_bLocalResetObserved)
+			{
+				m_bLocalResetObserved = true;
+				return {};
+			}
+			return { true, "Owned local images reached samples 1 and 4 with matching box parameters and both cubemaps; "
+				"queued 2 -> 4 and 8 -> reset observations matched either the prior publication or a coherent intermediate update. "
+				"Reset cleared parameters, readiness, samples and both samplers across two observations. "
+				"Caller image data was mutated and destroyed before queued updates ran; GPU upload start and pixels were not inspected." };
+		}
+		if (!textures[0] || !textures[1] || textures[0] == m_localTextures[0] || textures[1] == m_localTextures[1])
+		{
+			return { false, "Completed local reflection did not publish two new cubemaps." };
+		}
+		m_localTextures = textures;
+		return { true, {} };
+	}
+
 	// Only Render inspects capture state; EndPlay may cancel pending work.
 	std::atomic_bool m_bCancelled = false;
 	RHI::RHIFrameGraphPtr m_frameGraph;
 	std::array<SkyParameters, 3> m_parameters;
 	std::array<RHI::RHITexturePtr, 4> m_publishedTextures;
 	std::array<uint32_t, 2> m_pendingObservations{};
+	std::array<RHI::RHITexturePtr, 2> m_localTextures{};
 	Stage m_stage = Stage::Initialize;
 	bool m_bRequestedLatest = false;
+	bool m_bLocalResetObserved = false;
 };
+
+SkyEnvironmentCaptureTestComponent::~SkyEnvironmentCaptureTestComponent() = default;
+
+bool SkyEnvironmentCaptureTestComponent::QueueLocalReflection(
+	uint32_t pendingSamples, uint32_t finalSamples, uint32_t publishedSamples)
+{
+	auto environment = m_capture->m_frameGraph->GetGraphNode("Environment").DynamicCast<Framegraph::EnvironmentNode>();
+	std::promise<void> releaseRender;
+	Tasks::CreateTask("Hold Render for local reflection submissions",
+		[ready = releaseRender.get_future().share()]() { ready.wait(); }, EThreadType::Render)->Run();
+	const auto submitImage = [&](uint32_t samples)
+	{
+		auto image = LocalImage(samples);
+		const bool bAccepted = environment->SetLocalReflection(image);
+		image.m_parameters = {};
+		image.m_samplesPerPixel = 99u;
+		image.m_pixels.Clear();
+		return bAccepted;
+	};
+	if (!submitImage(pendingSamples))
+	{
+		return false;
+	}
+	if (pendingSamples != finalSamples)
+	{
+		m_localPublicationCheck = Tasks::CreateTaskWithResult<bool>("Observe coherent local reflection update",
+			[capture = m_capture, publishedSamples, pendingSamples]()
+			{
+				return capture->MatchesPendingLocalPublication(publishedSamples, pendingSamples);
+			}, EThreadType::Render);
+		m_localPublicationCheck->Run();
+		if (finalSamples && !submitImage(finalSamples))
+		{
+			return false;
+		}
+		if (!finalSamples)
+		{
+			environment->ResetLocalReflection();
+		}
+	}
+	m_expectedLocalSamples = finalSamples;
+	releaseRender.set_value();
+	return true;
+}
 
 void SkyEnvironmentCaptureTestComponent::BeginPlay()
 {
@@ -191,12 +332,38 @@ void SkyEnvironmentCaptureTestComponent::Tick(float)
 		{
 			if (m_bHandoffComplete)
 			{
-				AddJournalEvent("SkyEnvironmentCaptureEvidence", result.m_message);
-				MarkPassed();
-				return;
+				bool bQueued = true;
+				if (!m_bSkyCaptureComplete)
+				{
+					AddJournalEvent("SkyEnvironmentCaptureEvidence", result.m_message);
+					m_bSkyCaptureComplete = true;
+					bQueued = QueueLocalReflection(1u, 1u, 0u);
+				}
+				else if (m_expectedLocalSamples == 1u)
+				{
+					bQueued = QueueLocalReflection(2u, 4u, 1u);
+				}
+				else if (m_expectedLocalSamples == 4u)
+				{
+					bQueued = QueueLocalReflection(8u, 0u, 4u);
+				}
+				else
+				{
+					AddJournalEvent("LocalReflectionEvidence", result.m_message);
+					MarkPassed();
+					return;
+				}
+				if (!bQueued)
+				{
+					MarkFailed("Valid local reflection image was rejected.");
+					return;
+				}
 			}
-			AddJournalEvent("SkyComponentHandoffEvidence", result.m_message);
-			m_bHandoffComplete = true;
+			else
+			{
+				AddJournalEvent("SkyComponentHandoffEvidence", result.m_message);
+				m_bHandoffComplete = true;
+			}
 		}
 		else if (!result.m_message.empty())
 		{
@@ -254,10 +421,18 @@ void SkyEnvironmentCaptureTestComponent::Tick(float)
 			releaseRender.set_value();
 			return;
 		}
-		m_capture = std::make_shared<CaptureState>(renderer->GetFrameGraph()->GetRHI());
+		m_capture = TSharedPtr<CaptureState>::Make(renderer->GetFrameGraph()->GetRHI());
 	}
 	m_check = Tasks::CreateTaskWithResult<CheckResult>("Validate sky environment capture",
-		[capture = m_capture]() { return capture->Check(); }, EThreadType::Render);
+		[capture = m_capture, bLocal = m_bSkyCaptureComplete, samples = m_expectedLocalSamples,
+		publication = m_localPublicationCheck]() -> CheckResult
+		{
+			if (publication && (!publication->IsFinished() || !publication->GetResult()))
+			{
+				return { false, "Queued local reflection update has neither the prior nor a coherent intermediate publication." };
+			}
+			return bLocal ? capture->CheckLocalReflection(samples) : capture->Check();
+		}, EThreadType::Render);
 	m_check->Run();
 }
 
@@ -268,6 +443,7 @@ void SkyEnvironmentCaptureTestComponent::EndPlay()
 		m_capture->m_bCancelled = true;
 	}
 	m_check.Clear();
-	m_capture.reset();
+	m_localPublicationCheck.Clear();
+	m_capture.Clear();
 	TestCaseComponent::EndPlay();
 }
