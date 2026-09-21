@@ -1,6 +1,5 @@
 #pragma once
 #include "Core/Defines.h"
-#include "Core/SpinLock.h"
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
@@ -59,6 +58,7 @@ namespace Sailor::Framegraph
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_pShaderBindings; }
 		SAILOR_API void SetLocation(float latitudeDegrees, float longitudeDegrees);
 		SAILOR_API void MarkDirty() { m_bIsDirty = true; }
+		// Sky state is owned by the Render thread.
 		SAILOR_API void SetSkyParams(const SkyParameters& skyParams);
 		SAILOR_API void ResetSkyParams();
 		SAILOR_API SkyParameters GetSkyParams() const;
@@ -74,20 +74,14 @@ namespace Sailor::Framegraph
 			mat4 m_starsModelView{};
 		};
 
-		SAILOR_API void ConsumePendingSkyParams();
 		SAILOR_API bool AreCloudsResourcesReady() const;
 		SAILOR_API static glm::mat4 CreateEnvironmentProjectionMatrix();
 		SAILOR_API static TVector<glm::mat4x4> CreateEnvironmentViewMatrices();
 
-		// Synchronizes the existing game-to-render parameter mailbox.
-		mutable SpinLock m_skyParamsLock;
 		SkyParameters m_skyParams{};
-		SkyParameters m_pendingSkyParams{};
 		SkyParameters m_capturedEnvironmentParams{};
 		SkyParameters m_readyEnvironmentParams{};
 		bool m_bEnvironmentReady = false;
-		uint64_t m_skyParamsRevision = 0;
-		uint64_t m_pendingSkyParamsRevision = 0;
 
 		mat4 m_starsModelView{};
 

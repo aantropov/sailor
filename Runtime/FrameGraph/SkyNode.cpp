@@ -121,13 +121,12 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 
 void SkyNode::SetSkyParams(const SkyParameters& skyParams)
 {
-	m_skyParamsLock.Lock();
-	if (!(m_pendingSkyParams == skyParams))
+	const SkyEnvironmentKey previousEnvironment = m_skyParams.GetEnvironmentKey();
+	m_skyParams = skyParams;
+	if (!(previousEnvironment == m_skyParams.GetEnvironmentKey()))
 	{
-		m_pendingSkyParams = skyParams;
-		m_pendingSkyParamsRevision++;
+		MarkDirty();
 	}
-	m_skyParamsLock.Unlock();
 }
 
 void SkyNode::ResetSkyParams()
@@ -137,28 +136,7 @@ void SkyNode::ResetSkyParams()
 
 SkyParameters SkyNode::GetSkyParams() const
 {
-	m_skyParamsLock.Lock();
-	const SkyParameters skyParams = m_skyParams;
-	m_skyParamsLock.Unlock();
-	return skyParams;
-}
-
-void SkyNode::ConsumePendingSkyParams()
-{
-	m_skyParamsLock.Lock();
-	if (m_skyParamsRevision != m_pendingSkyParamsRevision)
-	{
-		const SkyEnvironmentKey previousEnvironment =
-			m_skyParams.GetEnvironmentKey();
-		m_skyParams = m_pendingSkyParams;
-		m_skyParamsRevision = m_pendingSkyParamsRevision;
-
-		if (!(previousEnvironment == m_skyParams.GetEnvironmentKey()))
-		{
-			MarkDirty();
-		}
-	}
-	m_skyParamsLock.Unlock();
+	return m_skyParams;
 }
 
 bool SkyNode::GetEnvironmentSkyParams(SkyParameters& skyParams) const
@@ -300,7 +278,6 @@ bool SkyNode::AreCloudsResourcesReady() const
 void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	ResetDrawCallStats();
-	ConsumePendingSkyParams();
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();

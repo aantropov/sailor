@@ -1,5 +1,6 @@
 #include "Components/Tests/SkyEnvironmentCaptureTestComponent.h"
 #include "Components/CameraComponent.h"
+#include "Components/SkyComponent.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "FrameGraph/EnvironmentNode.h"
@@ -8,6 +9,7 @@
 #include <array>
 #include <atomic>
 #include <format>
+#include <future>
 
 using namespace Sailor;
 
@@ -187,11 +189,16 @@ void SkyEnvironmentCaptureTestComponent::Tick(float)
 		m_check.Clear();
 		if (result.m_bPassed)
 		{
-			AddJournalEvent("SkyEnvironmentCaptureEvidence", result.m_message);
-			MarkPassed();
-			return;
+			if (m_bHandoffComplete)
+			{
+				AddJournalEvent("SkyEnvironmentCaptureEvidence", result.m_message);
+				MarkPassed();
+				return;
+			}
+			AddJournalEvent("SkyComponentHandoffEvidence", result.m_message);
+			m_bHandoffComplete = true;
 		}
-		if (!result.m_message.empty())
+		else if (!result.m_message.empty())
 		{
 			MarkFailed(result.m_message);
 			return;
@@ -203,6 +210,48 @@ void SkyEnvironmentCaptureTestComponent::Tick(float)
 		auto renderer = App::GetSubmodule<RHI::Renderer>();
 		if (!renderer || !renderer->GetFrameGraph() || !renderer->GetFrameGraph()->GetRHI())
 		{
+			return;
+		}
+		if (!m_bHandoffComplete)
+		{
+			auto sky = renderer->GetFrameGraph()->GetRHI()->GetGraphNode("Sky").DynamicCast<Framegraph::SkyNode>();
+			if (!sky)
+			{
+				MarkFailed("Sky component handoff requires a Sky node.");
+				return;
+			}
+
+			// Keep Render behind the producer's lifetime without waiting on Main.
+			std::promise<void> releaseRender;
+			Tasks::CreateTask("Hold Render for sky producer destruction",
+				[ready = releaseRender.get_future().share()]() { ready.wait(); }, EThreadType::Render)->Run();
+			{
+				SkyComponent producer;
+				producer.SetCloudsDensity(0.25f);
+				producer.Tick(0.0f);
+				const SkyParameters expected = producer.GetSkyParameters();
+				auto updateCheck = Tasks::CreateTaskWithResult<bool>("Observe copied sky component parameters",
+					[sky, expected]() { return sky->GetSkyParams() == expected; }, EThreadType::Render);
+				updateCheck->Run();
+				producer.SetCloudsDensity(0.75f);
+				producer.EndPlay();
+				m_check = Tasks::CreateTaskWithResult<CheckResult>("Observe ordered sky component reset",
+					[sky, updateCheck]() -> CheckResult
+					{
+						if (!updateCheck->GetResult())
+						{
+							return { false, "Queued sky update did not preserve parameters after producer mutation and destruction." };
+						}
+						if (!(sky->GetSkyParams() == SkyParameters{}))
+						{
+							return { false, "Sky component EndPlay did not reset parameters after its queued update." };
+						}
+						return { true, "SkyComponent Tick and EndPlay reached Render in update/reset order; "
+							"copied parameters survived producer mutation and destruction before Render was released." };
+					}, EThreadType::Render);
+				m_check->Run();
+			}
+			releaseRender.set_value();
 			return;
 		}
 		m_capture = std::make_shared<CaptureState>(renderer->GetFrameGraph()->GetRHI());

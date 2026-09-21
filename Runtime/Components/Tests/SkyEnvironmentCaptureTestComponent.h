@@ -24,6 +24,7 @@ namespace Sailor
 		struct CaptureState;
 		std::shared_ptr<CaptureState> m_capture;
 		Tasks::TaskPtr<CheckResult> m_check;
+		bool m_bHandoffComplete = false;
 	};
 }
 
