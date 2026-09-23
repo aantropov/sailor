@@ -92,6 +92,15 @@ add_executable(BoundsContractTests
     BoundsContractTests.cpp
 )
 
+add_executable(MathContractTests MathContractTests.cpp)
+target_compile_features(MathContractTests PRIVATE cxx_std_20)
+target_include_directories(MathContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(MathContractTests PRIVATE Sailor::Runtime)
+add_test(NAME MathContractTests COMMAND MathContractTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(MathContractTests)
+endif()
+
 add_executable(LandscapeStreamingTests
     LandscapeStreamingTests.cpp
 )
