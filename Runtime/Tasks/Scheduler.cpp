@@ -195,13 +195,6 @@ void WorkerThread::Process()
 
 void Scheduler::Initialize()
 {
-	m_taskSyncPool.AddDefault(MaxTasksInPool);
-
-	for (uint32_t i = 0; i < MaxTasksInPool; i++)
-	{
-		m_freeList.push((uint16_t)(MaxTasksInPool - i - 1));
-	}
-
 	AttachCurrentThreadAsMainThread();
 
 #if defined(_WIN32)
@@ -353,11 +346,16 @@ Scheduler::~Scheduler()
 
 	m_workerThreads.Clear();
 
-	// Pending tasks return their sync handles when their last reference is released.
-	// Drop the queues while the synchronization pool and free list are still alive.
+	// Pending tasks can return their sync blocks when the queues release them.
 	for (auto& queue : m_pSharedTaskQueue)
 	{
 		queue.Clear();
+	}
+
+	TaskSyncBlock* block = nullptr;
+	while (m_freeList.try_pop(block))
+	{
+		delete block;
 	}
 }
 
@@ -706,26 +704,24 @@ bool Scheduler::HasThread(DWORD threadId) const
 		}) != -1;
 }
 
-uint16_t Scheduler::AcquireTaskSyncBlock()
+TUniquePtr<TaskSyncBlock> Scheduler::AcquireTaskSyncBlock()
 {
-	uint16_t last = 0;
-	if (m_freeList.try_pop(last))
+	TaskSyncBlock* block = nullptr;
+	if (m_freeList.try_pop(block))
 	{
-		m_taskSyncPool[last].m_bCompletionFlag = false;
-		return last;
+		block->m_bCompletionFlag = false;
+		return TUniquePtr<TaskSyncBlock>(block);
 	}
 
-	ensure(false, "Increase the pool size of task block primitives! Scheduler::MaxTasksInPool");
-
-	return 0;
+	return TUniquePtr<TaskSyncBlock>::Make();
 }
 
 TaskSyncBlock& Scheduler::GetTaskSyncBlock(const ITask& task)
 {
-	return m_taskSyncPool[task.m_taskSyncBlockHandle];
+	return *task.m_pSyncBlock.GetRawPtr();
 }
 
-void Scheduler::ReleaseTaskSyncBlock(const ITask& task)
+void Scheduler::ReleaseTaskSyncBlock(TUniquePtr<TaskSyncBlock> block)
 {
-	m_freeList.push(task.m_taskSyncBlockHandle);
+	m_freeList.push(block.Release());
 }

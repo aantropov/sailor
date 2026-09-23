@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdio>
 #include <functional>
+#include <condition_variable>
 #include <mutex>
 #include <atomic>
 #include <thread>
@@ -127,7 +128,6 @@ namespace Sailor
 		class Scheduler final : public TSubmodule<Scheduler>
 		{
 			const uint8_t RHIThreadsNum = 2u;
-			const size_t MaxTasksInPool = 16384;
 			static const uint32_t MaxThreadTypes = (uint32_t)magic_enum::enum_count<EThreadType>();
 
 		public:
@@ -176,8 +176,8 @@ namespace Sailor
 			SAILOR_API void RunChainedTasks(const ITaskPtr& pTask);
 
 			SAILOR_API TaskSyncBlock& GetTaskSyncBlock(const ITask& task);
-			SAILOR_API uint16_t AcquireTaskSyncBlock();
-			SAILOR_API void ReleaseTaskSyncBlock(const ITask& task);
+			SAILOR_API TUniquePtr<TaskSyncBlock> AcquireTaskSyncBlock();
+			SAILOR_API void ReleaseTaskSyncBlock(TUniquePtr<TaskSyncBlock> block);
 
 		protected:
 
@@ -203,9 +203,8 @@ namespace Sailor
 			DWORD m_physicsThreadId = -1;
 			DWORD m_audioThreadId = -1;
 
-			// Task Synchronization primitives pool
-			concurrency::concurrent_queue<uint16_t> m_freeList{};
-			TVector<TaskSyncBlock> m_taskSyncPool{};
+			// Checked-out blocks belong to tasks and may outlive the scheduler.
+			concurrency::concurrent_queue<TaskSyncBlock*> m_freeList{};
 			TMap<DWORD, EThreadType> m_threadTypes{};
 
 			friend class WorkerThread;

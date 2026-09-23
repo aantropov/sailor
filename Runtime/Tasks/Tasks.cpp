@@ -16,6 +16,12 @@ using namespace std;
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
+ITask::ITask(const std::string& name, EThreadType thread) : m_threadType(thread), m_name(name)
+{
+	auto* scheduler = App::GetSubmodule<Scheduler>();
+	m_pSyncBlock = scheduler ? scheduler->AcquireTaskSyncBlock() : TUniquePtr<TaskSyncBlock>::Make();
+}
+
 void ITask::Join(const TWeakPtr<ITask>& job)
 {
 	if (!job)
@@ -29,7 +35,7 @@ void ITask::Join(const TWeakPtr<ITask>& job)
 
 bool ITask::AddDependency(ITaskPtr dependentJob)
 {
-	if (!m_bOwnsTaskSyncBlock || IsFinished())
+	if (IsFinished())
 	{
 		return false;
 	}
@@ -109,17 +115,12 @@ void ITask::Complete()
 void ITask::Wait()
 {
 	SAILOR_PROFILE_FUNCTION();
-	if (IsFinished() || !m_bOwnsTaskSyncBlock)
+	if (IsFinished())
 	{
 		return;
 	}
 
-	auto* scheduler = App::GetSubmodule<Scheduler>();
-	if (!scheduler)
-	{
-		return;
-	}
-	auto& syncBlock = scheduler->GetTaskSyncBlock(*this);
+	auto& syncBlock = *m_pSyncBlock;
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
 
 	if (!IsFinished())

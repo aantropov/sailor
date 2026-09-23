@@ -33,11 +33,6 @@ namespace Sailor
 		{
 			auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
 			task->m_self = task;
-			if (auto* scheduler = App::GetSubmodule<Tasks::Scheduler>())
-			{
-				task->m_taskSyncBlockHandle = scheduler->AcquireTaskSyncBlock();
-				task->m_bOwnsTaskSyncBlock = true;
-			}
 			return task;
 		}
 
@@ -107,15 +102,12 @@ namespace Sailor
 
 			SAILOR_API virtual void Complete();
 
-			SAILOR_API ITask(const std::string& name, EThreadType thread) : m_threadType(thread), m_numBlockers(0), m_name(name)
-			{
-			}
+			SAILOR_API ITask(const std::string& name, EThreadType thread);
 
 			EThreadType m_threadType;
 			std::atomic<uint8_t> m_state = 0;
 			std::atomic<uint16_t> m_numBlockers = 0;
-			uint16_t m_taskSyncBlockHandle = 0;
-			bool m_bOwnsTaskSyncBlock = false;
+			TUniquePtr<TaskSyncBlock> m_pSyncBlock;
 
 			TWeakPtr<ITask> m_self;
 
@@ -178,13 +170,9 @@ namespace Sailor
 
 			SAILOR_API virtual ~Task()
 			{
-				if (ITask::m_bOwnsTaskSyncBlock)
+				if (auto* scheduler = App::GetSubmodule<Scheduler>())
 				{
-					if (auto* scheduler = App::GetSubmodule<Scheduler>())
-					{
-						scheduler->ReleaseTaskSyncBlock(*this);
-					}
-					ITask::m_bOwnsTaskSyncBlock = false;
+					scheduler->ReleaseTaskSyncBlock(std::move(ITask::m_pSyncBlock));
 				}
 			}
 
