@@ -68,6 +68,7 @@ void AnimationECS::EndPlay()
 	m_boneSnapshotPool.Clear();
 	m_animationRevision = 0ull;
 	m_nextBoneOffset = 0;
+	m_bGpuLayoutDirty = false;
 }
 
 bool AnimationECS::TryAllocateBoneRange(uint32_t numBones, uint32_t& nextBoneOffset, uint32_t& outGpuOffset)
@@ -85,13 +86,7 @@ bool AnimationECS::TryAllocateBoneRange(uint32_t numBones, uint32_t& nextBoneOff
 
 void AnimationECS::InvalidateGpuLayout()
 {
-	m_nextBoneOffset = 0;
-
-	for (auto& data : m_components)
-	{
-		data.m_gpuOffset = AnimatorComponentData::InvalidGpuOffset;
-		MarkMeshSkeletonDirty(data.m_owner.StaticCast<GameObject>());
-	}
+	m_bGpuLayoutDirty = true;
 }
 
 void AnimationECS::SetAnimation(size_t componentIndex, const TObjectPtr<Animation>& animation)
@@ -260,10 +255,11 @@ void AnimationECS::RefreshController(size_t componentIndex, bool bResetInstance)
 	}
 }
 
-void AnimationECS::OnComponentUnregistered(size_t, AnimatorComponentData&)
+void AnimationECS::OnComponentUnregistered(size_t, AnimatorComponentData& component)
 {
 	if (!GetWorld() || !GetWorld()->IsClearing())
 	{
+		MarkMeshSkeletonDirty(component.m_owner.StaticCast<GameObject>());
 		InvalidateGpuLayout();
 	}
 }
@@ -313,6 +309,21 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 			InvalidateGpuLayout();
 			break;
 		}
+	}
+
+	if (m_bGpuLayoutDirty)
+	{
+		// Keep published offsets and matrices together until this tick replaces both.
+		m_nextBoneOffset = 0;
+		for (auto& data : m_components)
+		{
+			if (data.m_bIsActive)
+			{
+				data.m_gpuOffset = AnimatorComponentData::InvalidGpuOffset;
+				MarkMeshSkeletonDirty(data.m_owner.StaticCast<GameObject>());
+			}
+		}
+		m_bGpuLayoutDirty = false;
 	}
 
 	for (auto& data : m_components)

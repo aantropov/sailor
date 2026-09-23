@@ -584,6 +584,7 @@ namespace
 	public:
 
 		AnimationMeshTestWorld() : World("AnimationMeshTests", 0, CreateEcs()) {}
+		void AdvanceFrame() { ++m_currentFrame; }
 
 	private:
 
@@ -596,6 +597,32 @@ namespace
 			return systems;
 		}
 	};
+
+	void SetLayoutAnimationPose(AnimationPtr animation, uint32_t bonesCount, float position)
+	{
+		animation->m_numBones = bonesCount;
+		animation->m_numFrames = 1;
+		animation->m_frames.Resize(bonesCount);
+		animation->m_restPose.Resize(bonesCount);
+		animation->m_parentBoneIndices.Resize(bonesCount);
+		for (uint32_t index = 0; index < bonesCount; ++index)
+		{
+			Math::Transform pose;
+			pose.m_position = glm::vec4(position, 0.0f, 0.0f, 1.0f);
+			animation->m_frames[index] = pose;
+			animation->m_restPose[index] = pose;
+			animation->m_parentBoneIndices[index] = -1;
+		}
+		animation->m_skeletonSignature = bonesCount;
+		++animation->m_revision;
+	}
+
+	AnimationPtr MakeLayoutAnimation(const Memory::ObjectAllocatorPtr& allocator, uint32_t bonesCount, float position)
+	{
+		auto animation = AnimationPtr::Make(allocator, FileId{});
+		SetLayoutAnimationPose(animation, bonesCount, position);
+		return animation;
+	}
 
 	void TestComponentSlotsAreResetAndFreedOnce()
 	{
@@ -1576,11 +1603,16 @@ namespace
 			"switching animation data without changing the skeleton size must preserve every GPU bone range");
 
 		system.SetAnimation(replacedAnimator, TObjectPtr<Animation>());
+		Require(system.GetComponentData(replacedAnimator).m_gpuOffset == 0 &&
+			system.GetComponentData(survivingAnimator).m_gpuOffset == 10 &&
+			system.GetNextBoneOffsetForTest() == 20,
+			"a pending layout change must preserve the offsets used by the last published palette");
+		system.Tick(0.0f);
 		Require(system.GetComponentData(replacedAnimator).m_gpuOffset == invalidOffset &&
 			system.GetComponentData(survivingAnimator).m_gpuOffset == invalidOffset,
-			"replacing one animation should invalidate every offset in the compact GPU layout");
+			"Tick must invalidate the old layout before allocating active owners again");
 		Require(system.GetNextBoneOffsetForTest() == 0,
-			"replacing an animation should restart compact GPU allocation from the beginning");
+			"the ownerless allocator fixture must leave the rebuilt layout empty");
 
 		uint32_t replacementOffset = invalidOffset;
 		uint32_t survivorOffset = invalidOffset;
@@ -1621,6 +1653,9 @@ namespace
 			"mesh fixtures should start with clean ECS data");
 
 		world.GetECS<AnimationECS>()->InvalidateGpuLayout();
+		Require(!firstMesh->GetData().IsDirty() && !secondMesh->GetData().IsDirty(),
+			"requesting a relayout must not visit owned meshes before Tick");
+		world.GetECS<AnimationECS>()->Tick(0.0f);
 
 		Require(firstMesh->GetData().IsDirty(),
 			"animation relayout should invalidate the first owned mesh renderer");
@@ -1628,6 +1663,272 @@ namespace
 			"animation relayout should invalidate every additional owned mesh renderer");
 
 		world.Clear();
+	}
+
+	void TestAnimationRemovalsPublishOneCompactedPalette()
+	{
+		for (uint32_t count : { 32u, 64u })
+		{
+			AnimationMeshTestWorld world;
+			auto* animations = world.GetECS<AnimationECS>();
+			auto* meshes = world.GetECS<StaticMeshRendererECS>();
+			auto model = TObjectPtr<PublishedMeshTestModel>::Make(world.GetAllocator());
+			model->m_ready = true;
+			auto material = TObjectPtr<PublishedMeshTestMaterial>::Make(world.GetAllocator());
+			TVector<GameObjectPtr> owners;
+			TVector<TObjectPtr<AnimatorComponent>> animators;
+			TVector<MeshRendererComponentPtr> renderers;
+			TVector<AnimationPtr> clips;
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				auto owner = world.Instantiate("Batched animation removal");
+				owner->SetMobilityType(EMobilityType::Static);
+				owners.Add(owner);
+				for (uint32_t mesh = 0; mesh < 2; ++mesh)
+				{
+					auto renderer = owner->AddComponent<MeshRendererComponent>();
+					renderer->SetModel(model);
+					renderer->GetMaterials().Add(material);
+					renderers.Add(renderer);
+				}
+				auto clip = MakeLayoutAnimation(world.GetAllocator(), 1, static_cast<float>(index + 1));
+				clips.Add(clip);
+				auto animator = owner->AddComponent<AnimatorComponent>();
+				animator->SetAnimation(clip);
+				animators.Add(animator);
+			}
+			meshes->BeginPlay();
+			animations->Tick(0.0f);
+			meshes->Tick(0.0f);
+			auto retained = RHI::RHISceneViewPtr::Make();
+			animations->FillAnimationData(retained);
+			const auto oldScene = meshes->GetRHIScene()->GetCurrentVersion();
+			Require(retained->m_cpuBoneMatrices && retained->m_cpuBoneMatrices->Num() == count &&
+				oldScene->m_staticHandles->Num() == count * 2,
+				"the fixture must publish one bone per animator and both meshes per owner");
+
+			for (uint32_t index = 0; index < count; index += 2)
+			{
+				Require(owners[index]->RemoveComponent(animators[index]) && !animators[index],
+					"ordinary component removal must destroy the animator while keeping its owner and meshes");
+				Require(renderers[index * 2]->GetData().IsDirty() && renderers[index * 2 + 1]->GetData().IsDirty(),
+					"removing an animator must immediately invalidate every mesh still owned by that object");
+				Require(!renderers[(index + 1) * 2]->GetData().IsDirty() &&
+					!renderers[(index + 1) * 2 + 1]->GetData().IsDirty() &&
+					animators[index + 1]->GetSkeletonOffset() == index + 1,
+					"each removal must leave unrelated mesh policy and surviving published offsets untouched");
+				auto pending = RHI::RHISceneViewPtr::Make();
+				animations->FillAnimationData(pending);
+				Require(pending->m_cpuBoneMatrices == retained->m_cpuBoneMatrices &&
+					pending->m_animationRevision == retained->m_animationRevision &&
+					meshes->GetRHIScene()->GetCurrentVersion() == oldScene,
+					"FillAnimationData must not rebuild or publish an intermediate layout during a removal batch");
+			}
+
+			world.AdvanceFrame();
+			animations->Tick(0.0f);
+			meshes->Tick(0.0f);
+			auto compacted = RHI::RHISceneViewPtr::Make();
+			animations->FillAnimationData(compacted);
+			Require(compacted->m_animationRevision == retained->m_animationRevision + 1 &&
+				compacted->m_cpuBoneMatrices != retained->m_cpuBoneMatrices &&
+				compacted->m_cpuBoneMatrices->Num() == count / 2,
+				"one Tick must publish exactly one compacted palette for the whole removal batch");
+			const auto newScene = meshes->GetRHIScene()->GetCurrentVersion();
+			for (const auto handle : *oldScene->m_staticHandles)
+			{
+				const RHI::RHISceneInstanceRecord* oldRecord = nullptr;
+				const RHI::RHISceneInstanceRecord* newRecord = nullptr;
+				Require(oldScene->Resolve(handle, oldRecord) && newScene->Resolve(handle, newRecord),
+					"removing only the animator must preserve both mesh handles");
+				const uint32_t previousOffset = oldRecord->m_skeletonOffset;
+				Require(previousOffset < count &&
+					(*retained->m_cpuBoneMatrices)[previousOffset][3].x == static_cast<float>(previousOffset + 1),
+					"the delayed scene and its retained palette must still describe the original pose");
+				if (previousOffset % 2 == 0)
+				{
+					Require(newRecord->m_skeletonOffset == AnimatorComponentData::InvalidGpuOffset,
+						"every mesh of an owner without its animator must stop referencing the palette");
+				}
+				else
+				{
+					Require(newRecord->m_skeletonOffset == previousOffset / 2 &&
+						(*compacted->m_cpuBoneMatrices)[newRecord->m_skeletonOffset][3].x ==
+							static_cast<float>(previousOffset + 1),
+						"surviving meshes must reference their own pose in the compacted palette");
+				}
+			}
+			auto sameFrame = RHI::RHISceneViewPtr::Make();
+			animations->FillAnimationData(sameFrame);
+			Require(sameFrame->m_cpuBoneMatrices == compacted->m_cpuBoneMatrices &&
+				sameFrame->m_animationRevision == compacted->m_animationRevision,
+				"additional consumers must reuse the same committed publication");
+			world.Clear();
+			Require(retained->m_cpuBoneMatrices->Num() == count && compacted->m_cpuBoneMatrices->Num() == count / 2,
+				"both retained palettes must outlive teardown");
+			for (auto& clip : clips)
+			{
+				clip.DestroyObject(world.GetAllocator());
+			}
+			material.DestroyObject(world.GetAllocator());
+			model.DestroyObject(world.GetAllocator());
+		}
+	}
+
+	void TestAnimationLayoutRefreshesOnceAfterSkeletonChanges()
+	{
+		AnimationMeshTestWorld world;
+		auto* animations = world.GetECS<AnimationECS>();
+		auto* meshes = world.GetECS<StaticMeshRendererECS>();
+		auto model = TObjectPtr<PublishedMeshTestModel>::Make(world.GetAllocator());
+		model->m_ready = true;
+		auto material = TObjectPtr<PublishedMeshTestMaterial>::Make(world.GetAllocator());
+		auto firstOwner = world.Instantiate("Changing skeleton");
+		auto secondOwner = world.Instantiate("Neighboring skeleton");
+		auto firstMesh = firstOwner->AddComponent<MeshRendererComponent>();
+		auto secondMesh = secondOwner->AddComponent<MeshRendererComponent>();
+		for (auto mesh : { firstMesh, secondMesh })
+		{
+			mesh->SetModel(model);
+			mesh->GetMaterials().Add(material);
+		}
+		auto firstClip = MakeLayoutAnimation(world.GetAllocator(), 2, 2.0f);
+		auto secondClip = MakeLayoutAnimation(world.GetAllocator(), 1, 8.0f);
+		auto replacementClip = MakeLayoutAnimation(world.GetAllocator(), 2, 5.0f);
+		auto first = firstOwner->AddComponent<AnimatorComponent>();
+		auto second = secondOwner->AddComponent<AnimatorComponent>();
+		first->SetAnimation(firstClip);
+		second->SetAnimation(secondClip);
+		meshes->BeginPlay();
+		animations->Tick(0.0f);
+		meshes->Tick(0.0f);
+		auto initial = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(initial);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == 2 &&
+			initial->m_cpuBoneMatrices->Num() == 3,
+			"neighboring skeletons must start with disjoint compact ranges");
+
+		first->SetAnimation(replacementClip);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == 2 &&
+			firstMesh->GetData().IsDirty() && !secondMesh->GetData().IsDirty(),
+			"a same-sized clip switch must update only its owner's mesh policy");
+		world.AdvanceFrame();
+		animations->Tick(0.0f);
+		Require(!secondMesh->GetData().IsDirty(),
+			"same-sized clip replacement must not trigger a deferred global relayout");
+		meshes->Tick(0.0f);
+		auto replaced = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(replaced);
+		Require(second->GetSkeletonOffset() == 2 && replaced->m_cpuBoneMatrices->Num() == 3 &&
+			(*replaced->m_cpuBoneMatrices)[0][3].x == 5.0f &&
+			(*initial->m_cpuBoneMatrices)[0][3].x == 2.0f,
+			"same-sized replacement must change the pose without moving neighboring offsets or retained matrices");
+
+		SetLayoutAnimationPose(replacementClip, 2, 6.0f);
+		world.AdvanceFrame();
+		animations->Tick(0.0f);
+		Require(!secondMesh->GetData().IsDirty() && second->GetSkeletonOffset() == 2,
+			"same-sized asset revision refresh must not invalidate another animator's mesh policy");
+		meshes->Tick(0.0f);
+		animations->FillAnimationData(replaced);
+		Require((*replaced->m_cpuBoneMatrices)[0][3].x == 6.0f,
+			"a same-sized hot reload must still publish its changed pose");
+
+		SetLayoutAnimationPose(replacementClip, 3, 9.0f);
+		SetLayoutAnimationPose(secondClip, 2, 8.0f);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == 2,
+			"asset edits must not change offsets before their owner Tick");
+		world.AdvanceFrame();
+		animations->Tick(0.0f);
+		meshes->Tick(0.0f);
+		auto resized = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(resized);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == 3 &&
+			resized->m_cpuBoneMatrices->Num() == 5 &&
+			resized->m_animationRevision == replaced->m_animationRevision + 1 &&
+			(*resized->m_cpuBoneMatrices)[2][3].x == 9.0f && (*resized->m_cpuBoneMatrices)[3][3].x == 8.0f,
+			"all changed assets must refresh before a single compact layout and palette are published");
+
+		first->SetAnimation({});
+		auto pending = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(pending);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == 3 &&
+			pending->m_cpuBoneMatrices == resized->m_cpuBoneMatrices,
+			"clearing an animation must retain the last complete layout until Tick");
+		animations->Tick(0.0f);
+		Require(first->GetSkeletonOffset() == AnimatorComponentData::InvalidGpuOffset &&
+			second->GetSkeletonOffset() == 0,
+			"a zero-bone skeleton must release its range without leaving holes");
+		second->GetData().m_gpuOffset = AnimationECS::BonesMaxNum;
+		animations->Tick(0.0f);
+		Require(second->GetSkeletonOffset() == 0,
+			"range validation must request and consume the relayout before sampling in the same Tick");
+		world.Clear();
+		firstClip.DestroyObject(world.GetAllocator());
+		secondClip.DestroyObject(world.GetAllocator());
+		replacementClip.DestroyObject(world.GetAllocator());
+		material.DestroyObject(world.GetAllocator());
+		model.DestroyObject(world.GetAllocator());
+	}
+
+	void TestAnimationLayoutRecoversCapacityAndLastRemoval()
+	{
+		AnimationMeshTestWorld world;
+		auto* animations = world.GetECS<AnimationECS>();
+		auto fullClip = MakeLayoutAnimation(world.GetAllocator(), AnimationECS::BonesMaxNum, 2.0f);
+		auto smallClip = MakeLayoutAnimation(world.GetAllocator(), 1, 9.0f);
+		auto firstOwner = world.Instantiate("Full palette");
+		auto secondOwner = world.Instantiate("Waiting for space");
+		auto first = firstOwner->AddComponent<AnimatorComponent>();
+		auto second = secondOwner->AddComponent<AnimatorComponent>();
+		first->SetAnimation(fullClip);
+		second->SetAnimation(smallClip);
+		animations->Tick(0.0f);
+		auto full = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(full);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == AnimatorComponentData::InvalidGpuOffset &&
+			full->m_cpuBoneMatrices->Num() == AnimationECS::BonesMaxNum,
+			"capacity overflow must leave the waiting animator unallocated without damaging the full palette");
+		Require(firstOwner->RemoveComponent(first), "the full-range animator must be removable");
+		animations->Tick(0.0f);
+		auto compacted = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(compacted);
+		Require(second->GetSkeletonOffset() == 0 && compacted->m_cpuBoneMatrices->Num() == 1 &&
+			compacted->m_animationRevision == full->m_animationRevision + 1 &&
+			(*compacted->m_cpuBoneMatrices)[0][3].x == 9.0f &&
+			(*full->m_cpuBoneMatrices)[AnimationECS::BonesMaxNum - 1][3].x == 2.0f,
+			"one relayout must reuse released capacity while preserving the retained full palette");
+		Require(secondOwner->RemoveComponent(second), "the last animator must be removable");
+		auto pending = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(pending);
+		Require(pending->m_cpuBoneMatrices == compacted->m_cpuBoneMatrices,
+			"last removal must not mutate the palette before Tick");
+		animations->Tick(0.0f);
+		auto empty = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(empty);
+		Require(empty->m_cpuBoneMatrices && empty->m_cpuBoneMatrices->IsEmpty() &&
+			empty->m_animationRevision == compacted->m_animationRevision + 1,
+			"last removal must publish one empty palette");
+		animations->Tick(0.0f);
+		auto stillEmpty = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(stillEmpty);
+		Require(stillEmpty->m_cpuBoneMatrices == empty->m_cpuBoneMatrices &&
+			stillEmpty->m_animationRevision == empty->m_animationRevision,
+			"a consumed empty relayout must not remain dirty on later ticks");
+		animations->InvalidateGpuLayout();
+		world.Clear();
+		auto cleared = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(cleared);
+		Require(!cleared->m_cpuBoneMatrices && cleared->m_animationRevision == 0,
+			"Clear must discard pending relayout state and the current publication");
+		auto replacement = world.Instantiate("Fresh animator after Clear")->AddComponent<AnimatorComponent>();
+		replacement->SetAnimation(smallClip);
+		animations->Tick(0.0f);
+		Require(replacement->GetSkeletonOffset() == 0,
+			"authoring reuse after Clear must allocate from a fresh layout");
+		world.Clear();
+		fullClip.DestroyObject(world.GetAllocator());
+		smallClip.DestroyObject(world.GetAllocator());
 	}
 
 	void TestWorldClearBatchesHierarchyAndStorageCleanup()
@@ -5132,6 +5433,9 @@ int main()
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },
 		{ "AnimationRelayoutMarksEveryOwnedMeshDirty", TestAnimationRelayoutMarksEveryOwnedMeshDirty },
+		{ "AnimationRemovalsPublishOneCompactedPalette", TestAnimationRemovalsPublishOneCompactedPalette },
+		{ "AnimationLayoutRefreshesOnceAfterSkeletonChanges", TestAnimationLayoutRefreshesOnceAfterSkeletonChanges },
+		{ "AnimationLayoutRecoversCapacityAndLastRemoval", TestAnimationLayoutRecoversCapacityAndLastRemoval },
 		{ "WorldClearBatchesHierarchyAndStorageCleanup", TestWorldClearBatchesHierarchyAndStorageCleanup },
 		{ "WorldClearDestroysDescendantsReparentedByEndPlay", TestWorldClearDestroysDescendantsReparentedByEndPlay },
 		{ "WorldClearUnlinksAllPrefabsBeforeCallbacks", TestWorldClearUnlinksAllPrefabsBeforeCallbacks },
