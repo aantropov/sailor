@@ -398,10 +398,9 @@ void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pTask, const ITaskPtr& 
 		ITaskPtr pCurrentChainedTask;
 		if ((pCurrentChainedTask = chainedTasksNext.TryLock()))
 		{
-			if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted())
+			if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted() || pCurrentChainedTask->IsFinished())
 			{
-				// No point to trace next
-				break;
+				continue;
 			}
 
 			if (pCurrentChainedTask != pTaskToIgnore)
@@ -415,7 +414,8 @@ void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pTask, const ITaskPtr& 
 	ITaskPtr pCurrentChainedTask;
 	if ((pCurrentChainedTask = pTask->GetChainedTaskPrev()))
 	{
-		if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted() || pCurrentChainedTask == pTaskToIgnore)
+		if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted() ||
+			pCurrentChainedTask->IsFinished() || pCurrentChainedTask == pTaskToIgnore)
 		{
 			// No point to trace next
 			return;
@@ -435,14 +435,15 @@ void Scheduler::Run(const ITaskPtr& pTask, bool bAutoRunChainedTasks)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	check(!pTask->IsStarted() && !pTask->IsExecuting() && !pTask->IsFinished() && !pTask->IsInQueue());
+	if (!pTask->TryEnqueue())
+	{
+		return;
+	}
 
 	if (bAutoRunChainedTasks)
 	{
 		RunChainedTasks(pTask);
 	}
-
-	pTask.GetRawPtr()->OnEnqueue();
 
 	{
 		std::mutex* pOutQueueMutex;
@@ -462,14 +463,15 @@ void Scheduler::Run(const ITaskPtr& pTask, DWORD threadId, bool bAutoRunChainedT
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	check(!pTask->IsStarted() && !pTask->IsExecuting() && !pTask->IsFinished() && !pTask->IsInQueue());
+	if (!pTask->TryEnqueue())
+	{
+		return;
+	}
 
 	if (bAutoRunChainedTasks)
 	{
 		RunChainedTasks(pTask);
 	}
-
-	pTask.GetRawPtr()->OnEnqueue();
 
 	auto result = m_workerThreads.FindIf(
 		[&](const auto& worker)

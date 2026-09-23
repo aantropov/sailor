@@ -124,6 +124,16 @@ add_executable(LandscapeStreamingTests
     LandscapeStreamingTests.cpp
 )
 
+add_executable(TaskContractTests TaskContractTests.cpp)
+target_compile_features(TaskContractTests PRIVATE cxx_std_20)
+target_include_directories(TaskContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(TaskContractTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME TaskContractTests COMMAND TaskContractTests)
+set_tests_properties(TaskContractTests PROPERTIES TIMEOUT 60)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(TaskContractTests)
+endif()
+
 add_executable(GpuCullingContractTests
     GpuCullingContractTests.cpp
 )

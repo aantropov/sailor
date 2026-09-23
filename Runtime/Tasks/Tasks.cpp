@@ -16,21 +16,18 @@ using namespace std;
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-ITask::ITask(const std::string& name, EThreadType thread) : m_threadType(thread), m_name(name)
+ITask::ITask(const std::string& name, EThreadType thread, Scheduler* scheduler) :
+	m_threadType(thread), m_pScheduler(scheduler), m_name(name)
 {
-	auto* scheduler = App::GetSubmodule<Scheduler>();
 	m_pSyncBlock = scheduler ? scheduler->AcquireTaskSyncBlock() : TUniquePtr<TaskSyncBlock>::Make();
 }
 
 void ITask::Join(const TWeakPtr<ITask>& job)
 {
-	if (!job)
+	if (auto other = job.TryLock())
 	{
-		return;
+		other->AddDependency(m_self.Lock());
 	}
-
-	ITaskPtr pOtherJob = job.Lock();
-	pOtherJob->AddDependency(m_self.Lock());
 }
 
 bool ITask::AddDependency(ITaskPtr dependentJob)
@@ -39,12 +36,7 @@ bool ITask::AddDependency(ITaskPtr dependentJob)
 	{
 		return false;
 	}
-	auto* scheduler = App::GetSubmodule<Scheduler>();
-	if (!scheduler)
-	{
-		return false;
-	}
-	auto& syncBlock = scheduler->GetTaskSyncBlock(*this);
+	auto& syncBlock = *m_pSyncBlock;
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
 	if (IsFinished())
 	{
@@ -58,12 +50,37 @@ bool ITask::AddDependency(ITaskPtr dependentJob)
 
 void ITask::SetChainedTaskPrev(ITaskPtr job)
 {
+	std::lock_guard<std::mutex> lock(m_pSyncBlock->m_mutex);
 	check(!m_chainedTaskPrev);
-	if (job)
+	m_chainedTaskPrev = std::move(job);
+}
+
+TVector<TWeakPtr<ITask>> ITask::GetChainedTasksNext() const
+{
+	std::lock_guard<std::mutex> lock(m_pSyncBlock.GetRawPtr()->m_mutex);
+	return m_chainedTasksNext;
+}
+
+ITaskPtr ITask::GetChainedTaskPrev() const
+{
+	std::lock_guard<std::mutex> lock(m_pSyncBlock.GetRawPtr()->m_mutex);
+	return m_chainedTaskPrev;
+}
+
+void ITask::ChainTasks(const ITaskPtr& nextTask)
+{
+	std::lock_guard<std::mutex> lock(m_pSyncBlock->m_mutex);
+	// The new task is not published until this registration is complete.
+	nextTask->m_chainedTaskPrev = m_self.TryLock();
+	if (IsFinished())
 	{
-		//Job could be equal null
-		m_chainedTaskPrev = std::move(job);
+		SetContinuationArgs(*nextTask);
+		return;
 	}
+
+	++nextTask->m_numBlockers;
+	m_dependencies.Add(nextTask);
+	m_chainedTasksNext.Add(nextTask);
 }
 
 void ITask::Join(const TVector<TWeakPtr<ITask>>& jobs)
@@ -77,7 +94,8 @@ void ITask::Join(const TVector<TWeakPtr<ITask>>& jobs)
 ITaskPtr ITask::Run()
 {
 	ITaskPtr res = m_self.Lock();
-	App::GetSubmodule<Scheduler>()->Run(res);
+	check(m_pScheduler);
+	m_pScheduler->Run(res);
 	return res;
 }
 
@@ -87,29 +105,37 @@ void ITask::Complete()
 
 	check(!IsFinished());
 
-	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
-	auto& syncBlock = scheduler->GetTaskSyncBlock(*this);
+	auto& syncBlock = *m_pSyncBlock;
+	TVector<TWeakPtr<ITask>> dependencies;
+	ITaskPtr previous;
 	{
 		std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
 
-		for (auto& job : m_dependencies)
+		for (const auto& next : m_chainedTasksNext)
 		{
-			if (auto pJob = job.TryLock())
+			if (auto task = next.TryLock())
 			{
-				if (--pJob->m_numBlockers == 0)
-				{
-					scheduler->NotifyWorkerThread(pJob->GetThreadType());
-				}
+				SetContinuationArgs(*task);
 			}
 		}
 
-		m_chainedTaskPrev.Clear();
-		m_dependencies.Clear();
+		previous = std::move(m_chainedTaskPrev);
+		dependencies = std::move(m_dependencies);
 		m_state |= StateMask::IsFinishedBit;
 		syncBlock.m_bCompletionFlag = true;
 	}
 
 	syncBlock.m_onComplete.notify_all();
+	for (const auto& dependency : dependencies)
+	{
+		if (auto task = dependency.TryLock())
+		{
+			if (--task->m_numBlockers == 0 && m_pScheduler)
+			{
+				m_pScheduler->NotifyWorkerThread(task->GetThreadType());
+			}
+		}
+	}
 }
 
 void ITask::Wait()
