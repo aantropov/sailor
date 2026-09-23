@@ -13,6 +13,7 @@
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "Tasks/Scheduler.h"
+#include "Support/TempDirectory.h"
 
 #include <chrono>
 #include <ctime>
@@ -29,6 +30,7 @@
 namespace
 {
 	using namespace Sailor;
+	using Tests::TempDirectory;
 
 	class TestAssetCache final : public AssetCache
 	{
@@ -60,33 +62,6 @@ namespace
 				sourceRevision,
 				"Sailor::AssetInfo");
 		}
-	};
-
-	class TempDirectory final
-	{
-	public:
-		explicit TempDirectory(const char* label)
-		{
-			static uint64_t counter = 0;
-			m_path = std::filesystem::temp_directory_path() /
-				("sailor-asset-cache-" + std::string(label) + "-" + std::to_string(++counter));
-			std::filesystem::remove_all(m_path);
-			std::filesystem::create_directories(m_path);
-		}
-
-		~TempDirectory()
-		{
-			std::error_code error;
-			std::filesystem::remove_all(m_path, error);
-		}
-
-		std::filesystem::path Path(const std::filesystem::path& relative) const
-		{
-			return m_path / relative;
-		}
-
-	private:
-		std::filesystem::path m_path;
 	};
 
 	class LazyAssetInfoLoadingScope final
@@ -208,6 +183,7 @@ namespace
 			bool,
 			bool) const override
 		{
+			++m_numLoads;
 			auto* info = new TestAssetInfo();
 			const std::filesystem::path metadataPath(metaFilepath);
 			std::filesystem::path sourcePath(metaFilepath);
@@ -226,6 +202,7 @@ namespace
 			return info;
 		}
 
+		mutable uint32_t m_numLoads = 0;
 		mutable std::function<void()> m_onLoad;
 
 	protected:
@@ -364,6 +341,26 @@ namespace
 		FileId result;
 		result.Deserialize(YAML::Node(value));
 		return result;
+	}
+
+	void TestTemporaryDirectoriesHaveIndependentOwnership()
+	{
+		TempDirectory first("directory-ownership");
+		const auto marker = first.Path("keep.txt");
+		{
+			std::ofstream stream(marker);
+			stream << "first fixture";
+		}
+		std::filesystem::path secondPath;
+		{
+			TempDirectory second("directory-ownership");
+			secondPath = second.Get();
+			Require(first.Get() != secondPath && std::filesystem::is_directory(secondPath) &&
+				std::filesystem::is_regular_file(marker),
+				"fixtures with the same label must own distinct directories");
+		}
+		Require(!std::filesystem::exists(secondPath) && std::filesystem::is_regular_file(marker),
+			"fixture cleanup must remove only the directory it created");
 	}
 
 	void TestNewFileIdsUseCrossPlatformGuidFormatting()
@@ -716,24 +713,31 @@ namespace
 			cacheContents.find("asset-cache-v2") == std::string::npos,
 			"the rebuilt cache must use only the strict asset-cache-v1 identity");
 
-		uint32_t numMetadataLoads = 0;
 		TestAssetInfoHandler handler;
 		AssetRegistry registry(workspaceContext);
-		handler.m_onLoad = [&]() { ++numMetadataLoads; };
 		RegisterRawHandler(registry, handler);
 		Require(registry.ScanContentFolder() &&
 			registry.CompleteScanProcessing(),
 			"the current v1 cache should initialize the lazy registry index");
-		Require(numMetadataLoads == 0,
+		Require(handler.m_numLoads == 0,
 			"an unchanged lazy scan must not read asset metadata");
 
 		AssetInfoPtr materialized = registry.GetAssetInfoPtr(
 			(workspaceContext.GetContent() / "Retry.raw").string());
-		Require(materialized != nullptr && numMetadataLoads == 1,
+		Require(materialized != nullptr && handler.m_numLoads == 1,
 			"the first concrete lookup should materialize exactly one AssetInfo proxy");
 		Require(registry.GetAssetInfoPtr(materialized->GetFileId()) == materialized &&
-			numMetadataLoads == 1,
+			handler.m_numLoads == 1,
 			"subsequent lookups should reuse the materialized AssetInfo");
+
+		AssetRegistry secondRegistry(workspaceContext);
+		RegisterRawHandler(secondRegistry, handler);
+		Require(secondRegistry.ScanContentFolder() &&
+			secondRegistry.CompleteScanProcessing() && handler.m_numLoads == 1,
+			"a second unchanged lazy registry must also defer metadata reads");
+		const auto second = secondRegistry.GetAssetInfoPtr(materialized->GetFileId());
+		Require(second && second != materialized && handler.m_numLoads == 2,
+			"a fresh registry must materialize its own proxy and count the second read");
 	}
 
 	void TestV2EnvelopeIsResetInsteadOfMigrated()
@@ -2229,6 +2233,7 @@ int main()
 {
 	try
 	{
+		TestTemporaryDirectoriesHaveIndependentOwnership();
 		TestNewFileIdsUseCrossPlatformGuidFormatting();
 		TestFileRevisionUsesOnlyTheFilesystemTimestamp();
 		TestExpandedRevisionCacheIsRegeneratedAtVersionOne();

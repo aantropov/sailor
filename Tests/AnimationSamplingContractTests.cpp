@@ -97,7 +97,7 @@ namespace
 			glm::vec4(0.0f),
 			glm::vec4(0.0f),
 			glm::vec4(2.0f, 0.0f, 0.0f, 0.0f),
-			glm::vec4(2.0f, 0.0f, 0.0f, 0.0f),
+			glm::vec4(0.0f),
 			glm::vec4(4.0f, 0.0f, 0.0f, 0.0f),
 			glm::vec4(0.0f)
 		};
@@ -109,8 +109,15 @@ namespace
 			EAnimationInterpolation::CubicSpline,
 			1.0f,
 			sampled), "CUBICSPLINE vector channels must sample");
-		Require(NearlyEqual(sampled.x, 2.0f),
+		Require(NearlyEqual(sampled.x, 2.5f),
 			"CUBICSPLINE tangents must be scaled by the keyframe interval");
+		Require(AnimationClipSampler::SampleVector(
+			timestamps,
+			values,
+			EAnimationInterpolation::CubicSpline,
+			0.5f,
+			sampled) && NearlyEqual(sampled.x, 1.1875f),
+			"CUBICSPLINE interval scaling must also hold away from the midpoint");
 	}
 
 	void TestRotationSamplingProducesNormalizedShortestPath()

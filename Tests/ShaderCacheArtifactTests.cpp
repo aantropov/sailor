@@ -299,6 +299,22 @@ namespace
 				", expected=" + std::to_string(expectedStride));
 	}
 
+	const RHI::ShaderLayoutBinding* FindBinding(const ShaderLayoutProbe& shader,
+		uint32_t setIndex, uint32_t bindingIndex)
+	{
+		for (const auto& set : shader.GetBindings())
+		{
+			for (const auto& binding : set)
+			{
+				if (binding.m_set == setIndex && binding.m_binding == bindingIndex)
+				{
+					return &binding;
+				}
+			}
+		}
+		return nullptr;
+	}
+
 	void RequireGltfMaterialLayout(const RHI::ShaderByteCode& byteCode,
 		const RHI::ShaderByteCode& reflectionByteCode,
 		uint32_t payloadSize, uint32_t stride)
@@ -306,34 +322,23 @@ namespace
 		RequireSpirvStorageBufferArrayStride(byteCode, 3u, 0u, stride);
 		ShaderLayoutProbe shader;
 		shader.ReflectDescriptorSetBindings(reflectionByteCode);
-		const RHI::ShaderLayoutBinding* material = nullptr;
-		for (const auto& set : shader.GetBindings())
-		{
-			for (const auto& binding : set)
-			{
-				if (binding.m_set == 3u && binding.m_binding == 0u)
-					material = &binding;
-			}
-		}
+		const auto* material = FindBinding(shader, 3u, 0u);
 		Require(material && material->m_size == payloadSize && material->m_paddedSize == stride,
 			"material upload size and array stride must retain internal and trailing std430 padding");
 		ShaderLayoutProbe optimizedShader;
 		optimizedShader.ReflectDescriptorSetBindings(byteCode);
-		for (const auto& set : optimizedShader.GetBindings())
+		const auto* optimizedMaterial = FindBinding(optimizedShader, 3u, 0u);
+		Require(optimizedMaterial != nullptr,
+			"the optimized shader must retain the used material binding");
+		Require(optimizedMaterial->m_size == payloadSize && optimizedMaterial->m_paddedSize == stride,
+			"optimized material payload and stride must match the CPU upload layout");
+		Require(optimizedMaterial->m_members.Num() == material->m_members.Num(),
+			"optimized and reflection shaders must retain the same material fields");
+		for (size_t i = 0u; i < optimizedMaterial->m_members.Num(); ++i)
 		{
-			for (const auto& binding : set)
-			{
-				if (binding.m_set != 3u || binding.m_binding != 0u)
-					continue;
-				Require(binding.m_members.Num() == material->m_members.Num(),
-					"optimized and reflection shaders must retain the same material fields");
-				for (size_t i = 0u; i < binding.m_members.Num(); ++i)
-				{
-					Require(binding.m_members[i].m_absoluteOffset == material->m_members[i].m_absoluteOffset &&
-						binding.m_members[i].m_size == material->m_members[i].m_size,
-						"CPU reflection and optimized GPU shader must agree on every material field offset and size");
-				}
-			}
+			Require(optimizedMaterial->m_members[i].m_absoluteOffset == material->m_members[i].m_absoluteOffset &&
+				optimizedMaterial->m_members[i].m_size == material->m_members[i].m_size,
+				"CPU reflection and optimized GPU shader must agree on every material field offset and size");
 		}
 		auto binding = RHI::RHIShaderBindingPtr::Make();
 		binding->SetLayout(*material);
