@@ -110,15 +110,15 @@ namespace
 
 	void HashMaterials(
 		uint64_t& hash,
-		const TVector<MaterialPtr>& materials) noexcept
+		const Raytracing::PathTracer::MaterialSnapshots& materials) noexcept
 	{
-		for (const MaterialPtr& material : materials)
+		for (const auto& material : materials)
 		{
 			HashString(
 				hash,
-				material ? material->GetFileId().ToString() : std::string());
+				material ? material->m_fileId.ToString() : std::string());
 			const uint64_t revision = material ?
-				material->GetContentRevision() : 0u;
+				material->m_contentRevision : 0u;
 			HashValue(hash, revision);
 		}
 	}
@@ -302,7 +302,7 @@ namespace
 	bool AppendInstanceMaterials(
 		const TSharedPtr<TVector<Math::Triangle>>& triangles,
 		const TVector<MaterialPtr>& sourceMaterials,
-		GIProbesSceneSnapshot& scene,
+		TVector<MaterialPtr>& materials,
 		Raytracing::PathTracer::TLASInstance& instance,
 		std::string& outDiagnostic)
 	{
@@ -316,7 +316,7 @@ namespace
 					static_cast<uint32_t>(triangle.m_materialIndex) + 1u);
 			}
 		}
-		const size_t materialCount = scene.m_materials.Num();
+		const size_t materialCount = materials.Num();
 		const size_t maximumMaterialIndex = static_cast<size_t>(
 			(std::numeric_limits<int32_t>::max)());
 		if (materialCount > maximumMaterialIndex ||
@@ -350,7 +350,7 @@ namespace
 		}
 		for (const MaterialPtr& material : resolvedMaterials)
 		{
-			scene.m_materials.Add(material);
+			materials.Add(material);
 		}
 		return true;
 	}
@@ -415,18 +415,14 @@ bool Sailor::ObserveGIProbesSceneRevision(
 	return true;
 }
 
-bool GIProbesSceneSnapshot::HasUnchangedMaterials() const noexcept
+bool GIProbesSceneMaterialWatch::HasUnchangedMaterials() const noexcept
 {
-	if (m_materials.Num() != m_materialRevisions.Num())
+	for (const auto& watched : m_materials)
 	{
-		return false;
-	}
-	for (size_t index = 0u; index < m_materials.Num(); ++index)
-	{
-		const MaterialPtr& material = m_materials[index];
+		const MaterialPtr& material = watched.m_first;
 		const uint64_t revision = material ?
 			material->GetContentRevision() : 0u;
-		if (revision != m_materialRevisions[index])
+		if (revision != watched.m_second)
 		{
 			return false;
 		}
@@ -439,10 +435,15 @@ bool Sailor::CaptureGIProbesScene(
 	const GIProbesSceneCaptureRequest& request,
 	GIProbesSceneSnapshot& outScene,
 	std::string& outDiagnostic,
-	const GIProbesSceneWarningCallback& warning)
+	const GIProbesSceneWarningCallback& warning,
+	GIProbesSceneMaterialWatch* materialWatch)
 {
 	SAILOR_PROFILE_FUNCTION();
 	outScene = {};
+	if (materialWatch)
+	{
+		materialWatch->m_materials.Clear();
+	}
 	outDiagnostic.clear();
 	if (!world)
 	{
@@ -477,6 +478,7 @@ bool Sailor::CaptureGIProbesScene(
 		}
 	}
 
+	TVector<MaterialPtr> runtimeMaterials;
 	TVector<MeshCandidate> candidates;
 	for (const GameObjectPtr& gameObject : world->GetGameObjects())
 	{
@@ -569,7 +571,7 @@ bool Sailor::CaptureGIProbesScene(
 		if (!AppendInstanceMaterials(
 				instance.m_triangles,
 				materials,
-				outScene,
+				runtimeMaterials,
 				instance,
 				outDiagnostic))
 		{
@@ -591,8 +593,6 @@ bool Sailor::CaptureGIProbesScene(
 		HashValue(geometryHash, geometry.m_contentHash);
 		HashMatrix(geometryHash, worldMatrix);
 		HashBounds(geometryHash, geometry.m_localBounds);
-		HashMaterials(geometryHash, materials);
-		HashMaterials(lightingHash, materials);
 	}
 
 	TVector<LandscapeBakeGeometrySnapshot> landscapeSnapshots;
@@ -675,7 +675,7 @@ bool Sailor::CaptureGIProbesScene(
 		if (!AppendInstanceMaterials(
 				instance.m_triangles,
 				snapshot.m_materials,
-				outScene,
+				runtimeMaterials,
 				instance,
 				outDiagnostic))
 		{
@@ -706,8 +706,6 @@ bool Sailor::CaptureGIProbesScene(
 		{
 			HashTriangles(geometryHash, snapshot.m_triangles);
 		}
-		HashMaterials(geometryHash, snapshot.m_materials);
-		HashMaterials(lightingHash, snapshot.m_materials);
 	}
 
 	if (outScene.m_instances.IsEmpty() || !outScene.m_worldBounds.IsValid())
@@ -734,11 +732,21 @@ bool Sailor::CaptureGIProbesScene(
 		HashValue(lightingHash, outScene.m_skyIndirectIntensity);
 	}
 
-	outScene.m_materialRevisions.Reserve(outScene.m_materials.Num());
-	for (const MaterialPtr& material : outScene.m_materials)
+	outScene.m_materials = Raytracing::PathTracer::CaptureMaterials(runtimeMaterials);
+	HashMaterials(geometryHash, outScene.m_materials);
+	HashMaterials(lightingHash, outScene.m_materials);
+	if (materialWatch)
 	{
-		outScene.m_materialRevisions.Add(
-			material ? material->GetContentRevision() : 0u);
+		TSet<MaterialPtr> watched;
+		for (size_t index = 0u; index < runtimeMaterials.Num(); ++index)
+		{
+			const auto& material = runtimeMaterials[index];
+			if (material && !watched.Contains(material))
+			{
+				watched.Insert(material);
+				materialWatch->m_materials.Add({ material, outScene.m_materials[index]->m_contentRevision });
+			}
+		}
 	}
 	outScene.m_geometryHash = geometryHash;
 	outScene.m_lightingHash = lightingHash;
@@ -778,12 +786,6 @@ bool Sailor::PrepareGIProbesScene(
 		outDiagnostic = "GI scene preparation was cancelled";
 		return false;
 	}
-	if (!scene.HasUnchangedMaterials())
-	{
-		outDiagnostic =
-			"a GI material changed after the immutable scene snapshot was captured";
-		return false;
-	}
 
 	GIProbesBakeSettings effectiveSettings = settings;
 	effectiveSettings.m_skyIndirectIntensity =
@@ -795,7 +797,7 @@ bool Sailor::PrepareGIProbesScene(
 		{
 			return !isCancelled() && (!progress || progress(state));
 		};
-	if (!sampler->Initialize(
+	if (!sampler->InitializeSnapshot(
 			scene.m_instances,
 			scene.m_materials,
 			scene.m_lights,
@@ -847,12 +849,6 @@ bool Sailor::PrepareGIProbesScene(
 	if (isCancelled())
 	{
 		outDiagnostic = "GI scene preparation was cancelled";
-		return false;
-	}
-	if (!scene.HasUnchangedMaterials())
-	{
-		outDiagnostic =
-			"a GI material changed while the CPU sampling scene was prepared";
 		return false;
 	}
 

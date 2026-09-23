@@ -470,8 +470,134 @@ namespace
 		return false;
 	}
 
-	bool BuildRaytracingMaterialsFromRuntimeMaterials(
-		const TVector<MaterialPtr>& runtimeMaterials,
+	Raytracing::Material CaptureMaterialParameters(const Sailor::Material& material)
+	{
+		Raytracing::Material outMaterial{};
+		glm::vec4 baseColorFactor(1.0f);
+		glm::vec4 emissiveFactor(0.0f);
+		glm::vec4 attenuationColor(1.0f);
+		glm::vec4 sheenColor(0.0f);
+		glm::vec4 layerUvScale(1.0f);
+		float roughness = 1.0f;
+		float metallic = 1.0f;
+		float alphaCutoff = 0.5f;
+		float normalScale = 1.0f;
+		float clearcoat = 0.0f;
+		float clearcoatRoughness = 0.0f;
+		float clearcoatNormalScale = 1.0f;
+		float sheenRoughness = 0.0f;
+		float transmission = 0.0f;
+		float thickness = 0.0f;
+		float attenuationDistance = (std::numeric_limits<float>::max)();
+		float indexOfRefraction = 1.5f;
+
+		ReadUniformValue(material.GetUniformsVec4(), "material.baseColorFactor", baseColorFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.albedo", baseColorFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.emissiveFactor", emissiveFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.emissive", emissiveFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.emission", emissiveFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.attenuationColor", attenuationColor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.sheenColorFactor", sheenColor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.layerUvScale", layerUvScale);
+		ReadUniformValue(material.GetUniformsFloat(), "material.roughnessFactor", roughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.roughness", roughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.metallicFactor", metallic);
+		ReadUniformValue(material.GetUniformsFloat(), "material.metallic", metallic);
+		ReadUniformValue(material.GetUniformsFloat(), "material.alphaCutoff", alphaCutoff);
+		ReadUniformValue(material.GetUniformsFloat(), "material.normalScale", normalScale);
+		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatFactor", clearcoat);
+		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatRoughnessFactor", clearcoatRoughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatNormalScale", clearcoatNormalScale);
+		ReadUniformValue(material.GetUniformsFloat(), "material.sheenRoughnessFactor", sheenRoughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.transmissionFactor", transmission);
+		ReadUniformValue(material.GetUniformsFloat(), "material.thicknessFactor", thickness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.attenuationDistance", attenuationDistance);
+		ReadUniformValue(material.GetUniformsFloat(), "material.indexOfRefraction", indexOfRefraction);
+
+		outMaterial.m_baseColorFactor = baseColorFactor;
+		outMaterial.m_emissiveFactor = glm::vec3(emissiveFactor);
+		for (glm::length_t layer = 0; layer < 4; ++layer)
+		{
+			outMaterial.m_layerUvScale[layer] =
+				std::isfinite(layerUvScale[layer]) ? layerUvScale[layer] : 1.0f;
+		}
+		outMaterial.m_roughnessFactor = roughness;
+		outMaterial.m_metallicFactor = metallic;
+		outMaterial.m_normalScale = std::isfinite(normalScale) ?
+			normalScale : 1.0f;
+		outMaterial.m_clearcoatFactor = std::isfinite(clearcoat) ?
+			glm::clamp(clearcoat, 0.0f, 1.0f) : 0.0f;
+		outMaterial.m_clearcoatRoughnessFactor =
+			std::isfinite(clearcoatRoughness) ?
+			glm::clamp(clearcoatRoughness, 0.0f, 1.0f) : 0.0f;
+		outMaterial.m_clearcoatNormalScale =
+			std::isfinite(clearcoatNormalScale) ?
+			clearcoatNormalScale : 1.0f;
+		outMaterial.m_sheenRoughnessFactor =
+			std::isfinite(sheenRoughness) ?
+			glm::clamp(sheenRoughness, 0.0f, 1.0f) : 0.0f;
+		outMaterial.m_sheenColorFactor = glm::clamp(
+			glm::vec3(sheenColor),
+			glm::vec3(0.0f),
+			glm::vec3(1.0f));
+		outMaterial.m_alphaCutoff = alphaCutoff;
+		outMaterial.m_transmissionFactor = std::isfinite(transmission) ?
+			glm::clamp(transmission, 0.0f, 1.0f) :
+			0.0f;
+		outMaterial.m_thicknessFactor = std::isfinite(thickness) ?
+			(std::max)(0.0f, thickness) :
+			0.0f;
+		outMaterial.m_attenuationDistance =
+			std::isfinite(attenuationDistance) && attenuationDistance > 0.0f ?
+			attenuationDistance :
+			(std::numeric_limits<float>::max)();
+		for (uint32_t component = 0; component < 3; ++component)
+		{
+			const float value = attenuationColor[component];
+			outMaterial.m_attenuationColor[component] =
+				std::isfinite(value) ?
+				glm::clamp(value, 0.0f, 1.0f) :
+				1.0f;
+		}
+		outMaterial.m_indexOfRefraction = std::isfinite(indexOfRefraction) &&
+			indexOfRefraction >= 1.0f ?
+			indexOfRefraction :
+			1.5f;
+
+		const RHI::RenderState& renderState = material.GetRenderState();
+		switch (renderState.GetCullMode())
+		{
+		case RHI::ECullMode::None:
+			outMaterial.m_faceCullMode = FaceCullMode::None;
+			break;
+		case RHI::ECullMode::Front:
+			outMaterial.m_faceCullMode = FaceCullMode::Front;
+			break;
+		case RHI::ECullMode::Back:
+			outMaterial.m_faceCullMode = FaceCullMode::Back;
+			break;
+		case RHI::ECullMode::FrontAndBack:
+			outMaterial.m_faceCullMode = FaceCullMode::FrontAndBack;
+			break;
+		}
+		if (renderState.GetBlendMode() != RHI::EBlendMode::None)
+		{
+			outMaterial.m_blendMode = BlendMode::Blend;
+		}
+		else if (renderState.IsRequiredCustomDepthShader())
+		{
+			outMaterial.m_blendMode = BlendMode::Mask;
+		}
+		else
+		{
+			outMaterial.m_blendMode = BlendMode::Opaque;
+		}
+
+		return outMaterial;
+	}
+
+	bool BuildRaytracingMaterials(
+		const PathTracer::MaterialSnapshots& runtimeMaterials,
 		TVector<Raytracing::Material>& outMaterials,
 		TVector<uint8_t>& outResolvedMaterialSlots,
 		TVector<TSharedPtr<CombinedSampler2D>>& outTextures,
@@ -481,13 +607,6 @@ namespace
 		PathTracer::ScenePreparationStats& stats,
 		bool& outAllTexturesResolved)
 	{
-		struct CpuTextureSnapshot final
-		{
-			TVector<uint8_t> m_data{};
-			int32_t m_width = 0;
-			int32_t m_height = 0;
-		};
-
 		outAllTexturesResolved = true;
 
 		outMaterials.Resize(runtimeMaterials.Num());
@@ -495,10 +614,10 @@ namespace
 		outTextures.Clear();
 		outTextureMapping.Clear();
 		stats.m_materialSlotCount = runtimeMaterials.Num();
-		TMap<const Sailor::Material*, Raytracing::Material>
+		TMap<const PathTracer::MaterialSnapshot*, Raytracing::Material>
 			convertedMaterials;
-		TMap<const Sailor::Material*, uint8_t> convertedMaterialResolution;
-		TMap<std::string, TSharedPtr<CpuTextureSnapshot>> cpuTextureSnapshots;
+		TMap<const PathTracer::MaterialSnapshot*, uint8_t> convertedMaterialResolution;
+		TMap<std::string, TSharedPtr<const PathTracer::TextureSnapshot>> cpuTextureSnapshots;
 
 		auto reportMaterialProgress = [&](size_t completed) -> bool
 		{
@@ -517,13 +636,14 @@ namespace
 			return false;
 		}
 
-		auto addTexture = [&](const TexturePtr& pTexture,
+		auto addTexture = [&](const PathTracer::SamplerSnapshot& binding,
 			bool bLinear,
 			bool bNormalMap,
 			uint8_t channels,
 			uint16_t& outTextureIndex,
 			std::string& outDiagnostic) -> bool
 		{
+			const auto& pTexture = binding.m_texture;
 			outDiagnostic.clear();
 			++stats.m_textureReferenceCount;
 			if (!pTexture)
@@ -532,28 +652,10 @@ namespace
 				return false;
 			}
 
-			TexturePtr texture = pTexture;
-			const FileId fileId = pTexture->GetFileId();
-			if (fileId)
-			{
-				if (auto* textureImporter = App::GetSubmodule<TextureImporter>())
-				{
-					TexturePtr loadedTexture =
-						textureImporter->GetLoadedTexture(fileId);
-					if (loadedTexture &&
-						(loadedTexture->HasCpuData() || !texture->HasCpuData()))
-					{
-						texture = loadedTexture;
-					}
-				}
-			}
-
-			const RHI::ETextureClamping clamping = texture->GetRHI() ? texture->GetRHI()->GetClamping() : RHI::ETextureClamping::Repeat;
+			const FileId fileId = pTexture->m_fileId;
+			const RHI::ETextureClamping clamping = binding.m_clamping;
 			const char* clampingKey = clamping == RHI::ETextureClamping::Repeat ? "r" : "c";
-			const std::string sourceKey = fileId ?
-				fileId.ToString() :
-				"runtime:" + std::to_string(
-					reinterpret_cast<uintptr_t>(texture.GetRawPtr()));
+			const std::string& sourceKey = pTexture->m_sourceKey;
 			const std::string key = sourceKey + "_" +
 				std::to_string(channels) + "_" +
 				std::to_string((int)bLinear) + "_" +
@@ -565,31 +667,27 @@ namespace
 				return true;
 			}
 
-			TSharedPtr<CpuTextureSnapshot>* cachedSnapshot = nullptr;
+			TSharedPtr<const PathTracer::TextureSnapshot>* cachedSnapshot = nullptr;
 			if (!cpuTextureSnapshots.Find(sourceKey, cachedSnapshot))
 			{
-				auto snapshot = TSharedPtr<CpuTextureSnapshot>::Make();
-				snapshot->m_width = texture->GetWidth();
-				snapshot->m_height = texture->GetHeight();
-				if (texture->HasCpuData())
+				auto snapshot = pTexture;
+				if (snapshot->m_data.IsEmpty())
 				{
-					snapshot->m_data = texture->GetDecodedData();
-				}
-				else
-				{
+					auto decoded = TSharedPtr<PathTracer::TextureSnapshot>::Make();
 					uint32_t mipLevels = 1u;
-					if (!fileId || !TextureImporter::DecodeTextureCpu(
-							fileId,
-							snapshot->m_data,
-							snapshot->m_width,
-							snapshot->m_height,
+					if (!TextureImporter::DecodeTextureCpu(
+							pTexture->m_decodeRequest,
+							decoded->m_data,
+							decoded->m_width,
+							decoded->m_height,
 							mipLevels))
 					{
 						outDiagnostic = fileId ?
-							"the texture could not be decoded on the CPU" :
+							"the captured texture source changed or could not be decoded on the CPU" :
 							"the runtime texture has no resident CPU pixels or file id";
 						return false;
 					}
+					snapshot = std::move(decoded);
 					++stats.m_decodedTextureCount;
 				}
 				if (snapshot->m_width <= 0 || snapshot->m_height <= 0 ||
@@ -681,7 +779,7 @@ namespace
 		for (size_t i = 0; i < runtimeMaterials.Num(); i++)
 		{
 			Raytracing::Material outMaterial{};
-			const MaterialPtr pMaterial = runtimeMaterials[i];
+			const auto& pMaterial = runtimeMaterials[i];
 			auto reportCompletedMaterial = [&]() -> bool
 			{
 				const size_t completed = i + 1u;
@@ -720,133 +818,15 @@ namespace
 				continue;
 			}
 
-			glm::vec4 baseColorFactor(1.0f);
-			glm::vec4 emissiveFactor(0.0f);
-			glm::vec4 attenuationColor(1.0f);
-			glm::vec4 sheenColor(0.0f);
-			glm::vec4 layerUvScale(1.0f);
-			float roughness = 1.0f;
-			float metallic = 1.0f;
-			float alphaCutoff = 0.5f;
-			float normalScale = 1.0f;
-			float clearcoat = 0.0f;
-			float clearcoatRoughness = 0.0f;
-			float clearcoatNormalScale = 1.0f;
-			float sheenRoughness = 0.0f;
-			float transmission = 0.0f;
-			float thickness = 0.0f;
-			float attenuationDistance = (std::numeric_limits<float>::max)();
-			float indexOfRefraction = 1.5f;
-
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.baseColorFactor", baseColorFactor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.albedo", baseColorFactor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissiveFactor", emissiveFactor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissive", emissiveFactor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emission", emissiveFactor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.attenuationColor", attenuationColor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.sheenColorFactor", sheenColor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.layerUvScale", layerUvScale);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughnessFactor", roughness);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughness", roughness);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallicFactor", metallic);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallic", metallic);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.alphaCutoff", alphaCutoff);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.normalScale", normalScale);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.clearcoatFactor", clearcoat);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.clearcoatRoughnessFactor", clearcoatRoughness);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.clearcoatNormalScale", clearcoatNormalScale);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.sheenRoughnessFactor", sheenRoughness);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.transmissionFactor", transmission);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.thicknessFactor", thickness);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.attenuationDistance", attenuationDistance);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.indexOfRefraction", indexOfRefraction);
-
-			outMaterial.m_baseColorFactor = baseColorFactor;
-			outMaterial.m_emissiveFactor = glm::vec3(emissiveFactor);
-			for (glm::length_t layer = 0; layer < 4; ++layer)
-			{
-				outMaterial.m_layerUvScale[layer] =
-					std::isfinite(layerUvScale[layer]) ? layerUvScale[layer] : 1.0f;
-			}
-			outMaterial.m_roughnessFactor = roughness;
-			outMaterial.m_metallicFactor = metallic;
-			outMaterial.m_normalScale = std::isfinite(normalScale) ?
-				normalScale : 1.0f;
-			outMaterial.m_clearcoatFactor = std::isfinite(clearcoat) ?
-				glm::clamp(clearcoat, 0.0f, 1.0f) : 0.0f;
-			outMaterial.m_clearcoatRoughnessFactor =
-				std::isfinite(clearcoatRoughness) ?
-				glm::clamp(clearcoatRoughness, 0.0f, 1.0f) : 0.0f;
-			outMaterial.m_clearcoatNormalScale =
-				std::isfinite(clearcoatNormalScale) ?
-				clearcoatNormalScale : 1.0f;
-			outMaterial.m_sheenRoughnessFactor =
-				std::isfinite(sheenRoughness) ?
-				glm::clamp(sheenRoughness, 0.0f, 1.0f) : 0.0f;
-			outMaterial.m_sheenColorFactor = glm::clamp(
-				glm::vec3(sheenColor),
-				glm::vec3(0.0f),
-				glm::vec3(1.0f));
-			outMaterial.m_alphaCutoff = alphaCutoff;
-			outMaterial.m_transmissionFactor = std::isfinite(transmission) ?
-				glm::clamp(transmission, 0.0f, 1.0f) :
-				0.0f;
-			outMaterial.m_thicknessFactor = std::isfinite(thickness) ?
-				(std::max)(0.0f, thickness) :
-				0.0f;
-			outMaterial.m_attenuationDistance =
-				std::isfinite(attenuationDistance) && attenuationDistance > 0.0f ?
-				attenuationDistance :
-				(std::numeric_limits<float>::max)();
-			for (uint32_t component = 0; component < 3; ++component)
-			{
-				const float value = attenuationColor[component];
-				outMaterial.m_attenuationColor[component] =
-					std::isfinite(value) ?
-					glm::clamp(value, 0.0f, 1.0f) :
-					1.0f;
-			}
-			outMaterial.m_indexOfRefraction = std::isfinite(indexOfRefraction) &&
-				indexOfRefraction >= 1.0f ?
-				indexOfRefraction :
-				1.5f;
-
-			const RHI::RenderState& renderState = pMaterial->GetRenderState();
-			switch (renderState.GetCullMode())
-			{
-			case RHI::ECullMode::None:
-				outMaterial.m_faceCullMode = FaceCullMode::None;
-				break;
-			case RHI::ECullMode::Front:
-				outMaterial.m_faceCullMode = FaceCullMode::Front;
-				break;
-			case RHI::ECullMode::Back:
-				outMaterial.m_faceCullMode = FaceCullMode::Back;
-				break;
-			case RHI::ECullMode::FrontAndBack:
-				outMaterial.m_faceCullMode = FaceCullMode::FrontAndBack;
-				break;
-			}
-			if (renderState.GetBlendMode() != RHI::EBlendMode::None)
-			{
-				outMaterial.m_blendMode = BlendMode::Blend;
-			}
-			else if (renderState.IsRequiredCustomDepthShader())
-			{
-				outMaterial.m_blendMode = BlendMode::Mask;
-			}
-			else
-			{
-				outMaterial.m_blendMode = BlendMode::Opaque;
-			}
+			outMaterial = pMaterial->m_parameters;
 
 			bool bMaterialResolved = true;
-			const std::string materialFileId = pMaterial->GetFileId().ToString();
+			const std::string materialFileId = pMaterial->m_fileId.ToString();
 			const std::string materialName = materialFileId.empty() ?
 				"runtime material slot " + std::to_string(i) :
 				"material '" + materialFileId + "'";
 			auto prepareTexture = [&](const std::string& samplerName,
-				const TexturePtr& texture,
+				const PathTracer::SamplerSnapshot& texture,
 				bool bLinear,
 				bool bNormalMap,
 				uint8_t channels,
@@ -866,8 +846,8 @@ namespace
 				bMaterialResolved = false;
 				if (warning)
 				{
-					const std::string textureFileId = texture ?
-						texture->GetFileId().ToString() : std::string();
+					const std::string textureFileId = texture.m_texture ?
+						texture.m_texture->m_fileId.ToString() : std::string();
 					warning(
 						"could not prepare " + materialName +
 						" sampler '" + samplerName + "'" +
@@ -877,10 +857,10 @@ namespace
 				}
 			};
 
-			for (const auto& sampler : pMaterial->GetSamplers())
+			for (const auto& sampler : pMaterial->m_samplers)
 			{
 				const std::string& samplerName = sampler.m_first;
-				const TexturePtr pTexture = sampler.m_second;
+				const auto& pTexture = sampler.m_second;
 
 				if (samplerName == "baseColorSampler")
 				{
@@ -993,6 +973,86 @@ namespace
 	}
 }
 
+PathTracer::MaterialSnapshots PathTracer::CaptureMaterials(const TVector<MaterialPtr>& materials)
+{
+	MaterialSnapshots result;
+	result.Reserve(materials.Num());
+	TMap<const Sailor::Material*, TSharedPtr<const MaterialSnapshot>> capturedMaterials;
+	TMap<std::string, TSharedPtr<const TextureSnapshot>> capturedTextures;
+	auto* textureImporter = App::GetSubmodule<TextureImporter>();
+	auto* registry = App::GetSubmodule<AssetRegistry>();
+	for (const auto& material : materials)
+	{
+		if (!material)
+		{
+			result.Add({});
+			continue;
+		}
+		TSharedPtr<const MaterialSnapshot>* existing = nullptr;
+		if (capturedMaterials.Find(material.GetRawPtr(), existing))
+		{
+			result.Add(*existing);
+			continue;
+		}
+
+		auto snapshot = TSharedPtr<MaterialSnapshot>::Make();
+		snapshot->m_fileId = material->GetFileId();
+		snapshot->m_contentRevision = material->GetContentRevision();
+		snapshot->m_parameters = CaptureMaterialParameters(*material);
+		for (const auto& sampler : material->GetSamplers())
+		{
+			SamplerSnapshot binding;
+			TexturePtr texture = sampler.m_second;
+			if (texture)
+			{
+				const FileId fileId = texture->GetFileId();
+				if (fileId && textureImporter)
+				{
+					auto loaded = textureImporter->GetLoadedTexture(fileId);
+					if (loaded && (loaded->HasCpuData() || !texture->HasCpuData()))
+					{
+						texture = std::move(loaded);
+					}
+				}
+				binding.m_clamping = texture->GetRHI() ?
+					texture->GetRHI()->GetClamping() : RHI::ETextureClamping::Repeat;
+				const std::string sourceKey = fileId ? fileId.ToString() :
+					"runtime:" + std::to_string(reinterpret_cast<uintptr_t>(texture.GetRawPtr()));
+				TSharedPtr<const TextureSnapshot>* captured = nullptr;
+				if (capturedTextures.Find(sourceKey, captured))
+				{
+					binding.m_texture = *captured;
+				}
+				else
+				{
+					auto source = TSharedPtr<TextureSnapshot>::Make();
+					source->m_fileId = fileId;
+					source->m_sourceKey = sourceKey;
+					source->m_width = texture->GetWidth();
+					source->m_height = texture->GetHeight();
+					if (texture->HasCpuData())
+					{
+						source->m_data = texture->GetDecodedData();
+					}
+					else if (fileId && registry)
+					{
+						if (auto* info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(fileId))
+						{
+							TextureImporter::CaptureCpuDecodeRequest(*info, source->m_decodeRequest);
+						}
+					}
+					binding.m_texture = std::move(source);
+					capturedTextures.Add(sourceKey, binding.m_texture);
+				}
+			}
+			snapshot->m_samplers.Add({ sampler.m_first, std::move(binding) });
+		}
+		result.Add(snapshot);
+		capturedMaterials.Add(material.GetRawPtr(), std::move(snapshot));
+	}
+	return result;
+}
+
 void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args, int32_t num)
 {
 	if (res.m_height == 0)
@@ -1098,6 +1158,31 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 	bool bSkipUnresolvedMaterialInstances,
 	const ScenePreparationWarningCallback& warning)
 {
+	return InitializeSceneInternal(instances, materials, nullptr, lightProxies,
+		bAddDefaultLightIfEmpty, progress, bSkipUnresolvedMaterialInstances, warning);
+}
+
+bool PathTracer::InitializeSceneSnapshot(const TVector<TLASInstance>& instances,
+	const MaterialSnapshots& materials,
+	const TVector<LightProxy>& lightProxies,
+	bool bAddDefaultLightIfEmpty,
+	const ScenePreparationProgressCallback& progress,
+	bool bSkipUnresolvedMaterialInstances,
+	const ScenePreparationWarningCallback& warning)
+{
+	return InitializeSceneInternal(instances, {}, &materials, lightProxies,
+		bAddDefaultLightIfEmpty, progress, bSkipUnresolvedMaterialInstances, warning);
+}
+
+bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
+	const TVector<MaterialPtr>& runtimeMaterials,
+	const MaterialSnapshots* snapshotMaterials,
+	const TVector<LightProxy>& lightProxies,
+	bool bAddDefaultLightIfEmpty,
+	const ScenePreparationProgressCallback& progress,
+	bool bSkipUnresolvedMaterialInstances,
+	const ScenePreparationWarningCallback& warning)
+{
 	m_tlasInstances = instances;
 	m_lightProxies = lightProxies;
 	m_bAddDefaultLightIfEmpty = bAddDefaultLightIfEmpty;
@@ -1168,9 +1253,12 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		}
 	}
 
-	const size_t materialsSignature = ComputeMaterialsSignature(materials);
-	const bool bNeedRebuildMaterials = m_materials.Num() == 0 ||
-		m_cachedMaterialsCount != (uint32_t)materials.Num() ||
+	const size_t materialCount = snapshotMaterials ? snapshotMaterials->Num() : runtimeMaterials.Num();
+	const size_t materialsSignature = snapshotMaterials ? 0u : ComputeMaterialsSignature(runtimeMaterials);
+	// Texture pixels can change without a material revision. A supplied snapshot is authoritative.
+	const bool bNeedRebuildMaterials = snapshotMaterials || m_bCachedMaterialsFromSnapshot ||
+		m_materials.Num() == 0 ||
+		m_cachedMaterialsCount != (uint32_t)materialCount ||
 		m_cachedMaterialsSignature != materialsSignature ||
 		!m_bMaterialsFullyResolved;
 
@@ -1181,8 +1269,10 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		m_textures.Clear();
 		m_textureMapping.Clear();
 		bool bAllTexturesResolved = true;
-		if (!BuildRaytracingMaterialsFromRuntimeMaterials(
-				materials,
+		// The live/private caller keeps its existing cache key and only captures on a miss.
+		const auto captured = snapshotMaterials ? MaterialSnapshots{} : CaptureMaterials(runtimeMaterials);
+		if (!BuildRaytracingMaterials(
+				snapshotMaterials ? *snapshotMaterials : captured,
 				m_materials,
 				m_resolvedMaterialSlots,
 				m_textures,
@@ -1197,17 +1287,18 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		}
 		m_bMaterialsFullyResolved = bAllTexturesResolved;
 		m_cachedMaterialsSignature = materialsSignature;
-		m_cachedMaterialsCount = (uint32_t)materials.Num();
+		m_cachedMaterialsCount = (uint32_t)materialCount;
+		m_bCachedMaterialsFromSnapshot = snapshotMaterials != nullptr;
 	}
 	else
 	{
-		m_lastScenePreparationStats.m_materialSlotCount = materials.Num();
+		m_lastScenePreparationStats.m_materialSlotCount = materialCount;
 		if (progress)
 		{
 			ScenePreparationProgress update;
 			update.m_stage = EScenePreparationStage::Materials;
-			update.m_completed = materials.Num();
-			update.m_total = materials.Num();
+			update.m_completed = materialCount;
+			update.m_total = materialCount;
 			if (!progress(update))
 			{
 				return false;
@@ -1293,12 +1384,21 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 				std::string materialIdentity =
 					"material slot " + std::to_string(unresolvedLocalSlot);
 				if (unresolvedGlobalSlot >= 0 &&
-					unresolvedGlobalSlot < static_cast<int64_t>(materials.Num()))
+					unresolvedGlobalSlot < static_cast<int64_t>(materialCount))
 				{
-					const MaterialPtr& material =
-						materials[static_cast<size_t>(unresolvedGlobalSlot)];
-					const std::string fileId = material ?
-						material->GetFileId().ToString() : std::string();
+					const size_t slot = static_cast<size_t>(unresolvedGlobalSlot);
+					FileId materialId;
+					if (snapshotMaterials)
+					{
+						const auto& material = (*snapshotMaterials)[slot];
+						materialId = material ? material->m_fileId : FileId{};
+					}
+					else
+					{
+						const auto& material = runtimeMaterials[slot];
+						materialId = material ? material->GetFileId() : FileId{};
+					}
+					const std::string fileId = materialId.ToString();
 					if (!fileId.empty())
 					{
 						materialIdentity += " ('" + fileId + "')";
@@ -2127,8 +2227,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	m_lastScenePreparationStats = {};
 	bool bAllTexturesResolved = true;
-	BuildRaytracingMaterialsFromRuntimeMaterials(
-		runtimeMaterials,
+	BuildRaytracingMaterials(
+		CaptureMaterials(runtimeMaterials),
 		m_materials,
 		m_resolvedMaterialSlots,
 		m_textures,

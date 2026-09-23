@@ -22,6 +22,33 @@ bool GIProbesPathTracer::Initialize(
 	const PathTracer::ScenePreparationProgressCallback& progress,
 	const PathTracer::ScenePreparationWarningCallback& warning)
 {
+	return InitializeInternal(instances, materials, nullptr, lights,
+		settings, fallbackEnvironment, progress, warning);
+}
+
+bool GIProbesPathTracer::InitializeSnapshot(
+	const TVector<PathTracer::TLASInstance>& instances,
+	const PathTracer::MaterialSnapshots& materials,
+	const TVector<LightProxy>& lights,
+	const GIProbesBakeSettings& settings,
+	const glm::vec3& fallbackEnvironment,
+	const PathTracer::ScenePreparationProgressCallback& progress,
+	const PathTracer::ScenePreparationWarningCallback& warning)
+{
+	return InitializeInternal(instances, {}, &materials, lights,
+		settings, fallbackEnvironment, progress, warning);
+}
+
+bool GIProbesPathTracer::InitializeInternal(
+	const TVector<PathTracer::TLASInstance>& instances,
+	const TVector<MaterialPtr>& runtimeMaterials,
+	const PathTracer::MaterialSnapshots* snapshotMaterials,
+	const TVector<LightProxy>& lights,
+	const GIProbesBakeSettings& settings,
+	const glm::vec3& fallbackEnvironment,
+	const PathTracer::ScenePreparationProgressCallback& progress,
+	const PathTracer::ScenePreparationWarningCallback& warning)
+{
 	SAILOR_PROFILE_FUNCTION();
 	TVector<LightProxy> bakedLights;
 	bakedLights.Reserve(lights.Num());
@@ -63,14 +90,11 @@ bool GIProbesPathTracer::Initialize(
 		}
 		SAILOR_LOG("[Warning] GI bake: %s", diagnostic.c_str());
 	};
-	const bool bHasGeometry = m_pathTracer.InitializeScene(
-		instances,
-		materials,
-		bakedLights,
-		false,
-		progress,
-		true,
-		reportWarning);
+	const bool bHasGeometry = snapshotMaterials ?
+		m_pathTracer.InitializeSceneSnapshot(instances, *snapshotMaterials,
+			bakedLights, false, progress, true, reportWarning) :
+		m_pathTracer.InitializeScene(instances, runtimeMaterials,
+			bakedLights, false, progress, true, reportWarning);
 	m_bInitialized = bHasGeometry;
 	return m_bInitialized;
 }

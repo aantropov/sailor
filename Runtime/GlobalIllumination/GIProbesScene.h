@@ -35,8 +35,7 @@ namespace Sailor
 	struct SAILOR_SHARED_API GIProbesSceneSnapshot final
 	{
 		TVector<Raytracing::PathTracer::TLASInstance> m_instances{};
-		TVector<MaterialPtr> m_materials{};
-		TVector<uint64_t> m_materialRevisions{};
+		Raytracing::PathTracer::MaterialSnapshots m_materials{};
 		TVector<Raytracing::LightProxy> m_lights{};
 		TVector<Math::AABB> m_geometryBounds{};
 		SkyParameters m_skyParameters{};
@@ -48,7 +47,12 @@ namespace Sailor
 		uint64_t m_sourceWorldHash = 0u;
 		GIProbesSceneRevision m_observedRevision{};
 		bool m_bHasSkyEnvironment = false;
+	};
 
+	// Owner-thread validation is separate from the values consumed by background work.
+	struct SAILOR_SHARED_API GIProbesSceneMaterialWatch final
+	{
+		TVector<TPair<MaterialPtr, uint64_t>> m_materials;
 		bool HasUnchangedMaterials() const noexcept;
 	};
 
@@ -71,7 +75,8 @@ namespace Sailor
 		const GIProbesSceneCaptureRequest& request,
 		GIProbesSceneSnapshot& outScene,
 		std::string& outDiagnostic,
-		const GIProbesSceneWarningCallback& warning = {});
+		const GIProbesSceneWarningCallback& warning = {},
+		GIProbesSceneMaterialWatch* materialWatch = nullptr);
 
 	SAILOR_SHARED_API bool ObserveGIProbesSceneRevision(
 		World* world,

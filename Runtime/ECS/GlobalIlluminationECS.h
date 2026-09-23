@@ -190,6 +190,7 @@ namespace Sailor
 		Tasks::TaskPtr<RuntimeScenePreparationResult>
 			m_runtimeScenePreparationTask{};
 		TSharedPtr<std::atomic<bool>> m_runtimeScenePreparationCancel{};
+		GIProbesSceneMaterialWatch m_runtimeSceneMaterialWatch;
 		GIProbesPreparedScenePtr m_runtimePreparedScene{};
 		RuntimeGIProbesQualitySettings m_runtimeObservedQuality{};
 		uint64_t m_runtimeScenePreparationRequestId = 0u;
@@ -202,6 +203,8 @@ namespace Sailor
 		bool m_bRuntimePreparationFailed = false;
 		float m_runtimeRevisionPollSeconds = 0.0f;
 		float m_runtimePreparationRetrySeconds = 0.0f;
+
+		friend class GlobalIlluminationECSTestAccess;
 	};
 
 	template class ECS::TSystem<GlobalIlluminationECS, GlobalIlluminationECSData>;

@@ -6,6 +6,7 @@
 #include "Containers/Octree.h"
 #include "Engine/Types.h"
 #include "Raytracing/BVH.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 
 #include "MaterialUtils.h"
 #include "LightingModel.h"
@@ -111,10 +112,45 @@ namespace Sailor::Raytracing
 			bool m_bBackFace = false;
 		};
 
+		struct TextureSnapshot
+		{
+			FileId m_fileId{};
+			std::string m_sourceKey;
+			TVector<uint8_t> m_data;
+			int32_t m_width = 0;
+			int32_t m_height = 0;
+			TextureImporter::CpuDecodeRequest m_decodeRequest;
+		};
+
+		struct SamplerSnapshot
+		{
+			TSharedPtr<const TextureSnapshot> m_texture;
+			RHI::ETextureClamping m_clamping = RHI::ETextureClamping::Repeat;
+		};
+
+		struct MaterialSnapshot
+		{
+			FileId m_fileId{};
+			uint64_t m_contentRevision = 0u;
+			Material m_parameters;
+			TVector<TPair<std::string, SamplerSnapshot>> m_samplers;
+		};
+
+		using MaterialSnapshots = TVector<TSharedPtr<const MaterialSnapshot>>;
+		// Capture on the material/texture owner before dispatching background preparation.
+		SAILOR_SHARED_API static MaterialSnapshots CaptureMaterials(const TVector<MaterialPtr>& materials);
+
 		static void ParseCommandLineArgs(Params& params, const char** args, int32_t num);
 
 		SAILOR_SHARED_API bool InitializeScene(const TVector<TLASInstance>& instances,
 			const TVector<MaterialPtr>& materials,
+			const TVector<LightProxy>& lightProxies,
+			bool bAddDefaultLightIfEmpty = true,
+			const ScenePreparationProgressCallback& progress = {},
+			bool bSkipUnresolvedMaterialInstances = false,
+			const ScenePreparationWarningCallback& warning = {});
+		SAILOR_SHARED_API bool InitializeSceneSnapshot(const TVector<TLASInstance>& instances,
+			const MaterialSnapshots& materials,
 			const TVector<LightProxy>& lightProxies,
 			bool bAddDefaultLightIfEmpty = true,
 			const ScenePreparationProgressCallback& progress = {},
@@ -152,6 +188,15 @@ namespace Sailor::Raytracing
 		void Run(const Params& params);
 
 	protected:
+
+		bool InitializeSceneInternal(const TVector<TLASInstance>& instances,
+			const TVector<MaterialPtr>& runtimeMaterials,
+			const MaterialSnapshots* snapshotMaterials,
+			const TVector<LightProxy>& lightProxies,
+			bool bAddDefaultLightIfEmpty,
+			const ScenePreparationProgressCallback& progress,
+			bool bSkipUnresolvedMaterialInstances,
+			const ScenePreparationWarningCallback& warning);
 
 		static vec2 NextVec2_BlueNoise(
 			uint32_t& randSeedX,
@@ -259,6 +304,7 @@ namespace Sailor::Raytracing
 		TMap<std::string, uint32_t> m_textureMapping{};
 		size_t m_cachedMaterialsSignature = 0;
 		uint32_t m_cachedMaterialsCount = 0;
+		bool m_bCachedMaterialsFromSnapshot = false;
 		bool m_bMaterialsFullyResolved = false;
 		ScenePreparationStats m_lastScenePreparationStats{};
 		double m_lastRaytraceTimeMs = 0.0;
