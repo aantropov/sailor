@@ -1,5 +1,6 @@
 #include "AssetRegistry/Model/ModelLodGeneration.h"
 
+#include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Model/ModelGeometry.h"
 #include "AssetRegistry/Model/ModelLodCache.h"
 #include "Core/Utils.h"
@@ -183,9 +184,10 @@ void Sailor::ModelLodGeneration::Prepare(const ModelAssetInfo& assetInfo, TVecto
 	}
 
 	const float reductionFactor = (std::clamp)(assetInfo.GetLodReductionFactor(), 0.05f, 0.95f);
+	const std::filesystem::path cacheFolder = AssetRegistry::GetCacheFolder();
 	for (uint32_t lodLevel = 1u; lodLevel <= numLods; ++lodLevel)
 	{
-		if (ModelLodCache::Load(assetInfo, sourceRevision, lodLevel, meshes))
+		if (ModelLodCache::Load(cacheFolder, assetInfo, sourceRevision, lodLevel, meshes))
 		{
 			continue;
 		}
@@ -197,6 +199,6 @@ void Sailor::ModelLodGeneration::Prepare(const ModelAssetInfo& assetInfo, TVecto
 			mesh.lods.Resize((std::max)(mesh.lods.Num(), lodIndex + 1u));
 			mesh.lods[lodIndex] = Build(mesh, targetRatio);
 		}
-		ModelLodCache::Save(assetInfo, sourceRevision, lodLevel, meshes);
+		ModelLodCache::Save(cacheFolder, assetInfo, sourceRevision, lodLevel, meshes);
 	}
 }

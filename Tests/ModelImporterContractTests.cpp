@@ -1,5 +1,6 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Model/GltfImporterUtils.h"
+#include "AssetRegistry/Model/ModelLodCache.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Core/Utils.h"
 #include "Core/StringHash.h"
@@ -7,10 +8,16 @@
 #include "Raytracing/PathTracer.h"
 #include "Components/MeshRendererComponent.h"
 #include "RHI/Buffer.h"
+#include "Workspace/WorkspaceContext.h"
 
+#include <array>
 #include <cmath>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -397,6 +404,237 @@ namespace
 				"model LOD cache filenames must follow the fileId_lodN.bin contract");
 		Require(ModelImporter::GetLodCacheFilename(fileId, 0u).empty(),
 			"LOD0 must remain source geometry instead of a generated cache file");
+	}
+
+	class ModelCacheWorkspace final
+	{
+	public:
+		ModelCacheWorkspace()
+		{
+			m_root = std::filesystem::temp_directory_path() /
+				("sailor-model-lod-cache-" + FileId::CreateNewFileId().ToString());
+			std::filesystem::create_directories(m_root / "Content");
+			std::ofstream manifest(m_root / "workspace.sailor");
+			manifest <<
+				"manifestVersion: 1\n"
+				"workspaceId: 00000000-0000-0000-0000-000000000132\n"
+				"name: Model LOD Cache Contract\n"
+				"enginePath: .\n"
+				"engineReferenceKind: source\n"
+				"contentPath: Content\n"
+				"sourcePath: Source\n"
+				"generatedProjectPath: Generated\n"
+				"cachePath: DerivedCache\n"
+				"buildPath: DerivedCache/Build\n"
+				"logicOutputPath: Binaries\n"
+				"logicModuleName: ModelLodCacheContract\n";
+			manifest.close();
+			auto resolved = Workspace::ResolveWorkspaceContext(m_root, m_root / "workspace.sailor");
+			Require(resolved.IsSuccess(), "the model cache workspace should resolve: " + resolved.m_message);
+			m_context = std::move(resolved.m_context);
+		}
+
+		~ModelCacheWorkspace()
+		{
+			std::error_code error;
+			std::filesystem::remove_all(m_root, error);
+		}
+
+		const Workspace::WorkspaceContext& Context() const { return m_context; }
+
+	private:
+		std::filesystem::path m_root;
+		Workspace::WorkspaceContext m_context;
+	};
+
+	TVector<ModelImporter::MeshContext> MakeLodCacheMeshes()
+	{
+		TVector<ModelImporter::MeshContext> meshes(2);
+		for (size_t meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
+		{
+			auto triangle = MakeTriangleMesh(2);
+			auto& mesh = meshes[meshIndex];
+			mesh.outVertices = std::move(triangle.m_vertices);
+			mesh.outIndices = std::move(triangle.m_indices);
+			for (auto& vertex : mesh.outVertices)
+			{
+				vertex.m_position.x += static_cast<float>(meshIndex) * 10.0f;
+				vertex.m_texcoord = glm::vec2(0.25f, 0.75f);
+				vertex.m_color = glm::vec4(0.1f, 0.2f, 0.3f, 1.0f);
+				vertex.m_boneIds = glm::ivec4(1, 2, 3, 4);
+				vertex.m_boneWeights = glm::vec4(0.25f);
+			}
+			mesh.lods.Resize(2);
+			for (size_t level = 0; level < mesh.lods.Num(); ++level)
+			{
+				mesh.lods[level].m_vertices = mesh.outVertices;
+				mesh.lods[level].m_indices = mesh.outIndices;
+				mesh.lods[level].m_vertices[0].m_position.y += static_cast<float>(level + 1);
+			}
+		}
+		return meshes;
+	}
+
+	void RequireLodsEqual(const TVector<ModelImporter::MeshContext>& actual,
+		const TVector<ModelImporter::MeshContext>& expected)
+	{
+		Require(actual.Num() == expected.Num(), "LOD caching must preserve the mesh count");
+		for (size_t meshIndex = 0; meshIndex < expected.Num(); ++meshIndex)
+		{
+			Require(actual[meshIndex].lods.Num() == expected[meshIndex].lods.Num(),
+				"LOD caching must preserve every level");
+			for (size_t level = 0; level < expected[meshIndex].lods.Num(); ++level)
+			{
+				Require(actual[meshIndex].lods[level].m_vertices == expected[meshIndex].lods[level].m_vertices &&
+					actual[meshIndex].lods[level].m_indices == expected[meshIndex].lods[level].m_indices,
+					"LOD caching must preserve all vertex attributes and indices");
+			}
+		}
+	}
+
+	void TestModelLodCacheRoundTripAndInvalidation()
+	{
+		ModelCacheWorkspace workspace;
+		const auto& cacheFolder = workspace.Context().GetCache();
+		ModelAssetInfo info;
+		YAML::Node metadata = info.Serialize();
+		metadata["fileId"] = "01234567-89ab-cdef-0123-456789abcdef";
+		info.Deserialize(metadata);
+		const FileRevision revision{ 123456789, true };
+		const auto meshes = MakeLodCacheMeshes();
+		for (uint32_t level : { 1u, 2u })
+		{
+			ModelLodCache::Save(cacheFolder, info, revision, level, meshes);
+			Require(std::filesystem::is_regular_file(cacheFolder / "Lods" /
+				ModelImporter::GetLodCacheFilename(info.GetFileId(), level)),
+				"LOD files must be written under the supplied workspace cache directory");
+		}
+		auto loaded = meshes;
+		for (auto& mesh : loaded) mesh.lods.Clear();
+		Require(ModelLodCache::Load(cacheFolder, info, revision, 2, loaded) &&
+			ModelLodCache::Load(cacheFolder, info, revision, 1, loaded),
+			"both cache levels must load into their own slots in either order");
+		RequireLodsEqual(loaded, meshes);
+		Require(loaded[0].outVertices == meshes[0].outVertices && loaded[1].outIndices == meshes[1].outIndices,
+			"loading LODs must leave the source geometry intact");
+		for (auto& mesh : loaded)
+		{
+			for (auto& lod : mesh.lods) lod.m_vertices[0].m_position.z += 100.0f;
+		}
+		const auto retained = loaded;
+
+		for (int64_t delta : { -1, 1 })
+		{
+			FileRevision changed = revision;
+			changed.m_modificationTimeNanoseconds += delta;
+			Require(!ModelLodCache::Load(cacheFolder, info, changed, 1, loaded),
+				"any source timestamp change must invalidate cached LODs");
+			RequireLodsEqual(loaded, retained);
+		}
+		YAML::Node settings;
+		settings["unitScale"] = 2.0f;
+		settings["lodReductionFactor"] = 0.75f;
+		settings["bShouldBatchByMaterial"] = false;
+		settings["bFlipTexcoordY"] = true;
+		for (const auto& setting : settings)
+		{
+			YAML::Node changedMetadata = info.Serialize();
+			changedMetadata[setting.first.as<std::string>()] = setting.second;
+			ModelAssetInfo changed;
+			changed.Deserialize(changedMetadata);
+			Require(!ModelLodCache::Load(cacheFolder, changed, revision, 1, loaded),
+				"geometry-affecting import settings must invalidate cached LODs");
+			RequireLodsEqual(loaded, retained);
+		}
+
+		const auto path = cacheFolder / "Lods" / ModelImporter::GetLodCacheFilename(info.GetFileId(), 1);
+		std::ifstream input(path, std::ios::binary);
+		std::string bytes{ std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
+		input.close();
+		struct HeaderPrefix
+		{
+			std::array<char, 8> m_magic;
+			uint32_t m_headerSize;
+			uint32_t m_version;
+			uint32_t m_vertexStride;
+		};
+		HeaderPrefix prefix{};
+		Require(bytes.size() >= sizeof(prefix), "a saved LOD file must contain its header");
+		std::memcpy(&prefix, bytes.data(), sizeof(prefix));
+		Require(prefix.m_version == 1 && prefix.m_headerSize >= sizeof(prefix) &&
+			prefix.m_vertexStride == sizeof(RHI::VertexP3N3T3B3UV2C4I4W4),
+			"the current LOD cache must describe its layout at version one");
+		++prefix.m_vertexStride;
+		std::memcpy(bytes.data(), &prefix, sizeof(prefix));
+		{
+			std::ofstream output(path, std::ios::binary | std::ios::trunc);
+			output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+		}
+		Require(!ModelLodCache::Load(cacheFolder, info, revision, 1, loaded),
+			"a different vertex layout must invalidate the cached geometry");
+		RequireLodsEqual(loaded, retained);
+		ModelLodCache::Save(cacheFolder, info, revision, 1, meshes);
+		std::filesystem::resize_file(path, std::filesystem::file_size(path) - sizeof(uint32_t));
+		Require(!ModelLodCache::Load(cacheFolder, info, revision, 1, loaded),
+			"a truncated final mesh must reject the entire cached LOD");
+		RequireLodsEqual(loaded, retained);
+	}
+
+	void TestModelLodCacheRegeneratesExpandedHeader()
+	{
+		ModelCacheWorkspace workspace;
+		const auto& cacheFolder = workspace.Context().GetCache();
+		ModelAssetInfo info;
+		YAML::Node metadata = info.Serialize();
+		metadata["fileId"] = "01234567-89ab-cdef-0123-456789abcdef";
+		info.Deserialize(metadata);
+		const FileRevision revision{ 123456789, true };
+		auto meshes = MakeLodCacheMeshes();
+		ModelLodCache::Save(cacheFolder, info, revision, 1, meshes);
+		const auto path = cacheFolder / "Lods" / ModelImporter::GetLodCacheFilename(info.GetFileId(), 1);
+
+		struct ExpandedHeader
+		{
+			std::array<char, 8> m_magic{ 'S', 'A', 'I', 'L', 'L', 'O', 'D', '\0' };
+			uint32_t m_version = 1;
+			uint32_t m_vertexStride = sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
+			uint32_t m_meshCount = 2;
+			uint32_t m_lodLevel = 1;
+			int64_t m_sourceModificationTime = 123456789;
+			uint64_t m_sourceSize = 0;
+			uint64_t m_sourceContentHash = 0;
+			float m_unitScale = 1.0f;
+			float m_reductionFactor = 0.5f;
+			uint32_t m_bBatchByMaterial = 1;
+			uint32_t m_bFlipTexcoordY = 0;
+		};
+		const ExpandedHeader expanded{};
+		{
+			std::ofstream output(path, std::ios::binary | std::ios::trunc);
+			output.write(reinterpret_cast<const char*>(&expanded), sizeof(expanded));
+			for (const auto& mesh : meshes)
+			{
+				const auto& lod = mesh.lods[0];
+				const uint64_t counts[]{ lod.m_vertices.Num(), lod.m_indices.Num() };
+				output.write(reinterpret_cast<const char*>(counts), sizeof(counts));
+				output.write(reinterpret_cast<const char*>(lod.m_vertices.GetData()),
+					static_cast<std::streamsize>(lod.m_vertices.Num() * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4)));
+				output.write(reinterpret_cast<const char*>(lod.m_indices.GetData()),
+					static_cast<std::streamsize>(lod.m_indices.Num() * sizeof(uint32_t)));
+			}
+		}
+		meshes[0].lods[0].m_vertices[0].m_position.z = 100.0f;
+		const auto retained = meshes;
+		Require(!ModelLodCache::Load(cacheFolder, info, revision, 1, meshes),
+			"the old version-one header must be a cache miss, not a legacy read path");
+		RequireLodsEqual(meshes, retained);
+		ModelImporter::GenerateLods(meshes, 2, info.GetLodReductionFactor());
+		ModelLodCache::Save(cacheFolder, info, revision, 1, meshes);
+		auto loaded = meshes;
+		for (auto& mesh : loaded) mesh.lods[0] = {};
+		Require(ModelLodCache::Load(cacheFolder, info, revision, 1, loaded),
+			"regeneration must replace the stale header with a readable current file");
+		RequireLodsEqual(loaded, meshes);
 	}
 
 	void TestRhiMeshLodsShareBuffersAndDrawRanges()
@@ -1630,6 +1868,8 @@ int main()
 		{ "MeshContextRejectsEmptyGpuUploads", TestMeshContextRejectsEmptyGpuUploads },
 		{ "ModelLodMetadataDefaultsAndRoundTrip", TestModelLodMetadataDefaultsAndRoundTrip },
 		{ "ModelLodGenerationAndCacheNaming", TestModelLodGenerationAndCacheNaming },
+		{ "ModelLodCacheRoundTripAndInvalidation", TestModelLodCacheRoundTripAndInvalidation },
+		{ "ModelLodCacheRegeneratesExpandedHeader", TestModelLodCacheRegeneratesExpandedHeader },
 		{ "RhiMeshLodsShareBuffersAndDrawRanges", TestRhiMeshLodsShareBuffersAndDrawRanges },
 		{ "GltfAlphaModesResolveRenderState", TestGltfAlphaModesResolveRenderState },
 		{ "MaterialAssetRetainsRenderQueue", TestMaterialAssetRetainsRenderQueue },

@@ -1209,16 +1209,12 @@ namespace
 		const std::string& virtualPath,
 		const std::string& winnerIdentity,
 		int64_t modificationTimeNanoseconds,
-		uint64_t fileSize,
-		uint64_t contentHash,
 		uint32_t mountKind)
 	{
 		ShaderDependencyFile dependency;
 		dependency.m_virtualPath = virtualPath;
 		dependency.m_winnerIdentity = winnerIdentity;
 		dependency.m_revision.m_modificationTimeNanoseconds = modificationTimeNanoseconds;
-		dependency.m_revision.m_fileSize = fileSize;
-		dependency.m_revision.m_contentHash = contentHash;
 		dependency.m_revision.m_bIsValid = true;
 		dependency.m_mountKind = mountKind;
 		return dependency;
@@ -1231,15 +1227,11 @@ namespace
 			"Shaders/User.shader",
 			"/Engine/Content/Shaders/User.shader",
 			5000000000ll,
-			128,
-			0x1111111111111111ull,
 			0));
 		baselineDependencies.Add(Dependency(
 			"Shaders/Library/Math.glsl",
 			"/Workspace/Content/Shaders/Library/Math.glsl",
 			6000000000ll,
-			64,
-			0x2222222222222222ull,
 			1));
 
 		const uint64_t baseline = CalculateShaderDependencyFingerprint(baselineDependencies);
@@ -1247,15 +1239,13 @@ namespace
 			CalculateShaderDependencyFingerprint(baselineDependencies) == baseline,
 			"identical shader dependency snapshots should have a stable non-zero fingerprint");
 
-		TVector<ShaderDependencyFile> sameTimestampEdit = baselineDependencies;
-		sameTimestampEdit[1].m_revision.m_fileSize = 256;
-		sameTimestampEdit[1].m_revision.m_contentHash = 0x3333333333333333ull;
-		Require(CalculateShaderDependencyFingerprint(sameTimestampEdit) == baseline,
-			"file size and content hash must not affect timestamp-based shader fingerprints");
+		TVector<ShaderDependencyFile> laterEdit = baselineDependencies;
+		laterEdit[1].m_revision.m_modificationTimeNanoseconds += 1000000000ll;
+		Require(CalculateShaderDependencyFingerprint(laterEdit) != baseline,
+			"a changed GLSL timestamp should invalidate the shader fingerprint");
 
 		TVector<ShaderDependencyFile> backdatedEdit = baselineDependencies;
 		backdatedEdit[1].m_revision.m_modificationTimeNanoseconds = 1000000000ll;
-		backdatedEdit[1].m_revision.m_contentHash = 0x4444444444444444ull;
 		Require(CalculateShaderDependencyFingerprint(backdatedEdit) != baseline,
 			"backdated GLSL edits should invalidate the shader fingerprint");
 

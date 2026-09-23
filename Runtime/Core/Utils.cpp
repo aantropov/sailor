@@ -663,10 +663,6 @@ bool Utils::TryGetFileRevision(
 	}
 	outRevision.m_modificationTimeNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
 		modificationTime.time_since_epoch()).count();
-	outRevision.m_fileSize = 0;
-	// Content hashing made every registry scan read all source assets in full.
-	// The filesystem timestamp is sufficient for runtime change detection.
-	outRevision.m_contentHash = 0;
 	outRevision.m_bIsValid = true;
 	return true;
 }
