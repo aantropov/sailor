@@ -161,8 +161,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool FitsViewport(const VkViewport& viewport) const;
 		SAILOR_API bool IsRecorded() const { return m_bIsRecorded; }
 
-		SAILOR_API static VkAccessFlags GetAccessFlags(VkImageLayout layout);
-		SAILOR_API static VkPipelineStageFlags GetPipelineStage(VkImageLayout layout);
+		SAILOR_API VkQueueFlags GetQueueFlags() const;
+		SAILOR_API static VkAccessFlags GetAccessFlags(VkImageLayout layout, VkQueueFlags queueFlags);
+		SAILOR_API static VkPipelineStageFlags GetPipelineStage(VkImageLayout layout, VkQueueFlags queueFlags);
 		static VkPipelineStageFlags GetShaderPipelineStages(VkQueueFlags queueFlags)
 		{
 			return ((queueFlags & VK_QUEUE_GRAPHICS_BIT) ? VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT : 0u) |

@@ -2961,35 +2961,9 @@ void VulkanGraphicsDriver::MemoryBarrier(RHI::RHICommandListPtr cmd, RHI::EAcces
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout layout, bool bAllowToWriteFromComputeShader)
 {
-	VkImageMemoryBarrier barrier{};
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.oldLayout = (VkImageLayout)layout;
-	barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.image = *image->m_vulkan.m_image;
-	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat((VkFormat)format);
-	barrier.subresourceRange.baseMipLevel = 0;
-	barrier.subresourceRange.levelCount = image->m_vulkan.m_image->m_mipLevels;
-	barrier.subresourceRange.baseArrayLayer = 0;
-	barrier.subresourceRange.layerCount = image->m_vulkan.m_image->m_arrayLayers;
-
-	VkPipelineStageFlags sourceStage = bAllowToWriteFromComputeShader ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT : VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-	VkPipelineStageFlags destinationStage = bAllowToWriteFromComputeShader ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VulkanCommandBuffer::GetPipelineStage((VkImageLayout)layout);
-
-	barrier.srcAccessMask = bAllowToWriteFromComputeShader ? VulkanCommandBuffer::GetAccessFlags((VkImageLayout)layout) : VK_ACCESS_SHADER_WRITE_BIT;
-	barrier.dstAccessMask = bAllowToWriteFromComputeShader ? VK_ACCESS_SHADER_WRITE_BIT : VulkanCommandBuffer::GetAccessFlags((VkImageLayout)layout);
-
-	vkCmdPipelineBarrier(
-		*cmd->m_vulkan.m_commandBuffer,
-		sourceStage, destinationStage,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	cmd->m_vulkan.m_commandBuffer->AddDependency(image);
+	ImageMemoryBarrier(cmd, image, format,
+		bAllowToWriteFromComputeShader ? layout : RHI::EImageLayout::ComputeWrite,
+		bAllowToWriteFromComputeShader ? RHI::EImageLayout::ComputeWrite : layout);
 }
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EImageLayout newLayout)
@@ -3027,6 +3001,7 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 void VulkanGraphicsDriver::ImageMemoryBarrierForComputeSampling(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image)
 {
 	constexpr RHI::EImageLayout newLayout = RHI::EImageLayout::ShaderReadOnlyOptimal;
+	const VkQueueFlags queueFlags = cmd->m_vulkan.m_commandBuffer->GetQueueFlags();
 	if (m_bIsTrackingGpu)
 	{
 		m_lastFrameGpuStats.m_barriers[image][newLayout]++;
@@ -3046,9 +3021,9 @@ void VulkanGraphicsDriver::ImageMemoryBarrierForComputeSampling(RHI::RHICommandL
 		VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(oldLayout);
 	const VkAccessFlags oldAccess = bComputeOld ?
 		(oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT) :
-		VulkanCommandBuffer::GetAccessFlags(oldVkLayout);
+		VulkanCommandBuffer::GetAccessFlags(oldVkLayout, queueFlags);
 	const VkPipelineStageFlags oldStage = bComputeOld ?
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VulkanCommandBuffer::GetPipelineStage(oldVkLayout);
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VulkanCommandBuffer::GetPipelineStage(oldVkLayout, queueFlags);
 
 	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
 		image->m_vulkan.m_imageView,
@@ -3065,6 +3040,7 @@ void VulkanGraphicsDriver::ImageMemoryBarrierForComputeSampling(RHI::RHICommandL
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout)
 {
+	const VkQueueFlags queueFlags = cmd->m_vulkan.m_commandBuffer->GetQueueFlags();
 	const VkImageLayout defaultComputeLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
 	const VkAccessFlags oldComputeAccess = oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT;
 	const VkAccessFlags newComputeAccess = newLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT;
@@ -3086,16 +3062,16 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
 			(VkFormat)format,
 			defaultComputeLayout, (VkImageLayout)newLayout,
-			oldComputeAccess, VulkanCommandBuffer::GetAccessFlags((VkImageLayout)newLayout),
-			computeStage, VulkanCommandBuffer::GetPipelineStage((VkImageLayout)newLayout));
+			oldComputeAccess, VulkanCommandBuffer::GetAccessFlags((VkImageLayout)newLayout, queueFlags),
+			computeStage, VulkanCommandBuffer::GetPipelineStage((VkImageLayout)newLayout, queueFlags));
 	}
 	else if (!bComputeOld && bComputeNew)
 	{
 		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
 			(VkFormat)format,
 			(VkImageLayout)oldLayout, defaultComputeLayout,
-			VulkanCommandBuffer::GetAccessFlags((VkImageLayout)oldLayout), newComputeAccess,
-			VulkanCommandBuffer::GetPipelineStage((VkImageLayout)oldLayout), computeStage);
+			VulkanCommandBuffer::GetAccessFlags((VkImageLayout)oldLayout, queueFlags), newComputeAccess,
+			VulkanCommandBuffer::GetPipelineStage((VkImageLayout)oldLayout, queueFlags), computeStage);
 	}
 	else
 	{

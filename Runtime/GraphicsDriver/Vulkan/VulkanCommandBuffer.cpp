@@ -1002,8 +1002,18 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 	m_gpuCost += image->m_mipLevels * 20;
 }
 
-VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout)
+VkQueueFlags VulkanCommandBuffer::GetQueueFlags() const
 {
+	return m_device->GetQueueFamilies().GetFlags(m_commandPool->GetQueueFamilyIndex());
+}
+
+VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout, VkQueueFlags queueFlags)
+{
+	const bool bGraphics = (queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+	const VkAccessFlags depthRead = bGraphics ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT : 0u;
+	const VkAccessFlags depthWrite = bGraphics ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : 0u;
+	const VkAccessFlags shaderRead = GetShaderPipelineStages(queueFlags) ? VK_ACCESS_SHADER_READ_BIT : 0u;
+
 	switch (layout)
 	{
 	case VK_IMAGE_LAYOUT_UNDEFINED:
@@ -1015,16 +1025,34 @@ VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout)
 	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
 		return 0;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-		return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		return bGraphics ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : 0u;
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
+		return depthRead | depthWrite;
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
+		return depthRead | shaderRead;
+	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
+		return depthRead | depthWrite | shaderRead;
 	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-		return VK_ACCESS_SHADER_READ_BIT;
+		return shaderRead;
 	default:
 		return 0;
 	}
 }
 
-VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
+VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout, VkQueueFlags queueFlags)
 {
+	const bool bGraphics = (queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+	const VkPipelineStageFlags depthStages = bGraphics ?
+		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT : 0u;
+	const VkPipelineStageFlags shaderStages = GetShaderPipelineStages(queueFlags);
+
+	// An unavailable operation contributes no accesses on this queue. Its layout
+	// transition still needs a valid scope; cross-queue handoff remains explicit.
 	switch (layout)
 	{
 	case VK_IMAGE_LAYOUT_UNDEFINED:
@@ -1036,9 +1064,19 @@ VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
 	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
 		return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-		return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		return bGraphics ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
+		return depthStages ? depthStages : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
+		return (depthStages | shaderStages) ? (depthStages | shaderStages) : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-		return VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+		return shaderStages ? shaderStages : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	default:
 		return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
@@ -1046,10 +1084,7 @@ VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
 
 void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess)
 {
-	const uint32_t queueFamilyIndex = m_commandPool->GetQueueFamilyIndex();
-	const auto& queueFamilies = m_device->GetQueueFamilies();
-	const VkPipelineStageFlags shaderStages =
-		GetShaderPipelineStages(queueFamilies.GetFlags(queueFamilyIndex));
+	const VkPipelineStageFlags shaderStages = GetShaderPipelineStages(GetQueueFlags());
 
 	auto resolvePipelineStages = [shaderStages](VkAccessFlags access, bool bSource)
 		{
@@ -1190,11 +1225,12 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 	barrier.subresourceRange.baseArrayLayer = 0;
 	barrier.subresourceRange.layerCount = image->m_arrayLayers;
 
-	VkPipelineStageFlags sourceStage = GetPipelineStage(oldLayout);
-	VkPipelineStageFlags destinationStage = GetPipelineStage(newLayout);
+	const VkQueueFlags queueFlags = GetQueueFlags();
+	VkPipelineStageFlags sourceStage = GetPipelineStage(oldLayout, queueFlags);
+	VkPipelineStageFlags destinationStage = GetPipelineStage(newLayout, queueFlags);
 
-	barrier.srcAccessMask = GetAccessFlags(oldLayout);
-	barrier.dstAccessMask = GetAccessFlags(newLayout);
+	barrier.srcAccessMask = GetAccessFlags(oldLayout, queueFlags);
+	barrier.dstAccessMask = GetAccessFlags(newLayout, queueFlags);
 
 	vkCmdPipelineBarrier(
 		m_commandBuffer,
