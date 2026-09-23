@@ -84,8 +84,8 @@ void GIProbesPathTracer::SetEnvironmentLinear(
 
 bool GIProbesPathTracer::SamplePrimaryDirection(
 	const glm::vec3& uniformDirection,
-	uint32_t sampleIndex,
-	uint32_t sampleCount,
+	uint32_t,
+	uint32_t,
 	uint32_t randomSeed,
 	glm::vec3& outDirection,
 	float& outPdf,
@@ -95,26 +95,18 @@ bool GIProbesPathTracer::SamplePrimaryDirection(
 		0.07957747154594766788f;
 	outDirection = uniformDirection;
 	outPdf = UniformSpherePdf;
-	if (!m_pathTracer.m_bUseRuntimeEnvironmentImportance ||
-		sampleCount < 2u)
+	if (!m_pathTracer.m_bUseRuntimeEnvironmentImportance)
 	{
 		outDiagnostic.clear();
 		return true;
 	}
 
-	const uint32_t importanceSampleCount = sampleCount / 2u;
-	const uint32_t uniformSampleCount =
-		sampleCount - importanceSampleCount;
-	const float importanceFraction =
-		static_cast<float>(importanceSampleCount) /
-		static_cast<float>(sampleCount);
-	const float uniformFraction =
-		static_cast<float>(uniformSampleCount) /
-		static_cast<float>(sampleCount);
+	// The seed is already mixed per ray. One bit chooses the technique; the remaining
+	// bits seed importance sampling. The mixture stays the same for every prefix/budget.
 	float directionImportancePdf = 0.0f;
-	if ((sampleIndex & 1u) != 0u)
+	if ((randomSeed & 1u) != 0u)
 	{
-		uint32_t importanceRandomState = randomSeed;
+		uint32_t importanceRandomState = randomSeed >> 1u;
 		if (!m_pathTracer.SampleRuntimeEnvironmentImportance(
 				importanceRandomState,
 				outDirection,
@@ -131,8 +123,7 @@ bool GIProbesPathTracer::SamplePrimaryDirection(
 			m_pathTracer.RuntimeEnvironmentImportancePdf(outDirection);
 	}
 
-	outPdf = uniformFraction * UniformSpherePdf +
-		importanceFraction * directionImportancePdf;
+	outPdf = 0.5f * (UniformSpherePdf + directionImportancePdf);
 	outDiagnostic.clear();
 	return std::isfinite(outPdf) && outPdf > 0.0f;
 }

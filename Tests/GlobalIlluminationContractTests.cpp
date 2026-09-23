@@ -1092,6 +1092,76 @@ namespace
 		mutable std::atomic<uint64_t> m_visibilitySampleCount{ 0u };
 	};
 
+	class AnalyticSphereSampler : public IGIProbeBakeRaySampler
+	{
+	public:
+		bool Sample(const glm::vec3&, const glm::vec3& direction, float maxDistance,
+			uint32_t, GIProbeBakeRaySample& outSample, std::string&) const override
+		{
+			++m_sampleCount;
+			// Three independent analytic fields: a constant sphere and its two hemispheres.
+			outSample = {};
+			outSample.m_radiance = glm::vec3(1.0f, direction.y > 0.0f ? 1.0f : 0.0f,
+				direction.y < 0.0f ? 1.0f : 0.0f);
+			outSample.m_distance = maxDistance;
+			return true;
+		}
+
+		bool SampleVisibility(const glm::vec3&, const glm::vec3&, float maxDistance,
+			uint32_t, GIProbeBakeRaySample& outSample, std::string&) const override
+		{
+			outSample = {};
+			outSample.m_distance = maxDistance;
+			return true;
+		}
+
+		uint64_t GetSampleCount() const
+		{
+			return m_sampleCount.load();
+		}
+
+	private:
+		mutable std::atomic<uint64_t> m_sampleCount{ 0u };
+	};
+
+	// Records the production accumulator's primary inputs; only used by single-threaded range tests.
+	class ProgressiveDirectionProbe final : public AnalyticSphereSampler
+	{
+	public:
+		struct PrimarySample
+		{
+			glm::vec3 m_uniformDirection;
+			glm::vec3 m_direction;
+			float m_pdf;
+			uint32_t m_randomSeed;
+		};
+
+		explicit ProgressiveDirectionProbe(const Raytracing::GIProbesPathTracer* sampler = nullptr) :
+			m_sampler(sampler)
+		{}
+
+		bool SamplePrimaryDirection(const glm::vec3& uniformDirection, uint32_t sampleIndex,
+			uint32_t sampleCount, uint32_t randomSeed, glm::vec3& outDirection, float& outPdf,
+			std::string& outDiagnostic) const override
+		{
+			const bool success = m_sampler ?
+				m_sampler->SamplePrimaryDirection(uniformDirection, sampleIndex, sampleCount,
+					randomSeed, outDirection, outPdf, outDiagnostic) :
+				IGIProbeBakeRaySampler::SamplePrimaryDirection(uniformDirection, sampleIndex, sampleCount,
+					randomSeed, outDirection, outPdf, outDiagnostic);
+			if (success)
+			{
+				m_samples.Add({ uniformDirection, outDirection, outPdf, randomSeed });
+			}
+			return success;
+		}
+
+		mutable TVector<PrimarySample> m_samples;
+
+	private:
+		const Raytracing::GIProbesPathTracer* m_sampler;
+	};
+
 	class SeedDrivenBakeRaySampler final : public IGIProbeBakeRaySampler
 	{
 	public:
@@ -3180,6 +3250,188 @@ components:
 		}
 	}
 
+	GIProbe TraceIrradiancePrefix(const GIProbeTraceRequest& request,
+		const IGIProbeBakeRaySampler& sampler, uint32_t sampleCount, uint32_t targetCount)
+	{
+		GIProbeIrradianceAccumulator accumulator;
+		GIProbe probe;
+		std::string diagnostic;
+		Require(AccumulateGIProbeIrradianceRange(request, sampler, glm::vec3(0.0f),
+				91u, 0u, sampleCount, targetCount, accumulator, diagnostic),
+			"irradiance prefix should accumulate: " + diagnostic);
+		Require(ResolveGIProbeIrradiance(accumulator, probe, diagnostic),
+			"irradiance prefix should resolve: " + diagnostic);
+		return probe;
+	}
+
+	void RequireAnalyticSphereIrradiance(const GIProbe& probe, float tolerance)
+	{
+		for (uint32_t axis = 0u; axis < 3u; ++axis)
+		{
+			for (float sign : { -1.0f, 1.0f })
+			{
+				glm::vec3 normal(0.0f);
+				normal[axis] = sign;
+				const glm::vec3 actual = EvaluateProbeIrradianceSH(probe.m_irradiance, normal);
+				// The engine stores irradiance / pi: one for a unit sphere,
+				// (1 +/- normal.y) / 2 for either unit-radiance hemisphere.
+				const glm::vec3 expected(1.0f, (1.0f + normal.y) * 0.5f,
+					(1.0f - normal.y) * 0.5f);
+				for (uint32_t channel = 0u; channel < 3u; ++channel)
+				{
+					Require(IsNear(actual[channel], expected[channel], tolerance),
+						"progressive irradiance must cover both hemispheres; error " +
+						std::to_string(std::abs(actual[channel] - expected[channel])));
+				}
+			}
+		}
+	}
+
+	void RequireSamePrimarySamples(const ProgressiveDirectionProbe& lhs,
+		const ProgressiveDirectionProbe& rhs)
+	{
+		Require(lhs.m_samples.Num() == rhs.m_samples.Num(),
+			"primary sample prefixes must have equal lengths");
+		for (size_t index = 0u; index < lhs.m_samples.Num(); ++index)
+		{
+			const auto& a = lhs.m_samples[index];
+			const auto& b = rhs.m_samples[index];
+			Require(HasSameVectorBits(a.m_uniformDirection, b.m_uniformDirection) &&
+				HasSameVectorBits(a.m_direction, b.m_direction) &&
+				HasSameFloatBits(a.m_pdf, b.m_pdf) && a.m_randomSeed == b.m_randomSeed,
+				"primary directions, seeds and PDFs must not depend on target or chunk size");
+		}
+	}
+
+	void TestProgressiveIrradianceSphereCoverage()
+	{
+		GIProbeTraceRequest request;
+		for (uint32_t seed : { 0u, 1729u, 9187u })
+		{
+			request.m_settings.m_randomSeed = seed;
+			for (uint32_t count : { 16u, 17u, 32u, 33u, 64u, 65u })
+			{
+				ProgressiveDirectionProbe partialSampler;
+				const GIProbe partial = TraceIrradiancePrefix(request, partialSampler, count, 129u);
+				const float tolerance = count <= 17u ? 0.30f : count <= 33u ? 0.20f : 0.12f;
+				RequireAnalyticSphereIrradiance(partial, tolerance);
+				Require(IsNear(partial.m_irradiance[0].x, std::sqrt(4.0f * glm::pi<float>()), 0.00001f),
+					"each uniform prefix must preserve constant radiance energy");
+
+				ProgressiveDirectionProbe completeSampler;
+				const GIProbe complete = TraceIrradiancePrefix(request, completeSampler, count, count);
+				RequireSamePrimarySamples(partialSampler, completeSampler);
+				for (uint32_t coefficient = 0u; coefficient < GIProbeSphericalHarmonicsCoefficientCount;
+					++coefficient)
+				{
+					Require(glm::length(partial.m_irradiance[coefficient] - complete.m_irradiance[coefficient]) < 0.00001f,
+						"normalizing a prefix must not change with the final sample budget");
+				}
+
+				glm::vec3 minimum(1.0f);
+				glm::vec3 maximum(-1.0f);
+				for (size_t index = 0u; index < partialSampler.m_samples.Num(); index += 2u)
+				{
+					const glm::vec3& direction = partialSampler.m_samples[index].m_direction;
+					Require(IsNear(glm::length(direction), 1.0f, 0.00001f),
+						"progressive sphere samples must be unit vectors");
+					minimum = glm::min(minimum, direction);
+					maximum = glm::max(maximum, direction);
+				}
+				Require(minimum.x < 0.0f && minimum.y < -0.5f && minimum.z < 0.0f &&
+					maximum.x > 0.0f && maximum.y > 0.5f && maximum.z > 0.0f,
+					"even-index uniform samples must span both hemispheres, not one parity band");
+			}
+		}
+	}
+
+	void TestProgressiveHdrMixture()
+	{
+		constexpr uint32_t Width = 32u;
+		constexpr uint32_t Height = 16u;
+		TVector<glm::vec4> environment;
+		environment.Resize(Width * Height);
+		for (glm::vec4& pixel : environment)
+		{
+			pixel = glm::vec4(1.0f);
+		}
+		environment[Width * 4u + Width / 2u] = glm::vec4(65504.0f, 65504.0f, 65504.0f, 1.0f);
+		Raytracing::GIProbesPathTracer pathTracer;
+		pathTracer.SetEnvironmentLinear(environment, glm::uvec2(Width, Height));
+		InspectablePathTracer reference;
+		reference.SetRuntimeEnvironmentLinear(environment, glm::uvec2(Width, Height));
+		Require(reference.UsesEnvironmentImportance(), "the HDR fixture must enable importance sampling");
+
+		GIProbeTraceRequest request;
+		request.m_settings.m_randomSeed = 1729u;
+		for (uint32_t count : { 1u, 16u, 17u, 32u, 33u, 64u, 65u })
+		{
+			ProgressiveDirectionProbe partialSampler(&pathTracer);
+			const GIProbe partial = TraceIrradiancePrefix(request, partialSampler, count, 129u);
+			ProgressiveDirectionProbe completeSampler(&pathTracer);
+			const GIProbe complete = TraceIrradiancePrefix(request, completeSampler, count, count);
+			RequireSamePrimarySamples(partialSampler, completeSampler);
+			uint32_t uniformSamples = 0u;
+			for (const auto& sample : partialSampler.m_samples)
+			{
+				// Facing away makes the direct-light hemisphere term zero, leaving
+				// half the environment PDF through the existing exported query.
+				const float expectedPdf = 0.5f / (4.0f * glm::pi<float>()) +
+					reference.EnvironmentPdf(-sample.m_direction, sample.m_direction);
+				Require(IsNear(sample.m_pdf, expectedPdf, 0.00001f * (std::max)(1.0f, expectedPdf)) &&
+					IsNear(glm::length(sample.m_direction), 1.0f, 0.00001f),
+					"every HDR sample must use the same equal-weight sphere/environment mixture PDF");
+				uniformSamples += HasSameVectorBits(sample.m_uniformDirection, sample.m_direction) ? 1u : 0u;
+			}
+			for (uint32_t coefficient = 0u; coefficient < GIProbeSphericalHarmonicsCoefficientCount;
+				++coefficient)
+			{
+				Require(glm::length(partial.m_irradiance[coefficient] - complete.m_irradiance[coefficient]) < 0.00001f,
+					"HDR prefix energy must not depend on whether its budget is final");
+			}
+			if (count == 65u)
+			{
+				Require(uniformSamples > 0u && uniformSamples < count,
+					"the seeded HDR prefix must exercise both sampling techniques");
+				ProgressiveDirectionProbe chunkedSampler(&pathTracer);
+				GIProbeIrradianceAccumulator accumulator;
+				std::string diagnostic;
+				uint32_t begin = 0u;
+				for (uint32_t chunk : { 17u, 16u, 32u })
+				{
+					Require(AccumulateGIProbeIrradianceRange(request, chunkedSampler, glm::vec3(0.0f),
+							91u, begin, chunk, 129u, accumulator, diagnostic),
+						"odd HDR chunks must accumulate: " + diagnostic);
+					begin += chunk;
+				}
+				GIProbe chunked;
+				Require(ResolveGIProbeIrradiance(accumulator, chunked, diagnostic) &&
+					HasSameIrradianceBits(partial, chunked),
+					"chunking must preserve HDR irradiance bit for bit");
+				RequireSamePrimarySamples(partialSampler, chunkedSampler);
+			}
+		}
+
+		// Technique counts fluctuate at low budgets. Check energy over a fixed seed
+		// ensemble rather than requiring exactly half of every odd prefix from each technique.
+		for (uint32_t count : { 16u, 17u, 65u })
+		{
+			GIProbe average;
+			for (uint32_t seed = 0u; seed < 128u; ++seed)
+			{
+				request.m_settings.m_randomSeed = seed;
+				ProgressiveDirectionProbe sampler(&pathTracer);
+				const GIProbe probe = TraceIrradiancePrefix(request, sampler, count, 129u);
+				for (uint32_t coefficient = 0u; coefficient < GIProbeSphericalHarmonicsCoefficientCount;
+					++coefficient)
+				{
+					average.m_irradiance[coefficient] += probe.m_irradiance[coefficient] / 128.0f;
+				}
+			}
+			RequireAnalyticSphereIrradiance(average, count <= 17u ? 0.35f : 0.15f);
+		}
+	}
+
 	void TestIncrementalProbeIrradianceAccumulation()
 	{
 		GIProbeTraceRequest request;
@@ -3840,6 +4092,63 @@ components:
 				}),
 			"runtime probes should refine from 16 samples to the target without changing layout");
 		service.Disable();
+	}
+
+	void TestRuntimeGIProbesInitialSphereCoverage()
+	{
+		for (uint32_t initialCount : { 16u, 17u })
+		{
+			RuntimeGIProbesService service;
+			auto analyticSampler = TSharedPtr<AnalyticSphereSampler>::Make();
+			TSharedPtr<IGIProbeBakeRaySampler> sampler = analyticSampler;
+			RuntimeGIProbesStartRequest request = MakeRuntimeGIProbesRequest(sampler, 141u, 151u);
+			request.m_qualitySettings.m_initialSamplesPerProbe = initialCount;
+			request.m_qualitySettings.m_targetSamplesPerProbe = 65u;
+			std::string diagnostic;
+			Require(service.Start(request, diagnostic),
+				"the analytic runtime GI fixture should start: " + diagnostic);
+			Require(WaitForRuntimeGIProbes(service, [](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_publishedRevision > 0u;
+				}), "the runtime worker must publish its initial sphere samples");
+
+			const RuntimeGIProbesStatus initial = service.GetStatus();
+			const GIProbesDataPtr initialData = service.GetPublishedData();
+			// Headless execution runs one real worker job per Tick, so this observes
+			// the initial milestone before any probe starts its refinement pass.
+			Require(initialData && initial.m_activeProbeCount == 8u &&
+				initial.m_readyProbeCount == initial.m_activeProbeCount && initial.m_refinement < 1.0f &&
+				analyticSampler->GetSampleCount() == static_cast<uint64_t>(initial.m_activeProbeCount) * initialCount,
+				"first publication must contain only the configured 16/17-sample prefixes");
+			for (const GIProbe& probe : initialData->m_probes)
+			{
+				Require((probe.m_flags & static_cast<uint32_t>(EGIProbeFlag::Valid)) != 0u,
+					"unoccluded analytic probes must be ready in the initial publication");
+				RequireAnalyticSphereIrradiance(probe, 0.30f);
+			}
+
+			GIProbeTraceRequest traceRequest;
+			traceRequest.m_settings.m_randomSeed = request.m_randomSeed;
+			const AnalyticSphereSampler referenceSampler;
+			const GIProbe complete = TraceIrradiancePrefix(traceRequest, referenceSampler, 65u, 65u);
+			Require(WaitForRuntimeGIProbes(service, [&](const RuntimeGIProbesStatus& status)
+				{
+					const GIProbesDataPtr data = service.GetPublishedData();
+					return status.m_lifecycle == ERuntimeGIProbesLifecycle::Ready &&
+						status.m_publishedRevision > initial.m_publishedRevision && data &&
+						!data->m_probes.IsEmpty() && HasSameIrradianceBits(data->m_probes[0], complete);
+				}), "the runtime worker must publish the completed odd sample budget");
+			Require(analyticSampler->GetSampleCount() == static_cast<uint64_t>(initial.m_activeProbeCount) * 65u,
+				"refinement must extend each prefix without retracing its earlier irradiance samples");
+			const GIProbesDataPtr finalData = service.GetPublishedData();
+			for (const GIProbe& probe : finalData->m_probes)
+			{
+				Require(HasSameIrradianceBits(probe, complete),
+					"published runtime irradiance must match the completed production accumulator");
+				RequireAnalyticSphereIrradiance(probe, 0.12f);
+			}
+			service.Disable();
+		}
 	}
 
 	void TestRuntimeGIProbesRetainRelocationAcrossCameraMotion()
@@ -6394,6 +6703,12 @@ int main(int argc, char** argv)
 			"PrimaryDirectionPdfWeighting",
 			TestPrimaryDirectionPdfWeighting);
 		RunTest(
+			"ProgressiveIrradianceSphereCoverage",
+			TestProgressiveIrradianceSphereCoverage);
+		RunTest(
+			"ProgressiveHdrMixture",
+			TestProgressiveHdrMixture);
+		RunTest(
 			"IncrementalProbeIrradianceAccumulation",
 			TestIncrementalProbeIrradianceAccumulation);
 		RunTest(
@@ -6411,6 +6726,9 @@ int main(int argc, char** argv)
 		RunTest(
 			"RuntimeGIProbesProgressiveSamplingPublication",
 			TestRuntimeGIProbesProgressiveSamplingPublication);
+		RunTest(
+			"RuntimeGIProbesInitialSphereCoverage",
+			TestRuntimeGIProbesInitialSphereCoverage);
 		RunTest(
 			"RuntimeGIProbesRetainRelocationAcrossCameraMotion",
 			TestRuntimeGIProbesRetainRelocationAcrossCameraMotion);
