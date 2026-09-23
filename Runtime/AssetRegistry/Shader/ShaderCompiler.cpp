@@ -1271,45 +1271,13 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::
 
 	if (module.GetCompilationStatus() != shaderc_compilation_status::shaderc_compilation_status_success)
 	{
-		//const size_t numErrors = module.GetNumErrors();
-		//const size_t numWarnings = module.GetNumWarnings();
 		const std::string fullError = module.GetErrorMessage();
-
-		uint32_t start = 0;
-		bool bFound = false;
-		uint32_t lineNum = 0;
 
 		SAILOR_LOG("Failed to compile shader");
 
-		uint32_t errorNum = 1;
-		auto errors = Utils::SplitStringByLines(fullError);
-		for (const auto& error : errors)
+		for (const auto& error : Utils::SplitStringByLines(fullError))
 		{
-			SAILOR_LOG_ERROR("Error %d: %s", errorNum++, error.c_str());
-
-			for (uint32_t i = 0; i < error.size(); i++)
-			{
-				if (error[i] == ':')
-				{
-					if (!bFound)
-					{
-						start = i;
-						bFound = true;
-					}
-					else
-					{
-						std::string str = error.substr(start + 1, i - start - 2);
-						lineNum = static_cast<uint32_t>(std::stoul(str) - 1);
-					}
-				}
-			}
-
-			auto lines = Utils::SplitStringByLines(source);
-
-			if (lineNum < lines.Num())
-			{
-				SAILOR_LOG("%s\n", lines[lineNum].c_str());
-			}
+			SAILOR_LOG_ERROR("%s", error.c_str());
 		}
 
 		return false;

@@ -1104,6 +1104,40 @@ namespace
 		RequireWords(vertex, Words(80), "restored durable bytecode");
 	}
 
+	void TestFailedGlslCompilationPreservesBytecode()
+	{
+		const std::string validSource =
+			"#version 450\nlayout(location = 0) out vec4 color;\nvoid main() { color = vec4(1.0); }\n";
+		struct InvalidShader
+		{
+			const char* m_filename;
+			std::string m_source;
+		};
+		const InvalidShader invalidShaders[] = {
+			{ "single-digit.frag", "#version 450\n#error invalid shader\nvoid main() {}\n" },
+			{ "C:\\Project With Spaces\\Shaders\\invalid.frag", "#version 450\n" + std::string(12, '\n') + "#error invalid shader\nvoid main() {}\n" },
+			{ "multiple-errors.frag", "#version 450\n#error first diagnostic\n#error second diagnostic\nvoid main() {}\n" },
+			{ "remapped-line.frag", "#version 450\n#line 1200\n#error remapped diagnostic\nvoid main() {}\n" },
+			{ "", "#version 450\nvoid main() { invalid_expression; }\n" }
+		};
+		for (bool debug : { false, true })
+		{
+			RHI::ShaderByteCode byteCode;
+			Require(ShaderCompilerTestAccess::CompileGlslToSpirv("valid.frag", validSource,
+				RHI::EShaderStage::Fragment, byteCode, debug), "the fixture must compile real valid GLSL");
+			const RHI::ShaderByteCode previous = byteCode;
+			Require(!previous.IsEmpty(), "the fixture must retain actual compiled SPIR-V");
+			for (const InvalidShader& shader : invalidShaders)
+			{
+				Require(!ShaderCompilerTestAccess::CompileGlslToSpirv(shader.m_filename, shader.m_source,
+					RHI::EShaderStage::Fragment, byteCode, debug), "invalid GLSL must return failure without throwing while reading its diagnostics");
+				RequireWords(byteCode, previous, "a failed compile must not replace the previously compiled bytecode");
+			}
+			Require(ShaderCompilerTestAccess::CompileGlslToSpirv("recovered.frag", validSource,
+				RHI::EShaderStage::Fragment, byteCode, debug), "valid GLSL must still compile after diagnostic failures");
+		}
+	}
+
 	void TestShaderCompilerFailureLifecycle()
 	{
 		const FileId parsedOnly = MakeFileId("{SHADER-DEPENDENCY-PARSED}");
@@ -1922,6 +1956,7 @@ int main()
 		TestIoFailureQuarantineIsReadOnlyAndSessionOnly();
 		TestRuntimeArtifactIoFailureEntersReadOnlyQuarantine();
 		TestShaderCompilerFailureLifecycle();
+		TestFailedGlslCompilationPreservesBytecode();
 		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
 		TestRuntimeLightingShadersCompile();
