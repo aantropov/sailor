@@ -186,7 +186,8 @@ namespace
 	{
 	public:
 
-		PrefabTestWorld() : World("PrefabRollbackTests", 0, CreateEcs()) {}
+		explicit PrefabTestWorld(EWorldBehaviourMask mask = 0) :
+			World("PrefabRollbackTests", mask, CreateEcs()) {}
 		void AdvanceFrame() { ++m_currentFrame; }
 		size_t GetPendingDependencyCount() const { return GetNumPendingDependencyResolutions(); }
 		bool RemovePrefabMetadataForTest(
@@ -2043,6 +2044,143 @@ namespace
 			objectCountBeforeInstantiation + 3,
 			"the linked persistence fixture should retain its expected live hierarchy");
 		world.Clear();
+	}
+
+	void TestGameplayPrefabCopiesAllowStructureChanges()
+	{
+		constexpr uint32_t noParent = static_cast<uint32_t>(-1);
+		const InstanceId sourceRootId = DeserializeInstanceId("10010010010010010000");
+		const InstanceId sourceChildId = DeserializeInstanceId("20020020020020020000");
+		const InstanceId sourceValueId = DeserializeInstanceId("2222222222222222_20020020020020020000");
+		const InstanceId liveRootId = DeserializeInstanceId("30030030030030030000");
+		const InstanceId liveChildId = DeserializeInstanceId("40040040040040040000");
+		const InstanceId parentId = DeserializeInstanceId("50050050050050050000");
+		const FileId sourceFileId = DeserializeFileId("{11111111-2222-3333-4444-555555555555}");
+
+		for (const bool bLinkedRecord : { false, true })
+		{
+			PrefabTestWorld editor;
+			PrefabTestWorld gameplay(static_cast<EWorldBehaviourMask>(EWorldBehaviourBit::CallBeginPlay));
+			YAML::Node dependencyProperties;
+			dependencyProperties["m_dependency"]["fileId"] = "NullFileId";
+			dependencyProperties["m_dependency"]["instanceId"] = sourceValueId;
+			YAML::Node valueProperties;
+			valueProperties["m_value"] = 42.0f;
+			YAML::Node sourceNode = MakePrefabNode({ noParent, 0 });
+			sourceNode["gameObjects"][0]["instanceId"] = sourceRootId;
+			sourceNode["gameObjects"][0]["components"].push_back(0);
+			sourceNode["gameObjects"][1]["instanceId"] = sourceChildId;
+			sourceNode["gameObjects"][1]["components"].push_back(1);
+			sourceNode["components"].push_back(MakeReflectedComponent(
+				"1111111111111111_10010010010010010000", dependencyProperties));
+			sourceNode["components"].push_back(MakeReflectedComponent(sourceValueId.ToString(), valueProperties));
+			PrefabPtr sourcePrefab = DeserializePrefab(editor, sourceFileId, sourceNode);
+			const std::string sourceBefore = YAML::Dump(sourcePrefab->Serialize());
+			PrefabPtr inputPrefab = sourcePrefab;
+			WorldPrefabDocumentFixture document;
+
+			if (bLinkedRecord)
+			{
+				TMap<InstanceId, InstanceId> instanceIds;
+				instanceIds[sourceRootId] = liveRootId;
+				instanceIds[sourceChildId] = liveChildId;
+				TMap<InstanceId, YAML::Node> objectOverrides;
+				objectOverrides[sourceChildId]["name"] = "OverriddenChild";
+				objectOverrides[sourceChildId]["mobilityType"] = "Dynamic";
+				objectOverrides[sourceChildId]["position"] = glm::vec4(7.0f, 8.0f, 9.0f, 0.0f);
+				TMap<InstanceId, ReflectedData> componentOverrides;
+				YAML::Node valueOverride;
+				valueOverride["typename"] = PrefabRollbackTestComponent::GetStaticTypeInfo().Name();
+				valueOverride["overrideProperties"]["m_value"] = 99.0f;
+				componentOverrides[sourceValueId].Deserialize(valueOverride);
+				PrefabPtr linkedPrefab = PrefabPtr::Make(editor.GetAllocator(), sourceFileId);
+				std::string diagnostic;
+				Require(linkedPrefab->ConfigureLinkedInstance(sourcePrefab, instanceIds, parentId,
+					objectOverrides, componentOverrides, diagnostic),
+					"the gameplay linked fixture should accept its overrides: " + diagnostic);
+				document.AddPrefab(linkedPrefab);
+				const YAML::Node persisted = YAML::Load(YAML::Dump(document.Serialize()))["prefabs"][0];
+				inputPrefab = PrefabPtr::Make(editor.GetAllocator(), persisted["fileId"].as<FileId>());
+				Require(inputPrefab->ConfigureLinkedInstance(sourcePrefab,
+					persisted["instanceIds"].as<TMap<InstanceId, InstanceId>>(),
+					persisted["parentInstanceId"].as<InstanceId>(),
+					persisted["gameObjectOverrides"].as<TMap<InstanceId, YAML::Node>>(),
+					persisted["componentOverrides"].as<TMap<InstanceId, ReflectedData>>(), diagnostic),
+					"persisted linked data should resolve against its source: " + diagnostic);
+			}
+			const std::string documentBefore = YAML::Dump(document.Serialize());
+			const std::string inputBefore = YAML::Dump(inputPrefab->Serialize());
+
+			auto editorParent = editor.Instantiate("EditorParent", parentId);
+			auto gameplayParent = gameplay.Instantiate("GameplayParent", parentId);
+			auto editorRoot = editor.Instantiate(inputPrefab);
+			auto root = gameplay.Instantiate(inputPrefab);
+			Require(editorRoot && root && root->GetChildren().Num() == 1,
+				"both world modes should instantiate the same prefab hierarchy");
+			auto editorChild = editorRoot->GetChildren()[0];
+			auto child = root->GetChildren()[0];
+			auto dependency = root->GetComponent<PrefabRollbackTestComponent>();
+			auto value = child->GetComponent<PrefabRollbackTestComponent>();
+			Require(dependency && value && dependency->m_dependency == value,
+				"gameplay copies should resolve internal references to their live components");
+			Require(root->GetInstanceId() == (bLinkedRecord ? liveRootId : sourceRootId) &&
+				child->GetInstanceId() == (bLinkedRecord ? liveChildId : sourceChildId) &&
+				value->GetInstanceId() == InstanceId(sourceValueId.ComponentId(), child->GetInstanceId()),
+				"removing authoring links must preserve serialized object and component identities");
+			Require(value->m_value == (bLinkedRecord ? 99.0f : 42.0f),
+				"gameplay copies should retain reflected values and linked overrides");
+			if (bLinkedRecord)
+			{
+				Require(root->GetParent() == gameplayParent && editorRoot->GetParent() == editorParent &&
+					child->GetName() == "OverriddenChild" && child->GetMobilityType() == EMobilityType::Dynamic &&
+					child->GetTransformComponent().GetPosition() == glm::vec4(7.0f, 8.0f, 9.0f, 1.0f),
+					"gameplay copies should retain their external parent and game-object overrides");
+			}
+			Require(editorRoot->GetFileId() == sourceFileId && editor.IsPrefabLinked(editorChild->GetInstanceId()),
+				"the editor must retain source identity and authoring membership");
+			const PrefabInstanceLink* link = nullptr;
+			Require(!root->GetFileId() && !gameplay.IsPrefabInstanceRoot(root->GetInstanceId()) &&
+				!gameplay.IsPrefabLinked(child->GetInstanceId()) &&
+				!gameplay.TryGetPrefabInstance(root->GetInstanceId(), link) && gameplay.GetPrefabInstances().IsEmpty(),
+				"gameplay copies must not retain authoring links or stale source mappings");
+
+			auto editorValue = editorChild->GetComponent<PrefabRollbackTestComponent>();
+			Require(!editorRoot->AddComponent<PrefabRollbackTestComponent>() && !editorChild->RemoveComponent(editorValue),
+				"editor-linked instances should still reject component structure changes");
+			editorChild->SetParent(editorParent);
+			editor.DestroyImmediate(editorChild);
+			Require(editorChild && editorChild->GetParent() == editorRoot,
+				"editor-linked children should still reject reparenting and deletion");
+
+			value->m_value = -7.0f;
+			child->SetName("GameplayOnly");
+			auto added = root->AddComponent<PrefabRollbackTestComponent>();
+			Require(added && root->RemoveComponent(added) && child->RemoveComponent(value),
+				"gameplay copies should allow adding and removing components");
+			ComponentPtr rawComponent = TObjectPtr<PrefabRollbackTestComponent>::Make(gameplay.GetAllocator());
+			Require(root->AddComponentRaw(rawComponent) && root->RemoveComponent(rawComponent),
+				"gameplay copies should also allow the raw component API");
+			child->SetParent(gameplayParent);
+			Require(child->GetParent() == gameplayParent && root->GetChildren().IsEmpty(),
+				"gameplay copies should allow reparenting internal children");
+			child->SetParent(root);
+			auto addedChild = gameplay.Instantiate("GameplayChild");
+			addedChild->SetParent(root);
+			Require(addedChild->GetParent() == root,
+				"new gameplay objects should be allowed inside an instantiated hierarchy");
+			const InstanceId childId = child->GetInstanceId();
+			gameplay.DestroyImmediate(child);
+			Require(!gameplay.GetObjectByInstanceId(childId) && root->GetChildren().Num() == 1 &&
+				root->GetChildren()[0] == addedChild,
+				"destroying a gameplay prefab child should remove only that live object");
+
+			Require(sourcePrefab->GetFileId() == sourceFileId && YAML::Dump(sourcePrefab->Serialize()) == sourceBefore &&
+				YAML::Dump(inputPrefab->Serialize()) == inputBefore && YAML::Dump(document.Serialize()) == documentBefore &&
+				editorValue->m_value == (bLinkedRecord ? 99.0f : 42.0f),
+				"gameplay changes must leave source data, persisted overrides, and the editor instance untouched");
+			gameplay.Clear();
+			editor.Clear();
+		}
 	}
 
 	void TestLinkedPrefabBaselineAndSaveFailureContract()
@@ -3935,6 +4073,7 @@ int main()
 		{ "PrefabComponentReferencesFollowRemappedOwners", TestPrefabComponentReferencesFollowRemappedOwners },
 		{ "ForcedPrefabIdsRemapInternalAndPreserveExternalReferences", TestForcedPrefabIdsRemapInternalAndPreserveExternalReferences },
 		{ "LinkedPrefabPersistenceAndWorldContract", TestLinkedPrefabPersistenceAndWorldContract },
+		{ "GameplayPrefabCopiesAllowStructureChanges", TestGameplayPrefabCopiesAllowStructureChanges },
 		{ "LinkedPrefabBaselineAndSaveFailureContract", TestLinkedPrefabBaselineAndSaveFailureContract },
 		{ "LinkedPrefabSourceStructureEvolutionContract", TestLinkedPrefabSourceStructureEvolutionContract },
 		{ "LinkedPrefabMembershipFollowsEvolvedSourceMapping", TestLinkedPrefabMembershipFollowsEvolvedSourceMapping },

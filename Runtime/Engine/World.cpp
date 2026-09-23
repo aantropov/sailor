@@ -1419,7 +1419,8 @@ GameObjectPtr World::Instantiate(
 		}
 	}
 
-	if (prefab->GetFileId())
+	// Gameplay copies do not retain authoring links to the source asset.
+	if (prefab->GetFileId() && !(m_mask & (uint8_t)EWorldBehaviourBit::CallBeginPlay))
 	{
 		std::string linkDiagnostic;
 		if (!RegisterPrefabInstance(
