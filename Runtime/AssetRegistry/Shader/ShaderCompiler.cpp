@@ -796,11 +796,6 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 				processingToken,
 				ReloadShadersDependingOn(assetInfo));
 		}
-
-		if (assetInfo->IsWritable())
-		{
-			assetInfo->SaveMetaFile();
-		}
 	}
 }
 

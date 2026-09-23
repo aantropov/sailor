@@ -19,7 +19,8 @@
 
 using namespace Sailor;
 
-ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler)
+ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler, AssetRegistry* assetRegistry) :
+	m_assetRegistry(assetRegistry)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
@@ -54,62 +55,9 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
 	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
-	auto areGeneratedAssetsValid = [](const TVector<FileId>& fileIds, bool bRequireUniqueFileIds)
-	{
-		AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-		if (assetRegistry == nullptr)
-		{
-			return false;
-		}
-
-		TSet<FileId> uniqueFileIds;
-		for (const FileId& fileId : fileIds)
-		{
-			if (!fileId || (bRequireUniqueFileIds && uniqueFileIds.Contains(fileId)) ||
-				assetRegistry->GetAssetInfoPtr(fileId) == nullptr)
-			{
-				return false;
-			}
-			uniqueFileIds.Insert(fileId);
-		}
-		return true;
-	};
-
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
-		if (modelAssetInfo->IsWritable())
-		{
-			const TVector<FileId>& materials = modelAssetInfo->GetDefaultMaterials();
-			const bool bMaterialsNeedRepair =
-				materials.Num() > 0 && !areGeneratedAssetsValid(materials, modelAssetInfo->ShouldBatchByMaterial());
-			const bool bShouldRegenerateMaterials = modelAssetInfo->ShouldGenerateMaterials() &&
-													((bWasExpired && materials.Num() == 0) || bMaterialsNeedRepair);
-			if (bShouldRegenerateMaterials && GenerateMaterialAssets(modelAssetInfo))
-			{
-				assetInfo->SaveMetaFile();
-			}
-			else if (modelAssetInfo->ShouldGenerateMaterials() && bWasExpired && materials.Num() > 0 &&
-					 !bMaterialsNeedRepair)
-			{
-				UpdateGeneratedMaterialProperties(modelAssetInfo);
-			}
-
-			const TVector<FileId>& animations = modelAssetInfo->GetAnimations();
-			AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-			bool bAnimationsNeedRepair = !areGeneratedAssetsValid(animations, true);
-			for (const FileId& fileId : animations)
-			{
-				const auto* animation = assetRegistry->GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
-				std::error_code error;
-				bAnimationsNeedRepair |= animation == nullptr ||
-					!std::filesystem::is_regular_file(animation->GetMetaFilepath(), error);
-			}
-			if ((bWasExpired || bAnimationsNeedRepair) && GenerateAnimationAssets(modelAssetInfo, *assetRegistry))
-			{
-				assetInfo->SaveMetaFile();
-			}
-		}
-
+		UpdateGeneratedAssets(modelAssetInfo, bWasExpired);
 		if (bWasExpired)
 		{
 			GenerateFingerprintAsync(modelAssetInfo);
@@ -119,28 +67,93 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
-	ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo);
-	if (!modelAssetInfo)
+	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
-		return;
+		UpdateGeneratedAssets(modelAssetInfo, true);
+		GenerateFingerprintAsync(modelAssetInfo);
+	}
+}
+
+bool ModelImporter::UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWasExpired)
+{
+	if (!assetInfo->IsWritable())
+	{
+		return true;
 	}
 
-	if (modelAssetInfo->IsWritable())
+	AssetRegistry& assetRegistry = *(m_assetRegistry ? m_assetRegistry : App::GetSubmodule<AssetRegistry>());
+	auto areGeneratedAssetsValid = [&assetRegistry](const TVector<FileId>& fileIds, bool bRequireUniqueFileIds)
 	{
-		if (modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0 &&
-			GenerateMaterialAssets(modelAssetInfo))
+		TSet<FileId> uniqueFileIds;
+		for (const FileId& fileId : fileIds)
 		{
-			assetInfo->SaveMetaFile();
+			if (!fileId || (bRequireUniqueFileIds && uniqueFileIds.Contains(fileId)) ||
+				assetRegistry.GetAssetInfoPtr(fileId) == nullptr)
+			{
+				return false;
+			}
+			uniqueFileIds.Insert(fileId);
 		}
+		return true;
+	};
 
-		if (modelAssetInfo->GetAnimations().Num() == 0 &&
-			GenerateAnimationAssets(modelAssetInfo, *App::GetSubmodule<AssetRegistry>()))
-		{
-			assetInfo->SaveMetaFile();
-		}
+	const TVector<FileId>& materials = assetInfo->GetDefaultMaterials();
+	const bool bMaterialsNeedRepair = !materials.IsEmpty() &&
+		!areGeneratedAssetsValid(materials, assetInfo->ShouldBatchByMaterial());
+	const bool bGenerateMaterials = assetInfo->ShouldGenerateMaterials() &&
+		((bWasExpired && materials.IsEmpty()) || bMaterialsNeedRepair);
+	const bool bUpdateMaterials = assetInfo->ShouldGenerateMaterials() && bWasExpired &&
+		!materials.IsEmpty() && !bMaterialsNeedRepair;
+
+	const TVector<FileId>& animations = assetInfo->GetAnimations();
+	bool bAnimationsNeedRepair = !areGeneratedAssetsValid(animations, true);
+	for (const FileId& fileId : animations)
+	{
+		const auto* animation = assetRegistry.GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
+		std::error_code error;
+		bAnimationsNeedRepair |= animation == nullptr ||
+			!std::filesystem::is_regular_file(animation->GetMetaFilepath(), error);
+	}
+	const bool bGenerateAnimations = bWasExpired || bAnimationsNeedRepair;
+	if (!bGenerateMaterials && !bUpdateMaterials && !bGenerateAnimations)
+	{
+		return true;
 	}
 
-	GenerateFingerprintAsync(modelAssetInfo);
+	const auto token = assetRegistry.BeginAssetProcessing(assetInfo);
+	if (!token)
+	{
+		return false;
+	}
+
+	TVector<FileId> previousMaterials = materials;
+	TVector<FileId> previousAnimations = animations;
+	bool bSucceeded = true;
+	if (bGenerateMaterials)
+	{
+		bSucceeded = GenerateMaterialAssets(assetInfo);
+	}
+	else if (bUpdateMaterials)
+	{
+		bSucceeded = UpdateGeneratedMaterialProperties(assetInfo);
+	}
+	bool bAnimationsChanged = false;
+	if (bSucceeded && bGenerateAnimations)
+	{
+		bSucceeded = GenerateAnimationAssets(assetInfo, assetRegistry, bAnimationsChanged);
+	}
+	if (bSucceeded && (previousMaterials != assetInfo->GetDefaultMaterials() || bAnimationsChanged))
+	{
+		bSucceeded = assetInfo->SaveMetaFile();
+	}
+	if (!bSucceeded)
+	{
+		assetInfo->GetDefaultMaterials() = std::move(previousMaterials);
+		assetInfo->GetAnimations() = std::move(previousAnimations);
+	}
+
+	assetRegistry.CompleteAssetProcessing(token, bSucceeded);
+	return bSucceeded;
 }
 
 void ModelImporter::PopulateModelSceneHierarchy(Model& model, TVector<GltfImporterUtils::SceneNode>& sourceNodes)

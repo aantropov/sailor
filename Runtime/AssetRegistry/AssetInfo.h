@@ -85,6 +85,8 @@ namespace Sailor
 	class SAILOR_API IAssetInfoHandlerListener
 	{
 	public:
+		// Listeners persist intentional metadata changes and acknowledge required
+		// processing through AssetRegistry; notification alone does not save metadata.
 		// bWasExpired means that the source or metadata changed since the last
 		// acknowledged processing watermark, or that no watermark exists yet.
 		// Importers refresh loaded resources here.

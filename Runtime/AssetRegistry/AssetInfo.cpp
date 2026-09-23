@@ -587,7 +587,6 @@ void IAssetInfoHandler::NotifyImportAsset(AssetInfoPtr assetInfo) const
 		listener->OnImportAsset(assetInfo);
 	}
 	assetInfo->m_bPendingImportNotification = false;
-	assetInfo->SaveMetaFile();
 	assetInfo->m_importedMetadataContents.clear();
 }
 

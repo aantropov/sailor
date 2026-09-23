@@ -14,9 +14,10 @@
 
 using namespace Sailor;
 
-bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& assetRegistry)
+bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& assetRegistry, bool& outChanged)
 {
 	SAILOR_PROFILE_FUNCTION();
+	outChanged = false;
 
 	tinygltf::Model gltfModel;
 	std::string err, warn;
@@ -29,9 +30,9 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRe
 
 	if (gltfModel.animations.empty())
 	{
-		const bool bChanged = assetInfo->GetAnimations().Num() > 0;
+		outChanged = assetInfo->GetAnimations().Num() > 0;
 		assetInfo->GetAnimations().Clear();
-		return bChanged;
+		return true;
 	}
 
 	const std::string animationsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
@@ -49,7 +50,6 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRe
 
 	TVector<FileId> generatedAnimations;
 	generatedAnimations.Reserve(gltfModel.animations.size());
-	bool bChanged = false;
 
 	for (size_t i = 0; i < gltfModel.animations.size(); ++i)
 	{
@@ -128,7 +128,6 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRe
 				SAILOR_LOG_ERROR("Cannot create animation metadata '%s': %s", outputPath.string().c_str(), diagnostic.c_str());
 				return false;
 			}
-			bChanged = true;
 		}
 
 		const FileId registeredId = assetRegistry.RegisterGeneratedSecondaryAssetInfo(outputPath);
@@ -141,7 +140,7 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRe
 		generatedAnimations.Add(registeredId);
 	}
 
-	bChanged |= generatedAnimations != assetInfo->GetAnimations();
+	outChanged = generatedAnimations != assetInfo->GetAnimations();
 	assetInfo->GetAnimations() = std::move(generatedAnimations);
-	return bChanged;
+	return true;
 }

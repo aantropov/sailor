@@ -168,13 +168,18 @@ namespace
 			}
 		}
 
-		void OnImportAsset(AssetInfoPtr) override
+		void OnImportAsset(AssetInfoPtr assetInfo) override
 		{
 			m_events.emplace_back("import");
+			if (m_onImport)
+			{
+				m_onImport(assetInfo);
+			}
 		}
 
 		std::vector<std::string> m_events;
 		std::function<void(AssetInfoPtr)> m_onExpiredUpdate;
+		std::function<void(AssetInfoPtr)> m_onImport;
 	};
 
 	class TestAssetInfoHandler final : public IAssetInfoHandler
@@ -1197,12 +1202,19 @@ namespace
 		Require(imported != nullptr, "a new raw asset should be imported");
 		Require(listener.m_events == std::vector<std::string>({ "update:false", "import" }),
 			"a new raw asset must dispatch Update(false) followed by exactly one Import callback");
-		Require(static_cast<TestAssetInfo*>(imported)->m_numMetaSaves == 1,
-			"the import callback should finalize metadata exactly once");
+		Require(static_cast<TestAssetInfo*>(imported)->m_numMetaSaves == 0,
+			"notification must not rewrite the default metadata already saved by import");
 		const YAML::Node importedMetadata = YAML::LoadFile(
 			AssetRegistry::GetMetaFilePath(sourcePath.string()));
 		Require(importedMetadata["assetInfoType"].as<std::string>() == "Sailor::AssetInfo",
 			"the shared import path must add its handler's canonical AssetInfo type");
+		listener.m_onImport = [](AssetInfoPtr info)
+		{
+			Require(info->SaveMetaFile(), "a listener may persist its intentional metadata changes");
+		};
+		handler.NotifyImportAsset(imported);
+		Require(static_cast<TestAssetInfo*>(imported)->m_numMetaSaves == 1,
+			"notification must not repeat a metadata save performed by its listener");
 		delete imported;
 
 		listener.m_events.clear();
