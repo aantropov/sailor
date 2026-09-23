@@ -291,12 +291,15 @@ namespace
 
 			JPH::VertexList vertices;
 			vertices.reserve(desc.m_vertices.Num());
+			const glm::vec3 signedScale = glm::mix(absoluteScale, -absoluteScale,
+				glm::lessThan(bodyScale, glm::vec3(0.0f)));
 			for (const glm::vec3& vertex : desc.m_vertices)
 			{
-				const glm::vec3 scaled = vertex * absoluteScale;
+				const glm::vec3 scaled = vertex * signedScale;
 				vertices.emplace_back(scaled.x, scaled.y, scaled.z);
 			}
 
+			const bool bMirrored = (bodyScale.x < 0.0f) ^ (bodyScale.y < 0.0f) ^ (bodyScale.z < 0.0f);
 			JPH::IndexedTriangleList triangles;
 			triangles.reserve(desc.m_indices.Num() / 3u);
 			for (size_t index = 0u; index + 2u < desc.m_indices.Num(); index += 3u)
@@ -306,7 +309,7 @@ namespace
 				const uint32_t i2 = desc.m_indices[index + 2u];
 				if (i0 < desc.m_vertices.Num() && i1 < desc.m_vertices.Num() && i2 < desc.m_vertices.Num())
 				{
-					triangles.emplace_back(i0, i1, i2, 0u);
+					triangles.emplace_back(i0, bMirrored ? i2 : i1, bMirrored ? i1 : i2, 0u);
 				}
 			}
 			if (triangles.empty())

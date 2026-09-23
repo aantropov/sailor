@@ -322,6 +322,80 @@ namespace
 			"landscape raycast should resolve its owner and upward normal");
 	}
 
+	void TestMirroredTriangleMeshMatchesBakedGeometry()
+	{
+		for (const glm::vec3 scale : { glm::vec3(2.0f, 1.25f, 1.5f),
+			glm::vec3(-2.0f, 1.25f, 1.5f), glm::vec3(-2.0f, 1.25f, -1.5f),
+			glm::vec3(2.0f, -1.25f, 1.5f) })
+		{
+			Physics::PhysicsWorld scaledWorld;
+			Physics::PhysicsWorld bakedWorld;
+			auto desc = MakeTriangleMesh(InstanceId::GenerateNewInstanceId(),
+				glm::vec3(0.5f, 1.25f, -2.0f), scale);
+			desc.m_rotation = glm::angleAxis(0.35f, glm::vec3(0.0f, 1.0f, 0.0f));
+			auto& mesh = desc.m_shapes[0];
+			mesh.m_center = glm::vec3(0.25f, 0.75f, -0.5f);
+			mesh.m_vertices = { { 1.0f, 0.25f, 2.0f }, { 1.0f, 0.25f, 6.0f },
+				{ 5.0f, 0.25f, 2.0f }, { 3.0f, 0.25f, 6.0f } };
+			mesh.m_indices = { 0u, 1u, 2u, 2u, 1u, 3u };
+
+			auto baked = desc;
+			baked.m_scale = glm::vec3(1.0f);
+			baked.m_shapes[0].m_center = glm::vec3(0.0f);
+			for (auto& vertex : baked.m_shapes[0].m_vertices)
+			{
+				vertex = scale * (vertex + mesh.m_center);
+			}
+			const glm::vec3 normal(0.0f, scale.y < 0.0f ? -1.0f : 1.0f, 0.0f);
+			const auto& vertices = baked.m_shapes[0].m_vertices;
+			if (glm::dot(glm::cross(vertices[1] - vertices[0], vertices[2] - vertices[0]), normal) < 0.0f)
+			{
+				for (size_t index = 0u; index < baked.m_shapes[0].m_indices.Num(); index += 3u)
+				{
+					std::swap(baked.m_shapes[0].m_indices[index + 1u], baked.m_shapes[0].m_indices[index + 2u]);
+				}
+			}
+
+			uint32_t scaledBody = ~0u;
+			uint32_t bakedBody = ~0u;
+			Require(scaledWorld.CreateBody(desc, scaledBody) && bakedWorld.CreateBody(baked, bakedBody),
+				"scaled and explicitly baked asymmetric triangle meshes must both be valid");
+			const glm::vec3 surface = desc.m_position + desc.m_rotation *
+				(scale * (mesh.m_center + glm::vec3(2.0f, 0.25f, 3.0f)));
+			Physics::PhysicsRaycastHit scaledHit{};
+			Physics::PhysicsRaycastHit bakedHit{};
+			Require(scaledWorld.Raycast(surface + normal * 4.0f, -normal, 8.0f, scaledHit) &&
+				bakedWorld.Raycast(surface + normal * 4.0f, -normal, 8.0f, bakedHit),
+				"raycasts must hit the mirrored location, including signed shape-center and body rotation");
+			Require(scaledHit.m_instanceId == desc.m_instanceId &&
+				IsNear(scaledHit.m_position, surface, 0.001f) &&
+				IsNear(scaledHit.m_position, bakedHit.m_position, 0.001f) &&
+				IsNear(scaledHit.m_normal, normal, 0.001f) &&
+				IsNear(scaledHit.m_normal, bakedHit.m_normal, 0.001f),
+				"mirroring must preserve outward winding and match explicitly transformed geometry");
+
+			auto sphere = MakeSphere(InstanceId::GenerateNewInstanceId(),
+				Physics::ERigidBodyMotionType::Dynamic, surface + normal * 2.0f, 0.25f);
+			sphere.m_gravityFactor = normal.y;
+			uint32_t scaledSphere = ~0u;
+			uint32_t bakedSphere = ~0u;
+			Require(scaledWorld.CreateBody(sphere, scaledSphere) && bakedWorld.CreateBody(sphere, bakedSphere),
+				"mirrored mesh fixtures must accept matching dynamic bodies");
+			Step(scaledWorld, 180u);
+			Step(bakedWorld, 180u);
+			Physics::PhysicsBodyPose scaledPose{};
+			Physics::PhysicsBodyPose bakedPose{};
+			Require(scaledWorld.GetBodyPose(scaledSphere, scaledPose) &&
+				bakedWorld.GetBodyPose(bakedSphere, bakedPose) &&
+				IsNear(scaledPose.m_position, surface + normal * 0.25f, 0.03f) &&
+				IsNear(scaledPose.m_position, bakedPose.m_position, 0.001f),
+				"collision must match the baked mesh at scale (" + std::to_string(scale.x) + ", " +
+				std::to_string(scale.y) + ", " + std::to_string(scale.z) + "): surface error=" +
+				std::to_string(glm::length(scaledPose.m_position - surface - normal * 0.25f)) +
+				", baked error=" + std::to_string(glm::length(scaledPose.m_position - bakedPose.m_position)));
+		}
+	}
+
 	void TestKinematicAuthority()
 	{
 		Physics::PhysicsWorld world;
@@ -1170,6 +1244,7 @@ int main()
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "FixedStepGravityContactsAndRaycast", TestFixedStepGravityContactsAndRaycast },
 		{ "StaticTriangleMeshCollisionAndRaycast", TestStaticTriangleMeshCollisionAndRaycast },
+		{ "MirroredTriangleMeshMatchesBakedGeometry", TestMirroredTriangleMeshMatchesBakedGeometry },
 		{ "KinematicAuthority", TestKinematicAuthority },
 		{ "ScaledSphereVolume", TestScaledSphereVolume },
 		{ "CollisionLayersAndQueryMask", TestCollisionLayersAndQueryMask },
