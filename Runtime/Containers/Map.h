@@ -13,12 +13,15 @@
 namespace Sailor
 {
 	template<typename TKeyType, typename TValueType, typename TAllocator = Memory::DefaultGlobalAllocator>
-	class TMap final : public TSet<TPair<TKeyType, size_t>, TAllocator>
+	class TMap final : private TSet<TPair<TKeyType, size_t>, TAllocator>
 	{
-	public:
-
 		using Super = Sailor::TSet<TPair<TKeyType, size_t>, TAllocator>;
 		using TElementType = Sailor::TPair<TKeyType, size_t>;
+
+	public:
+
+		using Super::IsEmpty;
+		using Super::Num;
 
 		template<typename TDataType, typename TElementIterator>
 		class SAILOR_API TBaseIterator
@@ -173,6 +176,31 @@ namespace Sailor
 		TMap& operator=(TMap&&) noexcept = default;
 
 		~TMap() = default;
+
+		static void Swap(TMap& lhs, TMap& rhs)
+		{
+			Super::Swap(lhs, rhs);
+			TValueContainer::Swap(lhs.m_values, rhs.m_values);
+			TVector<size_t, TAllocator>::Swap(lhs.m_freeList, rhs.m_freeList);
+		}
+
+		bool operator==(const TMap& rhs) const
+		{
+			if (Num() != rhs.Num())
+			{
+				return false;
+			}
+
+			for (const auto& pair : *this)
+			{
+				const auto other = rhs.Find(pair.First());
+				if (other == rhs.end() || !Sailor::Equals(*pair.Second(), other.Value()))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
 
 		void Add(const TKeyType& key, const TValueType& value) requires IsCopyConstructible<TValueType>
 		{

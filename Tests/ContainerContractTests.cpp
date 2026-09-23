@@ -98,6 +98,7 @@ namespace
 	static_assert(std::is_same_v<decltype(std::declval<TMap<int, int>::TConstIterator>().Value()), const int&>);
 	static_assert(std::is_same_v<decltype((*std::declval<TMap<int, int>::TConstIterator>()).Second()), const int* const&>);
 	static_assert(std::is_convertible_v<TMap<int, int>::TIterator, TMap<int, int>::TConstIterator>);
+	static_assert(!std::is_convertible_v<TMap<int, int>*, TSet<TPair<int, size_t>>*>);
 	static_assert(!std::is_copy_assignable_v<TPair<ConstructOnly, ConstructOnly>>);
 	static_assert(!std::is_move_assignable_v<TPair<ConstructOnly, ConstructOnly>>);
 
@@ -360,6 +361,35 @@ namespace
 		CheckLifetime(0);
 	}
 
+	void TestMapValueEqualityAndSwap()
+	{
+		TMap<int, int> first{ { 1, 10 }, { 2, 20 } };
+		TMap<int, int> reordered{ { 2, 20 }, { 1, 10 } };
+		Require(first == reordered, "map equality must compare values, not insertion slot indices");
+		Require(first == first, "map equality must support self-comparison");
+		reordered[1] = 99;
+		Require(first != reordered, "matching keys with different values must not compare equal");
+		reordered[1] = 10;
+		reordered.Remove(2);
+		reordered.Add(3, 20);
+		Require(first != reordered, "equal size and values must not hide a different key");
+
+		first.Add(7, 70);
+		first.Remove(2);
+		TMap<int, int> second{ { 4, 40 } };
+		TMap<int, int>::Swap(first, second);
+		Require(first.Num() == 1 && first[4] == 40 && second.Num() == 2 &&
+			second[1] == 10 && second[7] == 70,
+			"map swap must exchange values and keys together");
+		first.Add(5, 50);
+		second.Add(8, 80);
+		Require(first.GetValues().Num() == 2 && second.GetValues().Num() == 3 && second[8] == 80,
+			"map swap must transfer reusable value slots with their values");
+		const TMap<int, int> beforeSelfSwap(second);
+		TMap<int, int>::Swap(second, second);
+		Require(second == beforeSelfSwap, "map self-swap must preserve all values");
+	}
+
 	void TestPairConstruction()
 	{
 		TPair<ConstructOnly, ConstructOnly> original(ConstructOnly(3), ConstructOnly(7));
@@ -484,6 +514,7 @@ int main()
 		TestListOwnershipAndSorting();
 		TestIteratorInterfaces();
 		TestMapExtractionAndConstIteration();
+		TestMapValueEqualityAndSwap();
 		TestPairConstruction();
 		TestSetAndMapMoveContracts();
 		TestOctreeCopyMoveAndReverseIndex();
