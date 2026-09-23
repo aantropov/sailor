@@ -63,16 +63,18 @@ void Physics::JoltJobSystem::QueueJob(JPH::JobSystem::Job* job)
 		return;
 	}
 
-	m_numQueuedTasks.fetch_add(1, std::memory_order_relaxed);
+	const auto completion = m_numQueuedTasks;
+	completion->fetch_add(1, std::memory_order_relaxed);
 	auto task = Tasks::CreateTask(
 		*m_scheduler,
 		"Jolt Physics",
-		[this, job]()
+		[completion, job]()
 		{
 			job->Execute();
 			job->Release();
-			m_numQueuedTasks.fetch_sub(1, std::memory_order_release);
-			m_numQueuedTasks.notify_all();
+			// The owner may be destroyed as soon as the count reaches zero.
+			completion->fetch_sub(1, std::memory_order_release);
+			completion->notify_all();
 		},
 		EThreadType::Worker);
 	m_scheduler->Run(task);
@@ -91,17 +93,18 @@ void Physics::JoltJobSystem::QueueJobs(
 void Physics::JoltJobSystem::WaitForJobs(
 	JPH::JobSystem::Barrier* barrier)
 {
+	const auto completion = m_numQueuedTasks;
 	JPH::JobSystemWithBarrier::WaitForJobs(barrier);
 
 	uint32_t numQueuedTasks =
-		m_numQueuedTasks.load(std::memory_order_acquire);
+		completion->load(std::memory_order_acquire);
 	while (numQueuedTasks != 0)
 	{
-		m_numQueuedTasks.wait(
+		completion->wait(
 			numQueuedTasks,
 			std::memory_order_acquire);
 		numQueuedTasks =
-			m_numQueuedTasks.load(std::memory_order_acquire);
+			completion->load(std::memory_order_acquire);
 	}
 }
 

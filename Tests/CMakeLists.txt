@@ -1,6 +1,7 @@
 find_package(ixwebsocket CONFIG QUIET)
 find_package(imgui CONFIG REQUIRED)
 find_package(magic_enum CONFIG REQUIRED)
+find_package(Jolt CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 
 add_executable(SpinLockTests SpinLockTests.cpp)
@@ -177,6 +178,26 @@ add_test(NAME TaskContractTests COMMAND TaskContractTests)
 set_tests_properties(TaskContractTests PROPERTIES TIMEOUT 60)
 if(WIN32)
     sailor_stage_workspace_test_runtime(TaskContractTests)
+endif()
+
+add_executable(JoltJobSystemTests
+    JoltJobSystemTests.cpp
+    ${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp
+)
+target_compile_features(JoltJobSystemTests PRIVATE cxx_std_20)
+target_include_directories(JoltJobSystemTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(JoltJobSystemTests PRIVATE Sailor::Runtime Jolt::Jolt)
+# Match the adapter's no-RTTI Jolt ABI, including when compiled outside Lib.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR
+    CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    target_compile_options(JoltJobSystemTests PRIVATE /GR-)
+else()
+    target_compile_options(JoltJobSystemTests PRIVATE -fno-rtti)
+endif()
+add_test(NAME JoltJobSystemTests COMMAND JoltJobSystemTests)
+set_tests_properties(JoltJobSystemTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(JoltJobSystemTests)
 endif()
 
 add_executable(GpuCullingContractTests
