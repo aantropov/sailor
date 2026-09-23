@@ -14,6 +14,7 @@
 #include "Containers/List.h"
 #include "Containers/Map.h"
 #include "Containers/Octree.h"
+#include "Containers/Octree2.h"
 
 using namespace Sailor;
 
@@ -462,6 +463,101 @@ namespace
 		Require(zeroBuckets.Num() == 1 && zeroBuckets[2] == 20, "map must remain insertable with a zero bucket request");
 	}
 
+	class OctreeDebugLines : public RHI::DebugContext
+	{
+	public:
+		size_t NumBoxes() const { return m_lineVertices.Num() / 24; }
+
+		size_t CountBox(const glm::ivec3& center, const glm::ivec3& extents) const
+		{
+			size_t count = 0;
+			for (size_t i = 0; i < m_lineVertices.Num(); i += 24)
+			{
+				glm::vec3 minimum = m_lineVertices[i].m_position;
+				glm::vec3 maximum = minimum;
+				for (size_t j = 1; j < 24; ++j)
+				{
+					minimum = glm::min(minimum, m_lineVertices[i + j].m_position);
+					maximum = glm::max(maximum, m_lineVertices[i + j].m_position);
+				}
+				count += minimum == glm::vec3(center - extents) && maximum == glm::vec3(center + extents);
+			}
+			return count;
+		}
+	};
+
+	void TestSparseOctreeBoundsAndUpdates()
+	{
+		TOctree2<int> tree(glm::ivec3(0), 130, 4);
+		Require(tree.Insert(glm::ivec3(0), glm::ivec3(10), 99), "spanning bounds must fit at the root");
+		std::vector<glm::ivec3> positions;
+		for (int i = 0; i < 16; ++i)
+		{
+			positions.emplace_back((i & 1) ? 20 + i : -20 - i, (i & 2) ? 24 : -24, (i & 4) ? 24 : -24);
+			Require(tree.Insert(positions.back(), glm::ivec3(1), i), "sparse octree must retain every split element");
+		}
+		Require(tree.Insert(glm::ivec3(63, 20, 20), glm::ivec3(1), 100), "bounds outside a rounded child but inside its parent must remain in the parent");
+		Require(tree.Num() == 18 && tree.NumNodes() > 1, "split must preserve element and node counts");
+		OctreeDebugLines lines;
+		tree.DrawOctree(lines);
+		Require(lines.NumBoxes() == tree.Num() + tree.NumNodes(), "debug drawing must visit every node and element once");
+		Require(lines.CountBox(glm::ivec3(0), glm::ivec3(10)) == 1, "splitting must not discard spanning bounds");
+		Require(lines.CountBox(glm::ivec3(63, 20, 20), glm::ivec3(1)) == 1, "rounded child bounds must not lose parent elements");
+		for (int i = 0; i < 16; ++i)
+		{
+			Require(tree.Contains(i) && lines.CountBox(positions[i], glm::ivec3(1)) == 1, "splitting must preserve each element's own bounds and reverse index");
+		}
+		Require(!tree.Insert(glm::ivec3(0), glm::ivec3(1), 0) && tree.Num() == 18, "duplicate insertion must not inflate counts or move an existing element");
+		Require(tree.Update(glm::ivec3(45), glm::ivec3(2), 0) && tree.Num() == 18, "update across octants must not duplicate the element");
+		OctreeDebugLines updated;
+		tree.DrawOctree(updated);
+		Require(updated.CountBox(positions[0], glm::ivec3(1)) == 0 && updated.CountBox(glm::ivec3(45), glm::ivec3(2)) == 1,
+			"update must replace the old stored bounds");
+		Require(!tree.Update(glm::ivec3(200), glm::ivec3(1), 0) && !tree.Contains(0) && tree.Num() == 17,
+			"moving outside the root must remove the element and decrement its count");
+		Require(tree.Update(glm::ivec3(-40), glm::ivec3(1), 0) && tree.Num() == 18, "update of a missing key must count its insertion");
+		for (int i = 0; i < 16; ++i) Require(tree.Remove(i), "reverse index must remove every redistributed element");
+		Require(tree.Remove(100) && !tree.Remove(100), "removal must be counted only once");
+		tree.Resolve();
+		Require(tree.Num() == 1 && tree.NumNodes() == 1 && tree.Contains(99), "empty children must collapse even when their parent retains spanning bounds");
+		tree.Clear();
+		Require(tree.Num() == 0 && tree.NumNodes() == 1 && !tree.Contains(99), "clear must retain an empty root with correct counts");
+		Require(tree.Insert(glm::ivec3(0), glm::ivec3(1), 7), "a cleared sparse tree must remain insertable");
+
+		TOctree2<int> spanning(glm::ivec3(0), 128, 4);
+		for (int i = 0; i < 8; ++i) Require(spanning.Insert(glm::ivec3(0), glm::ivec3(10), i), "spanning fixture must insert");
+		spanning.Resolve();
+		Require(spanning.Num() == 8 && spanning.NumNodes() == 1, "resolving a spanning-only tree must retain all root elements");
+		Require(spanning.Insert(glm::ivec3(24), glm::ivec3(1), 8) && spanning.Num() == 9 && spanning.NumNodes() > 1,
+			"a collapsed parent above the split threshold must allocate occupied children again");
+	}
+
+	void TestSparseOctreeOwnership()
+	{
+		TOctree2<int> tree(glm::ivec3(0), 128, 4);
+		for (int i = 0; i < 16; ++i) Require(tree.Insert(glm::ivec3(-24), glm::ivec3(1), i), "single-octant fixture must insert");
+		const size_t nodes = tree.NumNodes();
+		Require(nodes > 1 && nodes < 9, "sparse subdivision must allocate only occupied child octants");
+		TOctree2<int> moved(std::move(tree));
+		Require(moved.Num() == 16 && moved.NumNodes() == nodes && tree.Num() == 0 && tree.NumNodes() == 0,
+			"move construction must transfer all sparse-tree counts");
+		tree.Clear();
+		tree.Resolve();
+		OctreeDebugLines empty;
+		tree.DrawOctree(empty);
+		Require(empty.NumBoxes() == 0 && !tree.Insert(glm::ivec3(0), glm::ivec3(1), 42), "a moved-from rootless tree must remain safely clearable and queryable");
+		TOctree2<int> singleNodeTree(glm::ivec3(100), 32, 4);
+		Require(singleNodeTree.Insert(glm::ivec3(100), glm::ivec3(1), 99), "move-assignment destination fixture must insert");
+		singleNodeTree = std::move(moved);
+		Require(singleNodeTree.NumNodes() == nodes && singleNodeTree.Num() == 16 && singleNodeTree.Contains(15), "move assignment must transfer the reverse index and topology together");
+		Require(moved.NumNodes() == 1 && moved.Num() == 1 && moved.Contains(99), "swap-style move assignment must leave a coherent source");
+		TOctree2<int>::Swap(tree, singleNodeTree);
+		Require(tree.Num() == 16 && tree.NumNodes() == nodes && singleNodeTree.NumNodes() == 0, "swap must transfer node counts to a rootless tree");
+		for (int i = 0; i < 16; ++i) Require(tree.Remove(i), "moved sparse-tree nodes must retain their reverse index");
+		tree.Resolve();
+		Require(tree.Num() == 0 && tree.NumNodes() == 1, "all empty descendants must collapse after removal");
+	}
+
 	void TestOctreeCopyMoveAndReverseIndex()
 	{
 		TOctree<int> original(glm::ivec3(0), 128, 4);
@@ -490,13 +586,13 @@ namespace
 		Require(assigned.Num() == 0 && assigned.NumNodes() == 0, "moved-from octree must not retain node counts");
 		assigned = original;
 		Require(assigned.NumNodes() == nodeCount && assigned.Remove(0), "copy assignment must work after move");
-		TOctree<int> small;
-		small.Insert(glm::ivec3(0), glm::ivec3(1), 99);
-		TOctree<int>::Swap(small, moved);
-		Require(small.NumNodes() == nodeCount && small.Contains(15), "swap must transfer the subdivided tree count");
+		TOctree<int> singleNodeTree;
+		singleNodeTree.Insert(glm::ivec3(0), glm::ivec3(1), 99);
+		TOctree<int>::Swap(singleNodeTree, moved);
+		Require(singleNodeTree.NumNodes() == nodeCount && singleNodeTree.Contains(15), "swap must transfer the subdivided tree count");
 		Require(moved.NumNodes() == 1 && moved.Contains(99), "swap must transfer the single-root tree count");
-		small.Clear();
-		Require(small.Num() == 0 && small.NumNodes() == 1 && !small.Contains(15), "clear after swap must leave one empty root");
+		singleNodeTree.Clear();
+		Require(singleNodeTree.Num() == 0 && singleNodeTree.NumNodes() == 1 && !singleNodeTree.Contains(15), "clear after swap must leave one empty root");
 	}
 }
 
@@ -518,6 +614,8 @@ int main()
 		TestPairConstruction();
 		TestSetAndMapMoveContracts();
 		TestOctreeCopyMoveAndReverseIndex();
+		TestSparseOctreeBoundsAndUpdates();
+		TestSparseOctreeOwnership();
 		CheckLifetime(0);
 		std::cout << "ContainerContractTests passed\n";
 		return 0;
