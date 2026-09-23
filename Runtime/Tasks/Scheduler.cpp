@@ -398,13 +398,9 @@ void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pTask, const ITaskPtr& 
 		ITaskPtr pCurrentChainedTask;
 		if ((pCurrentChainedTask = chainedTasksNext.TryLock()))
 		{
-			if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted() || pCurrentChainedTask->IsFinished())
-			{
-				continue;
-			}
-
 			if (pCurrentChainedTask != pTaskToIgnore)
 			{
+				// Run admits work once; a queued intermediate may still have unscheduled children.
 				Run(pCurrentChainedTask, false);
 				RunChainedTasks_Internal(pCurrentChainedTask, pTask);
 			}
@@ -414,10 +410,8 @@ void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pTask, const ITaskPtr& 
 	ITaskPtr pCurrentChainedTask;
 	if ((pCurrentChainedTask = pTask->GetChainedTaskPrev()))
 	{
-		if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted() ||
-			pCurrentChainedTask->IsFinished() || pCurrentChainedTask == pTaskToIgnore)
+		if (pCurrentChainedTask == pTaskToIgnore)
 		{
-			// No point to trace next
 			return;
 		}
 

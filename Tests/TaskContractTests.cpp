@@ -202,6 +202,49 @@ namespace
 		Require(!predecessor, "completed continuations must release predecessor ownership");
 	}
 
+	void TestQueuedIntermediateStillSchedulesItsSubtree()
+	{
+		for (bool runFromLeaf : { false, true })
+		{
+			Tasks::Scheduler scheduler;
+			scheduler.AttachCurrentThreadAsMainThread();
+			std::array<uint32_t, 5> calls{};
+			auto root = Tasks::CreateTask<int>(scheduler, "Root", [&]()
+				{
+					++calls[0];
+					return 40;
+				}, EThreadType::Main);
+			auto middle = root->Then<int>([&](int value)
+				{
+					++calls[1];
+					return value + 1;
+				}, "Queued intermediate", EThreadType::Main);
+			auto leaf = middle->Then<int>([&](int value)
+				{
+					++calls[2];
+					return value + 1;
+				}, "Leaf", EThreadType::Main);
+			auto sibling = middle->Then([&](int) { ++calls[3]; }, "Sibling", EThreadType::Main);
+			auto cousin = root->Then([&](int) { ++calls[4]; }, "Cousin", EThreadType::Main);
+			scheduler.Run(middle, false);
+			if (runFromLeaf)
+			{
+				leaf->Run();
+			}
+			else
+			{
+				root->Run();
+			}
+			scheduler.ProcessTasksOnMainThread();
+			for (uint32_t count : calls)
+			{
+				Require(count == 1, "a queued intermediate must not hide its parent, children or siblings");
+			}
+			Require(leaf->IsFinished() && leaf->GetResult() == 42 && sibling->IsFinished() && cousin->IsFinished(),
+				"chain traversal must publish every descendant's result exactly once");
+		}
+	}
+
 	void TestCachedResultsAndSchedulerLifetime()
 	{
 		Tasks::TaskPtr<Result> retained;
@@ -290,6 +333,8 @@ int main()
 		std::cout << "[PASS] ConcurrentRegistrationAndRun\n";
 		TestRunFromLeafRetainsPredecessors();
 		std::cout << "[PASS] RunFromLeafRetainsPredecessors\n";
+		TestQueuedIntermediateStillSchedulesItsSubtree();
+		std::cout << "[PASS] QueuedIntermediateStillSchedulesItsSubtree\n";
 		TestCachedResultsAndSchedulerLifetime();
 		std::cout << "[PASS] CachedResultsAndSchedulerLifetime\n";
 		TestJoinExpiredAndFinishedTasks();
