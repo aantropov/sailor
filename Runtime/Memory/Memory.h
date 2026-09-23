@@ -129,9 +129,6 @@ namespace Sailor::Memory
 	template<typename TGlobalAllocator = Sailor::Memory::DefaultGlobalAllocator, typename TPtr = void*>
 	class TPoolAllocator;
 
-	template<typename TGlobalAllocator = Sailor::Memory::DefaultGlobalAllocator, typename TPtr = void*>
-	class TMultiPoolAllocator;
-
 	template<typename TPtr = void*>
 	class TMemoryPtr;
 
