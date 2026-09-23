@@ -930,14 +930,12 @@ GIProbesBakeResult GIProbesBaker::Bake(
 		std::atomic<bool> stopWorkers{ false };
 		std::atomic<EGIProbesBakeStatus> workerStatus{
 			EGIProbesBakeStatus::Success };
-		std::mutex failureMutex;
 		std::string failureDiagnostic;
 		std::mutex progressMutex;
 		uint32_t completedProbes = 0u;
 
 		const auto recordFailure = [&workerStatus,
 			&stopWorkers,
-			&failureMutex,
 			&failureDiagnostic](
 				EGIProbesBakeStatus status,
 				std::string diagnostic)
@@ -948,7 +946,7 @@ GIProbesBakeResult GIProbesBaker::Bake(
 					status,
 					std::memory_order_acq_rel))
 			{
-				const std::lock_guard<std::mutex> lock(failureMutex);
+				// Only the CAS winner writes; the caller reads after all workers join.
 				failureDiagnostic = std::move(diagnostic);
 			}
 			stopWorkers.store(true, std::memory_order_release);
@@ -1060,7 +1058,6 @@ GIProbesBakeResult GIProbesBaker::Bake(
 		result.m_status = workerStatus.load(std::memory_order_acquire);
 		if (result.m_status != EGIProbesBakeStatus::Success)
 		{
-			const std::lock_guard<std::mutex> lock(failureMutex);
 			result.m_diagnostic = failureDiagnostic;
 			return result;
 		}
