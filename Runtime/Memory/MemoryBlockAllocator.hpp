@@ -334,7 +334,7 @@ namespace Sailor::Memory
 			// Create new block
 			const size_t capacity = (std::max)(m_blockSize, size + alignment - 1);
 			MemoryBlock block(capacity, this);
-			const bool found = block.FindLocationInLayout(size, alignment, location);
+			[[maybe_unused]] const bool found = block.FindLocationInLayout(size, alignment, location);
 			check(found);
 			uint32_t blockIndex = 0;
 
