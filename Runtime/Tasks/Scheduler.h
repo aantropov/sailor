@@ -77,6 +77,7 @@ namespace Sailor
 		public:
 
 			SAILOR_API WorkerThread(
+				Scheduler& scheduler,
 				std::string threadName,
 				EThreadType threadType,
 				std::condition_variable& refresh,
@@ -106,6 +107,7 @@ namespace Sailor
 			SAILOR_API void ProcessTask(ITaskPtr& task);
 			SAILOR_API bool TryFetchTask(ITaskPtr& pOutTask);
 
+			Scheduler& m_scheduler;
 			std::string m_threadName;
 			TUniquePtr<std::thread> m_pThread;
 
@@ -113,7 +115,7 @@ namespace Sailor
 			DWORD m_threadId;
 
 			size_t m_bExecFlag = 0;
-			std::atomic<bool> m_bIsBusy;
+			std::atomic<bool> m_bIsBusy = false;
 
 			// Specific tasks for this thread
 			mutable std::mutex m_queueMutex;
@@ -181,6 +183,7 @@ namespace Sailor
 
 		protected:
 
+			SAILOR_API void NotifyTaskReady(const ITask& task);
 			SAILOR_API void RunChainedTasks_Internal(const ITaskPtr& pTask, const ITaskPtr& pTaskToIgnore);
 
 			SAILOR_API void GetThreadSyncVarsByThreadType(
@@ -195,7 +198,7 @@ namespace Sailor
 
 			std::atomic<uint32_t> m_numBusyThreads;
 			TVector<WorkerThread*> m_workerThreads;
-			std::atomic_bool m_bIsTerminating;
+			std::atomic_bool m_bIsTerminating = false;
 
 			std::atomic<DWORD> m_mainThreadId{ static_cast<DWORD>(-1) };
 			DWORD m_renderingThreadId = -1;
@@ -208,6 +211,7 @@ namespace Sailor
 			TMap<DWORD, EThreadType> m_threadTypes{};
 
 			friend class WorkerThread;
+			friend class ITask;
 		};
 	}
 }

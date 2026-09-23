@@ -130,9 +130,9 @@ void ITask::Complete()
 	{
 		if (auto task = dependency.TryLock())
 		{
-			if (--task->m_numBlockers == 0 && m_pScheduler)
+			if (--task->m_numBlockers == 0 && task->m_pScheduler)
 			{
-				m_pScheduler->NotifyWorkerThread(task->GetThreadType());
+				task->m_pScheduler->NotifyTaskReady(*task);
 			}
 		}
 	}

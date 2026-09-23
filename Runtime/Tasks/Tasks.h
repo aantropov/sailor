@@ -122,6 +122,7 @@ namespace Sailor
 				Scheduler* scheduler = App::GetSubmodule<Scheduler>());
 
 			EThreadType m_threadType;
+			std::atomic<DWORD> m_threadAffinity{ static_cast<DWORD>(-1) };
 			std::atomic<uint8_t> m_state = 0;
 			std::atomic<uint32_t> m_numBlockers = 0;
 			TUniquePtr<TaskSyncBlock> m_pSyncBlock;
@@ -300,7 +301,8 @@ namespace Sailor
 			{
 				if (ITask::IsInQueue() || ITask::IsStarted() || ITask::IsFinished())
 				{
-					ITask::m_pScheduler->Run(task);
+					// The parent is already admitted; this new child has no subtree to schedule.
+					ITask::m_pScheduler->Run(task, false);
 				}
 			}
 

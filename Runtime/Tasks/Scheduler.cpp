@@ -20,11 +20,13 @@ using namespace Sailor;
 using namespace Sailor::Tasks;
 
 WorkerThread::WorkerThread(
+	Scheduler& scheduler,
 	std::string threadName,
 	EThreadType threadType,
 	std::condition_variable& refresh,
 	std::mutex& mutex,
 	TVector<ITaskPtr>& pTasksQueue) :
+	m_scheduler(scheduler),
 	m_threadName(std::move(threadName)),
 	m_threadType(threadType),
 	m_refresh(refresh),
@@ -78,10 +80,8 @@ void WorkerThread::ForcelyPushTask(const ITaskPtr& pTask)
 		m_pTaskQueue.Add(pTask);
 	}
 
-	if (!m_bIsBusy)
-	{
-		m_refresh.notify_all();
-	}
+	SetExecFlag();
+	m_refresh.notify_all();
 }
 
 bool WorkerThread::TryFetchTask(ITaskPtr& pOutTask)
@@ -89,11 +89,15 @@ bool WorkerThread::TryFetchTask(ITaskPtr& pOutTask)
 	SAILOR_PROFILE_FUNCTION();
 
 	const std::lock_guard<std::mutex> lock(m_queueMutex);
-	if (m_pTaskQueue.Num() > 0)
+	for (size_t i = m_pTaskQueue.Num(); i > 0; --i)
 	{
-		pOutTask = m_pTaskQueue[m_pTaskQueue.Num() - 1];
-		m_pTaskQueue.RemoveLast();
-		return true;
+		if (m_pTaskQueue[i - 1]->IsReadyToStart())
+		{
+			pOutTask = m_pTaskQueue[i - 1];
+			m_pTaskQueue.RemoveAt(i - 1);
+			m_bIsBusy = true;
+			return true;
+		}
 	}
 	return false;
 }
@@ -126,8 +130,6 @@ void WorkerThread::Process()
 
 	SAILOR_PROFILE_THREAD_NAME(m_threadName.c_str());
 
-	m_threadId = GetCurrentThreadId();
-
 	if (m_threadType == EThreadType::Render || m_threadType == EThreadType::RHI)
 	{
 #if defined(_WIN32)
@@ -143,14 +145,12 @@ void WorkerThread::Process()
 #endif
 	}
 
-	Scheduler* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-
 	ITaskPtr pCurrentTask;
-	while (!scheduler->m_bIsTerminating)
+	while (!m_scheduler.m_bIsTerminating)
 	{
 		{
 			std::unique_lock<std::mutex> lk(m_sharedQueueMutex);
-			m_refresh.wait(lk, [=, this, &pCurrentTask]()
+			m_refresh.wait(lk, [this, &pCurrentTask]()
 				{
 					bool hasTask = false;
 					if (m_bExecFlag > 0)
@@ -159,7 +159,7 @@ void WorkerThread::Process()
 
 						if (!hasTask)
 						{
-							auto& queue = scheduler->m_pSharedTaskQueue[(uint32_t)m_threadType];
+							auto& queue = m_pSharedTaskQueue;
 							const auto result = queue.FindIf(
 								[&](const ITaskPtr& task)
 								{
@@ -175,7 +175,7 @@ void WorkerThread::Process()
 						}
 					}
 
-					const bool res = hasTask || (bool)scheduler->m_bIsTerminating;
+					const bool res = hasTask || (bool)m_scheduler.m_bIsTerminating;
 					return res;
 				});
 			if (pCurrentTask)
@@ -215,6 +215,7 @@ void Scheduler::Initialize()
 		coresCount > numReservedThreads ? coresCount - numReservedThreads : 1u);
 
 	WorkerThread* newRenderingThread = new WorkerThread(
+		*this,
 		"Render Thread",
 		EThreadType::Render,
 		m_refreshCondVar[(uint32_t)EThreadType::Render],
@@ -228,7 +229,7 @@ void Scheduler::Initialize()
 	for (uint32_t i = 0; i < numThreads; i++)
 	{
 		const std::string threadName = std::string("Worker Thread ") + std::to_string(i);
-		WorkerThread* newThread = new WorkerThread(threadName, EThreadType::Worker,
+		WorkerThread* newThread = new WorkerThread(*this, threadName, EThreadType::Worker,
 			m_refreshCondVar[(uint32_t)EThreadType::Worker],
 			m_queueMutex[(uint32_t)EThreadType::Worker],
 			m_pSharedTaskQueue[(uint32_t)EThreadType::Worker]);
@@ -241,7 +242,7 @@ void Scheduler::Initialize()
 	for (uint32_t i = 0; i < numGIThreads; i++)
 	{
 		const std::string threadName = std::string("GI Thread ") + std::to_string(i);
-		WorkerThread* newThread = new WorkerThread(threadName, EThreadType::GI,
+		WorkerThread* newThread = new WorkerThread(*this, threadName, EThreadType::GI,
 			m_refreshCondVar[(uint32_t)EThreadType::GI],
 			m_queueMutex[(uint32_t)EThreadType::GI],
 			m_pSharedTaskQueue[(uint32_t)EThreadType::GI]);
@@ -253,7 +254,7 @@ void Scheduler::Initialize()
 	for (uint32_t i = 0; i < numRHIThreads; i++)
 	{
 		const std::string threadName = std::string("RHI Thread ") + std::to_string(i);
-		WorkerThread* newThread = new WorkerThread(threadName, EThreadType::RHI,
+		WorkerThread* newThread = new WorkerThread(*this, threadName, EThreadType::RHI,
 			m_refreshCondVar[(uint32_t)EThreadType::RHI],
 			m_queueMutex[(uint32_t)EThreadType::RHI],
 			m_pSharedTaskQueue[(uint32_t)EThreadType::RHI]);
@@ -263,6 +264,7 @@ void Scheduler::Initialize()
 	}
 
 	WorkerThread* newEditorThread = new WorkerThread(
+		*this,
 		"Editor Thread",
 		EThreadType::Editor,
 		m_refreshCondVar[(uint32_t)EThreadType::Editor],
@@ -274,6 +276,7 @@ void Scheduler::Initialize()
 	m_workerThreads.Emplace(newEditorThread);
 
 	WorkerThread* newBackgroundThread = new WorkerThread(
+		*this,
 		"Background Thread",
 		EThreadType::Background,
 		m_refreshCondVar[(uint32_t)EThreadType::Background],
@@ -284,6 +287,7 @@ void Scheduler::Initialize()
 	m_workerThreads.Emplace(newBackgroundThread);
 
 	WorkerThread* newPhysicsThread = new WorkerThread(
+		*this,
 		"Physics Thread",
 		EThreadType::Physics,
 		m_refreshCondVar[(uint32_t)EThreadType::Physics],
@@ -295,6 +299,7 @@ void Scheduler::Initialize()
 	m_workerThreads.Emplace(newPhysicsThread);
 
 	WorkerThread* newAudioThread = new WorkerThread(
+		*this,
 		"Audio Thread",
 		EThreadType::Audio,
 		m_refreshCondVar[(uint32_t)EThreadType::Audio],
@@ -462,6 +467,8 @@ void Scheduler::Run(const ITaskPtr& pTask, DWORD threadId, bool bAutoRunChainedT
 		return;
 	}
 
+	pTask->m_threadAffinity = threadId;
+
 	if (bAutoRunChainedTasks)
 	{
 		RunChainedTasks(pTask);
@@ -475,7 +482,6 @@ void Scheduler::Run(const ITaskPtr& pTask, DWORD threadId, bool bAutoRunChainedT
 
 	if (result != -1)
 	{
-		m_workerThreads[result]->SetExecFlag();
 		m_workerThreads[result]->ForcelyPushTask(pTask);
 		return;
 	}
@@ -536,6 +542,28 @@ bool Scheduler::TryFetchNextAvailiableTask(ITaskPtr& pOutTask, EThreadType threa
 	}
 
 	return false;
+}
+
+void Scheduler::NotifyTaskReady(const ITask& task)
+{
+	const DWORD threadId = task.m_threadAffinity.load();
+	if (threadId == static_cast<DWORD>(-1))
+	{
+		NotifyWorkerThread(task.GetThreadType());
+		return;
+	}
+
+	for (auto* worker : m_workerThreads)
+	{
+		if (worker->GetThreadId() == threadId)
+		{
+			worker->SetExecFlag();
+			// The pool shares a condition variable, but only this worker can fetch the task.
+			m_refreshCondVar[(uint32_t)worker->GetThreadType()].notify_all();
+			return;
+		}
+	}
+	// Main-thread work is drained explicitly and must not wake the task's nominal pool.
 }
 
 void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads)
