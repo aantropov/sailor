@@ -320,24 +320,16 @@ TextureImporter::~TextureImporter()
 
 TexturePtr TextureImporter::GetLoadedTexture(FileId uid)
 {
-	// Check loaded materials
-	auto it = m_loadedTextures.Find(uid);
-	if (it != m_loadedTextures.end())
-	{
-		return (*it).m_second;
-	}
-	return TexturePtr();
+	TexturePtr texture;
+	m_loadedTextures.TryGet(uid, texture);
+	return texture;
 }
 
 Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(FileId uid)
 {
-	auto it = m_promises.Find(uid);
-	if (it != m_promises.end())
-	{
-		return (*it).m_second;
-	}
-
-	return Tasks::TaskPtr<TexturePtr>();
+	Tasks::TaskPtr<TexturePtr> promise;
+	m_promises.TryGet(uid, promise);
+	return promise;
 }
 
 TextureImporter::TextureSamplersSnapshot TextureImporter::GetTextureSamplersSnapshot(const TVector<uint32_t>& requestedIndices) const

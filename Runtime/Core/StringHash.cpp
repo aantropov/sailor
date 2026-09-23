@@ -42,27 +42,15 @@ StringHash StringHash::Runtime(std::string_view str)
 
 void StringHash::AddToHashedStringsTable(StringHash hash, std::string_view str)
 {
-	auto& HashedStrings = GetHashedStrings();
-
-	auto it = HashedStrings.Find(hash);
-	if (it == HashedStrings.end())
+	auto& strings = GetHashedStrings();
+	if (!strings.ContainsKey(hash))
 	{
-		HashedStrings.At_Lock(hash, std::string(str));
-		HashedStrings.Unlock(hash);
-	}
-	else
-	{
-		// Avoid hard-failing on rare hash collisions or cache races during debug startup.
-		// Keep the first inserted string for this hash.
-		if (it->Second() != str)
-		{
-			// Keep running in debug; preserving first mapping is safer than aborting.
-			return;
-		}
+		strings.Insert(hash, std::string(str));
 	}
 }
 
 const std::string& StringHash::GetStrFromHashedStringsTable(StringHash hash)
 {
+	// Entries are never replaced or removed, and the table never rehashes.
 	return GetHashedStrings()[hash];
 }

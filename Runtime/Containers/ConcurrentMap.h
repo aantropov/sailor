@@ -146,6 +146,32 @@ namespace Sailor
 			return value;
 		}
 
+		// Copy under the stripe, then replace the caller's value after unlocking.
+		// A missing key leaves out unchanged.
+		SAILOR_API bool TryGet(const TKeyType& key, TValueType& out) const
+			requires IsCopyConstructible<TValueType> && (IsMoveAssignable<TValueType> || IsCopyAssignable<TValueType>)
+		{
+			const size_t hash = Sailor::GetHash(key);
+			Super::Lock(hash);
+			const auto it = Find(key);
+			if (it == Super::end())
+			{
+				Super::Unlock(hash);
+				return false;
+			}
+			TValueType value = it->m_second;
+			Super::Unlock(hash);
+			if constexpr (IsMoveAssignable<TValueType>)
+			{
+				out = std::move(value);
+			}
+			else
+			{
+				out = value;
+			}
+			return true;
+		}
+
 		// Borrowed lookup: caller excludes structural writers for the whole use of the result.
 		SAILOR_API bool Find(const TKeyType& key, TValueType*& out)
 		{

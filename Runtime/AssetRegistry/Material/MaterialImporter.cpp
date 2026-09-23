@@ -866,24 +866,16 @@ bool MaterialImporter::LoadMaterial_Immediate(FileId uid, MaterialPtr& outMateri
 
 MaterialPtr MaterialImporter::GetLoadedMaterial(FileId uid)
 {
-	// Check loaded materials
-	auto materialIt = m_loadedMaterials.Find(uid);
-	if (materialIt != m_loadedMaterials.end())
-	{
-		return (*materialIt).m_second;
-	}
-	return MaterialPtr();
+	MaterialPtr material;
+	m_loadedMaterials.TryGet(uid, material);
+	return material;
 }
 
 Tasks::TaskPtr<MaterialPtr> MaterialImporter::GetLoadPromise(FileId uid)
 {
-	auto it = m_promises.Find(uid);
-	if (it != m_promises.end())
-	{
-		return (*it).m_second;
-	}
-
-	return Tasks::TaskPtr<MaterialPtr>();
+	Tasks::TaskPtr<MaterialPtr> promise;
+	m_promises.TryGet(uid, promise);
+	return promise;
 }
 
 Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialPtr& outMaterial)

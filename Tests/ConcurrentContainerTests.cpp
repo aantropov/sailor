@@ -1,15 +1,20 @@
+#include <array>
 #include <atomic>
 #include <barrier>
 #include <cstdint>
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <type_traits>
 #include <vector>
 
 #include "Containers/ConcurrentMap.h"
 #include "Containers/ConcurrentSet.h"
+#include "Core/StringHash.h"
+#include "Engine/Object.h"
+#include "Memory/WeakPtr.hpp"
 
 using namespace Sailor;
 
@@ -316,6 +321,162 @@ namespace
 		}
 	}
 
+	void TestCopyOutRetainsOwnership()
+	{
+		using ValuePtr = TSharedPtr<uint64_t>;
+		TConcurrentMap<Key, ValuePtr, 4> map(4);
+		const auto& readOnly = map;
+		ValuePtr retained = ValuePtr::Make(99);
+		auto* previous = retained.GetRawPtr();
+		Require(!readOnly.TryGet(Key{ 0 }, retained) && retained.GetRawPtr() == previous && map.Num() == 0,
+			"a missing lookup must preserve its output and must not insert a key");
+
+		auto value = ValuePtr::Make(42);
+		TWeakPtr<uint64_t> lifetime = value;
+		map.Insert(Key{ 0 }, value);
+		value.Clear();
+		Require(readOnly.TryGet(Key{ 0 }, retained) && *retained == 42,
+			"a successful lookup must copy ownership of the stored value");
+		for (uint32_t key = 1; key < 256; ++key)
+		{
+			map.Insert(Key{ key }, ValuePtr::Make(key));
+		}
+		Require(map.Remove(Key{ 0 }), "the original entry must remain removable after rehash");
+		map.Clear();
+		Require(lifetime && *retained == 42,
+			"a copied Sailor pointer must retain its object across rehash, Remove and Clear");
+		Require(!readOnly.TryGet(Key{ 0 }, retained) && *retained == 42,
+			"a missing lookup after Clear must not release the retained object");
+		retained.Clear();
+		Require(!lifetime, "releasing the copied value must release its final ownership");
+	}
+
+	void TestCopyOutDuringMutation()
+	{
+		using Value = std::array<uint64_t, 32>;
+		TConcurrentMap<Key, Value, 4, ERehashPolicy::Always, Memory::MallocAllocator> map(4);
+		map.Insert(Key{ 0 }, Value{});
+		constexpr uint32_t writes = 512;
+		std::barrier start(2);
+		std::atomic<bool> valid = true;
+		std::jthread writer([&]
+			{
+				start.arrive_and_wait();
+				for (uint32_t generation = 1; generation <= writes; ++generation)
+				{
+					auto& value = map.At_Lock(Key{ 0 });
+					for (size_t i = 0; i < value.size(); ++i)
+					{
+						value[i] = generation;
+						if (i == value.size() / 2)
+						{
+							std::this_thread::yield();
+						}
+					}
+					map.Unlock(Key{ 0 });
+					map.Insert(Key{ generation }, Value{});
+					if (generation % 8 == 0)
+					{
+						map.Remove(Key{ 0 });
+					}
+				}
+			});
+		std::jthread reader([&]
+			{
+				start.arrive_and_wait();
+				const auto& readOnly = map;
+				for (uint32_t i = 0; i < writes * 8; ++i)
+				{
+					Value value;
+					value.fill(writes + 1);
+					const bool found = readOnly.TryGet(Key{ 0 }, value);
+					if (found && value[0] > writes)
+					{
+						valid = false;
+					}
+					for (uint64_t word : value)
+					{
+						if (word != (found ? value[0] : writes + 1))
+						{
+							valid = false;
+						}
+					}
+				}
+			});
+		writer.join();
+		reader.join();
+		Require(valid && map.Num() == writes,
+			"copy-out reads must observe complete values during updates, erase and table growth");
+	}
+
+	void TestConcurrentStringRegistration()
+	{
+		const std::string sharedText = "ConcurrentContainerTests shared string";
+		const auto sharedHash = StringHash::Runtime(sharedText);
+		const auto& retained = sharedHash.ToString();
+		std::atomic<bool> valid = true;
+		std::barrier start(4);
+		std::vector<std::jthread> writers;
+		for (uint32_t worker = 0; worker < 4; ++worker)
+		{
+			writers.emplace_back([&, worker]
+				{
+					start.arrive_and_wait();
+					for (uint32_t i = 0; i < 256; ++i)
+					{
+						const std::string text = "ConcurrentContainerTests string " +
+							std::to_string(worker) + ":" + std::to_string(i);
+						if (StringHash::Runtime(text).ToString() != text ||
+							StringHash::Runtime(sharedText).ToString() != sharedText)
+						{
+							valid = false;
+						}
+					}
+				});
+		}
+		for (auto& writer : writers)
+		{
+			writer.join();
+		}
+		Require(valid && retained == sharedText && &retained == &sharedHash.ToString(),
+			"registered strings must remain immutable and stable while other threads insert");
+	}
+
+#ifdef SAILOR_EDITOR
+	class ReloadDependency final : public Object
+	{
+	public:
+		ReloadDependency(Object& source, uint32_t& calls) : m_source(source), m_calls(calls) {}
+
+		Tasks::ITaskPtr OnHotReload() override
+		{
+			++m_calls;
+			m_source.ClearHotReloadDependentObjects();
+			return {};
+		}
+
+	private:
+		Object& m_source;
+		uint32_t& m_calls;
+	};
+
+	void TestHotReloadDependencySnapshot()
+	{
+		Object source;
+		uint32_t calls = 0;
+		auto allocator = Memory::ObjectAllocatorPtr::Make(Memory::EAllocationPolicy::LocalMemory_SingleThread);
+		for (size_t i = 0; i < 4; ++i)
+		{
+			auto dependency = TObjectPtr<ReloadDependency>::Make(allocator, source, calls);
+			source.AddHotReloadDependentObject(dependency);
+		}
+		source.TraceHotReload(nullptr);
+		Require(calls == 4, "callbacks may clear dependencies without invalidating the current snapshot");
+		source.TraceHotReload(nullptr);
+		Require(calls == 4, "removed dependencies must not appear in the next hot-reload snapshot");
+	}
+#endif
+
 	template<ERehashPolicy Policy>
 	void TestMapWritersAndSnapshots()
 	{
@@ -393,6 +554,12 @@ int main()
 		TestIndependentStripeProgress();
 		TestIndependentStructuralWrites();
 		TestSetWritersWithGrowth();
+		TestCopyOutRetainsOwnership();
+		TestCopyOutDuringMutation();
+		TestConcurrentStringRegistration();
+#ifdef SAILOR_EDITOR
+		TestHotReloadDependencySnapshot();
+#endif
 		TestMapWritersAndSnapshots<ERehashPolicy::Always>();
 		TestMapWritersAndSnapshots<ERehashPolicy::IfNotWriting>();
 		std::cout << "ConcurrentContainerTests passed\n";
