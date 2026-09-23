@@ -189,9 +189,10 @@ bool AssetRegistry::CanReuseSecondaryAssetId(const FileId& fileId,
 		metadataPath = std::filesystem::path(record.m_sourcePath).parent_path() / record.m_metadataFilename;
 	}
 
+	const auto relativeMetadataPath = std::filesystem::path(PathKey(metadataPath)).lexically_relative(
+		PathKey(m_workspaceContext.GetContent()));
 	std::filesystem::path writablePath;
-	if (!ResolveWorkspaceContentPathForWrite(
-		metadataPath.lexically_relative(m_workspaceContext.GetContent()).generic_string(), writablePath))
+	if (!ResolveWorkspaceContentPathForWrite(relativeMetadataPath.generic_string(), writablePath))
 	{
 		return false;
 	}
