@@ -382,6 +382,12 @@ namespace
 class Physics::PhysicsWorld::Impl final
 {
 public:
+	struct BodyMetadata final
+	{
+		InstanceId m_instanceId{};
+		bool m_bSensor = false;
+	};
+
 	class ContactListener final : public JPH::ContactListener
 	{
 	public:
@@ -427,9 +433,13 @@ public:
 		{
 			Physics::PhysicsContactEvent event{};
 			event.m_type = Physics::EPhysicsContactType::Removed;
-			if (m_owner.ResolveInstanceId(pair.GetBody1ID(), event.m_first) &&
-				m_owner.ResolveInstanceId(pair.GetBody2ID(), event.m_second))
+			const auto* first = m_owner.FindContactBody(pair.GetBody1ID());
+			const auto* second = m_owner.FindContactBody(pair.GetBody2ID());
+			if (first && second)
 			{
+				event.m_first = first->m_instanceId;
+				event.m_second = second->m_instanceId;
+				event.m_bSensor = first->m_bSensor || second->m_bSensor;
 				Canonicalize(event);
 				m_owner.m_contactEvents.push(std::move(event));
 			}
@@ -495,21 +505,32 @@ public:
 		const JPH::BodyID& bodyId,
 		InstanceId& outInstanceId) const
 	{
-		const InstanceId* instanceId = nullptr;
-		if (!m_bodyInstances.Find(
+		const BodyMetadata* metadata = nullptr;
+		if (!m_bodyMetadata.Find(
 				bodyId.GetIndexAndSequenceNumber(),
-				instanceId))
+				metadata))
 		{
 			return false;
 		}
 
-		outInstanceId = *instanceId;
+		outInstanceId = metadata->m_instanceId;
 		return true;
+	}
+
+	const BodyMetadata* FindContactBody(const JPH::BodyID& bodyId) const
+	{
+		const BodyMetadata* metadata = nullptr;
+		const uint32_t id = bodyId.GetIndexAndSequenceNumber();
+		if (!m_bodyMetadata.Find(id, metadata))
+		{
+			m_retiredBodyMetadata.Find(id, metadata);
+		}
+		return metadata;
 	}
 
 	bool IsRigidBody(uint32_t bodyId) const
 	{
-		if (!m_bodyInstances.ContainsKey(bodyId))
+		if (!m_bodyMetadata.ContainsKey(bodyId))
 		{
 			return false;
 		}
@@ -527,7 +548,10 @@ public:
 	JPH::TempAllocatorImpl m_tempAllocator;
 	JPH::PhysicsSystem m_physicsSystem{};
 	ContactListener m_contactListener;
-	TMap<uint32_t, InstanceId> m_bodyInstances{};
+	TMap<uint32_t, BodyMetadata> m_bodyMetadata{};
+	// Body lifecycle changes run between steps. Removed callbacks still need this
+	// metadata during the next Update, after Jolt may have destroyed the bodies.
+	TMap<uint32_t, BodyMetadata> m_retiredBodyMetadata{};
 	TMap<uint32_t, JPH::Ref<JPH::SoftBodySharedSettings>> m_softBodySettings{};
 	concurrency::concurrent_queue<PhysicsContactEvent> m_contactEvents{};
 };
@@ -624,7 +648,7 @@ bool Physics::PhysicsWorld::CreateBody(
 	}
 
 	outBodyId = bodyId.GetIndexAndSequenceNumber();
-	m_pImpl->m_bodyInstances[outBodyId] = desc.m_instanceId;
+	m_pImpl->m_bodyMetadata[outBodyId] = { desc.m_instanceId, desc.m_bSensor };
 	if (motionType != JPH::EMotionType::Static)
 	{
 		bodyInterface.SetLinearAndAngularVelocity(
@@ -792,7 +816,7 @@ bool Physics::PhysicsWorld::CreateSoftBody(
 	}
 
 	outBodyId = bodyId.GetIndexAndSequenceNumber();
-	m_pImpl->m_bodyInstances[outBodyId] = desc.m_instanceId;
+	m_pImpl->m_bodyMetadata[outBodyId] = { desc.m_instanceId, false };
 	m_pImpl->m_softBodySettings[outBodyId] = sharedSettings;
 	if (bSkinned)
 	{
@@ -887,7 +911,7 @@ bool Physics::PhysicsWorld::SetSoftBodyTargets(
 	float maxDistanceMultiplier,
 	bool bReset)
 {
-	if (!m_pImpl->m_bodyInstances.ContainsKey(bodyId) ||
+	if (!m_pImpl->m_bodyMetadata.ContainsKey(bodyId) ||
 		!std::isfinite(maxDistanceMultiplier) || maxDistanceMultiplier < 0.0f)
 	{
 		return false;
@@ -961,7 +985,7 @@ bool Physics::PhysicsWorld::ApplySoftBodyWind(
 	float drag,
 	float deltaTime)
 {
-	if (!m_pImpl->m_bodyInstances.ContainsKey(bodyId) || !Math::AllFinite(velocity) ||
+	if (!m_pImpl->m_bodyMetadata.ContainsKey(bodyId) || !Math::AllFinite(velocity) ||
 		!std::isfinite(airDensity) || airDensity < 0.0f || !std::isfinite(drag) || drag < 0.0f ||
 		!std::isfinite(deltaTime) || deltaTime <= 0.0f)
 	{
@@ -1033,7 +1057,7 @@ bool Physics::PhysicsWorld::GetSoftBodyVertices(
 	uint32_t bodyId,
 	TVector<SoftBodyVertex>& outVertices) const
 {
-	if (!m_pImpl->m_bodyInstances.ContainsKey(bodyId))
+	if (!m_pImpl->m_bodyMetadata.ContainsKey(bodyId))
 	{
 		return false;
 	}
@@ -1087,10 +1111,12 @@ void Physics::PhysicsWorld::DestroyBody(uint32_t bodyId)
 	{
 		return;
 	}
-	if (!m_pImpl->m_bodyInstances.ContainsKey(bodyId))
+	const Impl::BodyMetadata* metadata = nullptr;
+	if (!m_pImpl->m_bodyMetadata.Find(bodyId, metadata))
 	{
 		return;
 	}
+	m_pImpl->m_retiredBodyMetadata[bodyId] = *metadata;
 
 	const JPH::BodyID id(bodyId);
 	auto& bodyInterface = m_pImpl->m_physicsSystem.GetBodyInterface();
@@ -1099,7 +1125,7 @@ void Physics::PhysicsWorld::DestroyBody(uint32_t bodyId)
 		bodyInterface.RemoveBody(id);
 	}
 	bodyInterface.DestroyBody(id);
-	m_pImpl->m_bodyInstances.Remove(bodyId);
+	m_pImpl->m_bodyMetadata.Remove(bodyId);
 	m_pImpl->m_softBodySettings.Remove(bodyId);
 }
 
@@ -1149,7 +1175,7 @@ bool Physics::PhysicsWorld::GetBodyPose(
 	uint32_t bodyId,
 	PhysicsBodyPose& outPose) const
 {
-	if (!m_pImpl->m_bodyInstances.ContainsKey(bodyId))
+	if (!m_pImpl->m_bodyMetadata.ContainsKey(bodyId))
 	{
 		return false;
 	}
@@ -1238,6 +1264,7 @@ bool Physics::PhysicsWorld::Step(float deltaTime)
 		1,
 		&m_pImpl->m_tempAllocator,
 		&m_pImpl->m_jobSystem);
+	m_pImpl->m_retiredBodyMetadata.Clear();
 	if (result != JPH::EPhysicsUpdateError::None)
 	{
 		SAILOR_LOG_ERROR(
@@ -1353,8 +1380,8 @@ void Physics::PhysicsWorld::DrainContactEvents(
 void Physics::PhysicsWorld::Clear()
 {
 	TVector<uint32_t> bodyIds;
-	bodyIds.Reserve(m_pImpl->m_bodyInstances.Num());
-	for (const auto& body : m_pImpl->m_bodyInstances)
+	bodyIds.Reserve(m_pImpl->m_bodyMetadata.Num());
+	for (const auto& body : m_pImpl->m_bodyMetadata)
 	{
 		bodyIds.Add(body.m_first);
 	}
@@ -1362,7 +1389,8 @@ void Physics::PhysicsWorld::Clear()
 	{
 		DestroyBody(bodyId);
 	}
-	m_pImpl->m_bodyInstances.Clear();
+	m_pImpl->m_bodyMetadata.Clear();
+	m_pImpl->m_retiredBodyMetadata.Clear();
 	PhysicsContactEvent event;
 	while (m_pImpl->m_contactEvents.try_pop(event)) {}
 }

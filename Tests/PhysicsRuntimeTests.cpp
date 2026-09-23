@@ -11,6 +11,8 @@
 #include "Physics/JoltRuntime.h"
 #include "Physics/PhysicsWorld.h"
 #include "Math/Transform.h"
+#include <Jolt/Jolt.h>
+#include <Jolt/Physics/Body/BodyID.h>
 
 #include <algorithm>
 #include <atomic>
@@ -556,61 +558,263 @@ namespace
 			"raycast mask should exclude other layers");
 	}
 
-	void TestSensorEventsAndQueuedContactDestruction()
+	struct ContactPair
 	{
-		Physics::PhysicsWorld world;
-		const InstanceId groundId = InstanceId::GenerateNewInstanceId();
-		const InstanceId sensorId = InstanceId::GenerateNewInstanceId();
-		uint32_t groundBody = ~0u;
-		uint32_t sensorBody = ~0u;
-		Require(
-			world.CreateBody(
-				MakeBox(
-					groundId,
-					Physics::ERigidBodyMotionType::Static,
-					glm::vec3(0.0f, -0.5f, 0.0f),
-					glm::vec3(10.0f, 1.0f, 10.0f)),
-				groundBody),
-			"sensor fixture ground should be created");
-		auto sensor = MakeBox(
-			sensorId,
+		InstanceId m_staticId = InstanceId::GenerateNewInstanceId();
+		InstanceId m_movingId = InstanceId::GenerateNewInstanceId();
+		uint32_t m_staticBody = ~0u;
+		uint32_t m_movingBody = ~0u;
+	};
+
+	ContactPair CreateContactPair(Physics::PhysicsWorld& world, bool bSensor)
+	{
+		ContactPair pair;
+		Require(world.CreateBody(MakeBox(pair.m_staticId,
+			Physics::ERigidBodyMotionType::Static, glm::vec3(0.0f, -0.5f, 0.0f),
+			glm::vec3(10.0f, 1.0f, 10.0f)), pair.m_staticBody),
+			"contact fixture ground should be created");
+		auto moving = MakeBox(pair.m_movingId,
 			Physics::ERigidBodyMotionType::Dynamic,
-			glm::vec3(0.0f, 2.0f, 0.0f),
+			glm::vec3(0.0f, 0.25f, 0.0f),
 			glm::vec3(1.0f));
-		sensor.m_bSensor = true;
-		Require(
-			world.CreateBody(sensor, sensorBody),
-			"sensor body should be created");
+		moving.m_bSensor = bSensor;
+		moving.m_gravityFactor = 0.0f;
+		moving.m_bAllowSleeping = false;
+		Require(world.CreateBody(moving, pair.m_movingBody),
+			"overlapping dynamic body should be created");
+		return pair;
+	}
 
-		Step(world, 120);
-		world.DestroyBody(sensorBody);
-		world.DestroyBody(sensorBody);
-
-		TVector<Physics::PhysicsContactEvent> events;
-		world.DrainContactEvents(events);
-		Require(
-			events.ContainsIf([&](const auto& event)
-				{
-					return event.m_bSensor &&
-						event.m_type == Physics::EPhysicsContactType::Added &&
-						((event.m_first == groundId && event.m_second == sensorId) ||
-							(event.m_first == sensorId && event.m_second == groundId));
-				}),
-			"sensor overlap should be delivered as copied stable ids after the step");
+	void RequireContactPair(const TVector<Physics::PhysicsContactEvent>& events,
+		const ContactPair& pair, bool bSensor)
+	{
+		const bool bStaticFirst = pair.m_staticId.ToString() < pair.m_movingId.ToString();
+		const auto& first = bStaticFirst ? pair.m_staticId : pair.m_movingId;
+		const auto& second = bStaticFirst ? pair.m_movingId : pair.m_staticId;
+		for (const auto& event : events)
+		{
+			Require(event.m_first == first && event.m_second == second,
+				"contact events must retain the canonical pair of instance ids");
+			Require(event.m_bSensor == bSensor,
+				"added, persisted and removed contacts must retain the body's sensor flag");
+		}
 		for (size_t index = 1; index < events.Num(); ++index)
 		{
-			const auto& previous = events[index - 1];
-			const auto& current = events[index];
-			const auto previousKey = std::make_pair(
-				previous.m_first.ToString(),
-				previous.m_second.ToString());
-			const auto currentKey = std::make_pair(
-				current.m_first.ToString(),
-				current.m_second.ToString());
-			Require(
-				previousKey <= currentKey,
-				"parallel contact callbacks should drain in stable pair order");
+			Require(events[index - 1].m_type <= events[index].m_type,
+				"contacts for the same pair must drain in stable event-type order");
 		}
+	}
+
+	size_t CountContacts(const TVector<Physics::PhysicsContactEvent>& events,
+		Physics::EPhysicsContactType type)
+	{
+		return static_cast<size_t>(std::count_if(events.begin(), events.end(),
+			[type](const auto& event) { return event.m_type == type; }));
+	}
+
+	void TestSensorAndOrdinaryContactLifecycle()
+	{
+		for (bool bSensor : { false, true })
+		{
+			Physics::PhysicsWorld world;
+			const auto pair = CreateContactPair(world, bSensor);
+			TVector<Physics::PhysicsContactEvent> events;
+			Step(world, 1);
+			world.DrainContactEvents(events);
+			RequireContactPair(events, pair, bSensor);
+			Require(CountContacts(events, Physics::EPhysicsContactType::Added) > 0,
+				"overlapping bodies must report an added contact");
+
+			events.Clear();
+			Step(world, 1);
+			world.DrainContactEvents(events);
+			RequireContactPair(events, pair, bSensor);
+			Require(CountContacts(events, Physics::EPhysicsContactType::Persisted) > 0 &&
+				CountContacts(events, Physics::EPhysicsContactType::Removed) == 0,
+				"an awake overlapping pair must keep reporting persisted contacts");
+
+			Require(world.SetBodyTransform(pair.m_movingBody, glm::vec3(0.0f, 3.0f, 0.0f),
+				glm::quat(1.0f, 0.0f, 0.0f, 0.0f), false, c_fixedDeltaTime),
+				"the contact body should move out of the overlap");
+			events.Clear();
+			Step(world, 1);
+			world.DrainContactEvents(events);
+			RequireContactPair(events, pair, bSensor);
+			Require(CountContacts(events, Physics::EPhysicsContactType::Removed) > 0,
+				"separating live bodies must report removal with the original sensor flag");
+		}
+	}
+
+	void TestContactRemovalAfterBodyDestruction()
+	{
+		Tasks::Scheduler scheduler;
+		scheduler.Initialize();
+		for (uint32_t removedBodies : { 1u, 2u, 3u })
+		{
+			Physics::PhysicsWorld world(scheduler);
+			const auto pair = CreateContactPair(world, true);
+			TVector<Physics::PhysicsContactEvent> events;
+			Step(world, 1);
+			world.DrainContactEvents(events);
+			RequireContactPair(events, pair, true);
+			const size_t numAdded = CountContacts(events, Physics::EPhysicsContactType::Added);
+			Require(numAdded > 0, "the pair must overlap before either body is destroyed");
+
+			events.Clear();
+			Step(world, 1);
+			if ((removedBodies & 1u) != 0)
+			{
+				world.DestroyBody(pair.m_movingBody);
+				world.DestroyBody(pair.m_movingBody);
+				Physics::PhysicsBodyPose pose;
+				Require(!world.GetBodyPose(pair.m_movingBody, pose) &&
+					!world.SetBodyVelocity(pair.m_movingBody, glm::vec3(0.0f), glm::vec3(0.0f)),
+					"retired contact metadata must not keep a destroyed body usable");
+			}
+			if ((removedBodies & 2u) != 0)
+			{
+				world.DestroyBody(pair.m_staticBody);
+				world.DestroyBody(pair.m_staticBody);
+			}
+			world.DrainContactEvents(events);
+			RequireContactPair(events, pair, true);
+			Require(CountContacts(events, Physics::EPhysicsContactType::Persisted) > 0 &&
+				CountContacts(events, Physics::EPhysicsContactType::Removed) == 0,
+				"already queued contacts must survive destruction; exits wait for the next update");
+
+			events.Clear();
+			Require(!world.Step(0.0f) && !world.Step(-c_fixedDeltaTime),
+				"invalid steps must not run Jolt or discard pending contact identities");
+			world.DrainContactEvents(events);
+			Require(events.IsEmpty(), "an invalid step must not manufacture contact removal");
+			Step(world, 1);
+			world.DrainContactEvents(events);
+			RequireContactPair(events, pair, true);
+			Require(CountContacts(events, Physics::EPhysicsContactType::Removed) == numAdded,
+				"deleting either or both bodies must deliver each exit, including an empty world");
+			events.Clear();
+			Step(world, 1);
+			world.DrainContactEvents(events);
+			Require(events.IsEmpty(), "a removed contact must not be replayed on later steps");
+		}
+	}
+
+	void TestRemovedContactsRetainBodySequence()
+	{
+		Physics::PhysicsWorld world;
+		const auto oldPair = CreateContactPair(world, true);
+		TVector<Physics::PhysicsContactEvent> events;
+		Step(world, 1);
+		world.DrainContactEvents(events);
+		Require(CountContacts(events, Physics::EPhysicsContactType::Added) > 0,
+			"the old sensor must have an active contact before its slot is reused");
+		world.DestroyBody(oldPair.m_movingBody);
+
+		ContactPair newPair = oldPair;
+		newPair.m_movingId = InstanceId::GenerateNewInstanceId();
+		auto replacement = MakeBox(newPair.m_movingId, Physics::ERigidBodyMotionType::Dynamic,
+			glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(1.0f));
+		replacement.m_gravityFactor = 0.0f;
+		replacement.m_bAllowSleeping = false;
+		Require(world.CreateBody(replacement, newPair.m_movingBody),
+			"a non-sensor replacement body should be created before the next step");
+		const JPH::BodyID oldBody(oldPair.m_movingBody);
+		const JPH::BodyID newBody(newPair.m_movingBody);
+		Require(oldBody.GetIndex() == newBody.GetIndex() &&
+			oldBody.GetSequenceNumber() != newBody.GetSequenceNumber(),
+			"the fixture must exercise actual Jolt body-slot reuse with a new sequence");
+
+		events.Clear();
+		Step(world, 1);
+		world.DrainContactEvents(events);
+		RequireContactPair(events, oldPair, true);
+		Require(CountContacts(events, Physics::EPhysicsContactType::Removed) > 0,
+			"the old exit must not borrow the replacement body's identity or sensor flag");
+		Require(world.SetBodyTransform(newPair.m_movingBody, glm::vec3(0.0f, 0.25f, 0.0f),
+			glm::quat(1.0f, 0.0f, 0.0f, 0.0f), false, c_fixedDeltaTime),
+			"the replacement body must remain independently usable");
+		events.Clear();
+		Step(world, 1);
+		world.DrainContactEvents(events);
+		RequireContactPair(events, newPair, false);
+		Require(CountContacts(events, Physics::EPhysicsContactType::Added) > 0,
+			"the replacement must start its own ordinary collision lifecycle");
+	}
+
+	void TestCompoundSensorPartialExit()
+	{
+		Physics::PhysicsWorld world;
+		ContactPair pair;
+		auto compound = MakeBox(pair.m_staticId, Physics::ERigidBodyMotionType::Static,
+			glm::vec3(0.0f), glm::vec3(1.0f, 4.0f, 4.0f));
+		compound.m_shapes[0].m_center.x = -1.25f;
+		auto secondShape = compound.m_shapes[0];
+		secondShape.m_center.x = 1.25f;
+		compound.m_shapes.Add(secondShape);
+		Require(world.CreateBody(compound, pair.m_staticBody),
+			"the compound must provide two opposing, separately contacted child faces");
+		auto sensor = MakeBox(pair.m_movingId, Physics::ERigidBodyMotionType::Dynamic,
+			glm::vec3(0.0f), glm::vec3(2.0f, 1.0f, 1.0f));
+		sensor.m_bSensor = true;
+		sensor.m_gravityFactor = 0.0f;
+		sensor.m_bAllowSleeping = false;
+		Require(world.CreateBody(sensor, pair.m_movingBody), "the compound sensor should be created");
+
+		TVector<Physics::PhysicsContactEvent> events;
+		Step(world, 1);
+		world.DrainContactEvents(events);
+		RequireContactPair(events, pair, true);
+		const size_t numAdded = CountContacts(events, Physics::EPhysicsContactType::Added);
+		Require(numAdded > 1, "distinct child contacts must not collapse into one body-pair event");
+
+		Require(world.SetBodyTransform(pair.m_movingBody, glm::vec3(1.5f, 0.0f, 0.0f),
+			glm::quat(1.0f, 0.0f, 0.0f, 0.0f), false, c_fixedDeltaTime),
+			"the sensor should leave the left child while still overlapping the right child");
+		events.Clear();
+		Step(world, 1);
+		world.DrainContactEvents(events);
+		RequireContactPair(events, pair, true);
+		const size_t numPartialRemoved = CountContacts(events, Physics::EPhysicsContactType::Removed);
+		Require(numPartialRemoved > 0 && numPartialRemoved < numAdded &&
+			CountContacts(events, Physics::EPhysicsContactType::Persisted) > 0 &&
+			CountContacts(events, Physics::EPhysicsContactType::Added) == 0,
+			"a partial compound exit must coexist with surviving per-child contacts");
+
+		Require(world.SetBodyTransform(pair.m_movingBody, glm::vec3(5.0f, 0.0f, 0.0f),
+			glm::quat(1.0f, 0.0f, 0.0f, 0.0f), false, c_fixedDeltaTime),
+			"the sensor should leave the remaining child");
+		events.Clear();
+		Step(world, 1);
+		world.DrainContactEvents(events);
+		RequireContactPair(events, pair, true);
+		Require(numPartialRemoved + CountContacts(events, Physics::EPhysicsContactType::Removed) == numAdded,
+			"each original compound contact must produce its own exit");
+	}
+
+	void TestClearDiscardsContactHistory()
+	{
+		Physics::PhysicsWorld world;
+		const auto oldPair = CreateContactPair(world, true);
+		Step(world, 1);
+		world.DestroyBody(oldPair.m_movingBody);
+		world.Clear();
+		world.Clear();
+		TVector<Physics::PhysicsContactEvent> events;
+		world.DrainContactEvents(events);
+		Require(events.IsEmpty(), "Clear must discard queued contacts and pending removal metadata");
+
+		const auto newPair = CreateContactPair(world, false);
+		Step(world, 1);
+		world.DrainContactEvents(events);
+		RequireContactPair(events, newPair, false);
+		Require(CountContacts(events, Physics::EPhysicsContactType::Added) > 0 &&
+			CountContacts(events, Physics::EPhysicsContactType::Removed) == 0,
+			"a reused world must report only new contacts, not delayed exits from before Clear");
+		world.Clear();
+		events.Clear();
+		Step(world, 1);
+		world.DrainContactEvents(events);
+		Require(events.IsEmpty(), "stepping an empty cleared world must not replay its former contacts");
 	}
 
 	void TestThinScaledBoxPreservesCollisionExtent()
@@ -1248,7 +1452,11 @@ int main()
 		{ "KinematicAuthority", TestKinematicAuthority },
 		{ "ScaledSphereVolume", TestScaledSphereVolume },
 		{ "CollisionLayersAndQueryMask", TestCollisionLayersAndQueryMask },
-		{ "SensorEventsAndQueuedContactDestruction", TestSensorEventsAndQueuedContactDestruction },
+		{ "SensorAndOrdinaryContactLifecycle", TestSensorAndOrdinaryContactLifecycle },
+		{ "ContactRemovalAfterBodyDestruction", TestContactRemovalAfterBodyDestruction },
+		{ "RemovedContactsRetainBodySequence", TestRemovedContactsRetainBodySequence },
+		{ "CompoundSensorPartialExit", TestCompoundSensorPartialExit },
+		{ "ClearDiscardsContactHistory", TestClearDiscardsContactHistory },
 		{ "LifecycleAndInputValidation", TestLifecycleAndInputValidation },
 		{ "ThinScaledBoxPreservesCollisionExtent", TestThinScaledBoxPreservesCollisionExtent },
 		{ "SameBuildRepeatability", TestSameBuildRepeatability },
