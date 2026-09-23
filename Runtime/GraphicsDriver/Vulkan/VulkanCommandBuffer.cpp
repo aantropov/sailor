@@ -739,7 +739,12 @@ void VulkanCommandBuffer::ClearAttachments(VkRect2D renderArea, const glm::vec4&
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
 {
-	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT, (uint32_t)offset, (uint32_t)size, ptr);
+	VkPushConstantRange update;
+	if (!pipelineLayout->GetPushConstantUpdate(offset, size, ptr, update))
+	{
+		return;
+	}
+	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, update.stageFlags, update.offset, update.size, ptr);
 
 	m_numRecordedCommands++;
 	m_gpuCost += 1;

@@ -1104,31 +1104,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					commands->ClearAttachments(commandList, renderArea, shadowClearValue, 0.0f);
 				}
 
-				RHI::RHIMaterialPtr pushConstantsMaterial;
-				auto& currentViewResources = *submissionResources->m_activeShadowViews[index];
-				if (!currentViewResources.m_packet.GetGroups().IsEmpty())
-				{
-					pushConstantsMaterial = currentViewResources.m_packet.GetGroups()[0].m_batch.m_material;
-				}
-				else
-				{
-					for (uint32_t dependencyPass : shadowPass.m_internalCommandsList)
-					{
-						if (dependencyPass < submissionResources->m_activeShadowViews.Num() &&
-							!submissionResources->m_activeShadowViews[dependencyPass]->m_packet.GetGroups().IsEmpty())
-						{
-							pushConstantsMaterial = submissionResources->m_activeShadowViews[dependencyPass]
-								->m_packet.GetGroups()[0].m_batch.m_material;
-							break;
-						}
-					}
-				}
-
-				if (pushConstantsMaterial)
-				{
-					commands->PushConstants(commandList, pushConstantsMaterial, 64, &shadowPass.m_lightMatrix);
-				}
-
 				auto recordShadowPacket = [&](uint32_t packetIndex)
 				{
 					if (packetIndex >= submissionResources->m_activeShadowViews.Num())
@@ -1140,10 +1115,12 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					{
 						return;
 					}
-					const auto collectShaderBindingsByMaterial = [&](
+					const auto prepareShadowMaterial = [&](
 						const RHIBatch& batch,
 						TVector<RHIShaderBindingSetPtr>& sets)
 					{
+						commands->PushConstants(commandList, batch.m_material,
+							sizeof(shadowPass.m_lightMatrix), &shadowPass.m_lightMatrix);
 						if (batch.m_material->GetRenderState().IsRequiredCustomDepthShader())
 						{
 							sets.Add(sceneView.m_frameBindings);
@@ -1174,7 +1151,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						viewResources.m_packet,
 						commandList,
 						transferCommandList,
-						collectShaderBindingsByMaterial,
+						prepareShadowMaterial,
 						viewResources.m_perInstanceData,
 						viewResources.m_indirectBuffer,
 						glm::ivec4(renderArea.x, renderArea.y + renderArea.w, renderArea.z, -renderArea.w),
@@ -1183,16 +1160,10 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					viewResources.m_bUploadedThisSubmission = true;
 				};
 
-				if (pushConstantsMaterial)
-				{
-					recordShadowPacket(index);
-				}
+				recordShadowPacket(index);
 				for (uint32_t dependencyPass : shadowPass.m_internalCommandsList)
 				{
-					if (pushConstantsMaterial)
-					{
-						recordShadowPacket(dependencyPass);
-					}
+					recordShadowPacket(dependencyPass);
 				}
 
 				commands->EndRenderPass(commandList);

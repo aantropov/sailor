@@ -318,7 +318,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Vulkan specific
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);
-		SAILOR_API VulkanComputePipelinePtr GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader, uint32_t sizePushConstantsData,
+		SAILOR_API VulkanComputePipelinePtr GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader,
 			const TVector<uint32_t>* optionalVariableDescriptorCount = nullptr);
 		SAILOR_API TVector<bool> IsCompatible(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
 		SAILOR_API TVector<VulkanDescriptorSetPtr> GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout,
@@ -341,28 +341,25 @@ namespace Sailor::GraphicsDriver::Vulkan
 		class ComputePipelineCacheKey
 		{
 			RHI::RHIShaderPtr m_shader{};
-			uint32_t m_pushConstantsSize = 0;
 			TVector<uint32_t> m_variableDescriptorCounts;
 
 		public:
 			ComputePipelineCacheKey() = default;
-			ComputePipelineCacheKey(const RHI::RHIShaderPtr& shader, uint32_t pushConstantsSize, const TVector<uint32_t>* variableDescriptorCounts) :
+			ComputePipelineCacheKey(const RHI::RHIShaderPtr& shader, const TVector<uint32_t>* variableDescriptorCounts) :
 				m_shader(shader),
-				m_pushConstantsSize(pushConstantsSize > 4 ? 256u : 0u),
 				m_variableDescriptorCounts(variableDescriptorCounts ? *variableDescriptorCounts : TVector<uint32_t>{})
 			{}
 
 			bool operator==(const ComputePipelineCacheKey& rhs) const
 			{
 				return m_shader == rhs.m_shader &&
-					m_pushConstantsSize == rhs.m_pushConstantsSize &&
 					m_variableDescriptorCounts == rhs.m_variableDescriptorCounts;
 			}
 
 			size_t GetHash() const
 			{
 				size_t hash = 0;
-				HashCombine(hash, m_shader, m_pushConstantsSize);
+				HashCombine(hash, m_shader);
 				for (const uint32_t count : m_variableDescriptorCounts)
 				{
 					HashCombine(hash, count);

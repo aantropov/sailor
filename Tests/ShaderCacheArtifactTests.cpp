@@ -10,7 +10,9 @@
 #include "RHI/Lighting.h"
 #include "RHI/GpuCulling.h"
 #include "FrameGraph/DepthPrepassNode.h"
+#include "FrameGraph/LightCullingNode.h"
 #include "GraphicsDriver/Vulkan/VulkanShaderModule.h"
+#include "GraphicsDriver/Vulkan/VulkanPipeline.h"
 #include "Workspace/WorkspaceCacheContract.h"
 
 #include <array>
@@ -29,11 +31,18 @@
 namespace
 {
 	using namespace Sailor;
+	using namespace Sailor::GraphicsDriver::Vulkan;
 
 	class ShaderLayoutProbe final : public GraphicsDriver::Vulkan::VulkanShaderStage
 	{
 	public:
 		using VulkanShaderStage::ReflectDescriptorSetBindings;
+	};
+
+	class LightCullingLayoutProbe final : public Framegraph::LightCullingNode
+	{
+	public:
+		using Constants = PushConstants;
 	};
 
 	class FixedShaderSourceStateProvider final : public IShaderSourceStateProvider
@@ -1332,10 +1341,163 @@ namespace
 			"native nested GLSL include text should remain opaque to the YAML include resolver");
 	}
 
-	void TestRuntimeLightingShadersCompile()
+	RHI::ShaderByteCode CompileRuntimeShaderStage(const char* shaderPath,
+		std::initializer_list<const char*> permutationDefines, RHI::EShaderStage stage,
+		bool bIsDebug = false)
 	{
 		const std::filesystem::path contentRoot =
 			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		ShaderAsset shader;
+		shader.Deserialize(YAML::Load(ReadText(contentRoot / shaderPath)));
+		const char* stageDefine = stage == RHI::EShaderStage::Vertex ? "VERTEX" :
+			(stage == RHI::EShaderStage::Fragment ? "FRAGMENT" : "COMPUTE");
+		std::string source = shader.GetGlslCommonCode() + "\n#define " + stageDefine + "\n";
+		for (const char* define : permutationDefines)
+		{
+			source += std::string("#define ") + define + "\n";
+		}
+#if defined(__APPLE__)
+		if (stage != RHI::EShaderStage::Compute)
+		{
+			source += "#define SAILOR_TEXTURE_REMAP\n";
+		}
+#endif
+		std::string diagnostic;
+		Require(ShaderYamlIncludeResolver::Append(shader.GetIncludes(),
+			[&](const std::string& include, std::string& contents)
+			{
+				std::ifstream input(contentRoot / include, std::ios::binary);
+				if (!input.is_open()) return false;
+				contents.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+				return true;
+			}, source, diagnostic),
+			std::string("runtime shader includes should resolve for ") + shaderPath + ": " + diagnostic);
+		source += stage == RHI::EShaderStage::Vertex ? shader.GetGlslVertexCode() :
+			(stage == RHI::EShaderStage::Fragment ? shader.GetGlslFragmentCode() : shader.GetGlslComputeCode());
+		RHI::ShaderByteCode byteCode;
+		Require(ShaderCompilerTestAccess::CompileGlslToSpirv(shaderPath, source, stage, byteCode, bIsDebug),
+			std::string("runtime shader stage should compile: ") + shaderPath + " " + stageDefine);
+		Require(!byteCode.IsEmpty(), "runtime shader stage should produce SPIR-V");
+		return byteCode;
+	}
+
+	VulkanShaderStagePtr ReflectStage(const RHI::ShaderByteCode& code, RHI::EShaderStage stage)
+	{
+		auto reflected = TRefPtr<ShaderLayoutProbe>::Make();
+		reflected->m_stage = static_cast<VkShaderStageFlagBits>(stage);
+		reflected->ReflectDescriptorSetBindings(code);
+		return reflected;
+	}
+
+	TVector<VkPushConstantRange> RequirePushConstantLayout(const TVector<VulkanShaderStagePtr>& stages,
+		VkShaderStageFlags flags, uint32_t offset, uint32_t size)
+	{
+		TVector<VkPushConstantRange> ranges;
+		Require(VulkanPipelineLayout::BuildPushConstantRanges(stages, 128u, ranges),
+			"compiled shader push constants must fit a 128-byte device");
+		if (size == 0u)
+		{
+			Require(ranges.IsEmpty(), "a shader without push constants must produce no native range");
+		}
+		else
+		{
+			Require(ranges.Num() == 1u && ranges[0].stageFlags == flags &&
+				ranges[0].offset == offset && ranges[0].size == size,
+				"the native layout must preserve compiled stage visibility and the exact byte span");
+		}
+		return ranges;
+	}
+
+	void TestCompiledPushConstantRanges()
+	{
+		const struct
+		{
+			RHI::EShaderStage m_stage;
+			uint32_t m_offset;
+			uint32_t m_size;
+			const char* m_source;
+		} cases[] = {
+			{ RHI::EShaderStage::Compute, 0u, 4u, R"(#version 450
+layout(local_size_x=1) in;
+layout(push_constant) uniform Params { uint value; } params;
+layout(set=0,binding=0) buffer Result { uint value; } result;
+void main() { result.value = params.value; }
+)" },
+			{ RHI::EShaderStage::Compute, 16u, 4u, R"(#version 450
+layout(local_size_x=1) in;
+layout(push_constant) uniform Params { layout(offset=16) uint value; } params;
+layout(set=0,binding=0) buffer Result { uint value; } result;
+void main() { result.value = params.value; }
+)" },
+			{ RHI::EShaderStage::Vertex, 64u, 64u, R"(#version 450
+layout(location=0) in vec4 position;
+layout(push_constant) uniform Params { layout(offset=64) mat4 value; } params;
+void main() { gl_Position = params.value * position; }
+)" },
+			{ RHI::EShaderStage::Fragment, 0u, 4u, R"(#version 450
+layout(push_constant) uniform Params { uint value; } params;
+layout(location=0) out vec4 color;
+void main() { color = vec4(float(params.value)); }
+)" },
+			{ RHI::EShaderStage::Vertex, 0u, 0u, R"(#version 450
+layout(location=0) in vec4 position;
+void main() { gl_Position = position; }
+)" }
+		};
+		for (const bool debug : { false, true })
+		{
+			TVector<VulkanShaderStagePtr> stages;
+			for (const auto& test : cases)
+			{
+				RHI::ShaderByteCode code;
+				Require(ShaderCompilerTestAccess::CompileGlslToSpirv("push-constants.glsl",
+					test.m_source, test.m_stage, code, debug), "push constant fixture must compile");
+				auto reflected = ReflectStage(code, test.m_stage);
+				RequirePushConstantLayout({ reflected }, static_cast<VkShaderStageFlags>(test.m_stage),
+					test.m_offset, test.m_size);
+				stages.Add(reflected);
+			}
+			RequirePushConstantLayout({ stages[4], stages[3] }, VK_SHADER_STAGE_FRAGMENT_BIT, 0u, 4u);
+			RequirePushConstantLayout({ stages[2], stages[3] },
+				VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u, 128u);
+		}
+	}
+
+	void TestRuntimePushConstantLayouts()
+	{
+		for (const bool debug : { false, true })
+		{
+			const auto graphics = [&](const char* path, std::initializer_list<const char*> defines)
+			{
+				return TVector<VulkanShaderStagePtr>{
+					ReflectStage(CompileRuntimeShaderStage(path, defines, RHI::EShaderStage::Vertex, debug),
+						RHI::EShaderStage::Vertex),
+					ReflectStage(CompileRuntimeShaderStage(path, defines, RHI::EShaderStage::Fragment, debug),
+						RHI::EShaderStage::Fragment) };
+			};
+			RequirePushConstantLayout(graphics("Shaders/Sky.shader", { "CLOUDS", "DITHER" }),
+				debug ? VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT : VK_SHADER_STAGE_FRAGMENT_BIT,
+				0u, 4u);
+			RequirePushConstantLayout(graphics("Shaders/ImGuiUI.shader", {}), VK_SHADER_STAGE_VERTEX_BIT, 0u, 16u);
+
+			const auto lights = ReflectStage(CompileRuntimeShaderStage("Shaders/ComputeLightCulling.shader", {},
+				RHI::EShaderStage::Compute, debug), RHI::EShaderStage::Compute);
+			using Constants = LightCullingLayoutProbe::Constants;
+			constexpr uint32_t memberEnd = offsetof(Constants, m_lightsNum) + sizeof(int32_t);
+			auto layout = VulkanPipelineLayoutPtr::Make();
+			layout->m_pushConstantRanges = RequirePushConstantLayout({ lights }, VK_SHADER_STAGE_COMPUTE_BIT, 0u, memberEnd);
+			Constants constants{};
+			const void* data = &constants;
+			VkPushConstantRange update;
+			Require(sizeof(constants) > memberEnd &&
+				layout->GetPushConstantUpdate(0u, sizeof(constants), data, update) &&
+				update.size == memberEnd && data == &constants,
+				"LightCulling must submit its last member without trailing C++ alignment padding");
+		}
+	}
+
+	void TestRuntimeLightingShadersCompile()
+	{
 		const std::array<const char*, 5> shaderPaths =
 		{
 			"Shaders/Standard.shader",
@@ -1345,84 +1507,22 @@ namespace
 			"Shaders/HBAO_Blur.shader"
 		};
 
-		auto compileRuntimeStage = [&contentRoot](
-			const char* shaderPath,
-			std::initializer_list<const char*> permutationDefines,
-			RHI::EShaderStage stage,
-			bool bIsDebug = false)
-			-> RHI::ShaderByteCode
-		{
-			const std::filesystem::path sourcePath = contentRoot / shaderPath;
-			ShaderAsset shader;
-			shader.Deserialize(YAML::Load(ReadText(sourcePath)));
-
-			const bool bVertex = stage == RHI::EShaderStage::Vertex;
-			const char* stageDefine = bVertex ? "VERTEX" : "FRAGMENT";
-			std::string source = shader.GetGlslCommonCode() +
-				"\n#define " + stageDefine + "\n";
-			for (const char* define : permutationDefines)
-			{
-				source += std::string("#define ") + define + "\n";
-			}
-#if defined(__APPLE__)
-			source += "#define SAILOR_TEXTURE_REMAP\n";
-#endif
-			std::string diagnostic;
-			Require(
-				ShaderYamlIncludeResolver::Append(
-					shader.GetIncludes(),
-					[&](const std::string& include, std::string& contents)
-					{
-						const std::filesystem::path includePath = contentRoot / include;
-						std::ifstream input(includePath, std::ios::binary);
-						if (!input.is_open())
-						{
-							return false;
-						}
-						contents.assign(
-							std::istreambuf_iterator<char>(input),
-							std::istreambuf_iterator<char>());
-						return true;
-					},
-					source,
-					diagnostic),
-				std::string("runtime shader includes should resolve for ") + shaderPath +
-					": " + diagnostic);
-
-			source += "\n#ifdef " + std::string(stageDefine) + "\n" +
-				(bVertex ? shader.GetGlslVertexCode() : shader.GetGlslFragmentCode()) +
-				"\n#endif\n";
-			RHI::ShaderByteCode byteCode;
-			Require(
-				ShaderCompilerTestAccess::CompileGlslToSpirv(
-					shaderPath,
-					source,
-					stage,
-					byteCode,
-					bIsDebug),
-				std::string("runtime shader stage should compile: ") + shaderPath +
-					" " + stageDefine);
-			Require(!byteCode.IsEmpty(),
-				std::string("runtime shader stage should produce SPIR-V: ") +
-					shaderPath + " " + stageDefine);
-			return byteCode;
-		};
-		auto compileRuntimeFragment = [&compileRuntimeStage](
+		auto compileRuntimeFragment = [](
 			const char* shaderPath,
 			std::initializer_list<const char*> permutationDefines,
 			bool bIsDebug = false)
 		{
-			return compileRuntimeStage(
+			return CompileRuntimeShaderStage(
 				shaderPath,
 				permutationDefines,
 				RHI::EShaderStage::Fragment,
 				bIsDebug);
 		};
-		auto compileRuntimeVertex = [&compileRuntimeStage](
+		auto compileRuntimeVertex = [](
 			const char* shaderPath,
 			std::initializer_list<const char*> permutationDefines)
 		{
-			return compileRuntimeStage(
+			return CompileRuntimeShaderStage(
 				shaderPath,
 				permutationDefines,
 				RHI::EShaderStage::Vertex);
@@ -1617,56 +1717,12 @@ namespace
 			"Shaders/Tonemapping.shader",
 			{ "UNCHARTED2" });
 
-		auto compileRuntimeCompute = [&contentRoot](
+		auto compileRuntimeCompute = [](
 			const char* computeShaderPath,
 			std::initializer_list<const char*> permutationDefines = {}) -> RHI::ShaderByteCode
-			{
-				ShaderAsset computeShader;
-				computeShader.Deserialize(YAML::Load(ReadText(
-					contentRoot / computeShaderPath)));
-				std::string computeSource =
-					computeShader.GetGlslCommonCode() + "\n#define COMPUTE\n";
-				for (const char* define : permutationDefines)
-				{
-					computeSource += std::string("#define ") + define + "\n";
-				}
-				std::string computeDiagnostic;
-				Require(
-					ShaderYamlIncludeResolver::Append(
-						computeShader.GetIncludes(),
-						[&](const std::string& include, std::string& contents)
-						{
-							std::ifstream input(contentRoot / include, std::ios::binary);
-							if (!input.is_open())
-							{
-								return false;
-							}
-							contents.assign(
-								std::istreambuf_iterator<char>(input),
-								std::istreambuf_iterator<char>());
-							return true;
-						},
-						computeSource,
-						computeDiagnostic),
-					std::string("runtime compute shader includes should resolve for ") +
-						computeShaderPath + ": " + computeDiagnostic);
-				computeSource += "\n#ifdef COMPUTE\n" +
-					computeShader.GetGlslComputeCode() + "\n#endif\n";
-				RHI::ShaderByteCode computeByteCode;
-				Require(
-					ShaderCompilerTestAccess::CompileGlslToSpirv(
-						computeShaderPath,
-						computeSource,
-						RHI::EShaderStage::Compute,
-						computeByteCode,
-						false),
-					std::string("runtime compute shader should compile: ") +
-						computeShaderPath);
-				Require(!computeByteCode.IsEmpty(),
-					std::string("runtime compute shader should produce SPIR-V: ") +
-						computeShaderPath);
-				return computeByteCode;
-			};
+		{
+			return CompileRuntimeShaderStage(computeShaderPath, permutationDefines, RHI::EShaderStage::Compute);
+		};
 
 		for (bool depthLayout : { false, true })
 		{
@@ -1763,73 +1819,34 @@ namespace
 
 	void TestShadowCasterPermutationsCompile()
 	{
-		const std::filesystem::path contentRoot =
-			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
-		auto compilePermutation = [&](
+		auto compilePermutation = [](
 			const char* shaderPath,
-			std::initializer_list<const char*> permutationDefines)
+			std::initializer_list<const char*> permutationDefines, bool hasPushConstants = true)
+		{
+			for (const bool debug : { false, true })
 			{
-				ShaderAsset shader;
-				shader.Deserialize(YAML::Load(ReadText(contentRoot / shaderPath)));
-				auto compileStage = [&](
-					const char* stageDefine,
-					const std::string& stageSource,
-					RHI::EShaderStage stage)
-					{
-						std::string source = shader.GetGlslCommonCode() + "\n#define " +
-							stageDefine + "\n";
-						for (const char* define : permutationDefines)
-						{
-							source += std::string("#define ") + define + "\n";
-						}
-#if defined(__APPLE__)
-						source += "#define SAILOR_TEXTURE_REMAP\n";
-#endif
-						std::string diagnostic;
-						Require(
-							ShaderYamlIncludeResolver::Append(
-								shader.GetIncludes(),
-								[&](const std::string& include, std::string& contents)
-								{
-									std::ifstream input(contentRoot / include, std::ios::binary);
-									if (!input.is_open())
-									{
-										return false;
-									}
-									contents.assign(
-										std::istreambuf_iterator<char>(input),
-										std::istreambuf_iterator<char>());
-									return true;
-								},
-								source,
-								diagnostic),
-							std::string("shadow shader includes should resolve for ") +
-								shaderPath + ": " + diagnostic);
-						source += std::string("\n#ifdef ") + stageDefine + "\n" +
-							stageSource + "\n#endif\n";
-						RHI::ShaderByteCode byteCode;
-						Require(
-							ShaderCompilerTestAccess::CompileGlslToSpirv(
-								shaderPath,
-								source,
-								stage,
-								byteCode,
-								false),
-							std::string("shadow shader stage should compile: ") + shaderPath);
-						Require(!byteCode.IsEmpty(),
-							std::string("shadow shader stage should produce SPIR-V: ") + shaderPath);
-					};
+				TVector<VulkanShaderStagePtr> stages;
+				for (const auto stage : { RHI::EShaderStage::Vertex, RHI::EShaderStage::Fragment })
+				{
+					stages.Add(ReflectStage(CompileRuntimeShaderStage(shaderPath, permutationDefines, stage, debug), stage));
+				}
+				RequirePushConstantLayout(stages, VK_SHADER_STAGE_VERTEX_BIT, 0u, hasPushConstants ? 64u : 0u);
+			}
+		};
 
-				compileStage("VERTEX", shader.GetGlslVertexCode(), RHI::EShaderStage::Vertex);
-				compileStage("FRAGMENT", shader.GetGlslFragmentCode(), RHI::EShaderStage::Fragment);
-			};
-
+		compilePermutation("Shaders/ShadowCaster.shader", {});
+		compilePermutation("Shaders/ShadowCaster.shader", { "EVSM" });
+		compilePermutation("Shaders/ShadowCaster.shader", { "SKINNING" });
+		compilePermutation("Shaders/ShadowCaster.shader", { "EVSM", "SKINNING" });
 		compilePermutation("Shaders/ShadowCaster.shader", { "MASKED" });
+		compilePermutation("Shaders/ShadowCaster.shader", { "EVSM", "MASKED" });
+		compilePermutation("Shaders/ShadowCaster.shader", { "SKINNING", "MASKED" });
 		compilePermutation("Shaders/ShadowCaster.shader", { "EVSM", "SKINNING", "MASKED" });
-		compilePermutation("Experimental/MeshParticles/Particle.shader", { "SHADOW_CASTER" });
+		compilePermutation("Experimental/MeshParticles/Particle.shader", { "SHADOW_CASTER" }, false);
 		compilePermutation("Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER" });
-		compilePermutation(
-			"Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER", "EVSM" });
+		compilePermutation("Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER", "EVSM" });
+		compilePermutation("Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER", "SHADOW_CASTER" });
+		compilePermutation("Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER", "SHADOW_CASTER", "EVSM" });
 	}
 
 	void TestShaderSourceNormalization()
@@ -1978,6 +1995,8 @@ int main()
 		TestFailedGlslCompilationPreservesBytecode();
 		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
+		TestCompiledPushConstantRanges();
+		TestRuntimePushConstantLayouts();
 		TestRuntimeLightingShadersCompile();
 		TestShadowCasterPermutationsCompile();
 		TestShaderSourceNormalization();

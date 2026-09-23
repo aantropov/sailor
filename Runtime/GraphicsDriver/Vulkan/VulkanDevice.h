@@ -92,6 +92,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API const VkMemoryRequirements& GetMemoryRequirements_StagingBuffer() const { return m_memoryRequirements_StagingBuffer; }
 		SAILOR_API const VkDeviceSize& GetMinUboOffsetAlignment() const { return m_physicalDeviceProperties.limits.minUniformBufferOffsetAlignment; }
 		SAILOR_API const VkDeviceSize& GetMinSsboOffsetAlignment() const { return m_physicalDeviceProperties.limits.minStorageBufferOffsetAlignment; }
+		SAILOR_API uint32_t GetMaxPushConstantsSize() const { return m_physicalDeviceProperties.limits.maxPushConstantsSize; }
 		SAILOR_API const VkDeviceSize& GetBufferImageGranuality() const { return m_physicalDeviceProperties.limits.bufferImageGranularity; }
 
 		template<typename TData>

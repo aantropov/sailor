@@ -2171,15 +2171,12 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 
 	TVector<VkPushConstantRange> pushConstants;
 
-	//for (const auto& pushConstant : shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader->GetPushConstants())
-	for (uint32_t i = 0; i < shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader->GetPushConstants().Num(); i++)
+	if (!VulkanPipelineLayout::BuildPushConstantRanges(
+		{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
+		device->GetMaxPushConstantsSize(), pushConstants))
 	{
-		VkPushConstantRange vkPushConstant;
-		vkPushConstant.offset = 0;
-		vkPushConstant.size = 256;
-		vkPushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
-
-		pushConstants.Emplace(vkPushConstant);
+		SAILOR_LOG_ERROR("Cannot create graphics pipeline: push constants exceed the device limit or have an invalid range.");
+		return nullptr;
 	}
 
 	// TODO: Rearrange descriptorSetLayouts to support vector of descriptor sets
@@ -2768,10 +2765,10 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 	}
 }
 
-VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader, uint32_t sizePushConstantsData,
+VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader,
 	const TVector<uint32_t>* optionalVariableDescriptorCount)
 {
-	const ComputePipelineCacheKey cacheKey(computeShader, sizePushConstantsData, optionalVariableDescriptorCount);
+	const ComputePipelineCacheKey cacheKey(computeShader, optionalVariableDescriptorCount);
 	auto& computePipeline = m_cachedComputePipelines.At_Lock(cacheKey);
 
 	if (!computePipeline || !computePipeline->IsCompiled())
@@ -2785,19 +2782,12 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 		// We need debug shaders to get full names from reflection
 		VulkanApi::CreateDescriptorSetLayouts(device, { computeShader->m_vulkan.m_shader }, descriptorSetLayouts, bindings, optionalVariableDescriptorCount);
 
-		// We blindly believe the passed arguments
-		check((sizePushConstantsData > 4) == (computeShader->m_vulkan.m_shader->GetPushConstants().Num() > 0));
-
-		if ((sizePushConstantsData > 4) || (computeShader->m_vulkan.m_shader->GetPushConstants().Num() > 0))
+		if (!VulkanPipelineLayout::BuildPushConstantRanges({ computeShader->m_vulkan.m_shader },
+			device->GetMaxPushConstantsSize(), pushConstants))
 		{
-			check(sizePushConstantsData > 4);
-
-			VkPushConstantRange vkPushConstant;
-			vkPushConstant.offset = 0;
-			vkPushConstant.size = 256;
-			vkPushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
-
-			pushConstants.Emplace(vkPushConstant);
+			m_cachedComputePipelines.Unlock(cacheKey);
+			SAILOR_LOG_ERROR("Cannot create compute pipeline: push constants exceed the device limit or have an invalid range.");
+			return nullptr;
 		}
 
 		auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device, descriptorSetLayouts, bindings, pushConstants, 0);
@@ -3626,7 +3616,7 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd,
 
 	const TVector<uint32_t> optionalVariableDescriptorCount = CollectPublishedVariableDescriptorCounts(bindings);
 	const TVector<uint32_t>* variableDescriptorCounts = optionalVariableDescriptorCount.IsEmpty() ? nullptr : &optionalVariableDescriptorCount;
-	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader, sizePushConstantsData, variableDescriptorCounts);
+	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader, variableDescriptorCounts);
 	if (!computePipeline || !computePipeline->IsCompiled())
 	{
 		SAILOR_LOG_ERROR("VulkanGraphicsDriver::Dispatch: compute pipeline is unavailable.");

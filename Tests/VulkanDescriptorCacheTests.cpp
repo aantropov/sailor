@@ -8,6 +8,8 @@
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
 
+#include <array>
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
@@ -34,12 +36,137 @@ namespace
 		using DescriptorPoolPageMemberType = decltype(m_descriptorPoolPage);
 	};
 
+	class PushConstantStageProbe final : public VulkanShaderStage
+	{
+	public:
+		explicit PushConstantStageProbe(TVector<VkPushConstantRange> ranges)
+		{
+			m_pushConstants = std::move(ranges);
+		}
+	};
+
 	void Require(bool condition, const std::string& message)
 	{
 		if (!condition)
 		{
 			throw std::runtime_error(message);
 		}
+	}
+
+	VulkanShaderStagePtr MakePushConstantStage(std::initializer_list<VkPushConstantRange> ranges)
+	{
+		return TRefPtr<PushConstantStageProbe>::Make(TVector<VkPushConstantRange>(ranges));
+	}
+
+	void TestPushConstantRangesUseReflectedStagesAndDeviceLimit()
+	{
+		TVector<VkPushConstantRange> ranges;
+		const auto requireRange = [&](const TVector<VulkanShaderStagePtr>& stages,
+			VkShaderStageFlags flags, uint32_t offset, uint32_t size)
+		{
+			Require(VulkanPipelineLayout::BuildPushConstantRanges(stages, 128u, ranges),
+				"a reflected range within the device limit must be accepted");
+			Require(ranges.Num() == 1u && ranges[0].stageFlags == flags &&
+				ranges[0].offset == offset && ranges[0].size == size,
+				"one native span must cover exactly the declaring stages and their byte union");
+		};
+		requireRange({ MakePushConstantStage({ { VK_SHADER_STAGE_COMPUTE_BIT, 0u, 4u } }) },
+			VK_SHADER_STAGE_COMPUTE_BIT, 0u, 4u);
+		requireRange({ MakePushConstantStage({}),
+			MakePushConstantStage({ { VK_SHADER_STAGE_FRAGMENT_BIT, 0u, 4u } }) },
+			VK_SHADER_STAGE_FRAGMENT_BIT, 0u, 4u);
+		requireRange({ MakePushConstantStage({ { VK_SHADER_STAGE_VERTEX_BIT, 16u, 16u } }),
+			MakePushConstantStage({ { VK_SHADER_STAGE_FRAGMENT_BIT, 64u, 4u } }) },
+			VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 16u, 52u);
+		requireRange({ MakePushConstantStage({ { VK_SHADER_STAGE_VERTEX_BIT, 0u, 64u } }),
+			MakePushConstantStage({ { VK_SHADER_STAGE_FRAGMENT_BIT, 16u, 4u } }) },
+			VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u, 64u);
+		requireRange({ MakePushConstantStage({ { VK_SHADER_STAGE_COMPUTE_BIT, 64u, 64u } }) },
+			VK_SHADER_STAGE_COMPUTE_BIT, 64u, 64u);
+
+		Require(!VulkanPipelineLayout::BuildPushConstantRanges(
+			{ MakePushConstantStage({ { VK_SHADER_STAGE_COMPUTE_BIT, 64u, 68u } }) }, 128u, ranges) &&
+			ranges.IsEmpty(), "a range ending at byte 132 must not create a layout on a 128-byte device");
+		Require(!VulkanPipelineLayout::BuildPushConstantRanges(
+			{ MakePushConstantStage({ { VK_SHADER_STAGE_COMPUTE_BIT, 2u, 4u } }) }, 128u, ranges) &&
+			ranges.IsEmpty(), "native push constant ranges must be word aligned");
+		Require(VulkanPipelineLayout::BuildPushConstantRanges(
+			{ MakePushConstantStage({}), MakePushConstantStage({}) }, 128u, ranges) && ranges.IsEmpty(),
+			"shaders without push constants must not reserve a native range");
+	}
+
+	void TestPushConstantUpdatesClipPaddingAndPreservePartialWrites()
+	{
+		auto layout = VulkanPipelineLayoutPtr::Make();
+		layout->m_pushConstantRanges = { { VK_SHADER_STAGE_COMPUTE_BIT, 16u, 64u } };
+		std::array<uint32_t, 24> source;
+		for (uint32_t i = 0u; i < source.size(); ++i) source[i] = 100u + i;
+		const void* data = source.data();
+		VkPushConstantRange update;
+		Require(layout->GetPushConstantUpdate(0u, sizeof(source), data, update) &&
+			update.stageFlags == VK_SHADER_STAGE_COMPUTE_BIT && update.offset == 16u && update.size == 64u &&
+			data == source.data() + 4u,
+			"recording must skip leading bytes and trailing host padding outside the reflected block");
+
+		std::array<uint32_t, 24> recorded{};
+		for (const auto write : { std::pair<size_t, size_t>{ 20u, 8u }, { 76u, 16u } })
+		{
+			data = reinterpret_cast<const uint8_t*>(source.data()) + write.first;
+			const void* originalData = data;
+			Require(layout->GetPushConstantUpdate(write.first, write.second, data, update) &&
+				data == originalData && update.offset == write.first &&
+				update.size == (write.first == 20u ? 8u : 4u),
+				"an in-range partial write must keep its pointer and clip only its end");
+			std::memcpy(reinterpret_cast<uint8_t*>(recorded.data()) + update.offset, data, update.size);
+		}
+		for (size_t i = 0u; i < recorded.size(); ++i)
+		{
+			Require(recorded[i] == ((i == 5u || i == 6u || i == 19u) ? source[i] : 0u),
+				"partial updates must leave every byte outside the requested writes untouched");
+		}
+		for (const auto write : { std::pair<size_t, size_t>{ 0u, 16u }, { 80u, 4u }, { 16u, 0u } })
+		{
+			data = source.data();
+			Require(!layout->GetPushConstantUpdate(write.first, write.second, data, update) &&
+				update.size == 0u && data == source.data(),
+				"an empty intersection must not issue a native write or advance the pointer");
+		}
+		layout->m_pushConstantRanges = { { VK_SHADER_STAGE_FRAGMENT_BIT, 0u, 4u } };
+		data = source.data();
+		Require(layout->GetPushConstantUpdate(0u, 4u, data, update) &&
+			update.stageFlags == VK_SHADER_STAGE_FRAGMENT_BIT && update.offset == 0u && update.size == 4u,
+			"a scalar fragment-only update must not add vertex or compute stages");
+		layout->m_pushConstantRanges.Clear();
+		Require(!layout->GetPushConstantUpdate(0u, 4u, data, update),
+			"a shader without push constants must not record a write");
+	}
+
+	void TestComputePipelineKeyTracksShaderAndDescriptorCapacity()
+	{
+		using Key = VulkanGraphicsDriverProbe::ComputeCacheKey;
+		const auto shader = RHI::RHIShaderPtr::Make(RHI::EShaderStage::Compute);
+		const auto replacement = RHI::RHIShaderPtr::Make(RHI::EShaderStage::Compute);
+		TVector<uint32_t> counts{ 1u, 32u };
+		const Key original(shader, &counts);
+		const Key same(shader, &counts);
+		TMap<Key, uint32_t> cache;
+		cache[original] = 7u;
+		Require(original == same && original.GetHash() == same.GetHash() && cache[same] == 7u,
+			"all updates of the same shader layout must reuse the same pipeline key");
+		counts[1] = 64u;
+		const Key largerDescriptors(shader, &counts);
+		const Key reloaded(replacement, &counts);
+		Require(!(original == largerDescriptors) && !(largerDescriptors == reloaded),
+			"descriptor capacity and hot-reloaded shader identity must remain separate pipeline keys");
+		cache[largerDescriptors] = 8u;
+		cache[reloaded] = 9u;
+		Require(cache.Num() == 3u && cache[original] == 7u,
+			"changing the source capacity vector must not mutate an already captured key");
+		const TVector<uint32_t> empty;
+		const Key absentCounts(shader, nullptr);
+		const Key emptyCounts(shader, &empty);
+		Require(absentCounts == emptyCounts && absentCounts.GetHash() == emptyCounts.GetHash(),
+			"absent and empty descriptor capacities describe the same layout");
 	}
 
 	void TestStagingAllocationIdentityKeepsEveryRange()
@@ -448,6 +575,12 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "PushConstantRangesUseReflectedStagesAndDeviceLimit",
+			TestPushConstantRangesUseReflectedStagesAndDeviceLimit },
+		{ "PushConstantUpdatesClipPaddingAndPreservePartialWrites",
+			TestPushConstantUpdatesClipPaddingAndPreservePartialWrites },
+		{ "ComputePipelineKeyTracksShaderAndDescriptorCapacity",
+			TestComputePipelineKeyTracksShaderAndDescriptorCapacity },
 		{ "StagingAllocationIdentityKeepsEveryRange",
 			TestStagingAllocationIdentityKeepsEveryRange },
 		{ "SsboElementAlignmentPreservesStd430Stride",

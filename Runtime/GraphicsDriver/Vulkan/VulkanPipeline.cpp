@@ -36,6 +36,58 @@ VulkanPipelineLayout::~VulkanPipelineLayout()
 	VulkanPipelineLayout::Release();
 }
 
+bool VulkanPipelineLayout::BuildPushConstantRanges(const TVector<VulkanShaderStagePtr>& stages,
+	uint32_t maxSize, TVector<VkPushConstantRange>& outRanges)
+{
+	outRanges.Clear();
+	VkPushConstantRange combined{ 0u, maxSize, 0u };
+	uint32_t end = 0u;
+	for (const auto& stage : stages)
+	{
+		for (const auto& range : stage->GetPushConstants())
+		{
+			if (range.stageFlags == 0u || range.size == 0u ||
+				range.offset % 4u != 0u || range.size % 4u != 0u ||
+				range.offset > maxSize || range.size > maxSize - range.offset)
+			{
+				return false;
+			}
+			combined.stageFlags |= range.stageFlags;
+			combined.offset = std::min(combined.offset, range.offset);
+			end = std::max(end, range.offset + range.size);
+		}
+	}
+	if (combined.stageFlags != 0u)
+	{
+		// The RHI supplies one byte span shared by the declaring stages.
+		combined.size = end - combined.offset;
+		outRanges.Add(combined);
+	}
+	return true;
+}
+
+bool VulkanPipelineLayout::GetPushConstantUpdate(size_t offset, size_t size,
+	const void*& data, VkPushConstantRange& outRange) const
+{
+	outRange = {};
+	if (m_pushConstantRanges.IsEmpty())
+	{
+		return false;
+	}
+	const auto& range = m_pushConstantRanges[0];
+	const size_t begin = std::max(offset, static_cast<size_t>(range.offset));
+	const size_t end = static_cast<size_t>(range.offset) + range.size;
+	if (begin >= end || begin - offset >= size)
+	{
+		return false;
+	}
+	const size_t updateSize = std::min(size - (begin - offset), end - begin);
+	check(begin % 4u == 0u && updateSize % 4u == 0u);
+	outRange = { range.stageFlags, static_cast<uint32_t>(begin), static_cast<uint32_t>(updateSize) };
+	data = static_cast<const uint8_t*>(data) + (begin - offset);
+	return true;
+}
+
 void VulkanPipelineLayout::Release()
 {
 	if (m_pipelineLayout)
