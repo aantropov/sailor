@@ -1,17 +1,37 @@
 #include "AssetRegistry/Animation/AnimationClipSampler.h"
 #include "AssetRegistry/Animation/AnimationController.h"
 #include "AssetRegistry/Animation/AnimationPose.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "Memory/ObjectAllocator.hpp"
+#include "Support/TempDirectory.h"
+#include "Workspace/WorkspaceContext.h"
 
+#include <array>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
 using namespace Sailor;
+
+namespace Sailor
+{
+	class AnimationImporterTestAccess
+	{
+	public:
+		static bool Import(AnimationImporter& importer, AnimationAssetInfoPtr info, AnimationPtr& animation)
+		{
+			return importer.ImportAnimation(info->GetFileId(), info, animation);
+		}
+	};
+}
 
 namespace
 {
@@ -26,6 +46,223 @@ namespace
 	bool NearlyEqual(float lhs, float rhs, float epsilon = 0.0001f)
 	{
 		return std::abs(lhs - rhs) <= epsilon;
+	}
+
+	void WriteFixtureText(const std::filesystem::path& path, const std::string& text)
+	{
+		std::ofstream output(path, std::ios::binary);
+		output << text;
+		output.close();
+		Require(static_cast<bool>(output), "animation fixture text must be written");
+	}
+
+	Workspace::WorkspaceContext MakeAnimationWorkspace(const std::filesystem::path& root)
+	{
+		std::filesystem::create_directory(root / "Content");
+		WriteFixtureText(root / "workspace.sailor",
+			"manifestVersion: 1\n"
+			"workspaceId: 00000000-0000-0000-0000-000000000154\n"
+			"name: Animation Import Contract\n"
+			"enginePath: .\n"
+			"engineReferenceKind: source\n"
+			"contentPath: Content\n"
+			"sourcePath: Source\n"
+			"generatedProjectPath: Generated\n"
+			"cachePath: Cache\n"
+			"buildPath: Cache/Build\n"
+			"logicOutputPath: Binaries\n"
+			"logicModuleName: AnimationImportContract\n");
+		auto result = Workspace::ResolveWorkspaceContext(root, root / "workspace.sailor");
+		Require(result.IsSuccess(), "animation fixture workspace must resolve: " + result.m_message);
+		return std::move(result.m_context);
+	}
+
+	class AnimationImportFixture final
+	{
+	public:
+		AnimationImportFixture() :
+			m_registry(MakeAnimationWorkspace(m_directory.Get()), nullptr),
+			m_handler(&m_registry),
+			m_importer(&m_handler),
+			m_allocator(Memory::ObjectAllocatorPtr::Make(Memory::EAllocationPolicy::SharedMemory_MultiThreaded)),
+			m_animation(AnimationPtr::Make(m_allocator, FileId::CreateNewFileId()))
+		{}
+
+		~AnimationImportFixture()
+		{
+			m_animation.DestroyObject(m_allocator);
+		}
+
+		void WriteModel(const std::string& nodes, const std::string& joints, uint32_t animatedNode)
+		{
+			const std::array<float, 10> samples{
+				0.0f, 1.0f,
+				0.0f, 0.0f, std::sin(glm::radians(15.0f)), std::cos(glm::radians(15.0f)),
+				0.0f, 0.0f, std::sin(glm::radians(60.0f)), std::cos(glm::radians(60.0f))
+			};
+			std::ofstream binary(m_directory.Path("Content/Hierarchy.bin"), std::ios::binary);
+			binary.write(reinterpret_cast<const char*>(samples.data()), sizeof(samples));
+			binary.close();
+			Require(static_cast<bool>(binary), "animation fixture samples must be written");
+
+			std::ostringstream source;
+			source << R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[)"
+				<< nodes << R"(],"skins":[{"joints":[)" << joints << R"(]}],
+				"buffers":[{"byteLength":40,"uri":"Hierarchy.bin"}],
+				"bufferViews":[{"buffer":0,"byteLength":8},{"buffer":0,"byteOffset":8,"byteLength":32}],
+				"accessors":[{"bufferView":0,"componentType":5126,"count":2,"type":"SCALAR","min":[0],"max":[1]},
+				{"bufferView":1,"componentType":5126,"count":2,"type":"VEC4"}],
+				"animations":[{"channels":[{"sampler":0,"target":{"node":)" << animatedNode << R"(,"path":"rotation"}}],
+				"samplers":[{"input":0,"output":1,"interpolation":"LINEAR"}]}]})";
+			WriteFixtureText(m_directory.Path("Content/Hierarchy.gltf"), source.str());
+			auto metadata = CreateAssetInfoMetadata<AnimationAssetInfo>(m_animation->GetFileId(), "Hierarchy.gltf");
+			WriteFixtureText(m_directory.Path("Content/Hierarchy.anim.asset"), YAML::Dump(metadata));
+		}
+
+		bool Import()
+		{
+			TUniquePtr<AnimationAssetInfo> info(static_cast<AnimationAssetInfoPtr>(m_handler.LoadAssetInfo(
+				m_directory.Path("Content/Hierarchy.anim.asset").string(), "Hierarchy.anim.asset",
+				EAssetMountKind::Workspace, true, false, false)));
+			Require(static_cast<bool>(info), "the real animation metadata handler must load the fixture");
+			return AnimationImporterTestAccess::Import(m_importer, info.GetRawPtr(), m_animation);
+		}
+
+		Tests::TempDirectory m_directory{ "animation-import" };
+		AssetRegistry m_registry;
+		AnimationAssetInfoHandler m_handler;
+		AnimationImporter m_importer;
+		Memory::ObjectAllocatorPtr m_allocator;
+		AnimationPtr m_animation;
+	};
+
+	std::string RootNode(const glm::vec3& scale)
+	{
+		std::ostringstream node;
+		node << std::setprecision(std::numeric_limits<float>::max_digits10)
+			<< R"({"name":"Root","translation":[3,-2,1],"rotation":[0,0.258819045,0,0.965925826],"scale":[)"
+			<< scale.x << ',' << scale.y << ',' << scale.z << R"(],"children":[1]})";
+		return node.str();
+	}
+
+	const std::string ChildNode =
+		R"({"name":"Child","translation":[1,0.5,-0.25],"rotation":[0,0,0.382683432,0.923879533],"children":[2]})";
+	const std::string TipNode = R"({"name":"Tip","translation":[0.25,1,0.5]})";
+
+	std::array<glm::mat4, 3> ReferenceJointMatrices(const glm::vec3& rootScale, float childAngle, bool bIncludeSpacer)
+	{
+		const glm::mat4 root = glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, -2.0f, 1.0f)) *
+			glm::rotate(glm::mat4(1.0f), glm::radians(30.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
+			glm::scale(glm::mat4(1.0f), rootScale);
+		const glm::mat4 spacer = bIncludeSpacer ?
+			glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 1.0f, 0.0f)) *
+			glm::rotate(glm::mat4(1.0f), glm::radians(15.0f), glm::vec3(0.0f, 0.0f, 1.0f)) *
+			glm::scale(glm::mat4(1.0f), glm::vec3(1.25f)) : glm::mat4(1.0f);
+		const glm::mat4 child = root * spacer *
+			glm::translate(glm::mat4(1.0f), glm::vec3(1.0f, 0.5f, -0.25f)) *
+			glm::rotate(glm::mat4(1.0f), glm::radians(childAngle), glm::vec3(0.0f, 0.0f, 1.0f));
+		const glm::mat4 tip = child * glm::translate(glm::mat4(1.0f), glm::vec3(0.25f, 1.0f, 0.5f));
+		return { root, child, tip };
+	}
+
+	void CheckImportedHierarchy(const AnimationPtr& animation, const glm::vec3& rootScale,
+		bool bIncludeSpacer = false, bool bReverseJoints = false)
+	{
+		Require(animation->m_numBones == 3 && animation->m_numFrames == 31 &&
+			animation->m_frames.Num() == 93 && animation->m_restPose.Num() == 3 &&
+			NearlyEqual(animation->m_fps, 30.0f) && NearlyEqual(animation->m_duration, 1.0f),
+			"matrix composition must preserve the clip's three joints and 30 fps bake");
+		const TVector<int32_t> expectedParents = bReverseJoints ?
+			TVector<int32_t>{ 1, 2, -1 } : TVector<int32_t>{ -1, 0, 1 };
+		Require(animation->m_parentBoneIndices == expectedParents,
+			"parent indices must follow skin.joints order and skip non-joint ancestors");
+
+		TVector<glm::mat4> matrices;
+		TVector<uint8_t> composeState;
+		const auto rest = ReferenceJointMatrices(rootScale, 45.0f, bIncludeSpacer);
+		auto checkMatrices = [&](const std::array<glm::mat4, 3>& expected)
+		{
+			const glm::vec4 bindVertex(0.3f, -0.2f, 0.7f, 1.0f);
+			const float weights[] = { 0.2f, 0.3f, 0.5f };
+			glm::vec4 skinned(0.0f), reference(0.0f);
+			for (size_t bone = 0; bone < 3; ++bone)
+			{
+				const size_t joint = bReverseJoints ? 2 - bone : bone;
+				for (glm::length_t column = 0; column < 4; ++column)
+				{
+					for (glm::length_t row = 0; row < 4; ++row)
+					{
+						Require(NearlyEqual(matrices[bone][column][row], expected[joint][column][row], 0.001f),
+							"imported local poses must reproduce the authored matrix hierarchy at runtime");
+					}
+				}
+				const glm::mat4 inverseBind = glm::inverse(rest[joint]);
+				skinned += weights[joint] * matrices[bone] * inverseBind * bindVertex;
+				reference += weights[joint] * expected[joint] * inverseBind * bindVertex;
+			}
+			Require(glm::length(skinned - reference) < 0.001f,
+				"a weighted bind-pose vertex must follow the authored joint matrices");
+		};
+
+		Require(AnimationPose::ComposeLocalPose(animation->m_restPose, animation->m_parentBoneIndices,
+			matrices, composeState), "the imported rest pose must compose through the runtime path");
+		checkMatrices(rest);
+		TVector<Math::Transform> pose;
+		for (uint32_t frame = 0; frame < animation->m_numFrames; ++frame)
+		{
+			const float time = static_cast<float>(frame) / animation->m_fps;
+			uint32_t frameIndex = 0;
+			float alpha = 0.0f;
+			Require(AnimationPose::Sample(animation, time, false, pose, frameIndex, alpha) &&
+				AnimationPose::ComposeLocalPose(pose, animation->m_parentBoneIndices, matrices, composeState),
+				"every baked frame must sample and compose through the runtime path");
+			checkMatrices(ReferenceJointMatrices(rootScale, 30.0f + 90.0f * time, bIncludeSpacer));
+		}
+	}
+
+	void TestImportedHierarchyMatchesRuntimeMatrices()
+	{
+		for (const glm::vec3 scale : { glm::vec3(2.0f, 3.0f, 0.75f), glm::vec3(2.0f), glm::vec3(-2.0f, 3.0f, 0.75f) })
+		{
+			AnimationImportFixture fixture;
+			fixture.WriteModel(RootNode(scale) + ',' + ChildNode + ',' + TipNode, "0,1,2", 1);
+			Require(fixture.Import(), "the actual glTF importer must bake the hierarchy fixture");
+			CheckImportedHierarchy(fixture.m_animation, scale);
+			const uint64_t signature = fixture.m_animation->m_skeletonSignature;
+			const uint64_t revision = fixture.m_animation->m_revision;
+			Require(signature != 0 && fixture.Import() && fixture.m_animation->m_skeletonSignature == signature &&
+				fixture.m_animation->m_revision == revision + 1,
+				"reimport must preserve the skeleton signature and publish one new revision");
+			CheckImportedHierarchy(fixture.m_animation, scale);
+		}
+	}
+
+	void TestImportedNonJointHierarchyPreservesJointOrder()
+	{
+		AnimationImportFixture fixture;
+		const glm::vec3 scale(2.0f, 3.0f, 0.75f);
+		fixture.WriteModel(RootNode(scale) + R"(,
+			{"name":"Spacer","translation":[0.5,1,0],"rotation":[0,0,0.130526192,0.991444861],"scale":[1.25,1.25,1.25],"children":[2]},
+			{"name":"Child","translation":[1,0.5,-0.25],"rotation":[0,0,0.382683432,0.923879533],"children":[3]},)" + TipNode,
+			"3,2,0", 2);
+		Require(fixture.Import(), "reversed skin.joints with a non-joint spacer must import");
+		CheckImportedHierarchy(fixture.m_animation, scale, true, true);
+	}
+
+	void TestCyclicImportedHierarchyRetainsPreviousPose()
+	{
+		AnimationImportFixture fixture;
+		const glm::vec3 scale(2.0f, 3.0f, 0.75f);
+		fixture.WriteModel(RootNode(scale) + ',' + ChildNode + ',' + TipNode, "0,1,2", 1);
+		Require(fixture.Import(), "the initial hierarchy must import before the failed reload");
+		const uint64_t signature = fixture.m_animation->m_skeletonSignature;
+		const uint64_t revision = fixture.m_animation->m_revision;
+		fixture.WriteModel(RootNode(scale) + ',' + ChildNode +
+			R"(,{"name":"Tip","translation":[0.25,1,0.5],"children":[0]})", "0,1,2", 1);
+		Require(!fixture.Import() && fixture.m_animation->m_revision == revision &&
+			fixture.m_animation->m_skeletonSignature == signature,
+			"a rejected cyclic hierarchy must not publish a new pose or revision");
+		CheckImportedHierarchy(fixture.m_animation, scale);
 	}
 
 	void TestTimestampValidationAndNonUniformSpan()
@@ -569,6 +806,9 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "ImportedHierarchyMatchesRuntimeMatrices", TestImportedHierarchyMatchesRuntimeMatrices },
+		{ "ImportedNonJointHierarchyPreservesJointOrder", TestImportedNonJointHierarchyPreservesJointOrder },
+		{ "CyclicImportedHierarchyRetainsPreviousPose", TestCyclicImportedHierarchyRetainsPreviousPose },
 		{ "TimestampValidationAndNonUniformSpan", TestTimestampValidationAndNonUniformSpan },
 		{ "LinearAndStepVectorSampling", TestLinearAndStepVectorSampling },
 		{ "CubicSplineSamplingScalesTangentsByInterval", TestCubicSplineSamplingScalesTangentsByInterval },
