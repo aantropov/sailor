@@ -319,7 +319,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
 		SAILOR_API TVector<uint32_t> CollectOptionalVariableDescriptorCount(const TVector<VulkanShaderStagePtr>& shaders, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindingSets) const;
 
-		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
+		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetUniformBufferAllocator(const std::string& uniformTypeId);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();

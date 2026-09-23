@@ -2075,7 +2075,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 
 			if (layoutBinding.m_type == RHI::EShaderBindingType::UniformBuffer)
 			{
-				auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
+				auto uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
 				binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
 					uniformAllocator->Allocate(layoutBinding.m_size, device->GetMinUboOffsetAlignment()),
 					uniformAllocator);
@@ -2271,25 +2271,21 @@ TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetMaterialSsboAllocato
 	return m_materialSsboAllocator;
 }
 
-TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetUniformBufferAllocator(const std::string& uniformTypeId)
+TSharedPtr<VulkanBufferAllocator> VulkanGraphicsDriver::GetUniformBufferAllocator(const std::string& uniformTypeId)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto it = m_uniformBuffers.Find(uniformTypeId);
-	if (it != m_uniformBuffers.end())
+	auto& uniformAllocator = m_uniformBuffers.At_Lock(uniformTypeId);
+	if (!uniformAllocator)
 	{
-		return (*it).m_second;
+		uniformAllocator = TSharedPtr<VulkanBufferAllocator>::Make(1024 * 1024, 256, 1024 * 1024);
+		uniformAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+		uniformAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	}
 
-	auto& uniformAllocator = m_uniformBuffers.At_Lock(uniformTypeId);
-
-	uniformAllocator = TSharedPtr<VulkanBufferAllocator>::Make(1024 * 1024, 256, 1024 * 1024);
-	uniformAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-	uniformAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
+	auto result = uniformAllocator;
 	m_uniformBuffers.Unlock(uniformTypeId);
-
-	return uniformAllocator;
+	return result;
 }
 
 void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, const void* value, size_t size)
@@ -2355,7 +2351,7 @@ RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CloneMaterialShaderBindings(
 		if (layout.m_type == RHI::EShaderBindingType::UniformBuffer ||
 			layout.m_type == RHI::EShaderBindingType::UniformBufferDynamic)
 		{
-			auto& allocator = GetUniformBufferAllocator(layout.m_name);
+			auto allocator = GetUniformBufferAllocator(layout.m_name);
 			const size_t size = (std::max)(size_t{ 1u }, static_cast<size_t>(layout.m_size));
 			targetBinding->m_vulkan.m_valueBinding =
 				TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
