@@ -136,6 +136,7 @@ namespace Sailor
 
 		SAILOR_API void BeginPlayEcs();
 		SAILOR_API void TickGameObjects(float deltaTime);
+		SAILOR_API void DestroyPendingGameObjects();
 
 		size_t GetNumPendingDependencyResolutions() const { return ComponentsToResolveDependencies.Num(); }
 		void RemovePendingDependencyResolutions(const ComponentPtr& component);

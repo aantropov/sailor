@@ -925,24 +925,7 @@ void World::Tick(FrameState& frameState)
 		}
 	}
 
-	for (auto& el : m_pendingDestroyObjects)
-	{
-		if (!el)
-		{
-			continue;
-		}
-
-		check(el->m_bPendingDestroy);
-
-		if (!m_objectsMap.ContainsKey(el->m_instanceId))
-		{
-			continue;
-		}
-
-		DestroyGameObjectHierarchy(el);
-	}
-
-	m_pendingDestroyObjects.Clear();
+	DestroyPendingGameObjects();
 
 	GetDebugContext()->Tick(m_commandList, deltaTime);
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
@@ -1570,6 +1553,28 @@ bool World::IsEditorSelected(const InstanceId& instanceId) const
 	return instanceId && m_editorSelection.Contains(instanceId.GameObjectId());
 }
 
+void World::DestroyPendingGameObjects()
+{
+	for (auto& object : m_pendingDestroyObjects)
+	{
+		if (!object)
+		{
+			continue;
+		}
+
+		check(object->m_bPendingDestroy);
+
+		if (!m_objectsMap.ContainsKey(object->m_instanceId))
+		{
+			continue;
+		}
+
+		DestroyGameObjectHierarchy(object);
+	}
+
+	m_pendingDestroyObjects.Clear();
+}
+
 void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 {
 	if (!root)
@@ -1577,6 +1582,7 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 		return;
 	}
 
+	root->SetParentInternal({}, true);
 	RemovePrefabLinksInHierarchy(root);
 
 	TVector<GameObjectPtr> destroyingObjects;
@@ -1718,7 +1724,6 @@ void World::DestroyImmediate(GameObjectPtr object)
 		return;
 	}
 
-	object->SetParent(GameObjectPtr());
 	DestroyGameObjectHierarchy(object);
 }
 

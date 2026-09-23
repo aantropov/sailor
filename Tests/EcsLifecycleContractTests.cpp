@@ -290,6 +290,7 @@ namespace
 
 		explicit PrefabTestWorld(EWorldBehaviourMask mask = 0) :
 			World("PrefabRollbackTests", mask, CreateEcs()) {}
+		using World::DestroyPendingGameObjects;
 		void AdvanceFrame() { ++m_currentFrame; }
 		void TickLifecycle(float deltaTime = 0.016f)
 		{
@@ -764,31 +765,59 @@ namespace
 
 	void TestTransformParentCleanupPreservesPendingReparent()
 	{
-		PrefabTestWorld world;
-		auto previousParent = world.Instantiate("PreviousParent");
-		auto nextParent = world.Instantiate("NextParent");
-		auto child = world.Instantiate("Child");
-		auto* transforms = world.GetECS<TransformECS>();
+		for (bool deferred : { false, true })
+		{
+			PrefabTestWorld world;
+			auto previousParent = world.Instantiate("PreviousParent");
+			auto nextParent = world.Instantiate("NextParent");
+			auto child = world.Instantiate("Child");
+			auto* transforms = world.GetECS<TransformECS>();
+			previousParent->GetTransformComponent().SetPosition(glm::vec3(10.0f, 0.0f, 0.0f));
+			nextParent->GetTransformComponent().SetPosition(glm::vec3(20.0f, 0.0f, 0.0f));
+			child->GetTransformComponent().SetPosition(glm::vec3(1.0f, 0.0f, 0.0f));
 
-		child->SetParent(previousParent);
-		transforms->Tick(0.0f);
-		transforms->PostTick();
+			child->SetParent(previousParent);
+			transforms->Tick(0.0f);
+			transforms->PostTick();
 
-		const size_t previousParentIndex = transforms->GetComponentIndex(&previousParent->GetTransformComponent());
-		const size_t nextParentIndex = transforms->GetComponentIndex(&nextParent->GetTransformComponent());
-		Require(child->GetTransformComponent().GetParent() == previousParentIndex,
-			"the transform fixture should establish its original parent before reparenting");
+			const size_t previousParentIndex = transforms->GetComponentIndex(&previousParent->GetTransformComponent());
+			const size_t nextParentIndex = transforms->GetComponentIndex(&nextParent->GetTransformComponent());
+			Require(child->GetTransformComponent().GetParent() == previousParentIndex &&
+				child->GetTransformComponent().GetWorldPosition().x == 11.0f,
+				"the transform fixture should establish its original parent before reparenting");
 
-		child->SetParent(nextParent);
-		world.DestroyImmediate(previousParent);
-		transforms->Tick(0.0f);
+			child->SetParent(nextParent);
+			if (deferred)
+			{
+				world.Destroy(previousParent);
+				world.DestroyPendingGameObjects();
+			}
+			else
+			{
+				world.DestroyImmediate(previousParent);
+			}
 
-		Require(static_cast<bool>(child), "reparenting away should keep the child alive when its previous parent is destroyed");
-		Require(child->GetParent() == nextParent, "the game-object hierarchy should retain the requested new parent");
-		Require(child->GetTransformComponent().GetParent() == nextParentIndex,
-			"transform cleanup should preserve a pending reparent away from the released slot");
+			auto replacement = world.Instantiate("ReusedParentSlot");
+			Require(transforms->GetComponentIndex(&replacement->GetTransformComponent()) == previousParentIndex,
+				"the fixture must reuse the released parent transform slot");
+			replacement->GetTransformComponent().SetPosition(glm::vec3(100.0f, 0.0f, 0.0f));
+			transforms->Tick(0.0f);
+			transforms->PostTick();
 
-		world.Clear();
+			Require(static_cast<bool>(child), "reparenting away should keep the child alive when its previous parent is destroyed");
+			Require(child->GetParent() == nextParent && nextParent->GetChildren().Num() == 1 &&
+				nextParent->GetChildren()[0] == child,
+				"both destruction paths must preserve the requested game-object parent");
+			Require(child->GetTransformComponent().GetParent() == nextParentIndex &&
+				child->GetTransformComponent().GetWorldPosition().x == 21.0f,
+				"transform cleanup must preserve the pending reparent across old-parent slot reuse");
+			Require(!replacement->GetParent() && replacement->GetChildren().IsEmpty() &&
+				replacement->GetTransformComponent().GetParent() == ECS::InvalidIndex &&
+				replacement->GetTransformComponent().GetChildren().IsEmpty(),
+				"a reused transform slot must not inherit the deleted parent's hierarchy");
+
+			world.Clear();
+		}
 	}
 
 	void TestEditorKeepWorldReparentUsesCurrentTransforms()
@@ -1568,6 +1597,137 @@ namespace
 
 	constexpr EWorldBehaviourMask GameplayMask =
 		(uint8_t)EWorldBehaviourBit::CallBeginPlay | (uint8_t)EWorldBehaviourBit::Tickable;
+
+	void TestDestroyHierarchyUnlinksSurvivingParent()
+	{
+		enum class Destruction { Immediate, DeferredParentFirst, DeferredChildFirst, QueuedChildImmediateParent };
+		for (Destruction mode : { Destruction::Immediate, Destruction::DeferredParentFirst,
+			Destruction::DeferredChildFirst, Destruction::QueuedChildImmediateParent })
+		{
+			PrefabTestWorld world(GameplayMask);
+			auto parent = world.Instantiate("SurvivingParent");
+			auto root = world.Instantiate("RemovedRoot");
+			auto child = world.Instantiate("RemovedChild");
+			auto sibling = world.Instantiate("SurvivingSibling");
+			root->SetParent(parent);
+			child->SetParent(root);
+			sibling->SetParent(parent);
+			auto rootComponent = root->AddComponent<LifecycleTestComponent>();
+			auto childComponent = child->AddComponent<LifecycleTestComponent>();
+			const InstanceId rootId = root->GetInstanceId();
+			const InstanceId childId = child->GetInstanceId();
+			auto* transforms = world.GetECS<TransformECS>();
+			const size_t rootIndex = transforms->GetComponentIndex(&root->GetTransformComponent());
+			const size_t childIndex = transforms->GetComponentIndex(&child->GetTransformComponent());
+			const size_t siblingIndex = transforms->GetComponentIndex(&sibling->GetTransformComponent());
+			world.TickLifecycle();
+			transforms->Tick(0.0f);
+			transforms->PostTick();
+			const uint32_t ended = LifecycleTestComponent::s_ended;
+
+			if (mode == Destruction::DeferredParentFirst || mode == Destruction::DeferredChildFirst)
+			{
+				if (mode == Destruction::DeferredChildFirst)
+				{
+					world.Destroy(child);
+				}
+				world.Destroy(root);
+				world.Destroy(root);
+				world.Destroy(child);
+				Require(root && child && parent->GetChildren().Num() == 2 &&
+					LifecycleTestComponent::s_ended == ended,
+					"deferred destruction must leave the hierarchy intact until its lifecycle phase");
+				world.DestroyPendingGameObjects();
+			}
+			else
+			{
+				if (mode == Destruction::QueuedChildImmediateParent)
+				{
+					world.Destroy(child);
+				}
+				world.DestroyImmediate(root);
+			}
+
+			Require(!root && !child && !rootComponent && !childComponent &&
+				!world.GetObjectByInstanceId(rootId) && !world.GetObjectByInstanceId(childId),
+				"both destruction paths must release the subtree and its components");
+			Require(world.GetGameObjects().Num() == 2 && parent->GetChildren().Num() == 1 &&
+				parent->GetChildren()[0] == sibling && sibling->GetParent() == parent,
+				"a surviving parent must retain only its live children after either destruction path");
+			Require(!transforms->IsComponentRegistered(rootIndex) && !transforms->IsComponentRegistered(childIndex) &&
+				parent->GetTransformComponent().GetChildren().Num() == 1 &&
+				parent->GetTransformComponent().GetChildren()[0] == siblingIndex,
+				"the transform hierarchy must agree with the surviving game-object hierarchy");
+			world.DestroyPendingGameObjects();
+			Require(LifecycleTestComponent::s_ended == ended + 2,
+				"duplicate and descendant delete requests must not repeat component cleanup");
+			world.Clear();
+		}
+	}
+
+	void TestDestroyLinkedRootUnlinksExternalParent()
+	{
+		for (bool deferred : { false, true })
+		{
+			PrefabTestWorld world;
+			auto authoredRoot = world.Instantiate("AuthoredRoot");
+			auto authoredChild = world.Instantiate("AuthoredChild");
+			authoredChild->SetParent(authoredRoot);
+			const FileId sourceFileId = DeserializeFileId("{11111111-2222-3333-4444-555555555555}");
+			auto source = PrefabDocumentTestAsset::Capture(world, authoredRoot, sourceFileId);
+			const std::string sourceBefore = YAML::Dump(source->Serialize());
+			world.DestroyImmediate(authoredRoot);
+
+			auto externalParent = world.Instantiate("ExternalParent");
+			auto sibling = world.Instantiate("ExternalSibling");
+			sibling->SetParent(externalParent);
+			auto root = world.Instantiate(source);
+			Require(root && root->GetChildren().Num() == 1,
+				"the linked-root destruction fixture must instantiate its child");
+			auto child = root->GetChildren()[0];
+			const InstanceId rootId = root->GetInstanceId();
+			const InstanceId childId = child->GetInstanceId();
+			root->SetParent(externalParent);
+			Require(root->GetParent() == externalParent && world.IsPrefabInstanceRoot(rootId) &&
+				world.IsPrefabLinked(childId),
+				"a linked authoring root may be parented beneath an external object");
+			auto* transforms = world.GetECS<TransformECS>();
+			const size_t siblingIndex = transforms->GetComponentIndex(&sibling->GetTransformComponent());
+			transforms->Tick(0.0f);
+			transforms->PostTick();
+
+			world.Destroy(child);
+			world.DestroyImmediate(child);
+			world.DestroyPendingGameObjects();
+			Require(child && child->GetParent() == root && world.IsPrefabLinked(childId),
+				"both public destruction APIs must still reject an internal linked child");
+			if (deferred)
+			{
+				world.Destroy(root);
+				Require(world.IsPrefabInstanceRoot(rootId) && externalParent->GetChildren().Num() == 2,
+					"queuing a linked root must retain its authoring link until destruction");
+				world.DestroyPendingGameObjects();
+			}
+			else
+			{
+				world.DestroyImmediate(root);
+			}
+
+			Require(!root && !child && world.GetGameObjects().Num() == 2 &&
+				externalParent->GetChildren().Num() == 1 && externalParent->GetChildren()[0] == sibling &&
+				sibling->GetParent() == externalParent,
+				"destroying a linked root must unlink it from its surviving external parent");
+			Require(world.GetPrefabInstances().IsEmpty() && !world.IsPrefabLinked(rootId) &&
+				!world.IsPrefabLinked(childId) && YAML::Dump(source->Serialize()) == sourceBefore,
+				"destroying the instance must clear live links without changing the source prefab");
+			Require(externalParent->GetTransformComponent().GetChildren().Num() == 1 &&
+				externalParent->GetTransformComponent().GetChildren()[0] == siblingIndex,
+				"a linked root's transform must also be removed from its external parent");
+			world.DestroyPendingGameObjects();
+			world.Clear();
+			source.DestroyObject(world.GetAllocator());
+		}
+	}
 
 	void TestEditorLifecycleNeverStartsGameplay()
 	{
@@ -4540,6 +4700,8 @@ int main()
 		{ "RemovingAnotherOwnersComponentHasNoEffect", TestRemovingAnotherOwnersComponentHasNoEffect },
 		{ "EditorModelInstanceCreatesHierarchyOrFlatRenderer", TestEditorModelInstanceCreatesHierarchyOrFlatRenderer },
 		{ "PreferredEditorInstanceIdsArePreserved", TestPreferredEditorInstanceIdsArePreserved },
+		{ "DestroyHierarchyUnlinksSurvivingParent", TestDestroyHierarchyUnlinksSurvivingParent },
+		{ "DestroyLinkedRootUnlinksExternalParent", TestDestroyLinkedRootUnlinksExternalParent },
 		{ "TransformParentCleanupPreservesPendingReparent", TestTransformParentCleanupPreservesPendingReparent },
 		{ "EditorKeepWorldReparentUsesCurrentTransforms", TestEditorKeepWorldReparentUsesCurrentTransforms },
 		{ "EditorKeepWorldReparentRejectsSingularParentWithoutMutation", TestEditorKeepWorldReparentRejectsSingularParentWithoutMutation },
