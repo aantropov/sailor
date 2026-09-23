@@ -1,6 +1,6 @@
 #include "Engine/World.h"
 #include "FrameGraph/BlitFormatConversion.h"
-#include "FrameGraph/DebugDrawNode.h"
+#include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "RHI/DebugContext.h"
 #include "RHI/Material.h"
@@ -563,8 +563,12 @@ namespace
 			auto graph = RHIFrameGraphPtr::Make();
 			if (bIncludeDebugPass)
 			{
+				FrameGraphBuilder builder;
+				auto node = builder.CreateNode("DebugDraw");
+				Require(static_cast<bool>(node),
+					"the runtime factory must create the registered DebugDraw node");
 				// No attachments: the node cannot consume its recording result.
-				graph->GetGraph().Add(TRefPtr<DebugDrawNode>::Make());
+				graph->GetGraph().Add(std::move(node));
 			}
 			auto sceneView = RHISceneViewPtr::Make();
 			DebugContext::DrawSnapshot snapshot;

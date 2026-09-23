@@ -150,12 +150,12 @@ namespace Sailor
 		void TickBakedProvider();
 		void TickRuntimeProvider(float deltaTime);
 		bool BeginRuntimeScenePreparation(std::string& outDiagnostic);
-		void ConsumeRuntimeScenePreparation(
+		SAILOR_API void ConsumeRuntimeScenePreparation(
 			const glm::vec3& priorityPosition);
 		bool StartRuntimeSolver(
 			const glm::vec3& priorityPosition,
 			std::string& outDiagnostic);
-		RuntimeGIProbesQualitySettings ResolveRuntimeQualitySettings() const noexcept;
+		SAILOR_API RuntimeGIProbesQualitySettings ResolveRuntimeQualitySettings() const noexcept;
 		void PublishRuntimeSnapshotIfNeeded();
 		void StopRuntimeProvider(bool bClearSnapshot);
 		bool HasRuntimeProviderState() const;
