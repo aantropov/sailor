@@ -42,6 +42,8 @@ namespace Sailor
 
 	class Editor : public TSubmodule<Editor>
 	{
+		friend class GlobalIlluminationBakeControllerTestAccess;
+
 	public:
 
 		SAILOR_API Editor(HWND editorHwnd, uint32_t editorPort, Win32::Window* pMainWindow);

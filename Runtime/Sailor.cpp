@@ -1215,9 +1215,15 @@ void App::Shutdown()
 		renderer->BeginConditionalDestroy();
 	}
 
+	if (auto* editor = GetSubmodule<Editor>())
+	{
+		editor->SetWorld(nullptr);
+	}
+
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
+			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
 		s_pInstance->m_pendingAssetReloadTask.Clear();
 	}
 
@@ -1231,17 +1237,17 @@ void App::Shutdown()
 #endif
 
 	RemoveSubmodule<EngineLoop>();
+	if (scheduler)
+	{
+		// EndPlay may queue work that still uses the remaining submodules.
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
+			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
+	}
 	RemoveSubmodule<Physics::JoltRuntime>();
 	RemoveSubmodule<ECS::ECSFactory>();
 	RemoveSubmodule<FrameGraphBuilder>();
 
-	// We need to finish all tasks before release
 	RemoveSubmodule<ImGuiApi>();
-
-	if (scheduler)
-	{
-		scheduler->ProcessTasksOnMainThread();
-	}
 
 	RemoveSubmodule<FrameGraphImporter>();
 	RemoveSubmodule<GIProbesImporter>();

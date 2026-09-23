@@ -23,6 +23,7 @@
 #include "Raytracing/LightingModel.h"
 #include "Raytracing/PathTracer.h"
 #include "Raytracing/GIProbesPathTracer.h"
+#include "Submodules/Editor.h"
 #include "Support/TempDirectory.h"
 
 #include <algorithm>
@@ -51,6 +52,26 @@ using namespace Sailor;
 
 namespace Sailor
 {
+	class GlobalIlluminationBakeControllerTestAccess
+	{
+	public:
+		static GlobalIlluminationBakeController& GetController(Editor& editor)
+		{
+			return *editor.m_giProbesBakeController;
+		}
+
+		static TSharedPtr<GlobalIlluminationBakeController::SharedState> GetState(
+			GlobalIlluminationBakeController& controller)
+		{
+			return controller.m_state;
+		}
+
+		static void SetTask(GlobalIlluminationBakeController& controller, const Tasks::ITaskPtr& task)
+		{
+			controller.m_task = task;
+		}
+	};
+
 	class GlobalIlluminationECSTestAccess
 	{
 	public:
@@ -2416,6 +2437,223 @@ components:
 			!controller.Start(nullptr, request, diagnostic) &&
 				diagnostic.find("between 1 and") != std::string::npos,
 			"the editor bake controller must reject excessive threads before capturing a scene");
+	}
+
+	struct BakeTaskObservation
+	{
+		std::mutex m_mutex;
+		std::condition_variable m_changed;
+		bool m_observeWait = false;
+		bool m_waitObserved = false;
+		bool m_ownerReturned = false;
+		bool m_taskEntered = false;
+		bool m_releaseTask = false;
+		bool m_taskTimedOut = false;
+	};
+
+	// Only observe the existing completion query; execution and completion stay in Task.
+	class ObservedBakeTask final : public Tasks::Task<>
+	{
+	public:
+		ObservedBakeTask(Tasks::Scheduler& scheduler, Function function,
+			TSharedPtr<BakeTaskObservation> observation) :
+			Task("Controlled background bake", std::move(function), EThreadType::Background, &scheduler),
+			m_observation(std::move(observation))
+		{}
+
+		bool IsFinished() const override
+		{
+			std::lock_guard lock(m_observation->m_mutex);
+			if (m_observation->m_observeWait)
+			{
+				m_observation->m_waitObserved = true;
+				m_observation->m_changed.notify_all();
+			}
+			return Tasks::Task<>::IsFinished();
+		}
+
+	private:
+		TSharedPtr<BakeTaskObservation> m_observation;
+	};
+
+	bool WaitForBakeOwner(BakeTaskObservation& observation)
+	{
+		std::unique_lock lock(observation.m_mutex);
+		return observation.m_changed.wait_for(lock, std::chrono::seconds(5), [&]()
+			{
+				return observation.m_waitObserved || observation.m_ownerReturned;
+			}) && observation.m_waitObserved && !observation.m_ownerReturned;
+	}
+
+	void TestEditorWaitsForTerminalBakeTask()
+	{
+		for (const auto terminal : { EEditorGIProbesBakeState::Succeeded,
+			EEditorGIProbesBakeState::Failed, EEditorGIProbesBakeState::Cancelled })
+		{
+			Tasks::Scheduler scheduler;
+			scheduler.AttachCurrentThreadAsMainThread();
+			Editor editor(nullptr, 0u, nullptr);
+			auto& controller = GlobalIlluminationBakeControllerTestAccess::GetController(editor);
+			auto state = GlobalIlluminationBakeControllerTestAccess::GetState(controller);
+			auto observation = TSharedPtr<BakeTaskObservation>::Make();
+			auto task = TSharedPtr<ObservedBakeTask>::Make(scheduler, [state, observation, terminal]()
+				{
+					state->m_lock.Lock();
+					state->m_status.m_state = terminal;
+					state->m_lock.Unlock();
+					std::unique_lock lock(observation->m_mutex);
+					observation->m_taskEntered = true;
+					observation->m_changed.notify_all();
+					observation->m_taskTimedOut = !observation->m_changed.wait_for(
+						lock, std::chrono::seconds(5), [&]() { return observation->m_releaseTask; });
+				}, observation);
+			scheduler.Run(task, false);
+			Tasks::ITaskPtr queued;
+			Require(scheduler.TryFetchNextAvailiableTask(queued, EThreadType::Background),
+				"the terminal bake fixture must use the real Background queue");
+			GlobalIlluminationBakeControllerTestAccess::SetTask(controller, task);
+			std::jthread execution([queued]() { queued->Execute(); });
+			bool entered = false;
+			{
+				std::unique_lock lock(observation->m_mutex);
+				entered = observation->m_changed.wait_for(lock, std::chrono::seconds(5), [&]()
+					{ return observation->m_taskEntered; });
+				observation->m_observeWait = true;
+			}
+			const bool terminalStatus = !controller.GetStatus().IsRunning();
+			std::jthread changeWorld([&]()
+				{
+					editor.SetWorld(nullptr);
+					std::lock_guard lock(observation->m_mutex);
+					observation->m_ownerReturned = true;
+					observation->m_changed.notify_all();
+				});
+			const bool waited = WaitForBakeOwner(*observation);
+			{
+				std::lock_guard lock(observation->m_mutex);
+				observation->m_releaseTask = true;
+			}
+			observation->m_changed.notify_all();
+			execution.join();
+			changeWorld.join();
+
+			Require(entered && terminalStatus && waited && !observation->m_taskTimedOut &&
+				observation->m_ownerReturned && task->IsFinished(),
+				"SetWorld must wait for the real task tail even after the bake status becomes terminal");
+		}
+	}
+
+	void TestBakeControllerCancelsQueuedPreparation()
+	{
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+		auto controller = TUniquePtr<GlobalIlluminationBakeController>::Make();
+		auto state = GlobalIlluminationBakeControllerTestAccess::GetState(*controller);
+		state->m_status.m_state = EEditorGIProbesBakeState::Preparing;
+		auto snapshot = GIProbesSceneSnapshotPtr::Make();
+		const TWeakPtr<GIProbesSceneSnapshot> retainedSnapshot = snapshot;
+		const TWeakPtr<GlobalIlluminationBakeController::SharedState> retainedState = state;
+		auto observation = TSharedPtr<BakeTaskObservation>::Make();
+		bool prepared = true;
+		GIProbesPreparedScene result;
+		std::string diagnostic;
+		auto task = TSharedPtr<ObservedBakeTask>::Make(scheduler, [snapshot, state, &prepared, &result, &diagnostic]()
+			{
+				prepared = PrepareGIProbesScene(*snapshot, GIProbesBakeSettings{}, &state->m_cancel,
+					result, diagnostic);
+			}, observation);
+		scheduler.Run(task, false);
+		GlobalIlluminationBakeControllerTestAccess::SetTask(*controller, task);
+		observation->m_observeWait = true;
+		snapshot.Clear();
+		std::jthread teardown([controller = std::move(controller), observation]() mutable
+			{
+				controller.Clear();
+				std::lock_guard lock(observation->m_mutex);
+				observation->m_ownerReturned = true;
+				observation->m_changed.notify_all();
+			});
+		const bool waited = WaitForBakeOwner(*observation);
+		const bool cancelled = state->m_cancel.load(std::memory_order_acquire);
+		const bool retained = static_cast<bool>(retainedSnapshot.TryLock());
+		Tasks::ITaskPtr queued;
+		const bool fetched = scheduler.TryFetchNextAvailiableTask(queued, EThreadType::Background);
+		if (!fetched)
+		{
+			// Release the owner's wait before reporting a broken queue contract.
+			queued = task;
+		}
+		queued->Execute();
+		teardown.join();
+		state.Clear();
+		queued.Clear();
+		task.Clear();
+
+		Require(waited && cancelled && retained && fetched && !prepared && !result.m_sampler &&
+			diagnostic.find("cancelled") != std::string::npos &&
+			!retainedSnapshot.TryLock() && !retainedState.TryLock(),
+			"owner teardown must cancel and join queued preparation before releasing its retained inputs");
+	}
+
+	void TestEditorWaitsForBakeAtomicSave()
+	{
+		Tests::TempDirectory directory("gi-save-teardown");
+		const auto path = directory.Path("complete.probes");
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+		Editor editor(nullptr, 0u, nullptr);
+		auto& controller = GlobalIlluminationBakeControllerTestAccess::GetController(editor);
+		auto state = GlobalIlluminationBakeControllerTestAccess::GetState(controller);
+		auto observation = TSharedPtr<BakeTaskObservation>::Make();
+		bool saved = false;
+		std::string diagnostic;
+		auto task = TSharedPtr<ObservedBakeTask>::Make(scheduler, [state, observation, path, &saved, &diagnostic]()
+			{
+				state->m_lock.Lock();
+				state->m_status.m_state = EEditorGIProbesBakeState::Saving;
+				state->m_lock.Unlock();
+				{
+					std::unique_lock lock(observation->m_mutex);
+					observation->m_taskEntered = true;
+					observation->m_changed.notify_all();
+					observation->m_taskTimedOut = !observation->m_changed.wait_for(
+						lock, std::chrono::seconds(5), [&]() { return observation->m_releaseTask; });
+				}
+				saved = GIProbesBinary::SaveAtomic(path, MakeVolume(2.0f, 71u), diagnostic);
+			}, observation);
+		scheduler.Run(task, false);
+		Tasks::ITaskPtr queued;
+		Require(scheduler.TryFetchNextAvailiableTask(queued, EThreadType::Background),
+			"the save fixture must use the real Background queue");
+		GlobalIlluminationBakeControllerTestAccess::SetTask(controller, task);
+		std::jthread execution([queued]() { queued->Execute(); });
+		bool entered = false;
+		{
+			std::unique_lock lock(observation->m_mutex);
+			entered = observation->m_changed.wait_for(lock, std::chrono::seconds(5), [&]()
+				{ return observation->m_taskEntered; });
+			observation->m_observeWait = true;
+		}
+		std::jthread changeWorld([&]()
+			{
+				editor.SetWorld(nullptr);
+				std::lock_guard lock(observation->m_mutex);
+				observation->m_ownerReturned = true;
+				observation->m_changed.notify_all();
+			});
+		const bool waited = WaitForBakeOwner(*observation);
+		const bool cancelled = state->m_cancel.load(std::memory_order_acquire);
+		{
+			std::lock_guard lock(observation->m_mutex);
+			observation->m_releaseTask = true;
+		}
+		observation->m_changed.notify_all();
+		execution.join();
+		changeWorld.join();
+		const auto loaded = GIProbesBinary::Load(path);
+		Require(entered && waited && !cancelled && !observation->m_taskTimedOut && saved &&
+			loaded.IsSuccess() && loaded.m_data->m_lightingHash == 71u && loaded.m_data->m_probes.Num() == 8u,
+			"SetWorld must finish the atomic save, not cancel or abandon its complete probe payload: " + diagnostic);
 	}
 
 	void TestEveningLandscapeVisualWorldIsSavedBakeableLevel()
@@ -7027,6 +7265,9 @@ int main(int argc, char** argv)
 		RunTest(
 			"BakeControllerRejectsInvalidThreadCountBeforeSceneCapture",
 			TestBakeControllerRejectsInvalidThreadCountBeforeSceneCapture);
+		RunTest("EditorWaitsForTerminalBakeTask", TestEditorWaitsForTerminalBakeTask);
+		RunTest("BakeControllerCancelsQueuedPreparation", TestBakeControllerCancelsQueuedPreparation);
+		RunTest("EditorWaitsForBakeAtomicSave", TestEditorWaitsForBakeAtomicSave);
 		RunTest(
 			"EveningLandscapeVisualWorldIsSavedBakeableLevel",
 			TestEveningLandscapeVisualWorldIsSavedBakeableLevel);
