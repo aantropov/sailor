@@ -183,16 +183,19 @@ endif()
 add_executable(JoltJobSystemTests
     JoltJobSystemTests.cpp
     ${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp
+    ${SAILOR_RUNTIME_DIR}/Physics/JoltJobDispatch.cpp
 )
 target_compile_features(JoltJobSystemTests PRIVATE cxx_std_20)
 target_include_directories(JoltJobSystemTests PRIVATE ${SAILOR_RUNTIME_DIR})
 target_link_libraries(JoltJobSystemTests PRIVATE Sailor::Runtime Jolt::Jolt)
-# Match the adapter's no-RTTI Jolt ABI, including when compiled outside Lib.
+# Only the Jolt vtable implementation needs the library's no-RTTI ABI.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR
     CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
-    target_compile_options(JoltJobSystemTests PRIVATE /GR-)
+    set_source_files_properties(${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp
+        PROPERTIES COMPILE_OPTIONS "/GR-")
 else()
-    target_compile_options(JoltJobSystemTests PRIVATE -fno-rtti)
+    set_source_files_properties(${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp
+        PROPERTIES COMPILE_OPTIONS "-fno-rtti")
 endif()
 add_test(NAME JoltJobSystemTests COMMAND JoltJobSystemTests)
 set_tests_properties(JoltJobSystemTests PROPERTIES TIMEOUT 30)

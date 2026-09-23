@@ -1282,6 +1282,84 @@ namespace
 		}
 	};
 
+	class ConcurrentFailureSampler final : public IGIProbeBakeRaySampler
+	{
+	public:
+		enum class Failure
+		{
+			ReturnFalse,
+			StandardException,
+			UnknownException,
+			Mixed
+		};
+
+		ConcurrentFailureSampler(Failure failure, uint32_t expectedThreads) :
+			m_failure(failure), m_expectedThreads(expectedThreads)
+		{}
+
+		bool Sample(const glm::vec3&, const glm::vec3&, float, uint32_t,
+			GIProbeBakeRaySample&, std::string& outDiagnostic) const override
+		{
+			struct Completion
+			{
+				std::atomic<uint32_t>& m_count;
+				~Completion()
+				{
+					m_count.fetch_add(1u, std::memory_order_release);
+				}
+			} completion{ m_completed };
+			uint32_t ticket;
+			{
+				std::unique_lock<std::mutex> lock(m_mutex);
+				ticket = static_cast<uint32_t>(m_threads.size());
+				m_threads.insert(std::this_thread::get_id());
+				if (m_threads.size() == m_expectedThreads)
+				{
+					m_released = true;
+					m_condition.notify_all();
+				}
+				else if (!m_condition.wait_for(lock, std::chrono::seconds(5), [this]() { return m_released; }))
+				{
+					m_timedOut = true;
+					m_released = true;
+					m_condition.notify_all();
+					outDiagnostic = "the failing bake workers did not all enter the sampler";
+					return false;
+				}
+			}
+
+			const Failure failure = m_failure == Failure::Mixed ?
+				static_cast<Failure>(ticket % 3u) : m_failure;
+			if (failure == Failure::StandardException)
+			{
+				throw std::runtime_error("intentional sampler exception " + std::to_string(ticket));
+			}
+			if (failure == Failure::UnknownException)
+			{
+				throw ticket;
+			}
+			outDiagnostic = "intentional sampler failure " + std::to_string(ticket);
+			return false;
+		}
+
+		bool HasCompletedAllWorkers() const
+		{
+			const std::lock_guard<std::mutex> lock(m_mutex);
+			return !m_timedOut && m_threads.size() == m_expectedThreads &&
+				m_completed.load(std::memory_order_acquire) == m_expectedThreads;
+		}
+
+	private:
+		Failure m_failure;
+		uint32_t m_expectedThreads;
+		mutable std::mutex m_mutex;
+		mutable std::condition_variable m_condition;
+		mutable std::set<std::thread::id> m_threads;
+		mutable std::atomic<uint32_t> m_completed{ 0u };
+		mutable bool m_released = false;
+		mutable bool m_timedOut = false;
+	};
+
 	class CancellingBakeRaySampler final : public IGIProbeBakeRaySampler
 	{
 	public:
@@ -4598,6 +4676,110 @@ components:
 		service.Disable();
 	}
 
+	void TestBakeWorkerFailureDiagnostics()
+	{
+		GIProbesBakeRequest request;
+		request.m_stateName = "Worker Failure";
+		request.m_volumeMin = glm::vec3(0.0f);
+		request.m_volumeMax = glm::vec3(1.0f);
+		request.m_settings.m_raysPerProbe = 8u;
+		request.m_settings.m_bounceCount = 1u;
+		request.m_settings.m_maxSubdivisionLevel = 0u;
+		request.m_settings.m_minProbeSpacing = 1.0f;
+
+		using Failure = ConcurrentFailureSampler::Failure;
+		struct FailureCase
+		{
+			Failure m_failure;
+			EGIProbesBakeStatus m_status;
+			const char* m_diagnostic;
+		};
+		const FailureCase cases[] =
+		{
+			{ Failure::ReturnFalse, EGIProbesBakeStatus::SamplingFailed, "intentional sampler failure 0" },
+			{ Failure::StandardException, EGIProbesBakeStatus::InvalidResult,
+				"GI probe bake worker failed: intentional sampler exception 0" },
+			{ Failure::UnknownException, EGIProbesBakeStatus::InvalidResult,
+				"GI probe bake worker failed with an unknown error" }
+		};
+		for (const auto& failure : cases)
+		{
+			const ConcurrentFailureSampler sampler(failure.m_failure, 1u);
+			const auto result = GIProbesBaker::Bake(request, sampler);
+			Require(sampler.HasCompletedAllWorkers() && result.m_status == failure.m_status &&
+				result.m_diagnostic == failure.m_diagnostic && !result.m_data,
+				"the inline bake worker must preserve each failure's exact status and diagnostic; mode=" +
+				std::to_string(static_cast<uint32_t>(failure.m_failure)) + ", status=" +
+				std::to_string(static_cast<uint32_t>(result.m_status)) + ", diagnostic=" + result.m_diagnostic);
+		}
+
+		request.m_threadCount = 4u;
+		for (uint32_t iteration = 0u; iteration < 8u; ++iteration)
+		{
+			const ConcurrentFailureSampler sampler(Failure::Mixed, request.m_threadCount);
+			const auto result = GIProbesBaker::Bake(request, sampler);
+			const bool bSamplingFailure = result.m_status == EGIProbesBakeStatus::SamplingFailed &&
+				(result.m_diagnostic == "intentional sampler failure 0" ||
+					result.m_diagnostic == "intentional sampler failure 3");
+			const bool bException = result.m_status == EGIProbesBakeStatus::InvalidResult &&
+				(result.m_diagnostic == "GI probe bake worker failed: intentional sampler exception 1" ||
+					result.m_diagnostic == "GI probe bake worker failed with an unknown error");
+			Require(sampler.HasCompletedAllWorkers() && (bSamplingFailure || bException) && !result.m_data,
+				"four competing failing workers must finish and return one matching status/diagnostic pair");
+		}
+	}
+
+	void TestBakeProgressCallbackThrows()
+	{
+		GIProbesBakeRequest request;
+		request.m_stateName = "Progress Failure";
+		request.m_volumeMin = glm::vec3(0.0f);
+		request.m_volumeMax = glm::vec3(1.0f);
+		request.m_settings.m_raysPerProbe = 8u;
+		request.m_settings.m_bounceCount = 1u;
+		request.m_settings.m_maxSubdivisionLevel = 0u;
+		request.m_settings.m_minProbeSpacing = 1.0f;
+		request.m_threadCount = 4u;
+		std::atomic<uint32_t> activeCallbacks{ 0u };
+		std::atomic<uint32_t> callbackCount{ 0u };
+		std::atomic<uint32_t> lastCompletedProbe{ 0u };
+		std::atomic<bool> bOverlappingCallbacks{ false };
+		std::atomic<bool> bOutOfOrderProgress{ false };
+		request.m_progress = [&](const GIProbesBakeProgress& progress)
+		{
+			if (progress.m_completedProbes == 0u)
+			{
+				return;
+			}
+			if (activeCallbacks.fetch_add(1u) != 0u)
+			{
+				bOverlappingCallbacks.store(true);
+			}
+			callbackCount.fetch_add(1u);
+			if (lastCompletedProbe.exchange(progress.m_completedProbes) + 1u != progress.m_completedProbes)
+			{
+				bOutOfOrderProgress.store(true);
+			}
+			std::this_thread::yield();
+			activeCallbacks.fetch_sub(1u);
+			throw std::runtime_error("intentional progress failure");
+		};
+		const ConcurrentSeedDrivenBakeRaySampler sampler(request.m_threadCount);
+		const auto result = GIProbesBaker::Bake(request, sampler);
+		Require(result.m_status == EGIProbesBakeStatus::InvalidResult && !result.m_data &&
+			result.m_diagnostic == "GI probe bake worker failed: intentional progress failure" &&
+			sampler.GetObservedThreadCount() == request.m_threadCount,
+			"a worker progress exception must unwind its lock and finish the parallel bake without publication");
+		Require(callbackCount.load() > 0u && callbackCount.load() <= request.m_threadCount &&
+			activeCallbacks.load() == 0u && !bOverlappingCallbacks.load() && !bOutOfOrderProgress.load() &&
+			lastCompletedProbe.load() == callbackCount.load(),
+			"in-flight worker progress must remain serialized and ordered when callbacks throw");
+		request.m_progress = {};
+		const ConstantBakeRaySampler retry(glm::vec3(1.0f));
+		Require(GIProbesBaker::Bake(request, retry).IsSuccess(),
+			"a progress failure must not prevent a later successful bake");
+	}
+
 	void TestBakeCancellationBetweenPhases()
 	{
 		GIProbesBakeRequest request;
@@ -7516,6 +7698,8 @@ int main(int argc, char** argv)
 			TestGIBakeQualityLabCoversCanonicalCases);
 		RunTest("GpuPackingAndWeightOnlyUpdates", TestGpuPackingAndWeightOnlyUpdates);
 		RunTest("AdaptiveBakerAndLayoutReuse", TestAdaptiveBakerAndLayoutReuse);
+		RunTest("BakeWorkerFailureDiagnostics", TestBakeWorkerFailureDiagnostics);
+		RunTest("BakeProgressCallbackThrows", TestBakeProgressCallbackThrows);
 		RunTest("BakeCancellationBetweenPhases", TestBakeCancellationBetweenPhases);
 		RunTest(
 			"PrimaryDirectionPdfWeighting",
