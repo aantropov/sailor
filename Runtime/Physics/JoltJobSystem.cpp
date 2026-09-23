@@ -65,6 +65,7 @@ void Physics::JoltJobSystem::QueueJob(JPH::JobSystem::Job* job)
 
 	m_numQueuedTasks.fetch_add(1, std::memory_order_relaxed);
 	auto task = Tasks::CreateTask(
+		*m_scheduler,
 		"Jolt Physics",
 		[this, job]()
 		{

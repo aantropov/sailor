@@ -533,6 +533,10 @@ Physics::PhysicsWorld::PhysicsWorld() :
 	m_pImpl(TUniquePtr<Impl>::Make(App::GetSubmodule<Tasks::Scheduler>()))
 {}
 
+Physics::PhysicsWorld::PhysicsWorld(Tasks::Scheduler& scheduler) :
+	m_pImpl(TUniquePtr<Impl>::Make(&scheduler))
+{}
+
 Physics::PhysicsWorld::~PhysicsWorld()
 {
 	Clear();

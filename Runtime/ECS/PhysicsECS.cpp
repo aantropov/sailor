@@ -78,6 +78,10 @@ namespace
 }
 
 PhysicsECS::PhysicsECS() = default;
+PhysicsECS::PhysicsECS(TUniquePtr<Physics::PhysicsWorld> physicsWorld, Tasks::Scheduler& scheduler) :
+	m_physicsWorld(std::move(physicsWorld)),
+	m_scheduler(&scheduler)
+{}
 PhysicsECS::~PhysicsECS() = default;
 
 bool PhysicsECS::EnsurePhysicsWorld()
@@ -87,12 +91,13 @@ bool PhysicsECS::EnsurePhysicsWorld()
 		return true;
 	}
 
-	if (!App::GetSubmodule<Physics::JoltRuntime>())
+	if (!m_scheduler && !App::GetSubmodule<Physics::JoltRuntime>())
 	{
 		return false;
 	}
 
-	m_physicsWorld = TUniquePtr<Physics::PhysicsWorld>::Make();
+	m_physicsWorld = m_scheduler ? TUniquePtr<Physics::PhysicsWorld>::Make(*m_scheduler) :
+		TUniquePtr<Physics::PhysicsWorld>::Make();
 	return true;
 }
 
@@ -137,8 +142,8 @@ bool PhysicsECS::BuildBodyDesc(
 	outDesc.m_position = glm::vec3(worldTransform.m_position);
 	outDesc.m_rotation = worldTransform.m_rotation;
 	outDesc.m_scale = glm::vec3(worldTransform.m_scale);
-	outDesc.m_linearVelocity = rigidBody->GetLinearVelocity();
-	outDesc.m_angularVelocity = rigidBody->GetAngularVelocity();
+	outDesc.m_linearVelocity = rigidBody->GetInitialLinearVelocity();
+	outDesc.m_angularVelocity = rigidBody->GetInitialAngularVelocity();
 	outDesc.m_mass = rigidBody->GetMass();
 	outDesc.m_friction = rigidBody->GetFriction();
 	outDesc.m_restitution = rigidBody->GetRestitution();
@@ -182,14 +187,21 @@ bool PhysicsECS::RecreateBody(size_t index)
 	if (data.m_bodyId != RigidBodyData::InvalidBodyId)
 	{
 		Physics::PhysicsBodyPose previousPose{};
-		if (!data.m_bVelocityDirty &&
-			m_physicsWorld->GetBodyPose(data.m_bodyId, previousPose))
+		if (m_physicsWorld->GetBodyPose(data.m_bodyId, previousPose))
 		{
 			desc.m_linearVelocity = previousPose.m_linearVelocity;
 			desc.m_angularVelocity = previousPose.m_angularVelocity;
 		}
 		m_physicsWorld->DestroyBody(data.m_bodyId);
 		data.m_bodyId = RigidBodyData::InvalidBodyId;
+	}
+	if (data.m_bLinearVelocityPending)
+	{
+		desc.m_linearVelocity = data.m_pendingLinearVelocity;
+	}
+	if (data.m_bAngularVelocityPending)
+	{
+		desc.m_angularVelocity = data.m_pendingAngularVelocity;
 	}
 
 	if (!m_physicsWorld->CreateBody(desc, data.m_bodyId))
@@ -199,7 +211,8 @@ bool PhysicsECS::RecreateBody(size_t index)
 
 	data.m_motionType = desc.m_motionType;
 	data.m_bodyScale = desc.m_scale;
-	data.m_bVelocityDirty = false;
+	data.m_bLinearVelocityPending = false;
+	data.m_bAngularVelocityPending = false;
 	data.ClearDirty();
 	data.m_lastAppliedTransformFrame = GetWorld()->GetCurrentFrame();
 	if (m_physicsWorld->GetBodyPose(data.m_bodyId, data.m_currentPose))
@@ -233,12 +246,6 @@ void PhysicsECS::SyncAuthoredTransforms(float fixedDeltaTime)
 			continue;
 		}
 
-		auto rigidBody = gameObject->GetComponent<RigidBodyComponent>();
-		if (!rigidBody)
-		{
-			continue;
-		}
-
 		const auto& transform = gameObject->GetTransformComponent();
 		const bool bAuthoredTransformChanged =
 			transform.GetFrameLastChange() > data.m_lastAppliedTransformFrame;
@@ -263,15 +270,25 @@ void PhysicsECS::SyncAuthoredTransforms(float fixedDeltaTime)
 				data.m_motionType == Physics::ERigidBodyMotionType::Kinematic,
 				fixedDeltaTime);
 			data.m_lastAppliedTransformFrame = GetWorld()->GetCurrentFrame();
+			if (data.m_motionType == Physics::ERigidBodyMotionType::Kinematic)
+			{
+				m_physicsWorld->GetBodyPose(data.m_bodyId, data.m_currentPose);
+			}
 		}
 
-		if (data.m_bVelocityDirty)
+		if ((data.m_bLinearVelocityPending || data.m_bAngularVelocityPending) &&
+			m_physicsWorld->GetBodyPose(data.m_bodyId, data.m_currentPose))
 		{
-			m_physicsWorld->SetBodyVelocity(
-				data.m_bodyId,
-				rigidBody->GetLinearVelocity(),
-				rigidBody->GetAngularVelocity());
-			data.m_bVelocityDirty = false;
+			const glm::vec3 linearVelocity = data.m_bLinearVelocityPending ?
+				data.m_pendingLinearVelocity : data.m_currentPose.m_linearVelocity;
+			const glm::vec3 angularVelocity = data.m_bAngularVelocityPending ?
+				data.m_pendingAngularVelocity : data.m_currentPose.m_angularVelocity;
+			if (m_physicsWorld->SetBodyVelocity(data.m_bodyId, linearVelocity, angularVelocity))
+			{
+				data.m_bLinearVelocityPending = false;
+				data.m_bAngularVelocityPending = false;
+				m_physicsWorld->GetBodyPose(data.m_bodyId, data.m_currentPose);
+			}
 		}
 	}
 }
@@ -474,7 +491,9 @@ Tasks::ITaskPtr PhysicsECS::Tick(float deltaTime)
 	m_accumulator -= m_fixedDeltaTime * numSteps;
 
 	bool bStepSucceeded = true;
+	auto& scheduler = m_scheduler ? *m_scheduler : *App::GetSubmodule<Tasks::Scheduler>();
 	auto physicsTask = Tasks::CreateTask(
+		scheduler,
 		"Physics fixed step",
 		[this, numSteps, &bStepSucceeded]()
 		{
@@ -497,7 +516,7 @@ Tasks::ITaskPtr PhysicsECS::Tick(float deltaTime)
 				for (auto& data : m_components)
 				{
 					if (data.m_bIsActive &&
-						data.m_motionType == Physics::ERigidBodyMotionType::Dynamic &&
+						data.m_motionType != Physics::ERigidBodyMotionType::Static &&
 						data.m_bodyId != RigidBodyData::InvalidBodyId)
 					{
 						m_physicsWorld->GetBodyPose(

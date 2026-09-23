@@ -13,12 +13,15 @@
 #include "Math/Transform.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <functional>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 
 using namespace Sailor;
@@ -34,12 +37,39 @@ namespace
 			World("PhysicsComponentTests", 0, CreateEcs())
 		{}
 
+		PhysicsComponentTestWorld(TUniquePtr<Physics::PhysicsWorld> physicsWorld, Tasks::Scheduler& scheduler) :
+			World("PhysicsComponentTests", 0, CreateEcs(std::move(physicsWorld), &scheduler))
+		{
+			SetPhysicsSimulationEnabled(true);
+		}
+
+		~PhysicsComponentTestWorld() override { Clear(); }
+
+		Tasks::ITaskPtr TickPhysics(float deltaTime)
+		{
+			++m_currentFrame;
+			auto* transforms = GetECS<TransformECS>();
+			transforms->Tick(0.0f);
+			transforms->PostTick();
+			auto task = GetECS<PhysicsECS>()->Tick(deltaTime);
+			transforms->PostTick();
+			return task;
+		}
+
 	private:
-		static TVector<ECS::TBaseSystemPtr> CreateEcs()
+		static TVector<ECS::TBaseSystemPtr> CreateEcs(
+			TUniquePtr<Physics::PhysicsWorld> physicsWorld = {}, Tasks::Scheduler* scheduler = nullptr)
 		{
 			TVector<ECS::TBaseSystemPtr> systems;
 			systems.Add(TUniquePtr<TransformECS>::Make());
-			systems.Add(TUniquePtr<PhysicsECS>::Make());
+			if (scheduler)
+			{
+				systems.Add(TUniquePtr<PhysicsECS>::Make(std::move(physicsWorld), *scheduler));
+			}
+			else
+			{
+				systems.Add(TUniquePtr<PhysicsECS>::Make());
+			}
 			systems.Add(TUniquePtr<LandscapeECS>::Make());
 			return systems;
 		}
@@ -56,6 +86,25 @@ namespace
 	bool IsNear(float lhs, float rhs, float tolerance = 0.001f)
 	{
 		return std::abs(lhs - rhs) <= tolerance;
+	}
+
+	bool IsNear(const glm::vec3& lhs, const glm::vec3& rhs, float tolerance = 0.00001f)
+	{
+		return glm::length(lhs - rhs) <= tolerance;
+	}
+
+	bool WaitUntil(const std::function<bool()>& condition)
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		while (!condition())
+		{
+			if (std::chrono::steady_clock::now() >= deadline)
+			{
+				return false;
+			}
+			std::this_thread::yield();
+		}
+		return true;
 	}
 
 	Physics::RigidBodyDesc MakeBox(
@@ -651,6 +700,300 @@ namespace
 				buoyancyType.Properties()["waveAmplitude"]);
 	}
 
+	void TestInitialVelocityAuthoringStaysSeparateFromRuntimeCommands()
+	{
+		RigidBodyComponent authoring;
+		const glm::vec3 initialLinear(2.0f, 3.0f, 4.0f);
+		const glm::vec3 initialAngular(0.0f, 1.0f, 2.0f);
+		authoring.SetInitialLinearVelocity(initialLinear);
+		authoring.SetInitialAngularVelocity(initialAngular);
+		const ReflectedData before = authoring.GetReflectedData();
+		Require(before.GetProperties()["linearVelocity"].as<glm::vec3>() == initialLinear &&
+			before.GetProperties()["angularVelocity"].as<glm::vec3>() == initialAngular,
+			"initial velocities must retain their existing reflected property names");
+
+		authoring.SetLinearVelocity(glm::vec3(9.0f));
+		authoring.SetAngularVelocity(glm::vec3(8.0f));
+		Require(authoring.GetLinearVelocity() == glm::vec3(0.0f) &&
+			authoring.GetAngularVelocity() == glm::vec3(0.0f) && authoring.GetReflectedData() == before,
+			"unregistered runtime commands must be no-ops, not edits to initial authoring values");
+		RigidBodyComponent restored;
+		restored.ApplyReflection(before);
+		Require(restored.GetInitialLinearVelocity() == initialLinear &&
+			restored.GetInitialAngularVelocity() == initialAngular &&
+			restored.GetLinearVelocity() == glm::vec3(0.0f),
+			"reflection must restore initial values without fabricating a live physics velocity");
+	}
+
+	void TestPendingVelocityCommandsAndLiveBodyReconstruction()
+	{
+		Tasks::Scheduler scheduler;
+		scheduler.Initialize();
+		auto backend = TUniquePtr<Physics::PhysicsWorld>::Make(scheduler);
+		auto* physicsWorld = backend.GetRawPtr();
+		PhysicsComponentTestWorld world(std::move(backend), scheduler);
+		auto owner = world.Instantiate("Pending velocity owner");
+		auto body = owner->AddComponent<RigidBodyComponent>();
+		body->SetInitialLinearVelocity(glm::vec3(2.0f, 0.0f, 0.0f));
+		body->SetInitialAngularVelocity(glm::vec3(0.0f, 1.0f, 0.0f));
+		const ReflectedData authored = body->GetReflectedData();
+		body->SetLinearVelocity(glm::vec3(3.0f, 0.0f, 0.0f));
+		body->SetLinearVelocity(glm::vec3(4.0f, 0.0f, 0.0f));
+		auto* physics = world.GetECS<PhysicsECS>();
+		world.TickPhysics(0.0f);
+		Require(physics->GetComponentData(body->GetComponentIndex()).m_bodyId == RigidBodyData::InvalidBodyId &&
+			body->GetLinearVelocity() == glm::vec3(0.0f) && body->GetAngularVelocity() == glm::vec3(0.0f),
+			"commands must remain pending while a body cannot be created without a collision shape");
+
+		auto shape = owner->AddComponent<CollisionShapeComponent>();
+		world.TickPhysics(0.0f);
+		auto readPose = [&]()
+			{
+				Physics::PhysicsBodyPose pose;
+				Require(physicsWorld->GetBodyPose(physics->GetComponentData(body->GetComponentIndex()).m_bodyId, pose),
+					"the component must own a live Jolt body");
+				Require(IsNear(body->GetLinearVelocity(), pose.m_linearVelocity) &&
+					IsNear(body->GetAngularVelocity(), pose.m_angularVelocity),
+					"component velocity queries must match Jolt even when no fixed step ran");
+				return pose;
+			};
+		auto pose = readPose();
+		Require(IsNear(pose.m_linearVelocity, glm::vec3(4.0f, 0.0f, 0.0f)) &&
+			IsNear(pose.m_angularVelocity, glm::vec3(0.0f, 1.0f, 0.0f)) && body->GetReflectedData() == authored,
+			"creation must apply the latest command while keeping the uncommanded initial axis and serialized values");
+
+		world.SetPhysicsSimulationEnabled(false);
+		body->SetAngularVelocity(glm::vec3(0.0f, 0.0f, 3.0f));
+		world.TickPhysics(0.0f);
+		Require(body->GetAngularVelocity() == glm::vec3(0.0f, 1.0f, 0.0f) && body->GetReflectedData() == authored,
+			"paused simulation must retain a runtime command without serializing it or reporting it as applied");
+		world.SetPhysicsSimulationEnabled(true);
+		world.TickPhysics(0.0f);
+		pose = readPose();
+		Require(IsNear(pose.m_angularVelocity, glm::vec3(0.0f, 0.0f, 3.0f)) &&
+			IsNear(pose.m_linearVelocity, glm::vec3(4.0f, 0.0f, 0.0f)),
+			"resuming must apply only the commanded angular velocity");
+
+		const uint32_t originalBodyId = physics->GetComponentData(body->GetComponentIndex()).m_bodyId;
+		body->SetInitialLinearVelocity(glm::vec3(9.0f, 0.0f, 0.0f));
+		world.TickPhysics(0.0f);
+		Require(physics->GetComponentData(body->GetComponentIndex()).m_bodyId == originalBodyId &&
+			body->GetLinearVelocity() == glm::vec3(4.0f, 0.0f, 0.0f),
+			"editing initial velocity must not rebuild or command the live body");
+		body->SetMass(2.0f);
+		world.TickPhysics(0.0f);
+		const uint32_t massBodyId = physics->GetComponentData(body->GetComponentIndex()).m_bodyId;
+		pose = readPose();
+		Require(massBodyId != originalBodyId && IsNear(pose.m_linearVelocity, glm::vec3(4.0f, 0.0f, 0.0f)) &&
+			IsNear(pose.m_angularVelocity, glm::vec3(0.0f, 0.0f, 3.0f)),
+			"mass reconstruction must retain live velocities rather than resetting to initial values");
+		shape->SetSize(glm::vec3(2.0f));
+		body->SetLinearVelocity(glm::vec3(0.0f));
+		world.TickPhysics(0.0f);
+		pose = readPose();
+		Require(physics->GetComponentData(body->GetComponentIndex()).m_bodyId != massBodyId &&
+			IsNear(pose.m_linearVelocity, glm::vec3(0.0f)) && IsNear(pose.m_angularVelocity, glm::vec3(0.0f, 0.0f, 3.0f)),
+			"shape reconstruction must overlay a pending stop command without resetting the other live axis");
+
+		auto freshOwner = world.Instantiate("Restored initial velocity owner");
+		auto freshBody = freshOwner->AddComponent<RigidBodyComponent>();
+		freshBody->ApplyReflection(body->GetReflectedData());
+		Require(freshBody->GetInitialLinearVelocity() == glm::vec3(9.0f, 0.0f, 0.0f) &&
+			freshBody->GetInitialAngularVelocity() == glm::vec3(0.0f, 1.0f, 0.0f),
+			"restoring authoring must not copy the original body's runtime velocities");
+		freshBody->SetAngularVelocity(glm::vec3(0.0f));
+		freshOwner->AddComponent<CollisionShapeComponent>();
+		world.TickPhysics(0.0f);
+		Require(IsNear(freshBody->GetLinearVelocity(), glm::vec3(9.0f, 0.0f, 0.0f)) &&
+			IsNear(freshBody->GetAngularVelocity(), glm::vec3(0.0f)),
+			"a pending angular command must override only that axis when a restored body is first created");
+	}
+
+	void TestVelocityQueriesAndRepeatedStopAfterAcceleration()
+	{
+		Tasks::Scheduler scheduler;
+		scheduler.Initialize();
+		auto backend = TUniquePtr<Physics::PhysicsWorld>::Make(scheduler);
+		auto* physicsWorld = backend.GetRawPtr();
+		PhysicsComponentTestWorld world(std::move(backend), scheduler);
+		auto owner = world.Instantiate("Accelerated velocity owner");
+		auto body = owner->AddComponent<RigidBodyComponent>();
+		body->SetLinearDamping(0.0f);
+		body->SetAngularDamping(0.0f);
+		owner->AddComponent<CollisionShapeComponent>();
+		world.TickPhysics(0.0f);
+		const uint32_t bodyId = world.GetECS<PhysicsECS>()->GetComponentData(body->GetComponentIndex()).m_bodyId;
+		const ReflectedData authored = body->GetReflectedData();
+		auto readPose = [&]()
+			{
+				Physics::PhysicsBodyPose pose;
+				Require(physicsWorld->GetBodyPose(bodyId, pose) &&
+					IsNear(body->GetLinearVelocity(), pose.m_linearVelocity) &&
+					IsNear(body->GetAngularVelocity(), pose.m_angularVelocity),
+					"velocity getters must reflect the real body's latest synchronized state");
+				return pose;
+			};
+		for (uint32_t repetition = 0; repetition < 2; ++repetition)
+		{
+			const auto step = world.TickPhysics(c_fixedDeltaTime);
+			Require(step && step->IsFinished() && step->GetThreadType() == EThreadType::Physics &&
+				readPose().m_linearVelocity.y < -0.1f,
+				"a real fixed step must accelerate the initially stationary body under gravity");
+			body->SetLinearVelocity(glm::vec3(0.0f));
+			Require(!world.TickPhysics(0.0f) && IsNear(readPose().m_linearVelocity, glm::vec3(0.0f)),
+				"SetLinearVelocity(0) must stop a freshly accelerated body on every call, without a simulation substep");
+		}
+
+		for (uint32_t repetition = 0; repetition < 2; ++repetition)
+		{
+			const auto beforeForce = readPose();
+			Require(body->AddForceAtPosition(glm::vec3(12.0f, 0.0f, 0.0f),
+				beforeForce.m_position + glm::vec3(0.0f, 1.0f, 0.0f)), "off-center force must reach the live body");
+			world.TickPhysics(c_fixedDeltaTime);
+			const auto accelerated = readPose();
+			Require(accelerated.m_linearVelocity.x > 0.1f && std::abs(accelerated.m_angularVelocity.z) > 0.1f,
+				"an off-center force must produce both linear and angular velocity");
+			body->SetLinearVelocity(glm::vec3(0.0f));
+			world.TickPhysics(0.0f);
+			Require(IsNear(readPose().m_linearVelocity, glm::vec3(0.0f)) &&
+				IsNear(body->GetAngularVelocity(), accelerated.m_angularVelocity),
+				"a linear stop command must preserve force-generated angular velocity");
+			body->SetLinearVelocity(glm::vec3(3.0f, 0.0f, 0.0f));
+			world.TickPhysics(0.0f);
+			body->SetAngularVelocity(glm::vec3(0.0f));
+			world.TickPhysics(0.0f);
+			Require(IsNear(readPose().m_angularVelocity, glm::vec3(0.0f)) &&
+				IsNear(body->GetLinearVelocity(), glm::vec3(3.0f, 0.0f, 0.0f)),
+				"a repeated angular stop command must preserve the uncommanded linear velocity");
+		}
+		Require(body->GetInitialLinearVelocity() == glm::vec3(0.0f) &&
+			body->GetInitialAngularVelocity() == glm::vec3(0.0f) && body->GetReflectedData() == authored,
+			"gravity, force and runtime velocity commands must never be written back into serialized authoring");
+	}
+
+	void TestKinematicVelocityQueriesFollowAuthoredTargets()
+	{
+		Tasks::Scheduler scheduler;
+		scheduler.Initialize();
+		auto backend = TUniquePtr<Physics::PhysicsWorld>::Make(scheduler);
+		auto* physicsWorld = backend.GetRawPtr();
+		PhysicsComponentTestWorld world(std::move(backend), scheduler);
+		auto owner = world.Instantiate("Kinematic velocity owner");
+		auto body = owner->AddComponent<RigidBodyComponent>();
+		body->SetMotionType(Physics::ERigidBodyMotionType::Kinematic);
+		owner->AddComponent<CollisionShapeComponent>();
+		world.TickPhysics(0.0f);
+		const auto& data = world.GetECS<PhysicsECS>()->GetComponentData(body->GetComponentIndex());
+		const ReflectedData authored = body->GetReflectedData();
+		auto readPose = [&]()
+			{
+				Physics::PhysicsBodyPose pose;
+				Require(physicsWorld->GetBodyPose(data.m_bodyId, pose) &&
+					IsNear(body->GetLinearVelocity(), pose.m_linearVelocity) &&
+					IsNear(body->GetAngularVelocity(), pose.m_angularVelocity),
+					"kinematic velocity queries must match Jolt after authored moves and fixed steps");
+				Require(IsNear(data.m_currentPose.m_position, pose.m_position) &&
+					std::abs(glm::dot(data.m_currentPose.m_rotation, pose.m_rotation)) > 0.99999f,
+					"the synchronized kinematic pose must follow the body without dynamic interpolation");
+				return pose;
+			};
+
+		const glm::vec3 targetPosition(1.0f, 0.5f, -0.25f);
+		const glm::quat targetRotation = glm::angleAxis(0.25f, glm::vec3(0.0f, 1.0f, 0.0f));
+		owner->GetTransformComponent().SetPosition(targetPosition);
+		owner->GetTransformComponent().SetRotation(targetRotation);
+		Require(!world.TickPhysics(0.0f), "an authored kinematic target must not require a fixed step to publish its velocity");
+		auto pose = readPose();
+		Require(glm::length(pose.m_linearVelocity) > 0.1f && glm::length(pose.m_angularVelocity) > 0.1f &&
+			IsNear(pose.m_position, glm::vec3(0.0f)),
+			"MoveKinematic must derive both velocities before the body advances toward its target");
+		const auto step = world.TickPhysics(c_fixedDeltaTime);
+		Require(step && step->IsFinished(), "the kinematic fixed step must complete");
+		pose = readPose();
+		Require(IsNear(pose.m_position, targetPosition, 0.001f) &&
+			std::abs(glm::dot(pose.m_rotation, targetRotation)) > 0.99999f,
+			"the real Jolt step must reach the authored position and rotation");
+
+		world.TickPhysics(0.0f);
+		pose = readPose();
+		Require(IsNear(pose.m_linearVelocity, glm::vec3(0.0f), 0.001f) &&
+			IsNear(pose.m_angularVelocity, glm::vec3(0.0f), 0.001f),
+			"an unchanged reached target must publish stopped kinematic velocities without explicit commands");
+		world.TickPhysics(c_fixedDeltaTime);
+		pose = readPose();
+		Require(IsNear(pose.m_linearVelocity, glm::vec3(0.0f), 0.001f) &&
+			IsNear(pose.m_angularVelocity, glm::vec3(0.0f), 0.001f) && body->GetReflectedData() == authored,
+			"a settled kinematic body must retain live query parity without rewriting initial authoring");
+	}
+
+	void TestPhysicsWorldQueuesAndDrainsJoltJobs()
+	{
+		std::atomic<uint32_t> workersStarted = 0;
+		std::atomic<bool> releaseWorkers = false;
+		Tasks::Scheduler scheduler;
+		scheduler.Initialize();
+		Physics::PhysicsWorld world(scheduler);
+		uint32_t firstBody = ~0u;
+		for (uint32_t index = 0; index < 64u; ++index)
+		{
+			uint32_t bodyId = ~0u;
+			Require(world.CreateBody(MakeBox(InstanceId::GenerateNewInstanceId(),
+				Physics::ERigidBodyMotionType::Dynamic, glm::vec3(3.0f * index, 4.0f, 0.0f), glm::vec3(1.0f)), bodyId),
+				"the scheduled Jolt fixture must create real dynamic bodies");
+			if (index == 0u)
+			{
+				firstBody = bodyId;
+			}
+		}
+
+		const uint32_t workerCount = scheduler.GetNumWorkerThreads();
+		TVector<Tasks::ITaskPtr> blockers;
+		for (uint32_t index = 0; index < workerCount; ++index)
+		{
+			auto blocker = Tasks::CreateTask(scheduler, "Hold worker before Jolt step", [&]()
+				{
+					workersStarted.fetch_add(1, std::memory_order_release);
+					releaseWorkers.wait(false, std::memory_order_acquire);
+				});
+			blocker->Run();
+			blockers.Add(blocker);
+		}
+		const bool allWorkersBlocked = WaitUntil([&]() { return workersStarted.load() == workerCount; });
+		const bool queueInitiallyEmpty = scheduler.GetNumTasks(EThreadType::Worker) == 0u;
+		Tasks::TaskPtr<bool> step;
+		bool queuedJoltJobs = false;
+		bool stepWaitingForJobs = false;
+		if (allWorkersBlocked)
+		{
+			step = Tasks::CreateTask<bool>(scheduler, "Step real Jolt world", [&]()
+				{
+					return world.Step(c_fixedDeltaTime);
+				}, EThreadType::Physics);
+			step->Run();
+			queuedJoltJobs = WaitUntil([&]() { return scheduler.GetNumTasks(EThreadType::Worker) > 0u; });
+			stepWaitingForJobs = !step->IsFinished();
+		}
+
+		// Release and join before assertions so a failed observation cannot strand workers.
+		releaseWorkers.store(true, std::memory_order_release);
+		releaseWorkers.notify_all();
+		for (auto& blocker : blockers)
+		{
+			blocker->Wait();
+		}
+		if (step)
+		{
+			step->Wait();
+		}
+		Require(allWorkersBlocked && queueInitiallyEmpty && queuedJoltJobs && stepWaitingForJobs,
+			"the real physics step must enqueue Jolt work and wait while its Worker queue is held");
+		Require(step->GetResult() && scheduler.GetNumTasks(EThreadType::Worker) == 0u,
+			"the step must finish successfully only after its queued Jolt work has drained");
+		Physics::PhysicsBodyPose pose;
+		Require(world.GetBodyPose(firstBody, pose) && pose.m_linearVelocity.y < -0.1f,
+			"the scheduled Jolt step must actually advance the body under gravity");
+	}
+
 	void TestComponentTeardownOrdering()
 	{
 		PhysicsComponentTestWorld world;
@@ -836,6 +1179,11 @@ int main()
 		{ "SameBuildRepeatability", TestSameBuildRepeatability },
 		{ "WorldPoseToLocalForTransformedParent", TestWorldPoseToLocalForTransformedParent },
 		{ "ReflectedPhysicsAuthoringContract", TestReflectedPhysicsAuthoringContract },
+		{ "InitialVelocityAuthoringStaysSeparateFromRuntimeCommands", TestInitialVelocityAuthoringStaysSeparateFromRuntimeCommands },
+		{ "PendingVelocityCommandsAndLiveBodyReconstruction", TestPendingVelocityCommandsAndLiveBodyReconstruction },
+		{ "VelocityQueriesAndRepeatedStopAfterAcceleration", TestVelocityQueriesAndRepeatedStopAfterAcceleration },
+		{ "KinematicVelocityQueriesFollowAuthoredTargets", TestKinematicVelocityQueriesFollowAuthoredTargets },
+		{ "PhysicsWorldQueuesAndDrainsJoltJobs", TestPhysicsWorldQueuesAndDrainsJoltJobs },
 		{ "ComponentTeardownOrdering", TestComponentTeardownOrdering },
 		{ "BulkPhysicsWorldClearAndReuse", TestBulkPhysicsWorldClearAndReuse },
 		{ "WorldClearReleasesPhysicsAuthoringSlots", TestWorldClearReleasesPhysicsAuthoringSlots },
