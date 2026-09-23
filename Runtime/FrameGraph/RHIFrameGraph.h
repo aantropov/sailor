@@ -66,7 +66,7 @@ namespace Sailor::RHI
 			m_values[name] = value;
 		}
 
-		SAILOR_API TVector<Sailor::Tasks::TaskPtr<void, void>> Prepare(RHI::RHISceneViewPtr rhiSceneView);
+		SAILOR_API TVector<Sailor::Tasks::ITaskPtr> Prepare(RHI::RHISceneViewPtr rhiSceneView);
 
 		SAILOR_API bool Process(RHI::RHISceneViewPtr rhiSceneView,
 			TVector<RHI::RHICommandListPtr>& outTransferCommandLists,

@@ -1,5 +1,8 @@
 #include "Engine/World.h"
 #include "FrameGraph/BlitFormatConversion.h"
+#include "FrameGraph/DebugDrawNode.h"
+#include "FrameGraph/RHIFrameGraph.h"
+#include "RHI/DebugContext.h"
 #include "RHI/Material.h"
 #include "RHI/RenderSubmission.h"
 #include "RHI/Scene.h"
@@ -550,6 +553,64 @@ namespace
 				ETextureFormat::D32_SFLOAT),
 			"matching depth formats must remain on the dedicated native depth path");
 	}
+
+	void TestDebugRecordingIsASubmissionPrerequisite()
+	{
+		for (const bool bIncludeDebugPass : { false, true })
+		{
+			Tasks::Scheduler scheduler;
+			scheduler.AttachCurrentThreadAsMainThread();
+			auto graph = RHIFrameGraphPtr::Make();
+			if (bIncludeDebugPass)
+			{
+				// No attachments: the node cannot consume its recording result.
+				graph->GetGraph().Add(TRefPtr<DebugDrawNode>::Make());
+			}
+			auto sceneView = RHISceneViewPtr::Make();
+			DebugContext::DrawSnapshot snapshot;
+			{
+				DebugContext context;
+				snapshot = context.GetDrawSnapshot();
+			}
+			uint32_t completed = 0u;
+			for (uint32_t camera = 0; camera < 2u; ++camera)
+			{
+				// Main-queue admission lets this test complete each camera independently.
+				sceneView->m_debugDraw.Add(Tasks::CreateTask<RHICommandListPtr>(scheduler,
+					"Record retained debug snapshot", [snapshot, &completed]()
+					{
+						DebugContext::DrawDebugMesh({}, glm::mat4(1.0f), snapshot, glm::ivec2(64));
+						++completed;
+						return RHICommandListPtr{};
+					}, EThreadType::Main));
+				RHISceneViewSnapshot view;
+				view.m_camera = TUniquePtr<CameraData>::Make();
+				view.m_cameraIndex = camera;
+				sceneView->m_snapshots.Add(std::move(view));
+			}
+			const auto prerequisites = graph->Prepare(sceneView);
+			Require(prerequisites.Num() == 2u,
+				"every camera recording must belong to preparation even without a usable DebugDraw pass");
+			uint32_t completedAtSubmission = 0u;
+			auto frame = Tasks::CreateTask(scheduler, "Submit after all recording",
+				[&]() { completedAtSubmission = completed; }, EThreadType::Main);
+			for (const auto& task : prerequisites)
+			{
+				frame->Join(task);
+			}
+			frame->Run();
+			scheduler.ProcessTasksOnMainThread();
+			const bool bInitiallyBlocked = !frame->IsStarted();
+			prerequisites[0]->Run();
+			scheduler.ProcessTasksOnMainThread();
+			const bool bBlockedAfterFirstCamera = !frame->IsStarted() && completed == 1u;
+			prerequisites[1]->Run();
+			scheduler.ProcessTasksOnMainThread();
+			Require(bInitiallyBlocked && bBlockedAfterFirstCamera && frame->IsFinished() &&
+				completedAtSubmission == 2u,
+				"submission must wait for both retained recordings, not depend on DebugDraw consuming them");
+		}
+	}
 }
 
 int main()
@@ -569,6 +630,7 @@ int main()
 		TestBlitFormatConversionPath();
 		TestMotionHistoryContinuity();
 		TestObjectMotionUsesRenderedVersions();
+		TestDebugRecordingIsASubmissionPrerequisite();
 	}
 	catch (const std::exception& exception)
 	{

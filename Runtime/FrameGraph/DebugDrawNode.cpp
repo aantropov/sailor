@@ -46,11 +46,6 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
 
-	{
-		SAILOR_PROFILE_SCOPE("Wait for DebugContext");
-		while (!sceneView.m_debugDrawSecondaryCmdList->IsFinished());
-	}
-
 	auto debugDrawCommandList = sceneView.m_debugDrawSecondaryCmdList->GetResult();
 	if (!debugDrawCommandList)
 	{
