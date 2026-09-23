@@ -57,7 +57,10 @@ void LandscapeECS::OnComponentUnregistered(size_t, LandscapeData& component)
 	component.m_chunks.Clear();
 	component.m_runtimeMaterial.Clear();
 	++m_shadowCastersRevision;
-	PublishSceneVersion();
+	if (!GetWorld() || !GetWorld()->IsClearing())
+	{
+		PublishSceneVersion();
+	}
 }
 
 void LandscapeECS::DestroyPhysicsBodies(LandscapeData& component)

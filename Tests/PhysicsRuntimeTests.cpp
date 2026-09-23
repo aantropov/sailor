@@ -2,6 +2,7 @@
 #include "Components/CollisionShapeComponent.h"
 #include "Components/BuoyancyComponent.h"
 #include "Components/RigidBodyComponent.h"
+#include "Components/LandscapeComponent.h"
 #include "Core/Reflection.h"
 #include "ECS/PhysicsECS.h"
 #include "ECS/TransformECS.h"
@@ -39,6 +40,7 @@ namespace
 			TVector<ECS::TBaseSystemPtr> systems;
 			systems.Add(TUniquePtr<TransformECS>::Make());
 			systems.Add(TUniquePtr<PhysicsECS>::Make());
+			systems.Add(TUniquePtr<LandscapeECS>::Make());
 			return systems;
 		}
 	};
@@ -667,6 +669,84 @@ namespace
 		world.Clear();
 	}
 
+	void TestBulkPhysicsWorldClearAndReuse()
+	{
+		for (uint32_t count : { 32u, 64u })
+		{
+			Physics::PhysicsWorld world;
+			TVector<uint32_t> bodies;
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				uint32_t body = ~0u;
+				Require(world.CreateBody(MakeBox(InstanceId::GenerateNewInstanceId(),
+					Physics::ERigidBodyMotionType::Static, glm::vec3(3.0f * index, 0.0f, 0.0f), glm::vec3(1.0f)), body),
+					"each body must be created in the actual Jolt world");
+				bodies.Add(body);
+				Physics::PhysicsRaycastHit hit;
+				Require(world.Raycast(glm::vec3(3.0f * index, 2.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 4.0f, hit),
+					"the live Jolt body must be queryable before bulk Clear");
+			}
+			world.Clear();
+			world.Clear();
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				Physics::PhysicsBodyPose pose;
+				Physics::PhysicsRaycastHit hit;
+				Require(!world.GetBodyPose(bodies[index], pose) &&
+					!world.Raycast(glm::vec3(3.0f * index, 2.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 4.0f, hit),
+					"bulk Clear must release every body and remove all query geometry");
+			}
+			const InstanceId replacementId = InstanceId::GenerateNewInstanceId();
+			uint32_t replacement = ~0u;
+			Require(world.CreateBody(MakeBox(replacementId, Physics::ERigidBodyMotionType::Static,
+				glm::vec3(0.0f), glm::vec3(1.0f)), replacement), "the cleared Jolt world must accept a new body");
+			Physics::PhysicsRaycastHit hit;
+			Require(world.Raycast(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 4.0f, hit) &&
+				hit.m_instanceId == replacementId, "reused physics state must resolve only the new owner");
+		}
+	}
+
+	void TestWorldClearReleasesPhysicsAuthoringSlots()
+	{
+		for (uint32_t count : { 32u, 64u })
+		{
+			PhysicsComponentTestWorld world;
+			auto* physics = world.GetECS<PhysicsECS>();
+			auto* landscapes = world.GetECS<LandscapeECS>();
+			TVector<GameObjectPtr> objects;
+			TVector<ComponentPtr> components;
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				auto object = world.Instantiate("Physics authoring owner");
+				components.Add(object->AddComponent<RigidBodyComponent>());
+				components.Add(object->AddComponent<CollisionShapeComponent>());
+				components.Add(object->AddComponent<LandscapeComponent>());
+				objects.Add(object);
+				Require(physics->IsComponentRegistered(index) && landscapes->IsComponentRegistered(index),
+					"rigid body and landscape authoring must register independent ECS slots");
+			}
+			world.Clear();
+			world.Clear();
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				Require(!objects[index] && !physics->IsComponentRegistered(index) && !landscapes->IsComponentRegistered(index),
+					"world teardown must unregister every rigid body and landscape slot");
+			}
+			for (const auto& component : components)
+			{
+				Require(!component, "physics authoring component handles must not survive Clear");
+			}
+			auto replacement = world.Instantiate("Fresh physics authoring");
+			auto body = replacement->AddComponent<RigidBodyComponent>();
+			auto landscape = replacement->AddComponent<LandscapeComponent>();
+			Require(body->GetComponentIndex() == 0 && landscape->GetComponentIndex() == 0 &&
+				physics->GetComponentData(0).m_bodyId == RigidBodyData::InvalidBodyId &&
+				landscapes->GetComponentData(0).m_physicsBodies.IsEmpty() && landscapes->GetComponentData(0).m_chunks.IsEmpty(),
+				"new authoring slots must not inherit old body handles or landscape resources");
+			world.Clear();
+		}
+	}
+
 	void TestForceAtPositionAppliesLinearAndAngularImpulse()
 	{
 		Physics::PhysicsWorld world;
@@ -757,6 +837,8 @@ int main()
 		{ "WorldPoseToLocalForTransformedParent", TestWorldPoseToLocalForTransformedParent },
 		{ "ReflectedPhysicsAuthoringContract", TestReflectedPhysicsAuthoringContract },
 		{ "ComponentTeardownOrdering", TestComponentTeardownOrdering },
+		{ "BulkPhysicsWorldClearAndReuse", TestBulkPhysicsWorldClearAndReuse },
+		{ "WorldClearReleasesPhysicsAuthoringSlots", TestWorldClearReleasesPhysicsAuthoringSlots },
 		{ "ForceAtPositionAppliesLinearAndAngularImpulse", TestForceAtPositionAppliesLinearAndAngularImpulse },
 		{ "StaticTriangleMeshSupportsDynamicBodies", TestStaticTriangleMeshSupportsDynamicBodies },
 	};

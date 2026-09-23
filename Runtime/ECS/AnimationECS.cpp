@@ -60,6 +60,7 @@ void AnimationECS::BeginPlay()
 
 void AnimationECS::EndPlay()
 {
+	ECS::TSystem<AnimationECS, AnimatorComponentData>::EndPlay();
 	m_bonesBinding.Clear();
 	m_bonesBuffer.Clear();
 	m_cpuBoneMatrices.Clear();
@@ -261,7 +262,10 @@ void AnimationECS::RefreshController(size_t componentIndex, bool bResetInstance)
 
 void AnimationECS::OnComponentUnregistered(size_t, AnimatorComponentData&)
 {
-	InvalidateGpuLayout();
+	if (!GetWorld() || !GetWorld()->IsClearing())
+	{
+		InvalidateGpuLayout();
+	}
 }
 
 Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)

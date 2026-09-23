@@ -1583,7 +1583,10 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 	}
 
 	root->SetParentInternal({}, true);
-	RemovePrefabLinksInHierarchy(root);
+	if (!m_bIsClearing)
+	{
+		RemovePrefabLinksInHierarchy(root);
+	}
 
 	TVector<GameObjectPtr> destroyingObjects;
 	destroyingObjects.Reserve(root->GetChildren().Num() + 1);
@@ -1618,7 +1621,10 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 		go->EndPlay();
 
 		m_objectsMap.Remove(go->m_instanceId);
-		m_objects.RemoveFirst(go);
+		if (!m_bIsClearing)
+		{
+			m_objects.RemoveFirst(go);
+		}
 		go.DestroyObject(m_allocator);
 	}
 }
@@ -1743,20 +1749,37 @@ void World::Clear()
 	ComponentsToResolveDependencies.Clear();
 
 	TVector<GameObjectPtr> objectsToDestroy = m_objects;
+	TVector<GameObjectPtr> roots;
+	roots.Reserve(objectsToDestroy.Num());
 	for (auto& go : objectsToDestroy)
 	{
-		if (!go || !m_objectsMap.ContainsKey(go->m_instanceId))
+		if (!go)
 		{
 			continue;
 		}
 
+		go->m_fileId = FileId::Invalid;
+		if (!go->GetParent())
+		{
+			roots.Add(go);
+		}
+	}
+	m_prefabInstances.Clear();
+	m_prefabInstanceRootsByObject.Clear();
+
+	for (const auto& root : roots)
+	{
+		DestroyGameObjectHierarchy(root);
+	}
+
+	// EndPlay can reparent descendants after their old hierarchy was queued.
+	for (const auto& go : objectsToDestroy)
+	{
 		DestroyGameObjectHierarchy(go);
 	}
 
 	m_objects.Clear();
 	m_pendingDestroyObjects.Clear();
-	m_prefabInstances.Clear();
-	m_prefabInstanceRootsByObject.Clear();
 	m_editorSelection.Clear();
 	m_pDebugContext.Clear();
 

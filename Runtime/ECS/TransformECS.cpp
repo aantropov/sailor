@@ -65,6 +65,10 @@ void TransformECS::MarkDirty(TransformComponent* ptr)
 
 void TransformECS::OnComponentUnregistered(size_t index, TransformComponent&)
 {
+	if (GetWorld() && GetWorld()->IsClearing())
+	{
+		return;
+	}
 	m_dirtyComponents.Remove(index);
 
 	// A transform can be queued for reparenting while its previous parent is removed.
@@ -101,6 +105,12 @@ void TransformECS::OnComponentUnregistered(size_t index, TransformComponent&)
 			m_dirtyComponents.AddUnique(otherIndex);
 		}
 	}
+}
+
+void TransformECS::EndPlay()
+{
+	m_dirtyComponents.Clear();
+	ECS::TSystem<TransformECS, TransformComponent>::EndPlay();
 }
 
 Tasks::ITaskPtr TransformECS::PostTick()
