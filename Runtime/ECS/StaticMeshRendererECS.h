@@ -49,6 +49,10 @@ namespace Sailor
 			uint32_t minLod,
 			uint32_t maxLod,
 			const TVector<float>& screenCoverageThresholds);
+		SAILOR_API static void NormalizeLodSettings(
+			uint32_t minLod,
+			uint32_t& maxLod,
+			TVector<float>& screenCoverageThresholds);
 	protected:
 
 		ModelPtr m_model;

@@ -7,6 +7,7 @@
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -1213,6 +1214,126 @@ namespace
 		Require(cameraIntersectionCoverage == 1.0f,
 			"projected AABB coverage must conservatively select the highest LOD when bounds cross the camera plane");
 
+	}
+
+	void TestMeshLodSettingsNormalizeBeforeInitialization()
+	{
+		MeshRendererComponent authoring;
+		authoring.SetMinLod(4u);
+		authoring.SetMaxLod(1u);
+		authoring.SetScreenCoverageThresholds(TVector<float>{
+			std::numeric_limits<float>::quiet_NaN(), -1.0f, 0.4f,
+			std::numeric_limits<float>::infinity(), 2.0f, 0.1f });
+		Require(authoring.GetMinLod() == 4u && authoring.GetMaxLod() == 4u &&
+			authoring.GetScreenCoverageThresholds() == TVector<float>{ 1.0f, 0.4f, 0.1f, 0.0f, 0.0f, 0.0f },
+			"LOD authoring must normalize before an owner or ECS slot exists");
+
+		StaticMeshRendererData data;
+		data.SetLodSettings(0u, 2u, TVector<float>{ 0.05f, 0.25f });
+		Require(!data.IsDirty(),
+			"an equivalent ordering of the default thresholds must not dirty new renderer data");
+		data.SetLodSettings(4u, 1u, authoring.GetScreenCoverageThresholds());
+		Require(data.IsDirty() && data.ResolveLod(1.0f, 8u) == 4u && data.ResolveLod(0.0f, 8u) == 4u,
+			"changed LOD settings must dirty renderer data and clamp the maximum to the minimum");
+	}
+
+	void TestMeshLodChangesPublishWithoutTransformEdits()
+	{
+		for (const auto mobility : { EMobilityType::Static, EMobilityType::Stationary })
+		{
+			PrefabTestWorld world;
+			auto object = world.Instantiate("Unmoving LOD mesh");
+			object->SetMobilityType(mobility);
+			auto renderer = object->AddComponent<MeshRendererComponent>();
+			auto model = TObjectPtr<PublishedMeshTestModel>::Make(world.GetAllocator());
+			model->m_ready = true;
+			auto material = TObjectPtr<PublishedMeshTestMaterial>::Make(world.GetAllocator());
+			renderer->SetModel(model);
+			renderer->GetMaterials().Add(material);
+			const auto transformFrame = object->GetTransformComponent().GetFrameLastChange();
+			const auto materialRevision = material->GetContentRevision();
+			auto* meshes = world.GetECS<StaticMeshRendererECS>();
+			meshes->BeginPlay();
+
+			auto tick = [&]()
+				{
+					world.AdvanceFrame();
+					meshes->Tick(0.016f);
+					Require(object->GetTransformComponent().GetFrameLastChange() == transformFrame &&
+						material->GetContentRevision() == materialRevision,
+						"LOD publication must not rely on a transform or material edit");
+					return meshes->GetRHIScene()->GetCurrentVersion();
+				};
+			const auto initial = tick();
+			const auto& handles = mobility == EMobilityType::Static ?
+				initial->m_staticHandles : initial->m_stationaryHandles;
+			Require(handles && handles->Num() == 1u,
+				"the ready mesh component must publish exactly one instance");
+			const auto handle = (*handles)[0];
+			auto policy = [&](const RHI::RHISceneVersionPtr& version) -> const RHI::RHILodPolicy&
+				{
+					const RHI::RHISceneInstanceRecord* record = nullptr;
+					Require(version->Resolve(handle, record) && record && record->m_topology,
+						"the retained mesh instance must resolve its topology");
+					const auto* resource = dynamic_cast<const RHI::RHISceneProxyResource*>(record->m_topology.GetRawPtr());
+					Require(resource != nullptr, "the mesh topology must carry a published scene proxy");
+					return resource->m_proxy.m_lodPolicy;
+				};
+			const auto& initialPolicy = policy(initial);
+			Require(initialPolicy.m_bEnabled && initialPolicy.m_minLod == 0u && initialPolicy.m_maxLod == 2u &&
+				initialPolicy.m_screenCoverageThresholds == TVector<float>{ 0.25f, 0.05f },
+				"the initial scene must contain the component's default LOD policy");
+
+			renderer->SetMinLod(1u);
+			const auto minimumChanged = tick();
+			Require(minimumChanged != initial && policy(minimumChanged).m_minLod == 1u &&
+				policy(minimumChanged).m_maxLod == 2u && initialPolicy.m_minLod == 0u,
+				"changing minimum LOD must publish a new policy without mutating the retained scene");
+			renderer->SetMinLod(1u);
+			Require(!renderer->GetData().IsDirty() && tick() == minimumChanged,
+				"repeating minimum LOD must not create another scene version");
+
+			renderer->SetMaxLod(5u);
+			const auto maximumChanged = tick();
+			Require(maximumChanged != minimumChanged && policy(maximumChanged).m_maxLod == 5u &&
+				policy(minimumChanged).m_maxLod == 2u,
+				"changing maximum LOD must update the scene while the previous policy remains intact");
+			renderer->SetMaxLod(0u);
+			const auto maximumClamped = tick();
+			Require(maximumClamped != maximumChanged && policy(maximumClamped).m_maxLod == 1u,
+				"a maximum below minimum LOD must publish the clamped limit");
+			renderer->SetMaxLod(1u);
+			Require(!renderer->GetData().IsDirty() && tick() == maximumClamped,
+				"a canonically equivalent maximum must not create another scene version");
+
+			renderer->SetScreenCoverageThresholds(TVector<float>{
+				-0.2f, 0.6f, 2.0f, std::numeric_limits<float>::quiet_NaN() });
+			const auto thresholdsChanged = tick();
+			const TVector<float> expectedThresholds{ 1.0f, 0.6f, 0.0f, 0.0f };
+			Require(thresholdsChanged != maximumClamped &&
+				policy(thresholdsChanged).m_screenCoverageThresholds == expectedThresholds &&
+				policy(maximumClamped).m_screenCoverageThresholds == TVector<float>{ 0.25f, 0.05f },
+				"threshold changes must publish normalized values without modifying an older snapshot");
+			renderer->SetScreenCoverageThresholds(TVector<float>{
+				0.6f, -4.0f, std::numeric_limits<float>::infinity(), 3.0f });
+			Require(renderer->GetScreenCoverageThresholds() == expectedThresholds &&
+				!renderer->GetData().IsDirty() && tick() == thresholdsChanged,
+				"equivalent normalized authoring thresholds must leave the published scene unchanged");
+			renderer->GetData().SetLodSettings(1u, 0u, TVector<float>{
+				3.0f, std::numeric_limits<float>::quiet_NaN(), 0.6f, -1.0f });
+			Require(!renderer->GetData().IsDirty() && tick() == thresholdsChanged,
+				"direct ECS LOD updates must compare canonical limits and thresholds too");
+
+			renderer->SetScreenCoverageThresholds({});
+			const auto thresholdsCleared = tick();
+			Require(thresholdsCleared != thresholdsChanged && policy(thresholdsCleared).m_screenCoverageThresholds.IsEmpty() &&
+				policy(thresholdsChanged).m_screenCoverageThresholds == expectedThresholds,
+				"clearing thresholds must publish an empty policy without discarding the retained thresholds");
+			renderer->SetScreenCoverageThresholds({});
+			Require(!renderer->GetData().IsDirty() && tick() == thresholdsCleared,
+				"repeating an empty threshold list must not create another scene version");
+			world.Clear();
+		}
 	}
 
 	void TestLocalLightShadowContract()
@@ -5002,6 +5123,8 @@ int main()
 		{ "MeshBatchesWithSharedOwnerAndRegistrationHoles", TestMeshBatchesWithSharedOwnerAndRegistrationHoles },
 		{ "FrameZeroMeshPublicationStaysStable", TestFrameZeroMeshPublicationStaysStable },
 		{ "StaticMeshLodSelectionUsesScreenCoverage", TestStaticMeshLodSelectionUsesScreenCoverage },
+		{ "MeshLodSettingsNormalizeBeforeInitialization", TestMeshLodSettingsNormalizeBeforeInitialization },
+		{ "MeshLodChangesPublishWithoutTransformEdits", TestMeshLodChangesPublishWithoutTransformEdits },
 		{ "LocalLightShadowContract", TestLocalLightShadowContract },
 		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },
 		{ "CsmShadowTargetFormatTracksShadowMode", TestCsmShadowTargetFormatTracksShadowMode },

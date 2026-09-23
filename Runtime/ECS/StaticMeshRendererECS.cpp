@@ -292,17 +292,34 @@ void StaticMeshRendererData::SetLodSettings(
 	uint32_t maxLod,
 	const TVector<float>& screenCoverageThresholds)
 {
+	TVector<float> thresholds = screenCoverageThresholds;
+	NormalizeLodSettings(minLod, maxLod, thresholds);
+	if (m_minLod == minLod && m_maxLod == maxLod &&
+		m_screenCoverageThresholds == thresholds)
+	{
+		return;
+	}
+
 	m_minLod = minLod;
-	m_maxLod = (std::max)(minLod, maxLod);
-	m_screenCoverageThresholds = screenCoverageThresholds;
-	for (float& threshold : m_screenCoverageThresholds)
+	m_maxLod = maxLod;
+	m_screenCoverageThresholds = std::move(thresholds);
+	MarkDirty();
+}
+
+void StaticMeshRendererData::NormalizeLodSettings(
+	uint32_t minLod,
+	uint32_t& maxLod,
+	TVector<float>& screenCoverageThresholds)
+{
+	maxLod = (std::max)(minLod, maxLod);
+	for (float& threshold : screenCoverageThresholds)
 	{
 		threshold = std::isfinite(threshold) ?
 			(std::clamp)(threshold, 0.0f, 1.0f) : 0.0f;
 	}
 	std::sort(
-		m_screenCoverageThresholds.begin(),
-		m_screenCoverageThresholds.end(),
+		screenCoverageThresholds.begin(),
+		screenCoverageThresholds.end(),
 		std::greater<float>());
 }
 
