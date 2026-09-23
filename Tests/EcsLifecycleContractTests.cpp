@@ -58,6 +58,99 @@ namespace Sailor
 		ComponentPtr m_sourceDependency;
 		ComponentPtr m_liveDependency;
 	};
+
+	class LifecycleTestComponent final : public Component
+	{
+		SAILOR_REFLECTABLE(LifecycleTestComponent)
+
+	public:
+
+		LifecycleTestComponent() = default;
+
+		void Initialize() override
+		{
+			++s_initialized;
+			for (const auto& component : GetOwner()->GetComponents())
+			{
+				m_bPublishedAtInitialize |= component.GetRawPtr() == this;
+			}
+			auto* ecs = GetWorld()->GetECS<TransformECS>();
+			m_ecsHandle = ecs->RegisterComponent();
+			ecs->GetComponentData(m_ecsHandle).SetOwner(GetOwner());
+		}
+
+		void BeginPlay() override
+		{
+			++s_begun;
+			++m_begins;
+			m_bValidAtBegin = IsValid();
+			m_valueAtBegin = m_value;
+			m_dependencyAtBegin = m_dependency;
+			m_externalDependencyAtBegin = m_externalDependency;
+			m_parentAtBegin = GetOwner()->GetParent();
+			m_positionAtBegin = GetOwner()->GetTransformComponent().GetPosition();
+			// The callback may destroy this component, including its stored function.
+			auto callback = m_onBegin;
+			if (callback)
+			{
+				callback();
+			}
+		}
+
+		void Tick(float) override
+		{
+			++m_ticks;
+			auto callback = m_onTick;
+			if (callback)
+			{
+				callback();
+			}
+		}
+
+		void EditorTick(float) override { ++m_editorTicks; }
+
+		void EndPlay() override
+		{
+			++s_ended;
+			GetWorld()->GetECS<TransformECS>()->UnregisterComponent(m_ecsHandle);
+			m_ecsHandle = ECS::InvalidIndex;
+		}
+
+		float GetValue() const { return m_value; }
+		void SetValue(float value)
+		{
+			m_value = value;
+			GetWorld()->GetECS<TransformECS>()->GetComponentData(m_ecsHandle).SetPosition(glm::vec3(value, 0.0f, 0.0f));
+		}
+		float GetSlotValue() const
+		{
+			return GetWorld()->GetECS<TransformECS>()->GetComponentData(m_ecsHandle).GetPosition().x;
+		}
+		const ComponentPtr& GetExternalDependency() const { return m_externalDependency; }
+		void SetExternalDependency(const ComponentPtr& component) { m_externalDependency = component; }
+
+		inline static uint32_t s_initialized = 0;
+		inline static uint32_t s_begun = 0;
+		inline static uint32_t s_ended = 0;
+		uint32_t m_begins = 0;
+		uint32_t m_ticks = 0;
+		uint32_t m_editorTicks = 0;
+		bool m_bPublishedAtInitialize = false;
+		bool m_bValidAtBegin = false;
+		float m_valueAtBegin = 0.0f;
+		glm::vec4 m_positionAtBegin{};
+		ComponentPtr m_dependency;
+		ComponentPtr m_dependencyAtBegin;
+		ComponentPtr m_externalDependencyAtBegin;
+		GameObjectPtr m_parentAtBegin;
+		std::function<void()> m_onBegin;
+		std::function<void()> m_onTick;
+
+	private:
+		float m_value = 0.0f;
+		size_t m_ecsHandle = ECS::InvalidIndex;
+		ComponentPtr m_externalDependency;
+	};
 }
 
 REFL_AUTO(
@@ -70,6 +163,15 @@ REFL_AUTO(
 	type(Sailor::PrefabMixedDependencyTestComponent, bases<Sailor::Component>),
 	field(m_sourceDependency),
 	field(m_liveDependency)
+)
+
+REFL_AUTO(
+	type(Sailor::LifecycleTestComponent, bases<Sailor::Component>),
+	func(GetValue, property("value")),
+	func(SetValue, property("value")),
+	func(GetExternalDependency, property("externalDependency")),
+	func(SetExternalDependency, property("externalDependency")),
+	field(m_dependency)
 )
 
 namespace
@@ -189,6 +291,12 @@ namespace
 		explicit PrefabTestWorld(EWorldBehaviourMask mask = 0) :
 			World("PrefabRollbackTests", mask, CreateEcs()) {}
 		void AdvanceFrame() { ++m_currentFrame; }
+		void TickLifecycle(float deltaTime = 0.016f)
+		{
+			AdvanceFrame();
+			BeginPlayEcs();
+			TickGameObjects(deltaTime);
+		}
 		size_t GetPendingDependencyCount() const { return GetNumPendingDependencyResolutions(); }
 		bool RemovePrefabMetadataForTest(
 			const InstanceId& rootInstanceId)
@@ -1456,6 +1564,381 @@ namespace
 		FileId fileId;
 		fileId.Deserialize(YAML::Node(value));
 		return fileId;
+	}
+
+	constexpr EWorldBehaviourMask GameplayMask =
+		(uint8_t)EWorldBehaviourBit::CallBeginPlay | (uint8_t)EWorldBehaviourBit::Tickable;
+
+	void TestEditorLifecycleNeverStartsGameplay()
+	{
+		PrefabTestWorld world((uint8_t)EWorldBehaviourBit::EditorTick | (uint8_t)EWorldBehaviourBit::EcsTickable);
+		auto original = world.Instantiate("BeforeFirstFrame")->AddComponent<LifecycleTestComponent>();
+		Require(original->m_bPublishedAtInitialize && !original->IsValid(),
+			"Initialize must see the component in its owner before gameplay activation");
+		original->SetValue(17.0f);
+		Require(original->GetSlotValue() == 17.0f,
+			"Initialize must allocate the ECS slot immediately for reflected setters and editor preview");
+		world.TickLifecycle();
+
+		auto laterOwner = world.Instantiate("AfterFirstFrame");
+		auto typed = laterOwner->AddComponent<LifecycleTestComponent>();
+		auto raw = TObjectPtr<LifecycleTestComponent>::Make(world.GetAllocator());
+		Require(static_cast<bool>(laterOwner->AddComponentRaw(raw)), "raw editor component creation must succeed");
+		Require(typed->m_bPublishedAtInitialize && raw->m_bPublishedAtInitialize &&
+			typed->m_begins == 0 && raw->m_begins == 0,
+			"both component creation paths must initialize without starting gameplay in an already ticking editor");
+		world.TickLifecycle();
+		Require(original->m_editorTicks == 2 && typed->m_editorTicks == 1 && raw->m_editorTicks == 1 &&
+			original->m_begins == 0 && typed->m_begins == 0 && raw->m_begins == 0 &&
+			original->m_ticks == 0 && typed->m_ticks == 0 && raw->m_ticks == 0,
+			"editor callbacks must remain available without any gameplay BeginPlay or Tick");
+		world.Clear();
+	}
+
+	void TestBeginPlayAndTickMasksRemainIndependent()
+	{
+		PrefabTestWorld tickOnly((uint8_t)EWorldBehaviourBit::Tickable);
+		auto inactive = tickOnly.Instantiate()->AddComponent<LifecycleTestComponent>();
+		tickOnly.TickLifecycle();
+		tickOnly.TickLifecycle();
+		Require(inactive->m_begins == 0 && inactive->m_ticks == 0,
+			"Tickable alone must not implicitly start an inactive gameplay component");
+		tickOnly.Clear();
+
+		PrefabTestWorld beginOnly((uint8_t)EWorldBehaviourBit::CallBeginPlay);
+		auto started = beginOnly.Instantiate()->AddComponent<LifecycleTestComponent>();
+		beginOnly.TickLifecycle();
+		beginOnly.TickLifecycle();
+		Require(started->m_begins == 1 && started->m_bValidAtBegin && started->m_ticks == 0,
+			"CallBeginPlay must activate once, set validity before the callback and not enable gameplay Tick");
+		beginOnly.Clear();
+	}
+
+	void TestPrefabBeginsAfterHydrationAndHierarchy()
+	{
+		PrefabTestWorld world(GameplayMask);
+		world.TickLifecycle();
+		YAML::Node prefabNode = MakePrefabNode({ static_cast<uint32_t>(-1), 0 });
+		const InstanceId rootId(prefabNode["gameObjects"][0]["instanceId"].as<std::string>());
+		const InstanceId childId(prefabNode["gameObjects"][1]["instanceId"].as<std::string>());
+		const InstanceId rootComponentId = InstanceId::GenerateNewComponentId(rootId);
+		const InstanceId childComponentId = InstanceId::GenerateNewComponentId(childId);
+		for (uint32_t index = 0; index < 2; ++index)
+		{
+			YAML::Node properties;
+			properties["value"] = index == 0 ? 31.0f : 47.0f;
+			properties["m_dependency"]["fileId"] = "NullFileId";
+			properties["m_dependency"]["instanceId"] = (index == 0 ? childComponentId : rootComponentId).ToString();
+			prefabNode["components"].push_back(MakeReflectedComponent(
+				(index == 0 ? rootComponentId : childComponentId).ToString(), properties, true,
+				LifecycleTestComponent::GetStaticTypeInfo().Name()));
+			prefabNode["gameObjects"][index]["components"].push_back(index);
+			prefabNode["gameObjects"][index]["position"] = glm::vec4(10.0f + index, 2.0f, 3.0f, 1.0f);
+		}
+		auto prefab = DeserializePrefab(world, prefabNode);
+		auto root = world.Instantiate(prefab);
+		Require(root && root->GetChildren().Num() == 1, "the runtime prefab must commit its complete hierarchy");
+		auto child = root->GetChildren()[0];
+		auto rootComponent = root->GetComponent<LifecycleTestComponent>();
+		auto childComponent = child->GetComponent<LifecycleTestComponent>();
+		Require(rootComponent && childComponent && rootComponent->m_bPublishedAtInitialize && childComponent->m_bPublishedAtInitialize &&
+			rootComponent->GetSlotValue() == 31.0f && childComponent->GetSlotValue() == 47.0f &&
+			rootComponent->m_begins == 0 && childComponent->m_begins == 0,
+			"prefab hydration must use initialized ECS slots without eager gameplay callbacks");
+		world.TickLifecycle();
+		Require(rootComponent->m_begins == 1 && childComponent->m_begins == 1 &&
+			rootComponent->m_valueAtBegin == 31.0f && childComponent->m_valueAtBegin == 47.0f &&
+			rootComponent->m_dependencyAtBegin == childComponent && childComponent->m_dependencyAtBegin == rootComponent &&
+			!rootComponent->m_parentAtBegin && childComponent->m_parentAtBegin == root &&
+			rootComponent->m_positionAtBegin.x == 10.0f && childComponent->m_positionAtBegin.x == 11.0f &&
+			rootComponent->m_bValidAtBegin && childComponent->m_bValidAtBegin,
+			"BeginPlay must observe authored properties, both internal references, transforms and the committed parent");
+		Require(rootComponent->m_ticks == 0 && childComponent->m_ticks == 0,
+			"a component's first lifecycle callback is BeginPlay, not BeginPlay followed by Tick in the same phase");
+		world.TickLifecycle();
+		Require(rootComponent->m_begins == 1 && childComponent->m_begins == 1 &&
+			rootComponent->m_ticks == 1 && childComponent->m_ticks == 1,
+			"hydrated components must begin exactly once and tick on subsequent frames");
+		world.Clear();
+		prefab.DestroyObject(world.GetAllocator());
+	}
+
+	void TestFailedPrefabNeverBeginsGameplay()
+	{
+		PrefabTestWorld world(GameplayMask);
+		world.Instantiate("ExistingObject");
+		world.TickLifecycle();
+		const uint32_t initialized = LifecycleTestComponent::s_initialized;
+		const uint32_t begun = LifecycleTestComponent::s_begun;
+		const uint32_t ended = LifecycleTestComponent::s_ended;
+		YAML::Node components(YAML::NodeType::Sequence);
+		for (uint32_t index = 0; index < 2; ++index)
+		{
+			YAML::Node properties;
+			properties["value"] = index == 0 ? "15.0" : "not-a-float";
+			components.push_back(MakeReflectedComponent(
+				index == 0 ? "1111111111111111_10010010010010010000" : "2222222222222222_10010010010010010000",
+				properties, true, LifecycleTestComponent::GetStaticTypeInfo().Name()));
+		}
+		auto prefab = DeserializePrefab(world, MakeComponentPrefabNode(components));
+		Require(!world.Instantiate(prefab), "a malformed property must reject the prefab after component initialization");
+		Require(world.GetGameObjects().Num() == 1 && world.GetPendingDependencyCount() == 0 &&
+			LifecycleTestComponent::s_initialized == initialized + 2 && LifecycleTestComponent::s_ended == ended + 2 &&
+			LifecycleTestComponent::s_begun == begun,
+			"rollback must release initialized components without running their gameplay callbacks");
+		world.TickLifecycle();
+		Require(LifecycleTestComponent::s_begun == begun,
+			"failed prefab components must not remain eligible for a later lifecycle phase");
+		world.Clear();
+		prefab.DestroyObject(world.GetAllocator());
+	}
+
+	void TestBeginPlayWaitsForExternalReferences()
+	{
+		PrefabTestWorld world(GameplayMask);
+		world.TickLifecycle();
+		const InstanceId targetId = InstanceId::GenerateNewInstanceId();
+		const InstanceId targetComponentId = InstanceId::GenerateNewComponentId(targetId);
+		YAML::Node properties;
+		properties["value"] = 23.0f;
+		properties["m_dependency"]["fileId"] = "NullFileId";
+		properties["m_dependency"]["instanceId"] = targetComponentId.ToString();
+		YAML::Node components(YAML::NodeType::Sequence);
+		components.push_back(MakeReflectedComponent(
+			"1111111111111111_10010010010010010000", properties, true,
+			LifecycleTestComponent::GetStaticTypeInfo().Name()));
+		auto prefab = DeserializePrefab(world, MakeComponentPrefabNode(components));
+		auto owner = world.Instantiate(prefab);
+		Require(static_cast<bool>(owner), "an external reference may be resolved after the prefab commits");
+		auto source = owner->GetComponent<LifecycleTestComponent>();
+		world.TickLifecycle();
+		world.ResolveExternalDependencies();
+		world.TickLifecycle();
+		Require(world.GetPendingDependencyCount() == 1 && source->m_begins == 0 && source->m_ticks == 0 && !source->IsValid(),
+			"a committed component with an unresolved external reference must not activate or tick");
+
+		auto targetOwner = world.Instantiate("LateDependency", targetId);
+		auto target = TObjectPtr<LifecycleTestComponent>::Make(world.GetAllocator());
+		Require(static_cast<bool>(targetOwner->AddComponentRaw(target, targetComponentId)),
+			"the later component must retain the referenced instance identity");
+		world.ResolveExternalDependencies();
+		Require(world.GetPendingDependencyCount() == 0 && source->m_dependency == target && source->m_begins == 0,
+			"reference resolution marks readiness but must not run BeginPlay outside the lifecycle phase");
+		world.TickLifecycle();
+		Require(source->m_begins == 1 && source->m_dependencyAtBegin == target && source->m_valueAtBegin == 23.0f &&
+			source->m_ticks == 0 && target->m_begins == 1,
+			"the next lifecycle phase must activate the now-resolved component exactly once");
+		world.TickLifecycle();
+		Require(source->m_begins == 1 && source->m_ticks == 1,
+			"a previously pending reference must not cause repeated BeginPlay");
+		world.Clear();
+		prefab.DestroyObject(world.GetAllocator());
+	}
+
+	void TestPendingReferencesStayWithinPrefabInstance()
+	{
+		for (bool forceNewIds : { true, false })
+		{
+			PrefabTestWorld world(GameplayMask);
+			world.TickLifecycle();
+			const InstanceId externalOwnerId = InstanceId::GenerateNewInstanceId();
+			const InstanceId externalComponentId = InstanceId::GenerateNewComponentId(externalOwnerId);
+			YAML::Node prefabNode = MakePrefabNode({ static_cast<uint32_t>(-1), 0 });
+			const InstanceId sourceRootId(prefabNode["gameObjects"][0]["instanceId"].as<std::string>());
+			const InstanceId sourceChildId(prefabNode["gameObjects"][1]["instanceId"].as<std::string>());
+			const InstanceId rootComponentId = InstanceId::GenerateNewComponentId(sourceRootId);
+			const InstanceId childComponentId = InstanceId::GenerateNewComponentId(sourceChildId);
+			YAML::Node rootProperties;
+			rootProperties["value"] = 19.0f;
+			rootProperties["m_dependency"]["fileId"] = "NullFileId";
+			rootProperties["m_dependency"]["instanceId"] = childComponentId.ToString();
+			rootProperties["externalDependency"]["fileId"] = "NullFileId";
+			rootProperties["externalDependency"]["instanceId"] = externalComponentId.ToString();
+			prefabNode["components"].push_back(MakeReflectedComponent(rootComponentId.ToString(), rootProperties, true,
+				LifecycleTestComponent::GetStaticTypeInfo().Name()));
+			prefabNode["components"].push_back(MakeReflectedComponent(childComponentId.ToString(), YAML::Node(), true,
+				LifecycleTestComponent::GetStaticTypeInfo().Name()));
+			prefabNode["gameObjects"][0]["components"].push_back(0);
+			prefabNode["gameObjects"][1]["components"].push_back(1);
+			auto prefab = DeserializePrefab(world, prefabNode);
+			const std::string sourceBefore = YAML::Dump(prefab->Serialize());
+
+			TVector<GameObjectPtr> instances;
+			const uint32_t instanceCount = forceNewIds ? 1 : 2;
+			for (uint32_t index = 0; index < instanceCount; ++index)
+			{
+				auto root = world.Instantiate(prefab, false, forceNewIds);
+				Require(root && root->GetChildren().Num() == 1, "the mixed-reference prefab must commit a complete instance");
+				auto child = root->GetChildren()[0];
+				auto component = root->GetComponent<LifecycleTestComponent>();
+				Require(component->m_dependency == child->GetComponent<LifecycleTestComponent>() &&
+					!component->GetExternalDependency(), "initial resolution must bind the local sibling while leaving the external reference pending");
+				if (forceNewIds || index > 0)
+				{
+					Require(root->GetInstanceId() != sourceRootId && child->GetInstanceId() != sourceChildId,
+						"forced IDs and repeated-instance collisions must remap both source game objects");
+				}
+				instances.Add(root);
+			}
+
+			for (uint32_t retry = 0; retry < 2; ++retry)
+			{
+				world.ResolveExternalDependencies();
+				world.TickLifecycle();
+				Require(world.GetPendingDependencyCount() == instanceCount, "each unresolved external reference must remain pending");
+				for (auto& root : instances)
+				{
+					auto child = root->GetChildren()[0];
+					auto component = root->GetComponent<LifecycleTestComponent>();
+					Require(component->m_dependency == child->GetComponent<LifecycleTestComponent>() &&
+						component->m_begins == 0 && component->m_ticks == 0,
+						"pending retries must preserve this instance's sibling, without switching to the source-ID instance or starting gameplay");
+				}
+			}
+
+			auto externalOwner = world.Instantiate("LateExternal", externalOwnerId);
+			auto external = TObjectPtr<LifecycleTestComponent>::Make(world.GetAllocator());
+			Require(static_cast<bool>(externalOwner->AddComponentRaw(external, externalComponentId)),
+				"the external dependency must appear later with its original identity");
+			world.ResolveExternalDependencies();
+			Require(world.GetPendingDependencyCount() == 0, "live internal IDs and the newly created external object must resolve together");
+			world.TickLifecycle();
+			world.TickLifecycle();
+			for (auto& root : instances)
+			{
+				auto child = root->GetChildren()[0];
+				auto component = root->GetComponent<LifecycleTestComponent>();
+				Require(component->m_begins == 1 && component->m_ticks == 1 && component->m_valueAtBegin == 19.0f &&
+					component->m_dependencyAtBegin == child->GetComponent<LifecycleTestComponent>() &&
+					component->m_externalDependencyAtBegin == external,
+					"BeginPlay must run once with both correct references after the external dependency resolves");
+			}
+			Require(YAML::Dump(prefab->Serialize()) == sourceBefore,
+				"per-instance pending-reference remapping must never modify the source prefab's YAML nodes");
+			world.Clear();
+			prefab.DestroyObject(world.GetAllocator());
+		}
+	}
+
+	void TestBeginPlayCanChangeComponentLists()
+	{
+		PrefabTestWorld world(GameplayMask);
+		auto owner = world.Instantiate("MutatingOwner");
+		auto mutating = owner->AddComponent<LifecycleTestComponent>();
+		auto removed = owner->AddComponent<LifecycleTestComponent>();
+		auto survivor = owner->AddComponent<LifecycleTestComponent>();
+		auto otherOwner = world.Instantiate("LaterOwner");
+		auto otherOriginal = otherOwner->AddComponent<LifecycleTestComponent>();
+		TVector<TObjectPtr<LifecycleTestComponent>> additions;
+		const uint32_t ended = LifecycleTestComponent::s_ended;
+		mutating->m_onBegin = [&]()
+			{
+				Require(owner->RemoveComponent(removed), "BeginPlay must be able to remove a not-yet-started sibling");
+				for (uint32_t index = 0; index < 24; ++index)
+				{
+					additions.Add(owner->AddComponent<LifecycleTestComponent>());
+				}
+				additions.Add(otherOwner->AddComponent<LifecycleTestComponent>());
+				for (uint32_t index = 0; index < 32; ++index)
+				{
+					additions.Add(world.Instantiate("SpawnedDuringBegin")->AddComponent<LifecycleTestComponent>());
+				}
+				Require(owner->RemoveComponent(mutating), "BeginPlay must be able to remove its own component");
+			};
+		world.TickLifecycle();
+		Require(!removed && !mutating && LifecycleTestComponent::s_ended == ended + 2 &&
+			survivor->m_begins == 1 && otherOriginal->m_begins == 1,
+			"self removal, removal of the next component and vector growth must not skip or repeat surviving callbacks");
+		for (auto& component : additions)
+		{
+			Require(component && component->m_bPublishedAtInitialize && component->m_begins == 0 && component->m_ticks == 0,
+				"components added to this owner, a later owner or a new object must wait for the next lifecycle frame");
+		}
+		world.TickLifecycle();
+		Require(survivor->m_ticks == 1 && otherOriginal->m_ticks == 1,
+			"surviving components must tick once after the mutating BeginPlay frame");
+		for (auto& component : additions)
+		{
+			Require(component->m_begins == 1 && component->m_ticks == 0,
+				"each callback-created component must begin exactly once on the next frame");
+		}
+		world.TickLifecycle();
+		for (auto& component : additions)
+		{
+			Require(component->m_begins == 1 && component->m_ticks == 1,
+				"callback-created components must join the ordinary Tick phase after BeginPlay");
+		}
+		world.Clear();
+	}
+
+	void TestBeginPlayCanDestroyItsOwner()
+	{
+		PrefabTestWorld world(GameplayMask);
+		auto owner = world.Instantiate("DestroyedDuringBegin");
+		auto mutating = owner->AddComponent<LifecycleTestComponent>();
+		auto sibling = owner->AddComponent<LifecycleTestComponent>();
+		auto otherOwner = world.Instantiate("RemovedBeforeItsTurn");
+		auto otherComponent = otherOwner->AddComponent<LifecycleTestComponent>();
+		auto survivor = world.Instantiate("Survivor")->AddComponent<LifecycleTestComponent>();
+		TObjectPtr<LifecycleTestComponent> replacement;
+		const uint32_t begun = LifecycleTestComponent::s_begun;
+		const uint32_t ended = LifecycleTestComponent::s_ended;
+		mutating->m_onBegin = [&]()
+			{
+				world.DestroyImmediate(otherOwner);
+				replacement = world.Instantiate("Replacement")->AddComponent<LifecycleTestComponent>();
+				world.DestroyImmediate(owner);
+			};
+		world.TickLifecycle();
+		Require(!owner && !mutating && !sibling && !otherOwner && !otherComponent &&
+			world.GetGameObjects().Num() == 2 && LifecycleTestComponent::s_ended == ended + 3 &&
+			LifecycleTestComponent::s_begun == begun + 2 && survivor->m_begins == 1 && replacement->m_begins == 0,
+			"destroyed handles must be skipped after callbacks, without activating removed siblings or new replacement objects");
+		world.TickLifecycle();
+		Require(survivor->m_ticks == 1 && replacement->m_begins == 1 && replacement->m_ticks == 0,
+			"the surviving world must continue normally after immediate destruction inside BeginPlay");
+		world.Clear();
+	}
+
+	void TestTickAdditionsWaitForNextLifecycleFrame()
+	{
+		PrefabTestWorld world(GameplayMask);
+		auto owner = world.Instantiate("TickMutation");
+		auto original = owner->AddComponent<LifecycleTestComponent>();
+		auto laterOwner = world.Instantiate("LaterOwner");
+		TObjectPtr<LifecycleTestComponent> added;
+		original->m_onTick = [&]()
+			{
+				if (!added)
+				{
+					added = laterOwner->AddComponent<LifecycleTestComponent>();
+				}
+			};
+		world.TickLifecycle();
+		world.TickLifecycle();
+		Require(added && added->m_begins == 0 && added->m_ticks == 0 && original->m_ticks == 1,
+			"a component added from Tick to a later object must not begin in that same phase");
+		world.TickLifecycle();
+		Require(added->m_begins == 1 && added->m_ticks == 0 && original->m_ticks == 2,
+			"Tick-created components must begin at the next lifecycle boundary");
+		world.Clear();
+	}
+
+	void TestRemovingAnotherOwnersComponentHasNoEffect()
+	{
+		PrefabTestWorld world;
+		auto first = world.Instantiate("First");
+		auto second = world.Instantiate("Second");
+		auto firstComponent = first->AddComponent<LifecycleTestComponent>();
+		auto secondComponent = second->AddComponent<LifecycleTestComponent>();
+		const uint32_t ended = LifecycleTestComponent::s_ended;
+		Require(!first->RemoveComponent(secondComponent), "RemoveComponent must reject a component absent from this owner's list");
+		Require(firstComponent && secondComponent && first->GetComponents().Num() == 1 && second->GetComponents().Num() == 1 &&
+			LifecycleTestComponent::s_ended == ended,
+			"a failed list lookup must not run EndPlay or destroy another owner's component");
+		Require(second->RemoveComponent(secondComponent) && !secondComponent && LifecycleTestComponent::s_ended == ended + 1,
+			"the owning object must still be able to remove the component exactly once");
+		world.Clear();
 	}
 
 	void TestGameObjectMobilityHierarchyAndPersistence()
@@ -4045,6 +4528,16 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "ComponentSlotsAreResetAndFreedOnce", TestComponentSlotsAreResetAndFreedOnce },
+		{ "EditorLifecycleNeverStartsGameplay", TestEditorLifecycleNeverStartsGameplay },
+		{ "BeginPlayAndTickMasksRemainIndependent", TestBeginPlayAndTickMasksRemainIndependent },
+		{ "PrefabBeginsAfterHydrationAndHierarchy", TestPrefabBeginsAfterHydrationAndHierarchy },
+		{ "FailedPrefabNeverBeginsGameplay", TestFailedPrefabNeverBeginsGameplay },
+		{ "BeginPlayWaitsForExternalReferences", TestBeginPlayWaitsForExternalReferences },
+		{ "PendingReferencesStayWithinPrefabInstance", TestPendingReferencesStayWithinPrefabInstance },
+		{ "BeginPlayCanChangeComponentLists", TestBeginPlayCanChangeComponentLists },
+		{ "BeginPlayCanDestroyItsOwner", TestBeginPlayCanDestroyItsOwner },
+		{ "TickAdditionsWaitForNextLifecycleFrame", TestTickAdditionsWaitForNextLifecycleFrame },
+		{ "RemovingAnotherOwnersComponentHasNoEffect", TestRemovingAnotherOwnersComponentHasNoEffect },
 		{ "EditorModelInstanceCreatesHierarchyOrFlatRenderer", TestEditorModelInstanceCreatesHierarchyOrFlatRenderer },
 		{ "PreferredEditorInstanceIdsArePreserved", TestPreferredEditorInstanceIdsArePreserved },
 		{ "TransformParentCleanupPreservesPendingReparent", TestTransformParentCleanupPreservesPendingReparent },

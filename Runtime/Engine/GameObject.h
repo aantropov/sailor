@@ -42,16 +42,9 @@ namespace Sailor
 
 			newObject->m_instanceId = InstanceId::GenerateNewComponentId(m_instanceId);
 			newObject->m_owner = m_self;
-			newObject->Initialize();
-
-			if (m_bBeginPlayCalled)
-			{
-				newObject->BeginPlay();
-				newObject->m_bBeginPlayCalled = true;
-				m_componentsToAdd++;
-			}
-
+			newObject->m_frameAdded = m_pWorld->GetCurrentFrame();
 			m_components.Add(newObject);
+			newObject->Initialize();
 
 			return newObject;
 		}
@@ -87,16 +80,9 @@ namespace Sailor
 				? preferredInstanceId
 				: InstanceId::GenerateNewComponentId(m_instanceId);
 			component->m_owner = m_self;
-			component->Initialize();
-
-			if (m_bBeginPlayCalled)
-			{
-				component->BeginPlay();
-				component->m_bBeginPlayCalled = true;
-				m_componentsToAdd++;
-			}
-
+			component->m_frameAdded = m_pWorld->GetCurrentFrame();
 			m_components.Add(component);
+			component->Initialize();
 
 			return component;
 		}
@@ -171,7 +157,6 @@ namespace Sailor
 		GameObjectPtr m_parent;
 
 		TVector<ComponentPtr> m_components;
-		uint32_t m_componentsToAdd = 0;
 
 		size_t m_frameLastChange = 0;
 

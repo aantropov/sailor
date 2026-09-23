@@ -23,6 +23,33 @@ namespace
 		return ecsFactory->CreateECS();
 	}
 
+	ReflectedData RemapPendingReferences(
+		const ReflectedData& reflection,
+		const TMap<InstanceId, ObjectPtr>& internalDependencies)
+	{
+		YAML::Node properties(YAML::NodeType::Map);
+		const auto& propertyTypes = reflection.GetTypeInfo().Properties();
+		for (const auto& property : reflection.GetProperties())
+		{
+			YAML::Node value = YAML::Clone(*property.m_second);
+			if (propertyTypes.ContainsKey(property.m_first) &&
+				propertyTypes[property.m_first].starts_with("TObjectPtr<") && value.IsMap())
+			{
+				const YAML::Node instanceIdNode = static_cast<const YAML::Node&>(value)["instanceId"];
+				if (instanceIdNode.IsScalar())
+				{
+					const InstanceId sourceId = instanceIdNode.as<InstanceId>();
+					if (internalDependencies.ContainsKey(sourceId))
+					{
+						value["instanceId"] = internalDependencies[sourceId]->GetInstanceId();
+					}
+				}
+			}
+			properties[property.m_first] = std::move(value);
+		}
+		return Reflection::CreateReflectedData(reflection.GetTypeInfo(), properties);
+	}
+
 	class PrefabInstantiationTransaction final
 	{
 	public:
@@ -79,7 +106,7 @@ World::World(
 	m_currentFrame(1),
 	m_name(std::move(name)),
 	m_frameInput(),
-	m_bIsBeginPlayCalled(false),
+	m_bEcsBeginPlayCalled(false),
 	m_bPhysicsSimulationEnabled(
 		(mask & (uint8_t)EWorldBehaviourBit::Tickable) != 0)
 {
@@ -801,25 +828,61 @@ bool World::CanReparentPrefabObject(
 	return true;
 }
 
-void World::Tick(FrameState& frameState)
+void World::BeginPlayEcs()
 {
-	SAILOR_PROFILE_FUNCTION();
-	const bool bShouldCallBeginPlay = (m_mask & (uint8_t)EWorldBehaviourBit::CallBeginPlay) != 0;
-	const bool bShouldTick = (m_mask & (uint8_t)EWorldBehaviourBit::Tickable) != 0;
-	const bool bShouldEcsTick = (m_mask & (uint8_t)EWorldBehaviourBit::EcsTickable) != 0;
-	const bool bShouldEditorTick = (m_mask & (uint8_t)EWorldBehaviourBit::EditorTick) != 0;
-
-	m_currentFrame++;
-
-	if (!m_bIsBeginPlayCalled)
+	if (!m_bEcsBeginPlayCalled)
 	{
+		m_bEcsBeginPlayCalled = true;
 		for (auto& ecs : m_sortedEcs)
 		{
 			m_ecs[ecs]->BeginPlay();
 		}
-
-		m_bIsBeginPlayCalled = true;
 	}
+}
+
+void World::TickGameObjects(float deltaTime)
+{
+	const bool bShouldCallBeginPlay = (m_mask & (uint8_t)EWorldBehaviourBit::CallBeginPlay) != 0;
+	const bool bShouldTick = (m_mask & (uint8_t)EWorldBehaviourBit::Tickable) != 0;
+	const bool bShouldEditorTick = (m_mask & (uint8_t)EWorldBehaviourBit::EditorTick) != 0;
+	auto objects = m_objects;
+	for (auto& object : objects)
+	{
+		if (!object || object->m_bPendingDestroy)
+		{
+			continue;
+		}
+		if (!object->m_bBeginPlayCalled && bShouldCallBeginPlay)
+		{
+			object->m_bBeginPlayCalled = true;
+			object->BeginPlay();
+		}
+		if (object && !object->m_bPendingDestroy && (bShouldCallBeginPlay || bShouldTick))
+		{
+			object->Tick(deltaTime);
+		}
+	}
+
+	if (bShouldEditorTick)
+	{
+		for (auto& object : objects)
+		{
+			if (object && !object->m_bPendingDestroy)
+			{
+				object->EditorTick(deltaTime);
+			}
+		}
+	}
+}
+
+void World::Tick(FrameState& frameState)
+{
+	SAILOR_PROFILE_FUNCTION();
+	const bool bShouldEcsTick = (m_mask & (uint8_t)EWorldBehaviourBit::EcsTickable) != 0;
+	const bool bShouldEditorTick = (m_mask & (uint8_t)EWorldBehaviourBit::EditorTick) != 0;
+
+	m_currentFrame++;
+	BeginPlayEcs();
 
 	m_frameInput = frameState.GetInputState();
 	m_commandList = frameState.CreateCommandBuffer(0);
@@ -831,28 +894,10 @@ void World::Tick(FrameState& frameState)
 	m_time += deltaTime;
 
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_commandList, true);
-
-	for (uint32_t i = 0; i < m_objects.Num(); i++)
-	{
-		auto& el = m_objects[i];
-		if (!el->m_bBeginPlayCalled && bShouldCallBeginPlay)
-		{
-			el->m_bBeginPlayCalled = true;
-			el->BeginPlay();
-		}
-		else if (bShouldTick)
-		{
-			el->Tick(deltaTime);
-		}
-	}
+	TickGameObjects(deltaTime);
 
 	if (bShouldEditorTick)
 	{
-		for (auto& el : m_objects)
-		{
-			el->EditorTick(deltaTime);
-		}
-
 		if (auto editor = App::GetSubmodule<Editor>())
 		{
 			editor->TickViewportTools();
@@ -1350,9 +1395,11 @@ GameObjectPtr World::Instantiate(
 					resolveDiagnostic.c_str());
 				return {};
 			}
+			newComp->m_bDependenciesResolved = bResolved;
 			if (!bResolved)
 			{
-				ComponentsToResolveDependencies.Add(TPair(newComp, reflection));
+				// Retry against live IDs; source IDs may belong to another prefab instance.
+				ComponentsToResolveDependencies.Add(TPair(newComp, RemapPendingReferences(reflection, internalDependencies)));
 			}
 		}
 	}
@@ -1450,7 +1497,13 @@ void World::ResolveExternalDependencies()
 	for (size_t i = 0; i < ComponentsToResolveDependencies.Num();)
 	{
 		auto& el = ComponentsToResolveDependencies[i];
-		if (!el.m_first || el.m_first->ResolveRefs(el.m_second, m_objectsMap, false))
+		if (!el.m_first)
+		{
+			ComponentsToResolveDependencies.RemoveAt(i);
+			continue;
+		}
+		el.m_first->m_bDependenciesResolved = el.m_first->ResolveRefs(el.m_second, m_objectsMap, false);
+		if (el.m_first->m_bDependenciesResolved)
 		{
 			ComponentsToResolveDependencies.RemoveAt(i);
 			continue;
@@ -1484,7 +1537,8 @@ void World::ApplyComponentReflection(ComponentPtr component, const ReflectedData
 
 	component->ApplyReflection(reflection);
 	RemovePendingDependencyResolutions(component);
-	if (!component->ResolveRefs(reflection, m_objectsMap, bImmediate))
+	component->m_bDependenciesResolved = component->ResolveRefs(reflection, m_objectsMap, bImmediate);
+	if (!component->m_bDependenciesResolved)
 	{
 		ComponentsToResolveDependencies.Add(TPair(component, reflection));
 	}
@@ -1606,14 +1660,6 @@ GameObjectPtr World::NewGameObject(const std::string& name, const InstanceId& in
 	newObject->m_instanceId = instanceId;
 
 	newObject->Initialize();
-
-	if (m_bIsBeginPlayCalled)
-	{
-		newObject->BeginPlay();
-		newObject->m_bBeginPlayCalled = true;
-	}
-
-	newObject->GetTransformComponent().SetOwner(newObject);
 
 	m_objects.Add(newObject);
 	m_objectsMap[newObject->m_instanceId] = newObject;
