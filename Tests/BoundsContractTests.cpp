@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -243,35 +244,44 @@ namespace
 		}
 	}
 
-	void TestBatchFrustumQueriesMatchScalarForAnyCount()
+	struct alignas(16) BatchSphereArray
 	{
-		const Math::Frustum frustum(glm::orthoRH_ZO(-2.0f, 2.0f, -3.0f, 3.0f, 10.0f, 1.0f));
-		struct alignas(16) SphereArray
+		int32_t padding = 0;
+		Math::Sphere values[9];
+	};
+
+	struct alignas(16) BatchAabbArray
+	{
+		int32_t padding = 0;
+		Math::AABB values[9];
+	};
+
+	void CheckBatchFrustumQueries(const Math::Frustum& frustum, Math::AABB* bounds, Math::Sphere* spheres)
+	{
+		const uintptr_t boundsAddress = reinterpret_cast<uintptr_t>(bounds);
+		Require(boundsAddress % alignof(Math::AABB) == 0, "AABB fixture must retain natural alignment");
+		if constexpr (alignof(Math::AABB) < 16)
 		{
-			int32_t padding = 0;
-			Math::Sphere values[5] = {
-				Math::Sphere(glm::vec3(0.0f, 0.0f, -5.0f), 0.5f),
-				Math::Sphere(glm::vec3(3.0f, 0.0f, -5.0f), 0.25f),
-				Math::Sphere(glm::vec3(1.75f, 0.0f, -5.0f), 0.5f),
-				Math::Sphere(glm::vec3(1.5f, 0.0f, -5.0f), 0.5f),
-				Math::Sphere(glm::vec3(2.5f, 0.0f, -5.0f), 0.5f)
-			};
-		} spheres;
-		std::array<Math::AABB, 6> bounds;
-		for (uint32_t i = 0; i < 5; ++i)
-		{
-			bounds[i + 1] = Math::AABB(spheres.values[i].m_center, glm::vec3(spheres.values[i].m_radius));
+			Require(boundsAddress % 16 != 0, "AABB fixture must exercise input without SIMD alignment");
 		}
-		Require(frustum.ContainsSphere(spheres.values[0]) && !frustum.OverlapsSphere(spheres.values[1]) &&
-			!frustum.ContainsSphere(spheres.values[2]) && frustum.ContainsSphere(spheres.values[3]) &&
-			frustum.OverlapsSphere(spheres.values[4]), "sphere inside, outside and tangent cases must retain their scalar contract");
+		if (spheres)
+		{
+			const uintptr_t spheresAddress = reinterpret_cast<uintptr_t>(spheres);
+			Require(spheresAddress % alignof(Math::Sphere) == 0, "sphere fixture must retain natural alignment");
+			if constexpr (alignof(Math::Sphere) < 16)
+			{
+				Require(spheresAddress % 16 != 0, "sphere fixture must exercise input without SIMD alignment");
+			}
+		}
 
 		frustum.OverlapsAABB(nullptr, 0, nullptr);
 		frustum.OverlapsSphere(nullptr, 0, nullptr);
 		frustum.ContainsSphere(nullptr, 0, nullptr);
-		for (uint32_t count : { 0u, 1u, 3u, 4u, 5u })
+		for (uint32_t count : { 0u, 1u, 3u, 4u, 5u, 8u, 9u })
 		{
-			alignas(16) std::array<int32_t, 7> results;
+			alignas(16) std::array<int32_t, 11> results;
+			int32_t* output = results.data() + 1;
+			Require(reinterpret_cast<uintptr_t>(output) % 16 != 0, "output fixture must exercise unaligned SIMD stores");
 			auto checkRange = [&]()
 			{
 				Require(results[0] == -17, "batch query must not write before its output range");
@@ -281,30 +291,106 @@ namespace
 				}
 			};
 			results.fill(-17);
-			frustum.OverlapsAABB(bounds.data() + 1, count, results.data() + 1);
+			frustum.OverlapsAABB(bounds, count, output);
 			checkRange();
 			for (uint32_t i = 0; i < count; ++i)
 			{
-				Require(results[i + 1] == (frustum.OverlapsAABB(bounds[i + 1]) ? 0 : 1),
+				Require(output[i] == (frustum.OverlapsAABB(bounds[i]) ? 0 : 1),
 					"batch AABB overlap must preserve scalar geometry and culling polarity");
 			}
+			if (!spheres)
+			{
+				continue;
+			}
 			results.fill(-17);
-			frustum.OverlapsSphere(spheres.values, count, results.data() + 1);
+			frustum.OverlapsSphere(spheres, count, output);
 			checkRange();
 			for (uint32_t i = 0; i < count; ++i)
 			{
-				Require(results[i + 1] == (frustum.OverlapsSphere(spheres.values[i]) ? 0 : 1),
+				Require(output[i] == (frustum.OverlapsSphere(spheres[i]) ? 0 : 1),
 					"batch sphere overlap must preserve scalar tangent behavior and culling polarity");
 			}
 			results.fill(-17);
-			frustum.ContainsSphere(spheres.values, count, results.data() + 1);
+			frustum.ContainsSphere(spheres, count, output);
 			checkRange();
 			for (uint32_t i = 0; i < count; ++i)
 			{
-				Require(results[i + 1] == (frustum.ContainsSphere(spheres.values[i]) ? 1 : 0),
+				Require(output[i] == (frustum.ContainsSphere(spheres[i]) ? 1 : 0),
 					"batch sphere containment must preserve scalar results and containment polarity");
 			}
 		}
+	}
+
+	void TestBatchFrustumQueriesMatchScalarForAnyCount()
+	{
+		const glm::mat4 projection = glm::orthoRH_ZO(-2.0f, 2.0f, -3.0f, 3.0f, 9.0f, 1.0f);
+		const Math::Frustum frustum(projection);
+		BatchSphereArray spheres = { 0, {
+			Math::Sphere(glm::vec3(-0.75f, -1.25f, -5.0f), 0.5f),
+			Math::Sphere(glm::vec3(-3.0f, 1.0f, -6.0f), 0.25f),
+			Math::Sphere(glm::vec3(1.75f, 0.75f, -4.0f), 0.5f),
+			Math::Sphere(glm::vec3(1.5f, -1.5f, -7.0f), 0.5f),
+			Math::Sphere(glm::vec3(2.5f, 1.25f, -5.0f), 0.5f),
+			Math::Sphere(glm::vec3(0.25f, 3.5f, -3.0f), 0.25f),
+			Math::Sphere(glm::vec3(-0.5f, -0.25f, -10.75f), 0.25f),
+			Math::Sphere(glm::vec3(-1.25f, 1.75f, -0.5f), 0.5f),
+			Math::Sphere(glm::vec3(0.5f, -3.5f, -6.0f), 0.25f)
+		} };
+		BatchAabbArray bounds;
+		for (uint32_t i = 0; i < 9; ++i)
+		{
+			bounds.values[i] = Math::AABB(spheres.values[i].m_center, glm::vec3(spheres.values[i].m_radius));
+		}
+		bounds.values[5] = Math::AABB(spheres.values[5].m_center, glm::vec3(0.1f, 0.25f, 0.7f));
+		bounds.values[6] = Math::AABB(spheres.values[6].m_center, glm::vec3(0.6f, 0.2f, 0.25f));
+		bounds.values[7] = Math::AABB(spheres.values[7].m_center, glm::vec3(0.25f, 0.5f, 0.5f));
+		bounds.values[8] = Math::AABB(spheres.values[8].m_center, glm::vec3(0.25f, 0.5f, 0.2f));
+		Require(frustum.ContainsSphere(spheres.values[0]) && !frustum.OverlapsSphere(spheres.values[1]) &&
+			frustum.OverlapsSphere(spheres.values[2]) && !frustum.ContainsSphere(spheres.values[2]) &&
+			frustum.ContainsSphere(spheres.values[3]) && frustum.OverlapsSphere(spheres.values[4]) &&
+			frustum.OverlapsSphere(spheres.values[7]), "sphere inside, outside and tangent cases must retain their scalar contract");
+		Require(frustum.OverlapsAABB(bounds.values[3]) && !frustum.OverlapsAABB(bounds.values[4]) &&
+			!frustum.OverlapsAABB(bounds.values[7]) && !frustum.OverlapsAABB(bounds.values[8]),
+			"AABB overlap must exclude exterior tangencies on side and depth planes");
+
+		CheckBatchFrustumQueries(frustum, bounds.values, spheres.values);
+		Math::Frustum rawPlanes;
+		rawPlanes.ExtractFrustumPlanes(projection, false);
+		CheckBatchFrustumQueries(rawPlanes, bounds.values, nullptr);
+	}
+
+	void TestBatchPerspectiveFrustumQueriesMatchScalar()
+	{
+		const float aspect = 1.5f;
+		const float fov = glm::radians(60.0f);
+		const glm::mat4 world = glm::translate(glm::mat4(1.0f), glm::vec3(4.0f, 7.0f, -3.0f)) *
+			glm::rotate(glm::mat4(1.0f), 0.6f, Math::vec3_Up) *
+			glm::rotate(glm::mat4(1.0f), -0.2f, Math::vec3_Right);
+		const glm::mat4 projectionView = glm::perspectiveRH_ZO(fov, aspect, 80.0f, 0.5f) * glm::inverse(world);
+		const Math::Frustum frustum(projectionView);
+		const glm::vec3 cameraSamples[] = {
+			{ -0.4f, 0.3f, 2.0f }, { 1.3f, -0.6f, 5.0f }, { 0.2f, 1.4f, 7.0f },
+			{ -0.6f, -1.25f, 3.0f }, { 0.7f, 0.55f, 40.0f }, { -0.2f, 0.4f, 100.0f },
+			{ 0.1f, 0.1f, 0.1f }, { -1.3f, 0.5f, 10.0f }, { 0.1f, -0.2f, 1.0f }
+		};
+		BatchSphereArray spheres;
+		BatchAabbArray bounds;
+		for (uint32_t i = 0; i < 9; ++i)
+		{
+			const glm::vec3 sample = cameraSamples[i];
+			const float halfHeight = sample.z * std::tan(fov * 0.5f);
+			const glm::vec3 center = world * glm::vec4(sample.x * halfHeight * aspect, sample.y * halfHeight, -sample.z, 1.0f);
+			spheres.values[i] = Math::Sphere(center, 0.03f + 0.01f * i);
+			bounds.values[i] = Math::AABB(center, glm::vec3(0.01f + 0.009f * i, 0.02f + 0.006f * i, 0.03f + 0.005f * i));
+			const bool inside = sample.z > 0.5f && sample.z < 80.0f && std::abs(sample.x) < 1.0f && std::abs(sample.y) < 1.0f;
+			Require(frustum.OverlapsSphere(spheres.values[i]) == inside && frustum.ContainsSphere(spheres.values[i]) == inside &&
+				frustum.OverlapsAABB(bounds.values[i]) == inside,
+				"perspective batch fixture must distinguish clipping on every camera axis");
+		}
+		CheckBatchFrustumQueries(frustum, bounds.values, spheres.values);
+		Math::Frustum rawPlanes;
+		rawPlanes.ExtractFrustumPlanes(projectionView, false);
+		CheckBatchFrustumQueries(rawPlanes, bounds.values, nullptr);
 	}
 
 	void TestReversedShadowProjectionUsesZeroToOneDepth()
@@ -467,6 +553,7 @@ int main()
 		{ "PublicRotationWritesRemainNormalizedOnUse", TestPublicRotationWritesRemainNormalizedOnUse },
 		{ "PerspectiveFrustumMatchesCameraConstruction", TestPerspectiveFrustumMatchesCameraConstruction },
 		{ "BatchFrustumQueriesMatchScalarForAnyCount", TestBatchFrustumQueriesMatchScalarForAnyCount },
+		{ "BatchPerspectiveFrustumQueriesMatchScalar", TestBatchPerspectiveFrustumQueriesMatchScalar },
 		{ "ReversedShadowProjectionUsesZeroToOneDepth", TestReversedShadowProjectionUsesZeroToOneDepth },
 		{ "FrustumCenterIsTheAverageOfItsCorners", TestFrustumCenterIsTheAverageOfItsCorners },
 		{ "ReverseZFrustumCornersUseZeroToOneDepth", TestReverseZFrustumCornersUseZeroToOneDepth },

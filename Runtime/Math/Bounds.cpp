@@ -282,7 +282,35 @@ bool Frustum::OverlapsAABB(const AABB& aabb) const
 
 void Frustum::OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults) const
 {
-	for (uint32_t i = 0; i < numObjects; i++)
+	uint32_t i = 0;
+#if SAILOR_USE_X86_SIMD
+	for (; numObjects - i >= 4; i += 4)
+	{
+		const __m128 minX = _mm_setr_ps(aabb[i].m_min.x, aabb[i + 1].m_min.x, aabb[i + 2].m_min.x, aabb[i + 3].m_min.x);
+		const __m128 minY = _mm_setr_ps(aabb[i].m_min.y, aabb[i + 1].m_min.y, aabb[i + 2].m_min.y, aabb[i + 3].m_min.y);
+		const __m128 minZ = _mm_setr_ps(aabb[i].m_min.z, aabb[i + 1].m_min.z, aabb[i + 2].m_min.z, aabb[i + 3].m_min.z);
+		const __m128 maxX = _mm_setr_ps(aabb[i].m_max.x, aabb[i + 1].m_max.x, aabb[i + 2].m_max.x, aabb[i + 3].m_max.x);
+		const __m128 maxY = _mm_setr_ps(aabb[i].m_max.y, aabb[i + 1].m_max.y, aabb[i + 2].m_max.y, aabb[i + 3].m_max.y);
+		const __m128 maxZ = _mm_setr_ps(aabb[i].m_max.z, aabb[i + 1].m_max.z, aabb[i + 2].m_max.z, aabb[i + 3].m_max.z);
+		const __m128 zero = _mm_setzero_ps();
+		__m128 rejected = zero;
+		for (uint32_t p = 0; p < 6; ++p)
+		{
+			const __m128 x = _mm_set1_ps(m_planes[p].m_abcd.x);
+			const __m128 y = _mm_set1_ps(m_planes[p].m_abcd.y);
+			const __m128 z = _mm_set1_ps(m_planes[p].m_abcd.z);
+			// MAXPS chooses its second operand on ties/unordered inputs, matching scalar max(min, max).
+			__m128 distance = _mm_max_ps(_mm_mul_ps(maxX, x), _mm_mul_ps(minX, x));
+			distance = _mm_add_ps(distance, _mm_max_ps(_mm_mul_ps(maxY, y), _mm_mul_ps(minY, y)));
+			distance = _mm_add_ps(distance, _mm_max_ps(_mm_mul_ps(maxZ, z), _mm_mul_ps(minZ, z)));
+			distance = _mm_add_ps(distance, _mm_set1_ps(m_planes[p].m_abcd.w));
+			rejected = _mm_or_ps(rejected, _mm_cmpngt_ps(distance, zero));
+		}
+		const __m128i results = _mm_and_si128(_mm_castps_si128(rejected), _mm_set1_epi32(1));
+		_mm_storeu_si128(reinterpret_cast<__m128i*>(outResults + i), results);
+	}
+#endif
+	for (; i < numObjects; ++i)
 	{
 		outResults[i] = OverlapsAABB(aabb[i]) ? 0 : 1;
 	}
@@ -290,7 +318,28 @@ void Frustum::OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults)
 
 void Frustum::ContainsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const
 {
-	for (uint32_t i = 0; i < numObjects; i++)
+	uint32_t i = 0;
+#if SAILOR_USE_X86_SIMD
+	for (; numObjects - i >= 4; i += 4)
+	{
+		const __m128 centerX = _mm_setr_ps(spheres[i].m_center.x, spheres[i + 1].m_center.x, spheres[i + 2].m_center.x, spheres[i + 3].m_center.x);
+		const __m128 centerY = _mm_setr_ps(spheres[i].m_center.y, spheres[i + 1].m_center.y, spheres[i + 2].m_center.y, spheres[i + 3].m_center.y);
+		const __m128 centerZ = _mm_setr_ps(spheres[i].m_center.z, spheres[i + 1].m_center.z, spheres[i + 2].m_center.z, spheres[i + 3].m_center.z);
+		const __m128 radius = _mm_setr_ps(spheres[i].m_radius, spheres[i + 1].m_radius, spheres[i + 2].m_radius, spheres[i + 3].m_radius);
+		__m128 rejected = _mm_setzero_ps();
+		for (uint32_t p = 0; p < 6; ++p)
+		{
+			__m128 distance = _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.x), centerX);
+			distance = _mm_add_ps(distance, _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.y), centerY));
+			distance = _mm_add_ps(distance, _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.z), centerZ));
+			distance = _mm_add_ps(distance, _mm_set1_ps(m_planes[p].m_abcd.w));
+			rejected = _mm_or_ps(rejected, _mm_cmplt_ps(distance, radius));
+		}
+		const __m128i results = _mm_andnot_si128(_mm_castps_si128(rejected), _mm_set1_epi32(1));
+		_mm_storeu_si128(reinterpret_cast<__m128i*>(outResults + i), results);
+	}
+#endif
+	for (; i < numObjects; ++i)
 	{
 		outResults[i] = ContainsSphere(spheres[i]) ? 1 : 0;
 	}
@@ -298,7 +347,28 @@ void Frustum::ContainsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outR
 
 void Frustum::OverlapsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const
 {
-	for (uint32_t i = 0; i < numObjects; i++)
+	uint32_t i = 0;
+#if SAILOR_USE_X86_SIMD
+	for (; numObjects - i >= 4; i += 4)
+	{
+		const __m128 centerX = _mm_setr_ps(spheres[i].m_center.x, spheres[i + 1].m_center.x, spheres[i + 2].m_center.x, spheres[i + 3].m_center.x);
+		const __m128 centerY = _mm_setr_ps(spheres[i].m_center.y, spheres[i + 1].m_center.y, spheres[i + 2].m_center.y, spheres[i + 3].m_center.y);
+		const __m128 centerZ = _mm_setr_ps(spheres[i].m_center.z, spheres[i + 1].m_center.z, spheres[i + 2].m_center.z, spheres[i + 3].m_center.z);
+		const __m128 negativeRadius = _mm_setr_ps(-spheres[i].m_radius, -spheres[i + 1].m_radius, -spheres[i + 2].m_radius, -spheres[i + 3].m_radius);
+		__m128 rejected = _mm_setzero_ps();
+		for (uint32_t p = 0; p < 6; ++p)
+		{
+			__m128 distance = _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.x), centerX);
+			distance = _mm_add_ps(distance, _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.y), centerY));
+			distance = _mm_add_ps(distance, _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.z), centerZ));
+			distance = _mm_add_ps(distance, _mm_set1_ps(m_planes[p].m_abcd.w));
+			rejected = _mm_or_ps(rejected, _mm_cmplt_ps(distance, negativeRadius));
+		}
+		const __m128i results = _mm_and_si128(_mm_castps_si128(rejected), _mm_set1_epi32(1));
+		_mm_storeu_si128(reinterpret_cast<__m128i*>(outResults + i), results);
+	}
+#endif
+	for (; i < numObjects; ++i)
 	{
 		outResults[i] = OverlapsSphere(spheres[i]) ? 0 : 1;
 	}
