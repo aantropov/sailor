@@ -70,7 +70,7 @@ namespace Sailor
 		void NotifyManagedObjectMutation(const InstanceId& instanceId);
 		uint64_t GetManagedObjectMutationRevision(const InstanceId& instanceId) const;
 
-		void PushMessage(const std::string& msg);
+		SAILOR_API void PushMessage(const std::string& msg);
 		bool PullMessage(std::string& msg);
 
 		__forceinline size_t NumMessages() const
