@@ -179,12 +179,13 @@ namespace Sailor::Math
 		SAILOR_API __forceinline bool OverlapsAABB(const AABB& aabb) const;
 		SAILOR_API __forceinline bool OverlapsSphere(const Sphere& sphere) const;
 
-		// SSE version, the most optimized
+		// Batch overlap queries return 0 for overlap, 1 for a culled object.
+		// Ordinary arrays and any object count are supported.
 		SAILOR_API __forceinline void OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults) const;
 
-		// SSE version, the most optimized
 		SAILOR_API __forceinline void OverlapsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const;
 
+		// Containment returns 1 for contained, 0 otherwise.
 		SAILOR_API __forceinline void ContainsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const;
 		SAILOR_API __forceinline bool ContainsPoint(const glm::vec3& point) const;
 		SAILOR_API __forceinline bool ContainsSphere(const Sphere& sphere) const;
@@ -194,6 +195,8 @@ namespace Sailor::Math
 
 		SAILOR_API __forceinline const TVector<glm::vec3>& GetCorners() const;
 
+		// Finite reverse-Z projection with depth in [0, 1]. Sphere queries
+		// require normalized planes; point/AABB queries also accept raw planes.
 		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& projectionViewMatrix, bool bNormalizePlanes = true);
 		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& worldMatrix, float aspect, float fovY, float zNear, float zFar);
 
@@ -213,7 +216,6 @@ namespace Sailor::Math
 	};
 
 	bool IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit& outRaycastHit, float maxRayLength = FLT_MAX);
-	bool IntersectRayTriangle(const Ray& ray, const TVector<Triangle>& tris, RaycastHit& outRaycastHit, float maxRayLength = FLT_MAX);
 	bool IntersectRayTriangle(const glm::vec3& r0, const glm::vec3& rd, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, glm::vec3& outBarycentric, float& outDistance);
 
 	// Copied from GLM version, with changed epsilon to zero

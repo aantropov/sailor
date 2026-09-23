@@ -23,9 +23,13 @@ namespace Sailor::Math
 		SAILOR_API vec3 GetRight() const;
 		SAILOR_API vec3 GetUp() const;
 
+		// local * parent applies local first. Exact when parent scale commutes
+		// with local rotation; use parent.Matrix() * local.Matrix() for shear.
 		SAILOR_API Transform operator*(const Transform& parent) const;
 		SAILOR_API Transform& operator*=(const Transform& parent);
 
+		// These helpers transform xyz and preserve w. Inverse helpers require
+		// nonzero scale and remain exact for non-uniform scale and rotation.
 		SAILOR_API vec4 TransformPosition(const vec4& position) const;
 		SAILOR_API vec4 InverseTransformPosition(const vec4& position) const;
 
@@ -36,6 +40,8 @@ namespace Sailor::Math
 
 		SAILOR_API vec3 GetReciprocalScale() const;
 
+		// A TRS inverse is exact only when scale and rotation commute.
+		// Use glm::inverse(Matrix()) for a general affine inverse.
 		SAILOR_API Transform Inverse() const;
 
 		SAILOR_API Transform(vec4 pos = vec4(0.0f, 0.0f, 0.0f, 0.0f),
@@ -43,6 +49,7 @@ namespace Sailor::Math
 			vec4 scale = vec4(1.0f, 1.0f, 1.0f, 1.0f)) : m_position(pos), m_rotation(rot), m_scale(scale) {
 		}
 
+		// Extracts TRS; shear cannot be represented by Transform.
 		SAILOR_API static Transform FromMatrix(const glm::mat4& m);
 
 		static const Transform Identity;
