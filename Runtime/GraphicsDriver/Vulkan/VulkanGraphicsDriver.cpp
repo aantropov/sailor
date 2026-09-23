@@ -1593,12 +1593,11 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 			flags,
 			arrayLayers);
 
-		RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(
-			cmdList,
-			outTexture,
-			format,
-			RHI::EImageLayout::Undefined,
-			layout);
+		cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
+			outTexture->m_vulkan.m_image,
+			(VkFormat)format,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			(VkImageLayout)layout);
 	}
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
