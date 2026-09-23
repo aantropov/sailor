@@ -1,52 +1,8 @@
 #include "Core/YamlUtils.h"
 
-#include <sstream>
-
-#include <yaml-cpp/eventhandler.h>
-#include <yaml-cpp/parser.h>
+#include <vector>
 
 using namespace Sailor;
-
-namespace
-{
-	class YamlDocumentCounter final : public YAML::EventHandler
-	{
-	public:
-		void OnDocumentStart(const YAML::Mark&) override
-		{
-			++m_numDocuments;
-		}
-
-		void OnDocumentEnd() override {}
-		void OnNull(const YAML::Mark&, YAML::anchor_t) override {}
-		void OnAlias(const YAML::Mark&, YAML::anchor_t) override {}
-		void OnScalar(
-			const YAML::Mark&,
-			const std::string&,
-			YAML::anchor_t,
-			const std::string&) override {}
-		void OnSequenceStart(
-			const YAML::Mark&,
-			const std::string&,
-			YAML::anchor_t,
-			YAML::EmitterStyle::value) override {}
-		void OnSequenceEnd() override {}
-		void OnMapStart(
-			const YAML::Mark&,
-			const std::string&,
-			YAML::anchor_t,
-			YAML::EmitterStyle::value) override {}
-		void OnMapEnd() override {}
-
-		size_t GetNumDocuments() const noexcept
-		{
-			return m_numDocuments;
-		}
-
-	private:
-		size_t m_numDocuments = 0u;
-	};
-}
 
 bool Utils::TryLoadSingleYamlDocument(
 	const std::string& payload,
@@ -54,32 +10,25 @@ bool Utils::TryLoadSingleYamlDocument(
 	std::string& outDiagnostic) noexcept
 {
 	outDocument = YAML::Node(YAML::NodeType::Undefined);
-	size_t documentCount = 0u;
+	std::vector<YAML::Node> documents;
 	if (!External::GuardYamlExceptions(
 			[&]()
 			{
-				std::istringstream input(payload);
-				YAML::Parser parser(input);
-				YamlDocumentCounter counter;
-				while (parser.HandleNextDocument(counter)) {}
-				documentCount = counter.GetNumDocuments();
-				if (documentCount == 1u)
-				{
-					outDocument = YAML::Load(payload);
-				}
+				documents = YAML::LoadAll(payload);
 			},
 			outDiagnostic))
 	{
 		return false;
 	}
 
-	if (documentCount != 1u)
+	if (documents.size() != 1u)
 	{
 		outDiagnostic = "expected exactly one YAML document, found " +
-			std::to_string(documentCount);
+			std::to_string(documents.size());
 		return false;
 	}
 
+	outDocument = documents.front();
 	outDiagnostic.clear();
 	return true;
 }

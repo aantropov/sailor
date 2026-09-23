@@ -39,6 +39,30 @@ namespace
 			!Utils::TryLoadSingleYamlDocument("value: [1\n", document, diagnostic) &&
 				!diagnostic.empty() && !document.IsDefined(),
 			"malformed YAML should report the parser failure without exposing a document");
+		Require(
+			!Utils::TryLoadSingleYamlDocument("# no document\n\n", document, diagnostic) &&
+				diagnostic.find("found 0") != std::string::npos && !document.IsDefined(),
+			"comments alone should not become an implicit null document");
+		Require(
+			Utils::TryLoadSingleYamlDocument("---\n...\n", document, diagnostic) &&
+				document.IsNull() && diagnostic.empty(),
+			"an explicit null document should count as one document and clear old diagnostics");
+		Require(
+			Utils::TryLoadSingleYamlDocument("- one\n- two\n", document, diagnostic) &&
+				document.IsSequence() && document.size() == 2,
+			"single-document parsing should not require a map root");
+		Require(
+			Utils::TryLoadSingleYamlDocument("name: &name Sailor\ncopy: *name\n", document, diagnostic) &&
+				document["copy"].as<std::string>() == "Sailor" && document["name"].is(document["copy"]),
+			"single-document parsing should preserve YAML aliases");
+		Require(
+			!Utils::TryLoadSingleYamlDocument("---\nvalue: 1\n---\nvalue: [2\n", document, diagnostic) &&
+				!diagnostic.empty() && !document.IsDefined(),
+			"a malformed later document must not publish the valid first document");
+		Require(
+			!Utils::TryLoadSingleYamlDocument("---\n1\n---\n2\n---\n3\n", document, diagnostic) &&
+				diagnostic.find("found 3") != std::string::npos && !document.IsDefined(),
+			"document-count diagnostics should describe the complete stream");
 	}
 
 	void TestMapStructureValidation()
