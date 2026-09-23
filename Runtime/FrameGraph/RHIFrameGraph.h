@@ -8,6 +8,11 @@
 
 using namespace Sailor::Framegraph;
 
+namespace Sailor
+{
+	class FrameGraphImporterTestAccess;
+}
+
 namespace Sailor::RHI
 {
 	struct RHIGlobalIlluminationRenderStats;
@@ -78,6 +83,8 @@ namespace Sailor::RHI
 		SAILOR_API void CompleteMotionHistory(RHI::RHISceneViewPtr sceneView, bool succeeded);
 
 	protected:
+
+		friend class Sailor::FrameGraphImporterTestAccess;
 
 		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime);
 

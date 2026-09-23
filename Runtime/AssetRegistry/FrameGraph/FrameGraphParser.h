@@ -229,7 +229,7 @@ namespace Sailor
 			}
 		};
 
-		virtual void Deserialize(const YAML::Node& inData);
+		SAILOR_API virtual void Deserialize(const YAML::Node& inData);
 
 		TMap<std::string, Resource> m_samplers;
 		TMap<std::string, Value> m_values;
