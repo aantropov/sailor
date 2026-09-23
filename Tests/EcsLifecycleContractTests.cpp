@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "Containers/Octree.h"
+#include "Core/Utils.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
@@ -33,6 +34,7 @@
 #include "RHI/VertexDescription.h"
 #include "Settings/GraphicsSettings.h"
 #include "Submodules/Editor.h"
+#include "Support/TempDirectory.h"
 
 using namespace Sailor;
 
@@ -507,7 +509,7 @@ namespace
 	{
 	public:
 
-		WorldPrefabDocumentFixture() : WorldPrefab(FileId::Invalid) {}
+		explicit WorldPrefabDocumentFixture(const FileId& fileId = FileId::Invalid) : WorldPrefab(fileId) {}
 
 		void AddPrefab(const PrefabPtr& prefab)
 		{
@@ -3047,6 +3049,110 @@ namespace
 		return prefab;
 	}
 
+	template<typename TDocument>
+	void CheckSaveToFileResults(const TDocument& document, const char* filename)
+	{
+		Tests::TempDirectory directory("document-save");
+		const auto path = directory.Path(filename);
+		const auto metadataPath = directory.Path(std::string(filename) + ".asset");
+		const auto backupPath = directory.Path("previous-source");
+		const FileId fileId = document.GetFileId();
+		const YAML::Node expected = document.Serialize();
+		const std::string metadata = "fileId: \"" + fileId.ToString() +
+			"\"\nfilename: \"" + filename + "\"\ncustom: preserved\n";
+		auto writeText = [](const std::filesystem::path& target, const std::string& contents)
+			{
+				std::ofstream output(target, std::ios::binary | std::ios::trunc);
+				output << contents;
+				output.close();
+				Require(static_cast<bool>(output), "the test fixture should write its own files");
+			};
+		auto requireIdentity = [&]()
+			{
+				Require(document.GetFileId() == fileId && ReadText(metadataPath) == metadata,
+					"saving source content must not replace its FileId or rewrite its metadata sidecar");
+			};
+		auto requireSavedDocument = [&](const std::filesystem::path& target)
+			{
+				Require(Utils::AreYamlNodesEqual(YAML::Load(ReadText(target)), expected),
+					"successful saves must contain the complete serialized document after parsing");
+				requireIdentity();
+			};
+
+		writeText(metadataPath, metadata);
+		Require(document.SaveToFile(path.generic_string()), "saving a new source file should succeed");
+		requireSavedDocument(path);
+		writeText(path, "stale source contents");
+		Require(document.SaveToFile(path.generic_string()), "replacing an existing source file should succeed");
+		requireSavedDocument(path);
+		const std::string savedContents = ReadText(path);
+
+		std::filesystem::rename(path, backupPath);
+		Require(std::filesystem::create_directory(path), "the fixture should block the destination with a directory");
+		const auto sentinelPath = path / "keep.txt";
+		writeText(sentinelPath, "keep this directory");
+		Require(!document.SaveToFile(path.generic_string()),
+			"a failed atomic replacement must not be reported as a successful document save");
+		Require(ReadText(sentinelPath) == "keep this directory" && ReadText(backupPath) == savedContents,
+			"a blocked destination must leave the existing directory and saved source untouched");
+		requireIdentity();
+		for (const auto& entry : std::filesystem::directory_iterator(directory.Get()))
+		{
+			Require(entry.path() == path || entry.path() == metadataPath || entry.path() == backupPath,
+				"failed publication must remove its temporary sibling file");
+		}
+
+		Require(std::filesystem::remove(sentinelPath) && std::filesystem::remove(path),
+			"the fixture should remove only its own destination blocker");
+		std::filesystem::rename(backupPath, path);
+		Require(document.SaveToFile(path.generic_string()),
+			"saving should retry successfully after the destination is restored");
+		requireSavedDocument(path);
+
+		const auto parent = directory.Path("blocked-parent");
+		const auto nestedPath = parent / filename;
+		writeText(parent, "not a directory");
+		Require(!document.SaveToFile(nestedPath.generic_string()),
+			"a regular file in the parent path must be reported as a write failure");
+		Require(ReadText(parent) == "not a directory" && ReadText(path) == savedContents,
+			"a failed parent-directory creation must preserve existing files");
+		requireIdentity();
+		Require(std::filesystem::remove(parent), "the fixture should remove its own parent-path blocker");
+		Require(document.SaveToFile(nestedPath.generic_string()),
+			"saving should retry successfully once its parent path can be created");
+		requireSavedDocument(nestedPath);
+		for (const auto& entry : std::filesystem::directory_iterator(parent))
+		{
+			Require(entry.path() == nestedPath,
+				"saving source content must not create a sidecar or leave temporary files behind");
+		}
+		for (const auto& entry : std::filesystem::directory_iterator(directory.Get()))
+		{
+			Require(entry.path() == path || entry.path() == metadataPath || entry.path() == parent,
+				"successful saves and retries must not leave temporary sibling files behind");
+		}
+	}
+
+	void TestPrefabSaveReportsWriteFailures()
+	{
+		const FileId fileId = FileId::CreateNewFileId();
+		Prefab prefab(fileId);
+		prefab.Deserialize(MakePrefabNode({ static_cast<uint32_t>(-1), 0 }));
+		std::string diagnostic;
+		Require(prefab.ValidateForInstantiation(diagnostic), "the saved prefab fixture must be valid: " + diagnostic);
+		CheckSaveToFileResults(prefab, "saved.prefab");
+	}
+
+	void TestWorldSaveReportsWriteFailures()
+	{
+		PrefabTestWorld sourceWorld;
+		auto prefab = DeserializePrefab(sourceWorld, MakePrefabNode({ static_cast<uint32_t>(-1), 0 }));
+		WorldPrefabDocumentFixture document(FileId::CreateNewFileId());
+		document.AddPrefab(prefab);
+		Require(document.IsReady(), "the saved world fixture must be ready");
+		CheckSaveToFileResults(document, "saved.world");
+	}
+
 	void TestLegacyPrefabApiSymbolsRemainAddressable()
 	{
 		using LegacyGetOverridePrefab =
@@ -3739,9 +3845,8 @@ namespace
 		WorldPrefabDocumentFixture nonReadyDocument;
 		Require(nonReadyDocument.Serialize().IsNull(),
 			"a non-ready world document should not emit partial YAML without a diagnostic");
-		const std::filesystem::path failedSavePath =
-			std::filesystem::temp_directory_path() /
-			"sailor-linked-prefab-failed-save.world";
+		Tests::TempDirectory failedSaveDirectory("linked-prefab-failed-save");
+		const auto failedSavePath = failedSaveDirectory.Path("scene.world");
 		{
 			std::ofstream existingScene(
 				failedSavePath,
@@ -3752,7 +3857,9 @@ namespace
 				failedSavePath.generic_string()) &&
 			ReadText(failedSavePath) == "existing-scene",
 			"a failed linked world document should not overwrite a scene file");
-		std::filesystem::remove(failedSavePath);
+		Require(!nonReadyDocument.SaveToFile(failedSavePath.generic_string()) &&
+			ReadText(failedSavePath) == "existing-scene",
+			"a non-ready world document must preserve the previous scene without writing");
 
 		world.Clear();
 	}
@@ -5446,6 +5553,8 @@ int main()
 		{ "EditorUpdateReplacesStaleMeshDependencyResolution", TestEditorUpdateReplacesStaleMeshDependencyResolution },
 		{ "EditorUpdatePreservesNewUnresolvedDependency", TestEditorUpdatePreservesNewUnresolvedDependency },
 		{ "LegacyPrefabApiSymbolsRemainAddressable", TestLegacyPrefabApiSymbolsRemainAddressable },
+		{ "PrefabSaveReportsWriteFailures", TestPrefabSaveReportsWriteFailures },
+		{ "WorldSaveReportsWriteFailures", TestWorldSaveReportsWriteFailures },
 		{ "PrefabComponentReferencesFollowRemappedOwners", TestPrefabComponentReferencesFollowRemappedOwners },
 		{ "ForcedPrefabIdsRemapInternalAndPreserveExternalReferences", TestForcedPrefabIdsRemapInternalAndPreserveExternalReferences },
 		{ "LinkedPrefabPersistenceAndWorldContract", TestLinkedPrefabPersistenceAndWorldContract },
