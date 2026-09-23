@@ -1,5 +1,14 @@
 find_package(ixwebsocket CONFIG QUIET)
 find_package(imgui CONFIG REQUIRED)
+find_package(magic_enum CONFIG REQUIRED)
+find_package(Threads REQUIRED)
+
+add_executable(SpinLockTests SpinLockTests.cpp)
+target_compile_features(SpinLockTests PRIVATE cxx_std_20)
+target_include_directories(SpinLockTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(SpinLockTests PRIVATE Threads::Threads magic_enum::magic_enum)
+add_test(NAME SpinLockTests COMMAND SpinLockTests)
+set_tests_properties(SpinLockTests PROPERTIES TIMEOUT 20)
 
 add_executable(ImGuiDrawDataSnapshotTests ImGuiDrawDataSnapshotTests.cpp)
 target_compile_features(ImGuiDrawDataSnapshotTests PRIVATE cxx_std_20)
