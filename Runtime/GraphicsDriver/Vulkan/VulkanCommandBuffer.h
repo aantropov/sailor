@@ -33,7 +33,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 			const VulkanImageViewPtr& depthStencilAttachmentResolve,
 			bool bClearRenderTargets,
 			const VulkanRenderPassClearValues& clearValues,
-			bool bStoreDepth);
+			bool bStoreDepth,
+			const VkPhysicalDeviceDepthStencilResolveProperties& resolveProperties);
 
 		// The returned pointers borrow this object's attachment storage until recording completes.
 		SAILOR_SHARED_API VkRenderingInfo GetRenderingInfo(VkRect2D renderArea, VkRenderingFlags flags) const;

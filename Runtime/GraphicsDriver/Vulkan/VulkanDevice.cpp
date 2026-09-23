@@ -661,6 +661,11 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	vkGetPhysicalDeviceFeatures2(physicalDevice, &supportedFeatures2);
 	vkGetPhysicalDeviceProperties2(physicalDevice, &supportedProperties2);
 
+	m_depthStencilResolveProperties.supportedDepthResolveModes = supportedCore12Properties.supportedDepthResolveModes;
+	m_depthStencilResolveProperties.supportedStencilResolveModes = supportedCore12Properties.supportedStencilResolveModes;
+	m_depthStencilResolveProperties.independentResolveNone = supportedCore12Properties.independentResolveNone;
+	m_depthStencilResolveProperties.independentResolve = supportedCore12Properties.independentResolve;
+
 	m_bSupportsDynamicRenderingCore13 =
 		(VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion) > 1 ||
 		(VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion) == 1 && VK_VERSION_MINOR(m_physicalDeviceProperties.apiVersion) >= 3)) &&

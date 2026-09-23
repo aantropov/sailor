@@ -248,7 +248,8 @@ VulkanRenderingAttachments::VulkanRenderingAttachments(const TVector<VulkanImage
 	const VulkanImageViewPtr& depthStencilAttachmentResolve,
 	bool bClearRenderTargets,
 	const VulkanRenderPassClearValues& clearValues,
-	bool bStoreDepth)
+	bool bStoreDepth,
+	const VkPhysicalDeviceDepthStencilResolveProperties& resolveProperties)
 {
 	check(colorAttachmentResolves.IsEmpty() || colorAttachmentResolves.Num() == colorAttachments.Num());
 	const bool bHasStencil = depthStencilAttachment && (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment->m_format) & VK_IMAGE_ASPECT_STENCIL_BIT);
@@ -298,13 +299,21 @@ VulkanRenderingAttachments::VulkanRenderingAttachments(const TVector<VulkanImage
 
 	if (depthStencilAttachmentResolve)
 	{
-		m_depth.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+		// Reverse-Z needs the farthest sample. Coupled stencil resolves must use
+		// the same supported mode; SAMPLE_ZERO is the guaranteed native fallback.
+		const bool bCoupledStencil = bHasStencil && !resolveProperties.independentResolveNone;
+		const bool bSupportsMin = (resolveProperties.supportedDepthResolveModes & VK_RESOLVE_MODE_MIN_BIT) &&
+			(!bCoupledStencil || (resolveProperties.supportedStencilResolveModes & VK_RESOLVE_MODE_MIN_BIT));
+		m_depth.resolveMode = bSupportsMin ? VK_RESOLVE_MODE_MIN_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
 		m_depth.resolveImageView = *depthStencilAttachmentResolve;
 		m_depth.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 
-		m_stencil.resolveMode = VK_RESOLVE_MODE_NONE_KHR;
-		m_stencil.resolveImageView = bHasStencil ? *depthStencilAttachmentResolve : VK_NULL_HANDLE;
-		m_stencil.resolveImageLayout = bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+		if (bCoupledStencil)
+		{
+			m_stencil.resolveMode = m_depth.resolveMode;
+			m_stencil.resolveImageView = *depthStencilAttachmentResolve;
+			m_stencil.resolveImageLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
+		}
 	}
 }
 
@@ -320,7 +329,7 @@ VkRenderingInfo VulkanRenderingAttachments::GetRenderingInfo(VkRect2D renderArea
 		.colorAttachmentCount = (uint32_t)m_colors.Num(),
 		.pColorAttachments = m_colors.GetData(),
 		.pDepthAttachment = &m_depth,
-		.pStencilAttachment = &m_stencil,
+		.pStencilAttachment = m_stencil.imageView != VK_NULL_HANDLE ? &m_stencil : nullptr,
 	};
 }
 
@@ -336,7 +345,8 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	bool bStoreDepth)
 {
 	const VulkanRenderingAttachments attachments(colorAttachments, colorAttachmentResolves,
-		depthStencilAttachment, depthStencilAttachmentResolve, bClearRenderTargets, clearValues, bStoreDepth);
+		depthStencilAttachment, depthStencilAttachmentResolve, bClearRenderTargets, clearValues, bStoreDepth,
+		m_device->GetDepthStencilResolveProperties());
 	const VkRenderingInfo renderInfo = attachments.GetRenderingInfo(renderArea, renderingFlags);
 
 	if (depthStencilAttachmentResolve)

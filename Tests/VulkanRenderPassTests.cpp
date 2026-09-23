@@ -70,7 +70,20 @@ namespace
 		return TRefPtr<AttachmentView>::Make(identity, format, samples);
 	}
 
-	void CheckNativeAttachmentValues(uint32_t count, VkFormat depthFormat, bool resolve)
+	VkPhysicalDeviceDepthStencilResolveProperties MakeResolveProperties(VkResolveModeFlags depthModes,
+		VkResolveModeFlags stencilModes, bool independentNone, bool independent)
+	{
+		VkPhysicalDeviceDepthStencilResolveProperties properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES };
+		properties.supportedDepthResolveModes = depthModes;
+		properties.supportedStencilResolveModes = stencilModes;
+		properties.independentResolveNone = independentNone ? VK_TRUE : VK_FALSE;
+		properties.independentResolve = independent ? VK_TRUE : VK_FALSE;
+		return properties;
+	}
+
+	void CheckNativeAttachmentValues(uint32_t count, VkFormat depthFormat, bool resolve,
+		const VkPhysicalDeviceDepthStencilResolveProperties& properties,
+		VkResolveModeFlagBits expectedDepthResolve, VkResolveModeFlagBits expectedStencilResolve)
 	{
 		const glm::vec4 color(0.25f, 0.5f, 0.75f, 0.875f);
 		const VulkanRenderPassClearValues clearValues(color, 0.375f, 73u);
@@ -87,7 +100,7 @@ namespace
 			}
 		}
 		const bool hasDepth = depthFormat != VK_FORMAT_UNDEFINED;
-		const bool hasStencil = depthFormat == VK_FORMAT_D24_UNORM_S8_UINT;
+		const bool hasStencil = depthFormat == VK_FORMAT_D24_UNORM_S8_UINT || depthFormat == VK_FORMAT_D32_SFLOAT_S8_UINT;
 		const auto depth = hasDepth ? MakeView(0x300u, depthFormat, samples) : VulkanImageViewPtr{};
 		const auto depthResolve = hasDepth && resolve ?
 			MakeView(0x400u, depthFormat, VK_SAMPLE_COUNT_1_BIT) : VulkanImageViewPtr{};
@@ -97,7 +110,7 @@ namespace
 			{
 				// This is the attachment setup used directly by VulkanCommandBuffer::BeginRenderPassEx.
 				const VulkanRenderingAttachments attachments(colors, resolves, depth, depthResolve,
-					clear, clearValues, storeDepth);
+					clear, clearValues, storeDepth, properties);
 				for (VkRenderingFlags flags : { VkRenderingFlags(0), VkRenderingFlags(VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT) })
 				{
 					const VkRenderingInfo info = attachments.GetRenderingInfo(area, flags);
@@ -108,8 +121,8 @@ namespace
 						"native rendering must preserve area, layer count and inline/secondary flags");
 					Require(info.colorAttachmentCount == count && (count == 0u || info.pColorAttachments),
 						"native rendering must expose exactly the requested MRT count");
-					Require(info.pDepthAttachment && info.pStencilAttachment,
-						"native rendering must keep its depth/stencil descriptors, including null-image descriptors");
+					Require(info.pDepthAttachment && (info.pStencilAttachment != nullptr) == hasStencil,
+						"native rendering must omit the stencil descriptor for depth-only and color-only passes");
 					const auto loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
 					for (uint32_t index = 0u; index < count; ++index)
 					{
@@ -136,19 +149,23 @@ namespace
 						nativeDepth.storeOp == (storeDepth ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE) &&
 						nativeDepth.clearValue.depthStencil.depth == 0.375f && nativeDepth.clearValue.depthStencil.stencil == 73u,
 						"depth clear/store values must remain independent of color and optional depth presence");
-					Require(nativeDepth.resolveMode == (depthResolve ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE) &&
+					Require(nativeDepth.resolveMode == (depthResolve ? expectedDepthResolve : VK_RESOLVE_MODE_NONE) &&
 						nativeDepth.resolveImageView == (depthResolve ? *depthResolve : VK_NULL_HANDLE) &&
 						nativeDepth.resolveImageLayout == (depthResolve ? VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED),
-						"depth resolves must preserve the existing mode and target even when depth store is disabled");
-					const auto& stencil = *info.pStencilAttachment;
-					Require(stencil.imageView == (hasStencil ? *depth : VK_NULL_HANDLE) &&
-						stencil.imageLayout == (hasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED) &&
-						stencil.loadOp == loadOp && stencil.storeOp == VK_ATTACHMENT_STORE_OP_STORE &&
-						stencil.clearValue.depthStencil.depth == 0.375f && stencil.clearValue.depthStencil.stencil == 73u &&
-						stencil.resolveMode == VK_RESOLVE_MODE_NONE &&
-						stencil.resolveImageView == (hasStencil && resolve ? *depthResolve : VK_NULL_HANDLE) &&
-						stencil.resolveImageLayout == (hasStencil && resolve ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED),
-						"stencil must retain its independent clear value and existing non-resolving store policy");
+						"depth resolve must select the supported mode without depending on its store operation");
+					if (hasStencil)
+					{
+						const auto& stencil = *info.pStencilAttachment;
+						const bool resolvesStencil = resolve && expectedStencilResolve != VK_RESOLVE_MODE_NONE;
+						Require(stencil.imageView == nativeDepth.imageView &&
+							stencil.imageLayout == VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL &&
+							stencil.loadOp == loadOp && stencil.storeOp == VK_ATTACHMENT_STORE_OP_STORE &&
+							stencil.clearValue.depthStencil.depth == 0.375f && stencil.clearValue.depthStencil.stencil == 73u &&
+							stencil.resolveMode == (resolve ? expectedStencilResolve : VK_RESOLVE_MODE_NONE) &&
+							stencil.resolveImageView == (resolvesStencil ? *depthResolve : VK_NULL_HANDLE) &&
+							stencil.resolveImageLayout == (resolvesStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED),
+							"stencil resolve must obey the device coupling while keeping clear/store values and the shared target");
+					}
 				}
 			}
 		}
@@ -156,13 +173,63 @@ namespace
 
 	void TestNativeAttachmentValues()
 	{
+		const auto properties = MakeResolveProperties(VK_RESOLVE_MODE_SAMPLE_ZERO_BIT | VK_RESOLVE_MODE_MIN_BIT,
+			VK_RESOLVE_MODE_SAMPLE_ZERO_BIT, true, false);
 		for (uint32_t count : { 0u, 1u, 3u })
 		{
-			for (VkFormat depthFormat : { VK_FORMAT_UNDEFINED, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT })
+			for (VkFormat depthFormat : { VK_FORMAT_UNDEFINED, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT })
 			{
 				for (bool resolve : { false, true })
 				{
-					CheckNativeAttachmentValues(count, depthFormat, resolve);
+					CheckNativeAttachmentValues(count, depthFormat, resolve, properties, VK_RESOLVE_MODE_MIN_BIT, VK_RESOLVE_MODE_NONE);
+				}
+			}
+		}
+	}
+
+	void TestSupportedDepthResolveModes()
+	{
+		constexpr auto sampleZero = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+		constexpr auto min = VK_RESOLVE_MODE_MIN_BIT;
+		constexpr auto none = VK_RESOLVE_MODE_NONE;
+		struct ResolveCase
+		{
+			VkResolveModeFlags m_depthModes;
+			VkResolveModeFlags m_stencilModes;
+			bool m_independentNone;
+			bool m_independent;
+			VkResolveModeFlagBits m_depthOnly;
+			VkResolveModeFlagBits m_depthWithStencil;
+			VkResolveModeFlagBits m_stencil;
+		};
+		const ResolveCase cases[]
+		{
+			{ sampleZero, sampleZero, false, false, sampleZero, sampleZero, sampleZero },
+			{ sampleZero, sampleZero, true, false, sampleZero, sampleZero, none },
+			{ sampleZero, sampleZero, true, true, sampleZero, sampleZero, none },
+			{ sampleZero | min, sampleZero, false, false, min, sampleZero, sampleZero },
+			{ sampleZero | min, sampleZero, true, false, min, min, none },
+			{ sampleZero | min, sampleZero, true, true, min, min, none },
+			{ sampleZero | min, sampleZero | min, false, false, min, min, min },
+			{ sampleZero | min, sampleZero | min, true, false, min, min, none },
+			{ sampleZero | min, sampleZero | min, true, true, min, min, none },
+			{ sampleZero, sampleZero | min, false, false, sampleZero, sampleZero, sampleZero },
+			{ sampleZero, sampleZero | min, true, false, sampleZero, sampleZero, none },
+			{ sampleZero, sampleZero | min, true, true, sampleZero, sampleZero, none },
+			{ sampleZero | VK_RESOLVE_MODE_AVERAGE_BIT | VK_RESOLVE_MODE_MAX_BIT,
+				sampleZero | VK_RESOLVE_MODE_MAX_BIT, false, false, sampleZero, sampleZero, sampleZero }
+		};
+
+		for (const auto& test : cases)
+		{
+			const auto properties = MakeResolveProperties(test.m_depthModes, test.m_stencilModes,
+				test.m_independentNone, test.m_independent);
+			for (bool resolve : { false, true })
+			{
+				CheckNativeAttachmentValues(3u, VK_FORMAT_D32_SFLOAT, resolve, properties, test.m_depthOnly, none);
+				for (VkFormat format : { VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT })
+				{
+					CheckNativeAttachmentValues(3u, format, resolve, properties, test.m_depthWithStencil, test.m_stencil);
 				}
 			}
 		}
@@ -172,7 +239,8 @@ namespace
 	{
 		const auto color = MakeView(1u, VK_FORMAT_R8G8B8A8_UNORM, VK_SAMPLE_COUNT_1_BIT);
 		const auto depth = MakeView(2u, VK_FORMAT_D32_SFLOAT, VK_SAMPLE_COUNT_1_BIT);
-		const VulkanRenderingAttachments attachments({ color }, {}, depth, {}, true, {}, true);
+		const auto properties = MakeResolveProperties(VK_RESOLVE_MODE_SAMPLE_ZERO_BIT, VK_RESOLVE_MODE_SAMPLE_ZERO_BIT, false, false);
+		const VulkanRenderingAttachments attachments({ color }, {}, depth, {}, true, {}, true, properties);
 		const auto info = attachments.GetRenderingInfo({ { 0, 0 }, { 1u, 1u } }, 0);
 		for (uint32_t component = 0u; component < 4u; ++component)
 		{
@@ -290,6 +358,7 @@ int main()
 	try
 	{
 		TestNativeAttachmentValues();
+		TestSupportedDepthResolveModes();
 		TestDefaultClearValues();
 		TestSurfaceOverloadForwarding();
 		std::cout << "Vulkan render pass contracts passed.\n";

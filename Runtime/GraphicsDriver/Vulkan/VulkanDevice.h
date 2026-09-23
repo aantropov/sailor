@@ -88,6 +88,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_physicalDeviceProperties.limits.maxSamplerAnisotropy; };
 		SAILOR_API VkSampleCountFlagBits GetMaxAllowedMsaaSamples() const { return m_maxAllowedMsaaSamples; };
 		SAILOR_API VkSampleCountFlagBits GetCurrentMsaaSamples() const { return m_currentMsaaSamples; };
+		SAILOR_API const VkPhysicalDeviceDepthStencilResolveProperties& GetDepthStencilResolveProperties() const { return m_depthStencilResolveProperties; }
 		SAILOR_API const VkMemoryRequirements& GetMemoryRequirements_StagingBuffer() const { return m_memoryRequirements_StagingBuffer; }
 		SAILOR_API const VkDeviceSize& GetMinUboOffsetAlignment() const { return m_physicalDeviceProperties.limits.minUniformBufferOffsetAlignment; }
 		SAILOR_API const VkDeviceSize& GetMinSsboOffsetAlignment() const { return m_physicalDeviceProperties.limits.minStorageBufferOffsetAlignment; }
@@ -166,6 +167,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void CleanupSwapChain();
 
 		VkPhysicalDeviceProperties m_physicalDeviceProperties{};
+		VkPhysicalDeviceDepthStencilResolveProperties m_depthStencilResolveProperties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES };
 
 		VkSampleCountFlagBits m_maxAllowedMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		VkSampleCountFlagBits m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
