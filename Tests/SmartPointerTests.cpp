@@ -388,6 +388,28 @@ namespace
 		int m_value;
 	};
 
+	struct UnreadyObjectProbe : ObjectProbe
+	{
+		using ObjectProbe::ObjectProbe;
+		bool IsValid() const override { return false; }
+	};
+
+	void TestDestroyUnreadyObject()
+	{
+		using namespace Sailor::Memory;
+		int destroyed = 0;
+		auto allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::LocalMemory_SingleThread);
+		auto object = TObjectPtr<UnreadyObjectProbe>::Make(allocator, destroyed, 42);
+		auto retained = object;
+		Require(object && !object.IsValid(), "a live object may not be ready for gameplay");
+		object.DestroyObject(allocator);
+		Require(destroyed == 1 && !object && !retained, "explicit destruction must invalidate every handle regardless of gameplay readiness");
+		retained.DestroyObject(allocator);
+		object.Clear();
+		retained.Clear();
+		Require(destroyed == 1, "clearing destroyed handles must not destroy the object twice");
+	}
+
 	void TestObjectPointerAllocatorAssignment()
 	{
 		using namespace Memory;
@@ -648,6 +670,7 @@ int main()
 		{ "AllocatorAlignmentAndGrowth", TestAllocatorAlignmentAndGrowth },
 		{ "InlineAllocatorReuse", TestInlineAllocatorReuse },
 		{ "ObjectPointerAllocatorAssignment", TestObjectPointerAllocatorAssignment },
+		{ "DestroyUnreadyObject", TestDestroyUnreadyObject },
 		{ "ManagedMemoryMoveOnly", TestManagedMemoryMoveOnly },
 		{ "SharedPtrConstObserversAndComparison", TestSharedPtrConstObserversAndComparison },
 		{ "SharedPtrRetainedAcrossThreads", TestSharedPtrRetainedAcrossThreads },
