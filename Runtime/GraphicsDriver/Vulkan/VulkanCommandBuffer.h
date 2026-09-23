@@ -11,6 +11,39 @@
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
+	struct VulkanRenderPassClearValues
+	{
+		VkClearColorValue m_color = VulkanApi::DefaultClearColor.color;
+		VkClearDepthStencilValue m_depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+
+		VulkanRenderPassClearValues() = default;
+		VulkanRenderPassClearValues(const glm::vec4& color, float depth, uint32_t stencil = 0u) :
+			m_color{ { color.x, color.y, color.z, color.w } },
+			m_depthStencil{ depth, stencil }
+		{}
+	};
+
+	class VulkanRenderingAttachments final
+	{
+	public:
+		SAILOR_SHARED_API VulkanRenderingAttachments(
+			const TVector<VulkanImageViewPtr>& colorAttachments,
+			const TVector<VulkanImageViewPtr>& colorAttachmentResolves,
+			const VulkanImageViewPtr& depthStencilAttachment,
+			const VulkanImageViewPtr& depthStencilAttachmentResolve,
+			bool bClearRenderTargets,
+			const VulkanRenderPassClearValues& clearValues,
+			bool bStoreDepth);
+
+		// The returned pointers borrow this object's attachment storage until recording completes.
+		SAILOR_SHARED_API VkRenderingInfo GetRenderingInfo(VkRect2D renderArea, VkRenderingFlags flags) const;
+
+	private:
+		TVector<VkRenderingAttachmentInfo> m_colors;
+		VkRenderingAttachmentInfo m_depth{};
+		VkRenderingAttachmentInfo m_stencil{};
+	};
+
 	// TODO: Implement the possibility to reuse command lists (read: NOT one_time_submit for secondary command buffers?)
 	class VulkanCommandBuffer final : public RHI::RHIResource
 	{
@@ -40,7 +73,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkRenderingFlags renderingFlags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
 			VkOffset2D offset = { 0,0 },
 			bool bClearRenderTargets = true,
-			VkClearValue clearColor = VulkanApi::DefaultClearColor,
+			const VulkanRenderPassClearValues& clearValues = {},
 			bool bStoreDepth = true);
 
 		SAILOR_API void BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
@@ -50,7 +83,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkOffset2D offset = { 0,0 },
 			bool bSupportMultisampling = true,
 			bool bClearRenderTargets = true,
-			VkClearValue clearColor = VulkanApi::DefaultClearColor,
+			const VulkanRenderPassClearValues& clearValues = {},
 			bool bStoreDepth = true);
 		SAILOR_API void EndRenderPassEx();
 

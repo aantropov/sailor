@@ -190,6 +190,15 @@ add_executable(VulkanDescriptorCacheTests
     VulkanDescriptorCacheTests.cpp
 )
 
+add_executable(VulkanRenderPassTests VulkanRenderPassTests.cpp)
+target_compile_features(VulkanRenderPassTests PRIVATE cxx_std_20)
+target_include_directories(VulkanRenderPassTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(VulkanRenderPassTests PRIVATE Sailor::Runtime)
+add_test(NAME VulkanRenderPassTests COMMAND VulkanRenderPassTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(VulkanRenderPassTests)
+endif()
+
 add_executable(EditorViewportControllerContractTests
     EditorViewportControllerContractTests.cpp
 )
@@ -835,6 +844,7 @@ set_tests_properties(
     ModelImporterContractTests
     AnimationSamplingContractTests
     VulkanDescriptorCacheTests
+    VulkanRenderPassTests
     EditorViewportControllerContractTests
     SkyComponentContractTests
     PhysicsRuntimeTests

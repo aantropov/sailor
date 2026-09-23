@@ -242,39 +242,36 @@ void VulkanCommandBuffer::EndCommandList()
 	VK_CHECK(vkEndCommandBuffer(m_commandBuffer));
 }
 
-void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+VulkanRenderingAttachments::VulkanRenderingAttachments(const TVector<VulkanImageViewPtr>& colorAttachments,
 	const TVector<VulkanImageViewPtr>& colorAttachmentResolves,
-	VulkanImageViewPtr depthStencilAttachment,
-	VulkanImageViewPtr depthStencilAttachmentResolve,
-	VkRect2D renderArea,
-	VkRenderingFlags renderingFlags,
-	VkOffset2D offset,
+	const VulkanImageViewPtr& depthStencilAttachment,
+	const VulkanImageViewPtr& depthStencilAttachmentResolve,
 	bool bClearRenderTargets,
-	VkClearValue clearColor,
+	const VulkanRenderPassClearValues& clearValues,
 	bool bStoreDepth)
 {
 	check(colorAttachmentResolves.IsEmpty() || colorAttachmentResolves.Num() == colorAttachments.Num());
 	const bool bHasStencil = depthStencilAttachment && (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment->m_format) & VK_IMAGE_ASPECT_STENCIL_BIT);
 
-	VkRenderingAttachmentInfoKHR depthAttachmentInfo
+	m_depth =
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = depthStencilAttachment ? *depthStencilAttachment : VK_NULL_HANDLE,
 		.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = bStoreDepth ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
-		.clearValue = clearColor,
 	};
+	m_depth.clearValue.depthStencil = clearValues.m_depthStencil;
 
-	VkRenderingAttachmentInfoKHR stencilAttachmentInfo
+	m_stencil =
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = bHasStencil ? *depthStencilAttachment : VK_NULL_HANDLE,
 		.imageLayout = bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.clearValue = clearColor,
 	};
+	m_stencil.clearValue.depthStencil = clearValues.m_depthStencil;
 
 	VkRenderingAttachmentInfoKHR colorAttachmentInfo
 	{
@@ -282,13 +279,13 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.clearValue = clearColor
 	};
+	colorAttachmentInfo.clearValue.color = clearValues.m_color;
 
-	TVector<VkRenderingAttachmentInfoKHR> colorAttachmentInfos(colorAttachments.Num());
+	m_colors.Resize(colorAttachments.Num());
 	for (size_t i = 0u; i < colorAttachments.Num(); ++i)
 	{
-		auto& attachment = colorAttachmentInfos[i];
+		auto& attachment = m_colors[i];
 		attachment = colorAttachmentInfo;
 		attachment.imageView = *colorAttachments[i];
 		if (i < colorAttachmentResolves.Num() && colorAttachmentResolves[i])
@@ -301,29 +298,51 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 
 	if (depthStencilAttachmentResolve)
 	{
-		depthAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-		depthAttachmentInfo.resolveImageView = *depthStencilAttachmentResolve;
-		depthAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+		m_depth.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+		m_depth.resolveImageView = *depthStencilAttachmentResolve;
+		m_depth.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 
-		stencilAttachmentInfo.resolveMode = VK_RESOLVE_MODE_NONE_KHR;
-		stencilAttachmentInfo.resolveImageView = bHasStencil ? *depthStencilAttachmentResolve : VK_NULL_HANDLE;
-		stencilAttachmentInfo.resolveImageLayout = bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
-
-		m_rhiDependecies.Insert(depthStencilAttachmentResolve->GetImage());
+		m_stencil.resolveMode = VK_RESOLVE_MODE_NONE_KHR;
+		m_stencil.resolveImageView = bHasStencil ? *depthStencilAttachmentResolve : VK_NULL_HANDLE;
+		m_stencil.resolveImageLayout = bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
 	}
+}
 
-	const VkRenderingInfoKHR renderInfo
+VkRenderingInfo VulkanRenderingAttachments::GetRenderingInfo(VkRect2D renderArea, VkRenderingFlags flags) const
+{
+	return
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
 		.pNext = VK_NULL_HANDLE,
-		.flags = renderingFlags,
+		.flags = flags,
 		.renderArea = renderArea,
 		.layerCount = 1,
-		.colorAttachmentCount = (uint32_t)colorAttachments.Num(),
-		.pColorAttachments = colorAttachmentInfos.GetData(),
-		.pDepthAttachment = &depthAttachmentInfo,
-		.pStencilAttachment = &stencilAttachmentInfo,
+		.colorAttachmentCount = (uint32_t)m_colors.Num(),
+		.pColorAttachments = m_colors.GetData(),
+		.pDepthAttachment = &m_depth,
+		.pStencilAttachment = &m_stencil,
 	};
+}
+
+void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+	const TVector<VulkanImageViewPtr>& colorAttachmentResolves,
+	VulkanImageViewPtr depthStencilAttachment,
+	VulkanImageViewPtr depthStencilAttachmentResolve,
+	VkRect2D renderArea,
+	VkRenderingFlags renderingFlags,
+	VkOffset2D offset,
+	bool bClearRenderTargets,
+	const VulkanRenderPassClearValues& clearValues,
+	bool bStoreDepth)
+{
+	const VulkanRenderingAttachments attachments(colorAttachments, colorAttachmentResolves,
+		depthStencilAttachment, depthStencilAttachmentResolve, bClearRenderTargets, clearValues, bStoreDepth);
+	const VkRenderingInfo renderInfo = attachments.GetRenderingInfo(renderArea, renderingFlags);
+
+	if (depthStencilAttachmentResolve)
+	{
+		m_rhiDependecies.Insert(depthStencilAttachmentResolve->GetImage());
+	}
 
 	for (auto& attachment : colorAttachments)
 	{
@@ -353,7 +372,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	VkOffset2D offset,
 	bool bSupportMultisampling,
 	bool bClearRenderTargets,
-	VkClearValue clearColor,
+	const VulkanRenderPassClearValues& clearValues,
 	bool bStoreDepth)
 {
 	// MSAA enabled -> we use the temporary buffers to resolve
@@ -384,7 +403,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 			renderingFlags,
 			offset,
 			bClearRenderTargets,
-			clearColor,
+			clearValues,
 			bStoreDepth);
 	}
 	else
@@ -397,7 +416,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 			renderingFlags,
 			offset,
 			bClearRenderTargets,
-			clearColor,
+			clearValues,
 			bStoreDepth);
 	}
 }
