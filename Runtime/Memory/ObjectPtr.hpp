@@ -64,7 +64,7 @@ namespace Sailor
 		template<typename... TArgs>
 		static TObjectPtr<T> Make(Memory::ObjectAllocatorPtr pAllocator, TArgs&&... args) noexcept
 		{
-			void* ptr = pAllocator->Allocate(sizeof(T));
+			void* ptr = pAllocator->Allocate(sizeof(T), alignof(T));
 			auto pRes = TObjectPtr<T>(new (ptr) T(std::forward<TArgs>(args)...), pAllocator);
 
 			return pRes;
@@ -98,8 +98,8 @@ namespace Sailor
 		// Basic copy/assignment
 		SAILOR_API TObjectPtr& operator=(const TObjectPtr& pObjectPtr) noexcept
 		{
-			m_pAllocator = pObjectPtr.m_pAllocator;
-			AssignRawPtr(pObjectPtr.m_pRawPtr, pObjectPtr.m_pControlBlock);
+			TObjectPtr copy(pObjectPtr);
+			Swap(std::move(copy));
 			return *this;
 		}
 
@@ -266,12 +266,12 @@ namespace Sailor
 
 		SAILOR_API void AssignRawPtr(Object* pRawPtr, TSmartPtrControlBlock* pControlBlock)
 		{
-			if (m_pRawPtr == pRawPtr)
+			if (m_pRawPtr == pRawPtr && m_pControlBlock == pControlBlock)
 			{
 				return;
 			}
 
-			if (m_pRawPtr)
+			if (m_pControlBlock)
 			{
 				DecrementRefCounter();
 			}
@@ -279,9 +279,9 @@ namespace Sailor
 			m_pControlBlock = nullptr;
 			m_pRawPtr = nullptr;
 
-			if (pRawPtr)
+			if (pRawPtr || pControlBlock)
 			{
-				m_pControlBlock = pControlBlock ? pControlBlock : new (m_pAllocator->Allocate(sizeof(TSmartPtrControlBlock))) TSmartPtrControlBlock();
+				m_pControlBlock = pControlBlock ? pControlBlock : new (m_pAllocator->Allocate(sizeof(TSmartPtrControlBlock), alignof(TSmartPtrControlBlock))) TSmartPtrControlBlock();
 				m_pRawPtr = pRawPtr;
 				IncrementRefCounter();
 			}
@@ -313,24 +313,19 @@ namespace Sailor
 		template<typename R>
 		void Swap(TObjectPtr<R>&& pPtr) requires IsBaseOf<T, R> || IsSame<T, R>
 		{
-			// We are sure that all the types are safe
-			if ((void*)m_pRawPtr == (void*)pPtr.m_pRawPtr)
+			if (static_cast<const void*>(this) == static_cast<const void*>(&pPtr))
 			{
 				return;
 			}
 
-			if (m_pRawPtr)
-			{
-				DecrementRefCounter();
-			}
+			Clear();
 
 			m_pRawPtr = pPtr.m_pRawPtr;
 			m_pControlBlock = pPtr.m_pControlBlock;
-			m_pAllocator = pPtr.m_pAllocator;
+			m_pAllocator = std::move(pPtr.m_pAllocator);
 
 			pPtr.m_pRawPtr = nullptr;
 			pPtr.m_pControlBlock = nullptr;
-			pPtr.m_pAllocator.Clear();
 		}
 
 		template<typename>
