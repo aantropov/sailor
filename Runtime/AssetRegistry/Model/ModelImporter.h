@@ -266,7 +266,7 @@ namespace Sailor
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Repeat,
 			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 			bool bShouldKeepCpuBuffers = false);
-		SAILOR_API bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
+		SAILOR_API static bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& assetRegistry);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo,
 			TVector<MeshContext>& outParsedMeshes,
 			Math::AABB& outBoundsAabb,
@@ -298,5 +298,7 @@ namespace Sailor
 		TConcurrentMap<FileId, Tasks::ITaskPtr> m_generatedMaterialMigrationTasks;
 
 		ObjectAllocatorPtr m_allocator;
+
+		friend class ModelImporterTestAccess;
 	};
 }

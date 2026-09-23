@@ -2,6 +2,7 @@
 #include "GltfImporterUtils.h"
 
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelLodGeneration.h"
 #include "ModelAssetInfo.h"
@@ -94,9 +95,16 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 			}
 
 			const TVector<FileId>& animations = modelAssetInfo->GetAnimations();
-			const bool bAnimationsNeedRepair = animations.Num() > 0 && !areGeneratedAssetsValid(animations, true);
-			if (((bWasExpired && animations.Num() == 0) || bAnimationsNeedRepair) &&
-				GenerateAnimationAssets(modelAssetInfo))
+			AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+			bool bAnimationsNeedRepair = !areGeneratedAssetsValid(animations, true);
+			for (const FileId& fileId : animations)
+			{
+				const auto* animation = assetRegistry->GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
+				std::error_code error;
+				bAnimationsNeedRepair |= animation == nullptr ||
+					!std::filesystem::is_regular_file(animation->GetMetaFilepath(), error);
+			}
+			if ((bWasExpired || bAnimationsNeedRepair) && GenerateAnimationAssets(modelAssetInfo, *assetRegistry))
 			{
 				assetInfo->SaveMetaFile();
 			}
@@ -125,7 +133,8 @@ void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 			assetInfo->SaveMetaFile();
 		}
 
-		if (modelAssetInfo->GetAnimations().Num() == 0 && GenerateAnimationAssets(modelAssetInfo))
+		if (modelAssetInfo->GetAnimations().Num() == 0 &&
+			GenerateAnimationAssets(modelAssetInfo, *App::GetSubmodule<AssetRegistry>()))
 		{
 			assetInfo->SaveMetaFile();
 		}
