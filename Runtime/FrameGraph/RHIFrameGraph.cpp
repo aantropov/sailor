@@ -1123,9 +1123,14 @@ void RHIFrameGraph::CompleteMotionHistory(RHI::RHISceneViewPtr sceneView, bool s
 	}
 }
 
-TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhiSceneView)
+TVector<Sailor::Tasks::ITaskPtr> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhiSceneView)
 {
-	TVector<Sailor::Tasks::TaskPtr<void, void>> res;
+	TVector<Sailor::Tasks::ITaskPtr> res;
+	// Recording belongs to this submission even when its DebugDraw pass is omitted.
+	for (const auto& task : rhiSceneView->m_debugDraw)
+	{
+		res.Add(task);
+	}
 
 	auto frameRefPtr = this->ToRefPtr<RHIFrameGraph>();
 	for (auto& snapshot : rhiSceneView->m_snapshots)

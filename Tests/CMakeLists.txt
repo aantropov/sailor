@@ -1,5 +1,15 @@
 find_package(ixwebsocket CONFIG QUIET)
 find_package(imgui CONFIG REQUIRED)
+find_package(magic_enum CONFIG REQUIRED)
+find_package(Jolt CONFIG REQUIRED)
+find_package(Threads REQUIRED)
+
+add_executable(SpinLockTests SpinLockTests.cpp)
+target_compile_features(SpinLockTests PRIVATE cxx_std_20)
+target_include_directories(SpinLockTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(SpinLockTests PRIVATE Threads::Threads magic_enum::magic_enum)
+add_test(NAME SpinLockTests COMMAND SpinLockTests)
+set_tests_properties(SpinLockTests PROPERTIES TIMEOUT 20)
 
 add_executable(ImGuiDrawDataSnapshotTests ImGuiDrawDataSnapshotTests.cpp)
 target_compile_features(ImGuiDrawDataSnapshotTests PRIVATE cxx_std_20)
@@ -83,9 +93,112 @@ add_executable(BoundsContractTests
     BoundsContractTests.cpp
 )
 
+add_executable(MathContractTests MathContractTests.cpp)
+target_compile_features(MathContractTests PRIVATE cxx_std_20)
+target_include_directories(MathContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(MathContractTests PRIVATE Sailor::Runtime)
+add_test(NAME MathContractTests COMMAND MathContractTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(MathContractTests)
+endif()
+
+add_executable(TimerContractTests TimerContractTests.cpp)
+target_compile_features(TimerContractTests PRIVATE cxx_std_20)
+target_include_directories(TimerContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(TimerContractTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME TimerContractTests COMMAND TimerContractTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(TimerContractTests)
+endif()
+
+add_executable(ContainerContractTests ContainerContractTests.cpp)
+target_compile_features(ContainerContractTests PRIVATE cxx_std_20)
+target_include_directories(ContainerContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ContainerContractTests PRIVATE Sailor::Runtime)
+add_test(NAME ContainerContractTests COMMAND ContainerContractTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ContainerContractTests)
+endif()
+
+add_executable(BlockAllocatorTests BlockAllocatorTests.cpp)
+target_compile_features(BlockAllocatorTests PRIVATE cxx_std_20)
+target_include_directories(BlockAllocatorTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(BlockAllocatorTests PRIVATE Sailor::Runtime)
+add_test(NAME BlockAllocatorTests COMMAND BlockAllocatorTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(BlockAllocatorTests)
+endif()
+
+add_executable(RendererTimingTests RendererTimingTests.cpp)
+target_compile_features(RendererTimingTests PRIVATE cxx_std_20)
+target_include_directories(RendererTimingTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(RendererTimingTests PRIVATE Sailor::Runtime)
+add_test(NAME RendererTimingTests COMMAND RendererTimingTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(RendererTimingTests)
+endif()
+
+add_executable(EnvironmentCacheTests EnvironmentCacheTests.cpp)
+target_compile_features(EnvironmentCacheTests PRIVATE cxx_std_20)
+target_include_directories(EnvironmentCacheTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(EnvironmentCacheTests PRIVATE Sailor::Runtime)
+add_test(NAME EnvironmentCacheTests COMMAND EnvironmentCacheTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(EnvironmentCacheTests)
+endif()
+
+add_executable(FrameGraphAssetTests FrameGraphAssetTests.cpp)
+target_compile_features(FrameGraphAssetTests PRIVATE cxx_std_20)
+target_include_directories(FrameGraphAssetTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(FrameGraphAssetTests PRIVATE Sailor::Runtime)
+add_test(NAME FrameGraphAssetTests COMMAND FrameGraphAssetTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(FrameGraphAssetTests)
+endif()
+
+add_executable(ConcurrentContainerTests ConcurrentContainerTests.cpp)
+target_compile_features(ConcurrentContainerTests PRIVATE cxx_std_20)
+target_include_directories(ConcurrentContainerTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ConcurrentContainerTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME ConcurrentContainerTests COMMAND ConcurrentContainerTests)
+set_tests_properties(ConcurrentContainerTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ConcurrentContainerTests)
+endif()
+
 add_executable(LandscapeStreamingTests
     LandscapeStreamingTests.cpp
 )
+
+add_executable(TaskContractTests TaskContractTests.cpp)
+target_compile_features(TaskContractTests PRIVATE cxx_std_20)
+target_include_directories(TaskContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(TaskContractTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME TaskContractTests COMMAND TaskContractTests)
+set_tests_properties(TaskContractTests PROPERTIES TIMEOUT 60)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(TaskContractTests)
+endif()
+
+add_executable(JoltJobSystemTests
+    JoltJobSystemTests.cpp
+    ${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp
+)
+target_compile_features(JoltJobSystemTests PRIVATE cxx_std_20)
+target_include_directories(JoltJobSystemTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(JoltJobSystemTests PRIVATE Sailor::Runtime Jolt::Jolt)
+# Match the adapter's no-RTTI Jolt ABI, including when compiled outside Lib.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR
+    CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    target_compile_options(JoltJobSystemTests PRIVATE /GR-)
+else()
+    target_compile_options(JoltJobSystemTests PRIVATE -fno-rtti)
+endif()
+add_test(NAME JoltJobSystemTests COMMAND JoltJobSystemTests)
+set_tests_properties(JoltJobSystemTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(JoltJobSystemTests)
+endif()
 
 add_executable(GpuCullingContractTests
     GpuCullingContractTests.cpp
@@ -106,6 +219,15 @@ add_executable(AnimationSamplingContractTests
 add_executable(VulkanDescriptorCacheTests
     VulkanDescriptorCacheTests.cpp
 )
+
+add_executable(VulkanRenderPassTests VulkanRenderPassTests.cpp)
+target_compile_features(VulkanRenderPassTests PRIVATE cxx_std_20)
+target_include_directories(VulkanRenderPassTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(VulkanRenderPassTests PRIVATE Sailor::Runtime)
+add_test(NAME VulkanRenderPassTests COMMAND VulkanRenderPassTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(VulkanRenderPassTests)
+endif()
 
 add_executable(EditorViewportControllerContractTests
     EditorViewportControllerContractTests.cpp
@@ -752,6 +874,7 @@ set_tests_properties(
     ModelImporterContractTests
     AnimationSamplingContractTests
     VulkanDescriptorCacheTests
+    VulkanRenderPassTests
     EditorViewportControllerContractTests
     SkyComponentContractTests
     PhysicsRuntimeTests

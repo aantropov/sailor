@@ -169,7 +169,16 @@ void TestComponent::Tick(float deltaTime)
 
 	ImGui::Begin("Performance");
 	ImGui::Text("CPU: %.1f fps (%.2f ms)", cpuFps, cpuFrameMs);
-	ImGui::Text("GPU: %u fps", rendererStats.m_gpuFps.load(std::memory_order_relaxed));
+	ImGui::Text("Render: %u fps, present: %u /s",
+		rendererStats.m_renderFps.load(std::memory_order_relaxed),
+		rendererStats.m_presentFps.load(std::memory_order_relaxed));
+	const auto gpuTimings = renderer->GetGpuTimings();
+	if (gpuTimings.m_bValid)
+	{
+		ImGui::Text("GPU work (sum): %.2f ms, sample %.0f ms old",
+			gpuTimings.m_gpuWorkMilliseconds,
+			gpuTimings.GetAgeMilliseconds(std::chrono::steady_clock::now()));
+	}
 	ImGui::Text("GPU memory: %zu / %zu MB", gpuHeapUsageMb, gpuHeapBudgetMb);
 	ImGui::Text("Submitted cmd buffers: %u", rendererStats.m_numSubmittedCommandBuffers);
 	ImGui::End();

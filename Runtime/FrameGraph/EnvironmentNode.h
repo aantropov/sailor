@@ -8,6 +8,7 @@
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/SkyNode.h"
 #include "FrameGraph/LocalReflection.h"
+#include <array>
 #include <atomic>
 
 namespace Sailor::Framegraph
@@ -48,6 +49,24 @@ namespace Sailor::Framegraph
 		LocalReflectionParameters GetLocalReflectionParameters() const { return m_localParameters; }
 
 	protected:
+		struct EnvironmentMaps
+		{
+			RHI::RHICubemapPtr m_specular;
+			RHI::RHICubemapPtr m_irradiance;
+			RHI::RHICubemapPtr m_sheen;
+		};
+
+		struct CachedEnvironment
+		{
+			SkyEnvironmentKey m_key;
+			EnvironmentMaps m_maps;
+		};
+
+		SAILOR_SHARED_API bool TryRestoreEnvironment(RHI::RHIFrameGraphPtr frameGraph,
+			const SkyEnvironmentKey& key, RHI::RHICubemapPtr rawCubemap);
+		// Called after a miss, once the complete bundle has been filtered.
+		SAILOR_SHARED_API void CacheEnvironment(const SkyEnvironmentKey& key, EnvironmentMaps maps);
+
 		void ProcessLocalReflection(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr commandList);
 		TSharedPtr<const LocalReflectionImage> m_localReflection;
 		bool m_bLocalReflectionDirty = false;
@@ -66,9 +85,9 @@ namespace Sailor::Framegraph
 		RHI::RHIShaderBindingSetPtr m_computeSheenBindings{};
 		RHI::RHIShaderBindingSetPtr m_computeBrdfBindings{};
 
-		TMap<SkyEnvironmentKey, RHI::RHICubemapPtr> m_envCubemaps{};
-		TMap<SkyEnvironmentKey, RHI::RHICubemapPtr> m_irradianceCubemaps{};
-		TMap<SkyEnvironmentKey, RHI::RHICubemapPtr> m_sheenEnvCubemaps{};
+		// Render-owned, oldest first. Consumers retain their own references after eviction.
+		std::array<CachedEnvironment, 4u> m_environmentCache{};
+		uint32_t m_numCachedEnvironments = 0u;
 		RHI::RHITexturePtr m_brdfSampler{};
 
 		TexturePtr m_envMapTexture;

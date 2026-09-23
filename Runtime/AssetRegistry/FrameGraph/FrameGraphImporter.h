@@ -52,6 +52,8 @@ namespace Sailor
 
 	protected:
 
+		friend class FrameGraphImporterTestAccess;
+
 		SAILOR_API FrameGraphPtr BuildFrameGraph(const FileId& uid, const FrameGraphAssetPtr& frameGraphAsset) const;
 
 		TConcurrentMap<FileId, FrameGraphPtr> m_loadedFrameGraphs{};

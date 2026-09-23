@@ -15,8 +15,6 @@ namespace Sailor
 	struct FileRevision final
 	{
 		int64_t m_modificationTimeNanoseconds{};
-		uint64_t m_fileSize{};
-		uint64_t m_contentHash{};
 		bool m_bIsValid = false;
 
 		bool operator==(const FileRevision& rhs) const noexcept

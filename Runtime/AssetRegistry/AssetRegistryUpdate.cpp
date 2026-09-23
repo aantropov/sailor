@@ -156,6 +156,50 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId)
 	return bSucceeded && bCacheSaved;
 }
 
+bool AssetRegistry::CanReuseSecondaryAssetId(const FileId& fileId,
+	const std::string& assetInfoType,
+	const std::filesystem::path& sourcePath,
+	std::filesystem::path& inOutMetadataPath) const
+{
+	std::filesystem::path metadataPath;
+	const auto loaded = m_loadedAssetInfo.Find(fileId);
+	if (loaded != m_loadedAssetInfo.end())
+	{
+		const AssetInfoPtr info = loaded.Value();
+		if (info == nullptr || (!assetInfoType.empty() && info->GetAssetInfoType() != assetInfoType) ||
+			PathKey(info->GetAssetFilepath()) != PathKey(sourcePath))
+		{
+			return false;
+		}
+		metadataPath = info->GetMetaFilepath();
+	}
+	else
+	{
+		std::lock_guard<std::recursive_mutex> lock(m_lazyAssetInfoMutex);
+		const auto lazy = m_lazyAssetInfos.Find(fileId);
+		if (lazy == m_lazyAssetInfos.end())
+		{
+			return true;
+		}
+		const LazyAssetInfoRecord& record = lazy.Value();
+		if ((!assetInfoType.empty() && record.m_assetInfoType != assetInfoType) || PathKey(record.m_sourcePath) != PathKey(sourcePath))
+		{
+			return false;
+		}
+		metadataPath = std::filesystem::path(record.m_sourcePath).parent_path() / record.m_metadataFilename;
+	}
+
+	const auto relativeMetadataPath = std::filesystem::path(PathKey(metadataPath)).lexically_relative(
+		PathKey(m_workspaceContext.GetContent()));
+	std::filesystem::path writablePath;
+	if (!ResolveWorkspaceContentPathForWrite(relativeMetadataPath.generic_string(), writablePath))
+	{
+		return false;
+	}
+	inOutMetadataPath = std::move(writablePath);
+	return true;
+}
+
 FileId AssetRegistry::RegisterGeneratedSecondaryAssetInfo(const std::filesystem::path& metadataPath)
 {
 	if (m_scheduler != nullptr && !m_scheduler->IsMainThread())
@@ -222,35 +266,36 @@ FileId AssetRegistry::RegisterGeneratedSecondaryAssetInfo(const std::filesystem:
 			canonicalMetadataPath.generic_string().c_str());
 		return FileId::Invalid;
 	}
+	std::filesystem::path ownedMetadataPath = canonicalMetadataPath;
+	if (!CanReuseSecondaryAssetId(expectedFileId, assetInfoType, canonicalSourcePath, ownedMetadataPath) ||
+		PathKey(ownedMetadataPath) != PathKey(canonicalMetadataPath))
+	{
+		SAILOR_LOG_ERROR("Generated secondary asset metadata '%s' collides with an active FileId.",
+			canonicalMetadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
 
 	auto existingAssetInfo = m_loadedAssetInfo.Find(expectedFileId);
 	if (existingAssetInfo != m_loadedAssetInfo.end())
 	{
-		if (existingAssetInfo.Value() != nullptr &&
-			PathKey(existingAssetInfo.Value()->GetMetaFilepath()) == PathKey(canonicalMetadataPath))
+		AssetInfoPtr existingInfo = existingAssetInfo.Value();
+		// A caller may have atomically replaced the metadata within the same
+		// filesystem timestamp tick. Always reload this explicit registration.
+		IAssetInfoHandler* existingHandler = existingInfo->GetAssetInfoType() == "Sailor::AnimationAssetInfo"
+			? GetAssetInfoHandler("anim") : existingInfo->GetHandler();
+		const bool bHadPendingUpdate = existingInfo->m_bPendingUpdateNotification;
+		const bool bHadPendingWasExpired = existingInfo->m_bPendingWasExpired;
+		const bool bHadPendingImport = existingInfo->m_bPendingImportNotification;
+		if (existingHandler == nullptr || !existingHandler->ReloadAssetInfo(existingInfo, false, false))
 		{
-			AssetInfoPtr existingInfo = existingAssetInfo.Value();
-			// A caller may have atomically replaced the metadata within the same
-			// filesystem timestamp tick. Always reload this explicit registration.
-			IAssetInfoHandler* existingHandler = existingInfo->GetHandler();
-			const bool bHadPendingUpdate = existingInfo->m_bPendingUpdateNotification;
-			const bool bHadPendingWasExpired = existingInfo->m_bPendingWasExpired;
-			const bool bHadPendingImport = existingInfo->m_bPendingImportNotification;
-			if (existingHandler == nullptr || !existingHandler->ReloadAssetInfo(existingInfo, false, false))
-			{
-				SAILOR_LOG_ERROR("Cannot refresh generated secondary asset metadata: %s",
-					canonicalMetadataPath.generic_string().c_str());
-				return FileId::Invalid;
-			}
-			existingInfo->m_bPendingUpdateNotification = bHadPendingUpdate;
-			existingInfo->m_bPendingWasExpired = bHadPendingWasExpired;
-			existingInfo->m_bPendingImportNotification = bHadPendingImport;
-			return expectedFileId;
+			SAILOR_LOG_ERROR("Cannot refresh generated secondary asset metadata: %s",
+				canonicalMetadataPath.generic_string().c_str());
+			return FileId::Invalid;
 		}
-
-		SAILOR_LOG_ERROR("Generated secondary asset metadata '%s' collides with an active FileId.",
-			canonicalMetadataPath.generic_string().c_str());
-		return FileId::Invalid;
+		existingInfo->m_bPendingUpdateNotification = bHadPendingUpdate;
+		existingInfo->m_bPendingWasExpired = bHadPendingWasExpired;
+		existingInfo->m_bPendingImportNotification = bHadPendingImport;
+		return expectedFileId;
 	}
 
 	for (const auto& loadedAsset : m_loadedAssetInfo)

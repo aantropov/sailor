@@ -3,10 +3,6 @@
 #include "ECS/StaticMeshRendererECS.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 
-#include <algorithm>
-#include <cmath>
-#include <functional>
-
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
@@ -70,7 +66,8 @@ void MeshRendererComponent::SetOverrideMaterials(const TVector<FileId>& override
 void MeshRendererComponent::SetMinLod(uint32_t minLod)
 {
 	m_minLod = minLod;
-	m_maxLod = (std::max)(m_maxLod, m_minLod);
+	StaticMeshRendererData::NormalizeLodSettings(
+		m_minLod, m_maxLod, m_screenCoverageThresholds);
 	if (m_handle != ECS::InvalidIndex)
 	{
 		GetData().SetLodSettings(
@@ -82,7 +79,9 @@ void MeshRendererComponent::SetMinLod(uint32_t minLod)
 
 void MeshRendererComponent::SetMaxLod(uint32_t maxLod)
 {
-	m_maxLod = (std::max)(maxLod, m_minLod);
+	m_maxLod = maxLod;
+	StaticMeshRendererData::NormalizeLodSettings(
+		m_minLod, m_maxLod, m_screenCoverageThresholds);
 	if (m_handle != ECS::InvalidIndex)
 	{
 		GetData().SetLodSettings(
@@ -96,15 +95,8 @@ void MeshRendererComponent::SetScreenCoverageThresholds(
 	const TVector<float>& screenCoverageThresholds)
 {
 	m_screenCoverageThresholds = screenCoverageThresholds;
-	for (float& threshold : m_screenCoverageThresholds)
-	{
-		threshold = std::isfinite(threshold) ?
-			(std::clamp)(threshold, 0.0f, 1.0f) : 0.0f;
-	}
-	std::sort(
-		m_screenCoverageThresholds.begin(),
-		m_screenCoverageThresholds.end(),
-		std::greater<float>());
+	StaticMeshRendererData::NormalizeLodSettings(
+		m_minLod, m_maxLod, m_screenCoverageThresholds);
 	if (m_handle != ECS::InvalidIndex)
 	{
 		GetData().SetLodSettings(

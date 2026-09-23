@@ -44,7 +44,9 @@ namespace Sailor
 
 		GameObjectPtr m_owner;
 
+		size_t m_frameAdded = 0;
 		bool m_bBeginPlayCalled = false;
+		bool m_bDependenciesResolved = true;
 
 		friend class TObjectPtr<Component>;
 		friend class GameObject;

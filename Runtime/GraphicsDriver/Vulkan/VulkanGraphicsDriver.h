@@ -18,6 +18,7 @@
 #include <array>
 #include <atomic>
 #include <mutex>
+#include <numeric>
 
 #ifdef SAILOR_BUILD_WITH_VULKAN
 
@@ -33,6 +34,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 			return remainder == 0u ?
 				elementSize :
 				elementSize + SsboElementAlignment - remainder;
+		}
+
+		constexpr size_t ResolveSsboOffsetAlignment(size_t stride, size_t deviceAlignment) noexcept
+		{
+			// Keep the element index integral while satisfying descriptor-offset alignment.
+			return std::lcm(stride, deviceAlignment);
 		}
 
 		inline uint32_t ResolveInstanceIndex(
@@ -58,7 +65,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual bool StartGpuTracking() override;
 		SAILOR_API virtual RHI::GpuStats FinishGpuTracking() override;
 		SAILOR_API virtual bool SupportsGpuFrameTimeQueries() const override;
-		SAILOR_API virtual bool BeginGpuFrameTimeQuery() override;
+		SAILOR_API virtual bool BeginGpuFrameTimeQuery(uint64_t generation) override;
 		SAILOR_API virtual uint32_t BeginGpuFrameTimeRange(
 			RHI::RHICommandListPtr commandList) override;
 		SAILOR_API virtual void EndGpuFrameTimeRange(
@@ -73,7 +80,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void EndGpuFrameTimeQuery() override;
 		SAILOR_API virtual void CommitGpuFrameTimeQuery() override;
 		SAILOR_API virtual void CancelGpuFrameTimeQuery() override;
-		SAILOR_API virtual bool TryGetGpuFrameTimeMs(float& outMilliseconds) const override;
+		SAILOR_API virtual std::optional<RHI::GpuTimingResult> TakeGpuTimingResult() override;
 
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const override;
 
@@ -83,8 +90,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual bool BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage) override;
 		SAILOR_API virtual uint32_t GetMaxFramesInFlight() const override;
 		SAILOR_API virtual bool AcquireNextImage() override;
-		SAILOR_API virtual bool PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) override;
-		SAILOR_API virtual bool SubmitFrameWithoutPresent(const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) override;
+		SAILOR_API virtual RHI::FrameSubmissionResult PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) override;
+		SAILOR_API virtual RHI::FrameSubmissionResult SubmitFrameWithoutPresent(const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) override;
 
 		SAILOR_API virtual void SetDebugName(RHI::RHIResourcePtr resource, const std::string& name) override;
 
@@ -319,7 +326,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
 		SAILOR_API TVector<uint32_t> CollectOptionalVariableDescriptorCount(const TVector<VulkanShaderStagePtr>& shaders, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindingSets) const;
 
-		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
+		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetUniformBufferAllocator(const std::string& uniformTypeId);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
@@ -390,6 +397,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API bool UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
 		SAILOR_API void RefreshSwapchainTargets();
+		void CreateDepthStencilViews(RHI::RHIRenderTargetPtr target);
 
 		// The resources that are used as default
 		VulkanImageViewPtr m_vkDefaultTexture;
@@ -422,6 +430,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		bool m_bIsTrackingGpu = false;
 		RHI::GpuStats m_lastFrameGpuStats{};
 		void PollGpuFrameTimeQueries();
+		void PublishGpuTimingResult(uint32_t slot, bool bValid, float milliseconds, TVector<RHI::GpuTiming> timings);
 		uint32_t GetGpuTimestampValidBits(
 			RHI::ECommandListQueue queue) const;
 
@@ -466,7 +475,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 			m_gpuTimingScopeCounts{};
 		std::array<bool, NumGpuFrameTimeQuerySlots>
 			m_gpuTimingScopeOverflows{};
-		TVector<RHI::GpuTiming> m_latestGpuTimings;
+		struct GpuTimingQuery
+		{
+			uint64_t m_generation = 0u;
+			uint64_t m_queryId = 0u;
+			std::chrono::steady_clock::time_point m_recordedAt{};
+		};
+		std::array<GpuTimingQuery, NumGpuFrameTimeQuerySlots> m_gpuTimingQueries{};
+		std::optional<RHI::GpuTimingResult> m_latestGpuTimingResult;
+		uint64_t m_nextGpuQueryId = 1u;
+		uint64_t m_lastResolvedGpuQueryId = 0u;
 		uint32_t m_activeGpuFrameTimeQuerySlot =
 			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
 		uint32_t m_pendingGpuFrameTimeQuerySlot =
@@ -475,8 +493,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		uint32_t m_gpuComputeTimestampValidBits = 0u;
 		uint32_t m_gpuTransferTimestampValidBits = 0u;
 		float m_gpuTimestampPeriodNs = 0.0f;
-		std::atomic<float> m_gpuFrameTimeMs{ 0.0f };
-		std::atomic<bool> m_bHasGpuFrameTime{ false };
 	};
 };
 

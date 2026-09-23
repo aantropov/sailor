@@ -72,7 +72,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual bool StartGpuTracking() = 0;
 		SAILOR_API virtual RHI::GpuStats FinishGpuTracking() = 0;
 		SAILOR_API virtual bool SupportsGpuFrameTimeQueries() const = 0;
-		SAILOR_API virtual bool BeginGpuFrameTimeQuery() = 0;
+		SAILOR_API virtual bool BeginGpuFrameTimeQuery(uint64_t generation) = 0;
 		SAILOR_API virtual uint32_t BeginGpuFrameTimeRange(
 			RHICommandListPtr commandList) = 0;
 		SAILOR_API virtual void EndGpuFrameTimeRange(
@@ -81,7 +81,8 @@ namespace Sailor::RHI
 		SAILOR_API virtual void EndGpuFrameTimeQuery() = 0;
 		SAILOR_API virtual void CommitGpuFrameTimeQuery() = 0;
 		SAILOR_API virtual void CancelGpuFrameTimeQuery() = 0;
-		SAILOR_API virtual bool TryGetGpuFrameTimeMs(float& outMilliseconds) const = 0;
+		// Render thread only. No result means pending; an invalid result is explicit.
+		SAILOR_API virtual std::optional<GpuTimingResult> TakeGpuTimingResult() = 0;
 
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const = 0;
 
@@ -94,10 +95,10 @@ namespace Sailor::RHI
 		SAILOR_API virtual uint32_t GetMaxFramesInFlight() const = 0;
 
 		SAILOR_API virtual bool AcquireNextImage() = 0;
-		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,
+		SAILOR_API virtual FrameSubmissionResult PresentFrame(const Sailor::FrameState& state,
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
 			const TVector<RHISemaphorePtr>& waitSemaphores = {}) = 0;
-		SAILOR_API virtual bool SubmitFrameWithoutPresent(
+		SAILOR_API virtual FrameSubmissionResult SubmitFrameWithoutPresent(
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
 			const TVector<RHISemaphorePtr>& waitSemaphores = {}) = 0;
 

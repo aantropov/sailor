@@ -13,6 +13,7 @@
 #include "Engine/World.h"
 #include "ECS/TransformECS.h"
 #include "Core/LogMacros.h"
+#include "Workspace/WorkspaceCacheContract.h"
 #include "YamlExceptionBoundary.h"
 
 using namespace Sailor;
@@ -1294,7 +1295,14 @@ bool WorldPrefab::SaveToFile(const std::string& path) const
 		return false;
 	}
 
-	AssetRegistry::WriteTextFile(path, Serialize());
+	std::string contents, diagnostic;
+	if (!External::GuardYamlExceptions(
+		[this, &contents]() { contents = YAML::Dump(Serialize()); }, diagnostic) ||
+		!Workspace::AtomicReplaceWorkspaceCacheText(path, contents, diagnostic))
+	{
+		SAILOR_LOG_ERROR("Cannot save world '%s': %s", path.c_str(), diagnostic.c_str());
+		return false;
+	}
 	return true;
 }
 

@@ -13,6 +13,7 @@
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "Tasks/Scheduler.h"
+#include "Support/TempDirectory.h"
 
 #include <chrono>
 #include <ctime>
@@ -29,6 +30,7 @@
 namespace
 {
 	using namespace Sailor;
+	using Tests::TempDirectory;
 
 	class TestAssetCache final : public AssetCache
 	{
@@ -60,33 +62,6 @@ namespace
 				sourceRevision,
 				"Sailor::AssetInfo");
 		}
-	};
-
-	class TempDirectory final
-	{
-	public:
-		explicit TempDirectory(const char* label)
-		{
-			static uint64_t counter = 0;
-			m_path = std::filesystem::temp_directory_path() /
-				("sailor-asset-cache-" + std::string(label) + "-" + std::to_string(++counter));
-			std::filesystem::remove_all(m_path);
-			std::filesystem::create_directories(m_path);
-		}
-
-		~TempDirectory()
-		{
-			std::error_code error;
-			std::filesystem::remove_all(m_path, error);
-		}
-
-		std::filesystem::path Path(const std::filesystem::path& relative) const
-		{
-			return m_path / relative;
-		}
-
-	private:
-		std::filesystem::path m_path;
 	};
 
 	class LazyAssetInfoLoadingScope final
@@ -134,19 +109,28 @@ namespace
 			return m_metaLoadTime;
 		}
 
+		const FileRevision& GetMetadataRevision() const { return m_metadataRevision; }
+		const FileRevision& GetImportedSourceRevision() const { return m_importedSourceRevision; }
+		void SetWritable(bool bWritable) { m_bWritable = bWritable; }
+
 		void SetPendingUpdate(bool bWasExpired)
 		{
 			m_bPendingUpdateNotification = true;
 			m_bPendingWasExpired = bWasExpired;
 		}
 
-		void SaveMetaFile() override
+		bool SaveMetaFile() override
 		{
 			++m_numMetaSaves;
+			return true;
 		}
 
 		YAML::Node Serialize() const override
 		{
+			if (m_bThrowOnSerialize)
+			{
+				throw std::runtime_error("Metadata serialization failed in the test fixture");
+			}
 			YAML::Node result(YAML::NodeType::Map);
 			result["fileId"] = m_fileId;
 			result["testValue"] = m_testValue;
@@ -168,6 +152,7 @@ namespace
 
 		uint32_t m_numMetaSaves = 0;
 		int32_t m_testValue = 0;
+		bool m_bThrowOnSerialize = false;
 		std::function<void()> m_onDeserialize;
 	};
 
@@ -183,13 +168,18 @@ namespace
 			}
 		}
 
-		void OnImportAsset(AssetInfoPtr) override
+		void OnImportAsset(AssetInfoPtr assetInfo) override
 		{
 			m_events.emplace_back("import");
+			if (m_onImport)
+			{
+				m_onImport(assetInfo);
+			}
 		}
 
 		std::vector<std::string> m_events;
 		std::function<void(AssetInfoPtr)> m_onExpiredUpdate;
+		std::function<void(AssetInfoPtr)> m_onImport;
 	};
 
 	class TestAssetInfoHandler final : public IAssetInfoHandler
@@ -208,6 +198,7 @@ namespace
 			bool,
 			bool) const override
 		{
+			++m_numLoads;
 			auto* info = new TestAssetInfo();
 			const std::filesystem::path metadataPath(metaFilepath);
 			std::filesystem::path sourcePath(metaFilepath);
@@ -226,6 +217,7 @@ namespace
 			return info;
 		}
 
+		mutable uint32_t m_numLoads = 0;
 		mutable std::function<void()> m_onLoad;
 
 	protected:
@@ -366,6 +358,26 @@ namespace
 		return result;
 	}
 
+	void TestTemporaryDirectoriesHaveIndependentOwnership()
+	{
+		TempDirectory first("directory-ownership");
+		const auto marker = first.Path("keep.txt");
+		{
+			std::ofstream stream(marker);
+			stream << "first fixture";
+		}
+		std::filesystem::path secondPath;
+		{
+			TempDirectory second("directory-ownership");
+			secondPath = second.Get();
+			Require(first.Get() != secondPath && std::filesystem::is_directory(secondPath) &&
+				std::filesystem::is_regular_file(marker),
+				"fixtures with the same label must own distinct directories");
+		}
+		Require(!std::filesystem::exists(secondPath) && std::filesystem::is_regular_file(marker),
+			"fixture cleanup must remove only the directory it created");
+	}
+
 	void TestNewFileIdsUseCrossPlatformGuidFormatting()
 	{
 		const FileId braced = MakeFileId("{7810180E-F1BB-4C88-9C9B-28ED9B086974}");
@@ -389,15 +401,10 @@ namespace
 			"new FileIds must use the same unbraced GUID representation on every platform");
 	}
 
-	FileRevision MakeRevision(
-		int64_t modificationTimeNanoseconds = 123456789,
-		uint64_t fileSize = 64,
-		uint64_t contentHash = 14695981039346656037ull)
+	FileRevision MakeRevision(int64_t modificationTimeNanoseconds = 123456789)
 	{
 		FileRevision result;
 		result.m_modificationTimeNanoseconds = modificationTimeNanoseconds;
-		result.m_fileSize = fileSize;
-		result.m_contentHash = contentHash;
 		result.m_bIsValid = true;
 		return result;
 	}
@@ -498,6 +505,15 @@ namespace
 		stream << content;
 	}
 
+	std::string ReadFile(const std::filesystem::path& path)
+	{
+		std::ifstream stream(path, std::ios::binary);
+		Require(stream.is_open(), "the fixture file must be readable");
+		const std::string contents((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+		Require(!stream.bad(), "the complete fixture file must be read");
+		return contents;
+	}
+
 	void RewriteFileWithNewRevision(
 		const std::filesystem::path& path,
 		const std::string& content)
@@ -513,6 +529,114 @@ namespace
 		Require(
 			!timestampError,
 			"the targeted update fixture must advance the file revision");
+	}
+
+	void TestMetadataSavePublishesCompleteState()
+	{
+		TempDirectory directory("metadata-save");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		WriteFile(sourcePath, "source");
+		WriteFile(metadataPath, "previous metadata");
+		std::filesystem::last_write_time(metadataPath,
+			std::filesystem::last_write_time(metadataPath) - std::chrono::hours(1));
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-SAVE}"), sourcePath, metadataPath);
+		info.SetProcessingTimes(11, 13);
+		info.m_testValue = 42;
+		const FileRevision previousMetadata = info.GetMetadataRevision();
+		const FileRevision importedSource = info.GetImportedSourceRevision();
+
+		Require(info.AssetInfo::SaveMetaFile(), "saving complete metadata must report success");
+		TestAssetInfo restored;
+		restored.Deserialize(YAML::Load(ReadFile(metadataPath)));
+		Require(restored.GetFileId() == info.GetFileId() && restored.m_testValue == 42,
+			"saved metadata must round-trip its identity and values");
+		FileRevision savedRevision;
+		Require(Utils::TryGetFileRevision(metadataPath.string(), savedRevision) &&
+			info.GetMetadataRevision() == savedRevision && savedRevision != previousMetadata && !info.IsMetaExpired(),
+			"successful save must acknowledge the newly published metadata revision");
+		Require(info.GetRuntimeMetadataLoadTime() == info.GetMetaLastModificationTime() &&
+			info.GetRuntimeMetadataLoadTime() != 13 && info.GetAssetImportTime() == 11 &&
+			info.GetImportedSourceRevision() == importedSource,
+			"metadata save must update its load time without acknowledging source processing");
+	}
+
+	void TestMetadataSerializationFailurePreservesTheFile()
+	{
+		TempDirectory directory("metadata-serialization-failure");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		WriteFile(sourcePath, "source");
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-SERIALIZATION-FAILURE}"), sourcePath, metadataPath);
+		info.m_testValue = 7;
+		const std::string previousContents = YAML::Dump(info.Serialize());
+		WriteFile(metadataPath, previousContents);
+		info.SetProcessingTimes(11, 13);
+		const FileRevision previousRevision = info.GetMetadataRevision();
+		info.m_testValue = 99;
+		info.m_bThrowOnSerialize = true;
+
+		Require(!info.AssetInfo::SaveMetaFile(), "serialization failure must be returned, not thrown");
+		FileRevision preservedRevision;
+		Require(ReadFile(metadataPath) == previousContents && info.GetMetadataRevision() == previousRevision &&
+			Utils::TryGetFileRevision(metadataPath.string(), preservedRevision) && preservedRevision == previousRevision &&
+			info.GetRuntimeMetadataLoadTime() == 13 && info.m_testValue == 99,
+			"serialization failure must preserve the file revision and acknowledgement while retaining unsaved edits");
+		info.m_bThrowOnSerialize = false;
+		Require(info.AssetInfo::SaveMetaFile() && YAML::Load(ReadFile(metadataPath))["testValue"].as<int32_t>() == 99,
+			"the same metadata object must be saveable after serialization recovers");
+	}
+
+	void TestBlockedMetadataSaveCanBeRetried()
+	{
+		TempDirectory directory("metadata-blocked-save");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		const auto previousPath = directory.Path("Content/Previous.asset");
+		const auto markerPath = metadataPath / "keep.txt";
+		WriteFile(sourcePath, "source");
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-BLOCKED-SAVE}"), sourcePath, metadataPath);
+		const std::string previousContents = YAML::Dump(info.Serialize());
+		WriteFile(metadataPath, previousContents);
+		info.SetProcessingTimes(11, 13);
+		const FileRevision previousRevision = info.GetMetadataRevision();
+		std::filesystem::rename(metadataPath, previousPath);
+		WriteFile(markerPath, "keep");
+		info.m_testValue = 99;
+
+		Require(!info.AssetInfo::SaveMetaFile(), "a directory blocking the metadata destination must reject publication");
+		Require(ReadFile(markerPath) == "keep" && ReadFile(previousPath) == previousContents &&
+			info.GetMetadataRevision() == previousRevision && info.GetRuntimeMetadataLoadTime() == 13,
+			"failed publication must preserve the blocker and previous acknowledgement");
+		Require(std::filesystem::remove(markerPath) && std::filesystem::remove(metadataPath),
+			"the fixture must remove only its own blocking directory");
+		std::filesystem::rename(previousPath, metadataPath);
+		Require(info.AssetInfo::SaveMetaFile(), "restoring the destination must allow the same save to succeed");
+		FileRevision savedRevision;
+		Require(YAML::Load(ReadFile(metadataPath))["testValue"].as<int32_t>() == 99 &&
+			Utils::TryGetFileRevision(metadataPath.string(), savedRevision) && info.GetMetadataRevision() == savedRevision &&
+			info.GetRuntimeMetadataLoadTime() == info.GetMetaLastModificationTime(),
+			"retry must publish the retained edits and acknowledge the actual file");
+	}
+
+	void TestReadOnlyMetadataCannotBeSaved()
+	{
+		TempDirectory directory("metadata-read-only");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		WriteFile(sourcePath, "source");
+		WriteFile(metadataPath, "read-only metadata");
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-READ-ONLY}"), sourcePath, metadataPath);
+		info.SetProcessingTimes(11, 13);
+		const FileRevision previousRevision = info.GetMetadataRevision();
+		info.SetWritable(false);
+		Require(!info.AssetInfo::SaveMetaFile() && ReadFile(metadataPath) == "read-only metadata" &&
+			info.GetMetadataRevision() == previousRevision && info.GetRuntimeMetadataLoadTime() == 13,
+			"read-only metadata must report failure without changing bytes or acknowledgement");
 	}
 
 	Workspace::WorkspaceContext CreateWorkspaceContext(
@@ -547,6 +671,95 @@ namespace
 			"asset cache contract workspace should resolve: " +
 				result.m_message);
 		return result.m_context;
+	}
+
+	void TestFileRevisionUsesOnlyTheFilesystemTimestamp()
+	{
+		TempDirectory directory("file-revision");
+		const auto sourcePath = directory.Path("Source.raw");
+		WriteFile(sourcePath, "first");
+		const auto timestamp = std::filesystem::last_write_time(sourcePath);
+		FileRevision first;
+		Require(Utils::TryGetFileRevision(sourcePath.string(), first) && first.m_bIsValid,
+			"an existing source should have a valid filesystem revision");
+
+		WriteFile(sourcePath, "different contents and a different size");
+		std::filesystem::last_write_time(sourcePath, timestamp);
+		FileRevision next;
+		Require(Utils::TryGetFileRevision(sourcePath.string(), next) && next == first,
+			"content and size changes with the same timestamp must not change the revision");
+		for (const auto delta : { std::chrono::seconds(2), std::chrono::seconds(-2) })
+		{
+			std::filesystem::last_write_time(sourcePath, timestamp + delta);
+			Require(Utils::TryGetFileRevision(sourcePath.string(), next) && next != first,
+				"both later and backdated writes must change the source revision");
+		}
+
+		FileRevision restored;
+		restored.Deserialize(first.Serialize());
+		Require(restored == first, "the timestamp and validity must round-trip through YAML");
+		YAML::Node expanded = first.Serialize();
+		expanded["fileSize"] = 0;
+		expanded["contentHash"] = 0;
+		restored.Deserialize(expanded);
+		Require(!restored.m_bIsValid,
+			"an expanded revision from an older cache layout must require regeneration");
+		restored.Deserialize(YAML::Load("modificationTimeNanoseconds: invalid"));
+		Require(!restored.m_bIsValid, "a revision must contain an integer timestamp");
+		Require(!Utils::TryGetFileRevision(directory.Path("Missing.raw").string(), next) &&
+			!next.m_bIsValid && next.m_modificationTimeNanoseconds == 0,
+			"a missing source must clear a previously valid output revision");
+		Require(!Utils::TryGetFileRevision(sourcePath.parent_path().string(), first) && !first.m_bIsValid,
+			"directories must not have source-file revisions");
+	}
+
+	void TestExpandedRevisionCacheIsRegeneratedAtVersionOne()
+	{
+		TempDirectory directory("expanded-revision");
+		const auto context = CreateWorkspaceContext(directory);
+		const FileId fileId = MakeFileId("{ASSET-CACHE-EXPANDED-REVISION}");
+		const auto sourcePath = context.GetContent() / "Model.glb";
+		YAML::Node oldPayload = YAML::Load(TestAssetCache::SerializeAssetCachePayload(
+			MakeCache(fileId.ToString(), sourcePath.string(), 10)));
+		YAML::Node oldEntry = oldPayload["assetCache"]["assets"][fileId.ToString()];
+		for (const char* field : { "sourceRevision", "metadataRevision" })
+		{
+			oldEntry[field]["fileSize"] = 0;
+			oldEntry[field]["contentHash"] = 0;
+		}
+		const auto identity = Workspace::MakeWorkspaceCacheIdentity(
+			"asset-cache", "asset-cache-v1", 1, context);
+		std::string envelope;
+		std::string diagnostic;
+		Require(Workspace::SerializeWorkspaceCacheEnvelope(identity, YAML::Dump(oldPayload), envelope, diagnostic),
+			"the stale revision fixture should have a valid version-one envelope");
+		const auto cachePath = context.GetCache() / "AssetCache.yaml";
+		WriteFile(cachePath, envelope);
+
+		TestAssetCache cache;
+		cache.Initialize(context);
+		Require(cache.GetLastLoadResult().m_status == Workspace::EWorkspaceCacheLoadStatus::Corrupt &&
+			!cache.Contains(fileId),
+			"an old revision layout must not publish entries even in a matching v1 envelope");
+		const auto reset = Workspace::LoadWorkspaceCacheEnvelope(cachePath, identity);
+		Require(reset.IsLoaded() && YAML::Load(reset.m_payload)["assetCache"]["assets"].size() == 0,
+			"the stale layout must be replaced by an empty current v1 cache");
+
+		Require(cache.Update(fileId, 11, sourcePath.string(), MakeRevision()) && cache.SaveCache(),
+			"normal import completion must repopulate the regenerated cache");
+		TestAssetCache reloaded;
+		reloaded.Initialize(context);
+		Require(reloaded.GetLastLoadResult().IsLoaded() && reloaded.Contains(fileId),
+			"a regenerated cache must load without another reset");
+		const auto saved = Workspace::LoadWorkspaceCacheEnvelope(cachePath, identity);
+		Require(saved.IsLoaded(), "the rewritten envelope must retain its version-one identity");
+		const YAML::Node savedEntry = YAML::Load(saved.m_payload)["assetCache"]["assets"][fileId.ToString()];
+		for (const char* field : { "sourceRevision", "metadataRevision" })
+		{
+			Require(savedEntry[field].IsMap() && savedEntry[field].size() == 1 &&
+				savedEntry[field]["modificationTimeNanoseconds"].as<int64_t>() == MakeRevision().m_modificationTimeNanoseconds,
+				"regenerated revision maps must contain only the timestamp");
+		}
 	}
 
 	void WriteScanAssetFixture(
@@ -632,24 +845,31 @@ namespace
 			cacheContents.find("asset-cache-v2") == std::string::npos,
 			"the rebuilt cache must use only the strict asset-cache-v1 identity");
 
-		uint32_t numMetadataLoads = 0;
 		TestAssetInfoHandler handler;
 		AssetRegistry registry(workspaceContext);
-		handler.m_onLoad = [&]() { ++numMetadataLoads; };
 		RegisterRawHandler(registry, handler);
 		Require(registry.ScanContentFolder() &&
 			registry.CompleteScanProcessing(),
 			"the current v1 cache should initialize the lazy registry index");
-		Require(numMetadataLoads == 0,
+		Require(handler.m_numLoads == 0,
 			"an unchanged lazy scan must not read asset metadata");
 
 		AssetInfoPtr materialized = registry.GetAssetInfoPtr(
 			(workspaceContext.GetContent() / "Retry.raw").string());
-		Require(materialized != nullptr && numMetadataLoads == 1,
+		Require(materialized != nullptr && handler.m_numLoads == 1,
 			"the first concrete lookup should materialize exactly one AssetInfo proxy");
 		Require(registry.GetAssetInfoPtr(materialized->GetFileId()) == materialized &&
-			numMetadataLoads == 1,
+			handler.m_numLoads == 1,
 			"subsequent lookups should reuse the materialized AssetInfo");
+
+		AssetRegistry secondRegistry(workspaceContext);
+		RegisterRawHandler(secondRegistry, handler);
+		Require(secondRegistry.ScanContentFolder() &&
+			secondRegistry.CompleteScanProcessing() && handler.m_numLoads == 1,
+			"a second unchanged lazy registry must also defer metadata reads");
+		const auto second = secondRegistry.GetAssetInfoPtr(materialized->GetFileId());
+		Require(second && second != materialized && handler.m_numLoads == 2,
+			"a fresh registry must materialize its own proxy and count the second read");
 	}
 
 	void TestV2EnvelopeIsResetInsteadOfMigrated()
@@ -794,8 +1014,9 @@ namespace
 		Require(serializedEntry.IsMap() && serializedEntry.size() == 7,
 			"persisted asset cache v1 entries must contain the watermark and lazy index fields");
 		const YAML::Node serializedRevision = serializedEntry["sourceRevision"];
-		Require(serializedRevision.IsMap() && serializedRevision.size() == 3,
-			"persisted source revisions must contain mtime, size, and content hash");
+		Require(serializedRevision.IsMap() && serializedRevision.size() == 1 &&
+			serializedRevision["modificationTimeNanoseconds"].as<int64_t>() == MakeRevision().m_modificationTimeNanoseconds,
+			"persisted source revisions must contain only the filesystem timestamp");
 		Require(payload.find("metadataLoadTime") == std::string::npos &&
 			payload.find("metadataPath") == std::string::npos &&
 			serializedEntry["metadataFilename"].as<std::string>() == "Test.mat.asset",
@@ -815,8 +1036,6 @@ namespace
 		Require(
 			entry.m_sourceRevision.m_modificationTimeNanoseconds ==
 				expectedRevision.m_modificationTimeNanoseconds &&
-			entry.m_sourceRevision.m_fileSize == expectedRevision.m_fileSize &&
-			entry.m_sourceRevision.m_contentHash == expectedRevision.m_contentHash &&
 			entry.m_sourceRevision.m_bIsValid == expectedRevision.m_bIsValid,
 			"round-tripped serialized source revision fields should be preserved");
 	}
@@ -871,13 +1090,9 @@ namespace
 			"      sourcePath: ''\n"
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      metadataFilename: Test.mat.asset\n"
 			"      metadataRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 		std::string diagnostic;
 		Require(
@@ -899,13 +1114,9 @@ namespace
 			"      sourcePath: '/workspace/Content/Test.mat'\n"
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      metadataFilename: Test.mat.asset\n"
 			"      metadataRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 
 		TestAssetCache::CacheData destination;
@@ -933,13 +1144,9 @@ namespace
 			"      sourcePath: '/workspace/Content/Test.mat'\n"
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      metadataFilename: Test.mat.asset\n"
 			"      metadataRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 		const YAML::Node node = YAML::Load(corruptPayload)["assetCache"];
 
@@ -995,12 +1202,19 @@ namespace
 		Require(imported != nullptr, "a new raw asset should be imported");
 		Require(listener.m_events == std::vector<std::string>({ "update:false", "import" }),
 			"a new raw asset must dispatch Update(false) followed by exactly one Import callback");
-		Require(static_cast<TestAssetInfo*>(imported)->m_numMetaSaves == 1,
-			"the import callback should finalize metadata exactly once");
+		Require(static_cast<TestAssetInfo*>(imported)->m_numMetaSaves == 0,
+			"notification must not rewrite the default metadata already saved by import");
 		const YAML::Node importedMetadata = YAML::LoadFile(
 			AssetRegistry::GetMetaFilePath(sourcePath.string()));
 		Require(importedMetadata["assetInfoType"].as<std::string>() == "Sailor::AssetInfo",
 			"the shared import path must add its handler's canonical AssetInfo type");
+		listener.m_onImport = [](AssetInfoPtr info)
+		{
+			Require(info->SaveMetaFile(), "a listener may persist its intentional metadata changes");
+		};
+		handler.NotifyImportAsset(imported);
+		Require(static_cast<TestAssetInfo*>(imported)->m_numMetaSaves == 1,
+			"notification must not repeat a metadata save performed by its listener");
 		delete imported;
 
 		listener.m_events.clear();
@@ -1238,11 +1452,11 @@ namespace
 		Require(cache.IsDirty(), "a no-op update must not clear an already dirty cache");
 		Require(cache.Update(fileId, 91, sourcePath, sourceRevision),
 			"a later successful asset import should change the source watermark");
-		Require(!cache.Update(fileId, 91, sourcePath, MakeRevision(123456789, 64, 42)),
-			"content hash changes must not affect timestamp-based source revisions");
-		Require(!cache.Update(fileId, 91, sourcePath, MakeRevision(123456789, 128, 42)),
-			"file size changes must not affect timestamp-based source revisions");
-		Require(cache.Update(fileId, 91, sourcePath + ".moved", MakeRevision(123456789, 128, 42)),
+		Require(cache.Update(fileId, 91, sourcePath, MakeRevision(123456790)),
+			"a changed source timestamp should change the source watermark");
+		Require(!cache.Update(fileId, 91, sourcePath, MakeRevision(123456790)),
+			"the acknowledged source timestamp should not change the cache again");
+		Require(cache.Update(fileId, 91, sourcePath + ".moved", MakeRevision(123456790)),
 			"a source path change should change the cache");
 	}
 
@@ -2061,13 +2275,9 @@ namespace
 			"      sourcePath: '/workspace/Content/Test.mat'\n"
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      metadataFilename: Test.mat.asset\n"
 			"      metadataRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 		const std::string payloads[] =
 		{
@@ -2129,7 +2339,7 @@ namespace
 	{
 		AssetRegistry::AssetProcessingToken current;
 		current.m_fileId = MakeFileId("{ASSET-PROCESSING-TOKEN}");
-		current.m_sourceRevision = MakeRevision(123, 64, 456);
+		current.m_sourceRevision = MakeRevision(123);
 		current.m_sourcePath = "/workspace/Content/Retry.shader";
 		current.m_assetImportTime = 10;
 		current.m_generation = 2;
@@ -2142,7 +2352,7 @@ namespace
 			"an older async completion must not acknowledge a newer generation");
 
 		AssetRegistry::AssetProcessingToken staleRevision = current;
-		staleRevision.m_sourceRevision = MakeRevision(124, 64, 789);
+		staleRevision.m_sourceRevision = MakeRevision(124);
 		Require(!current.Matches(staleRevision),
 			"a completion for another source revision must remain pending for retry");
 
@@ -2162,7 +2372,10 @@ int main()
 {
 	try
 	{
+		TestTemporaryDirectoriesHaveIndependentOwnership();
 		TestNewFileIdsUseCrossPlatformGuidFormatting();
+		TestFileRevisionUsesOnlyTheFilesystemTimestamp();
+		TestExpandedRevisionCacheIsRegeneratedAtVersionOne();
 		TestPayloadRoundTrip();
 		TestEmptyPayloadRoundTrip();
 		TestPreV1PayloadIsRejected();
@@ -2176,6 +2389,10 @@ int main()
 		TestEntryDeserializeDoesNotThrow();
 		TestEveryAssetInfoSerializerWritesItsConcreteType();
 		TestGeneratedGlbMetadataUsesTypedDefaults();
+		TestMetadataSavePublishesCompleteState();
+		TestMetadataSerializationFailurePreservesTheFile();
+		TestBlockedMetadataSaveCanBeRetried();
+		TestReadOnlyMetadataCannotBeSaved();
 		TestImportAndUpdateCallbackContract();
 		TestImportNeverOverwritesExistingMetadata();
 		TestRejectedReloadRestoresTheLiveAsset();

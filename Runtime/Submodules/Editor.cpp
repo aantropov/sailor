@@ -312,11 +312,8 @@ void Editor::StopAudioPreview()
 void Editor::SetWorld(World* world)
 {
 	std::string diagnostic;
-	if (m_giProbesBakeController->GetStatus().IsRunning())
-	{
-		m_giProbesBakeController->Cancel(diagnostic);
-		m_giProbesBakeController->Wait();
-	}
+	m_giProbesBakeController->Cancel(diagnostic);
+	m_giProbesBakeController->Wait();
 	m_world = world;
 	m_simulationSnapshot.clear();
 	m_bSimulationEnabled = false;

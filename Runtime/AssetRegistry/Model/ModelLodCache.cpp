@@ -1,6 +1,5 @@
 #include "AssetRegistry/Model/ModelLodCache.h"
 
-#include "AssetRegistry/AssetRegistry.h"
 #include "Containers/Concepts.h"
 #include "RHI/VertexDescription.h"
 #include "Sailor.h"
@@ -25,13 +24,12 @@ namespace
 	struct Header final
 	{
 		std::array<char, 8> m_magic{};
+		uint32_t m_headerSize = 0u;
 		uint32_t m_version = 0u;
 		uint32_t m_vertexStride = 0u;
 		uint32_t m_meshCount = 0u;
 		uint32_t m_lodLevel = 0u;
 		int64_t m_sourceModificationTime = 0;
-		uint64_t m_sourceSize = 0u;
-		uint64_t m_sourceContentHash = 0u;
 		float m_unitScale = 1.0f;
 		float m_reductionFactor = 0.5f;
 		uint32_t m_bBatchByMaterial = 0u;
@@ -84,20 +82,21 @@ namespace
 		return true;
 	}
 
-	std::filesystem::path GetPath(const FileId& fileId, uint32_t lodLevel)
+	std::filesystem::path GetPath(const std::filesystem::path& cacheFolder, const FileId& fileId, uint32_t lodLevel)
 	{
 		const std::filesystem::path filename = ModelImporter::GetLodCacheFilename(fileId, lodLevel);
 		return filename.empty() ? std::filesystem::path{}
-								: std::filesystem::path(AssetRegistry::GetCacheFolder()) / "Lods" / filename;
+								: cacheFolder / "Lods" / filename;
 	}
 }
 
-bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
+bool Sailor::ModelLodCache::Load(const std::filesystem::path& cacheFolder,
+	const ModelAssetInfo& assetInfo,
 	const FileRevision& sourceRevision,
 	uint32_t lodLevel,
 	TVector<ModelImporter::MeshContext>& meshes)
 {
-	const std::filesystem::path path = GetPath(assetInfo.GetFileId(), lodLevel);
+	const std::filesystem::path path = GetPath(cacheFolder, assetInfo.GetFileId(), lodLevel);
 	std::error_code error;
 	const uint64_t fileSize = path.empty() ? 0u : std::filesystem::file_size(path, error);
 	if (error || fileSize < sizeof(Header) || fileSize > MaxBytes)
@@ -114,12 +113,12 @@ bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 
 	size_t offset = 0u;
 	Header header{};
-	if (!Read(bytes, offset, header) || header.m_magic != Magic || header.m_version != Version ||
+	if (!Read(bytes, offset, header) || header.m_magic != Magic || header.m_headerSize != sizeof(Header) ||
+		header.m_version != Version ||
 		header.m_vertexStride != sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) || header.m_meshCount != meshes.Num() ||
 		header.m_lodLevel != lodLevel ||
 		header.m_sourceModificationTime != sourceRevision.m_modificationTimeNanoseconds ||
-		header.m_sourceSize != sourceRevision.m_fileSize ||
-		header.m_sourceContentHash != sourceRevision.m_contentHash || header.m_unitScale != assetInfo.GetUnitScale() ||
+		header.m_unitScale != assetInfo.GetUnitScale() ||
 		header.m_reductionFactor != assetInfo.GetLodReductionFactor() ||
 		header.m_bBatchByMaterial != static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial()) ||
 		header.m_bFlipTexcoordY != static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY()))
@@ -175,20 +174,20 @@ bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 	return true;
 }
 
-void Sailor::ModelLodCache::Save(const ModelAssetInfo& assetInfo,
+void Sailor::ModelLodCache::Save(const std::filesystem::path& cacheFolder,
+	const ModelAssetInfo& assetInfo,
 	const FileRevision& sourceRevision,
 	uint32_t lodLevel,
 	const TVector<ModelImporter::MeshContext>& meshes)
 {
 	Header header{};
 	header.m_magic = Magic;
+	header.m_headerSize = sizeof(Header);
 	header.m_version = Version;
 	header.m_vertexStride = sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
 	header.m_meshCount = static_cast<uint32_t>(meshes.Num());
 	header.m_lodLevel = lodLevel;
 	header.m_sourceModificationTime = sourceRevision.m_modificationTimeNanoseconds;
-	header.m_sourceSize = sourceRevision.m_fileSize;
-	header.m_sourceContentHash = sourceRevision.m_contentHash;
 	header.m_unitScale = assetInfo.GetUnitScale();
 	header.m_reductionFactor = assetInfo.GetLodReductionFactor();
 	header.m_bBatchByMaterial = static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial());
@@ -214,7 +213,7 @@ void Sailor::ModelLodCache::Save(const ModelAssetInfo& assetInfo,
 		return;
 	}
 
-	const std::filesystem::path path = GetPath(assetInfo.GetFileId(), lodLevel);
+	const std::filesystem::path path = GetPath(cacheFolder, assetInfo.GetFileId(), lodLevel);
 	std::string diagnostic;
 	if (!path.empty() && !Workspace::AtomicReplaceWorkspaceCacheBinary(path, bytes.data(), bytes.size(), diagnostic))
 	{

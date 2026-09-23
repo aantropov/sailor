@@ -16,7 +16,7 @@
 #include "Core/Submodule.h"
 #include "Tasks/Scheduler.h"
 #include "GraphicsDriver.h"
-#include "GpuFrameTimeQueryRing.h"
+#include "RendererTimings.h"
 #include "SceneView.h"
 
 namespace Sailor
@@ -48,8 +48,8 @@ namespace Sailor::RHI
 		SAILOR_API void WaitIdle();
 
 		SAILOR_API const Stats& GetStats() const { return m_stats; }
-		SAILOR_API TVector<GpuTiming> GetSlowestGpuTimings() const;
-		SAILOR_API TVector<GpuTiming> GetGpuTimings() const;
+		SAILOR_API GpuTimingSnapshot GetGpuTimings() const;
+		SAILOR_API void RefreshGpuTimings() { m_gpuTimingGeneration.fetch_add(1u, std::memory_order_release); }
 		SAILOR_API RHIGlobalIlluminationRenderStats
 			GetGlobalIlluminationRenderStats() const;
 
@@ -69,7 +69,9 @@ namespace Sailor::RHI
 
 	protected:
 		void UpdateMemoryStats();
-		void PublishGpuTimings(const TVector<GpuTiming>& timings);
+		void PublishGpuTimings(const std::optional<GpuTimingResult>& timings);
+		void InvalidateGpuTimings();
+		void ResetFrameCadence();
 		void UpdateGlobalIlluminationRenderStats(
 			const RHIGlobalIlluminationRenderStats& stats);
 
@@ -80,17 +82,12 @@ namespace Sailor::RHI
 
 		RHI::Stats m_stats{};
 
-		struct GpuTimingHistory final
-		{
-			std::string m_name;
-			TGpuTimingAverage<60u> m_average;
-			uint64_t m_lastSeenGeneration = 0u;
-		};
-
 		mutable SpinLock m_gpuTimingsLock;
-		TVector<GpuTimingHistory> m_gpuTimingHistory;
-		TVector<GpuTiming> m_gpuTimings;
-		uint64_t m_gpuTimingGeneration = 0u;
+		RendererTimings m_timings;
+		GpuTimingSnapshot m_gpuTimings;
+		std::atomic<uint64_t> m_gpuTimingGeneration = 0u;
+		uint64_t m_profiledFrameGraphGeneration = 0u;
+		bool m_bGpuQueriesEnabled = false;
 
 		class Win32::Window* m_pViewport;
 

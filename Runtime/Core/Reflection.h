@@ -59,9 +59,7 @@ namespace Sailor::RHI
 	} \
 	virtual ::Sailor::ReflectedData GetReflectedData() const override \
 	{ \
-		::Sailor::TypeInfo typeInfo = ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-		::Sailor::ReflectedData res = ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
-		return res; \
+		return ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
 	} \
 	virtual void ApplyReflection(const ::Sailor::ReflectedData& reflection) override \
 	{ \
@@ -89,9 +87,7 @@ namespace Sailor::RHI
 	} \
 	virtual ::Sailor::ReflectedData GetReflectedData() const override \
 	{ \
-		::Sailor::TypeInfo typeInfo = ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-		::Sailor::ReflectedData res = ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
-		return res; \
+		return ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
 	} \
 	virtual void ApplyReflection(const ::Sailor::ReflectedData& reflection) override \
 	{ \

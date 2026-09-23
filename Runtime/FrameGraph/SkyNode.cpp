@@ -380,9 +380,9 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 	};
 
 	prepareNoise(m_createNoiseHigh, m_pCloudsNoiseHighTexture,
-		CloudsNoiseHighResolution, "CloudsNoiseHigh", &GenerateCloudsNoiseHigh);
+		CloudsNoiseHighResolution, "PerlinWorleyCloudsNoiseHigh", &GenerateCloudsNoiseHigh);
 	prepareNoise(m_createNoiseLow, m_pCloudsNoiseLowTexture,
-		CloudsNoiseLowResolution, "CloudsNoiseLow", &GenerateCloudsNoiseLow);
+		CloudsNoiseLowResolution, "PerlinWorleyCloudsNoiseLow", &GenerateCloudsNoiseLow);
 
 	if (!m_pCloudsNoiseFallbackTexture)
 	{

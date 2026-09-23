@@ -299,6 +299,22 @@ namespace
 				", expected=" + std::to_string(expectedStride));
 	}
 
+	const RHI::ShaderLayoutBinding* FindBinding(const ShaderLayoutProbe& shader,
+		uint32_t setIndex, uint32_t bindingIndex)
+	{
+		for (const auto& set : shader.GetBindings())
+		{
+			for (const auto& binding : set)
+			{
+				if (binding.m_set == setIndex && binding.m_binding == bindingIndex)
+				{
+					return &binding;
+				}
+			}
+		}
+		return nullptr;
+	}
+
 	void RequireGltfMaterialLayout(const RHI::ShaderByteCode& byteCode,
 		const RHI::ShaderByteCode& reflectionByteCode,
 		uint32_t payloadSize, uint32_t stride)
@@ -306,34 +322,23 @@ namespace
 		RequireSpirvStorageBufferArrayStride(byteCode, 3u, 0u, stride);
 		ShaderLayoutProbe shader;
 		shader.ReflectDescriptorSetBindings(reflectionByteCode);
-		const RHI::ShaderLayoutBinding* material = nullptr;
-		for (const auto& set : shader.GetBindings())
-		{
-			for (const auto& binding : set)
-			{
-				if (binding.m_set == 3u && binding.m_binding == 0u)
-					material = &binding;
-			}
-		}
+		const auto* material = FindBinding(shader, 3u, 0u);
 		Require(material && material->m_size == payloadSize && material->m_paddedSize == stride,
 			"material upload size and array stride must retain internal and trailing std430 padding");
 		ShaderLayoutProbe optimizedShader;
 		optimizedShader.ReflectDescriptorSetBindings(byteCode);
-		for (const auto& set : optimizedShader.GetBindings())
+		const auto* optimizedMaterial = FindBinding(optimizedShader, 3u, 0u);
+		Require(optimizedMaterial != nullptr,
+			"the optimized shader must retain the used material binding");
+		Require(optimizedMaterial->m_size == payloadSize && optimizedMaterial->m_paddedSize == stride,
+			"optimized material payload and stride must match the CPU upload layout");
+		Require(optimizedMaterial->m_members.Num() == material->m_members.Num(),
+			"optimized and reflection shaders must retain the same material fields");
+		for (size_t i = 0u; i < optimizedMaterial->m_members.Num(); ++i)
 		{
-			for (const auto& binding : set)
-			{
-				if (binding.m_set != 3u || binding.m_binding != 0u)
-					continue;
-				Require(binding.m_members.Num() == material->m_members.Num(),
-					"optimized and reflection shaders must retain the same material fields");
-				for (size_t i = 0u; i < binding.m_members.Num(); ++i)
-				{
-					Require(binding.m_members[i].m_absoluteOffset == material->m_members[i].m_absoluteOffset &&
-						binding.m_members[i].m_size == material->m_members[i].m_size,
-						"CPU reflection and optimized GPU shader must agree on every material field offset and size");
-				}
-			}
+			Require(optimizedMaterial->m_members[i].m_absoluteOffset == material->m_members[i].m_absoluteOffset &&
+				optimizedMaterial->m_members[i].m_size == material->m_members[i].m_size,
+				"CPU reflection and optimized GPU shader must agree on every material field offset and size");
 		}
 		auto binding = RHI::RHIShaderBindingPtr::Make();
 		binding->SetLayout(*material);
@@ -1104,6 +1109,40 @@ namespace
 		RequireWords(vertex, Words(80), "restored durable bytecode");
 	}
 
+	void TestFailedGlslCompilationPreservesBytecode()
+	{
+		const std::string validSource =
+			"#version 450\nlayout(location = 0) out vec4 color;\nvoid main() { color = vec4(1.0); }\n";
+		struct InvalidShader
+		{
+			const char* m_filename;
+			std::string m_source;
+		};
+		const InvalidShader invalidShaders[] = {
+			{ "single-digit.frag", "#version 450\n#error invalid shader\nvoid main() {}\n" },
+			{ "C:\\Project With Spaces\\Shaders\\invalid.frag", "#version 450\n" + std::string(12, '\n') + "#error invalid shader\nvoid main() {}\n" },
+			{ "multiple-errors.frag", "#version 450\n#error first diagnostic\n#error second diagnostic\nvoid main() {}\n" },
+			{ "remapped-line.frag", "#version 450\n#line 1200\n#error remapped diagnostic\nvoid main() {}\n" },
+			{ "", "#version 450\nvoid main() { invalid_expression; }\n" }
+		};
+		for (bool debug : { false, true })
+		{
+			RHI::ShaderByteCode byteCode;
+			Require(ShaderCompilerTestAccess::CompileGlslToSpirv("valid.frag", validSource,
+				RHI::EShaderStage::Fragment, byteCode, debug), "the fixture must compile real valid GLSL");
+			const RHI::ShaderByteCode previous = byteCode;
+			Require(!previous.IsEmpty(), "the fixture must retain actual compiled SPIR-V");
+			for (const InvalidShader& shader : invalidShaders)
+			{
+				Require(!ShaderCompilerTestAccess::CompileGlslToSpirv(shader.m_filename, shader.m_source,
+					RHI::EShaderStage::Fragment, byteCode, debug), "invalid GLSL must return failure without throwing while reading its diagnostics");
+				RequireWords(byteCode, previous, "a failed compile must not replace the previously compiled bytecode");
+			}
+			Require(ShaderCompilerTestAccess::CompileGlslToSpirv("recovered.frag", validSource,
+				RHI::EShaderStage::Fragment, byteCode, debug), "valid GLSL must still compile after diagnostic failures");
+		}
+	}
+
 	void TestShaderCompilerFailureLifecycle()
 	{
 		const FileId parsedOnly = MakeFileId("{SHADER-DEPENDENCY-PARSED}");
@@ -1209,16 +1248,12 @@ namespace
 		const std::string& virtualPath,
 		const std::string& winnerIdentity,
 		int64_t modificationTimeNanoseconds,
-		uint64_t fileSize,
-		uint64_t contentHash,
 		uint32_t mountKind)
 	{
 		ShaderDependencyFile dependency;
 		dependency.m_virtualPath = virtualPath;
 		dependency.m_winnerIdentity = winnerIdentity;
 		dependency.m_revision.m_modificationTimeNanoseconds = modificationTimeNanoseconds;
-		dependency.m_revision.m_fileSize = fileSize;
-		dependency.m_revision.m_contentHash = contentHash;
 		dependency.m_revision.m_bIsValid = true;
 		dependency.m_mountKind = mountKind;
 		return dependency;
@@ -1231,15 +1266,11 @@ namespace
 			"Shaders/User.shader",
 			"/Engine/Content/Shaders/User.shader",
 			5000000000ll,
-			128,
-			0x1111111111111111ull,
 			0));
 		baselineDependencies.Add(Dependency(
 			"Shaders/Library/Math.glsl",
 			"/Workspace/Content/Shaders/Library/Math.glsl",
 			6000000000ll,
-			64,
-			0x2222222222222222ull,
 			1));
 
 		const uint64_t baseline = CalculateShaderDependencyFingerprint(baselineDependencies);
@@ -1247,15 +1278,13 @@ namespace
 			CalculateShaderDependencyFingerprint(baselineDependencies) == baseline,
 			"identical shader dependency snapshots should have a stable non-zero fingerprint");
 
-		TVector<ShaderDependencyFile> sameTimestampEdit = baselineDependencies;
-		sameTimestampEdit[1].m_revision.m_fileSize = 256;
-		sameTimestampEdit[1].m_revision.m_contentHash = 0x3333333333333333ull;
-		Require(CalculateShaderDependencyFingerprint(sameTimestampEdit) == baseline,
-			"file size and content hash must not affect timestamp-based shader fingerprints");
+		TVector<ShaderDependencyFile> laterEdit = baselineDependencies;
+		laterEdit[1].m_revision.m_modificationTimeNanoseconds += 1000000000ll;
+		Require(CalculateShaderDependencyFingerprint(laterEdit) != baseline,
+			"a changed GLSL timestamp should invalidate the shader fingerprint");
 
 		TVector<ShaderDependencyFile> backdatedEdit = baselineDependencies;
 		backdatedEdit[1].m_revision.m_modificationTimeNanoseconds = 1000000000ll;
-		backdatedEdit[1].m_revision.m_contentHash = 0x4444444444444444ull;
 		Require(CalculateShaderDependencyFingerprint(backdatedEdit) != baseline,
 			"backdated GLSL edits should invalidate the shader fingerprint");
 
@@ -1554,6 +1583,8 @@ namespace
 		compileRuntimeFragment("Shaders/MotionBlur.shader", { "DEBUG_MOTIONS" });
 		compileRuntimeVertex("Experimental/MeshParticles/Particle.shader", {});
 		compileRuntimeFragment("Experimental/MeshParticles/Particle.shader", {});
+		compileRuntimeVertex("Tests/Shaders/DepthCoverage.shader", {});
+		compileRuntimeFragment("Tests/Shaders/DepthCoverage.shader", {});
 		const RHI::ShaderByteCode hbaoByteCode = compileRuntimeFragment(
 			"Shaders/HBAO.shader",
 			{});
@@ -1660,6 +1691,18 @@ namespace
 		const auto depthInput = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "DEPTH_INPUT" });
 		RequireSpirvCombinedImageSamplerBinding(depthInput, 0u, 0u);
 		RequireSpirvStorageImageBinding(depthInput, 0u, 1u);
+		const auto depthMsaa = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "MSAA_DEPTH_INPUT" });
+		RequireSpirvCombinedImageSamplerBinding(depthMsaa, 0u, 0u);
+		RequireSpirvStorageImageBinding(depthMsaa, 0u, 1u);
+		SpvReflectShaderModule depthModule{};
+		Require(spvReflectCreateShaderModule(depthMsaa.Num() * sizeof(uint32_t), depthMsaa.GetData(),
+			&depthModule) == SPV_REFLECT_RESULT_SUCCESS, "MSAA depth input must reflect");
+		SpvReflectResult depthStatus;
+		const auto* depthBinding = spvReflectGetDescriptorBinding(&depthModule, 0u, 0u, &depthStatus);
+		const bool multisampled = depthStatus == SPV_REFLECT_RESULT_SUCCESS && depthBinding &&
+			depthBinding->image.ms == 1u && depthBinding->image.dim == SpvDim2D;
+		spvReflectDestroyShaderModule(&depthModule);
+		Require(multisampled, "Hi-Z input must retain access to each depth sample before reduction");
 		const auto depthMips = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader");
 		RequireSpirvStorageImageBinding(depthMips, 0u, 0u);
 		RequireSpirvStorageImageBinding(depthMips, 0u, 1u);
@@ -1932,6 +1975,7 @@ int main()
 		TestIoFailureQuarantineIsReadOnlyAndSessionOnly();
 		TestRuntimeArtifactIoFailureEntersReadOnlyQuarantine();
 		TestShaderCompilerFailureLifecycle();
+		TestFailedGlslCompilationPreservesBytecode();
 		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
 		TestRuntimeLightingShadersCompile();

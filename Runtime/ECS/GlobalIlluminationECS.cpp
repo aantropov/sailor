@@ -744,7 +744,8 @@ bool GlobalIlluminationECS::BeginRuntimeScenePreparation(
 			[&warnings](const std::string& warning)
 			{
 				warnings.Add(warning);
-			}))
+			},
+			&m_runtimeSceneMaterialWatch))
 	{
 		return false;
 	}
@@ -824,6 +825,8 @@ void GlobalIlluminationECS::ConsumeRuntimeScenePreparation(
 		m_runtimeScenePreparationTask->GetResult();
 	m_runtimeScenePreparationTask.Clear();
 	m_runtimeScenePreparationCancel.Clear();
+	const bool bMaterialsUnchanged = m_runtimeSceneMaterialWatch.HasUnchangedMaterials();
+	m_runtimeSceneMaterialWatch.m_materials.Clear();
 	if (result.m_requestId != m_runtimeScenePreparationRequestId)
 	{
 		return;
@@ -848,7 +851,9 @@ void GlobalIlluminationECS::ConsumeRuntimeScenePreparation(
 		GetWorld()->GetName() : std::string();
 	GIProbesSceneRevision currentRevision;
 	std::string observationDiagnostic;
-	if (!ObserveGIProbesSceneRevision(
+	// Mesh/landscape publication runs later in the same tick. Their observed revision
+	// cannot yet report a material edit made this frame, so validate on the owner too.
+	if (!bMaterialsUnchanged || !ObserveGIProbesSceneRevision(
 			GetWorld(),
 			observationRequest,
 			currentRevision,
@@ -952,6 +957,7 @@ void GlobalIlluminationECS::StopRuntimeProvider(bool bClearSnapshot)
 	}
 	m_runtimeScenePreparationTask.Clear();
 	m_runtimeScenePreparationCancel.Clear();
+	m_runtimeSceneMaterialWatch.m_materials.Clear();
 	m_runtimePreparedScene.Clear();
 	m_runtimeProbes.Disable();
 	m_runtimePublishedRevision = 0u;

@@ -42,6 +42,8 @@ namespace Sailor
 
 	class Editor : public TSubmodule<Editor>
 	{
+		friend class GlobalIlluminationBakeControllerTestAccess;
+
 	public:
 
 		SAILOR_API Editor(HWND editorHwnd, uint32_t editorPort, Win32::Window* pMainWindow);
@@ -68,7 +70,7 @@ namespace Sailor
 		void NotifyManagedObjectMutation(const InstanceId& instanceId);
 		uint64_t GetManagedObjectMutationRevision(const InstanceId& instanceId) const;
 
-		void PushMessage(const std::string& msg);
+		SAILOR_API void PushMessage(const std::string& msg);
 		bool PullMessage(std::string& msg);
 
 		__forceinline size_t NumMessages() const

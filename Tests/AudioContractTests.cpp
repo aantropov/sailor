@@ -162,6 +162,52 @@ namespace
 			"audio source/listener teardown should release every ECS handle");
 		world.Clear();
 	}
+
+	void TestWorldClearReleasesAudioAuthoringSlots()
+	{
+		for (uint32_t count : { 32u, 64u })
+		{
+			AudioComponentTestWorld world;
+			auto* audio = world.GetECS<AudioECS>();
+			TVector<GameObjectPtr> objects;
+			TVector<ComponentPtr> components;
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				auto owner = world.Instantiate("Audio authoring owner");
+				auto source = owner->AddComponent<AudioSourceComponent>();
+				source->SetAutoPlay(false);
+				source->SetVolume(2.0f);
+				source->SetLoop(true);
+				auto listener = owner->AddComponent<AudioListenerComponent>();
+				listener->SetPriority(42);
+				listener->SetEnabled(false);
+				objects.Add(owner);
+				components.Add(source);
+				components.Add(listener);
+				Require(audio->IsComponentRegistered(index) && audio->GetListenerData(index).IsActive(),
+					"each audio component must own its authoring slot before Clear");
+			}
+			world.Clear();
+			world.Clear();
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				Require(!objects[index] && !audio->IsComponentRegistered(index),
+					"Clear must release all source slots and owning objects");
+			}
+			for (const auto& component : components)
+			{
+				Require(!component, "both audio source and listener handles must be destroyed");
+			}
+			auto replacement = world.Instantiate("New audio authoring owner");
+			auto source = replacement->AddComponent<AudioSourceComponent>();
+			auto listener = replacement->AddComponent<AudioListenerComponent>();
+			Require(audio->IsComponentRegistered(0) && !audio->IsComponentRegistered(1) &&
+				audio->GetListenerData(0).IsActive() && source->GetVolume() == 1.0f && !source->GetLoop() &&
+				listener->GetEnabled() && listener->GetPriority() == 0,
+				"authoring after Clear must allocate fresh default source and listener slots");
+			world.Clear();
+		}
+	}
 }
 
 int main()
@@ -171,6 +217,7 @@ int main()
 		{ "ReflectedAudioAuthoringContract", TestReflectedAudioAuthoringContract },
 		{ "AudioAssetInfoContract", TestAudioAssetInfoContract },
 		{ "ComponentAuthoringAndTeardown", TestComponentAuthoringAndTeardown },
+		{ "WorldClearReleasesAudioAuthoringSlots", TestWorldClearReleasesAudioAuthoringSlots },
 	};
 
 	for (const auto& test : tests)

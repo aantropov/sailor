@@ -13,6 +13,7 @@
 #include "ECS/TransformECS.h"
 #include "Containers/Set.h"
 #include "Core/LogMacros.h"
+#include "Workspace/WorkspaceCacheContract.h"
 #include "YamlExceptionBoundary.h"
 
 using namespace Sailor;
@@ -438,7 +439,14 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 
 bool Prefab::SaveToFile(const std::string& path) const
 {
-	AssetRegistry::WriteTextFile(path, Serialize());
+	std::string contents, diagnostic;
+	if (!External::GuardYamlExceptions(
+		[this, &contents]() { contents = YAML::Dump(Serialize()); }, diagnostic) ||
+		!Workspace::AtomicReplaceWorkspaceCacheText(path, contents, diagnostic))
+	{
+		SAILOR_LOG_ERROR("Cannot save prefab '%s': %s", path.c_str(), diagnostic.c_str());
+		return false;
+	}
 	return true;
 }
 

@@ -310,6 +310,11 @@ namespace Sailor
 
 		FileId RegisterGeneratedSecondaryAssetInfo(
 			const std::filesystem::path& metadataPath);
+		// Unclaimed IDs keep the proposed path; owned IDs retain their existing sidecar location.
+		bool CanReuseSecondaryAssetId(const FileId& fileId,
+			const std::string& assetInfoType,
+			const std::filesystem::path& sourcePath,
+			std::filesystem::path& inOutMetadataPath) const;
 
 		friend class IAssetInfoHandler;
 		friend class ModelImporter;

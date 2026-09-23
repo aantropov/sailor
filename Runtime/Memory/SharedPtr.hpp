@@ -28,9 +28,9 @@ namespace Sailor
 	public:
 
 		template<typename... TArgs>
-		static TSharedPtr<T> Make(TArgs&&... args)
+		static TSharedPtr Make(TArgs&&... args)
 		{
-			auto pRes = TSharedPtr<T>(new T(std::forward<TArgs>(args)...));
+			auto pRes = TSharedPtr(new T(std::forward<TArgs>(args)...));
 			return pRes;
 		}
 
@@ -66,20 +66,20 @@ namespace Sailor
 		}
 
 		// Other types copy/assignment
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TSharedPtr(const TSharedPtr<R>& pDerivedPtr) noexcept
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*> && !std::is_same_v<T, R>>>
+		TSharedPtr(const TSharedPtr<R, TGlobalAllocator>& pDerivedPtr) noexcept
 		{
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TSharedPtr(TSharedPtr<R>&& pSharedPtr) noexcept
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*> && !std::is_same_v<T, R>>>
+		TSharedPtr(TSharedPtr<R, TGlobalAllocator>&& pSharedPtr) noexcept
 		{
 			Swap(std::move(pSharedPtr));
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TSharedPtr& operator=(TSharedPtr<R> pSharedPtr) noexcept
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*> && !std::is_same_v<T, R>>>
+		TSharedPtr& operator=(TSharedPtr<R, TGlobalAllocator> pSharedPtr) noexcept
 		{
 			Swap(std::move(pSharedPtr));
 			return *this;
@@ -164,7 +164,7 @@ namespace Sailor
 			{
 				if (!pControlBlock)
 				{
-					m_pControlBlock = new (TGlobalAllocator::allocate(sizeof(TSmartPtrControlBlock))) TSmartPtrControlBlock();
+					m_pControlBlock = new (TGlobalAllocator::allocate(sizeof(TSmartPtrControlBlock), alignof(TSmartPtrControlBlock))) TSmartPtrControlBlock();
 				}
 				else
 				{
@@ -199,10 +199,10 @@ namespace Sailor
 			}
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || std::is_same_v<T, R>>>
-		void Swap(TSharedPtr<R>&& pSharedPtr)
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*>>>
+		void Swap(TSharedPtr<R, TGlobalAllocator>&& pSharedPtr)
 		{
-			if (m_pRawPtr == static_cast<T*>(pSharedPtr.m_pRawPtr))
+			if (static_cast<const void*>(this) == static_cast<const void*>(&pSharedPtr))
 			{
 				return;
 			}
@@ -229,10 +229,10 @@ namespace Sailor
 
 namespace std
 {
-	template<typename T>
-	struct hash<Sailor::TSharedPtr<T>>
+	template<typename T, typename TGlobalAllocator>
+	struct hash<Sailor::TSharedPtr<T, TGlobalAllocator>>
 	{
-		SAILOR_API std::size_t operator()(const Sailor::TSharedPtr<T>& p) const
+		SAILOR_API std::size_t operator()(const Sailor::TSharedPtr<T, TGlobalAllocator>& p) const
 		{
 			return p.GetHash();
 		}

@@ -8,6 +8,11 @@
 
 using namespace Sailor::Framegraph;
 
+namespace Sailor
+{
+	class FrameGraphImporterTestAccess;
+}
+
 namespace Sailor::RHI
 {
 	struct RHIGlobalIlluminationRenderStats;
@@ -51,7 +56,6 @@ namespace Sailor::RHI
 
 		SAILOR_API RHI::RHIMeshPtr GetFullscreenNdcQuad() { return m_postEffectPlane; }
 		SAILOR_API RHI::DrawCallStats GetDrawCallStats() const { return m_drawCallStats; }
-		SAILOR_API const TVector<RHI::GpuTiming>& GetGpuTimings() const { return m_lastFrameGpuStats.m_timings; }
 		SAILOR_API RHIGlobalIlluminationRenderStats
 			GetGlobalIlluminationRenderStats() const;
 
@@ -67,7 +71,7 @@ namespace Sailor::RHI
 			m_values[name] = value;
 		}
 
-		SAILOR_API TVector<Sailor::Tasks::TaskPtr<void, void>> Prepare(RHI::RHISceneViewPtr rhiSceneView);
+		SAILOR_API TVector<Sailor::Tasks::ITaskPtr> Prepare(RHI::RHISceneViewPtr rhiSceneView);
 
 		SAILOR_API bool Process(RHI::RHISceneViewPtr rhiSceneView,
 			TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
@@ -79,6 +83,8 @@ namespace Sailor::RHI
 		SAILOR_API void CompleteMotionHistory(RHI::RHISceneViewPtr sceneView, bool succeeded);
 
 	protected:
+
+		friend class Sailor::FrameGraphImporterTestAccess;
 
 		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime);
 

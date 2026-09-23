@@ -1,5 +1,10 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Model/GltfImporterUtils.h"
+#include "AssetRegistry/Model/ModelLodCache.h"
+#include "AssetRegistry/Model/GeneratedModelAssetMetadata.h"
+#include "AssetRegistry/Animation/AnimationAssetInfo.h"
+#include "AssetRegistry/Animation/AnimationController.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Core/Utils.h"
 #include "Core/StringHash.h"
@@ -7,19 +12,92 @@
 #include "Raytracing/PathTracer.h"
 #include "Components/MeshRendererComponent.h"
 #include "RHI/Buffer.h"
+#include "Tasks/Tasks.h"
+#include "Workspace/WorkspaceContext.h"
 
+#include <array>
+#include <chrono>
 #include <cmath>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <utility>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <tiny_gltf.h>
 
 using namespace Sailor;
+
+namespace Sailor
+{
+	class ModelImporterTestAccess
+	{
+	public:
+		static bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& registry)
+		{
+			bool bChanged = false;
+			return ModelImporter::GenerateAnimationAssets(assetInfo, registry, bChanged);
+		}
+
+		static bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& registry, bool& outChanged)
+		{
+			return ModelImporter::GenerateAnimationAssets(assetInfo, registry, outChanged);
+		}
+
+		static Tasks::TaskPtr<ModelPtr> LoadModel(ModelImporter& importer, ModelAssetInfoPtr assetInfo,
+			Tasks::Scheduler& scheduler, ModelPtr& outModel)
+		{
+			return importer.LoadModel(assetInfo->GetFileId(), assetInfo, scheduler, outModel);
+		}
+
+		static bool LoadModelImmediate(ModelImporter& importer, ModelAssetInfoPtr assetInfo,
+			Tasks::Scheduler& scheduler, ModelPtr& outModel)
+		{
+			return importer.LoadModel_Immediate(assetInfo->GetFileId(), assetInfo, scheduler, outModel);
+		}
+
+		static ModelPtr CacheCompletedModel(ModelImporter& importer, const FileId& id,
+			const RHI::RHIMeshPtr& mesh, Tasks::Scheduler& scheduler)
+		{
+			auto model = ModelPtr::Make(importer.m_allocator, id, TVector<RHI::RHIMeshPtr>{ mesh });
+			model->Flush();
+			importer.m_promises.At_Lock(id) = Tasks::TaskPtr<ModelPtr>::Make(model, &scheduler);
+			importer.m_loadedModels.At_Lock(id) = model;
+			importer.m_loadedModels.Unlock(id);
+			importer.m_promises.Unlock(id);
+			return model;
+		}
+
+		static ModelPtr GetCachedModel(const ModelImporter& importer, const FileId& id)
+		{
+			ModelPtr model;
+			importer.m_loadedModels.TryGet(id, model);
+			return model;
+		}
+
+		static Tasks::TaskPtr<ModelPtr> GetPromise(const ModelImporter& importer, const FileId& id)
+		{
+			Tasks::TaskPtr<ModelPtr> task;
+			importer.m_promises.TryGet(id, task);
+			return task;
+		}
+
+		static Tasks::ITaskPtr GetMaterialMigration(const ModelImporter& importer, const FileId& id)
+		{
+			Tasks::ITaskPtr task;
+			importer.m_generatedMaterialMigrationTasks.TryGet(id, task);
+			return task;
+		}
+	};
+}
 
 namespace
 {
@@ -397,6 +475,863 @@ namespace
 				"model LOD cache filenames must follow the fileId_lodN.bin contract");
 		Require(ModelImporter::GetLodCacheFilename(fileId, 0u).empty(),
 			"LOD0 must remain source geometry instead of a generated cache file");
+	}
+
+	class ModelCacheWorkspace final
+	{
+	public:
+		ModelCacheWorkspace()
+		{
+			m_root = std::filesystem::temp_directory_path() /
+				("sailor-model-lod-cache-" + FileId::CreateNewFileId().ToString());
+			std::filesystem::create_directories(m_root / "Content");
+			std::ofstream manifest(m_root / "workspace.sailor");
+			manifest <<
+				"manifestVersion: 1\n"
+				"workspaceId: 00000000-0000-0000-0000-000000000132\n"
+				"name: Model LOD Cache Contract\n"
+				"enginePath: .\n"
+				"engineReferenceKind: source\n"
+				"contentPath: Content\n"
+				"sourcePath: Source\n"
+				"generatedProjectPath: Generated\n"
+				"cachePath: DerivedCache\n"
+				"buildPath: DerivedCache/Build\n"
+				"logicOutputPath: Binaries\n"
+				"logicModuleName: ModelLodCacheContract\n";
+			manifest.close();
+			auto resolved = Workspace::ResolveWorkspaceContext(m_root, m_root / "workspace.sailor");
+			Require(resolved.IsSuccess(), "the model cache workspace should resolve: " + resolved.m_message);
+			m_context = std::move(resolved.m_context);
+		}
+
+		~ModelCacheWorkspace()
+		{
+			std::error_code error;
+			std::filesystem::remove_all(m_root, error);
+		}
+
+		const Workspace::WorkspaceContext& Context() const { return m_context; }
+
+	private:
+		std::filesystem::path m_root;
+		Workspace::WorkspaceContext m_context;
+	};
+
+	void WriteAnimationFixtureText(const std::filesystem::path& path, const std::string& text)
+	{
+		std::filesystem::create_directories(path.parent_path());
+		std::ofstream output(path, std::ios::binary);
+		output << text;
+		output.close();
+		Require(static_cast<bool>(output), "animation fixture file must be written");
+	}
+
+	std::string ReadAnimationFixtureText(const std::filesystem::path& path)
+	{
+		std::ifstream input(path, std::ios::binary);
+		Require(input.is_open(), "animation fixture file must exist");
+		return { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
+	}
+
+	void WriteAnimatedGltf(const std::filesystem::path& path, uint32_t numClips = 2)
+	{
+		std::ostringstream source;
+		source << R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{}],
+			"skins":[{"joints":[0]}],
+			"buffers":[{"byteLength":8,"uri":"data:application/octet-stream;base64,AAAAAAAAgD8="},
+			{"byteLength":24,"uri":"data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAA"}],
+			"bufferViews":[{"buffer":0,"byteLength":8},{"buffer":1,"byteLength":24}],
+			"accessors":[{"bufferView":0,"componentType":5126,"count":2,"type":"SCALAR","min":[0],"max":[1]},
+			{"bufferView":1,"componentType":5126,"count":2,"type":"VEC3"}],"animations":[)";
+		for (uint32_t index = 0; index < numClips; ++index)
+		{
+			if (index != 0) source << ',';
+			source << R"({"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}],
+				"samplers":[{"input":0,"output":1,"interpolation":"LINEAR"}]})";
+		}
+		source << "]}";
+		WriteAnimationFixtureText(path, source.str());
+	}
+
+	void CreateAnimationTestModel(const std::filesystem::path& path, const TVector<FileId>& animations = {},
+		bool bGenerateMaterials = true)
+	{
+		WriteAnimatedGltf(path);
+		YAML::Node metadata = CreateAssetInfoMetadata<ModelAssetInfo>(FileId::CreateNewFileId(), path.filename().string());
+		metadata["animations"] = animations;
+		metadata["bShouldGenerateMaterials"] = bGenerateMaterials;
+		WriteAnimationFixtureText(path.string() + ".asset", YAML::Dump(metadata));
+	}
+
+	class AnimationRegistryFixture
+	{
+	public:
+		explicit AnimationRegistryFixture(const Workspace::WorkspaceContext& context) :
+			m_registry(context, nullptr), m_modelHandler(&m_registry), m_animationHandler(&m_registry), m_content(context.GetContent())
+		{}
+
+		TUniquePtr<ModelAssetInfo> LoadModel(const std::string& relativePath)
+		{
+			auto* info = m_modelHandler.LoadAssetInfo((m_content / (relativePath + ".asset")).string(),
+				relativePath + ".asset", EAssetMountKind::Workspace, true, false, false);
+			Require(info != nullptr, "the model metadata fixture must load without an engine process");
+			return TUniquePtr<ModelAssetInfo>(static_cast<ModelAssetInfoPtr>(info));
+		}
+
+		void Scan()
+		{
+			Require(m_registry.ScanContentFolder() && m_registry.CompleteScanProcessing(),
+				"the animation fixture registry must finish its real content scan");
+		}
+
+		AssetRegistry m_registry;
+		ModelAssetInfoHandler m_modelHandler;
+		AnimationAssetInfoHandler m_animationHandler;
+		std::filesystem::path m_content;
+	};
+
+	struct LazyAnimationLoadingScope
+	{
+		bool m_previous = g_bUseLazyAssetInfoLoading;
+		explicit LazyAnimationLoadingScope(bool bEnabled) { g_bUseLazyAssetInfoLoading = bEnabled; }
+		~LazyAnimationLoadingScope() { g_bUseLazyAssetInfoLoading = m_previous; }
+	};
+
+	bool WaitForModelTask(Tasks::Scheduler& scheduler, const Tasks::ITaskPtr& task)
+	{
+		auto& block = scheduler.GetTaskSyncBlock(*task);
+		std::unique_lock<std::mutex> lock(block.m_mutex);
+		return block.m_onComplete.wait_for(lock, std::chrono::seconds(5),
+			[&]() { return block.m_bCompletionFlag; });
+	}
+
+	void TestFailedModelImportCanBeRetried()
+	{
+		ModelCacheWorkspace workspace;
+		const auto sourcePath = workspace.Context().GetContent() / "Broken.gltf";
+		CreateAnimationTestModel(sourcePath);
+		WriteAnimationFixtureText(sourcePath, "{ incomplete glTF");
+		AnimationRegistryFixture fixture(workspace.Context());
+		auto info = fixture.LoadModel("Broken.gltf");
+		ModelImporter importer(&fixture.m_modelHandler);
+		// The scheduler drains Main callbacks before importer/metadata teardown, including on failure.
+		Tasks::Scheduler scheduler;
+		scheduler.Initialize();
+
+		ModelPtr firstModel;
+		auto first = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, firstModel);
+		Require(first && WaitForModelTask(scheduler, first),
+			"the real Worker/RHI chain must finish a failed model import");
+		Require(!first->GetResult() && firstModel && !firstModel->IsStructurallyReady(),
+			"failed parsing must return an empty result instead of its pending placeholder");
+
+		ModelPtr retryModel;
+		auto retry = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, retryModel);
+		Require(retry && retry != first && retryModel != firstModel,
+			"the same FileId must start a fresh attempt after failure without waiting for garbage collection");
+		Require(WaitForModelTask(scheduler, retry) && !retry->GetResult(),
+			"the retry must execute its own failed import and publish its own result");
+
+		ModelPtr immediateModel = firstModel;
+		Require(!ModelImporterTestAccess::LoadModelImmediate(importer, info.GetRawPtr(), scheduler, immediateModel) &&
+			!immediateModel,
+			"immediate loading must replace the output with the empty task result on failure");
+		scheduler.ProcessTasksOnMainThread();
+		importer.CollectGarbage();
+		Require(!ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) &&
+			!ModelImporterTestAccess::GetCachedModel(importer, info->GetFileId()) &&
+			!ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId()),
+			"garbage collection must retire the failed model and its finished tasks");
+		Require(firstModel && retryModel && !firstModel->IsStructurallyReady() && !retryModel->IsStructurallyReady(),
+			"retiring a failed cache entry must not force-destroy a caller's retained placeholder");
+	}
+
+	void TestPendingModelImportsShareTheirAttempt()
+	{
+		ModelCacheWorkspace workspace;
+		const auto sourcePath = workspace.Context().GetContent() / "Pending.gltf";
+		CreateAnimationTestModel(sourcePath);
+		WriteAnimationFixtureText(sourcePath, "{ incomplete glTF");
+		AnimationRegistryFixture fixture(workspace.Context());
+		auto info = fixture.LoadModel("Pending.gltf");
+		ModelImporter importer(&fixture.m_modelHandler);
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+
+		// Drain the real task queues explicitly to keep both attempts' Main callbacks pending.
+		auto finishImport = [&]()
+		{
+			Tasks::ITaskPtr task;
+			Require(scheduler.TryFetchNextAvailiableTask(task, EThreadType::Worker),
+				"model admission must enqueue its CPU import");
+			task->Execute();
+			while (scheduler.TryFetchNextAvailiableTask(task, EThreadType::RHI))
+			{
+				task->Execute();
+			}
+		};
+
+		ModelPtr firstModel;
+		auto first = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, firstModel);
+		ModelPtr duplicateModel;
+		auto duplicate = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, duplicateModel);
+		Require(first && !first->IsFinished() && duplicate == first && duplicateModel == firstModel,
+			"pending duplicate requests must share one task and one model placeholder");
+		finishImport();
+		Require(first->IsFinished() && !first->GetResult(), "the queued import must publish failure");
+		const auto oldMigration = ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId());
+
+		ModelPtr retryModel;
+		auto retry = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, retryModel);
+		const auto retryMigration = ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId());
+		Require(retry && retry != first && retryMigration && retryMigration != oldMigration,
+			"a retry must retain its own load and material migration tasks");
+		Tasks::ITaskPtr readyMain;
+		Require(scheduler.TryFetchNextAvailiableTask(readyMain, EThreadType::Main) && readyMain == oldMigration,
+			"the previous attempt's Main callback must still be available independently of the retry");
+		readyMain->Execute();
+		Require(ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId()) == retryMigration,
+			"an old Main callback must not erase the retry's migration tracking");
+		importer.CollectGarbage();
+		Require(ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) == retry &&
+			ModelImporterTestAccess::GetCachedModel(importer, info->GetFileId()) == retryModel,
+			"collection of old work must preserve a replacement attempt that is still pending");
+		duplicate = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, duplicateModel);
+		Require(duplicate == retry && duplicateModel == retryModel,
+			"a pending retry must remain the sole shared attempt after collection");
+
+		finishImport();
+		Require(retry->IsFinished() && !retry->GetResult(), "the retry must finish through the same task chain");
+		scheduler.ProcessTasksOnMainThread();
+		importer.CollectGarbage();
+		Require(!ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) &&
+			!ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId()),
+			"finished load and migration tasks must be collectible");
+	}
+
+	void TestCachedModelDoesNotWaitForGpuUploads()
+	{
+		ModelCacheWorkspace workspace;
+		CreateAnimationTestModel(workspace.Context().GetContent() / "Cached.gltf");
+		AnimationRegistryFixture fixture(workspace.Context());
+		auto info = fixture.LoadModel("Cached.gltf");
+		ModelImporter importer(&fixture.m_modelHandler);
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+		auto mesh = TRefPtr<ControllableMesh>::Make();
+		auto model = ModelImporterTestAccess::CacheCompletedModel(importer, info->GetFileId(), mesh, scheduler);
+		Require(model->IsStructurallyReady() && !model->IsReady(),
+			"the cached fixture must have complete structure and an unfinished GPU upload");
+		const uint32_t readinessChecks = mesh->GetNumIsReadyCalls();
+		ModelPtr immediateModel;
+		Require(ModelImporterTestAccess::LoadModelImmediate(importer, info.GetRawPtr(), scheduler, immediateModel) &&
+			immediateModel == model && mesh->GetNumIsReadyCalls() == readinessChecks,
+			"successful immediate loading must use structural completion without polling GPU readiness");
+		importer.CollectGarbage();
+		Require(!ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) &&
+			ModelImporterTestAccess::GetCachedModel(importer, info->GetFileId()) == model,
+			"retiring a successful promise must retain the cached model");
+		ModelPtr loadedModel;
+		auto cached = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, loadedModel);
+		Require(cached && cached->IsFinished() && cached->GetResult() == model && loadedModel == model,
+			"a successful cache hit must return the same model after its original promise is collected");
+	}
+
+	void TestAnimationRepairPreservesFileIds()
+	{
+		ModelCacheWorkspace workspace;
+		const auto sourcePath = workspace.Context().GetContent() / "Ship.gltf";
+		CreateAnimationTestModel(sourcePath);
+		AnimationRegistryFixture fixture(workspace.Context());
+		auto model = fixture.LoadModel("Ship.gltf");
+		const FileId modelId = model->GetFileId();
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry),
+			"the initial two clips must be generated");
+		const auto ids = model->GetAnimations();
+		Require(ids.Num() == 2 && ids[0] && ids[1] && ids[0] != ids[1], "generated clips need distinct identities");
+		const auto firstPath = fixture.m_registry.GetAssetInfoPtr(ids[0])->GetMetaFilepath();
+		const auto secondPath = fixture.m_registry.GetAssetInfoPtr(ids[1])->GetMetaFilepath();
+		const std::string firstText = ReadAnimationFixtureText(firstPath);
+		const auto firstTime = std::filesystem::last_write_time(firstPath);
+		AnimationSetAsset externalSet;
+		externalSet.GetEntries().Add(AnimationSetEntry{ "walk", ids[0] });
+		const auto externalPath = workspace.Context().GetContent() / "Crew.animset";
+		WriteAnimationFixtureText(externalPath, YAML::Dump(externalSet.Serialize()));
+		Require(std::filesystem::remove(secondPath), "only the second sidecar should be removed");
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry),
+			"a missing sidecar must be repaired even while its AssetInfo is still loaded");
+		Require(model->GetFileId() == modelId && model->GetAnimations() == ids &&
+			ReadAnimationFixtureText(firstPath) == firstText && std::filesystem::last_write_time(firstPath) == firstTime,
+			"repair must preserve the model ID and leave the first clip byte-identical and unwritten");
+		auto* repaired = fixture.m_registry.GetAssetInfoPtr<AnimationAssetInfoPtr>(ids[1]);
+		Require(repaired && repaired->GetAnimationIndex() == 1 && repaired->GetSkinIndex() == 0 &&
+			std::filesystem::is_regular_file(repaired->GetMetaFilepath()), "the repaired clip must be registered immediately");
+		externalSet.Deserialize(YAML::LoadFile(externalPath.string()));
+		Require(externalSet.GetEntries()[0].m_animation == ids[0] &&
+			fixture.m_registry.GetAssetInfoPtr(externalSet.GetEntries()[0].m_animation) != nullptr,
+			"an external AnimationSet must continue resolving its original clip FileId");
+		const auto secondTime = std::filesystem::last_write_time(secondPath);
+		bool bChanged = true;
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry, bChanged) && !bChanged &&
+			std::filesystem::last_write_time(firstPath) == firstTime && std::filesystem::last_write_time(secondPath) == secondTime,
+			"a repeated repair must report no change and must not rewrite either sidecar");
+		WriteAnimatedGltf(sourcePath, 3);
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) &&
+			model->GetAnimations().Num() == 3 && model->GetAnimations()[0] == ids[0] && model->GetAnimations()[1] == ids[1] &&
+			fixture.m_registry.GetAssetInfoPtr(model->GetAnimations()[2]) != nullptr,
+			"a newly added source clip must not replace existing clip identities");
+	}
+
+	void TestAnimationRepairKeepsCompletedFilesAfterFailure()
+	{
+		ModelCacheWorkspace workspace;
+		const auto content = workspace.Context().GetContent();
+		CreateAnimationTestModel(content / "Ship.gltf");
+		AnimationRegistryFixture fixture(workspace.Context());
+		auto model = fixture.LoadModel("Ship.gltf");
+		const auto firstPath = content / "Ship.gltf_animation_0.anim.asset";
+		const auto blockedPath = content / "Ship.gltf_animation_1.anim.asset";
+		WriteAnimationFixtureText(blockedPath / "keep.txt", "user-owned destination");
+		Require(!ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) && model->GetAnimations().IsEmpty(),
+			"a later publication failure must not publish a partial model animation list");
+		const std::string firstText = ReadAnimationFixtureText(firstPath);
+		const FileId firstId = YAML::Load(firstText)["fileId"].as<FileId>();
+		Require(fixture.m_registry.GetAssetInfoPtr(firstId) != nullptr &&
+			ReadAnimationFixtureText(blockedPath / "keep.txt") == "user-owned destination",
+			"completed metadata must be registered while a conflicting destination stays untouched");
+		Require(std::filesystem::remove(blockedPath / "keep.txt") && std::filesystem::remove(blockedPath),
+			"the fixture should remove only its own output obstruction");
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) &&
+			model->GetAnimations().Num() == 2 && model->GetAnimations()[0] == firstId && ReadAnimationFixtureText(firstPath) == firstText,
+			"retry must retain the completed first clip instead of creating another identity");
+		bool bChanged = true;
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry, bChanged) && !bChanged,
+			"a completed retry must become a no-op");
+	}
+
+	void TestAnimationRepairPreservesCustomSidecars()
+	{
+		ModelCacheWorkspace workspace;
+		const auto content = workspace.Context().GetContent();
+		const FileId firstId = FileId::CreateNewFileId();
+		const FileId secondId = FileId::CreateNewFileId();
+		CreateAnimationTestModel(content / "Models/Ship.gltf", { firstId, secondId });
+		const auto customPath = content / "CuratedWalk.anim.asset";
+		const auto secondPath = content / "Models/Ship.gltf_animation_1.anim.asset";
+		const std::string customText = "# Artist-selected walk clip\n" + YAML::Dump(
+			GeneratedModelAssetMetadata::CreateAnimation(firstId, "Models/Ship.gltf", 0, 0));
+		WriteAnimationFixtureText(customPath, customText);
+		WriteAnimationFixtureText(secondPath, YAML::Dump(
+			GeneratedModelAssetMetadata::CreateAnimation(secondId, "Ship.gltf", 1, 0)));
+		AnimationRegistryFixture fixture(workspace.Context());
+		fixture.Scan();
+		auto model = fixture.LoadModel("Models/Ship.gltf");
+		bool bChanged = true;
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry, bChanged) && !bChanged,
+			"a matching custom sidecar must count as the existing clip");
+		Require(std::filesystem::remove(secondPath) &&
+			ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) &&
+			ReadAnimationFixtureText(customPath) == customText && model->GetAnimations()[0] == firstId,
+			"repairing another clip must leave custom metadata and its FileId untouched");
+		Require(std::filesystem::remove(customPath) &&
+			ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry),
+			"a missing registered custom sidecar must be recreated at its original path");
+		const auto repaired = YAML::LoadFile(customPath.string());
+		Require(repaired["fileId"].as<FileId>() == firstId && repaired["filename"].as<std::string>() == "Models/Ship.gltf" &&
+			!std::filesystem::exists(content / "Models/Ship.gltf_animation_0.anim.asset"),
+			"custom sidecar repair must retain the relative model path without generating a duplicate beside the model");
+	}
+
+	void TestAnimationRepairRejectsConflictingMetadata()
+	{
+		for (uint32_t conflict = 0; conflict < 4; ++conflict)
+		{
+			ModelCacheWorkspace workspace;
+			const auto content = workspace.Context().GetContent();
+			CreateAnimationTestModel(content / "Ship.gltf");
+			CreateAnimationTestModel(content / "Other.gltf");
+			AnimationRegistryFixture fixture(workspace.Context());
+			auto model = fixture.LoadModel("Ship.gltf");
+			const auto path = content / "Ship.gltf_animation_0.anim.asset";
+			const auto metadata = GeneratedModelAssetMetadata::CreateAnimation(FileId::CreateNewFileId(),
+				conflict == 0 ? "Other.gltf" : "Ship.gltf", conflict == 1 ? 1 : 0, conflict == 2 ? 1 : 0);
+			const std::string text = conflict == 3 ? "fileId: [unfinished" : YAML::Dump(metadata);
+			WriteAnimationFixtureText(path, text);
+			Require(!ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) &&
+				model->GetAnimations().IsEmpty() && ReadAnimationFixtureText(path) == text,
+				"different model, clip, skin or malformed authored metadata must remain untouched");
+		}
+	}
+
+	void TestAnimationRepairAcceptsOmittedMetadataType()
+	{
+		ModelCacheWorkspace workspace;
+		const auto content = workspace.Context().GetContent();
+		CreateAnimationTestModel(content / "Ship.gltf");
+		WriteAnimatedGltf(content / "Ship.gltf", 1);
+		const FileId fileId = FileId::CreateNewFileId();
+		YAML::Node metadata = GeneratedModelAssetMetadata::CreateAnimation(fileId, "Ship.gltf", 0, 0);
+		metadata.remove("assetInfoType");
+		const std::string text = "# Type is optional for this animation metadata\n" + YAML::Dump(metadata);
+		const auto path = content / "Ship.gltf_animation_0.anim.asset";
+		WriteAnimationFixtureText(path, text);
+		AnimationRegistryFixture fixture(workspace.Context());
+		auto model = fixture.LoadModel("Ship.gltf");
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) &&
+			model->GetAnimations() == TVector<FileId>{ fileId } && fixture.m_registry.GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId) &&
+			ReadAnimationFixtureText(path) == text, "existing metadata without a type must register its original animation identity unchanged");
+		bool bChanged = true;
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry, bChanged) && !bChanged &&
+			ReadAnimationFixtureText(path) == text, "refresh of untyped animation metadata must use the registry handler and remain a no-op");
+	}
+
+	void TestAnimationRepairRetainsLazyOwnership()
+	{
+		LazyAnimationLoadingScope lazyLoading(true);
+		ModelCacheWorkspace workspace;
+		const auto content = workspace.Context().GetContent();
+		CreateAnimationTestModel(content / "Ship.gltf");
+		CreateAnimationTestModel(content / "Other.gltf");
+		TVector<FileId> ownIds, foreignIds;
+		{
+			AnimationRegistryFixture fixture(workspace.Context());
+			auto own = fixture.LoadModel("Ship.gltf");
+			auto foreign = fixture.LoadModel("Other.gltf");
+			Require(ModelImporterTestAccess::GenerateAnimationAssets(own.GetRawPtr(), fixture.m_registry) &&
+				ModelImporterTestAccess::GenerateAnimationAssets(foreign.GetRawPtr(), fixture.m_registry), "both fixture models must generate clips");
+			ownIds = own->GetAnimations();
+			foreignIds = foreign->GetAnimations();
+			Require(own->SaveMetaFile(), "the first model fixture must persist its animation identities");
+			Require(foreign->SaveMetaFile(), "the foreign model fixture must persist its animation identities");
+			fixture.Scan();
+		}
+		AnimationRegistryFixture fixture(workspace.Context());
+		fixture.Scan();
+		const auto ownPath = content / "Ship.gltf_animation_1.anim.asset";
+		const auto foreignPath = content / "Other.gltf_animation_0.anim.asset";
+		const std::string foreignText = ReadAnimationFixtureText(foreignPath);
+		Require(std::filesystem::remove(ownPath) && std::filesystem::remove(foreignPath), "selected lazy sidecars must be removed after discovery");
+		Require(fixture.m_registry.GetAssetInfoPtr(ownIds[1]) == nullptr && fixture.m_registry.GetAssetInfoPtr(foreignIds[0]) == nullptr,
+			"missing lazy sidecars must be unmaterializable while their registered ownership remains");
+		auto own = fixture.LoadModel("Ship.gltf");
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(own.GetRawPtr(), fixture.m_registry) && own->GetAnimations() == ownIds &&
+			fixture.m_registry.GetAssetInfoPtr(ownIds[1]) != nullptr, "repair must reuse its own lazy FileId and publish a live AssetInfo immediately");
+		CreateAnimationTestModel(content / "New.gltf", { foreignIds[0] });
+		auto newModel = fixture.LoadModel("New.gltf");
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(newModel.GetRawPtr(), fixture.m_registry) &&
+			newModel->GetAnimations()[0] != foreignIds[0] && fixture.m_registry.GetAssetInfoPtr(foreignIds[0]) == nullptr,
+			"an unmaterializable foreign lazy FileId must never be reassigned to a new model");
+		CreateAnimationTestModel(content / "Copied.gltf", { foreignIds[0] });
+		auto copiedModel = fixture.LoadModel("Copied.gltf");
+		const auto copiedIds = copiedModel->GetAnimations();
+		const auto copiedPath = content / "Copied.gltf_animation_0.anim.asset";
+		for (const char* referencedSource : { "Copied.gltf", "Other.gltf" })
+		{
+			const std::string copiedText = YAML::Dump(GeneratedModelAssetMetadata::CreateAnimation(
+				foreignIds[0], referencedSource, 0, 0));
+			WriteAnimationFixtureText(copiedPath, copiedText);
+			Require(!ModelImporterTestAccess::GenerateAnimationAssets(copiedModel.GetRawPtr(), fixture.m_registry) &&
+				copiedModel->GetAnimations() == copiedIds && ReadAnimationFixtureText(copiedPath) == copiedText &&
+				fixture.m_registry.GetAssetInfoPtr(foreignIds[0]) == nullptr,
+				"existing copied metadata must not steal a lazy ID from another source or sidecar path");
+		}
+		WriteAnimationFixtureText(foreignPath, foreignText);
+		auto* restored = fixture.m_registry.GetAssetInfoPtr<AnimationAssetInfoPtr>(foreignIds[0]);
+		Require(restored && std::filesystem::equivalent(restored->GetAssetFilepath(), content / "Other.gltf") &&
+			std::filesystem::equivalent(restored->GetMetaFilepath(), foreignPath),
+			"restoring the foreign sidecar must still resolve its original identity, model and metadata path");
+	}
+
+	void TestModelCallbacksPreserveUnchangedMetadata()
+	{
+		ModelCacheWorkspace workspace;
+		const auto sourcePath = workspace.Context().GetContent() / "Ship.gltf";
+		CreateAnimationTestModel(sourcePath, {}, false);
+		AnimationRegistryFixture fixture(workspace.Context());
+		ModelImporter importer(&fixture.m_modelHandler, &fixture.m_registry);
+		auto model = fixture.LoadModel("Ship.gltf");
+		fixture.m_modelHandler.NotifyImportAsset(model.GetRawPtr());
+		const auto ids = model->GetAnimations();
+		Require(ids.Num() == 2 && !fixture.m_registry.IsAssetExpired(model.GetRawPtr()),
+			"the real import callback must persist generated clip IDs before acknowledging the source");
+		const auto metadataPath = model->GetMetaFilepath();
+		const auto metadataText = ReadAnimationFixtureText(metadataPath);
+		const auto metadataTime = std::filesystem::last_write_time(metadataPath);
+		const auto missingClip = fixture.m_registry.GetAssetInfoPtr(ids[1])->GetMetaFilepath();
+		Require(std::filesystem::remove(missingClip), "the fixture must remove one generated sidecar");
+		importer.OnUpdateAssetInfo(model.GetRawPtr(), false);
+		Require(model->GetAnimations() == ids && std::filesystem::is_regular_file(missingClip) &&
+			!fixture.m_registry.IsAssetExpired(model.GetRawPtr()) &&
+			ReadAnimationFixtureText(metadataPath) == metadataText && std::filesystem::last_write_time(metadataPath) == metadataTime,
+			"repair with retained IDs must succeed without rewriting the primary metadata");
+		fixture.m_modelHandler.NotifyImportAsset(model.GetRawPtr());
+		Require(ReadAnimationFixtureText(metadataPath) == metadataText &&
+			std::filesystem::last_write_time(metadataPath) == metadataTime && !fixture.m_registry.IsAssetExpired(model.GetRawPtr()),
+			"a successful no-op import must not rewrite or invalidate primary metadata");
+
+		WriteAnimatedGltf(sourcePath, 0);
+		importer.OnUpdateAssetInfo(model.GetRawPtr(), true);
+		Require(model->GetAnimations().IsEmpty() && !fixture.m_registry.IsAssetExpired(model.GetRawPtr()) &&
+			YAML::LoadFile(metadataPath)["animations"].as<TVector<FileId>>().IsEmpty(),
+			"removing the last source clips is a successful metadata change, not an import failure");
+	}
+
+	void TestModelCallbacksRetryFailedAnimationGeneration()
+	{
+		enum class ERetry { Scan, RestartLoad, RestartLazyScan };
+		for (ERetry retry : { ERetry::Scan, ERetry::RestartLoad, ERetry::RestartLazyScan })
+		{
+			LazyAnimationLoadingScope lazyLoading(false);
+			ModelCacheWorkspace workspace;
+			const auto content = workspace.Context().GetContent();
+			const auto sourcePath = content / "Ship.gltf";
+			const auto metadataPath = content / "Ship.gltf.asset";
+			const auto partialPath = content / "Ship.gltf_animation_2.anim.asset";
+			const auto blockedPath = content / "Ship.gltf_animation_3.anim.asset";
+			const auto externalPath = workspace.Context().GetCache() / "Crew.animset";
+			CreateAnimationTestModel(sourcePath, {}, false);
+			const FileId modelId = YAML::LoadFile(metadataPath.string())["fileId"].as<FileId>();
+			TVector<FileId> originalIds;
+			FileId partialId;
+			FileRevision failedSourceRevision;
+			std::string firstClipText, partialText;
+
+			auto verifyRetry = [&](AssetRegistry& registry, ModelAssetInfoPtr model)
+			{
+				Require(model && model->GetAnimations().Num() == 4 && model->GetAnimations()[0] == originalIds[0] &&
+					model->GetAnimations()[1] == originalIds[1] && model->GetAnimations()[2] == partialId &&
+					!registry.IsAssetExpired(model), "retry must retain old and completed clip identities and acknowledge success");
+				Require(ReadAnimationFixtureText(partialPath) == partialText &&
+					ReadAnimationFixtureText(registry.GetAssetInfoPtr(originalIds[0])->GetMetaFilepath()) == firstClipText,
+					"retry must not rewrite already completed clip metadata");
+				AnimationSetAsset external;
+				external.Deserialize(YAML::LoadFile(externalPath.string()));
+				Require(external.GetEntries()[0].m_animation == originalIds[0] &&
+					registry.GetAssetInfoPtr(external.GetEntries()[0].m_animation),
+					"the external animation set must continue resolving its original FileId");
+				FileRevision currentRevision;
+				Require(Utils::TryGetFileRevision(sourcePath.string(), currentRevision) && currentRevision == failedSourceRevision,
+					"successful retry must not require another source edit or timestamp change");
+			};
+
+			{
+				AnimationRegistryFixture fixture(workspace.Context());
+				ModelImporter importer(&fixture.m_modelHandler, &fixture.m_registry);
+				fixture.Scan();
+				auto* model = fixture.m_registry.GetAssetInfoPtr<ModelAssetInfoPtr>(modelId);
+				Require(model && model->GetAnimations().Num() == 2, "initial scan must process the real model callback");
+				originalIds = model->GetAnimations();
+				firstClipText = ReadAnimationFixtureText(fixture.m_registry.GetAssetInfoPtr(originalIds[0])->GetMetaFilepath());
+				AnimationSetAsset external;
+				external.GetEntries().Add(AnimationSetEntry{ "walk", originalIds[0] });
+				WriteAnimationFixtureText(externalPath, YAML::Dump(external.Serialize()));
+				const auto metadataText = ReadAnimationFixtureText(metadataPath);
+				const auto metadataTime = std::filesystem::last_write_time(metadataPath);
+				const auto sourceTime = std::filesystem::last_write_time(sourcePath);
+				WriteAnimatedGltf(sourcePath, 4);
+				std::filesystem::last_write_time(sourcePath, sourceTime + std::chrono::seconds(2));
+				Require(Utils::TryGetFileRevision(sourcePath.string(), failedSourceRevision), "the edited source revision must be captured");
+				Require(std::filesystem::create_directory(blockedPath), "the fixture must block a generated sidecar destination");
+				Require(fixture.m_registry.ScanContentFolder() && !fixture.m_registry.CompleteScanProcessing(),
+					"a callback generation failure must reject scan processing, not metadata discovery");
+				model = fixture.m_registry.GetAssetInfoPtr<ModelAssetInfoPtr>(modelId);
+				Require(model && model->GetAnimations() == originalIds && fixture.m_registry.IsAssetExpired(model) &&
+					ReadAnimationFixtureText(metadataPath) == metadataText && std::filesystem::last_write_time(metadataPath) == metadataTime,
+					"failed generation must preserve the primary list and file without acknowledging the source");
+				partialText = ReadAnimationFixtureText(partialPath);
+				partialId = YAML::Load(partialText)["fileId"].as<FileId>();
+				Require(fixture.m_registry.GetAssetInfoPtr(partialId) && std::filesystem::is_directory(blockedPath),
+					"the completed new clip stays registered and the conflicting destination stays untouched");
+				Require(std::filesystem::remove(blockedPath),
+					"the fixture must remove only its own blocker");
+				if (retry == ERetry::Scan)
+				{
+					fixture.Scan();
+					verifyRetry(fixture.m_registry, fixture.m_registry.GetAssetInfoPtr<ModelAssetInfoPtr>(modelId));
+				}
+			}
+			if (retry != ERetry::Scan)
+			{
+				LazyAnimationLoadingScope restartedLoading(retry == ERetry::RestartLazyScan);
+				AnimationRegistryFixture fixture(workspace.Context());
+				ModelImporter importer(&fixture.m_modelHandler, &fixture.m_registry);
+				if (retry == ERetry::RestartLazyScan)
+				{
+					fixture.Scan();
+				}
+				Require(fixture.m_registry.GetOrLoadFile("Ship.gltf") == modelId,
+					"normal first load in a restarted registry must retry the failed unchanged source");
+				verifyRetry(fixture.m_registry, fixture.m_registry.GetAssetInfoPtr<ModelAssetInfoPtr>(modelId));
+			}
+		}
+	}
+
+	void TestModelCallbacksRejectFailedMetadataSave()
+	{
+		class BlockingAnimationHandler final : public IAssetInfoHandler
+		{
+		public:
+			void GetDefaultMeta(YAML::Node& out) const override { out = AnimationAssetInfo().Serialize(); }
+			AssetInfoPtr LoadAssetInfo(const std::string& path, const std::string& virtualPath, EAssetMountKind mount,
+				bool bWritable, bool bNotify, bool bUpdateCache) const override
+			{
+				auto* info = IAssetInfoHandler::LoadAssetInfo(path, virtualPath, mount, bWritable, bNotify, bUpdateCache);
+				if (info)
+				{
+					++m_numLoads;
+					if (auto block = std::exchange(m_blockDestination, {}))
+					{
+						block();
+					}
+				}
+				return info;
+			}
+			mutable uint32_t m_numLoads = 0;
+			mutable std::function<void()> m_blockDestination;
+		protected:
+			AssetInfoPtr CreateAssetInfo() const override { return new AnimationAssetInfo(); }
+		};
+
+		ModelCacheWorkspace workspace;
+		const auto sourcePath = workspace.Context().GetContent() / "Ship.gltf";
+		const auto metadataPath = workspace.Context().GetContent() / "Ship.gltf.asset";
+		const auto backupPath = workspace.Context().GetCache() / "Ship.metadata-backup";
+		CreateAnimationTestModel(sourcePath, {}, false);
+		AssetRegistry registry(workspace.Context(), nullptr);
+		ModelAssetInfoHandler modelHandler(&registry);
+		BlockingAnimationHandler animationHandler;
+		Require(registry.RegisterAssetInfoHandler({ "anim" }, &animationHandler), "the fixture must register its animation handler");
+		ModelImporter importer(&modelHandler, &registry);
+		TUniquePtr<ModelAssetInfo> model(static_cast<ModelAssetInfoPtr>(modelHandler.LoadAssetInfo(
+			metadataPath.string(), "Ship.gltf.asset", EAssetMountKind::Workspace, true, false, false)));
+		Require(static_cast<bool>(model), "the fixture primary metadata must load");
+		const auto previousMaterials = model->GetDefaultMaterials();
+		const auto previousAnimations = model->GetAnimations();
+		const auto previousMetadata = ReadAnimationFixtureText(metadataPath);
+		FileRevision sourceRevision;
+		Require(Utils::TryGetFileRevision(sourcePath.string(), sourceRevision), "the fixture source revision must be captured");
+		animationHandler.m_blockDestination = [&]()
+		{
+			std::filesystem::create_directories(backupPath.parent_path());
+			std::filesystem::rename(metadataPath, backupPath);
+			WriteAnimationFixtureText(metadataPath / "keep.txt", "fixture blocker");
+		};
+		modelHandler.NotifyImportAsset(model.GetRawPtr());
+		const TVector<FileId> generatedIds
+		{
+			YAML::LoadFile(sourcePath.string() + "_animation_0.anim.asset")["fileId"].as<FileId>(),
+			YAML::LoadFile(sourcePath.string() + "_animation_1.anim.asset")["fileId"].as<FileId>()
+		};
+		Require(animationHandler.m_numLoads == 2 && generatedIds[0] != generatedIds[1] &&
+			registry.GetAssetInfoPtr(generatedIds[0]) && registry.GetAssetInfoPtr(generatedIds[1]) &&
+			model->GetDefaultMaterials() == previousMaterials && model->GetAnimations() == previousAnimations,
+			"both clips must finish registration before the failed primary save rolls back the tentative ID lists");
+		registry.CacheAsset(model.GetRawPtr());
+		Require(registry.IsAssetExpired(model.GetRawPtr()) && ReadAnimationFixtureText(backupPath) == previousMetadata &&
+			ReadAnimationFixtureText(metadataPath / "keep.txt") == "fixture blocker",
+			"failed primary publication must reject acknowledgement and preserve the fixture backup and blocker");
+		Require(std::filesystem::remove(metadataPath / "keep.txt") && std::filesystem::remove(metadataPath),
+			"the fixture must remove only its own blocked destination");
+		std::filesystem::rename(backupPath, metadataPath);
+		modelHandler.NotifyImportAsset(model.GetRawPtr());
+		Require(model->GetAnimations().Num() == 2 && model->GetAnimations().Contains(generatedIds[0]) &&
+			model->GetAnimations().Contains(generatedIds[1]) && !registry.IsAssetExpired(model.GetRawPtr()) &&
+			YAML::LoadFile(metadataPath.string())["animations"].as<TVector<FileId>>() == model->GetAnimations(),
+			"retry must persist the completed clip identities and acknowledge only the successful save");
+		FileRevision currentRevision;
+		Require(Utils::TryGetFileRevision(sourcePath.string(), currentRevision) && currentRevision == sourceRevision,
+			"primary-save retry must not require another source edit");
+	}
+
+	TVector<ModelImporter::MeshContext> MakeLodCacheMeshes()
+	{
+		TVector<ModelImporter::MeshContext> meshes(2);
+		for (size_t meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
+		{
+			auto triangle = MakeTriangleMesh(2);
+			auto& mesh = meshes[meshIndex];
+			mesh.outVertices = std::move(triangle.m_vertices);
+			mesh.outIndices = std::move(triangle.m_indices);
+			for (auto& vertex : mesh.outVertices)
+			{
+				vertex.m_position.x += static_cast<float>(meshIndex) * 10.0f;
+				vertex.m_texcoord = glm::vec2(0.25f, 0.75f);
+				vertex.m_color = glm::vec4(0.1f, 0.2f, 0.3f, 1.0f);
+				vertex.m_boneIds = glm::ivec4(1, 2, 3, 4);
+				vertex.m_boneWeights = glm::vec4(0.25f);
+			}
+			mesh.lods.Resize(2);
+			for (size_t level = 0; level < mesh.lods.Num(); ++level)
+			{
+				mesh.lods[level].m_vertices = mesh.outVertices;
+				mesh.lods[level].m_indices = mesh.outIndices;
+				mesh.lods[level].m_vertices[0].m_position.y += static_cast<float>(level + 1);
+			}
+		}
+		return meshes;
+	}
+
+	void RequireLodsEqual(const TVector<ModelImporter::MeshContext>& actual,
+		const TVector<ModelImporter::MeshContext>& expected)
+	{
+		Require(actual.Num() == expected.Num(), "LOD caching must preserve the mesh count");
+		for (size_t meshIndex = 0; meshIndex < expected.Num(); ++meshIndex)
+		{
+			Require(actual[meshIndex].lods.Num() == expected[meshIndex].lods.Num(),
+				"LOD caching must preserve every level");
+			for (size_t level = 0; level < expected[meshIndex].lods.Num(); ++level)
+			{
+				Require(actual[meshIndex].lods[level].m_vertices == expected[meshIndex].lods[level].m_vertices &&
+					actual[meshIndex].lods[level].m_indices == expected[meshIndex].lods[level].m_indices,
+					"LOD caching must preserve all vertex attributes and indices");
+			}
+		}
+	}
+
+	void TestModelLodCacheRoundTripAndInvalidation()
+	{
+		ModelCacheWorkspace workspace;
+		const auto& cacheFolder = workspace.Context().GetCache();
+		ModelAssetInfo info;
+		YAML::Node metadata = info.Serialize();
+		metadata["fileId"] = "01234567-89ab-cdef-0123-456789abcdef";
+		info.Deserialize(metadata);
+		const FileRevision revision{ 123456789, true };
+		const auto meshes = MakeLodCacheMeshes();
+		for (uint32_t level : { 1u, 2u })
+		{
+			ModelLodCache::Save(cacheFolder, info, revision, level, meshes);
+			Require(std::filesystem::is_regular_file(cacheFolder / "Lods" /
+				ModelImporter::GetLodCacheFilename(info.GetFileId(), level)),
+				"LOD files must be written under the supplied workspace cache directory");
+		}
+		auto loaded = meshes;
+		for (auto& mesh : loaded) mesh.lods.Clear();
+		Require(ModelLodCache::Load(cacheFolder, info, revision, 2, loaded) &&
+			ModelLodCache::Load(cacheFolder, info, revision, 1, loaded),
+			"both cache levels must load into their own slots in either order");
+		RequireLodsEqual(loaded, meshes);
+		Require(loaded[0].outVertices == meshes[0].outVertices && loaded[1].outIndices == meshes[1].outIndices,
+			"loading LODs must leave the source geometry intact");
+		for (auto& mesh : loaded)
+		{
+			for (auto& lod : mesh.lods) lod.m_vertices[0].m_position.z += 100.0f;
+		}
+		const auto retained = loaded;
+
+		for (int64_t delta : { -1, 1 })
+		{
+			FileRevision changed = revision;
+			changed.m_modificationTimeNanoseconds += delta;
+			Require(!ModelLodCache::Load(cacheFolder, info, changed, 1, loaded),
+				"any source timestamp change must invalidate cached LODs");
+			RequireLodsEqual(loaded, retained);
+		}
+		YAML::Node settings;
+		settings["unitScale"] = 2.0f;
+		settings["lodReductionFactor"] = 0.75f;
+		settings["bShouldBatchByMaterial"] = false;
+		settings["bFlipTexcoordY"] = true;
+		for (const auto& setting : settings)
+		{
+			YAML::Node changedMetadata = info.Serialize();
+			changedMetadata[setting.first.as<std::string>()] = setting.second;
+			ModelAssetInfo changed;
+			changed.Deserialize(changedMetadata);
+			Require(!ModelLodCache::Load(cacheFolder, changed, revision, 1, loaded),
+				"geometry-affecting import settings must invalidate cached LODs");
+			RequireLodsEqual(loaded, retained);
+		}
+
+		const auto path = cacheFolder / "Lods" / ModelImporter::GetLodCacheFilename(info.GetFileId(), 1);
+		std::ifstream input(path, std::ios::binary);
+		std::string bytes{ std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
+		input.close();
+		struct HeaderPrefix
+		{
+			std::array<char, 8> m_magic;
+			uint32_t m_headerSize;
+			uint32_t m_version;
+			uint32_t m_vertexStride;
+		};
+		HeaderPrefix prefix{};
+		Require(bytes.size() >= sizeof(prefix), "a saved LOD file must contain its header");
+		std::memcpy(&prefix, bytes.data(), sizeof(prefix));
+		Require(prefix.m_version == 1 && prefix.m_headerSize >= sizeof(prefix) &&
+			prefix.m_vertexStride == sizeof(RHI::VertexP3N3T3B3UV2C4I4W4),
+			"the current LOD cache must describe its layout at version one");
+		++prefix.m_vertexStride;
+		std::memcpy(bytes.data(), &prefix, sizeof(prefix));
+		{
+			std::ofstream output(path, std::ios::binary | std::ios::trunc);
+			output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+		}
+		Require(!ModelLodCache::Load(cacheFolder, info, revision, 1, loaded),
+			"a different vertex layout must invalidate the cached geometry");
+		RequireLodsEqual(loaded, retained);
+		ModelLodCache::Save(cacheFolder, info, revision, 1, meshes);
+		std::filesystem::resize_file(path, std::filesystem::file_size(path) - sizeof(uint32_t));
+		Require(!ModelLodCache::Load(cacheFolder, info, revision, 1, loaded),
+			"a truncated final mesh must reject the entire cached LOD");
+		RequireLodsEqual(loaded, retained);
+	}
+
+	void TestModelLodCacheRegeneratesExpandedHeader()
+	{
+		ModelCacheWorkspace workspace;
+		const auto& cacheFolder = workspace.Context().GetCache();
+		ModelAssetInfo info;
+		YAML::Node metadata = info.Serialize();
+		metadata["fileId"] = "01234567-89ab-cdef-0123-456789abcdef";
+		info.Deserialize(metadata);
+		const FileRevision revision{ 123456789, true };
+		auto meshes = MakeLodCacheMeshes();
+		ModelLodCache::Save(cacheFolder, info, revision, 1, meshes);
+		const auto path = cacheFolder / "Lods" / ModelImporter::GetLodCacheFilename(info.GetFileId(), 1);
+
+		struct ExpandedHeader
+		{
+			std::array<char, 8> m_magic{ 'S', 'A', 'I', 'L', 'L', 'O', 'D', '\0' };
+			uint32_t m_version = 1;
+			uint32_t m_vertexStride = sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
+			uint32_t m_meshCount = 2;
+			uint32_t m_lodLevel = 1;
+			int64_t m_sourceModificationTime = 123456789;
+			uint64_t m_sourceSize = 0;
+			uint64_t m_sourceContentHash = 0;
+			float m_unitScale = 1.0f;
+			float m_reductionFactor = 0.5f;
+			uint32_t m_bBatchByMaterial = 1;
+			uint32_t m_bFlipTexcoordY = 0;
+		};
+		const ExpandedHeader expanded{};
+		{
+			std::ofstream output(path, std::ios::binary | std::ios::trunc);
+			output.write(reinterpret_cast<const char*>(&expanded), sizeof(expanded));
+			for (const auto& mesh : meshes)
+			{
+				const auto& lod = mesh.lods[0];
+				const uint64_t counts[]{ lod.m_vertices.Num(), lod.m_indices.Num() };
+				output.write(reinterpret_cast<const char*>(counts), sizeof(counts));
+				output.write(reinterpret_cast<const char*>(lod.m_vertices.GetData()),
+					static_cast<std::streamsize>(lod.m_vertices.Num() * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4)));
+				output.write(reinterpret_cast<const char*>(lod.m_indices.GetData()),
+					static_cast<std::streamsize>(lod.m_indices.Num() * sizeof(uint32_t)));
+			}
+		}
+		meshes[0].lods[0].m_vertices[0].m_position.z = 100.0f;
+		const auto retained = meshes;
+		Require(!ModelLodCache::Load(cacheFolder, info, revision, 1, meshes),
+			"the old version-one header must be a cache miss, not a legacy read path");
+		RequireLodsEqual(meshes, retained);
+		ModelImporter::GenerateLods(meshes, 2, info.GetLodReductionFactor());
+		ModelLodCache::Save(cacheFolder, info, revision, 1, meshes);
+		auto loaded = meshes;
+		for (auto& mesh : loaded) mesh.lods[0] = {};
+		Require(ModelLodCache::Load(cacheFolder, info, revision, 1, loaded),
+			"regeneration must replace the stale header with a readable current file");
+		RequireLodsEqual(loaded, meshes);
 	}
 
 	void TestRhiMeshLodsShareBuffersAndDrawRanges()
@@ -1627,9 +2562,23 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "ModelReadinessTracksMeshUploads", TestModelReadinessTracksMeshUploads },
+		{ "FailedModelImportCanBeRetried", TestFailedModelImportCanBeRetried },
+		{ "PendingModelImportsShareTheirAttempt", TestPendingModelImportsShareTheirAttempt },
+		{ "CachedModelDoesNotWaitForGpuUploads", TestCachedModelDoesNotWaitForGpuUploads },
 		{ "MeshContextRejectsEmptyGpuUploads", TestMeshContextRejectsEmptyGpuUploads },
 		{ "ModelLodMetadataDefaultsAndRoundTrip", TestModelLodMetadataDefaultsAndRoundTrip },
 		{ "ModelLodGenerationAndCacheNaming", TestModelLodGenerationAndCacheNaming },
+		{ "ModelLodCacheRoundTripAndInvalidation", TestModelLodCacheRoundTripAndInvalidation },
+		{ "ModelLodCacheRegeneratesExpandedHeader", TestModelLodCacheRegeneratesExpandedHeader },
+		{ "AnimationRepairPreservesFileIds", TestAnimationRepairPreservesFileIds },
+		{ "AnimationRepairKeepsCompletedFilesAfterFailure", TestAnimationRepairKeepsCompletedFilesAfterFailure },
+		{ "AnimationRepairPreservesCustomSidecars", TestAnimationRepairPreservesCustomSidecars },
+		{ "AnimationRepairRejectsConflictingMetadata", TestAnimationRepairRejectsConflictingMetadata },
+		{ "AnimationRepairAcceptsOmittedMetadataType", TestAnimationRepairAcceptsOmittedMetadataType },
+		{ "AnimationRepairRetainsLazyOwnership", TestAnimationRepairRetainsLazyOwnership },
+		{ "ModelCallbacksPreserveUnchangedMetadata", TestModelCallbacksPreserveUnchangedMetadata },
+		{ "ModelCallbacksRetryFailedAnimationGeneration", TestModelCallbacksRetryFailedAnimationGeneration },
+		{ "ModelCallbacksRejectFailedMetadataSave", TestModelCallbacksRejectFailedMetadataSave },
 		{ "RhiMeshLodsShareBuffersAndDrawRanges", TestRhiMeshLodsShareBuffersAndDrawRanges },
 		{ "GltfAlphaModesResolveRenderState", TestGltfAlphaModesResolveRenderState },
 		{ "MaterialAssetRetainsRenderQueue", TestMaterialAssetRetainsRenderQueue },

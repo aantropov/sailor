@@ -405,7 +405,7 @@ void DebugContext::DrawDebugMesh(
 	RHI::RHICommandListPtr secondaryDrawCmdList,
 	const glm::mat4x4& viewProjection,
 	const DrawSnapshot& snapshot,
-	const glm::ivec2& renderExtent) const
+	const glm::ivec2& renderExtent)
 {
 	if (!snapshot.m_vertexBuffer ||
 		!snapshot.m_indexBuffer ||

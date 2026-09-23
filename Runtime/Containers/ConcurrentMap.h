@@ -27,24 +27,31 @@ namespace Sailor
 		TConcurrentMap(TConcurrentMap&&) noexcept = default;
 		TConcurrentMap& operator=(TConcurrentMap&&) noexcept = default;
 
-		SAILOR_API TConcurrentMap(std::initializer_list<TElementType> initList)
+		SAILOR_API TConcurrentMap(std::initializer_list<TElementType> initList) : TConcurrentMap()
 		{
 			for (const auto& el : initList)
 			{
-				Insert(el);
+				Insert(el.First(), el.Second());
 			}
 		}
 
 		SAILOR_API void Insert(const TKeyType& key, const TValueType& value) requires IsCopyConstructible<TValueType>
 		{
-			Super::Insert(TElementType(key, value));
+			const size_t hash = Sailor::GetHash(key);
+			Super::Lock(hash);
+			GetOrAdd(key, value);
+			Super::Unlock(hash);
 		}
 
 		SAILOR_API void Insert(const TKeyType& key, TValueType&& value) requires IsMoveConstructible<TValueType>
 		{
-			Super::Insert(TElementType(key, std::move(value)));
+			const size_t hash = Sailor::GetHash(key);
+			Super::Lock(hash);
+			GetOrAdd(key, std::move(value));
+			Super::Unlock(hash);
 		}
 
+		// Caller owns the key's stripe or LockAll; descriptor-cache collection uses this path.
 		SAILOR_API bool ForcelyRemove(const TKeyType& key)
 		{
 			const size_t hash = Sailor::GetHash(key);
@@ -53,39 +60,15 @@ namespace Sailor
 			if (element)
 			{
 				auto& container = element->GetContainer();
-				if (container.RemoveAll([&](const TElementType& el) { return el.First() == key; }))
+				const size_t removed = container.RemoveAll([&](const TElementType& el) { return el.First() == key; });
+				if (removed)
 				{
 					if (container.Num() == 0)
 					{
-						if (element.GetRawPtr() == Super::m_last)
-						{
-							Super::m_last = element->m_prev;
-						}
-
-						if (element->m_next)
-						{
-							element->m_next->m_prev = element->m_prev;
-						}
-
-						if (element->m_prev)
-						{
-							element->m_prev->m_next = element->m_next;
-						}
-
-						if (Super::m_last == element.GetRawPtr())
-						{
-							Super::m_last = Super::m_last->m_prev;
-						}
-
-						if (Super::m_first == element.GetRawPtr())
-						{
-							Super::m_first = Super::m_first->m_next;
-						}
-
 						element.Clear();
 					}
 
-					Super::m_num--;
+					Super::m_num -= static_cast<uint32_t>(removed);
 					return true;
 				}
 
@@ -97,17 +80,10 @@ namespace Sailor
 		SAILOR_API bool Remove(const TKeyType& key)
 		{
 			const size_t hash = Sailor::GetHash(key);
-			auto& element = Super::m_buckets[hash % Super::m_buckets.Num()];
-
-			if (element)
-			{
-				Super::Lock(hash);
-				bool bRes = ForcelyRemove(key);
-				Super::Unlock(hash);
-
-				return bRes;
-			}
-			return false;
+			Super::Lock(hash);
+			const bool removed = ForcelyRemove(key);
+			Super::Unlock(hash);
+			return removed;
 		}
 
 		SAILOR_API TValueType& At_Lock(const TKeyType& key)
@@ -134,32 +110,69 @@ namespace Sailor
 			Super::Unlock(hash);
 		}
 
-		// TODO: Investigate If we don't rehash, we can directly read/write to elements due to the bucket container is not invalidated
+		// Lookup/insertion is locked; the returned reference is borrowed. Never prevents
+		// rehash, not erase or concurrent value writes: callers still synchronize its use.
 		template<ERehashPolicy P = policy>
 		typename std::enable_if<P == ERehashPolicy::Never, TValueType&>::type operator[] (const TKeyType& key)
 		{
-			return GetOrAdd(key).m_second;
+			const size_t hash = Sailor::GetHash(key);
+			Super::Lock(hash);
+			auto& value = GetOrAdd(key).m_second;
+			Super::Unlock(hash);
+			return value;
 		}
 
 		template<ERehashPolicy P = policy>
 		typename std::enable_if<P == ERehashPolicy::Never, const TValueType&>::type operator[] (const TKeyType& key) const
 		{
+			const size_t hash = Sailor::GetHash(key);
+			Super::Lock(hash);
 			TValueType const* out = nullptr;
 			Find(key, out);
+			Super::Unlock(hash);
 			return *out;
 		}
 
-		// If we can rehash, we cannot directly read/write to elements due to the bucket container could be invalidated.
-		// !But you still is able to get the values, but they are returned by VALUES!
-		// *I expect that you use At_Lock to add elements
+		// Copy under the stripe lock so rehash cannot invalidate the source mid-copy.
 		template<ERehashPolicy P = policy>
 		typename std::enable_if<P != ERehashPolicy::Never, const TValueType>::type operator[] (const TKeyType& key) const
 		{
+			const size_t hash = Sailor::GetHash(key);
+			Super::Lock(hash);
 			TValueType const* out = nullptr;
 			Find(key, out);
-			return *out;
+			TValueType value = *out;
+			Super::Unlock(hash);
+			return value;
 		}
 
+		// Copy under the stripe, then replace the caller's value after unlocking.
+		// A missing key leaves out unchanged.
+		SAILOR_API bool TryGet(const TKeyType& key, TValueType& out) const
+			requires IsCopyConstructible<TValueType> && (IsMoveAssignable<TValueType> || IsCopyAssignable<TValueType>)
+		{
+			const size_t hash = Sailor::GetHash(key);
+			Super::Lock(hash);
+			const auto it = Find(key);
+			if (it == Super::end())
+			{
+				Super::Unlock(hash);
+				return false;
+			}
+			TValueType value = it->m_second;
+			Super::Unlock(hash);
+			if constexpr (IsMoveAssignable<TValueType>)
+			{
+				out = std::move(value);
+			}
+			else
+			{
+				out = value;
+			}
+			return true;
+		}
+
+		// Borrowed lookup: caller excludes structural writers for the whole use of the result.
 		SAILOR_API bool Find(const TKeyType& key, TValueType*& out)
 		{
 			auto it = Find(key);
@@ -185,7 +198,8 @@ namespace Sailor
 		SAILOR_API Super::TIterator Find(const TKeyType& key)
 		{
 			const auto& hash = Sailor::GetHash(key);
-			auto& element = Super::m_buckets[hash % Super::m_buckets.Num()];
+			const size_t index = hash % Super::m_buckets.Num();
+			auto& element = Super::m_buckets[index];
 
 			if (element && element->LikelyContains(hash))
 			{
@@ -193,7 +207,7 @@ namespace Sailor
 				typename Super::TElementContainer::TIterator it = container.FindIf([&](const TElementType& el) { return el.First() == key; });
 				if (it != container.end())
 				{
-					return typename Super::TIterator(element.GetRawPtr(), it);
+					return typename Super::TIterator(this, index, it);
 				}
 			}
 
@@ -203,7 +217,8 @@ namespace Sailor
 		SAILOR_API Super::TConstIterator Find(const TKeyType& key) const
 		{
 			const auto& hash = Sailor::GetHash(key);
-			auto& element = Super::m_buckets[hash % Super::m_buckets.Num()];
+			const size_t index = hash % Super::m_buckets.Num();
+			auto& element = Super::m_buckets[index];
 
 			if (element && element->LikelyContains(hash))
 			{
@@ -211,7 +226,7 @@ namespace Sailor
 				typename Super::TElementContainer::TConstIterator it = container.FindIf([&](const TElementType& el) { return el.First() == key; });
 				if (it != container.end())
 				{
-					return typename Super::TConstIterator(element.GetRawPtr(), it);
+					return typename Super::TConstIterator(this, index, it);
 				}
 			}
 
@@ -220,14 +235,19 @@ namespace Sailor
 
 		SAILOR_API bool ContainsKey(const TKeyType& key) const
 		{
-			return Find(key) != Super::end();
+			const size_t hash = Sailor::GetHash(key);
+			Super::Lock(hash);
+			const bool found = Find(key) != Super::end();
+			Super::Unlock(hash);
+			return found;
 		}
 
+		// Like iteration/GetKeys/GetValues, this whole-table query needs external exclusion.
 		SAILOR_API bool ContainsValue(const TValueType& value) const
 		{
 			for (const auto& bucket : Super::m_buckets)
 			{
-				if (bucket && bucket->GetContainer().FindIf([&](const TElementType& el) { return el.Second() == value; }) != -1)
+				if (bucket && bucket->GetContainer().ContainsIf([&](const TElementType& el) { return el.Second() == value; }))
 				{
 					return true;
 				}
@@ -271,53 +291,18 @@ namespace Sailor
 		SAILOR_API TElementType& GetOrAdd(const TKeyType& key, TValueType defaultValue)
 		{
 			const auto& hash = Sailor::GetHash(key);
+			auto existing = Find(key);
+			if (existing != Super::end())
 			{
-				const size_t index = hash % Super::m_buckets.Num();
-				auto& element = Super::m_buckets[index];
-
-				if (element)
-				{
-					auto& container = element->GetContainer();
-
-					TElementType* out;
-					if (container.FindIf(out, [&](const TElementType& element) { return element.First() == key; }))
-					{
-						return *out;
-					}
-				}
+				return *existing;
 			}
 
-			if (Super::ShouldRehash())
+			Super::RehashForInsert(hash);
+			// Always may drop the stripe while acquiring all locks; another writer may insert this key.
+			existing = Find(key);
+			if (existing != Super::end())
 			{
-				if (Super::m_numRehashingRequests++ == 0)
-				{
-					uint32 exceptConcurrency = hash % concurrencyLevel;
-					switch (policy)
-					{
-					case ERehashPolicy::IfNotWriting:
-					{
-						if (Super::TryLockAll(exceptConcurrency))
-						{
-							Super::Rehash(Super::m_buckets.Capacity() * 4);
-							Super::UnlockAll();
-						}
-						break;
-					}
-					case ERehashPolicy::Always:
-					{
-						Super::LockAll(exceptConcurrency);
-						Super::Rehash(Super::m_buckets.Capacity() * 4);
-						Super::UnlockAll();
-						break;
-					}
-					case ERehashPolicy::Never:
-					{
-						check(0);
-					}break;
-					};
-				}
-
-				Super::m_numRehashingRequests--;
+				return *existing;
 			}
 
 			Super::Insert_Internal(TElementType(key, std::move(defaultValue)), hash);

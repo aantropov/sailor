@@ -22,6 +22,33 @@ bool GIProbesPathTracer::Initialize(
 	const PathTracer::ScenePreparationProgressCallback& progress,
 	const PathTracer::ScenePreparationWarningCallback& warning)
 {
+	return InitializeInternal(instances, materials, nullptr, lights,
+		settings, fallbackEnvironment, progress, warning);
+}
+
+bool GIProbesPathTracer::InitializeSnapshot(
+	const TVector<PathTracer::TLASInstance>& instances,
+	const PathTracer::MaterialSnapshots& materials,
+	const TVector<LightProxy>& lights,
+	const GIProbesBakeSettings& settings,
+	const glm::vec3& fallbackEnvironment,
+	const PathTracer::ScenePreparationProgressCallback& progress,
+	const PathTracer::ScenePreparationWarningCallback& warning)
+{
+	return InitializeInternal(instances, {}, &materials, lights,
+		settings, fallbackEnvironment, progress, warning);
+}
+
+bool GIProbesPathTracer::InitializeInternal(
+	const TVector<PathTracer::TLASInstance>& instances,
+	const TVector<MaterialPtr>& runtimeMaterials,
+	const PathTracer::MaterialSnapshots* snapshotMaterials,
+	const TVector<LightProxy>& lights,
+	const GIProbesBakeSettings& settings,
+	const glm::vec3& fallbackEnvironment,
+	const PathTracer::ScenePreparationProgressCallback& progress,
+	const PathTracer::ScenePreparationWarningCallback& warning)
+{
 	SAILOR_PROFILE_FUNCTION();
 	TVector<LightProxy> bakedLights;
 	bakedLights.Reserve(lights.Num());
@@ -63,14 +90,11 @@ bool GIProbesPathTracer::Initialize(
 		}
 		SAILOR_LOG("[Warning] GI bake: %s", diagnostic.c_str());
 	};
-	const bool bHasGeometry = m_pathTracer.InitializeScene(
-		instances,
-		materials,
-		bakedLights,
-		false,
-		progress,
-		true,
-		reportWarning);
+	const bool bHasGeometry = snapshotMaterials ?
+		m_pathTracer.InitializeSceneSnapshot(instances, *snapshotMaterials,
+			bakedLights, false, progress, true, reportWarning) :
+		m_pathTracer.InitializeScene(instances, runtimeMaterials,
+			bakedLights, false, progress, true, reportWarning);
 	m_bInitialized = bHasGeometry;
 	return m_bInitialized;
 }
@@ -84,8 +108,8 @@ void GIProbesPathTracer::SetEnvironmentLinear(
 
 bool GIProbesPathTracer::SamplePrimaryDirection(
 	const glm::vec3& uniformDirection,
-	uint32_t sampleIndex,
-	uint32_t sampleCount,
+	uint32_t,
+	uint32_t,
 	uint32_t randomSeed,
 	glm::vec3& outDirection,
 	float& outPdf,
@@ -95,26 +119,18 @@ bool GIProbesPathTracer::SamplePrimaryDirection(
 		0.07957747154594766788f;
 	outDirection = uniformDirection;
 	outPdf = UniformSpherePdf;
-	if (!m_pathTracer.m_bUseRuntimeEnvironmentImportance ||
-		sampleCount < 2u)
+	if (!m_pathTracer.m_bUseRuntimeEnvironmentImportance)
 	{
 		outDiagnostic.clear();
 		return true;
 	}
 
-	const uint32_t importanceSampleCount = sampleCount / 2u;
-	const uint32_t uniformSampleCount =
-		sampleCount - importanceSampleCount;
-	const float importanceFraction =
-		static_cast<float>(importanceSampleCount) /
-		static_cast<float>(sampleCount);
-	const float uniformFraction =
-		static_cast<float>(uniformSampleCount) /
-		static_cast<float>(sampleCount);
+	// The seed is already mixed per ray. One bit chooses the technique; the remaining
+	// bits seed importance sampling. The mixture stays the same for every prefix/budget.
 	float directionImportancePdf = 0.0f;
-	if ((sampleIndex & 1u) != 0u)
+	if ((randomSeed & 1u) != 0u)
 	{
-		uint32_t importanceRandomState = randomSeed;
+		uint32_t importanceRandomState = randomSeed >> 1u;
 		if (!m_pathTracer.SampleRuntimeEnvironmentImportance(
 				importanceRandomState,
 				outDirection,
@@ -131,8 +147,7 @@ bool GIProbesPathTracer::SamplePrimaryDirection(
 			m_pathTracer.RuntimeEnvironmentImportancePdf(outDirection);
 	}
 
-	outPdf = uniformFraction * UniformSpherePdf +
-		importanceFraction * directionImportancePdf;
+	outPdf = 0.5f * (UniformSpherePdf + directionImportancePdf);
 	outDiagnostic.clear();
 	return std::isfinite(outPdf) && outPdf > 0.0f;
 }

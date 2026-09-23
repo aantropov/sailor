@@ -7,8 +7,11 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Components/LightComponent.h"
+#include "Components/MeshRendererComponent.h"
 #include "Components/Tests/GlobalIlluminationLandscapeTestScene.h"
+#include "ECS/LandscapeECS.h"
 #include "ECS/LightingECS.h"
+#include "ECS/GlobalIlluminationECS.h"
 #include "ECS/StaticMeshRendererECS.h"
 #include "ECS/TransformECS.h"
 #include "GlobalIllumination/GISettings.h"
@@ -20,6 +23,8 @@
 #include "Raytracing/LightingModel.h"
 #include "Raytracing/PathTracer.h"
 #include "Raytracing/GIProbesPathTracer.h"
+#include "Submodules/Editor.h"
+#include "Support/TempDirectory.h"
 
 #include <algorithm>
 #include <array>
@@ -45,6 +50,61 @@
 
 using namespace Sailor;
 
+namespace Sailor
+{
+	class GlobalIlluminationBakeControllerTestAccess
+	{
+	public:
+		static GlobalIlluminationBakeController& GetController(Editor& editor)
+		{
+			return *editor.m_giProbesBakeController;
+		}
+
+		static TSharedPtr<GlobalIlluminationBakeController::SharedState> GetState(
+			GlobalIlluminationBakeController& controller)
+		{
+			return controller.m_state;
+		}
+
+		static void SetTask(GlobalIlluminationBakeController& controller, const Tasks::ITaskPtr& task)
+		{
+			controller.m_task = task;
+		}
+	};
+
+	class GlobalIlluminationECSTestAccess
+	{
+	public:
+		static GIProbesSceneCaptureRequest CaptureRequest(const GlobalIlluminationECS& system)
+		{
+			GIProbesSceneCaptureRequest request;
+			request.m_settings = ResolveRuntimeGIProbesBakeSettings(system.m_worldSettings.m_runtimeProbes,
+				system.ResolveRuntimeQualitySettings(), 0u);
+			request.m_sourceIdentity = system.GetWorld()->GetName();
+			return request;
+		}
+
+		static void StageCompletedScene(GlobalIlluminationECS& system,
+			GIProbesPreparedScene scene, GIProbesSceneMaterialWatch watch)
+		{
+			GlobalIlluminationECS::RuntimeScenePreparationResult result;
+			result.m_requestId = ++system.m_runtimeScenePreparationRequestId;
+			result.m_scene = GIProbesPreparedScenePtr::Make(std::move(scene));
+			system.m_runtimeSceneMaterialWatch = std::move(watch);
+			system.m_runtimeScenePreparationTask =
+				Tasks::TaskPtr<GlobalIlluminationECS::RuntimeScenePreparationResult>::Make(std::move(result));
+			system.m_bRuntimeSceneRebuildRequested = false;
+		}
+
+		static bool ConsumeAndRequestsRebuild(GlobalIlluminationECS& system)
+		{
+			system.ConsumeRuntimeScenePreparation(glm::vec3(0.0f));
+			return system.m_bRuntimeSceneRebuildRequested && !system.m_runtimePreparedScene &&
+				!system.m_runtimeScenePreparationTask && system.m_runtimeSceneMaterialWatch.m_materials.IsEmpty();
+		}
+	};
+}
+
 namespace
 {
 	class GlobalIlluminationMobilityTestWorld final : public World
@@ -61,6 +121,7 @@ namespace
 			systems.Add(TUniquePtr<TransformECS>::Make());
 			systems.Add(TUniquePtr<StaticMeshRendererECS>::Make());
 			systems.Add(TUniquePtr<LightingECS>::Make());
+			systems.Add(TUniquePtr<LandscapeECS>::Make());
 			return systems;
 		}
 	};
@@ -849,6 +910,26 @@ namespace
 		Math::AABB m_bounds{};
 	};
 
+	class CapturedGiTestMaterial final : public Material
+	{
+	public:
+		CapturedGiTestMaterial() : Material(FileId::Invalid) {}
+		bool IsReady() const override { return true; }
+	};
+
+	class CapturedGiTestModel final : public Model
+	{
+	public:
+		explicit CapturedGiTestModel(const EveningLandscapeRaytracingFixture& fixture) : Model(FileId::Invalid)
+		{
+			m_boundsAabb = fixture.m_bounds;
+			m_blasTriangles = *fixture.m_triangles;
+			m_blas = fixture.m_blas;
+			m_meshes.Add(RHI::RHIMeshPtr::Make());
+			Flush();
+		}
+	};
+
 	EveningLandscapeRaytracingFixture
 	MakeEveningLandscapeRaytracingFixture()
 	{
@@ -1090,6 +1171,76 @@ namespace
 		mutable std::atomic<float> m_lastMaxDistance{ 0.0f };
 		mutable std::atomic<uint64_t> m_irradianceSampleCount{ 0u };
 		mutable std::atomic<uint64_t> m_visibilitySampleCount{ 0u };
+	};
+
+	class AnalyticSphereSampler : public IGIProbeBakeRaySampler
+	{
+	public:
+		bool Sample(const glm::vec3&, const glm::vec3& direction, float maxDistance,
+			uint32_t, GIProbeBakeRaySample& outSample, std::string&) const override
+		{
+			++m_sampleCount;
+			// Three independent analytic fields: a constant sphere and its two hemispheres.
+			outSample = {};
+			outSample.m_radiance = glm::vec3(1.0f, direction.y > 0.0f ? 1.0f : 0.0f,
+				direction.y < 0.0f ? 1.0f : 0.0f);
+			outSample.m_distance = maxDistance;
+			return true;
+		}
+
+		bool SampleVisibility(const glm::vec3&, const glm::vec3&, float maxDistance,
+			uint32_t, GIProbeBakeRaySample& outSample, std::string&) const override
+		{
+			outSample = {};
+			outSample.m_distance = maxDistance;
+			return true;
+		}
+
+		uint64_t GetSampleCount() const
+		{
+			return m_sampleCount.load();
+		}
+
+	private:
+		mutable std::atomic<uint64_t> m_sampleCount{ 0u };
+	};
+
+	// Records the production accumulator's primary inputs; only used by single-threaded range tests.
+	class ProgressiveDirectionProbe final : public AnalyticSphereSampler
+	{
+	public:
+		struct PrimarySample
+		{
+			glm::vec3 m_uniformDirection;
+			glm::vec3 m_direction;
+			float m_pdf;
+			uint32_t m_randomSeed;
+		};
+
+		explicit ProgressiveDirectionProbe(const Raytracing::GIProbesPathTracer* sampler = nullptr) :
+			m_sampler(sampler)
+		{}
+
+		bool SamplePrimaryDirection(const glm::vec3& uniformDirection, uint32_t sampleIndex,
+			uint32_t sampleCount, uint32_t randomSeed, glm::vec3& outDirection, float& outPdf,
+			std::string& outDiagnostic) const override
+		{
+			const bool success = m_sampler ?
+				m_sampler->SamplePrimaryDirection(uniformDirection, sampleIndex, sampleCount,
+					randomSeed, outDirection, outPdf, outDiagnostic) :
+				IGIProbeBakeRaySampler::SamplePrimaryDirection(uniformDirection, sampleIndex, sampleCount,
+					randomSeed, outDirection, outPdf, outDiagnostic);
+			if (success)
+			{
+				m_samples.Add({ uniformDirection, outDirection, outPdf, randomSeed });
+			}
+			return success;
+		}
+
+		mutable TVector<PrimarySample> m_samples;
+
+	private:
+		const Raytracing::GIProbesPathTracer* m_sampler;
 	};
 
 	class SeedDrivenBakeRaySampler final : public IGIProbeBakeRaySampler
@@ -1641,6 +1792,7 @@ namespace
 	class MaterialSamplingPathTracer final : public Raytracing::PathTracer
 	{
 	public:
+		const Raytracing::Material& PreparedMaterial(size_t index) const { return m_materials[index]; }
 		Raytracing::LightingModel::SampledData SamplePreparedMaterial(
 			size_t materialIndex,
 			glm::vec2 uv = glm::vec2(0.5f)) const
@@ -2285,6 +2437,223 @@ components:
 			!controller.Start(nullptr, request, diagnostic) &&
 				diagnostic.find("between 1 and") != std::string::npos,
 			"the editor bake controller must reject excessive threads before capturing a scene");
+	}
+
+	struct BakeTaskObservation
+	{
+		std::mutex m_mutex;
+		std::condition_variable m_changed;
+		bool m_observeWait = false;
+		bool m_waitObserved = false;
+		bool m_ownerReturned = false;
+		bool m_taskEntered = false;
+		bool m_releaseTask = false;
+		bool m_taskTimedOut = false;
+	};
+
+	// Only observe the existing completion query; execution and completion stay in Task.
+	class ObservedBakeTask final : public Tasks::Task<>
+	{
+	public:
+		ObservedBakeTask(Tasks::Scheduler& scheduler, Function function,
+			TSharedPtr<BakeTaskObservation> observation) :
+			Task("Controlled background bake", std::move(function), EThreadType::Background, &scheduler),
+			m_observation(std::move(observation))
+		{}
+
+		bool IsFinished() const override
+		{
+			std::lock_guard lock(m_observation->m_mutex);
+			if (m_observation->m_observeWait)
+			{
+				m_observation->m_waitObserved = true;
+				m_observation->m_changed.notify_all();
+			}
+			return Tasks::Task<>::IsFinished();
+		}
+
+	private:
+		TSharedPtr<BakeTaskObservation> m_observation;
+	};
+
+	bool WaitForBakeOwner(BakeTaskObservation& observation)
+	{
+		std::unique_lock lock(observation.m_mutex);
+		return observation.m_changed.wait_for(lock, std::chrono::seconds(5), [&]()
+			{
+				return observation.m_waitObserved || observation.m_ownerReturned;
+			}) && observation.m_waitObserved && !observation.m_ownerReturned;
+	}
+
+	void TestEditorWaitsForTerminalBakeTask()
+	{
+		for (const auto terminal : { EEditorGIProbesBakeState::Succeeded,
+			EEditorGIProbesBakeState::Failed, EEditorGIProbesBakeState::Cancelled })
+		{
+			Tasks::Scheduler scheduler;
+			scheduler.AttachCurrentThreadAsMainThread();
+			Editor editor(nullptr, 0u, nullptr);
+			auto& controller = GlobalIlluminationBakeControllerTestAccess::GetController(editor);
+			auto state = GlobalIlluminationBakeControllerTestAccess::GetState(controller);
+			auto observation = TSharedPtr<BakeTaskObservation>::Make();
+			auto task = TSharedPtr<ObservedBakeTask>::Make(scheduler, [state, observation, terminal]()
+				{
+					state->m_lock.Lock();
+					state->m_status.m_state = terminal;
+					state->m_lock.Unlock();
+					std::unique_lock lock(observation->m_mutex);
+					observation->m_taskEntered = true;
+					observation->m_changed.notify_all();
+					observation->m_taskTimedOut = !observation->m_changed.wait_for(
+						lock, std::chrono::seconds(5), [&]() { return observation->m_releaseTask; });
+				}, observation);
+			scheduler.Run(task, false);
+			Tasks::ITaskPtr queued;
+			Require(scheduler.TryFetchNextAvailiableTask(queued, EThreadType::Background),
+				"the terminal bake fixture must use the real Background queue");
+			GlobalIlluminationBakeControllerTestAccess::SetTask(controller, task);
+			std::jthread execution([queued]() { queued->Execute(); });
+			bool entered = false;
+			{
+				std::unique_lock lock(observation->m_mutex);
+				entered = observation->m_changed.wait_for(lock, std::chrono::seconds(5), [&]()
+					{ return observation->m_taskEntered; });
+				observation->m_observeWait = true;
+			}
+			const bool terminalStatus = !controller.GetStatus().IsRunning();
+			std::jthread changeWorld([&]()
+				{
+					editor.SetWorld(nullptr);
+					std::lock_guard lock(observation->m_mutex);
+					observation->m_ownerReturned = true;
+					observation->m_changed.notify_all();
+				});
+			const bool waited = WaitForBakeOwner(*observation);
+			{
+				std::lock_guard lock(observation->m_mutex);
+				observation->m_releaseTask = true;
+			}
+			observation->m_changed.notify_all();
+			execution.join();
+			changeWorld.join();
+
+			Require(entered && terminalStatus && waited && !observation->m_taskTimedOut &&
+				observation->m_ownerReturned && task->IsFinished(),
+				"SetWorld must wait for the real task tail even after the bake status becomes terminal");
+		}
+	}
+
+	void TestBakeControllerCancelsQueuedPreparation()
+	{
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+		auto controller = TUniquePtr<GlobalIlluminationBakeController>::Make();
+		auto state = GlobalIlluminationBakeControllerTestAccess::GetState(*controller);
+		state->m_status.m_state = EEditorGIProbesBakeState::Preparing;
+		auto snapshot = GIProbesSceneSnapshotPtr::Make();
+		const TWeakPtr<GIProbesSceneSnapshot> retainedSnapshot = snapshot;
+		const TWeakPtr<GlobalIlluminationBakeController::SharedState> retainedState = state;
+		auto observation = TSharedPtr<BakeTaskObservation>::Make();
+		bool prepared = true;
+		GIProbesPreparedScene result;
+		std::string diagnostic;
+		auto task = TSharedPtr<ObservedBakeTask>::Make(scheduler, [snapshot, state, &prepared, &result, &diagnostic]()
+			{
+				prepared = PrepareGIProbesScene(*snapshot, GIProbesBakeSettings{}, &state->m_cancel,
+					result, diagnostic);
+			}, observation);
+		scheduler.Run(task, false);
+		GlobalIlluminationBakeControllerTestAccess::SetTask(*controller, task);
+		observation->m_observeWait = true;
+		snapshot.Clear();
+		std::jthread teardown([controller = std::move(controller), observation]() mutable
+			{
+				controller.Clear();
+				std::lock_guard lock(observation->m_mutex);
+				observation->m_ownerReturned = true;
+				observation->m_changed.notify_all();
+			});
+		const bool waited = WaitForBakeOwner(*observation);
+		const bool cancelled = state->m_cancel.load(std::memory_order_acquire);
+		const bool retained = static_cast<bool>(retainedSnapshot.TryLock());
+		Tasks::ITaskPtr queued;
+		const bool fetched = scheduler.TryFetchNextAvailiableTask(queued, EThreadType::Background);
+		if (!fetched)
+		{
+			// Release the owner's wait before reporting a broken queue contract.
+			queued = task;
+		}
+		queued->Execute();
+		teardown.join();
+		state.Clear();
+		queued.Clear();
+		task.Clear();
+
+		Require(waited && cancelled && retained && fetched && !prepared && !result.m_sampler &&
+			diagnostic.find("cancelled") != std::string::npos &&
+			!retainedSnapshot.TryLock() && !retainedState.TryLock(),
+			"owner teardown must cancel and join queued preparation before releasing its retained inputs");
+	}
+
+	void TestEditorWaitsForBakeAtomicSave()
+	{
+		Tests::TempDirectory directory("gi-save-teardown");
+		const auto path = directory.Path("complete.probes");
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+		Editor editor(nullptr, 0u, nullptr);
+		auto& controller = GlobalIlluminationBakeControllerTestAccess::GetController(editor);
+		auto state = GlobalIlluminationBakeControllerTestAccess::GetState(controller);
+		auto observation = TSharedPtr<BakeTaskObservation>::Make();
+		bool saved = false;
+		std::string diagnostic;
+		auto task = TSharedPtr<ObservedBakeTask>::Make(scheduler, [state, observation, path, &saved, &diagnostic]()
+			{
+				state->m_lock.Lock();
+				state->m_status.m_state = EEditorGIProbesBakeState::Saving;
+				state->m_lock.Unlock();
+				{
+					std::unique_lock lock(observation->m_mutex);
+					observation->m_taskEntered = true;
+					observation->m_changed.notify_all();
+					observation->m_taskTimedOut = !observation->m_changed.wait_for(
+						lock, std::chrono::seconds(5), [&]() { return observation->m_releaseTask; });
+				}
+				saved = GIProbesBinary::SaveAtomic(path, MakeVolume(2.0f, 71u), diagnostic);
+			}, observation);
+		scheduler.Run(task, false);
+		Tasks::ITaskPtr queued;
+		Require(scheduler.TryFetchNextAvailiableTask(queued, EThreadType::Background),
+			"the save fixture must use the real Background queue");
+		GlobalIlluminationBakeControllerTestAccess::SetTask(controller, task);
+		std::jthread execution([queued]() { queued->Execute(); });
+		bool entered = false;
+		{
+			std::unique_lock lock(observation->m_mutex);
+			entered = observation->m_changed.wait_for(lock, std::chrono::seconds(5), [&]()
+				{ return observation->m_taskEntered; });
+			observation->m_observeWait = true;
+		}
+		std::jthread changeWorld([&]()
+			{
+				editor.SetWorld(nullptr);
+				std::lock_guard lock(observation->m_mutex);
+				observation->m_ownerReturned = true;
+				observation->m_changed.notify_all();
+			});
+		const bool waited = WaitForBakeOwner(*observation);
+		const bool cancelled = state->m_cancel.load(std::memory_order_acquire);
+		{
+			std::lock_guard lock(observation->m_mutex);
+			observation->m_releaseTask = true;
+		}
+		observation->m_changed.notify_all();
+		execution.join();
+		changeWorld.join();
+		const auto loaded = GIProbesBinary::Load(path);
+		Require(entered && waited && !cancelled && !observation->m_taskTimedOut && saved &&
+			loaded.IsSuccess() && loaded.m_data->m_lightingHash == 71u && loaded.m_data->m_probes.Num() == 8u,
+			"SetWorld must finish the atomic save, not cancel or abandon its complete probe payload: " + diagnostic);
 	}
 
 	void TestEveningLandscapeVisualWorldIsSavedBakeableLevel()
@@ -3180,6 +3549,188 @@ components:
 		}
 	}
 
+	GIProbe TraceIrradiancePrefix(const GIProbeTraceRequest& request,
+		const IGIProbeBakeRaySampler& sampler, uint32_t sampleCount, uint32_t targetCount)
+	{
+		GIProbeIrradianceAccumulator accumulator;
+		GIProbe probe;
+		std::string diagnostic;
+		Require(AccumulateGIProbeIrradianceRange(request, sampler, glm::vec3(0.0f),
+				91u, 0u, sampleCount, targetCount, accumulator, diagnostic),
+			"irradiance prefix should accumulate: " + diagnostic);
+		Require(ResolveGIProbeIrradiance(accumulator, probe, diagnostic),
+			"irradiance prefix should resolve: " + diagnostic);
+		return probe;
+	}
+
+	void RequireAnalyticSphereIrradiance(const GIProbe& probe, float tolerance)
+	{
+		for (uint32_t axis = 0u; axis < 3u; ++axis)
+		{
+			for (float sign : { -1.0f, 1.0f })
+			{
+				glm::vec3 normal(0.0f);
+				normal[axis] = sign;
+				const glm::vec3 actual = EvaluateProbeIrradianceSH(probe.m_irradiance, normal);
+				// The engine stores irradiance / pi: one for a unit sphere,
+				// (1 +/- normal.y) / 2 for either unit-radiance hemisphere.
+				const glm::vec3 expected(1.0f, (1.0f + normal.y) * 0.5f,
+					(1.0f - normal.y) * 0.5f);
+				for (uint32_t channel = 0u; channel < 3u; ++channel)
+				{
+					Require(IsNear(actual[channel], expected[channel], tolerance),
+						"progressive irradiance must cover both hemispheres; error " +
+						std::to_string(std::abs(actual[channel] - expected[channel])));
+				}
+			}
+		}
+	}
+
+	void RequireSamePrimarySamples(const ProgressiveDirectionProbe& lhs,
+		const ProgressiveDirectionProbe& rhs)
+	{
+		Require(lhs.m_samples.Num() == rhs.m_samples.Num(),
+			"primary sample prefixes must have equal lengths");
+		for (size_t index = 0u; index < lhs.m_samples.Num(); ++index)
+		{
+			const auto& a = lhs.m_samples[index];
+			const auto& b = rhs.m_samples[index];
+			Require(HasSameVectorBits(a.m_uniformDirection, b.m_uniformDirection) &&
+				HasSameVectorBits(a.m_direction, b.m_direction) &&
+				HasSameFloatBits(a.m_pdf, b.m_pdf) && a.m_randomSeed == b.m_randomSeed,
+				"primary directions, seeds and PDFs must not depend on target or chunk size");
+		}
+	}
+
+	void TestProgressiveIrradianceSphereCoverage()
+	{
+		GIProbeTraceRequest request;
+		for (uint32_t seed : { 0u, 1729u, 9187u })
+		{
+			request.m_settings.m_randomSeed = seed;
+			for (uint32_t count : { 16u, 17u, 32u, 33u, 64u, 65u })
+			{
+				ProgressiveDirectionProbe partialSampler;
+				const GIProbe partial = TraceIrradiancePrefix(request, partialSampler, count, 129u);
+				const float tolerance = count <= 17u ? 0.30f : count <= 33u ? 0.20f : 0.12f;
+				RequireAnalyticSphereIrradiance(partial, tolerance);
+				Require(IsNear(partial.m_irradiance[0].x, std::sqrt(4.0f * glm::pi<float>()), 0.00001f),
+					"each uniform prefix must preserve constant radiance energy");
+
+				ProgressiveDirectionProbe completeSampler;
+				const GIProbe complete = TraceIrradiancePrefix(request, completeSampler, count, count);
+				RequireSamePrimarySamples(partialSampler, completeSampler);
+				for (uint32_t coefficient = 0u; coefficient < GIProbeSphericalHarmonicsCoefficientCount;
+					++coefficient)
+				{
+					Require(glm::length(partial.m_irradiance[coefficient] - complete.m_irradiance[coefficient]) < 0.00001f,
+						"normalizing a prefix must not change with the final sample budget");
+				}
+
+				glm::vec3 minimum(1.0f);
+				glm::vec3 maximum(-1.0f);
+				for (size_t index = 0u; index < partialSampler.m_samples.Num(); index += 2u)
+				{
+					const glm::vec3& direction = partialSampler.m_samples[index].m_direction;
+					Require(IsNear(glm::length(direction), 1.0f, 0.00001f),
+						"progressive sphere samples must be unit vectors");
+					minimum = glm::min(minimum, direction);
+					maximum = glm::max(maximum, direction);
+				}
+				Require(minimum.x < 0.0f && minimum.y < -0.5f && minimum.z < 0.0f &&
+					maximum.x > 0.0f && maximum.y > 0.5f && maximum.z > 0.0f,
+					"even-index uniform samples must span both hemispheres, not one parity band");
+			}
+		}
+	}
+
+	void TestProgressiveHdrMixture()
+	{
+		constexpr uint32_t Width = 32u;
+		constexpr uint32_t Height = 16u;
+		TVector<glm::vec4> environment;
+		environment.Resize(Width * Height);
+		for (glm::vec4& pixel : environment)
+		{
+			pixel = glm::vec4(1.0f);
+		}
+		environment[Width * 4u + Width / 2u] = glm::vec4(65504.0f, 65504.0f, 65504.0f, 1.0f);
+		Raytracing::GIProbesPathTracer pathTracer;
+		pathTracer.SetEnvironmentLinear(environment, glm::uvec2(Width, Height));
+		InspectablePathTracer reference;
+		reference.SetRuntimeEnvironmentLinear(environment, glm::uvec2(Width, Height));
+		Require(reference.UsesEnvironmentImportance(), "the HDR fixture must enable importance sampling");
+
+		GIProbeTraceRequest request;
+		request.m_settings.m_randomSeed = 1729u;
+		for (uint32_t count : { 1u, 16u, 17u, 32u, 33u, 64u, 65u })
+		{
+			ProgressiveDirectionProbe partialSampler(&pathTracer);
+			const GIProbe partial = TraceIrradiancePrefix(request, partialSampler, count, 129u);
+			ProgressiveDirectionProbe completeSampler(&pathTracer);
+			const GIProbe complete = TraceIrradiancePrefix(request, completeSampler, count, count);
+			RequireSamePrimarySamples(partialSampler, completeSampler);
+			uint32_t uniformSamples = 0u;
+			for (const auto& sample : partialSampler.m_samples)
+			{
+				// Facing away makes the direct-light hemisphere term zero, leaving
+				// half the environment PDF through the existing exported query.
+				const float expectedPdf = 0.5f / (4.0f * glm::pi<float>()) +
+					reference.EnvironmentPdf(-sample.m_direction, sample.m_direction);
+				Require(IsNear(sample.m_pdf, expectedPdf, 0.00001f * (std::max)(1.0f, expectedPdf)) &&
+					IsNear(glm::length(sample.m_direction), 1.0f, 0.00001f),
+					"every HDR sample must use the same equal-weight sphere/environment mixture PDF");
+				uniformSamples += HasSameVectorBits(sample.m_uniformDirection, sample.m_direction) ? 1u : 0u;
+			}
+			for (uint32_t coefficient = 0u; coefficient < GIProbeSphericalHarmonicsCoefficientCount;
+				++coefficient)
+			{
+				Require(glm::length(partial.m_irradiance[coefficient] - complete.m_irradiance[coefficient]) < 0.00001f,
+					"HDR prefix energy must not depend on whether its budget is final");
+			}
+			if (count == 65u)
+			{
+				Require(uniformSamples > 0u && uniformSamples < count,
+					"the seeded HDR prefix must exercise both sampling techniques");
+				ProgressiveDirectionProbe chunkedSampler(&pathTracer);
+				GIProbeIrradianceAccumulator accumulator;
+				std::string diagnostic;
+				uint32_t begin = 0u;
+				for (uint32_t chunk : { 17u, 16u, 32u })
+				{
+					Require(AccumulateGIProbeIrradianceRange(request, chunkedSampler, glm::vec3(0.0f),
+							91u, begin, chunk, 129u, accumulator, diagnostic),
+						"odd HDR chunks must accumulate: " + diagnostic);
+					begin += chunk;
+				}
+				GIProbe chunked;
+				Require(ResolveGIProbeIrradiance(accumulator, chunked, diagnostic) &&
+					HasSameIrradianceBits(partial, chunked),
+					"chunking must preserve HDR irradiance bit for bit");
+				RequireSamePrimarySamples(partialSampler, chunkedSampler);
+			}
+		}
+
+		// Technique counts fluctuate at low budgets. Check energy over a fixed seed
+		// ensemble rather than requiring exactly half of every odd prefix from each technique.
+		for (uint32_t count : { 16u, 17u, 65u })
+		{
+			GIProbe average;
+			for (uint32_t seed = 0u; seed < 128u; ++seed)
+			{
+				request.m_settings.m_randomSeed = seed;
+				ProgressiveDirectionProbe sampler(&pathTracer);
+				const GIProbe probe = TraceIrradiancePrefix(request, sampler, count, 129u);
+				for (uint32_t coefficient = 0u; coefficient < GIProbeSphericalHarmonicsCoefficientCount;
+					++coefficient)
+				{
+					average.m_irradiance[coefficient] += probe.m_irradiance[coefficient] / 128.0f;
+				}
+			}
+			RequireAnalyticSphereIrradiance(average, count <= 17u ? 0.35f : 0.15f);
+		}
+	}
+
 	void TestIncrementalProbeIrradianceAccumulation()
 	{
 		GIProbeTraceRequest request;
@@ -3842,6 +4393,63 @@ components:
 		service.Disable();
 	}
 
+	void TestRuntimeGIProbesInitialSphereCoverage()
+	{
+		for (uint32_t initialCount : { 16u, 17u })
+		{
+			RuntimeGIProbesService service;
+			auto analyticSampler = TSharedPtr<AnalyticSphereSampler>::Make();
+			TSharedPtr<IGIProbeBakeRaySampler> sampler = analyticSampler;
+			RuntimeGIProbesStartRequest request = MakeRuntimeGIProbesRequest(sampler, 141u, 151u);
+			request.m_qualitySettings.m_initialSamplesPerProbe = initialCount;
+			request.m_qualitySettings.m_targetSamplesPerProbe = 65u;
+			std::string diagnostic;
+			Require(service.Start(request, diagnostic),
+				"the analytic runtime GI fixture should start: " + diagnostic);
+			Require(WaitForRuntimeGIProbes(service, [](const RuntimeGIProbesStatus& status)
+				{
+					return status.m_publishedRevision > 0u;
+				}), "the runtime worker must publish its initial sphere samples");
+
+			const RuntimeGIProbesStatus initial = service.GetStatus();
+			const GIProbesDataPtr initialData = service.GetPublishedData();
+			// Headless execution runs one real worker job per Tick, so this observes
+			// the initial milestone before any probe starts its refinement pass.
+			Require(initialData && initial.m_activeProbeCount == 8u &&
+				initial.m_readyProbeCount == initial.m_activeProbeCount && initial.m_refinement < 1.0f &&
+				analyticSampler->GetSampleCount() == static_cast<uint64_t>(initial.m_activeProbeCount) * initialCount,
+				"first publication must contain only the configured 16/17-sample prefixes");
+			for (const GIProbe& probe : initialData->m_probes)
+			{
+				Require((probe.m_flags & static_cast<uint32_t>(EGIProbeFlag::Valid)) != 0u,
+					"unoccluded analytic probes must be ready in the initial publication");
+				RequireAnalyticSphereIrradiance(probe, 0.30f);
+			}
+
+			GIProbeTraceRequest traceRequest;
+			traceRequest.m_settings.m_randomSeed = request.m_randomSeed;
+			const AnalyticSphereSampler referenceSampler;
+			const GIProbe complete = TraceIrradiancePrefix(traceRequest, referenceSampler, 65u, 65u);
+			Require(WaitForRuntimeGIProbes(service, [&](const RuntimeGIProbesStatus& status)
+				{
+					const GIProbesDataPtr data = service.GetPublishedData();
+					return status.m_lifecycle == ERuntimeGIProbesLifecycle::Ready &&
+						status.m_publishedRevision > initial.m_publishedRevision && data &&
+						!data->m_probes.IsEmpty() && HasSameIrradianceBits(data->m_probes[0], complete);
+				}), "the runtime worker must publish the completed odd sample budget");
+			Require(analyticSampler->GetSampleCount() == static_cast<uint64_t>(initial.m_activeProbeCount) * 65u,
+				"refinement must extend each prefix without retracing its earlier irradiance samples");
+			const GIProbesDataPtr finalData = service.GetPublishedData();
+			for (const GIProbe& probe : finalData->m_probes)
+			{
+				Require(HasSameIrradianceBits(probe, complete),
+					"published runtime irradiance must match the completed production accumulator");
+				RequireAnalyticSphereIrradiance(probe, 0.12f);
+			}
+			service.Disable();
+		}
+	}
+
 	void TestRuntimeGIProbesRetainRelocationAcrossCameraMotion()
 	{
 		RuntimeGIProbesService service;
@@ -3990,6 +4598,92 @@ components:
 		service.Disable();
 	}
 
+	void TestBakeCancellationBetweenPhases()
+	{
+		GIProbesBakeRequest request;
+		request.m_stateName = "Cancellation";
+		request.m_volumeMin = glm::vec3(0.0f);
+		request.m_volumeMax = glm::vec3(4.0f);
+		request.m_settings.m_raysPerProbe = 8u;
+		request.m_settings.m_bounceCount = 1u;
+		request.m_settings.m_maxSubdivisionLevel = 2u;
+		request.m_settings.m_minProbeSpacing = 1.0f;
+		Math::AABB geometry;
+		geometry.Extend(request.m_volumeMin);
+		geometry.Extend(request.m_volumeMax);
+		request.m_sceneGeometryBounds.Add(geometry);
+		const ConstantBakeRaySampler baselineSampler(glm::vec3(1.0f));
+		const auto baseline = GIProbesBaker::Bake(request, baselineSampler);
+		Require(baseline.IsSuccess() && baseline.m_data->m_bricks.Num() == 64u &&
+			baseline.m_data->m_probes.Num() == 512u,
+			"the cancellation fixture must reach multiple layout and canonicalization batches");
+		const GIProbesData retained = *baseline.m_data;
+
+		struct CancellationPoint
+		{
+			const char* m_stage;
+			uint32_t m_occurrence;
+			bool m_bAfterSampling;
+			bool m_bReuseLayout;
+		};
+		const CancellationPoint points[] =
+		{
+			{ "Building adaptive probe layout", 2u, false, false },
+			{ "Copying reusable probe layout", 2u, false, true },
+			{ "Collecting shared probe samples", 2u, true, false },
+			{ "Canonicalizing shared probe samples", 2u, true, false },
+			{ "Canonicalizing shared probe samples", 2u, true, true },
+			{ "Finalizing baked probes", 1u, true, false }
+		};
+		for (const auto& point : points)
+		{
+			std::atomic<bool> cancel{ false };
+			uint32_t occurrences = 0u;
+			float previousFraction = 0.0f;
+			bool bValidProgress = true;
+			GIProbesBakeRequest cancelled = request;
+			cancelled.m_cancel = &cancel;
+			cancelled.m_layoutSource = point.m_bReuseLayout ? baseline.m_data.GetRawPtr() : nullptr;
+			cancelled.m_progress = [&](const GIProbesBakeProgress& progress)
+			{
+				bValidProgress &= progress.m_fraction >= previousFraction &&
+					progress.m_fraction <= 1.0f && progress.m_completedProbes <= progress.m_totalProbes;
+				previousFraction = progress.m_fraction;
+				if (progress.m_stage == point.m_stage && ++occurrences == point.m_occurrence)
+				{
+					cancel.store(true, std::memory_order_release);
+				}
+			};
+			const ConstantBakeRaySampler sampler(glm::vec3(1.0f));
+			const auto result = GIProbesBaker::Bake(cancelled, sampler);
+			Require(occurrences == point.m_occurrence && bValidProgress &&
+				result.m_status == EGIProbesBakeStatus::Cancelled && !result.m_data,
+				std::string("cancellation must discard the result during ") + point.m_stage);
+			Require((sampler.GetIrradianceSampleCount() > 0u) == point.m_bAfterSampling,
+				"layout cancellation must stop before tracing, while finalization cancellation must follow it");
+			Require(baseline.m_data->m_layoutHash == retained.m_layoutHash &&
+				baseline.m_data->m_transportHash == retained.m_transportHash &&
+				baseline.m_data->m_lightingHash == retained.m_lightingHash,
+				"cancellation must leave the reusable source identity untouched");
+			for (size_t i = 0u; i < retained.m_probes.Num(); ++i)
+			{
+				Require(HasSameProbeBits(baseline.m_data->m_probes[i], retained.m_probes[i]),
+					"discarding a partially copied or canonicalized bake must not modify retained source probes");
+			}
+		}
+
+		const auto retry = GIProbesBaker::Bake(request, baselineSampler);
+		Require(retry.IsSuccess() && retry.m_data->m_layoutHash == retained.m_layoutHash &&
+			retry.m_data->m_transportHash == retained.m_transportHash &&
+			retry.m_data->m_lightingHash == retained.m_lightingHash,
+			"retrying after cancellation must preserve deterministic layout, transport and lighting hashes");
+		for (size_t i = 0u; i < retained.m_probes.Num(); ++i)
+		{
+			Require(HasSameProbeBits(retry.m_data->m_probes[i], retained.m_probes[i]),
+				"checkpoints must not change successful probe values or their canonical order");
+		}
+	}
+
 	void TestDeterministicBakeSeedsAndReusedLayoutValidation()
 	{
 		GIProbesBakeRequest request;
@@ -4019,11 +4713,11 @@ components:
 
 		GIProbesBakeRequest parallel = request;
 		parallel.m_threadCount = 4u;
-		std::string parallelStage;
-		parallel.m_progress = [&parallelStage](
+		bool bSawParallelStage = false;
+		parallel.m_progress = [&bSawParallelStage](
 			const GIProbesBakeProgress& progress)
 		{
-			parallelStage = progress.m_stage;
+			bSawParallelStage |= progress.m_stage.find("(4 threads)") != std::string::npos;
 		};
 		const ConcurrentSeedDrivenBakeRaySampler parallelSampler(4u);
 		const GIProbesBakeResult parallelResult = GIProbesBaker::Bake(
@@ -4044,7 +4738,7 @@ components:
 		}
 		Require(
 			parallelSampler.GetObservedThreadCount() == 4u &&
-			parallelStage.find("(4 threads)") != std::string::npos &&
+			bSawParallelStage &&
 			first.m_data->m_layoutHash == parallelResult.m_data->m_layoutHash &&
 			first.m_data->m_transportHash ==
 				parallelResult.m_data->m_transportHash &&
@@ -4361,6 +5055,281 @@ components:
 			"instead of making its entire mesh transparent");
 	}
 
+	void TestGiMaterialSnapshotsOutliveOwnerEdits()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		GlobalIlluminationMobilityTestWorld world;
+		GlobalIlluminationECS runtime;
+		runtime.Initialize(&world);
+		auto object = world.Instantiate("Captured GI material");
+		object->SetMobilityType(EMobilityType::Static);
+		auto renderer = object->AddComponent<MeshRendererComponent>();
+		renderer->SetModel(TObjectPtr<CapturedGiTestModel>::Make(world.GetAllocator(), fixture));
+		auto material = TObjectPtr<CapturedGiTestMaterial>::Make(fixture.m_allocator);
+		auto texture = TObjectPtr<CpuTextureFixture>::Make(fixture.m_allocator, FileId::Invalid);
+		texture->SetPixel(glm::u8vec4(255u, 0u, 0u, 255u));
+		material->SetSampler("baseColorSampler", texture);
+		material->SetUniform("material.baseColorFactor", glm::vec4(0.1f));
+		material->SetUniform("material.albedo", glm::vec4(0.8f, 0.6f, 0.4f, 1.0f));
+		material->SetUniform("material.emissiveFactor", glm::vec4(0.1f));
+		material->SetUniform("material.emissive", glm::vec4(0.2f));
+		material->SetUniform("material.emission", glm::vec4(1.0f, 2.0f, 3.0f, 1.0f));
+		material->SetUniform("material.roughnessFactor", 0.9f);
+		material->SetUniform("material.roughness", 0.3f);
+		material->SetUniform("material.metallicFactor", 0.9f);
+		material->SetUniform("material.metallic", 0.2f);
+		material->SetUniform("material.clearcoatFactor", 0.25f);
+		material->SetUniform("material.clearcoatRoughnessFactor", 0.45f);
+		material->SetUniform("material.sheenColorFactor", glm::vec4(0.2f, 0.3f, 0.4f, 1.0f));
+		material->SetUniform("material.sheenRoughnessFactor", 0.6f);
+		material->SetUniform("material.transmissionFactor", 0.4f);
+		material->SetUniform("material.thicknessFactor", 0.7f);
+		material->SetUniform("material.indexOfRefraction", 1.33f);
+		material->SetUniform("material.layerUvScale", glm::vec4(2.0f, 3.0f, 4.0f, 5.0f));
+		material->SetRenderState(RHI::RenderState(true, false, 0.0f, false,
+			RHI::ECullMode::None, RHI::EBlendMode::AlphaBlending));
+		renderer->GetMaterials().Add(material);
+
+		const auto request = GlobalIlluminationECSTestAccess::CaptureRequest(runtime);
+		GIProbesSceneSnapshot first;
+		GIProbesSceneMaterialWatch watch;
+		std::string diagnostic;
+		Require(CaptureGIProbesScene(&world, request, first, diagnostic, {}, &watch), diagnostic);
+		Require(first.m_materials.Num() == 4u && first.m_materials[0] == first.m_materials[3] &&
+			watch.m_materials.Num() == 1u && watch.HasUnchangedMaterials(),
+			"capture must retain one material value and owner watch for repeated scene slots");
+
+		std::mutex gateMutex;
+		std::condition_variable gate;
+		bool entered = false;
+		bool resume = false;
+		bool prepared = false;
+		GIProbesPreparedScene preparedFirst;
+		std::string preparationDiagnostic;
+		std::jthread preparationThread([&]()
+			{
+				prepared = PrepareGIProbesScene(first, request.m_settings, nullptr,
+					preparedFirst, preparationDiagnostic,
+					[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+					{
+						if (progress.m_stage != Raytracing::PathTracer::EScenePreparationStage::Materials ||
+							progress.m_completed != 0u)
+						{
+							return true;
+						}
+						std::unique_lock lock(gateMutex);
+						entered = true;
+						gate.notify_all();
+						return gate.wait_for(lock, std::chrono::seconds(5), [&]() { return resume; });
+					});
+			});
+		{
+			std::unique_lock lock(gateMutex);
+			Require(gate.wait_for(lock, std::chrono::seconds(5), [&]() { return entered; }),
+				"the actual GI preparation must reach material conversion within the bounded wait");
+		}
+
+		texture->SetPixel(glm::u8vec4(0u, 0u, 255u, 255u));
+		material->SetUniform("material.albedo", glm::vec4(0.2f, 0.4f, 0.9f, 1.0f));
+		material->SetUniform("material.emission", glm::vec4(4.0f, 5.0f, 6.0f, 1.0f));
+		material->SetUniform("material.roughness", 0.8f);
+		material->SetUniform("material.metallic", 0.7f);
+		material->SetUniform("material.clearcoatFactor", 0.75f);
+		material->SetUniform("material.transmissionFactor", 0.8f);
+		material->SetUniform("material.indexOfRefraction", 1.8f);
+		material->SetRenderState(RHI::RenderState(true, true, 0.0f, false,
+			RHI::ECullMode::Back, RHI::EBlendMode::None));
+		GIProbesSceneSnapshot second;
+		Require(CaptureGIProbesScene(&world, request, second, diagnostic), diagnostic);
+		GIProbesSceneRevision observed;
+		Require(!watch.HasUnchangedMaterials() &&
+			ObserveGIProbesSceneRevision(&world, request, observed, diagnostic) &&
+			observed == first.m_observedRevision && first.m_lightingHash != second.m_lightingHash,
+			"owner revision checks must detect edits before mesh publication advances its scene revision");
+		{
+			std::lock_guard lock(gateMutex);
+			resume = true;
+		}
+		gate.notify_all();
+		preparationThread.join();
+		Require(prepared && preparedFirst.m_sampler, preparationDiagnostic);
+		const auto stats = preparedFirst.m_sampler->GetLastScenePreparationStats();
+		Require(stats.m_uniqueMaterialCount == 1u && stats.m_reusedMaterialCount == 3u &&
+			stats.m_uniqueTextureCount == 1u && stats.m_decodedTextureCount == 0u,
+			"background preparation must reuse captured material and resident pixel values");
+
+		GlobalIlluminationECSTestAccess::StageCompletedScene(runtime, std::move(preparedFirst), std::move(watch));
+		Require(GlobalIlluminationECSTestAccess::ConsumeAndRequestsRebuild(runtime) &&
+			runtime.GetDiagnostic().find("changed during scene preparation") != std::string::npos,
+			"runtime consume must reject same-frame material edits even with an unchanged published scene revision");
+		runtime.EndPlay();
+		world.Clear();
+		material.DestroyObject(fixture.m_allocator);
+		texture.DestroyObject(fixture.m_allocator);
+
+		MaterialSamplingPathTracer tracer;
+		Require(tracer.InitializeSceneSnapshot(first.m_instances, first.m_materials, {}, false),
+			"captured A must remain usable after its world, materials and textures are destroyed");
+		const auto a = tracer.SamplePreparedMaterial(0u);
+		const auto& parametersA = tracer.PreparedMaterial(0u);
+		Require(IsNear(a.m_baseColor.r, 0.8f) && IsNear(a.m_baseColor.g, 0.0f) && IsNear(a.m_baseColor.b, 0.0f) &&
+			a.m_emissive == glm::vec3(1.0f, 2.0f, 3.0f) && IsNear(a.m_orm.y, 0.3f) && IsNear(a.m_orm.z, 0.2f) &&
+			IsNear(a.m_clearcoatFactor, 0.25f) && IsNear(a.m_clearcoatRoughness, 0.45f) &&
+			a.m_sheenColor == glm::vec3(0.2f, 0.3f, 0.4f) && IsNear(a.m_sheenRoughness, 0.6f) &&
+			IsNear(a.m_transmission, 0.4f) && IsNear(a.m_ior, 1.33f) && IsNear(a.m_thicknessFactor, 0.7f) &&
+			!a.m_bIsOpaque && parametersA.m_faceCullMode == Raytracing::FaceCullMode::None &&
+			parametersA.m_layerUvScale == glm::vec4(2.0f, 3.0f, 4.0f, 5.0f),
+			"the retained snapshot must contain all of A, including aliases, texture pixels, PBR values and render state");
+		Require(tracer.InitializeSceneSnapshot(second.m_instances, second.m_materials, {}, false),
+			"a newly captured revision must rebuild the prepared material cache");
+		const auto b = tracer.SamplePreparedMaterial(0u);
+		Require(IsNear(b.m_baseColor.r, 0.0f) && IsNear(b.m_baseColor.b, 0.9f) &&
+			b.m_emissive == glm::vec3(4.0f, 5.0f, 6.0f) && IsNear(b.m_orm.y, 0.8f) &&
+			IsNear(b.m_orm.z, 0.7f) && IsNear(b.m_clearcoatFactor, 0.75f) &&
+			IsNear(b.m_transmission, 0.8f) && IsNear(b.m_ior, 1.8f) && b.m_bIsOpaque &&
+			tracer.PreparedMaterial(0u).m_faceCullMode == Raytracing::FaceCullMode::Back,
+			"captured B must contain its complete later state, not a mixture with A");
+
+		GIProbesPreparedScene offline;
+		Require(PrepareGIProbesScene(first, request.m_settings, nullptr, offline, diagnostic), diagnostic);
+		std::atomic<bool> cancel{ true };
+		Require(!PrepareGIProbesScene(first, request.m_settings, &cancel, offline, diagnostic) && !offline.m_sampler,
+			"retained offline snapshots stay valid, while cancellation still discards preparation");
+	}
+
+	void TestCapturedTextureDecodeUsesSourceRevisions()
+	{
+		Tests::TempDirectory source("gi-texture");
+		const auto imagePath = source.Path("pixel.tga");
+		const auto writeImage = [&](const glm::u8vec3& color)
+			{
+				std::array<uint8_t, 21> bytes{};
+				bytes[2] = 2u;
+				bytes[12] = bytes[14] = 1u;
+				bytes[16] = 24u;
+				bytes[18] = color.b;
+				bytes[19] = color.g;
+				bytes[20] = color.r;
+				std::ofstream output(imagePath, std::ios::binary);
+				output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+				output.close();
+				Require(static_cast<bool>(output), "the temporary texture source must be written");
+			};
+		writeImage(glm::u8vec3(255u, 0u, 0u));
+		TextureAssetInfo info;
+		auto metadata = info.Serialize();
+		metadata["fileId"] = FileId::CreateNewFileId();
+		metadata["filename"] = imagePath.string();
+		metadata["bShouldGenerateMips"] = false;
+		info.Deserialize(metadata);
+		TextureImporter::CpuDecodeRequest first;
+		Require(TextureImporter::CaptureCpuDecodeRequest(info, first),
+			"CPU decoding must capture its source identity and import options without an App");
+		metadata["filename"] = source.Path("not-the-captured-source.tga").string();
+		info.Deserialize(metadata);
+		TextureImporter::ByteCode pixels;
+		int32_t width = 0;
+		int32_t height = 0;
+		uint32_t mipLevels = 0u;
+		Require(TextureImporter::DecodeTextureCpu(first, pixels, width, height, mipLevels) &&
+			width == 1 && height == 1 && mipLevels == 1u && pixels.Num() == 4u && pixels[0] == 255u && pixels[2] == 0u,
+			"background decoding must use captured options/path rather than rereading changed AssetInfo");
+		const auto firstTime = std::filesystem::last_write_time(imagePath);
+		writeImage(glm::u8vec3(0u, 0u, 255u));
+		std::filesystem::last_write_time(imagePath, firstTime + std::chrono::seconds(2));
+		Require(!TextureImporter::DecodeTextureCpu(first, pixels, width, height, mipLevels) &&
+			pixels.IsEmpty() && width == 0 && height == 0,
+			"a captured source must reject replacement pixels instead of mixing revisions");
+		metadata["filename"] = imagePath.string();
+		info.Deserialize(metadata);
+		TextureImporter::CpuDecodeRequest second;
+		Require(TextureImporter::CaptureCpuDecodeRequest(info, second) &&
+			TextureImporter::DecodeTextureCpu(second, pixels, width, height, mipLevels) && pixels[2] == 255u,
+			"a fresh capture must decode the edited source");
+
+		const auto gltfPath = source.Path("source.gltf");
+		{
+			std::ofstream output(gltfPath);
+			output << R"({"asset":{"version":"2.0"},"images":[{"uri":"pixel.tga"}],"textures":[{"source":0}]})";
+			output.close();
+			Require(static_cast<bool>(output), "the glTF texture source must be written");
+		}
+		metadata["filename"] = gltfPath.string();
+		metadata["glbTextureIndex"] = 0;
+		info.Deserialize(metadata);
+		TextureImporter::CpuDecodeRequest embedded;
+		Require(TextureImporter::CaptureCpuDecodeRequest(info, embedded) &&
+			TextureImporter::DecodeTextureCpu(embedded, pixels, width, height, mipLevels) && pixels[2] == 255u,
+			"captured ASCII glTF extraction must retain its texture index and external image revision");
+		const auto documentTime = std::filesystem::last_write_time(gltfPath);
+		writeImage(glm::u8vec3(0u, 255u, 0u));
+		std::filesystem::last_write_time(imagePath, firstTime + std::chrono::seconds(4));
+		Require(std::filesystem::last_write_time(gltfPath) == documentTime &&
+			!TextureImporter::DecodeTextureCpu(embedded, pixels, width, height, mipLevels) && pixels.IsEmpty(),
+			"changing an external image must invalidate captured decoding even when the glTF document is unchanged");
+		Require(TextureImporter::CaptureCpuDecodeRequest(info, embedded) &&
+			TextureImporter::DecodeTextureCpu(embedded, pixels, width, height, mipLevels) && pixels[1] == 255u,
+			"recapturing the external image dependency must permit a coherent new decode");
+		std::filesystem::remove(imagePath);
+		Require(!TextureImporter::DecodeTextureCpu(embedded, pixels, width, height, mipLevels),
+			"removing a captured dependency must fail without publishing old pixel storage");
+	}
+
+	void TestMaterialSnapshotTextureOnlyEdits()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		auto texture = TObjectPtr<CpuTextureFixture>::Make(fixture.m_allocator, FileId::Invalid);
+		texture->SetPixel(glm::u8vec4(255u, 0u, 0u, 255u));
+		fixture.m_materials[0]->SetUniform("material.baseColorFactor", glm::vec4(1.0f));
+		fixture.m_materials[0]->SetSampler("baseColorSampler", texture);
+		const auto first = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		texture->SetPixel(glm::u8vec4(0u, 0u, 255u, 255u));
+		const auto second = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		Require(first[0]->m_contentRevision == second[0]->m_contentRevision,
+			"this fixture must change only texture pixels, not the material revision");
+
+		MaterialSamplingPathTracer tracer;
+		Require(tracer.InitializeSceneSnapshot(fixture.m_instances, first, {}, false) &&
+			tracer.SamplePreparedMaterial(0u).m_baseColor == glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+			"snapshot A must keep its captured red pixels after the texture changes");
+		Require(tracer.InitializeSceneSnapshot(fixture.m_instances, second, {}, false) &&
+			tracer.SamplePreparedMaterial(0u).m_baseColor == glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+			"fresh snapshot B must not reuse A through an unchanged material revision cache key");
+		Require(tracer.InitializeSceneSnapshot(fixture.m_instances, first, {}, false) &&
+			tracer.SamplePreparedMaterial(0u).m_baseColor == glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+			"explicitly preparing retained A again must restore its own texture values");
+		Require(tracer.InitializeScene(fixture.m_instances, fixture.m_materials, {}, false) &&
+			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == fixture.m_materials.Num() &&
+			tracer.SamplePreparedMaterial(0u).m_baseColor == glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+			"returning to the live entry must not reuse an earlier snapshot's prepared values");
+		Require(tracer.InitializeScene(fixture.m_instances, fixture.m_materials, {}, false) &&
+			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == 0u,
+			"the live entry must resume its existing revision cache after leaving snapshot preparation");
+	}
+
+	void TestLivePathTracerMaterialCacheIsPreserved()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		MaterialSamplingPathTracer tracer;
+		Require(tracer.InitializeScene(fixture.m_instances, fixture.m_materials, {}, false),
+			"the existing live material entry must prepare its first scene");
+		Require(tracer.InitializeScene(fixture.m_instances, fixture.m_materials, {}, false) &&
+			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == 0u,
+			"an unchanged live material signature must keep its existing preparation cache hit");
+		fixture.m_materials[0]->SetUniform("material.roughness", 0.35f);
+		Require(tracer.InitializeScene(fixture.m_instances, fixture.m_materials, {}, false) &&
+			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == fixture.m_materials.Num() &&
+			IsNear(tracer.SamplePreparedMaterial(0u).m_orm.y, 0.35f),
+			"a live content revision must still rebuild and honor the roughness alias");
+
+		Raytracing::GIProbesPathTracer probeTracer;
+		GIProbesBakeSettings settings;
+		Require(probeTracer.Initialize(fixture.m_instances, fixture.m_materials, {}, settings) &&
+			probeTracer.Initialize(fixture.m_instances, fixture.m_materials, {}, settings) &&
+			probeTracer.GetLastScenePreparationStats().m_uniqueMaterialCount == 0u,
+			"the existing live GI probe entry must also preserve its material cache hit");
+	}
+
 	void TestPathTracerPreparationDeduplicationAndProgress()
 	{
 		EveningLandscapeRaytracingFixture fixture =
@@ -4460,6 +5429,160 @@ components:
 				}) &&
 			bCancellationRequested,
 			"path-tracer preparation must stop when its progress callback requests cancellation");
+	}
+
+	void TestPathTracerCancellationBetweenBlasBuilds()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		fixture.m_instances[0].m_blas.Clear();
+		auto second = fixture.m_instances[0];
+		second.m_triangles = TSharedPtr<TVector<Math::Triangle>>::Make(*fixture.m_triangles);
+		fixture.m_instances.Add(std::move(second));
+		const auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		GIProbesBakeSettings settings;
+		Raytracing::GIProbesPathTracer tracer;
+		bool bStoppedAfterFirstBlas = false;
+		Require(!tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings,
+			glm::vec3(0.0f), [&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Geometry &&
+					tracer.GetLastScenePreparationStats().m_builtBlasCount == 1u)
+				{
+					bStoppedAfterFirstBlas = progress.m_completed == 1u && progress.m_total == 2u;
+					return false;
+				}
+				return true;
+			}) && bStoppedAfterFirstBlas,
+			"preparation must observe cancellation after one real BLAS, before building the next");
+		Require(tracer.GetLastScenePreparationStats().m_builtBlasCount == 1u &&
+			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == 0u &&
+			!fixture.m_instances[0].m_blas && !fixture.m_instances[1].m_blas,
+			"cancelled preparation must not continue to materials or write BLAS into the source snapshot");
+		GIProbeBakeRaySample sample;
+		std::string diagnostic;
+		Require(!tracer.Sample(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
+			10.0f, 1u, sample, diagnostic),
+			"a cancelled GI tracer must not expose a partially prepared scene");
+		Require(tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings) &&
+			tracer.GetLastScenePreparationStats().m_builtBlasCount == 2u,
+			"the same tracer must rebuild both independent geometries when retried");
+
+		uint32_t completedMaterialReports = 0u;
+		Require(!tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings,
+			glm::vec3(0.0f), [&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Materials &&
+					progress.m_completed == materials.Num())
+				{
+					return ++completedMaterialReports < 2u;
+				}
+				return true;
+			}) && completedMaterialReports == 2u,
+			"cancellation after materials must still stop the remaining instance preparation");
+		Require(!tracer.Sample(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
+			10.0f, 1u, sample, diagnostic),
+			"a late cancellation must invalidate a previously successful tracer initialization");
+
+		TVector<Raytracing::PathTracer::TLASInstance> cheapInstances;
+		auto reused = fixture.m_instances[0];
+		reused.m_blas = fixture.m_blas;
+		for (uint32_t i = 0u; i < 256u; ++i)
+		{
+			cheapInstances.Add(i < 128u ? reused : Raytracing::PathTracer::TLASInstance{});
+		}
+		completedMaterialReports = 0u;
+		Require(tracer.InitializeSnapshot(cheapInstances, materials, fixture.m_lights, settings,
+			glm::vec3(0.0f), [&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Materials &&
+					progress.m_completed == materials.Num())
+				{
+					++completedMaterialReports;
+				}
+				return true;
+			}, [](const std::string&) {}) && completedMaterialReports > 1u && completedMaterialReports <= 8u,
+			"many reused or skipped instances must poll cancellation in batches, not publish progress per instance");
+	}
+
+	void TestPathTracerCancellationDuringTexturePreparation()
+	{
+		Tests::TempDirectory source("gi-cancel-texture");
+		const auto imagePath = source.Path("pixel.tga");
+		std::array<uint8_t, 21> bytes{};
+		bytes[2] = 2u;
+		bytes[12] = bytes[14] = 1u;
+		bytes[16] = 24u;
+		bytes[20] = 255u;
+		{
+			std::ofstream output(imagePath, std::ios::binary);
+			output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+			output.close();
+			Require(static_cast<bool>(output), "the cancellation fixture texture must be written");
+		}
+		TextureAssetInfo info;
+		auto metadata = info.Serialize();
+		const auto textureId = FileId::CreateNewFileId();
+		metadata["fileId"] = textureId;
+		metadata["filename"] = imagePath.string();
+		metadata["bShouldGenerateMips"] = false;
+		info.Deserialize(metadata);
+		auto texture = TSharedPtr<Raytracing::PathTracer::TextureSnapshot>::Make();
+		texture->m_fileId = textureId;
+		texture->m_sourceKey = imagePath.string();
+		Require(TextureImporter::CaptureCpuDecodeRequest(info, texture->m_decodeRequest),
+			"the cancellation fixture must capture a real nonresident texture decode request");
+
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		auto material = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*materials[0]);
+		Raytracing::PathTracer::SamplerSnapshot binding;
+		binding.m_texture = texture;
+		material->m_samplers.Add({ "baseColorSampler", std::move(binding) });
+		materials[0] = std::move(material);
+		GIProbesBakeSettings settings;
+		Raytracing::GIProbesPathTracer tracer;
+		uint32_t warnings = 0u;
+		bool bCancelledAfterDecode = false;
+		const auto warning = [&](const std::string&) { ++warnings; };
+		Require(!tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings,
+			glm::vec3(0.0f), [&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Materials &&
+					tracer.GetLastScenePreparationStats().m_decodedTextureCount == 1u)
+				{
+					bCancelledAfterDecode = progress.m_completed == 0u;
+					return false;
+				}
+				return true;
+			}, warning) && bCancelledAfterDecode && warnings == 0u &&
+			tracer.GetLastScenePreparationStats().m_uniqueTextureCount == 0u,
+			"cancellation after decoding must stop conversion without reporting a missing texture");
+		Require(texture->m_data.IsEmpty() &&
+			tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings,
+				glm::vec3(0.0f), {}, warning) && warnings == 0u &&
+			tracer.GetLastScenePreparationStats().m_decodedTextureCount == 1u &&
+			tracer.GetLastScenePreparationStats().m_uniqueTextureCount == 1u,
+			"retry must decode and convert the untouched captured source without a partial cache hit");
+
+		Require(std::filesystem::remove(imagePath), "the owned texture fixture must be removed");
+		GIProbesSceneSnapshot scene;
+		scene.m_instances = fixture.m_instances;
+		scene.m_materials = materials;
+		scene.m_lights = fixture.m_lights;
+		std::atomic<bool> cancel{ false };
+		GIProbesPreparedScene prepared;
+		std::string diagnostic;
+		Require(!PrepareGIProbesScene(scene, settings, &cancel, prepared, diagnostic,
+			[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Materials)
+				{
+					cancel.store(true, std::memory_order_release);
+				}
+				return true;
+			}, warning) && cancel.load(std::memory_order_acquire) && !prepared.m_sampler &&
+			warnings == 0u && diagnostic.find("cancelled") != std::string::npos,
+			"Prepare must recheck a callback-set cancellation before attempting the now-missing texture");
 	}
 
 	void TestProbeBakeSkipsUnavailableMeshAndMaterialInstances()
@@ -6382,6 +7505,9 @@ int main(int argc, char** argv)
 		RunTest(
 			"BakeControllerRejectsInvalidThreadCountBeforeSceneCapture",
 			TestBakeControllerRejectsInvalidThreadCountBeforeSceneCapture);
+		RunTest("EditorWaitsForTerminalBakeTask", TestEditorWaitsForTerminalBakeTask);
+		RunTest("BakeControllerCancelsQueuedPreparation", TestBakeControllerCancelsQueuedPreparation);
+		RunTest("EditorWaitsForBakeAtomicSave", TestEditorWaitsForBakeAtomicSave);
 		RunTest(
 			"EveningLandscapeVisualWorldIsSavedBakeableLevel",
 			TestEveningLandscapeVisualWorldIsSavedBakeableLevel);
@@ -6390,9 +7516,16 @@ int main(int argc, char** argv)
 			TestGIBakeQualityLabCoversCanonicalCases);
 		RunTest("GpuPackingAndWeightOnlyUpdates", TestGpuPackingAndWeightOnlyUpdates);
 		RunTest("AdaptiveBakerAndLayoutReuse", TestAdaptiveBakerAndLayoutReuse);
+		RunTest("BakeCancellationBetweenPhases", TestBakeCancellationBetweenPhases);
 		RunTest(
 			"PrimaryDirectionPdfWeighting",
 			TestPrimaryDirectionPdfWeighting);
+		RunTest(
+			"ProgressiveIrradianceSphereCoverage",
+			TestProgressiveIrradianceSphereCoverage);
+		RunTest(
+			"ProgressiveHdrMixture",
+			TestProgressiveHdrMixture);
 		RunTest(
 			"IncrementalProbeIrradianceAccumulation",
 			TestIncrementalProbeIrradianceAccumulation);
@@ -6411,6 +7544,9 @@ int main(int argc, char** argv)
 		RunTest(
 			"RuntimeGIProbesProgressiveSamplingPublication",
 			TestRuntimeGIProbesProgressiveSamplingPublication);
+		RunTest(
+			"RuntimeGIProbesInitialSphereCoverage",
+			TestRuntimeGIProbesInitialSphereCoverage);
 		RunTest(
 			"RuntimeGIProbesRetainRelocationAcrossCameraMotion",
 			TestRuntimeGIProbesRetainRelocationAcrossCameraMotion);
@@ -6438,8 +7574,22 @@ int main(int argc, char** argv)
 			"LayeredGltfTransport",
 			TestLayeredGltfTransport);
 		RunTest(
+			"GiMaterialSnapshotsOutliveOwnerEdits",
+			TestGiMaterialSnapshotsOutliveOwnerEdits);
+		RunTest(
+			"CapturedTextureDecodeUsesSourceRevisions",
+			TestCapturedTextureDecodeUsesSourceRevisions);
+		RunTest(
+			"MaterialSnapshotTextureOnlyEdits",
+			TestMaterialSnapshotTextureOnlyEdits);
+		RunTest(
+			"LivePathTracerMaterialCacheIsPreserved",
+			TestLivePathTracerMaterialCacheIsPreserved);
+		RunTest(
 			"PathTracerPreparationDeduplicationAndProgress",
 			TestPathTracerPreparationDeduplicationAndProgress);
+		RunTest("PathTracerCancellationBetweenBlasBuilds", TestPathTracerCancellationBetweenBlasBuilds);
+		RunTest("PathTracerCancellationDuringTexturePreparation", TestPathTracerCancellationDuringTexturePreparation);
 		RunTest(
 			"ProbeBakeSkipsUnavailableMeshAndMaterialInstances",
 			TestProbeBakeSkipsUnavailableMeshAndMaterialInstances);

@@ -13,23 +13,34 @@
 namespace Sailor
 {
 	template<typename TKeyType, typename TValueType, typename TAllocator = Memory::DefaultGlobalAllocator>
-	class TMap final : public TSet<TPair<TKeyType, size_t>, TAllocator>
+	class TMap final : private TSet<TPair<TKeyType, size_t>, TAllocator>
 	{
-	public:
-
 		using Super = Sailor::TSet<TPair<TKeyType, size_t>, TAllocator>;
 		using TElementType = Sailor::TPair<TKeyType, size_t>;
+
+	public:
+
+		using Super::IsEmpty;
+		using Super::Num;
 
 		template<typename TDataType, typename TElementIterator>
 		class SAILOR_API TBaseIterator
 		{
 		public:
 
+			using TMapType = std::conditional_t<std::is_const_v<TDataType>, const TMap, TMap>;
+			using TValue = std::conditional_t<std::is_const_v<TDataType>, const TValueType, TValueType>;
 			using iterator_category = std::bidirectional_iterator_tag;
-			using value_type = TDataType;
+			using value_type = TPair<TKeyType, TValue*>;
 			using difference_type = int64_t;
-			using pointer = TDataType*;
-			using reference = TDataType&;
+			using reference = value_type;
+
+			struct TArrowProxy
+			{
+				value_type m_value;
+				const value_type* operator->() const { return &m_value; }
+			};
+			using pointer = TArrowProxy;
 
 			TBaseIterator() : m_map(nullptr), m_it(nullptr), m_currentBucket(nullptr) {}
 
@@ -38,9 +49,13 @@ namespace Sailor
 
 			~TBaseIterator() = default;
 
-			TBaseIterator(const TMap* map, Super::TEntry* bucket, TElementIterator it) : m_currentBucket(bucket), m_it(std::move(it)), m_map(const_cast<TMap*>(map)) {}
+			TBaseIterator(TMapType* map, Super::TEntry* bucket, TElementIterator it) : m_currentBucket(bucket), m_it(std::move(it)), m_map(map) {}
 
-			operator TBaseIterator<const TDataType, TElementIterator>() { return TBaseIterator<const TDataType, TElementIterator>(m_map, m_currentBucket, m_it); }
+			operator TBaseIterator<const TElementType, typename Super::TElementContainer::TConstIterator>() const
+				requires (!std::is_const_v<TDataType>)
+			{
+				return { m_map, m_currentBucket, m_it };
+			}
 
 			TBaseIterator& operator=(const TBaseIterator& rhs) = default;
 			TBaseIterator& operator=(TBaseIterator&& rhs) = default;
@@ -48,24 +63,12 @@ namespace Sailor
 			bool operator==(const TBaseIterator& rhs) const { return m_it == rhs.m_it; }
 			bool operator!=(const TBaseIterator& rhs) const { return m_it != rhs.m_it; }
 
-			TPair<TKeyType, TValueType*> operator*() { return TPair<TKeyType, TValueType*>(m_it->m_first, &(*m_map->m_values[m_it->m_second])); }
-			TPair<TKeyType, const TValueType*> operator*() const { return TPair<TKeyType, const TValueType*>(m_it->m_first, &(*m_map->m_values[m_it->m_second])); }
-
-			TPair<TKeyType, TValueType*> operator->() { return TPair<TKeyType, TValueType*>(m_it->m_first, &(*m_map->m_values[m_it->m_second])); }
-			TPair<TKeyType, const TValueType*> operator->() const { return TPair<TKeyType, const TValueType*>(m_it->m_first, &(*m_map->m_values[m_it->m_second])); }
+			value_type operator*() const { return { m_it->m_first, &Value() }; }
+			pointer operator->() const { return { operator*() }; }
 
 			const TKeyType& Key() const { return m_it->m_first; }
 
-			TValueType& Value() { return m_map->m_values[m_it->m_second].value(); }
-			const TValueType& Value() const { return m_map->m_values[m_it->m_second].value(); }
-
-			/*
-			pointer operator->() { return &*m_it; }
-			pointer operator->() const { return &*m_it; }
-
-			reference operator*() { return *m_it; }
-			reference operator*() const { return *m_it; }
-			*/
+			TValue& Value() const { return m_map->m_values[m_it->m_second].value(); }
 
 			TBaseIterator& operator++()
 			{
@@ -85,7 +88,11 @@ namespace Sailor
 
 			TBaseIterator& operator--()
 			{
-				if (m_it == m_currentBucket->GetContainer().begin())
+				if (m_it == m_currentBucket->GetContainer().end())
+				{
+					m_it = m_currentBucket->GetContainer().Last();
+				}
+				else if (m_it == m_currentBucket->GetContainer().begin())
 				{
 					if (m_currentBucket->m_prev)
 					{
@@ -101,11 +108,25 @@ namespace Sailor
 				return *this;
 			}
 
+			TBaseIterator operator++(int)
+			{
+				auto previous = *this;
+				++(*this);
+				return previous;
+			}
+
+			TBaseIterator operator--(int)
+			{
+				auto previous = *this;
+				--(*this);
+				return previous;
+			}
+
 		protected:
 
 			Super::TEntry* m_currentBucket;
 			TElementIterator m_it;
-			TMap* m_map;
+			TMapType* m_map;
 			friend class TEntry;
 		};
 
@@ -119,12 +140,12 @@ namespace Sailor
 			m_values.Reserve(desiredNumBuckets);
 		}
 
-		TMap(std::initializer_list<TElementType> initList)
+		TMap(std::initializer_list<TPair<TKeyType, TValueType>> initList)
 		{
 			m_values.Reserve(std::max(Super::m_buckets.Num(), initList.size()));
 			for (const auto& el : initList)
 			{
-				Insert(el);
+				Insert(el.First(), el.Second());
 			}
 		}
 
@@ -139,6 +160,10 @@ namespace Sailor
 
 		TMap& operator=(const TMap& rhs)
 		{
+			if (this == &rhs)
+			{
+				return *this;
+			}
 			Clear((uint32_t)rhs.m_buckets.Num());
 			for (const auto& el : rhs)
 			{
@@ -152,6 +177,31 @@ namespace Sailor
 
 		~TMap() = default;
 
+		static void Swap(TMap& lhs, TMap& rhs)
+		{
+			Super::Swap(lhs, rhs);
+			TValueContainer::Swap(lhs.m_values, rhs.m_values);
+			TVector<size_t, TAllocator>::Swap(lhs.m_freeList, rhs.m_freeList);
+		}
+
+		bool operator==(const TMap& rhs) const
+		{
+			if (Num() != rhs.Num())
+			{
+				return false;
+			}
+
+			for (const auto& pair : *this)
+			{
+				const auto other = rhs.Find(pair.First());
+				if (other == rhs.end() || !Sailor::Equals(*pair.Second(), other.Value()))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+
 		void Add(const TKeyType& key, const TValueType& value) requires IsCopyConstructible<TValueType>
 		{
 			Insert(key, value);
@@ -159,7 +209,7 @@ namespace Sailor
 
 		void Add(const TKeyType& key, TValueType&& value) requires IsMoveConstructible<TValueType>
 		{
-			Insert(key, value);
+			Insert(key, std::move(value));
 		}
 
 		bool Insert(const TKeyType& key, const TValueType& value) requires IsCopyConstructible<TValueType>
@@ -175,11 +225,11 @@ namespace Sailor
 				index = *m_freeList.Last();
 				m_freeList.RemoveLast();
 
-				m_values[index] = std::move(std::make_optional(value));
+				m_values[index].emplace(value);
 			}
 			else
 			{
-				index = m_values.Emplace(std::make_optional(value));
+				index = m_values.Emplace(std::in_place, value);
 			}
 
 			Super::Insert(TElementType(key, index));
@@ -199,11 +249,11 @@ namespace Sailor
 				index = *m_freeList.Last();
 				m_freeList.RemoveLast();
 
-				m_values[index] = std::move(std::make_optional(std::move(value)));
+				m_values[index].emplace(std::move(value));
 			}
 			else
 			{
-				index = m_values.Emplace(std::move(std::make_optional(std::move(value))));
+				index = m_values.Emplace(std::in_place, std::move(value));
 			}
 
 			Super::Insert(TElementType(key, index));
@@ -361,9 +411,9 @@ namespace Sailor
 
 		bool ContainsValue(const TValueType& value) const
 		{
-			for (const auto& bucket : Super::m_buckets)
+			for (const auto& stored : m_values)
 			{
-				if (bucket && bucket->GetContainer().FindIf([&](const TElementType& el) { return *m_values[el.Second()] == value; }) != -1)
+				if (stored && *stored == value)
 				{
 					return true;
 				}
@@ -373,7 +423,8 @@ namespace Sailor
 
 		TVector<TKeyType> GetKeys() const
 		{
-			TVector<TKeyType> res(Super::Num());
+			TVector<TKeyType> res;
+			res.Reserve(Super::Num());
 
 			for (const auto& pair : *this)
 			{
@@ -385,18 +436,14 @@ namespace Sailor
 
 		TVector<TValueType> GetValues() const
 		{
-			TVector<TValueType> res(Super::Num());
+			TVector<TValueType> res;
+			res.Reserve(Super::Num());
 
 			for (const auto& value : m_values)
 			{
 				if (value.has_value())
 				{
 					res.Add(value.value());
-
-					if (res.Capacity() == res.Num())
-					{
-						break;
-					}
 				}
 			}
 

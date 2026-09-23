@@ -20,6 +20,7 @@
 #include "Core/StringHash.h"
 #include "Raytracing/MaterialUtils.h"
 #include "RHI/Buffer.h"
+#include "RHI/CommandList.h"
 #include "RHI/Material.h"
 #include "RHI/MaterialPreparationCache.h"
 #include "RHI/Mesh.h"
@@ -254,6 +255,8 @@ namespace
 				{
 					Require(depthPasses == 2u && mainPasses == 0u,
 						"current-frame Hi-Z must follow both depth contributors and precede main drawing");
+					Require(GetFrameGraphAttachment(pass, "src") == "DepthBuffer",
+						"Hi-Z must reduce full-resolution depth, not a nearest-filtered depth blit");
 					currentDepthPyramid = GetFrameGraphAttachment(pass, "dst");
 					Require(!currentDepthPyramid.empty(), "Hi-Z must publish a named target");
 				}
@@ -1397,17 +1400,127 @@ namespace
 
 	void TestShaderReadOnlyBarrierSynchronizesShaderSampling()
 	{
+		constexpr VkQueueFlags queueFlags = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
 		const VkAccessFlags shaderReadAccess =
 			VulkanCommandBuffer::GetAccessFlags(
-				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, queueFlags);
 		Require((shaderReadAccess & VK_ACCESS_SHADER_READ_BIT) != 0,
 			"shader-read image layouts must wait for prior image writes");
 
 		const VkPipelineStageFlags shaderReadStages =
 			VulkanCommandBuffer::GetPipelineStage(
-				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-		Require((shaderReadStages & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT) != 0,
-			"shader-read image layouts must synchronize graphics shader stages");
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, queueFlags);
+		Require(shaderReadStages == (VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
+			"shader-read image layouts must synchronize both graphics and compute sampling on a combined queue");
+	}
+
+	void TestDepthSamplingBarrierScopes()
+	{
+		constexpr VkPipelineStageFlags depthStages = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		struct QueueCase
+		{
+			VkQueueFlags m_flags;
+			VkPipelineStageFlags m_shaderStages;
+			bool m_graphics;
+		};
+		const QueueCase queues[]
+		{
+			{ VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
+				VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, true },
+			{ VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, true },
+			{ VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, false },
+			{ VK_QUEUE_TRANSFER_BIT, 0u, false }
+		};
+		for (const auto& queue : queues)
+		{
+			const VkAccessFlags depthRead = queue.m_graphics ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT : 0u;
+			const VkAccessFlags depthWrite = queue.m_graphics ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : 0u;
+			const VkAccessFlags shaderRead = queue.m_shaderStages ? VK_ACCESS_SHADER_READ_BIT : 0u;
+			const VkPipelineStageFlags samplingStages = queue.m_shaderStages ? queue.m_shaderStages : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+			const VkPipelineStageFlags attachmentStages = queue.m_graphics ? depthStages : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+			const VkPipelineStageFlags readOnlyStages = queue.m_graphics ? depthStages | queue.m_shaderStages : samplingStages;
+
+			for (VkImageLayout layout : { VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL })
+			{
+				Require(VulkanCommandBuffer::GetAccessFlags(layout, queue.m_flags) == (depthRead | depthWrite) &&
+					VulkanCommandBuffer::GetPipelineStage(layout, queue.m_flags) == attachmentStages,
+					"depth attachment writes and later reads must synchronize early and late tests only on a graphics queue");
+			}
+			Require(VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, queue.m_flags) == shaderRead &&
+				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, queue.m_flags) == samplingStages,
+				"depth sampling and its return transition must include every shader stage supported by the recording queue");
+
+			for (VkImageLayout layout : { VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+				VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL })
+			{
+				Require(VulkanCommandBuffer::GetAccessFlags(layout, queue.m_flags) == (depthRead | shaderRead) &&
+					VulkanCommandBuffer::GetPipelineStage(layout, queue.m_flags) == readOnlyStages,
+					"read-only depth layouts must cover shader sampling and depth tests without claiming a depth write");
+			}
+			for (VkImageLayout layout : { VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL })
+			{
+				Require(VulkanCommandBuffer::GetAccessFlags(layout, queue.m_flags) == (depthRead | depthWrite | shaderRead) &&
+					VulkanCommandBuffer::GetPipelineStage(layout, queue.m_flags) == readOnlyStages,
+					"mixed depth/stencil layouts must retain attachment writes and sampling of the read-only aspect");
+			}
+			Require(VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, queue.m_flags) ==
+				(queue.m_graphics ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : 0u) &&
+				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, queue.m_flags) ==
+				(queue.m_graphics ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT),
+				"compute and transfer queues must not advertise color attachment operations");
+			Require(VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, queue.m_flags) == VK_ACCESS_TRANSFER_READ_BIT &&
+				VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, queue.m_flags) == VK_ACCESS_TRANSFER_WRITE_BIT &&
+				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, queue.m_flags) == VK_PIPELINE_STAGE_TRANSFER_BIT &&
+				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, queue.m_flags) == VK_PIPELINE_STAGE_TRANSFER_BIT,
+				"transfer dependencies must retain their access masks and stages on every command queue");
+		}
+	}
+
+	class ComputeBarrierForwardingProbe final : public VulkanGraphicsDriver
+	{
+	public:
+		using VulkanGraphicsDriver::ImageMemoryBarrier;
+
+		void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format,
+			RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout) override
+		{
+			m_cmd = cmd;
+			m_image = image;
+			m_format = format;
+			m_oldLayout = oldLayout;
+			m_newLayout = newLayout;
+			++m_calls;
+		}
+
+		RHI::RHICommandListPtr m_cmd;
+		RHI::RHITexturePtr m_image;
+		RHI::EFormat m_format = RHI::EFormat::UNDEFINED;
+		RHI::EImageLayout m_oldLayout = RHI::EImageLayout::Undefined;
+		RHI::EImageLayout m_newLayout = RHI::EImageLayout::Undefined;
+		uint32_t m_calls = 0u;
+	};
+
+	void TestComputeWriteBarrierOverloadDirections()
+	{
+		ComputeBarrierForwardingProbe driver;
+		const auto cmd = RHI::RHICommandListPtr::Make(RHI::ECommandListQueue::Graphics);
+		const auto image = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Nearest, RHI::ETextureClamping::Clamp, false);
+		constexpr auto format = RHI::EFormat::D32_SFLOAT_S8_UINT;
+		for (auto layout : { RHI::EImageLayout::DepthStencilAttachmentOptimal, RHI::EImageLayout::ShaderReadOnlyOptimal })
+		{
+			for (bool allowWrite : { false, true })
+			{
+				const uint32_t calls = driver.m_calls;
+				driver.ImageMemoryBarrier(cmd, image, format, layout, allowWrite);
+				Require(driver.m_calls == calls + 1u && driver.m_cmd == cmd && driver.m_image == image && driver.m_format == format,
+					"the compute-write overload must forward the original command list and image to the typed barrier");
+				Require(driver.m_oldLayout == (allowWrite ? layout : RHI::EImageLayout::ComputeWrite) &&
+					driver.m_newLayout == (allowWrite ? RHI::EImageLayout::ComputeWrite : layout),
+					"allowing compute writes must enter ComputeWrite, and finishing them must restore the requested layout");
+			}
+		}
 	}
 
 	void TestBakedVolumeScalePerInstanceLayoutContract()
@@ -1669,6 +1782,8 @@ int main()
 		{ "BatchTextureBindingIdentityContract", TestBatchTextureBindingIdentityContract },
 		{ "RenderResourceVirtualizationContract", TestRenderResourceVirtualizationContract },
 		{ "ShaderReadOnlyBarrierSynchronizesShaderSampling", TestShaderReadOnlyBarrierSynchronizesShaderSampling },
+		{ "DepthSamplingBarrierScopes", TestDepthSamplingBarrierScopes },
+		{ "ComputeWriteBarrierOverloadDirections", TestComputeWriteBarrierOverloadDirections },
 		{ "BakedVolumeScalePerInstanceLayoutContract", TestBakedVolumeScalePerInstanceLayoutContract },
 		{ "DepthPrepassSkinningContract", TestDepthPrepassSkinningContract },
 		{ "PathTracerThicknessSamplerContract", TestPathTracerThicknessSamplerContract },

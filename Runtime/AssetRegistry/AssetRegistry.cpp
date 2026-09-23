@@ -161,7 +161,7 @@ IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(const std::string& extensi
 	}
 	if (assetInfoType == "Sailor::AnimationAssetInfo")
 	{
-		return App::GetSubmodule<AnimationAssetInfoHandler>();
+		return GetAssetInfoHandler("anim");
 	}
 	if (assetInfoType == "Sailor::AnimationControllerAssetInfo")
 	{

@@ -185,6 +185,13 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 		return;
 	}
 
+	const std::string assetFilepath = modelAssetInfo->GetAssetFilepath();
+	if (App::GetSubmodule<Tasks::Scheduler>() == nullptr)
+	{
+		SAILOR_LOG_ERROR("Cannot schedule model fingerprint without a task scheduler: %s", assetFilepath.c_str());
+		return;
+	}
+
 	const FileId fileId = modelAssetInfo->GetFileId();
 	const std::filesystem::path outputPath = GetFingerprintPath(fileId);
 	if (outputPath.empty())
@@ -193,7 +200,6 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 		return;
 	}
 
-	const std::string assetFilepath = modelAssetInfo->GetAssetFilepath();
 	const float unitScale = modelAssetInfo->GetUnitScale();
 	const bool bShouldBatchByMaterial = modelAssetInfo->ShouldBatchByMaterial();
 	const bool bFlipTexcoordY = modelAssetInfo->ShouldFlipTexcoordY();
@@ -201,12 +207,6 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 	if (!Utils::TryGetFileRevision(assetFilepath, sourceRevision))
 	{
 		SAILOR_LOG_ERROR("Cannot capture model source revision for fingerprint: %s", assetFilepath.c_str());
-		return;
-	}
-
-	if (App::GetSubmodule<Tasks::Scheduler>() == nullptr)
-	{
-		SAILOR_LOG_ERROR("Cannot schedule model fingerprint without a task scheduler: %s", assetFilepath.c_str());
 		return;
 	}
 

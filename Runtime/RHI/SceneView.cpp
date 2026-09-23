@@ -730,28 +730,25 @@ void RHISceneView::PrepareDebugDrawCommandLists(
 	m_debugDraw.Reserve(m_cameras.Num());
 	const DebugContext::DrawSnapshot debugDrawSnapshot = world->GetDebugContext()->GetDrawSnapshot();
 
-	// TODO: Check the sync between CPUFrame and Recording
 	for (const auto& camera : m_cameras)
 	{
+		const glm::mat4 viewProjection = camera.GetProjectionMatrix() * camera.GetViewMatrix();
 		auto task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record DebugContext Draw Command List",
-			[=]()
+			[debugDrawSnapshot, viewProjection, renderExtent]()
 			{
-				const auto& matrix = camera.GetProjectionMatrix() * camera.GetViewMatrix();
 				RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh");
 				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
-				world->GetDebugContext()->DrawDebugMesh(
+				DebugContext::DrawDebugMesh(
 					secondaryCmdList,
-					matrix,
+					viewProjection,
 					debugDrawSnapshot,
 					renderExtent);
 				commands->EndCommandList(secondaryCmdList);
 
 				return secondaryCmdList;
 			}, EThreadType::RHI);
-
-		task->Run();
 
 		m_debugDraw.Emplace(std::move(task));
 	}

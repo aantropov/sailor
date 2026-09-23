@@ -7,20 +7,24 @@
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
 #include "Containers/Octree.h"
+#include "Core/Utils.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Components/AnimatorComponent.h"
 #include "Components/Component.h"
+#include "Components/LandscapeComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "ECS/AnimationECS.h"
 #include "ECS/ECS.h"
 #include "ECS/LightingECS.h"
+#include "ECS/PhysicsECS.h"
 #include "ECS/StaticMeshRendererECS.h"
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
@@ -30,6 +34,7 @@
 #include "RHI/VertexDescription.h"
 #include "Settings/GraphicsSettings.h"
 #include "Submodules/Editor.h"
+#include "Support/TempDirectory.h"
 
 using namespace Sailor;
 
@@ -58,6 +63,105 @@ namespace Sailor
 		ComponentPtr m_sourceDependency;
 		ComponentPtr m_liveDependency;
 	};
+
+	class LifecycleTestComponent final : public Component
+	{
+		SAILOR_REFLECTABLE(LifecycleTestComponent)
+
+	public:
+
+		LifecycleTestComponent() = default;
+
+		void Initialize() override
+		{
+			++s_initialized;
+			for (const auto& component : GetOwner()->GetComponents())
+			{
+				m_bPublishedAtInitialize |= component.GetRawPtr() == this;
+			}
+			auto* ecs = GetWorld()->GetECS<TransformECS>();
+			m_ecsHandle = ecs->RegisterComponent();
+			ecs->GetComponentData(m_ecsHandle).SetOwner(GetOwner());
+		}
+
+		void BeginPlay() override
+		{
+			++s_begun;
+			++m_begins;
+			m_bValidAtBegin = IsValid();
+			m_valueAtBegin = m_value;
+			m_dependencyAtBegin = m_dependency;
+			m_externalDependencyAtBegin = m_externalDependency;
+			m_parentAtBegin = GetOwner()->GetParent();
+			m_positionAtBegin = GetOwner()->GetTransformComponent().GetPosition();
+			// The callback may destroy this component, including its stored function.
+			auto callback = m_onBegin;
+			if (callback)
+			{
+				callback();
+			}
+		}
+
+		void Tick(float) override
+		{
+			++m_ticks;
+			auto callback = m_onTick;
+			if (callback)
+			{
+				callback();
+			}
+		}
+
+		void EditorTick(float) override { ++m_editorTicks; }
+
+		void EndPlay() override
+		{
+			++s_ended;
+			GetWorld()->GetECS<TransformECS>()->UnregisterComponent(m_ecsHandle);
+			m_ecsHandle = ECS::InvalidIndex;
+			auto callback = m_onEnd;
+			if (callback)
+			{
+				callback();
+			}
+		}
+
+		float GetValue() const { return m_value; }
+		void SetValue(float value)
+		{
+			m_value = value;
+			GetWorld()->GetECS<TransformECS>()->GetComponentData(m_ecsHandle).SetPosition(glm::vec3(value, 0.0f, 0.0f));
+		}
+		float GetSlotValue() const
+		{
+			return GetWorld()->GetECS<TransformECS>()->GetComponentData(m_ecsHandle).GetPosition().x;
+		}
+		const ComponentPtr& GetExternalDependency() const { return m_externalDependency; }
+		void SetExternalDependency(const ComponentPtr& component) { m_externalDependency = component; }
+
+		inline static uint32_t s_initialized = 0;
+		inline static uint32_t s_begun = 0;
+		inline static uint32_t s_ended = 0;
+		uint32_t m_begins = 0;
+		uint32_t m_ticks = 0;
+		uint32_t m_editorTicks = 0;
+		bool m_bPublishedAtInitialize = false;
+		bool m_bValidAtBegin = false;
+		float m_valueAtBegin = 0.0f;
+		glm::vec4 m_positionAtBegin{};
+		ComponentPtr m_dependency;
+		ComponentPtr m_dependencyAtBegin;
+		ComponentPtr m_externalDependencyAtBegin;
+		GameObjectPtr m_parentAtBegin;
+		std::function<void()> m_onBegin;
+		std::function<void()> m_onTick;
+		std::function<void()> m_onEnd;
+
+	private:
+		float m_value = 0.0f;
+		size_t m_ecsHandle = ECS::InvalidIndex;
+		ComponentPtr m_externalDependency;
+	};
 }
 
 REFL_AUTO(
@@ -70,6 +174,15 @@ REFL_AUTO(
 	type(Sailor::PrefabMixedDependencyTestComponent, bases<Sailor::Component>),
 	field(m_sourceDependency),
 	field(m_liveDependency)
+)
+
+REFL_AUTO(
+	type(Sailor::LifecycleTestComponent, bases<Sailor::Component>),
+	func(GetValue, property("value")),
+	func(SetValue, property("value")),
+	func(GetExternalDependency, property("externalDependency")),
+	func(SetExternalDependency, property("externalDependency")),
+	field(m_dependency)
 )
 
 namespace
@@ -174,6 +287,32 @@ namespace
 		}
 
 		uint32_t GetNextBoneOffsetForTest() const { return m_nextBoneOffset; }
+		size_t GetNumSlotsForTest() const { return m_components.Num(); }
+	};
+
+	class TransformClearTestSystem final : public TransformECS
+	{
+	public:
+		size_t GetNumSlotsForTest() const { return m_components.Num(); }
+		size_t GetNumDirtyForTest() const { return m_dirtyComponents.Num(); }
+	};
+
+	class BulkClearTestWorld final : public World
+	{
+	public:
+		BulkClearTestWorld() : World("BulkClearTests", 0, CreateEcs()) {}
+
+	private:
+		static TVector<ECS::TBaseSystemPtr> CreateEcs()
+		{
+			TVector<ECS::TBaseSystemPtr> systems;
+			systems.Add(TUniquePtr<TransformClearTestSystem>::Make());
+			systems.Add(TUniquePtr<AnimationLayoutTestSystem>::Make());
+			systems.Add(TUniquePtr<StaticMeshRendererECS>::Make());
+			systems.Add(TUniquePtr<LandscapeECS>::Make());
+			systems.Add(TUniquePtr<PhysicsECS>::Make());
+			return systems;
+		}
 	};
 
 	class PublishedMeshTestSystem final : public StaticMeshRendererECS
@@ -186,8 +325,16 @@ namespace
 	{
 	public:
 
-		PrefabTestWorld() : World("PrefabRollbackTests", 0, CreateEcs()) {}
+		explicit PrefabTestWorld(EWorldBehaviourMask mask = 0) :
+			World("PrefabRollbackTests", mask, CreateEcs()) {}
+		using World::DestroyPendingGameObjects;
 		void AdvanceFrame() { ++m_currentFrame; }
+		void TickLifecycle(float deltaTime = 0.016f)
+		{
+			AdvanceFrame();
+			BeginPlayEcs();
+			TickGameObjects(deltaTime);
+		}
 		size_t GetPendingDependencyCount() const { return GetNumPendingDependencyResolutions(); }
 		bool RemovePrefabMetadataForTest(
 			const InstanceId& rootInstanceId)
@@ -362,7 +509,7 @@ namespace
 	{
 	public:
 
-		WorldPrefabDocumentFixture() : WorldPrefab(FileId::Invalid) {}
+		explicit WorldPrefabDocumentFixture(const FileId& fileId = FileId::Invalid) : WorldPrefab(fileId) {}
 
 		void AddPrefab(const PrefabPtr& prefab)
 		{
@@ -439,6 +586,7 @@ namespace
 	public:
 
 		AnimationMeshTestWorld() : World("AnimationMeshTests", 0, CreateEcs()) {}
+		void AdvanceFrame() { ++m_currentFrame; }
 
 	private:
 
@@ -451,6 +599,32 @@ namespace
 			return systems;
 		}
 	};
+
+	void SetLayoutAnimationPose(AnimationPtr animation, uint32_t bonesCount, float position)
+	{
+		animation->m_numBones = bonesCount;
+		animation->m_numFrames = 1;
+		animation->m_frames.Resize(bonesCount);
+		animation->m_restPose.Resize(bonesCount);
+		animation->m_parentBoneIndices.Resize(bonesCount);
+		for (uint32_t index = 0; index < bonesCount; ++index)
+		{
+			Math::Transform pose;
+			pose.m_position = glm::vec4(position, 0.0f, 0.0f, 1.0f);
+			animation->m_frames[index] = pose;
+			animation->m_restPose[index] = pose;
+			animation->m_parentBoneIndices[index] = -1;
+		}
+		animation->m_skeletonSignature = bonesCount;
+		++animation->m_revision;
+	}
+
+	AnimationPtr MakeLayoutAnimation(const Memory::ObjectAllocatorPtr& allocator, uint32_t bonesCount, float position)
+	{
+		auto animation = AnimationPtr::Make(allocator, FileId{});
+		SetLayoutAnimationPose(animation, bonesCount, position);
+		return animation;
+	}
 
 	void TestComponentSlotsAreResetAndFreedOnce()
 	{
@@ -655,31 +829,59 @@ namespace
 
 	void TestTransformParentCleanupPreservesPendingReparent()
 	{
-		PrefabTestWorld world;
-		auto previousParent = world.Instantiate("PreviousParent");
-		auto nextParent = world.Instantiate("NextParent");
-		auto child = world.Instantiate("Child");
-		auto* transforms = world.GetECS<TransformECS>();
+		for (bool deferred : { false, true })
+		{
+			PrefabTestWorld world;
+			auto previousParent = world.Instantiate("PreviousParent");
+			auto nextParent = world.Instantiate("NextParent");
+			auto child = world.Instantiate("Child");
+			auto* transforms = world.GetECS<TransformECS>();
+			previousParent->GetTransformComponent().SetPosition(glm::vec3(10.0f, 0.0f, 0.0f));
+			nextParent->GetTransformComponent().SetPosition(glm::vec3(20.0f, 0.0f, 0.0f));
+			child->GetTransformComponent().SetPosition(glm::vec3(1.0f, 0.0f, 0.0f));
 
-		child->SetParent(previousParent);
-		transforms->Tick(0.0f);
-		transforms->PostTick();
+			child->SetParent(previousParent);
+			transforms->Tick(0.0f);
+			transforms->PostTick();
 
-		const size_t previousParentIndex = transforms->GetComponentIndex(&previousParent->GetTransformComponent());
-		const size_t nextParentIndex = transforms->GetComponentIndex(&nextParent->GetTransformComponent());
-		Require(child->GetTransformComponent().GetParent() == previousParentIndex,
-			"the transform fixture should establish its original parent before reparenting");
+			const size_t previousParentIndex = transforms->GetComponentIndex(&previousParent->GetTransformComponent());
+			const size_t nextParentIndex = transforms->GetComponentIndex(&nextParent->GetTransformComponent());
+			Require(child->GetTransformComponent().GetParent() == previousParentIndex &&
+				child->GetTransformComponent().GetWorldPosition().x == 11.0f,
+				"the transform fixture should establish its original parent before reparenting");
 
-		child->SetParent(nextParent);
-		world.DestroyImmediate(previousParent);
-		transforms->Tick(0.0f);
+			child->SetParent(nextParent);
+			if (deferred)
+			{
+				world.Destroy(previousParent);
+				world.DestroyPendingGameObjects();
+			}
+			else
+			{
+				world.DestroyImmediate(previousParent);
+			}
 
-		Require(static_cast<bool>(child), "reparenting away should keep the child alive when its previous parent is destroyed");
-		Require(child->GetParent() == nextParent, "the game-object hierarchy should retain the requested new parent");
-		Require(child->GetTransformComponent().GetParent() == nextParentIndex,
-			"transform cleanup should preserve a pending reparent away from the released slot");
+			auto replacement = world.Instantiate("ReusedParentSlot");
+			Require(transforms->GetComponentIndex(&replacement->GetTransformComponent()) == previousParentIndex,
+				"the fixture must reuse the released parent transform slot");
+			replacement->GetTransformComponent().SetPosition(glm::vec3(100.0f, 0.0f, 0.0f));
+			transforms->Tick(0.0f);
+			transforms->PostTick();
 
-		world.Clear();
+			Require(static_cast<bool>(child), "reparenting away should keep the child alive when its previous parent is destroyed");
+			Require(child->GetParent() == nextParent && nextParent->GetChildren().Num() == 1 &&
+				nextParent->GetChildren()[0] == child,
+				"both destruction paths must preserve the requested game-object parent");
+			Require(child->GetTransformComponent().GetParent() == nextParentIndex &&
+				child->GetTransformComponent().GetWorldPosition().x == 21.0f,
+				"transform cleanup must preserve the pending reparent across old-parent slot reuse");
+			Require(!replacement->GetParent() && replacement->GetChildren().IsEmpty() &&
+				replacement->GetTransformComponent().GetParent() == ECS::InvalidIndex &&
+				replacement->GetTransformComponent().GetChildren().IsEmpty(),
+				"a reused transform slot must not inherit the deleted parent's hierarchy");
+
+			world.Clear();
+		}
 	}
 
 	void TestEditorKeepWorldReparentUsesCurrentTransforms()
@@ -1043,6 +1245,126 @@ namespace
 
 	}
 
+	void TestMeshLodSettingsNormalizeBeforeInitialization()
+	{
+		MeshRendererComponent authoring;
+		authoring.SetMinLod(4u);
+		authoring.SetMaxLod(1u);
+		authoring.SetScreenCoverageThresholds(TVector<float>{
+			std::numeric_limits<float>::quiet_NaN(), -1.0f, 0.4f,
+			std::numeric_limits<float>::infinity(), 2.0f, 0.1f });
+		Require(authoring.GetMinLod() == 4u && authoring.GetMaxLod() == 4u &&
+			authoring.GetScreenCoverageThresholds() == TVector<float>{ 1.0f, 0.4f, 0.1f, 0.0f, 0.0f, 0.0f },
+			"LOD authoring must normalize before an owner or ECS slot exists");
+
+		StaticMeshRendererData data;
+		data.SetLodSettings(0u, 2u, TVector<float>{ 0.05f, 0.25f });
+		Require(!data.IsDirty(),
+			"an equivalent ordering of the default thresholds must not dirty new renderer data");
+		data.SetLodSettings(4u, 1u, authoring.GetScreenCoverageThresholds());
+		Require(data.IsDirty() && data.ResolveLod(1.0f, 8u) == 4u && data.ResolveLod(0.0f, 8u) == 4u,
+			"changed LOD settings must dirty renderer data and clamp the maximum to the minimum");
+	}
+
+	void TestMeshLodChangesPublishWithoutTransformEdits()
+	{
+		for (const auto mobility : { EMobilityType::Static, EMobilityType::Stationary })
+		{
+			PrefabTestWorld world;
+			auto object = world.Instantiate("Unmoving LOD mesh");
+			object->SetMobilityType(mobility);
+			auto renderer = object->AddComponent<MeshRendererComponent>();
+			auto model = TObjectPtr<PublishedMeshTestModel>::Make(world.GetAllocator());
+			model->m_ready = true;
+			auto material = TObjectPtr<PublishedMeshTestMaterial>::Make(world.GetAllocator());
+			renderer->SetModel(model);
+			renderer->GetMaterials().Add(material);
+			const auto transformFrame = object->GetTransformComponent().GetFrameLastChange();
+			const auto materialRevision = material->GetContentRevision();
+			auto* meshes = world.GetECS<StaticMeshRendererECS>();
+			meshes->BeginPlay();
+
+			auto tick = [&]()
+				{
+					world.AdvanceFrame();
+					meshes->Tick(0.016f);
+					Require(object->GetTransformComponent().GetFrameLastChange() == transformFrame &&
+						material->GetContentRevision() == materialRevision,
+						"LOD publication must not rely on a transform or material edit");
+					return meshes->GetRHIScene()->GetCurrentVersion();
+				};
+			const auto initial = tick();
+			const auto& handles = mobility == EMobilityType::Static ?
+				initial->m_staticHandles : initial->m_stationaryHandles;
+			Require(handles && handles->Num() == 1u,
+				"the ready mesh component must publish exactly one instance");
+			const auto handle = (*handles)[0];
+			auto policy = [&](const RHI::RHISceneVersionPtr& version) -> const RHI::RHILodPolicy&
+				{
+					const RHI::RHISceneInstanceRecord* record = nullptr;
+					Require(version->Resolve(handle, record) && record && record->m_topology,
+						"the retained mesh instance must resolve its topology");
+					const auto* resource = dynamic_cast<const RHI::RHISceneProxyResource*>(record->m_topology.GetRawPtr());
+					Require(resource != nullptr, "the mesh topology must carry a published scene proxy");
+					return resource->m_proxy.m_lodPolicy;
+				};
+			const auto& initialPolicy = policy(initial);
+			Require(initialPolicy.m_bEnabled && initialPolicy.m_minLod == 0u && initialPolicy.m_maxLod == 2u &&
+				initialPolicy.m_screenCoverageThresholds == TVector<float>{ 0.25f, 0.05f },
+				"the initial scene must contain the component's default LOD policy");
+
+			renderer->SetMinLod(1u);
+			const auto minimumChanged = tick();
+			Require(minimumChanged != initial && policy(minimumChanged).m_minLod == 1u &&
+				policy(minimumChanged).m_maxLod == 2u && initialPolicy.m_minLod == 0u,
+				"changing minimum LOD must publish a new policy without mutating the retained scene");
+			renderer->SetMinLod(1u);
+			Require(!renderer->GetData().IsDirty() && tick() == minimumChanged,
+				"repeating minimum LOD must not create another scene version");
+
+			renderer->SetMaxLod(5u);
+			const auto maximumChanged = tick();
+			Require(maximumChanged != minimumChanged && policy(maximumChanged).m_maxLod == 5u &&
+				policy(minimumChanged).m_maxLod == 2u,
+				"changing maximum LOD must update the scene while the previous policy remains intact");
+			renderer->SetMaxLod(0u);
+			const auto maximumClamped = tick();
+			Require(maximumClamped != maximumChanged && policy(maximumClamped).m_maxLod == 1u,
+				"a maximum below minimum LOD must publish the clamped limit");
+			renderer->SetMaxLod(1u);
+			Require(!renderer->GetData().IsDirty() && tick() == maximumClamped,
+				"a canonically equivalent maximum must not create another scene version");
+
+			renderer->SetScreenCoverageThresholds(TVector<float>{
+				-0.2f, 0.6f, 2.0f, std::numeric_limits<float>::quiet_NaN() });
+			const auto thresholdsChanged = tick();
+			const TVector<float> expectedThresholds{ 1.0f, 0.6f, 0.0f, 0.0f };
+			Require(thresholdsChanged != maximumClamped &&
+				policy(thresholdsChanged).m_screenCoverageThresholds == expectedThresholds &&
+				policy(maximumClamped).m_screenCoverageThresholds == TVector<float>{ 0.25f, 0.05f },
+				"threshold changes must publish normalized values without modifying an older snapshot");
+			renderer->SetScreenCoverageThresholds(TVector<float>{
+				0.6f, -4.0f, std::numeric_limits<float>::infinity(), 3.0f });
+			Require(renderer->GetScreenCoverageThresholds() == expectedThresholds &&
+				!renderer->GetData().IsDirty() && tick() == thresholdsChanged,
+				"equivalent normalized authoring thresholds must leave the published scene unchanged");
+			renderer->GetData().SetLodSettings(1u, 0u, TVector<float>{
+				3.0f, std::numeric_limits<float>::quiet_NaN(), 0.6f, -1.0f });
+			Require(!renderer->GetData().IsDirty() && tick() == thresholdsChanged,
+				"direct ECS LOD updates must compare canonical limits and thresholds too");
+
+			renderer->SetScreenCoverageThresholds({});
+			const auto thresholdsCleared = tick();
+			Require(thresholdsCleared != thresholdsChanged && policy(thresholdsCleared).m_screenCoverageThresholds.IsEmpty() &&
+				policy(thresholdsChanged).m_screenCoverageThresholds == expectedThresholds,
+				"clearing thresholds must publish an empty policy without discarding the retained thresholds");
+			renderer->SetScreenCoverageThresholds({});
+			Require(!renderer->GetData().IsDirty() && tick() == thresholdsCleared,
+				"repeating an empty threshold list must not create another scene version");
+			world.Clear();
+		}
+	}
+
 	void TestLocalLightShadowContract()
 	{
 		Require(LightingECS::GetLocalShadowMapCount(ELightType::Point) == 6u,
@@ -1283,11 +1605,16 @@ namespace
 			"switching animation data without changing the skeleton size must preserve every GPU bone range");
 
 		system.SetAnimation(replacedAnimator, TObjectPtr<Animation>());
+		Require(system.GetComponentData(replacedAnimator).m_gpuOffset == 0 &&
+			system.GetComponentData(survivingAnimator).m_gpuOffset == 10 &&
+			system.GetNextBoneOffsetForTest() == 20,
+			"a pending layout change must preserve the offsets used by the last published palette");
+		system.Tick(0.0f);
 		Require(system.GetComponentData(replacedAnimator).m_gpuOffset == invalidOffset &&
 			system.GetComponentData(survivingAnimator).m_gpuOffset == invalidOffset,
-			"replacing one animation should invalidate every offset in the compact GPU layout");
+			"Tick must invalidate the old layout before allocating active owners again");
 		Require(system.GetNextBoneOffsetForTest() == 0,
-			"replacing an animation should restart compact GPU allocation from the beginning");
+			"the ownerless allocator fixture must leave the rebuilt layout empty");
 
 		uint32_t replacementOffset = invalidOffset;
 		uint32_t survivorOffset = invalidOffset;
@@ -1328,6 +1655,9 @@ namespace
 			"mesh fixtures should start with clean ECS data");
 
 		world.GetECS<AnimationECS>()->InvalidateGpuLayout();
+		Require(!firstMesh->GetData().IsDirty() && !secondMesh->GetData().IsDirty(),
+			"requesting a relayout must not visit owned meshes before Tick");
+		world.GetECS<AnimationECS>()->Tick(0.0f);
 
 		Require(firstMesh->GetData().IsDirty(),
 			"animation relayout should invalidate the first owned mesh renderer");
@@ -1335,6 +1665,528 @@ namespace
 			"animation relayout should invalidate every additional owned mesh renderer");
 
 		world.Clear();
+	}
+
+	void TestAnimationRemovalsPublishOneCompactedPalette()
+	{
+		for (uint32_t count : { 32u, 64u })
+		{
+			AnimationMeshTestWorld world;
+			auto* animations = world.GetECS<AnimationECS>();
+			auto* meshes = world.GetECS<StaticMeshRendererECS>();
+			auto model = TObjectPtr<PublishedMeshTestModel>::Make(world.GetAllocator());
+			model->m_ready = true;
+			auto material = TObjectPtr<PublishedMeshTestMaterial>::Make(world.GetAllocator());
+			TVector<GameObjectPtr> owners;
+			TVector<TObjectPtr<AnimatorComponent>> animators;
+			TVector<MeshRendererComponentPtr> renderers;
+			TVector<AnimationPtr> clips;
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				auto owner = world.Instantiate("Batched animation removal");
+				owner->SetMobilityType(EMobilityType::Static);
+				owners.Add(owner);
+				for (uint32_t mesh = 0; mesh < 2; ++mesh)
+				{
+					auto renderer = owner->AddComponent<MeshRendererComponent>();
+					renderer->SetModel(model);
+					renderer->GetMaterials().Add(material);
+					renderers.Add(renderer);
+				}
+				auto clip = MakeLayoutAnimation(world.GetAllocator(), 1, static_cast<float>(index + 1));
+				clips.Add(clip);
+				auto animator = owner->AddComponent<AnimatorComponent>();
+				animator->SetAnimation(clip);
+				animators.Add(animator);
+			}
+			meshes->BeginPlay();
+			animations->Tick(0.0f);
+			meshes->Tick(0.0f);
+			auto retained = RHI::RHISceneViewPtr::Make();
+			animations->FillAnimationData(retained);
+			const auto oldScene = meshes->GetRHIScene()->GetCurrentVersion();
+			Require(retained->m_cpuBoneMatrices && retained->m_cpuBoneMatrices->Num() == count &&
+				oldScene->m_staticHandles->Num() == count * 2,
+				"the fixture must publish one bone per animator and both meshes per owner");
+
+			for (uint32_t index = 0; index < count; index += 2)
+			{
+				Require(owners[index]->RemoveComponent(animators[index]) && !animators[index],
+					"ordinary component removal must destroy the animator while keeping its owner and meshes");
+				Require(renderers[index * 2]->GetData().IsDirty() && renderers[index * 2 + 1]->GetData().IsDirty(),
+					"removing an animator must immediately invalidate every mesh still owned by that object");
+				Require(!renderers[(index + 1) * 2]->GetData().IsDirty() &&
+					!renderers[(index + 1) * 2 + 1]->GetData().IsDirty() &&
+					animators[index + 1]->GetSkeletonOffset() == index + 1,
+					"each removal must leave unrelated mesh policy and surviving published offsets untouched");
+				auto pending = RHI::RHISceneViewPtr::Make();
+				animations->FillAnimationData(pending);
+				Require(pending->m_cpuBoneMatrices == retained->m_cpuBoneMatrices &&
+					pending->m_animationRevision == retained->m_animationRevision &&
+					meshes->GetRHIScene()->GetCurrentVersion() == oldScene,
+					"FillAnimationData must not rebuild or publish an intermediate layout during a removal batch");
+			}
+
+			world.AdvanceFrame();
+			animations->Tick(0.0f);
+			meshes->Tick(0.0f);
+			auto compacted = RHI::RHISceneViewPtr::Make();
+			animations->FillAnimationData(compacted);
+			Require(compacted->m_animationRevision == retained->m_animationRevision + 1 &&
+				compacted->m_cpuBoneMatrices != retained->m_cpuBoneMatrices &&
+				compacted->m_cpuBoneMatrices->Num() == count / 2,
+				"one Tick must publish exactly one compacted palette for the whole removal batch");
+			const auto newScene = meshes->GetRHIScene()->GetCurrentVersion();
+			for (const auto handle : *oldScene->m_staticHandles)
+			{
+				const RHI::RHISceneInstanceRecord* oldRecord = nullptr;
+				const RHI::RHISceneInstanceRecord* newRecord = nullptr;
+				Require(oldScene->Resolve(handle, oldRecord) && newScene->Resolve(handle, newRecord),
+					"removing only the animator must preserve both mesh handles");
+				const uint32_t previousOffset = oldRecord->m_skeletonOffset;
+				Require(previousOffset < count &&
+					(*retained->m_cpuBoneMatrices)[previousOffset][3].x == static_cast<float>(previousOffset + 1),
+					"the delayed scene and its retained palette must still describe the original pose");
+				if (previousOffset % 2 == 0)
+				{
+					Require(newRecord->m_skeletonOffset == AnimatorComponentData::InvalidGpuOffset,
+						"every mesh of an owner without its animator must stop referencing the palette");
+				}
+				else
+				{
+					Require(newRecord->m_skeletonOffset == previousOffset / 2 &&
+						(*compacted->m_cpuBoneMatrices)[newRecord->m_skeletonOffset][3].x ==
+							static_cast<float>(previousOffset + 1),
+						"surviving meshes must reference their own pose in the compacted palette");
+				}
+			}
+			auto sameFrame = RHI::RHISceneViewPtr::Make();
+			animations->FillAnimationData(sameFrame);
+			Require(sameFrame->m_cpuBoneMatrices == compacted->m_cpuBoneMatrices &&
+				sameFrame->m_animationRevision == compacted->m_animationRevision,
+				"additional consumers must reuse the same committed publication");
+			world.Clear();
+			Require(retained->m_cpuBoneMatrices->Num() == count && compacted->m_cpuBoneMatrices->Num() == count / 2,
+				"both retained palettes must outlive teardown");
+			for (auto& clip : clips)
+			{
+				clip.DestroyObject(world.GetAllocator());
+			}
+			material.DestroyObject(world.GetAllocator());
+			model.DestroyObject(world.GetAllocator());
+		}
+	}
+
+	void TestAnimationLayoutRefreshesOnceAfterSkeletonChanges()
+	{
+		AnimationMeshTestWorld world;
+		auto* animations = world.GetECS<AnimationECS>();
+		auto* meshes = world.GetECS<StaticMeshRendererECS>();
+		auto model = TObjectPtr<PublishedMeshTestModel>::Make(world.GetAllocator());
+		model->m_ready = true;
+		auto material = TObjectPtr<PublishedMeshTestMaterial>::Make(world.GetAllocator());
+		auto firstOwner = world.Instantiate("Changing skeleton");
+		auto secondOwner = world.Instantiate("Neighboring skeleton");
+		auto firstMesh = firstOwner->AddComponent<MeshRendererComponent>();
+		auto secondMesh = secondOwner->AddComponent<MeshRendererComponent>();
+		for (auto mesh : { firstMesh, secondMesh })
+		{
+			mesh->SetModel(model);
+			mesh->GetMaterials().Add(material);
+		}
+		auto firstClip = MakeLayoutAnimation(world.GetAllocator(), 2, 2.0f);
+		auto secondClip = MakeLayoutAnimation(world.GetAllocator(), 1, 8.0f);
+		auto replacementClip = MakeLayoutAnimation(world.GetAllocator(), 2, 5.0f);
+		auto first = firstOwner->AddComponent<AnimatorComponent>();
+		auto second = secondOwner->AddComponent<AnimatorComponent>();
+		first->SetAnimation(firstClip);
+		second->SetAnimation(secondClip);
+		meshes->BeginPlay();
+		animations->Tick(0.0f);
+		meshes->Tick(0.0f);
+		auto initial = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(initial);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == 2 &&
+			initial->m_cpuBoneMatrices->Num() == 3,
+			"neighboring skeletons must start with disjoint compact ranges");
+
+		first->SetAnimation(replacementClip);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == 2 &&
+			firstMesh->GetData().IsDirty() && !secondMesh->GetData().IsDirty(),
+			"a same-sized clip switch must update only its owner's mesh policy");
+		world.AdvanceFrame();
+		animations->Tick(0.0f);
+		Require(!secondMesh->GetData().IsDirty(),
+			"same-sized clip replacement must not trigger a deferred global relayout");
+		meshes->Tick(0.0f);
+		auto replaced = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(replaced);
+		Require(second->GetSkeletonOffset() == 2 && replaced->m_cpuBoneMatrices->Num() == 3 &&
+			(*replaced->m_cpuBoneMatrices)[0][3].x == 5.0f &&
+			(*initial->m_cpuBoneMatrices)[0][3].x == 2.0f,
+			"same-sized replacement must change the pose without moving neighboring offsets or retained matrices");
+
+		SetLayoutAnimationPose(replacementClip, 2, 6.0f);
+		world.AdvanceFrame();
+		animations->Tick(0.0f);
+		Require(!secondMesh->GetData().IsDirty() && second->GetSkeletonOffset() == 2,
+			"same-sized asset revision refresh must not invalidate another animator's mesh policy");
+		meshes->Tick(0.0f);
+		animations->FillAnimationData(replaced);
+		Require((*replaced->m_cpuBoneMatrices)[0][3].x == 6.0f,
+			"a same-sized hot reload must still publish its changed pose");
+
+		SetLayoutAnimationPose(replacementClip, 3, 9.0f);
+		SetLayoutAnimationPose(secondClip, 2, 8.0f);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == 2,
+			"asset edits must not change offsets before their owner Tick");
+		world.AdvanceFrame();
+		animations->Tick(0.0f);
+		meshes->Tick(0.0f);
+		auto resized = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(resized);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == 3 &&
+			resized->m_cpuBoneMatrices->Num() == 5 &&
+			resized->m_animationRevision == replaced->m_animationRevision + 1 &&
+			(*resized->m_cpuBoneMatrices)[2][3].x == 9.0f && (*resized->m_cpuBoneMatrices)[3][3].x == 8.0f,
+			"all changed assets must refresh before a single compact layout and palette are published");
+
+		first->SetAnimation({});
+		auto pending = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(pending);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == 3 &&
+			pending->m_cpuBoneMatrices == resized->m_cpuBoneMatrices,
+			"clearing an animation must retain the last complete layout until Tick");
+		animations->Tick(0.0f);
+		Require(first->GetSkeletonOffset() == AnimatorComponentData::InvalidGpuOffset &&
+			second->GetSkeletonOffset() == 0,
+			"a zero-bone skeleton must release its range without leaving holes");
+		second->GetData().m_gpuOffset = AnimationECS::BonesMaxNum;
+		animations->Tick(0.0f);
+		Require(second->GetSkeletonOffset() == 0,
+			"range validation must request and consume the relayout before sampling in the same Tick");
+		world.Clear();
+		firstClip.DestroyObject(world.GetAllocator());
+		secondClip.DestroyObject(world.GetAllocator());
+		replacementClip.DestroyObject(world.GetAllocator());
+		material.DestroyObject(world.GetAllocator());
+		model.DestroyObject(world.GetAllocator());
+	}
+
+	void TestAnimationLayoutRecoversCapacityAndLastRemoval()
+	{
+		AnimationMeshTestWorld world;
+		auto* animations = world.GetECS<AnimationECS>();
+		auto fullClip = MakeLayoutAnimation(world.GetAllocator(), AnimationECS::BonesMaxNum, 2.0f);
+		auto smallClip = MakeLayoutAnimation(world.GetAllocator(), 1, 9.0f);
+		auto firstOwner = world.Instantiate("Full palette");
+		auto secondOwner = world.Instantiate("Waiting for space");
+		auto first = firstOwner->AddComponent<AnimatorComponent>();
+		auto second = secondOwner->AddComponent<AnimatorComponent>();
+		first->SetAnimation(fullClip);
+		second->SetAnimation(smallClip);
+		animations->Tick(0.0f);
+		auto full = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(full);
+		Require(first->GetSkeletonOffset() == 0 && second->GetSkeletonOffset() == AnimatorComponentData::InvalidGpuOffset &&
+			full->m_cpuBoneMatrices->Num() == AnimationECS::BonesMaxNum,
+			"capacity overflow must leave the waiting animator unallocated without damaging the full palette");
+		Require(firstOwner->RemoveComponent(first), "the full-range animator must be removable");
+		animations->Tick(0.0f);
+		auto compacted = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(compacted);
+		Require(second->GetSkeletonOffset() == 0 && compacted->m_cpuBoneMatrices->Num() == 1 &&
+			compacted->m_animationRevision == full->m_animationRevision + 1 &&
+			(*compacted->m_cpuBoneMatrices)[0][3].x == 9.0f &&
+			(*full->m_cpuBoneMatrices)[AnimationECS::BonesMaxNum - 1][3].x == 2.0f,
+			"one relayout must reuse released capacity while preserving the retained full palette");
+		Require(secondOwner->RemoveComponent(second), "the last animator must be removable");
+		auto pending = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(pending);
+		Require(pending->m_cpuBoneMatrices == compacted->m_cpuBoneMatrices,
+			"last removal must not mutate the palette before Tick");
+		animations->Tick(0.0f);
+		auto empty = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(empty);
+		Require(empty->m_cpuBoneMatrices && empty->m_cpuBoneMatrices->IsEmpty() &&
+			empty->m_animationRevision == compacted->m_animationRevision + 1,
+			"last removal must publish one empty palette");
+		animations->Tick(0.0f);
+		auto stillEmpty = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(stillEmpty);
+		Require(stillEmpty->m_cpuBoneMatrices == empty->m_cpuBoneMatrices &&
+			stillEmpty->m_animationRevision == empty->m_animationRevision,
+			"a consumed empty relayout must not remain dirty on later ticks");
+		animations->InvalidateGpuLayout();
+		world.Clear();
+		auto cleared = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(cleared);
+		Require(!cleared->m_cpuBoneMatrices && cleared->m_animationRevision == 0,
+			"Clear must discard pending relayout state and the current publication");
+		auto replacement = world.Instantiate("Fresh animator after Clear")->AddComponent<AnimatorComponent>();
+		replacement->SetAnimation(smallClip);
+		animations->Tick(0.0f);
+		Require(replacement->GetSkeletonOffset() == 0,
+			"authoring reuse after Clear must allocate from a fresh layout");
+		world.Clear();
+		fullClip.DestroyObject(world.GetAllocator());
+		smallClip.DestroyObject(world.GetAllocator());
+	}
+
+	void TestWorldClearBatchesHierarchyAndStorageCleanup()
+	{
+		for (uint32_t count : { 32u, 64u })
+		{
+			BulkClearTestWorld world;
+			auto* transforms = world.GetECS<TransformClearTestSystem>();
+			auto* animations = world.GetECS<AnimationLayoutTestSystem>();
+			TVector<GameObjectPtr> objects;
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				objects.Add(world.Instantiate("Child created before parent"));
+			}
+			auto parent = world.Instantiate("Wide hierarchy root");
+			for (auto& child : objects)
+			{
+				child->SetParent(parent);
+			}
+			objects.Add(parent);
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				objects.Add(world.Instantiate("Independent root"));
+			}
+
+			TVector<InstanceId> ended;
+			size_t dirtyCount = 0;
+			for (auto& object : objects)
+			{
+				object->GetTransformComponent().SetPosition(glm::vec3(3.0f));
+				object->AddComponent<AnimatorComponent>()->GetData().SetBonesCount(1);
+				auto observer = object->AddComponent<LifecycleTestComponent>();
+				observer->SetValue(2.0f);
+				const InstanceId id = object->GetInstanceId();
+				const InstanceId parentId = object->GetParent() ? object->GetParent()->GetInstanceId() : InstanceId::Invalid;
+				observer->m_onEnd = [&, id, parentId]()
+				{
+					Require(world.IsClearing() && !ended.Contains(id), "bulk teardown must end each component exactly once");
+					Require(!parentId || ended.Contains(parentId), "Clear must visit the parent before its earlier-created children");
+					Require(transforms->GetNumDirtyForTest() == dirtyCount &&
+						animations->GetNextBoneOffsetForTest() == objects.Num(),
+						"bulk unregister must leave dirty-queue cleanup and bone relayout to EndPlay");
+					ended.Add(id);
+				};
+			}
+			animations->Tick(0.0f);
+			dirtyCount = transforms->GetNumDirtyForTest();
+			Require(dirtyCount > 0 && animations->GetNextBoneOffsetForTest() == objects.Num(),
+				"the fixture must have both pending transforms and allocated bone ranges");
+			world.Destroy(objects[0]);
+			world.Clear();
+			Require(!world.IsClearing() && world.GetGameObjects().IsEmpty() && ended.Num() == objects.Num(),
+				"bulk clear must finish every hierarchy and consume pending deletion without duplicate callbacks");
+			Require(transforms->GetNumSlotsForTest() == 0 && transforms->GetNumDirtyForTest() == 0 &&
+				animations->GetNumSlotsForTest() == 0 && animations->GetNextBoneOffsetForTest() == 0,
+				"EndPlay must clear derived queues, animation storage and allocation cursors");
+			for (const auto& object : objects)
+			{
+				Require(!object, "retained game object handles must be invalid after Clear");
+			}
+			for (const auto& id : ended)
+			{
+				Require(!world.GetObjectByInstanceId(id), "Clear must remove every destroyed object from the instance lookup");
+			}
+			world.Clear();
+			Require(ended.Num() == objects.Num(), "repeated Clear must not repeat component cleanup");
+
+			auto replacement = world.Instantiate("Authoring after Clear");
+			replacement->AddComponent<AnimatorComponent>()->GetData().SetBonesCount(1);
+			replacement->GetTransformComponent().SetPosition(glm::vec3(7.0f, 0.0f, 0.0f));
+			transforms->Tick(0.0f);
+			transforms->PostTick();
+			animations->Tick(0.0f);
+			Require(transforms->GetNumSlotsForTest() == 1 && animations->GetNumSlotsForTest() == 1 &&
+				replacement->GetTransformComponent().GetWorldPosition().x == 7.0f &&
+				replacement->GetComponent<AnimatorComponent>()->GetSkeletonOffset() == 0,
+				"authoring reuse must start fresh slots without stale dirty indices or bone offsets");
+			world.Clear();
+		}
+	}
+
+	void TestWorldClearDestroysDescendantsReparentedByEndPlay()
+	{
+		for (bool reparentToEarlierRoot : { false, true })
+		{
+			PrefabTestWorld world;
+			auto earlierRoot = reparentToEarlierRoot ? world.Instantiate("Earlier root") : GameObjectPtr{};
+			auto root = world.Instantiate("Root");
+			auto child = world.Instantiate("Child");
+			auto grandchild = world.Instantiate("Grandchild");
+			child->SetParent(root);
+			grandchild->SetParent(child);
+			const InstanceId grandchildId = grandchild->GetInstanceId();
+			TVector<InstanceId> ended;
+			for (auto object : { earlierRoot, root, child, grandchild })
+			{
+				if (object)
+				{
+					const InstanceId id = object->GetInstanceId();
+					object->AddComponent<LifecycleTestComponent>()->m_onEnd = [&, id]()
+					{
+						Require(!ended.Contains(id), "callback-reparented hierarchies must end every component once");
+						ended.Add(id);
+					};
+				}
+			}
+			auto callbackOwner = earlierRoot ? earlierRoot : root;
+			const InstanceId callbackOwnerId = callbackOwner->GetInstanceId();
+			callbackOwner->GetComponent<LifecycleTestComponent>()->m_onEnd = [&, callbackOwnerId]()
+			{
+				Require(!ended.Contains(callbackOwnerId), "the reparenting callback must run once");
+				ended.Add(callbackOwnerId);
+				grandchild->SetParent(earlierRoot);
+			};
+			world.Clear();
+			const size_t expectedCount = reparentToEarlierRoot ? 4u : 3u;
+			Require(ended.Num() == expectedCount && ended.Contains(grandchildId) && !grandchild &&
+				!world.GetObjectByInstanceId(grandchildId) && world.GetGameObjects().IsEmpty(),
+				"Clear must destroy original descendants detached or moved into an already-visited root by EndPlay");
+			world.Clear();
+			Require(ended.Num() == expectedCount, "repeated Clear must not revisit callback-reparented objects");
+		}
+	}
+
+	void TestWorldClearUnlinksAllPrefabsBeforeCallbacks()
+	{
+		for (uint32_t count : { 16u, 32u })
+		{
+			PrefabTestWorld world;
+			auto sourceRoot = world.Instantiate("Source root");
+			auto sourceChild = world.Instantiate("Source child");
+			sourceChild->SetParent(sourceRoot);
+			sourceRoot->AddComponent<LifecycleTestComponent>();
+			sourceChild->AddComponent<LifecycleTestComponent>();
+			const FileId sourceId = FileId::CreateNewFileId();
+			auto source = PrefabDocumentTestAsset::Capture(world, sourceRoot, sourceId);
+			const std::string sourceText = YAML::Dump(source->Serialize());
+			world.DestroyImmediate(sourceRoot);
+
+			TVector<GameObjectPtr> roots;
+			uint32_t ended = 0;
+			for (uint32_t index = 0; index < count; ++index)
+			{
+				auto root = world.Instantiate(source);
+				Require(root && world.IsPrefabInstanceRoot(root->GetInstanceId()), "the fixture must retain editor prefab linkage");
+				roots.Add(root);
+				for (auto object : { root, root->GetChildren()[0] })
+				{
+					object->GetComponent<LifecycleTestComponent>()->m_onEnd = [&]()
+					{
+						++ended;
+						Require(world.GetPrefabInstances().IsEmpty(), "all derived prefab records must be cleared before teardown callbacks");
+						for (const auto& live : world.GetGameObjects())
+						{
+							if (live)
+							{
+								Require(!live->GetFileId() && !world.IsPrefabLinked(live->GetInstanceId()) &&
+									world.CanModifyPrefabStructure(live->GetInstanceId()),
+									"no live prefab marker or membership may block bulk component cleanup");
+							}
+						}
+					};
+				}
+			}
+			auto parent = world.Instantiate("External parent created last");
+			for (auto& root : roots)
+			{
+				root->SetParent(parent);
+			}
+			world.Clear();
+			Require(ended == count * 2 && world.GetGameObjects().IsEmpty() &&
+				YAML::Dump(source->Serialize()) == sourceText && source->GetFileId() == sourceId,
+				"bulk unlink must clean every linked component without changing the source prefab");
+			world.Clear();
+			Require(ended == count * 2, "linked instance cleanup must remain idempotent");
+			source.DestroyObject(world.GetAllocator());
+		}
+	}
+
+	void TestWorldClearRetainsPublishedAnimationAndLandscape()
+	{
+		BulkClearTestWorld world;
+		auto* animations = world.GetECS<AnimationECS>();
+		auto* landscapes = world.GetECS<LandscapeECS>();
+		auto animation = AnimationPtr::Make(world.GetAllocator(), FileId{});
+		animation->m_numBones = 1;
+		animation->m_numFrames = 1;
+		animation->m_parentBoneIndices.Add(-1);
+		Math::Transform pose;
+		pose.m_position = glm::vec4(5.0f, 0.0f, 0.0f, 1.0f);
+		animation->m_frames.Add(pose);
+		animation->m_restPose.Add(pose);
+		uint32_t ended = 0;
+		RHI::RHISpatialSceneVersionPtr publishedLandscape;
+		for (uint32_t index = 0; index < 32; ++index)
+		{
+			auto object = world.Instantiate("Published owner");
+			object->AddComponent<AnimatorComponent>()->SetAnimation(animation);
+			const auto landscape = object->AddComponent<LandscapeComponent>();
+			auto& data = landscapes->GetComponentData(landscape->GetComponentIndex());
+			LandscapeChunk chunk;
+			chunk.m_buildRevision = 1;
+			chunk.m_resource = RHI::RHISceneProxyResourcePtr::Make();
+			chunk.m_resource->m_proxy.m_staticMeshEcs = index;
+			chunk.m_resource->m_proxy.m_mobility = EMobilityType::Static;
+			chunk.m_resource->m_proxy.m_worldAabb = Math::AABB(glm::vec3(-1.0f), glm::vec3(1.0f));
+			data.m_chunks.Add(std::move(chunk));
+			object->AddComponent<LifecycleTestComponent>()->m_onEnd = [&]()
+			{
+				++ended;
+				auto currentView = RHI::RHISceneViewPtr::Make();
+				landscapes->AppendSceneView(currentView);
+				Require(currentView->m_sceneVersions.Num() == 1 && currentView->m_sceneVersions[0] == publishedLandscape,
+					"individual landscape cleanup during Clear must not publish intermediate scene versions");
+			};
+		}
+		animations->Tick(0.0f);
+		landscapes->BeginPlay();
+		auto retained = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(retained);
+		landscapes->AppendSceneView(retained);
+		Require(retained->m_cpuBoneMatrices && retained->m_cpuBoneMatrices->Num() == 32 &&
+			(*retained->m_cpuBoneMatrices)[0][3].x == 5.0f && retained->m_sceneVersions.Num() == 1,
+			"the fixture must publish real CPU bone matrices and a landscape scene");
+		publishedLandscape = retained->m_sceneVersions[0];
+		Require(publishedLandscape->m_sceneVersion->m_staticHandles->Num() == 32,
+			"every prepared landscape chunk must be present in the published scene");
+		const auto handle = (*publishedLandscape->m_sceneVersion->m_staticHandles)[0];
+		const RHI::RHISceneInstanceRecord* before = nullptr;
+		Require(publishedLandscape->m_sceneVersion->Resolve(handle, before) && before && before->m_topology,
+			"the retained landscape handle must resolve its topology");
+		const auto* topology = before->m_topology.GetRawPtr();
+
+		world.Clear();
+		const RHI::RHISceneInstanceRecord* after = nullptr;
+		Require(ended == 32 && publishedLandscape->m_sceneVersion->Resolve(handle, after) &&
+			after->m_topology.GetRawPtr() == topology && (*retained->m_cpuBoneMatrices)[0][3].x == 5.0f,
+			"already-published scene records and bone snapshots must outlive their destroyed world components");
+		auto empty = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(empty);
+		landscapes->AppendSceneView(empty);
+		Require(!empty->m_cpuBoneMatrices && empty->m_animationRevision == 0 && empty->m_sceneVersions.IsEmpty(),
+			"new consumers after Clear must not receive the old world publication");
+
+		animation->m_frames[0].m_position.x = 9.0f;
+		auto replacement = world.Instantiate("New animation owner");
+		replacement->AddComponent<AnimatorComponent>()->SetAnimation(animation);
+		animations->Tick(0.0f);
+		auto next = RHI::RHISceneViewPtr::Make();
+		animations->FillAnimationData(next);
+		Require(next->m_cpuBoneMatrices && next->m_cpuBoneMatrices->Num() == 1 &&
+			(*next->m_cpuBoneMatrices)[0][3].x == 9.0f && retained->m_cpuBoneMatrices->Num() == 32 &&
+			(*retained->m_cpuBoneMatrices)[0][3].x == 5.0f,
+			"new authoring publication must not overwrite snapshots retained across Clear");
+		world.Clear();
+		animation.DestroyObject(world.GetAllocator());
 	}
 
 	void TestSparseLightSlotInvalidationAndReuse()
@@ -1455,6 +2307,512 @@ namespace
 		FileId fileId;
 		fileId.Deserialize(YAML::Node(value));
 		return fileId;
+	}
+
+	constexpr EWorldBehaviourMask GameplayMask =
+		(uint8_t)EWorldBehaviourBit::CallBeginPlay | (uint8_t)EWorldBehaviourBit::Tickable;
+
+	void TestDestroyHierarchyUnlinksSurvivingParent()
+	{
+		enum class Destruction { Immediate, DeferredParentFirst, DeferredChildFirst, QueuedChildImmediateParent };
+		for (Destruction mode : { Destruction::Immediate, Destruction::DeferredParentFirst,
+			Destruction::DeferredChildFirst, Destruction::QueuedChildImmediateParent })
+		{
+			PrefabTestWorld world(GameplayMask);
+			auto parent = world.Instantiate("SurvivingParent");
+			auto root = world.Instantiate("RemovedRoot");
+			auto child = world.Instantiate("RemovedChild");
+			auto sibling = world.Instantiate("SurvivingSibling");
+			root->SetParent(parent);
+			child->SetParent(root);
+			sibling->SetParent(parent);
+			auto rootComponent = root->AddComponent<LifecycleTestComponent>();
+			auto childComponent = child->AddComponent<LifecycleTestComponent>();
+			const InstanceId rootId = root->GetInstanceId();
+			const InstanceId childId = child->GetInstanceId();
+			auto* transforms = world.GetECS<TransformECS>();
+			const size_t rootIndex = transforms->GetComponentIndex(&root->GetTransformComponent());
+			const size_t childIndex = transforms->GetComponentIndex(&child->GetTransformComponent());
+			const size_t siblingIndex = transforms->GetComponentIndex(&sibling->GetTransformComponent());
+			world.TickLifecycle();
+			transforms->Tick(0.0f);
+			transforms->PostTick();
+			const uint32_t ended = LifecycleTestComponent::s_ended;
+
+			if (mode == Destruction::DeferredParentFirst || mode == Destruction::DeferredChildFirst)
+			{
+				if (mode == Destruction::DeferredChildFirst)
+				{
+					world.Destroy(child);
+				}
+				world.Destroy(root);
+				world.Destroy(root);
+				world.Destroy(child);
+				Require(root && child && parent->GetChildren().Num() == 2 &&
+					LifecycleTestComponent::s_ended == ended,
+					"deferred destruction must leave the hierarchy intact until its lifecycle phase");
+				world.DestroyPendingGameObjects();
+			}
+			else
+			{
+				if (mode == Destruction::QueuedChildImmediateParent)
+				{
+					world.Destroy(child);
+				}
+				world.DestroyImmediate(root);
+			}
+
+			Require(!root && !child && !rootComponent && !childComponent &&
+				!world.GetObjectByInstanceId(rootId) && !world.GetObjectByInstanceId(childId),
+				"both destruction paths must release the subtree and its components");
+			Require(world.GetGameObjects().Num() == 2 && parent->GetChildren().Num() == 1 &&
+				parent->GetChildren()[0] == sibling && sibling->GetParent() == parent,
+				"a surviving parent must retain only its live children after either destruction path");
+			Require(!transforms->IsComponentRegistered(rootIndex) && !transforms->IsComponentRegistered(childIndex) &&
+				parent->GetTransformComponent().GetChildren().Num() == 1 &&
+				parent->GetTransformComponent().GetChildren()[0] == siblingIndex,
+				"the transform hierarchy must agree with the surviving game-object hierarchy");
+			world.DestroyPendingGameObjects();
+			Require(LifecycleTestComponent::s_ended == ended + 2,
+				"duplicate and descendant delete requests must not repeat component cleanup");
+			world.Clear();
+		}
+	}
+
+	void TestDestroyLinkedRootUnlinksExternalParent()
+	{
+		for (bool deferred : { false, true })
+		{
+			PrefabTestWorld world;
+			auto authoredRoot = world.Instantiate("AuthoredRoot");
+			auto authoredChild = world.Instantiate("AuthoredChild");
+			authoredChild->SetParent(authoredRoot);
+			const FileId sourceFileId = DeserializeFileId("{11111111-2222-3333-4444-555555555555}");
+			auto source = PrefabDocumentTestAsset::Capture(world, authoredRoot, sourceFileId);
+			const std::string sourceBefore = YAML::Dump(source->Serialize());
+			world.DestroyImmediate(authoredRoot);
+
+			auto externalParent = world.Instantiate("ExternalParent");
+			auto sibling = world.Instantiate("ExternalSibling");
+			sibling->SetParent(externalParent);
+			auto root = world.Instantiate(source);
+			Require(root && root->GetChildren().Num() == 1,
+				"the linked-root destruction fixture must instantiate its child");
+			auto child = root->GetChildren()[0];
+			const InstanceId rootId = root->GetInstanceId();
+			const InstanceId childId = child->GetInstanceId();
+			root->SetParent(externalParent);
+			Require(root->GetParent() == externalParent && world.IsPrefabInstanceRoot(rootId) &&
+				world.IsPrefabLinked(childId),
+				"a linked authoring root may be parented beneath an external object");
+			auto* transforms = world.GetECS<TransformECS>();
+			const size_t siblingIndex = transforms->GetComponentIndex(&sibling->GetTransformComponent());
+			transforms->Tick(0.0f);
+			transforms->PostTick();
+
+			world.Destroy(child);
+			world.DestroyImmediate(child);
+			world.DestroyPendingGameObjects();
+			Require(child && child->GetParent() == root && world.IsPrefabLinked(childId),
+				"both public destruction APIs must still reject an internal linked child");
+			if (deferred)
+			{
+				world.Destroy(root);
+				Require(world.IsPrefabInstanceRoot(rootId) && externalParent->GetChildren().Num() == 2,
+					"queuing a linked root must retain its authoring link until destruction");
+				world.DestroyPendingGameObjects();
+			}
+			else
+			{
+				world.DestroyImmediate(root);
+			}
+
+			Require(!root && !child && world.GetGameObjects().Num() == 2 &&
+				externalParent->GetChildren().Num() == 1 && externalParent->GetChildren()[0] == sibling &&
+				sibling->GetParent() == externalParent,
+				"destroying a linked root must unlink it from its surviving external parent");
+			Require(world.GetPrefabInstances().IsEmpty() && !world.IsPrefabLinked(rootId) &&
+				!world.IsPrefabLinked(childId) && YAML::Dump(source->Serialize()) == sourceBefore,
+				"destroying the instance must clear live links without changing the source prefab");
+			Require(externalParent->GetTransformComponent().GetChildren().Num() == 1 &&
+				externalParent->GetTransformComponent().GetChildren()[0] == siblingIndex,
+				"a linked root's transform must also be removed from its external parent");
+			world.DestroyPendingGameObjects();
+			world.Clear();
+			source.DestroyObject(world.GetAllocator());
+		}
+	}
+
+	void TestEditorLifecycleNeverStartsGameplay()
+	{
+		PrefabTestWorld world((uint8_t)EWorldBehaviourBit::EditorTick | (uint8_t)EWorldBehaviourBit::EcsTickable);
+		auto original = world.Instantiate("BeforeFirstFrame")->AddComponent<LifecycleTestComponent>();
+		Require(original->m_bPublishedAtInitialize && !original->IsValid(),
+			"Initialize must see the component in its owner before gameplay activation");
+		original->SetValue(17.0f);
+		Require(original->GetSlotValue() == 17.0f,
+			"Initialize must allocate the ECS slot immediately for reflected setters and editor preview");
+		world.TickLifecycle();
+
+		auto laterOwner = world.Instantiate("AfterFirstFrame");
+		auto typed = laterOwner->AddComponent<LifecycleTestComponent>();
+		auto raw = TObjectPtr<LifecycleTestComponent>::Make(world.GetAllocator());
+		Require(static_cast<bool>(laterOwner->AddComponentRaw(raw)), "raw editor component creation must succeed");
+		Require(typed->m_bPublishedAtInitialize && raw->m_bPublishedAtInitialize &&
+			typed->m_begins == 0 && raw->m_begins == 0,
+			"both component creation paths must initialize without starting gameplay in an already ticking editor");
+		world.TickLifecycle();
+		Require(original->m_editorTicks == 2 && typed->m_editorTicks == 1 && raw->m_editorTicks == 1 &&
+			original->m_begins == 0 && typed->m_begins == 0 && raw->m_begins == 0 &&
+			original->m_ticks == 0 && typed->m_ticks == 0 && raw->m_ticks == 0,
+			"editor callbacks must remain available without any gameplay BeginPlay or Tick");
+		world.Clear();
+	}
+
+	void TestBeginPlayAndTickMasksRemainIndependent()
+	{
+		PrefabTestWorld tickOnly((uint8_t)EWorldBehaviourBit::Tickable);
+		auto inactive = tickOnly.Instantiate()->AddComponent<LifecycleTestComponent>();
+		tickOnly.TickLifecycle();
+		tickOnly.TickLifecycle();
+		Require(inactive->m_begins == 0 && inactive->m_ticks == 0,
+			"Tickable alone must not implicitly start an inactive gameplay component");
+		tickOnly.Clear();
+
+		PrefabTestWorld beginOnly((uint8_t)EWorldBehaviourBit::CallBeginPlay);
+		auto started = beginOnly.Instantiate()->AddComponent<LifecycleTestComponent>();
+		beginOnly.TickLifecycle();
+		beginOnly.TickLifecycle();
+		Require(started->m_begins == 1 && started->m_bValidAtBegin && started->m_ticks == 0,
+			"CallBeginPlay must activate once, set validity before the callback and not enable gameplay Tick");
+		beginOnly.Clear();
+	}
+
+	void TestPrefabBeginsAfterHydrationAndHierarchy()
+	{
+		PrefabTestWorld world(GameplayMask);
+		world.TickLifecycle();
+		YAML::Node prefabNode = MakePrefabNode({ static_cast<uint32_t>(-1), 0 });
+		const InstanceId rootId(prefabNode["gameObjects"][0]["instanceId"].as<std::string>());
+		const InstanceId childId(prefabNode["gameObjects"][1]["instanceId"].as<std::string>());
+		const InstanceId rootComponentId = InstanceId::GenerateNewComponentId(rootId);
+		const InstanceId childComponentId = InstanceId::GenerateNewComponentId(childId);
+		for (uint32_t index = 0; index < 2; ++index)
+		{
+			YAML::Node properties;
+			properties["value"] = index == 0 ? 31.0f : 47.0f;
+			properties["m_dependency"]["fileId"] = "NullFileId";
+			properties["m_dependency"]["instanceId"] = (index == 0 ? childComponentId : rootComponentId).ToString();
+			prefabNode["components"].push_back(MakeReflectedComponent(
+				(index == 0 ? rootComponentId : childComponentId).ToString(), properties, true,
+				LifecycleTestComponent::GetStaticTypeInfo().Name()));
+			prefabNode["gameObjects"][index]["components"].push_back(index);
+			prefabNode["gameObjects"][index]["position"] = glm::vec4(10.0f + index, 2.0f, 3.0f, 1.0f);
+		}
+		auto prefab = DeserializePrefab(world, prefabNode);
+		auto root = world.Instantiate(prefab);
+		Require(root && root->GetChildren().Num() == 1, "the runtime prefab must commit its complete hierarchy");
+		auto child = root->GetChildren()[0];
+		auto rootComponent = root->GetComponent<LifecycleTestComponent>();
+		auto childComponent = child->GetComponent<LifecycleTestComponent>();
+		Require(rootComponent && childComponent && rootComponent->m_bPublishedAtInitialize && childComponent->m_bPublishedAtInitialize &&
+			rootComponent->GetSlotValue() == 31.0f && childComponent->GetSlotValue() == 47.0f &&
+			rootComponent->m_begins == 0 && childComponent->m_begins == 0,
+			"prefab hydration must use initialized ECS slots without eager gameplay callbacks");
+		world.TickLifecycle();
+		Require(rootComponent->m_begins == 1 && childComponent->m_begins == 1 &&
+			rootComponent->m_valueAtBegin == 31.0f && childComponent->m_valueAtBegin == 47.0f &&
+			rootComponent->m_dependencyAtBegin == childComponent && childComponent->m_dependencyAtBegin == rootComponent &&
+			!rootComponent->m_parentAtBegin && childComponent->m_parentAtBegin == root &&
+			rootComponent->m_positionAtBegin.x == 10.0f && childComponent->m_positionAtBegin.x == 11.0f &&
+			rootComponent->m_bValidAtBegin && childComponent->m_bValidAtBegin,
+			"BeginPlay must observe authored properties, both internal references, transforms and the committed parent");
+		Require(rootComponent->m_ticks == 0 && childComponent->m_ticks == 0,
+			"a component's first lifecycle callback is BeginPlay, not BeginPlay followed by Tick in the same phase");
+		world.TickLifecycle();
+		Require(rootComponent->m_begins == 1 && childComponent->m_begins == 1 &&
+			rootComponent->m_ticks == 1 && childComponent->m_ticks == 1,
+			"hydrated components must begin exactly once and tick on subsequent frames");
+		world.Clear();
+		prefab.DestroyObject(world.GetAllocator());
+	}
+
+	void TestFailedPrefabNeverBeginsGameplay()
+	{
+		PrefabTestWorld world(GameplayMask);
+		world.Instantiate("ExistingObject");
+		world.TickLifecycle();
+		const uint32_t initialized = LifecycleTestComponent::s_initialized;
+		const uint32_t begun = LifecycleTestComponent::s_begun;
+		const uint32_t ended = LifecycleTestComponent::s_ended;
+		YAML::Node components(YAML::NodeType::Sequence);
+		for (uint32_t index = 0; index < 2; ++index)
+		{
+			YAML::Node properties;
+			properties["value"] = index == 0 ? "15.0" : "not-a-float";
+			components.push_back(MakeReflectedComponent(
+				index == 0 ? "1111111111111111_10010010010010010000" : "2222222222222222_10010010010010010000",
+				properties, true, LifecycleTestComponent::GetStaticTypeInfo().Name()));
+		}
+		auto prefab = DeserializePrefab(world, MakeComponentPrefabNode(components));
+		Require(!world.Instantiate(prefab), "a malformed property must reject the prefab after component initialization");
+		Require(world.GetGameObjects().Num() == 1 && world.GetPendingDependencyCount() == 0 &&
+			LifecycleTestComponent::s_initialized == initialized + 2 && LifecycleTestComponent::s_ended == ended + 2 &&
+			LifecycleTestComponent::s_begun == begun,
+			"rollback must release initialized components without running their gameplay callbacks");
+		world.TickLifecycle();
+		Require(LifecycleTestComponent::s_begun == begun,
+			"failed prefab components must not remain eligible for a later lifecycle phase");
+		world.Clear();
+		prefab.DestroyObject(world.GetAllocator());
+	}
+
+	void TestBeginPlayWaitsForExternalReferences()
+	{
+		PrefabTestWorld world(GameplayMask);
+		world.TickLifecycle();
+		const InstanceId targetId = InstanceId::GenerateNewInstanceId();
+		const InstanceId targetComponentId = InstanceId::GenerateNewComponentId(targetId);
+		YAML::Node properties;
+		properties["value"] = 23.0f;
+		properties["m_dependency"]["fileId"] = "NullFileId";
+		properties["m_dependency"]["instanceId"] = targetComponentId.ToString();
+		YAML::Node components(YAML::NodeType::Sequence);
+		components.push_back(MakeReflectedComponent(
+			"1111111111111111_10010010010010010000", properties, true,
+			LifecycleTestComponent::GetStaticTypeInfo().Name()));
+		auto prefab = DeserializePrefab(world, MakeComponentPrefabNode(components));
+		auto owner = world.Instantiate(prefab);
+		Require(static_cast<bool>(owner), "an external reference may be resolved after the prefab commits");
+		auto source = owner->GetComponent<LifecycleTestComponent>();
+		world.TickLifecycle();
+		world.ResolveExternalDependencies();
+		world.TickLifecycle();
+		Require(world.GetPendingDependencyCount() == 1 && source->m_begins == 0 && source->m_ticks == 0 && !source->IsValid(),
+			"a committed component with an unresolved external reference must not activate or tick");
+
+		auto targetOwner = world.Instantiate("LateDependency", targetId);
+		auto target = TObjectPtr<LifecycleTestComponent>::Make(world.GetAllocator());
+		Require(static_cast<bool>(targetOwner->AddComponentRaw(target, targetComponentId)),
+			"the later component must retain the referenced instance identity");
+		world.ResolveExternalDependencies();
+		Require(world.GetPendingDependencyCount() == 0 && source->m_dependency == target && source->m_begins == 0,
+			"reference resolution marks readiness but must not run BeginPlay outside the lifecycle phase");
+		world.TickLifecycle();
+		Require(source->m_begins == 1 && source->m_dependencyAtBegin == target && source->m_valueAtBegin == 23.0f &&
+			source->m_ticks == 0 && target->m_begins == 1,
+			"the next lifecycle phase must activate the now-resolved component exactly once");
+		world.TickLifecycle();
+		Require(source->m_begins == 1 && source->m_ticks == 1,
+			"a previously pending reference must not cause repeated BeginPlay");
+		world.Clear();
+		prefab.DestroyObject(world.GetAllocator());
+	}
+
+	void TestPendingReferencesStayWithinPrefabInstance()
+	{
+		for (bool forceNewIds : { true, false })
+		{
+			PrefabTestWorld world(GameplayMask);
+			world.TickLifecycle();
+			const InstanceId externalOwnerId = InstanceId::GenerateNewInstanceId();
+			const InstanceId externalComponentId = InstanceId::GenerateNewComponentId(externalOwnerId);
+			YAML::Node prefabNode = MakePrefabNode({ static_cast<uint32_t>(-1), 0 });
+			const InstanceId sourceRootId(prefabNode["gameObjects"][0]["instanceId"].as<std::string>());
+			const InstanceId sourceChildId(prefabNode["gameObjects"][1]["instanceId"].as<std::string>());
+			const InstanceId rootComponentId = InstanceId::GenerateNewComponentId(sourceRootId);
+			const InstanceId childComponentId = InstanceId::GenerateNewComponentId(sourceChildId);
+			YAML::Node rootProperties;
+			rootProperties["value"] = 19.0f;
+			rootProperties["m_dependency"]["fileId"] = "NullFileId";
+			rootProperties["m_dependency"]["instanceId"] = childComponentId.ToString();
+			rootProperties["externalDependency"]["fileId"] = "NullFileId";
+			rootProperties["externalDependency"]["instanceId"] = externalComponentId.ToString();
+			prefabNode["components"].push_back(MakeReflectedComponent(rootComponentId.ToString(), rootProperties, true,
+				LifecycleTestComponent::GetStaticTypeInfo().Name()));
+			prefabNode["components"].push_back(MakeReflectedComponent(childComponentId.ToString(), YAML::Node(), true,
+				LifecycleTestComponent::GetStaticTypeInfo().Name()));
+			prefabNode["gameObjects"][0]["components"].push_back(0);
+			prefabNode["gameObjects"][1]["components"].push_back(1);
+			auto prefab = DeserializePrefab(world, prefabNode);
+			const std::string sourceBefore = YAML::Dump(prefab->Serialize());
+
+			TVector<GameObjectPtr> instances;
+			const uint32_t instanceCount = forceNewIds ? 1 : 2;
+			for (uint32_t index = 0; index < instanceCount; ++index)
+			{
+				auto root = world.Instantiate(prefab, false, forceNewIds);
+				Require(root && root->GetChildren().Num() == 1, "the mixed-reference prefab must commit a complete instance");
+				auto child = root->GetChildren()[0];
+				auto component = root->GetComponent<LifecycleTestComponent>();
+				Require(component->m_dependency == child->GetComponent<LifecycleTestComponent>() &&
+					!component->GetExternalDependency(), "initial resolution must bind the local sibling while leaving the external reference pending");
+				if (forceNewIds || index > 0)
+				{
+					Require(root->GetInstanceId() != sourceRootId && child->GetInstanceId() != sourceChildId,
+						"forced IDs and repeated-instance collisions must remap both source game objects");
+				}
+				instances.Add(root);
+			}
+
+			for (uint32_t retry = 0; retry < 2; ++retry)
+			{
+				world.ResolveExternalDependencies();
+				world.TickLifecycle();
+				Require(world.GetPendingDependencyCount() == instanceCount, "each unresolved external reference must remain pending");
+				for (auto& root : instances)
+				{
+					auto child = root->GetChildren()[0];
+					auto component = root->GetComponent<LifecycleTestComponent>();
+					Require(component->m_dependency == child->GetComponent<LifecycleTestComponent>() &&
+						component->m_begins == 0 && component->m_ticks == 0,
+						"pending retries must preserve this instance's sibling, without switching to the source-ID instance or starting gameplay");
+				}
+			}
+
+			auto externalOwner = world.Instantiate("LateExternal", externalOwnerId);
+			auto external = TObjectPtr<LifecycleTestComponent>::Make(world.GetAllocator());
+			Require(static_cast<bool>(externalOwner->AddComponentRaw(external, externalComponentId)),
+				"the external dependency must appear later with its original identity");
+			world.ResolveExternalDependencies();
+			Require(world.GetPendingDependencyCount() == 0, "live internal IDs and the newly created external object must resolve together");
+			world.TickLifecycle();
+			world.TickLifecycle();
+			for (auto& root : instances)
+			{
+				auto child = root->GetChildren()[0];
+				auto component = root->GetComponent<LifecycleTestComponent>();
+				Require(component->m_begins == 1 && component->m_ticks == 1 && component->m_valueAtBegin == 19.0f &&
+					component->m_dependencyAtBegin == child->GetComponent<LifecycleTestComponent>() &&
+					component->m_externalDependencyAtBegin == external,
+					"BeginPlay must run once with both correct references after the external dependency resolves");
+			}
+			Require(YAML::Dump(prefab->Serialize()) == sourceBefore,
+				"per-instance pending-reference remapping must never modify the source prefab's YAML nodes");
+			world.Clear();
+			prefab.DestroyObject(world.GetAllocator());
+		}
+	}
+
+	void TestBeginPlayCanChangeComponentLists()
+	{
+		PrefabTestWorld world(GameplayMask);
+		auto owner = world.Instantiate("MutatingOwner");
+		auto mutating = owner->AddComponent<LifecycleTestComponent>();
+		auto removed = owner->AddComponent<LifecycleTestComponent>();
+		auto survivor = owner->AddComponent<LifecycleTestComponent>();
+		auto otherOwner = world.Instantiate("LaterOwner");
+		auto otherOriginal = otherOwner->AddComponent<LifecycleTestComponent>();
+		TVector<TObjectPtr<LifecycleTestComponent>> additions;
+		const uint32_t ended = LifecycleTestComponent::s_ended;
+		mutating->m_onBegin = [&]()
+			{
+				Require(owner->RemoveComponent(removed), "BeginPlay must be able to remove a not-yet-started sibling");
+				for (uint32_t index = 0; index < 24; ++index)
+				{
+					additions.Add(owner->AddComponent<LifecycleTestComponent>());
+				}
+				additions.Add(otherOwner->AddComponent<LifecycleTestComponent>());
+				for (uint32_t index = 0; index < 32; ++index)
+				{
+					additions.Add(world.Instantiate("SpawnedDuringBegin")->AddComponent<LifecycleTestComponent>());
+				}
+				Require(owner->RemoveComponent(mutating), "BeginPlay must be able to remove its own component");
+			};
+		world.TickLifecycle();
+		Require(!removed && !mutating && LifecycleTestComponent::s_ended == ended + 2 &&
+			survivor->m_begins == 1 && otherOriginal->m_begins == 1,
+			"self removal, removal of the next component and vector growth must not skip or repeat surviving callbacks");
+		for (auto& component : additions)
+		{
+			Require(component && component->m_bPublishedAtInitialize && component->m_begins == 0 && component->m_ticks == 0,
+				"components added to this owner, a later owner or a new object must wait for the next lifecycle frame");
+		}
+		world.TickLifecycle();
+		Require(survivor->m_ticks == 1 && otherOriginal->m_ticks == 1,
+			"surviving components must tick once after the mutating BeginPlay frame");
+		for (auto& component : additions)
+		{
+			Require(component->m_begins == 1 && component->m_ticks == 0,
+				"each callback-created component must begin exactly once on the next frame");
+		}
+		world.TickLifecycle();
+		for (auto& component : additions)
+		{
+			Require(component->m_begins == 1 && component->m_ticks == 1,
+				"callback-created components must join the ordinary Tick phase after BeginPlay");
+		}
+		world.Clear();
+	}
+
+	void TestBeginPlayCanDestroyItsOwner()
+	{
+		PrefabTestWorld world(GameplayMask);
+		auto owner = world.Instantiate("DestroyedDuringBegin");
+		auto mutating = owner->AddComponent<LifecycleTestComponent>();
+		auto sibling = owner->AddComponent<LifecycleTestComponent>();
+		auto otherOwner = world.Instantiate("RemovedBeforeItsTurn");
+		auto otherComponent = otherOwner->AddComponent<LifecycleTestComponent>();
+		auto survivor = world.Instantiate("Survivor")->AddComponent<LifecycleTestComponent>();
+		TObjectPtr<LifecycleTestComponent> replacement;
+		const uint32_t begun = LifecycleTestComponent::s_begun;
+		const uint32_t ended = LifecycleTestComponent::s_ended;
+		mutating->m_onBegin = [&]()
+			{
+				world.DestroyImmediate(otherOwner);
+				replacement = world.Instantiate("Replacement")->AddComponent<LifecycleTestComponent>();
+				world.DestroyImmediate(owner);
+			};
+		world.TickLifecycle();
+		Require(!owner && !mutating && !sibling && !otherOwner && !otherComponent &&
+			world.GetGameObjects().Num() == 2 && LifecycleTestComponent::s_ended == ended + 3 &&
+			LifecycleTestComponent::s_begun == begun + 2 && survivor->m_begins == 1 && replacement->m_begins == 0,
+			"destroyed handles must be skipped after callbacks, without activating removed siblings or new replacement objects");
+		world.TickLifecycle();
+		Require(survivor->m_ticks == 1 && replacement->m_begins == 1 && replacement->m_ticks == 0,
+			"the surviving world must continue normally after immediate destruction inside BeginPlay");
+		world.Clear();
+	}
+
+	void TestTickAdditionsWaitForNextLifecycleFrame()
+	{
+		PrefabTestWorld world(GameplayMask);
+		auto owner = world.Instantiate("TickMutation");
+		auto original = owner->AddComponent<LifecycleTestComponent>();
+		auto laterOwner = world.Instantiate("LaterOwner");
+		TObjectPtr<LifecycleTestComponent> added;
+		original->m_onTick = [&]()
+			{
+				if (!added)
+				{
+					added = laterOwner->AddComponent<LifecycleTestComponent>();
+				}
+			};
+		world.TickLifecycle();
+		world.TickLifecycle();
+		Require(added && added->m_begins == 0 && added->m_ticks == 0 && original->m_ticks == 1,
+			"a component added from Tick to a later object must not begin in that same phase");
+		world.TickLifecycle();
+		Require(added->m_begins == 1 && added->m_ticks == 0 && original->m_ticks == 2,
+			"Tick-created components must begin at the next lifecycle boundary");
+		world.Clear();
+	}
+
+	void TestRemovingAnotherOwnersComponentHasNoEffect()
+	{
+		PrefabTestWorld world;
+		auto first = world.Instantiate("First");
+		auto second = world.Instantiate("Second");
+		auto firstComponent = first->AddComponent<LifecycleTestComponent>();
+		auto secondComponent = second->AddComponent<LifecycleTestComponent>();
+		const uint32_t ended = LifecycleTestComponent::s_ended;
+		Require(!first->RemoveComponent(secondComponent), "RemoveComponent must reject a component absent from this owner's list");
+		Require(firstComponent && secondComponent && first->GetComponents().Num() == 1 && second->GetComponents().Num() == 1 &&
+			LifecycleTestComponent::s_ended == ended,
+			"a failed list lookup must not run EndPlay or destroy another owner's component");
+		Require(second->RemoveComponent(secondComponent) && !secondComponent && LifecycleTestComponent::s_ended == ended + 1,
+			"the owning object must still be able to remove the component exactly once");
+		world.Clear();
 	}
 
 	void TestGameObjectMobilityHierarchyAndPersistence()
@@ -1689,6 +3047,110 @@ namespace
 		PrefabPtr prefab = PrefabPtr::Make(world.GetAllocator(), fileId);
 		prefab->Deserialize(node);
 		return prefab;
+	}
+
+	template<typename TDocument>
+	void CheckSaveToFileResults(const TDocument& document, const char* filename)
+	{
+		Tests::TempDirectory directory("document-save");
+		const auto path = directory.Path(filename);
+		const auto metadataPath = directory.Path(std::string(filename) + ".asset");
+		const auto backupPath = directory.Path("previous-source");
+		const FileId fileId = document.GetFileId();
+		const YAML::Node expected = document.Serialize();
+		const std::string metadata = "fileId: \"" + fileId.ToString() +
+			"\"\nfilename: \"" + filename + "\"\ncustom: preserved\n";
+		auto writeText = [](const std::filesystem::path& target, const std::string& contents)
+			{
+				std::ofstream output(target, std::ios::binary | std::ios::trunc);
+				output << contents;
+				output.close();
+				Require(static_cast<bool>(output), "the test fixture should write its own files");
+			};
+		auto requireIdentity = [&]()
+			{
+				Require(document.GetFileId() == fileId && ReadText(metadataPath) == metadata,
+					"saving source content must not replace its FileId or rewrite its metadata sidecar");
+			};
+		auto requireSavedDocument = [&](const std::filesystem::path& target)
+			{
+				Require(Utils::AreYamlNodesEqual(YAML::Load(ReadText(target)), expected),
+					"successful saves must contain the complete serialized document after parsing");
+				requireIdentity();
+			};
+
+		writeText(metadataPath, metadata);
+		Require(document.SaveToFile(path.generic_string()), "saving a new source file should succeed");
+		requireSavedDocument(path);
+		writeText(path, "stale source contents");
+		Require(document.SaveToFile(path.generic_string()), "replacing an existing source file should succeed");
+		requireSavedDocument(path);
+		const std::string savedContents = ReadText(path);
+
+		std::filesystem::rename(path, backupPath);
+		Require(std::filesystem::create_directory(path), "the fixture should block the destination with a directory");
+		const auto sentinelPath = path / "keep.txt";
+		writeText(sentinelPath, "keep this directory");
+		Require(!document.SaveToFile(path.generic_string()),
+			"a failed atomic replacement must not be reported as a successful document save");
+		Require(ReadText(sentinelPath) == "keep this directory" && ReadText(backupPath) == savedContents,
+			"a blocked destination must leave the existing directory and saved source untouched");
+		requireIdentity();
+		for (const auto& entry : std::filesystem::directory_iterator(directory.Get()))
+		{
+			Require(entry.path() == path || entry.path() == metadataPath || entry.path() == backupPath,
+				"failed publication must remove its temporary sibling file");
+		}
+
+		Require(std::filesystem::remove(sentinelPath) && std::filesystem::remove(path),
+			"the fixture should remove only its own destination blocker");
+		std::filesystem::rename(backupPath, path);
+		Require(document.SaveToFile(path.generic_string()),
+			"saving should retry successfully after the destination is restored");
+		requireSavedDocument(path);
+
+		const auto parent = directory.Path("blocked-parent");
+		const auto nestedPath = parent / filename;
+		writeText(parent, "not a directory");
+		Require(!document.SaveToFile(nestedPath.generic_string()),
+			"a regular file in the parent path must be reported as a write failure");
+		Require(ReadText(parent) == "not a directory" && ReadText(path) == savedContents,
+			"a failed parent-directory creation must preserve existing files");
+		requireIdentity();
+		Require(std::filesystem::remove(parent), "the fixture should remove its own parent-path blocker");
+		Require(document.SaveToFile(nestedPath.generic_string()),
+			"saving should retry successfully once its parent path can be created");
+		requireSavedDocument(nestedPath);
+		for (const auto& entry : std::filesystem::directory_iterator(parent))
+		{
+			Require(entry.path() == nestedPath,
+				"saving source content must not create a sidecar or leave temporary files behind");
+		}
+		for (const auto& entry : std::filesystem::directory_iterator(directory.Get()))
+		{
+			Require(entry.path() == path || entry.path() == metadataPath || entry.path() == parent,
+				"successful saves and retries must not leave temporary sibling files behind");
+		}
+	}
+
+	void TestPrefabSaveReportsWriteFailures()
+	{
+		const FileId fileId = FileId::CreateNewFileId();
+		Prefab prefab(fileId);
+		prefab.Deserialize(MakePrefabNode({ static_cast<uint32_t>(-1), 0 }));
+		std::string diagnostic;
+		Require(prefab.ValidateForInstantiation(diagnostic), "the saved prefab fixture must be valid: " + diagnostic);
+		CheckSaveToFileResults(prefab, "saved.prefab");
+	}
+
+	void TestWorldSaveReportsWriteFailures()
+	{
+		PrefabTestWorld sourceWorld;
+		auto prefab = DeserializePrefab(sourceWorld, MakePrefabNode({ static_cast<uint32_t>(-1), 0 }));
+		WorldPrefabDocumentFixture document(FileId::CreateNewFileId());
+		document.AddPrefab(prefab);
+		Require(document.IsReady(), "the saved world fixture must be ready");
+		CheckSaveToFileResults(document, "saved.world");
 	}
 
 	void TestLegacyPrefabApiSymbolsRemainAddressable()
@@ -2045,6 +3507,143 @@ namespace
 		world.Clear();
 	}
 
+	void TestGameplayPrefabCopiesAllowStructureChanges()
+	{
+		constexpr uint32_t noParent = static_cast<uint32_t>(-1);
+		const InstanceId sourceRootId = DeserializeInstanceId("10010010010010010000");
+		const InstanceId sourceChildId = DeserializeInstanceId("20020020020020020000");
+		const InstanceId sourceValueId = DeserializeInstanceId("2222222222222222_20020020020020020000");
+		const InstanceId liveRootId = DeserializeInstanceId("30030030030030030000");
+		const InstanceId liveChildId = DeserializeInstanceId("40040040040040040000");
+		const InstanceId parentId = DeserializeInstanceId("50050050050050050000");
+		const FileId sourceFileId = DeserializeFileId("{11111111-2222-3333-4444-555555555555}");
+
+		for (const bool bLinkedRecord : { false, true })
+		{
+			PrefabTestWorld editor;
+			PrefabTestWorld gameplay(static_cast<EWorldBehaviourMask>(EWorldBehaviourBit::CallBeginPlay));
+			YAML::Node dependencyProperties;
+			dependencyProperties["m_dependency"]["fileId"] = "NullFileId";
+			dependencyProperties["m_dependency"]["instanceId"] = sourceValueId;
+			YAML::Node valueProperties;
+			valueProperties["m_value"] = 42.0f;
+			YAML::Node sourceNode = MakePrefabNode({ noParent, 0 });
+			sourceNode["gameObjects"][0]["instanceId"] = sourceRootId;
+			sourceNode["gameObjects"][0]["components"].push_back(0);
+			sourceNode["gameObjects"][1]["instanceId"] = sourceChildId;
+			sourceNode["gameObjects"][1]["components"].push_back(1);
+			sourceNode["components"].push_back(MakeReflectedComponent(
+				"1111111111111111_10010010010010010000", dependencyProperties));
+			sourceNode["components"].push_back(MakeReflectedComponent(sourceValueId.ToString(), valueProperties));
+			PrefabPtr sourcePrefab = DeserializePrefab(editor, sourceFileId, sourceNode);
+			const std::string sourceBefore = YAML::Dump(sourcePrefab->Serialize());
+			PrefabPtr inputPrefab = sourcePrefab;
+			WorldPrefabDocumentFixture document;
+
+			if (bLinkedRecord)
+			{
+				TMap<InstanceId, InstanceId> instanceIds;
+				instanceIds[sourceRootId] = liveRootId;
+				instanceIds[sourceChildId] = liveChildId;
+				TMap<InstanceId, YAML::Node> objectOverrides;
+				objectOverrides[sourceChildId]["name"] = "OverriddenChild";
+				objectOverrides[sourceChildId]["mobilityType"] = "Dynamic";
+				objectOverrides[sourceChildId]["position"] = glm::vec4(7.0f, 8.0f, 9.0f, 0.0f);
+				TMap<InstanceId, ReflectedData> componentOverrides;
+				YAML::Node valueOverride;
+				valueOverride["typename"] = PrefabRollbackTestComponent::GetStaticTypeInfo().Name();
+				valueOverride["overrideProperties"]["m_value"] = 99.0f;
+				componentOverrides[sourceValueId].Deserialize(valueOverride);
+				PrefabPtr linkedPrefab = PrefabPtr::Make(editor.GetAllocator(), sourceFileId);
+				std::string diagnostic;
+				Require(linkedPrefab->ConfigureLinkedInstance(sourcePrefab, instanceIds, parentId,
+					objectOverrides, componentOverrides, diagnostic),
+					"the gameplay linked fixture should accept its overrides: " + diagnostic);
+				document.AddPrefab(linkedPrefab);
+				const YAML::Node persisted = YAML::Load(YAML::Dump(document.Serialize()))["prefabs"][0];
+				inputPrefab = PrefabPtr::Make(editor.GetAllocator(), persisted["fileId"].as<FileId>());
+				Require(inputPrefab->ConfigureLinkedInstance(sourcePrefab,
+					persisted["instanceIds"].as<TMap<InstanceId, InstanceId>>(),
+					persisted["parentInstanceId"].as<InstanceId>(),
+					persisted["gameObjectOverrides"].as<TMap<InstanceId, YAML::Node>>(),
+					persisted["componentOverrides"].as<TMap<InstanceId, ReflectedData>>(), diagnostic),
+					"persisted linked data should resolve against its source: " + diagnostic);
+			}
+			const std::string documentBefore = YAML::Dump(document.Serialize());
+			const std::string inputBefore = YAML::Dump(inputPrefab->Serialize());
+
+			auto editorParent = editor.Instantiate("EditorParent", parentId);
+			auto gameplayParent = gameplay.Instantiate("GameplayParent", parentId);
+			auto editorRoot = editor.Instantiate(inputPrefab);
+			auto root = gameplay.Instantiate(inputPrefab);
+			Require(editorRoot && root && root->GetChildren().Num() == 1,
+				"both world modes should instantiate the same prefab hierarchy");
+			auto editorChild = editorRoot->GetChildren()[0];
+			auto child = root->GetChildren()[0];
+			auto dependency = root->GetComponent<PrefabRollbackTestComponent>();
+			auto value = child->GetComponent<PrefabRollbackTestComponent>();
+			Require(dependency && value && dependency->m_dependency == value,
+				"gameplay copies should resolve internal references to their live components");
+			Require(root->GetInstanceId() == (bLinkedRecord ? liveRootId : sourceRootId) &&
+				child->GetInstanceId() == (bLinkedRecord ? liveChildId : sourceChildId) &&
+				value->GetInstanceId() == InstanceId(sourceValueId.ComponentId(), child->GetInstanceId()),
+				"removing authoring links must preserve serialized object and component identities");
+			Require(value->m_value == (bLinkedRecord ? 99.0f : 42.0f),
+				"gameplay copies should retain reflected values and linked overrides");
+			if (bLinkedRecord)
+			{
+				Require(root->GetParent() == gameplayParent && editorRoot->GetParent() == editorParent &&
+					child->GetName() == "OverriddenChild" && child->GetMobilityType() == EMobilityType::Dynamic &&
+					child->GetTransformComponent().GetPosition() == glm::vec4(7.0f, 8.0f, 9.0f, 1.0f),
+					"gameplay copies should retain their external parent and game-object overrides");
+			}
+			Require(editorRoot->GetFileId() == sourceFileId && editor.IsPrefabLinked(editorChild->GetInstanceId()),
+				"the editor must retain source identity and authoring membership");
+			const PrefabInstanceLink* link = nullptr;
+			Require(!root->GetFileId() && !gameplay.IsPrefabInstanceRoot(root->GetInstanceId()) &&
+				!gameplay.IsPrefabLinked(child->GetInstanceId()) &&
+				!gameplay.TryGetPrefabInstance(root->GetInstanceId(), link) && gameplay.GetPrefabInstances().IsEmpty(),
+				"gameplay copies must not retain authoring links or stale source mappings");
+
+			auto editorValue = editorChild->GetComponent<PrefabRollbackTestComponent>();
+			Require(!editorRoot->AddComponent<PrefabRollbackTestComponent>() && !editorChild->RemoveComponent(editorValue),
+				"editor-linked instances should still reject component structure changes");
+			editorChild->SetParent(editorParent);
+			editor.DestroyImmediate(editorChild);
+			Require(editorChild && editorChild->GetParent() == editorRoot,
+				"editor-linked children should still reject reparenting and deletion");
+
+			value->m_value = -7.0f;
+			child->SetName("GameplayOnly");
+			auto added = root->AddComponent<PrefabRollbackTestComponent>();
+			Require(added && root->RemoveComponent(added) && child->RemoveComponent(value),
+				"gameplay copies should allow adding and removing components");
+			ComponentPtr rawComponent = TObjectPtr<PrefabRollbackTestComponent>::Make(gameplay.GetAllocator());
+			Require(root->AddComponentRaw(rawComponent) && root->RemoveComponent(rawComponent),
+				"gameplay copies should also allow the raw component API");
+			child->SetParent(gameplayParent);
+			Require(child->GetParent() == gameplayParent && root->GetChildren().IsEmpty(),
+				"gameplay copies should allow reparenting internal children");
+			child->SetParent(root);
+			auto addedChild = gameplay.Instantiate("GameplayChild");
+			addedChild->SetParent(root);
+			Require(addedChild->GetParent() == root,
+				"new gameplay objects should be allowed inside an instantiated hierarchy");
+			const InstanceId childId = child->GetInstanceId();
+			gameplay.DestroyImmediate(child);
+			Require(!gameplay.GetObjectByInstanceId(childId) && root->GetChildren().Num() == 1 &&
+				root->GetChildren()[0] == addedChild,
+				"destroying a gameplay prefab child should remove only that live object");
+
+			Require(sourcePrefab->GetFileId() == sourceFileId && YAML::Dump(sourcePrefab->Serialize()) == sourceBefore &&
+				YAML::Dump(inputPrefab->Serialize()) == inputBefore && YAML::Dump(document.Serialize()) == documentBefore &&
+				editorValue->m_value == (bLinkedRecord ? 99.0f : 42.0f),
+				"gameplay changes must leave source data, persisted overrides, and the editor instance untouched");
+			gameplay.Clear();
+			editor.Clear();
+		}
+	}
+
 	void TestLinkedPrefabBaselineAndSaveFailureContract()
 	{
 		constexpr uint32_t noParent = static_cast<uint32_t>(-1);
@@ -2246,9 +3845,8 @@ namespace
 		WorldPrefabDocumentFixture nonReadyDocument;
 		Require(nonReadyDocument.Serialize().IsNull(),
 			"a non-ready world document should not emit partial YAML without a diagnostic");
-		const std::filesystem::path failedSavePath =
-			std::filesystem::temp_directory_path() /
-			"sailor-linked-prefab-failed-save.world";
+		Tests::TempDirectory failedSaveDirectory("linked-prefab-failed-save");
+		const auto failedSavePath = failedSaveDirectory.Path("scene.world");
 		{
 			std::ofstream existingScene(
 				failedSavePath,
@@ -2259,7 +3857,9 @@ namespace
 				failedSavePath.generic_string()) &&
 			ReadText(failedSavePath) == "existing-scene",
 			"a failed linked world document should not overwrite a scene file");
-		std::filesystem::remove(failedSavePath);
+		Require(!nonReadyDocument.SaveToFile(failedSavePath.generic_string()) &&
+			ReadText(failedSavePath) == "existing-scene",
+			"a non-ready world document must preserve the previous scene without writing");
 
 		world.Clear();
 	}
@@ -3907,8 +5507,20 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "ComponentSlotsAreResetAndFreedOnce", TestComponentSlotsAreResetAndFreedOnce },
+		{ "EditorLifecycleNeverStartsGameplay", TestEditorLifecycleNeverStartsGameplay },
+		{ "BeginPlayAndTickMasksRemainIndependent", TestBeginPlayAndTickMasksRemainIndependent },
+		{ "PrefabBeginsAfterHydrationAndHierarchy", TestPrefabBeginsAfterHydrationAndHierarchy },
+		{ "FailedPrefabNeverBeginsGameplay", TestFailedPrefabNeverBeginsGameplay },
+		{ "BeginPlayWaitsForExternalReferences", TestBeginPlayWaitsForExternalReferences },
+		{ "PendingReferencesStayWithinPrefabInstance", TestPendingReferencesStayWithinPrefabInstance },
+		{ "BeginPlayCanChangeComponentLists", TestBeginPlayCanChangeComponentLists },
+		{ "BeginPlayCanDestroyItsOwner", TestBeginPlayCanDestroyItsOwner },
+		{ "TickAdditionsWaitForNextLifecycleFrame", TestTickAdditionsWaitForNextLifecycleFrame },
+		{ "RemovingAnotherOwnersComponentHasNoEffect", TestRemovingAnotherOwnersComponentHasNoEffect },
 		{ "EditorModelInstanceCreatesHierarchyOrFlatRenderer", TestEditorModelInstanceCreatesHierarchyOrFlatRenderer },
 		{ "PreferredEditorInstanceIdsArePreserved", TestPreferredEditorInstanceIdsArePreserved },
+		{ "DestroyHierarchyUnlinksSurvivingParent", TestDestroyHierarchyUnlinksSurvivingParent },
+		{ "DestroyLinkedRootUnlinksExternalParent", TestDestroyLinkedRootUnlinksExternalParent },
 		{ "TransformParentCleanupPreservesPendingReparent", TestTransformParentCleanupPreservesPendingReparent },
 		{ "EditorKeepWorldReparentUsesCurrentTransforms", TestEditorKeepWorldReparentUsesCurrentTransforms },
 		{ "EditorKeepWorldReparentRejectsSingularParentWithoutMutation", TestEditorKeepWorldReparentRejectsSingularParentWithoutMutation },
@@ -3919,6 +5531,8 @@ int main()
 		{ "MeshBatchesWithSharedOwnerAndRegistrationHoles", TestMeshBatchesWithSharedOwnerAndRegistrationHoles },
 		{ "FrameZeroMeshPublicationStaysStable", TestFrameZeroMeshPublicationStaysStable },
 		{ "StaticMeshLodSelectionUsesScreenCoverage", TestStaticMeshLodSelectionUsesScreenCoverage },
+		{ "MeshLodSettingsNormalizeBeforeInitialization", TestMeshLodSettingsNormalizeBeforeInitialization },
+		{ "MeshLodChangesPublishWithoutTransformEdits", TestMeshLodChangesPublishWithoutTransformEdits },
 		{ "LocalLightShadowContract", TestLocalLightShadowContract },
 		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },
 		{ "CsmShadowTargetFormatTracksShadowMode", TestCsmShadowTargetFormatTracksShadowMode },
@@ -3926,15 +5540,25 @@ int main()
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },
 		{ "AnimationRelayoutMarksEveryOwnedMeshDirty", TestAnimationRelayoutMarksEveryOwnedMeshDirty },
+		{ "AnimationRemovalsPublishOneCompactedPalette", TestAnimationRemovalsPublishOneCompactedPalette },
+		{ "AnimationLayoutRefreshesOnceAfterSkeletonChanges", TestAnimationLayoutRefreshesOnceAfterSkeletonChanges },
+		{ "AnimationLayoutRecoversCapacityAndLastRemoval", TestAnimationLayoutRecoversCapacityAndLastRemoval },
+		{ "WorldClearBatchesHierarchyAndStorageCleanup", TestWorldClearBatchesHierarchyAndStorageCleanup },
+		{ "WorldClearDestroysDescendantsReparentedByEndPlay", TestWorldClearDestroysDescendantsReparentedByEndPlay },
+		{ "WorldClearUnlinksAllPrefabsBeforeCallbacks", TestWorldClearUnlinksAllPrefabsBeforeCallbacks },
+		{ "WorldClearRetainsPublishedAnimationAndLandscape", TestWorldClearRetainsPublishedAnimationAndLandscape },
 		{ "SparseLightSlotInvalidationAndReuse", TestSparseLightSlotInvalidationAndReuse },
 		{ "RemovingComponentCancelsPendingDependencyResolution", TestRemovingComponentCancelsPendingDependencyResolution },
 		{ "ExplicitNullMeshReferenceDoesNotRemainPending", TestExplicitNullMeshReferenceDoesNotRemainPending },
 		{ "EditorUpdateReplacesStaleMeshDependencyResolution", TestEditorUpdateReplacesStaleMeshDependencyResolution },
 		{ "EditorUpdatePreservesNewUnresolvedDependency", TestEditorUpdatePreservesNewUnresolvedDependency },
 		{ "LegacyPrefabApiSymbolsRemainAddressable", TestLegacyPrefabApiSymbolsRemainAddressable },
+		{ "PrefabSaveReportsWriteFailures", TestPrefabSaveReportsWriteFailures },
+		{ "WorldSaveReportsWriteFailures", TestWorldSaveReportsWriteFailures },
 		{ "PrefabComponentReferencesFollowRemappedOwners", TestPrefabComponentReferencesFollowRemappedOwners },
 		{ "ForcedPrefabIdsRemapInternalAndPreserveExternalReferences", TestForcedPrefabIdsRemapInternalAndPreserveExternalReferences },
 		{ "LinkedPrefabPersistenceAndWorldContract", TestLinkedPrefabPersistenceAndWorldContract },
+		{ "GameplayPrefabCopiesAllowStructureChanges", TestGameplayPrefabCopiesAllowStructureChanges },
 		{ "LinkedPrefabBaselineAndSaveFailureContract", TestLinkedPrefabBaselineAndSaveFailureContract },
 		{ "LinkedPrefabSourceStructureEvolutionContract", TestLinkedPrefabSourceStructureEvolutionContract },
 		{ "LinkedPrefabMembershipFollowsEvolvedSourceMapping", TestLinkedPrefabMembershipFollowsEvolvedSourceMapping },

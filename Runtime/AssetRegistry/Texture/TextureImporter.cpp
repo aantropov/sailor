@@ -184,6 +184,34 @@ bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sa
 
 namespace
 {
+	TextureImporter::CpuDecodeRequest DescribeCpuTexture(const TextureAssetInfo& assetInfo)
+	{
+		TextureImporter::CpuDecodeRequest request;
+		request.m_fileId = assetInfo.GetFileId();
+		request.m_filepath = assetInfo.GetAssetFilepath();
+		request.m_glbTextureIndex = assetInfo.GetGlbTextureIndex();
+		request.m_bDecodeAsFloat = RHI::IsFloatFormat(assetInfo.GetFormat());
+		request.m_bGenerateMips = assetInfo.ShouldGenerateMips();
+		return request;
+	}
+
+	bool HasCurrentTextureSources(const TextureImporter::CpuDecodeRequest& request)
+	{
+		if (request.m_sourceRevisions.IsEmpty())
+		{
+			return false;
+		}
+		for (const auto& source : request.m_sourceRevisions)
+		{
+			FileRevision current;
+			if (!Utils::TryGetFileRevision(source.m_first, current) || current != *source.m_second)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	int32_t ResolveGltfTextureImageIndex(const tinygltf::Texture& texture)
 	{
 		if (texture.source >= 0)
@@ -283,6 +311,94 @@ namespace
 	}
 }
 
+bool TextureImporter::CaptureCpuDecodeRequest(const TextureAssetInfo& assetInfo,
+	CpuDecodeRequest& outRequest)
+{
+	outRequest = {};
+	auto request = DescribeCpuTexture(assetInfo);
+	FileRevision revision;
+	if (!Utils::TryGetFileRevision(request.m_filepath, revision))
+	{
+		return false;
+	}
+	request.m_sourceRevisions.Add(request.m_filepath, revision);
+	if (request.m_glbTextureIndex >= 0 && Utils::GetFileExtension(request.m_filepath) == "gltf")
+	{
+		// TinyGLTF reads external images and buffers while extracting an image.
+		// Capture their revisions too; the document timestamp alone is insufficient.
+		std::ifstream input(request.m_filepath, std::ios::binary);
+		const auto document = nlohmann::json::parse(input, nullptr, false);
+		if (document.is_discarded() || !document.is_object())
+		{
+			return false;
+		}
+		const auto folder = std::filesystem::path(request.m_filepath).parent_path();
+		for (const char* collection : { "buffers", "images" })
+		{
+			const auto entries = document.find(collection);
+			if (entries == document.end() || !entries->is_array())
+			{
+				continue;
+			}
+			for (const auto& entry : *entries)
+			{
+				if (!entry.is_object())
+				{
+					continue;
+				}
+				const auto uri = entry.find("uri");
+				if (uri == entry.end() || !uri->is_string())
+				{
+					continue;
+				}
+				const auto encoded = uri->get<std::string>();
+				if (encoded.empty() || encoded.starts_with("data:"))
+				{
+					continue;
+				}
+				std::string decoded;
+				if (!tinygltf::URIDecode(encoded, &decoded, nullptr))
+				{
+					return false;
+				}
+				const auto path = (folder / decoded).lexically_normal().string();
+				if (!Utils::TryGetFileRevision(path, revision))
+				{
+					return false;
+				}
+				request.m_sourceRevisions[path] = revision;
+			}
+		}
+	}
+	if (!HasCurrentTextureSources(request))
+	{
+		return false;
+	}
+	outRequest = std::move(request);
+	return true;
+}
+
+bool TextureImporter::DecodeTextureCpu(const CpuDecodeRequest& request, ByteCode& decodedData,
+	int32_t& width, int32_t& height, uint32_t& mipLevels)
+{
+	decodedData.Clear();
+	width = height = 0;
+	mipLevels = 1u;
+	if (!HasCurrentTextureSources(request))
+	{
+		return false;
+	}
+	const bool decoded = ImportTexture(request, decodedData, width, height, mipLevels);
+	if (!decoded || !HasCurrentTextureSources(request))
+	{
+		decodedData.Clear();
+		width = height = 0;
+		mipLevels = 1u;
+		return false;
+	}
+	return true;
+}
+
 bool Texture::IsReady() const
 {
 	return m_rhiTexture && m_rhiTexture->IsReady();
@@ -320,24 +436,16 @@ TextureImporter::~TextureImporter()
 
 TexturePtr TextureImporter::GetLoadedTexture(FileId uid)
 {
-	// Check loaded materials
-	auto it = m_loadedTextures.Find(uid);
-	if (it != m_loadedTextures.end())
-	{
-		return (*it).m_second;
-	}
-	return TexturePtr();
+	TexturePtr texture;
+	m_loadedTextures.TryGet(uid, texture);
+	return texture;
 }
 
 Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(FileId uid)
 {
-	auto it = m_promises.Find(uid);
-	if (it != m_promises.end())
-	{
-		return (*it).m_second;
-	}
-
-	return Tasks::TaskPtr<TexturePtr>();
+	Tasks::TaskPtr<TexturePtr> promise;
+	m_promises.TryGet(uid, promise);
+	return promise;
 }
 
 TextureImporter::TextureSamplersSnapshot TextureImporter::GetTextureSamplersSnapshot(const TVector<uint32_t>& requestedIndices) const
@@ -531,116 +639,120 @@ bool TextureImporter::IsTextureLoaded(FileId uid) const
 
 bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
 {
-	SAILOR_PROFILE_FUNCTION();
-
-	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
+	if (auto* assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
-		const bool bDecodeAsFloat = RHI::IsFloatFormat(assetInfo->GetFormat());
+		return ImportTexture(DescribeCpuTexture(*assetInfo), decodedData, width, height, mipLevels);
+	}
+	return false;
+}
 
-		if (assetInfo->StoredInGlb())
+bool TextureImporter::ImportTexture(const CpuDecodeRequest& request, ByteCode& decodedData,
+	int32_t& width, int32_t& height, uint32_t& mipLevels)
+{
+	SAILOR_PROFILE_FUNCTION();
+	const bool bDecodeAsFloat = request.m_bDecodeAsFloat;
+
+	if (request.m_glbTextureIndex != -1)
+	{
+		const std::string extension =
+			Utils::GetFileExtension(request.m_filepath.c_str());
+		const bool bIsGlb = extension == "glb";
+		const bool bIsGltf = extension == "gltf";
+
+		if (!bIsGlb && !bIsGltf)
 		{
-			const std::string extension =
-				Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str());
-			const bool bIsGlb = extension == "glb";
-			const bool bIsGltf = extension == "gltf";
-
-			if ((!bIsGlb && !bIsGltf) ||
-				assetInfo->GetGlbTextureIndex() == -1)
-			{
-				return false;
-			}
-
-			ByteCode rawBuffer;
-			std::string extractionDiagnostic;
-			const bool bExtracted = bIsGlb ?
-				ExtractTextureFromGLB(
-					assetInfo->GetAssetFilepath().c_str(),
-					assetInfo->GetGlbTextureIndex(),
-					rawBuffer) :
-				ExtractTextureFromGltf(
-					assetInfo->GetAssetFilepath(),
-					assetInfo->GetGlbTextureIndex(),
-					rawBuffer,
-					extractionDiagnostic);
-			if (!bExtracted && extractionDiagnostic.empty())
-			{
-				extractionDiagnostic = bIsGlb ?
-					"GLB extraction failed" :
-					"glTF extraction failed";
-			}
-
-			if (bExtracted)
-			{
-				int32_t texChannels = 0;
-				const std::string filepath = assetInfo->GetAssetFilepath();
-
-				if (bDecodeAsFloat)
-				{
-					if (float* pPixels = stbi_loadf_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
-					{
-						const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
-						decodedData.Resize(imageSize);
-						memcpy(decodedData.GetData(), pPixels, imageSize);
-
-						mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-						stbi_image_free(pPixels);
-						return true;
-					}
-				}
-				else if (stbi_uc* pPixels = stbi_load_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
-				{
-					const uint32_t imageSize = (uint32_t)width * height * 4;
-					decodedData.Resize(imageSize);
-					memcpy(decodedData.GetData(), pPixels, imageSize);
-
-					mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-					stbi_image_free(pPixels);
-					return true;
-				}
-			}
-			else
-			{
-				SAILOR_LOG_ERROR(
-					"Cannot extract texture %d from model source '%s' for asset %s: %s",
-					assetInfo->GetGlbTextureIndex(),
-					assetInfo->GetAssetFilepath().c_str(),
-					uid.ToString().c_str(),
-					extractionDiagnostic.c_str());
-			}
-
 			return false;
 		}
-		else
+
+		ByteCode rawBuffer;
+		std::string extractionDiagnostic;
+		const bool bExtracted = bIsGlb ?
+			ExtractTextureFromGLB(
+				request.m_filepath.c_str(),
+				request.m_glbTextureIndex,
+				rawBuffer) :
+			ExtractTextureFromGltf(
+				request.m_filepath,
+				request.m_glbTextureIndex,
+				rawBuffer,
+				extractionDiagnostic);
+		if (!bExtracted && extractionDiagnostic.empty())
+		{
+			extractionDiagnostic = bIsGlb ?
+				"GLB extraction failed" :
+				"glTF extraction failed";
+		}
+
+		if (bExtracted)
 		{
 			int32_t texChannels = 0;
-			const std::string filepath = assetInfo->GetAssetFilepath();
+			const std::string filepath = request.m_filepath;
 
 			if (bDecodeAsFloat)
 			{
-				if (float* pPixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+				if (float* pPixels = stbi_loadf_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
 				{
 					const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
 					decodedData.Resize(imageSize);
 					memcpy(decodedData.GetData(), pPixels, imageSize);
 
-					mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+					mipLevels = request.m_bGenerateMips ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
 					stbi_image_free(pPixels);
 					return true;
 				}
 			}
-			else if (stbi_uc* pPixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+			else if (stbi_uc* pPixels = stbi_load_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
 			{
 				const uint32_t imageSize = (uint32_t)width * height * 4;
 				decodedData.Resize(imageSize);
 				memcpy(decodedData.GetData(), pPixels, imageSize);
 
-				mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+				mipLevels = request.m_bGenerateMips ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
 				stbi_image_free(pPixels);
 				return true;
 			}
 		}
-	}
+		else
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot extract texture %d from model source '%s' for asset %s: %s",
+				request.m_glbTextureIndex,
+				request.m_filepath.c_str(),
+				request.m_fileId.ToString().c_str(),
+				extractionDiagnostic.c_str());
+		}
 
+		return false;
+	}
+	else
+	{
+		int32_t texChannels = 0;
+		const std::string filepath = request.m_filepath;
+
+		if (bDecodeAsFloat)
+		{
+			if (float* pPixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+			{
+				const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
+				decodedData.Resize(imageSize);
+				memcpy(decodedData.GetData(), pPixels, imageSize);
+
+				mipLevels = request.m_bGenerateMips ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+				stbi_image_free(pPixels);
+				return true;
+			}
+		}
+		else if (stbi_uc* pPixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+		{
+			const uint32_t imageSize = (uint32_t)width * height * 4;
+			decodedData.Resize(imageSize);
+			memcpy(decodedData.GetData(), pPixels, imageSize);
+
+			mipLevels = request.m_bGenerateMips ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+			stbi_image_free(pPixels);
+			return true;
+		}
+	}
 	return false;
 }
 

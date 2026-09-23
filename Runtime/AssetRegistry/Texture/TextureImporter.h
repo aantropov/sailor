@@ -2,6 +2,7 @@
 #include "Core/Defines.h"
 #include <string>
 #include "Containers/Vector.h"
+#include "Containers/Map.h"
 #include "Containers/ConcurrentMap.h"
 #include "Core/SpinLock.h"
 #include "Core/Submodule.h"
@@ -78,6 +79,16 @@ namespace Sailor
 
 		using ByteCode = TVector<uint8_t>;
 
+		struct CpuDecodeRequest
+		{
+			FileId m_fileId{};
+			std::string m_filepath;
+			int32_t m_glbTextureIndex = -1;
+			bool m_bDecodeAsFloat = false;
+			bool m_bGenerateMips = false;
+			TMap<std::string, FileRevision> m_sourceRevisions;
+		};
+
 		static constexpr RHI::ETextureUsageFlags DefaultTextureUsage =
 			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
 			RHI::ETextureUsageBit::TextureTransferDst_Bit |
@@ -93,6 +104,10 @@ namespace Sailor
 		SAILOR_API bool LoadTexture_Immediate(FileId uid, TexturePtr& outTexture);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> LoadTexture(FileId uid, TexturePtr& outTexture);
 		SAILOR_API static bool DecodeTextureCpu(FileId uid, ByteCode& decodedData,
+			int32_t& width, int32_t& height, uint32_t& mipLevels);
+		SAILOR_API static bool CaptureCpuDecodeRequest(const TextureAssetInfo& assetInfo,
+			CpuDecodeRequest& outRequest);
+		SAILOR_API static bool DecodeTextureCpu(const CpuDecodeRequest& request, ByteCode& decodedData,
 			int32_t& width, int32_t& height, uint32_t& mipLevels);
 		SAILOR_API TexturePtr GetLoadedTexture(FileId uid);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> GetLoadPromise(FileId uid);
@@ -124,5 +139,7 @@ namespace Sailor
 		bool UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr texture, uint32_t index);
 		SAILOR_API bool IsTextureLoaded(FileId uid) const;
 		SAILOR_API static bool ImportTexture(FileId uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);
+		static bool ImportTexture(const CpuDecodeRequest& request, ByteCode& decodedData,
+			int32_t& width, int32_t& height, uint32_t& mipLevels);
 	};
 }

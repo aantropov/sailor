@@ -237,7 +237,7 @@ namespace Sailor
 			}
 		};
 
-		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler);
+		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler, AssetRegistry* assetRegistry = nullptr);
 		SAILOR_API virtual ~ModelImporter() override;
 
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
@@ -266,7 +266,7 @@ namespace Sailor
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Repeat,
 			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 			bool bShouldKeepCpuBuffers = false);
-		SAILOR_API bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
+		SAILOR_API static bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& assetRegistry, bool& outChanged);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo,
 			TVector<MeshContext>& outParsedMeshes,
 			Math::AABB& outBoundsAabb,
@@ -298,5 +298,15 @@ namespace Sailor
 		TConcurrentMap<FileId, Tasks::ITaskPtr> m_generatedMaterialMigrationTasks;
 
 		ObjectAllocatorPtr m_allocator;
+
+	private:
+		bool UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWasExpired);
+		SAILOR_API Tasks::TaskPtr<ModelPtr> LoadModel(FileId uid, ModelAssetInfoPtr assetInfo,
+			Tasks::Scheduler& scheduler, ModelPtr& outModel);
+		SAILOR_API bool LoadModel_Immediate(FileId uid, ModelAssetInfoPtr assetInfo,
+			Tasks::Scheduler& scheduler, ModelPtr& outModel);
+		AssetRegistry* m_assetRegistry = nullptr;
+
+		friend class ModelImporterTestAccess;
 	};
 }

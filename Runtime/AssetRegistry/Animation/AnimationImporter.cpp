@@ -1,5 +1,6 @@
 #include "AnimationImporter.h"
 #include "AnimationClipSampler.h"
+#include "AnimationPose.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "Containers/Hash.h"
@@ -488,13 +489,19 @@ bool AnimationImporter::LoadAnimation_Immediate(FileId uid, AnimationPtr& outAni
 
 bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 {
+	return ImportAnimation(uid,
+		App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AnimationAssetInfoPtr>(uid), outAnimation);
+}
+
+bool AnimationImporter::ImportAnimation(FileId uid, AnimationAssetInfoPtr info, AnimationPtr& outAnimation)
+{
 	AnimationPtr anim = outAnimation;
 	if (!anim)
 	{
 		anim = AnimationPtr::Make(m_allocator, uid);
 	}
 
-	if (auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AnimationAssetInfoPtr>(uid))
+	if (info)
 	{
 		tinygltf::Model gltfModel;
 		std::string err, warn;
@@ -630,64 +637,21 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				base[i] = Math::Transform::FromMatrix(nodeMatrix);
 			}
 
-			auto composeGlobalTransforms = [numNodes, &parents](
-				const TVector<Math::Transform>& local,
-				TVector<Math::Transform>& global)
-			{
-				global.Resize(numNodes);
-				TVector<uint8_t> composeState(numNodes);
-				auto compose = [&](auto&& self, size_t nodeIndex) -> bool
-				{
-					if (composeState[nodeIndex] == 2)
-					{
-						return IsTransformFinite(global[nodeIndex]);
-					}
-					if (composeState[nodeIndex] == 1)
-					{
-						global[nodeIndex] = local[nodeIndex];
-						composeState[nodeIndex] = 2;
-						return false;
-					}
-
-					composeState[nodeIndex] = 1;
-					Math::Transform composed = local[nodeIndex];
-					const int32_t parentIndex = parents[nodeIndex];
-					if (parentIndex >= 0 && self(self, static_cast<size_t>(parentIndex)))
-					{
-						const Math::Transform& parent = global[static_cast<size_t>(parentIndex)];
-						composed.m_position = parent.TransformPosition(composed.m_position);
-						composed.m_rotation = parent.m_rotation * composed.m_rotation;
-						composed.m_scale.x *= parent.m_scale.x;
-						composed.m_scale.y *= parent.m_scale.y;
-						composed.m_scale.z *= parent.m_scale.z;
-					}
-
-					global[nodeIndex] = IsTransformFinite(composed) ? composed : local[nodeIndex];
-					composeState[nodeIndex] = 2;
-					return IsTransformFinite(global[nodeIndex]);
-				};
-
-				for (size_t nodeIndex = 0; nodeIndex < numNodes; ++nodeIndex)
-				{
-					compose(compose, nodeIndex);
-				}
-			};
-
 			auto buildLocalBonePose = [&gltfSkin, &parentBoneIndices](
-				const TVector<Math::Transform>& global,
+				const TVector<glm::mat4>& global,
 				TVector<Math::Transform>& outPose,
 				size_t poseOffset)
 			{
 				for (size_t boneIndex = 0; boneIndex < parentBoneIndices.Num(); ++boneIndex)
 				{
 					const size_t nodeIndex = static_cast<size_t>(gltfSkin.joints[boneIndex]);
-					glm::mat4 localMatrix = global[nodeIndex].Matrix();
+					glm::mat4 localMatrix = global[nodeIndex];
 					const int32_t parentBoneIndex = parentBoneIndices[boneIndex];
 					if (parentBoneIndex >= 0)
 					{
 						const size_t parentNodeIndex = static_cast<size_t>(
 							gltfSkin.joints[static_cast<size_t>(parentBoneIndex)]);
-						localMatrix = glm::inverse(global[parentNodeIndex].Matrix()) * localMatrix;
+						localMatrix = glm::inverse(global[parentNodeIndex]) * localMatrix;
 					}
 					Math::Transform localTransform = Math::AllFinite(localMatrix) ?
 						Math::Transform::FromMatrix(localMatrix) : Math::Transform::Identity;
@@ -696,10 +660,15 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				}
 			};
 
-			TVector<Math::Transform> baseGlobal;
-			composeGlobalTransforms(base, baseGlobal);
+			// Keep shear until each joint is expressed relative to its parent joint.
+			TVector<glm::mat4> global;
+			TVector<uint8_t> composeState;
+			if (!AnimationPose::ComposeLocalPose(base, parents, global, composeState))
+			{
+				return false;
+			}
 			TVector<Math::Transform> restPose(numBones);
-			buildLocalBonePose(baseGlobal, restPose, 0);
+			buildLocalBonePose(global, restPose, 0);
 
 			TVector<PreparedAnimationChannel> preparedChannels;
 			preparedChannels.Reserve(gltfAnim.channels.size());
@@ -862,18 +831,19 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 			const float samplingFps = animationDuration > 0.0f ?
 				static_cast<float>(numIntervals) / animationDuration : TargetSamplingFps;
 
+			TVector<Math::Transform> local;
 			for (size_t f = 0; f < numFrames; ++f)
 			{
 				const float sampleTime = (std::min)(
 					static_cast<float>(f) / samplingFps,
 					animationDuration);
-				TVector<Math::Transform> local(base);
+				local = base;
 				for (const auto& channel : preparedChannels)
 				{
 					Math::Transform& target = local[channel.m_targetNode];
 					if (channel.m_target == EAnimationTarget::Rotation)
 					{
-						AnimationClipSampler::SampleRotation(
+						AnimationClipSampler::SampleRotationValidated(
 							channel.m_timestamps,
 							channel.m_values,
 							channel.m_interpolation,
@@ -883,7 +853,7 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 					else
 					{
 						glm::vec4 value;
-						if (AnimationClipSampler::SampleVector(
+						if (AnimationClipSampler::SampleVectorValidated(
 							channel.m_timestamps,
 							channel.m_values,
 							channel.m_interpolation,
@@ -903,8 +873,10 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 					}
 				}
 
-				TVector<Math::Transform> global;
-				composeGlobalTransforms(local, global);
+				if (!AnimationPose::ComposeLocalPose(local, parents, global, composeState))
+				{
+					return false;
+				}
 				buildLocalBonePose(global, framesData, f * numBones);
 			}
 

@@ -17,6 +17,14 @@ namespace Sailor::Raytracing
 			const glm::vec3& fallbackEnvironment = glm::vec3(0.03f),
 			const PathTracer::ScenePreparationProgressCallback& progress = {},
 			const PathTracer::ScenePreparationWarningCallback& warning = {});
+		bool InitializeSnapshot(
+			const TVector<PathTracer::TLASInstance>& instances,
+			const PathTracer::MaterialSnapshots& materials,
+			const TVector<LightProxy>& lights,
+			const GIProbesBakeSettings& settings,
+			const glm::vec3& fallbackEnvironment = glm::vec3(0.03f),
+			const PathTracer::ScenePreparationProgressCallback& progress = {},
+			const PathTracer::ScenePreparationWarningCallback& warning = {});
 
 		void SetEnvironmentLinear(
 			const TVector<glm::vec4>& image,
@@ -52,6 +60,16 @@ namespace Sailor::Raytracing
 			std::string& outDiagnostic) const override;
 
 	private:
+		bool InitializeInternal(
+			const TVector<PathTracer::TLASInstance>& instances,
+			const TVector<MaterialPtr>& runtimeMaterials,
+			const PathTracer::MaterialSnapshots* snapshotMaterials,
+			const TVector<LightProxy>& lights,
+			const GIProbesBakeSettings& settings,
+			const glm::vec3& fallbackEnvironment,
+			const PathTracer::ScenePreparationProgressCallback& progress,
+			const PathTracer::ScenePreparationWarningCallback& warning);
+
 		PathTracer m_pathTracer{};
 		PathTracer::Params m_params{};
 		bool m_bInitialized = false;

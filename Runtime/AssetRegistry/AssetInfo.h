@@ -53,7 +53,7 @@ namespace Sailor
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
-		SAILOR_API virtual void SaveMetaFile();
+		SAILOR_API virtual bool SaveMetaFile();
 		SAILOR_API virtual IAssetInfoHandler* GetHandler();
 
 	protected:
@@ -85,6 +85,8 @@ namespace Sailor
 	class SAILOR_API IAssetInfoHandlerListener
 	{
 	public:
+		// Listeners persist intentional metadata changes and acknowledge required
+		// processing through AssetRegistry; notification alone does not save metadata.
 		// bWasExpired means that the source or metadata changed since the last
 		// acknowledged processing watermark, or that no watermark exists yet.
 		// Importers refresh loaded resources here.

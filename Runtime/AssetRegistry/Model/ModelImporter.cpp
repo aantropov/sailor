@@ -2,6 +2,7 @@
 #include "GltfImporterUtils.h"
 
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelLodGeneration.h"
 #include "ModelAssetInfo.h"
@@ -18,7 +19,8 @@
 
 using namespace Sailor;
 
-ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler)
+ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler, AssetRegistry* assetRegistry) :
+	m_assetRegistry(assetRegistry)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
@@ -53,55 +55,9 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
 	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
-	auto areGeneratedAssetsValid = [](const TVector<FileId>& fileIds, bool bRequireUniqueFileIds)
-	{
-		AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-		if (assetRegistry == nullptr)
-		{
-			return false;
-		}
-
-		TSet<FileId> uniqueFileIds;
-		for (const FileId& fileId : fileIds)
-		{
-			if (!fileId || (bRequireUniqueFileIds && uniqueFileIds.Contains(fileId)) ||
-				assetRegistry->GetAssetInfoPtr(fileId) == nullptr)
-			{
-				return false;
-			}
-			uniqueFileIds.Insert(fileId);
-		}
-		return true;
-	};
-
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
-		if (modelAssetInfo->IsWritable())
-		{
-			const TVector<FileId>& materials = modelAssetInfo->GetDefaultMaterials();
-			const bool bMaterialsNeedRepair =
-				materials.Num() > 0 && !areGeneratedAssetsValid(materials, modelAssetInfo->ShouldBatchByMaterial());
-			const bool bShouldRegenerateMaterials = modelAssetInfo->ShouldGenerateMaterials() &&
-													((bWasExpired && materials.Num() == 0) || bMaterialsNeedRepair);
-			if (bShouldRegenerateMaterials && GenerateMaterialAssets(modelAssetInfo))
-			{
-				assetInfo->SaveMetaFile();
-			}
-			else if (modelAssetInfo->ShouldGenerateMaterials() && bWasExpired && materials.Num() > 0 &&
-					 !bMaterialsNeedRepair)
-			{
-				UpdateGeneratedMaterialProperties(modelAssetInfo);
-			}
-
-			const TVector<FileId>& animations = modelAssetInfo->GetAnimations();
-			const bool bAnimationsNeedRepair = animations.Num() > 0 && !areGeneratedAssetsValid(animations, true);
-			if (((bWasExpired && animations.Num() == 0) || bAnimationsNeedRepair) &&
-				GenerateAnimationAssets(modelAssetInfo))
-			{
-				assetInfo->SaveMetaFile();
-			}
-		}
-
+		UpdateGeneratedAssets(modelAssetInfo, bWasExpired);
 		if (bWasExpired)
 		{
 			GenerateFingerprintAsync(modelAssetInfo);
@@ -111,27 +67,93 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
-	ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo);
-	if (!modelAssetInfo)
+	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
-		return;
+		UpdateGeneratedAssets(modelAssetInfo, true);
+		GenerateFingerprintAsync(modelAssetInfo);
+	}
+}
+
+bool ModelImporter::UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWasExpired)
+{
+	if (!assetInfo->IsWritable())
+	{
+		return true;
 	}
 
-	if (modelAssetInfo->IsWritable())
+	AssetRegistry& assetRegistry = *(m_assetRegistry ? m_assetRegistry : App::GetSubmodule<AssetRegistry>());
+	auto areGeneratedAssetsValid = [&assetRegistry](const TVector<FileId>& fileIds, bool bRequireUniqueFileIds)
 	{
-		if (modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0 &&
-			GenerateMaterialAssets(modelAssetInfo))
+		TSet<FileId> uniqueFileIds;
+		for (const FileId& fileId : fileIds)
 		{
-			assetInfo->SaveMetaFile();
+			if (!fileId || (bRequireUniqueFileIds && uniqueFileIds.Contains(fileId)) ||
+				assetRegistry.GetAssetInfoPtr(fileId) == nullptr)
+			{
+				return false;
+			}
+			uniqueFileIds.Insert(fileId);
 		}
+		return true;
+	};
 
-		if (modelAssetInfo->GetAnimations().Num() == 0 && GenerateAnimationAssets(modelAssetInfo))
-		{
-			assetInfo->SaveMetaFile();
-		}
+	const TVector<FileId>& materials = assetInfo->GetDefaultMaterials();
+	const bool bMaterialsNeedRepair = !materials.IsEmpty() &&
+		!areGeneratedAssetsValid(materials, assetInfo->ShouldBatchByMaterial());
+	const bool bGenerateMaterials = assetInfo->ShouldGenerateMaterials() &&
+		((bWasExpired && materials.IsEmpty()) || bMaterialsNeedRepair);
+	const bool bUpdateMaterials = assetInfo->ShouldGenerateMaterials() && bWasExpired &&
+		!materials.IsEmpty() && !bMaterialsNeedRepair;
+
+	const TVector<FileId>& animations = assetInfo->GetAnimations();
+	bool bAnimationsNeedRepair = !areGeneratedAssetsValid(animations, true);
+	for (const FileId& fileId : animations)
+	{
+		const auto* animation = assetRegistry.GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
+		std::error_code error;
+		bAnimationsNeedRepair |= animation == nullptr ||
+			!std::filesystem::is_regular_file(animation->GetMetaFilepath(), error);
+	}
+	const bool bGenerateAnimations = bWasExpired || bAnimationsNeedRepair;
+	if (!bGenerateMaterials && !bUpdateMaterials && !bGenerateAnimations)
+	{
+		return true;
 	}
 
-	GenerateFingerprintAsync(modelAssetInfo);
+	const auto token = assetRegistry.BeginAssetProcessing(assetInfo);
+	if (!token)
+	{
+		return false;
+	}
+
+	TVector<FileId> previousMaterials = materials;
+	TVector<FileId> previousAnimations = animations;
+	bool bSucceeded = true;
+	if (bGenerateMaterials)
+	{
+		bSucceeded = GenerateMaterialAssets(assetInfo);
+	}
+	else if (bUpdateMaterials)
+	{
+		bSucceeded = UpdateGeneratedMaterialProperties(assetInfo);
+	}
+	bool bAnimationsChanged = false;
+	if (bSucceeded && bGenerateAnimations)
+	{
+		bSucceeded = GenerateAnimationAssets(assetInfo, assetRegistry, bAnimationsChanged);
+	}
+	if (bSucceeded && (previousMaterials != assetInfo->GetDefaultMaterials() || bAnimationsChanged))
+	{
+		bSucceeded = assetInfo->SaveMetaFile();
+	}
+	if (!bSucceeded)
+	{
+		assetInfo->GetDefaultMaterials() = std::move(previousMaterials);
+		assetInfo->GetAnimations() = std::move(previousAnimations);
+	}
+
+	assetRegistry.CompleteAssetProcessing(token, bSucceeded);
+	return bSucceeded;
 }
 
 void ModelImporter::PopulateModelSceneHierarchy(Model& model, TVector<GltfImporterUtils::SceneNode>& sourceNodes)
@@ -178,25 +200,47 @@ void ModelImporter::PopulateModelSceneHierarchy(Model& model, TVector<GltfImport
 
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
 {
+	return LoadModel(uid, App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid),
+		*App::GetSubmodule<Tasks::Scheduler>(), outModel);
+}
+
+Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelAssetInfoPtr pAssetInfo,
+	Tasks::Scheduler& scheduler, ModelPtr& outModel)
+{
 	SAILOR_PROFILE_FUNCTION();
-	ModelAssetInfoPtr pAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid);
 
 	// Check promises first
 	auto& promise = m_promises.At_Lock(uid, nullptr);
 	auto& loadedModel = m_loadedModels.At_Lock(uid, ModelPtr());
 
+	if (promise && !promise->IsFinished())
+	{
+		// The RHI task may still be writing the model, including its CPU meshes.
+		outModel = loadedModel;
+		auto result = promise;
+		m_loadedModels.Unlock(uid);
+		m_promises.Unlock(uid);
+		return result;
+	}
+	if (promise && !promise->GetResult())
+	{
+		loadedModel = nullptr;
+		promise = nullptr;
+	}
+
 	// Check loaded assets
 	if (loadedModel)
 	{
 		const bool bNeedCpuBuffers = pAssetInfo && pAssetInfo->ShouldKeepCpuBuffers() && !loadedModel->HasCpuMeshes();
-		if (bNeedCpuBuffers && !promise)
+		if (bNeedCpuBuffers)
 		{
 			loadedModel = nullptr;
+			promise = nullptr;
 		}
 		else
 		{
 			outModel = loadedModel;
-			auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel);
+			auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel, &scheduler);
 
 			m_loadedModels.Unlock(uid);
 			m_promises.Unlock(uid);
@@ -228,7 +272,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 			bool m_bShouldGenerateBLAS = false;
 		};
 
-		auto loadDataTask = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
+		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>(scheduler, "Load model",
 			[pAssetInfo, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
@@ -265,14 +309,13 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 				return pData;
 			});
 		auto migrationTask = loadDataTask->Then(
-			[this, pAssetInfo, uid](TSharedPtr<Data> pData)
+			[this, pAssetInfo](TSharedPtr<Data> pData)
 			{
 				if (pData->m_bIsImported)
 				{
 					UpdateGeneratedMaterialPropertiesOnDemand(pAssetInfo, pData->m_gltfModel);
 				}
 				pData->m_gltfModel = tinygltf::Model();
-				m_generatedMaterialMigrationTasks.Remove(uid);
 			},
 			"Migrate generated model materials",
 			EThreadType::Main);
@@ -393,7 +436,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 							pModel->ProceedCpuMeshes(pData->m_bShouldGenerateBLAS, pData->m_bShouldKeepCpuBuffers);
 							pModel->Flush();
 						}
-						return pModel;
+						return pModel->IsStructurallyReady() ? pModel : ModelPtr{};
 					},
 					"Update RHI Meshes",
 					EThreadType::RHI)
@@ -401,11 +444,12 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 
 		outModel = loadedModel = pModel;
 		promise->Run();
+		auto result = promise;
 
 		m_loadedModels.Unlock(uid);
 		m_promises.Unlock(uid);
 
-		return promise;
+		return result;
 	}
 
 	outModel = nullptr;
@@ -417,9 +461,16 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 
 bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 {
+	return LoadModel_Immediate(uid, App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid),
+		*App::GetSubmodule<Tasks::Scheduler>(), outModel);
+}
+
+bool ModelImporter::LoadModel_Immediate(FileId uid, ModelAssetInfoPtr assetInfo,
+	Tasks::Scheduler& scheduler, ModelPtr& outModel)
+{
 	SAILOR_PROFILE_FUNCTION();
 
-	auto task = LoadModel(uid, outModel);
+	auto task = LoadModel(uid, assetInfo, scheduler, outModel);
 	if (!task)
 	{
 		outModel = nullptr;
@@ -427,7 +478,8 @@ bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 	}
 
 	task->Wait();
-	return task->GetResult().IsValid();
+	outModel = task->GetResult();
+	return outModel && outModel->IsStructurallyReady();
 }
 
 Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<MaterialPtr>& outMaterials)
@@ -479,34 +531,42 @@ bool ModelImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmedia
 		return bRes;
 	}
 
-	LoadModel(uid, outModel);
+	auto task = LoadModel(uid, outModel);
 	out = outModel;
-	return true;
+	return static_cast<bool>(task);
 }
 
 void ModelImporter::CollectGarbage()
 {
-	TVector<FileId> uidsToRemove;
-
 	m_promises.LockAll();
 	auto ids = m_promises.GetKeys();
 	m_promises.UnlockAll();
 
 	for (const auto& id : ids)
 	{
-		auto promise = m_promises.At_Lock(id);
-
-		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
+		auto& promise = m_promises.At_Lock(id);
+		if (!promise || promise->IsFinished())
 		{
-			FileId uid = id;
-			uidsToRemove.Emplace(uid);
+			if (promise && !promise->GetResult())
+			{
+				m_loadedModels.Remove(id);
+			}
+			// Read and removal share the stripe, so a retry cannot replace this attempt in between.
+			m_promises.ForcelyRemove(id);
 		}
-
 		m_promises.Unlock(id);
 	}
 
-	for (auto& uid : uidsToRemove)
+	m_generatedMaterialMigrationTasks.LockAll();
+	ids = m_generatedMaterialMigrationTasks.GetKeys();
+	m_generatedMaterialMigrationTasks.UnlockAll();
+	for (const auto& id : ids)
 	{
-		m_promises.Remove(uid);
+		auto& task = m_generatedMaterialMigrationTasks.At_Lock(id);
+		if (!task || task->IsFinished())
+		{
+			m_generatedMaterialMigrationTasks.ForcelyRemove(id);
+		}
+		m_generatedMaterialMigrationTasks.Unlock(id);
 	}
 }

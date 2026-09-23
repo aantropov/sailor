@@ -209,14 +209,14 @@ void VulkanGraphicsDriver::BeginConditionalDestroy()
 			m_gpuFrameTimeQueryPool,
 			nullptr);
 		m_gpuFrameTimeQueryPool = VK_NULL_HANDLE;
-		m_bHasGpuFrameTime.store(false, std::memory_order_release);
 		m_gpuFrameTimeQuerySlots = {};
 		m_gpuFrameTimeRangeCounts = {};
 		m_gpuFrameTimeRangeOverflows = {};
 		m_gpuTimingScopeCounts = {};
 		m_gpuTimingScopeOverflows = {};
 		m_gpuTimingScopeRecords = {};
-		m_latestGpuTimings.Clear();
+		m_gpuTimingQueries = {};
+		m_latestGpuTimingResult.reset();
 		m_activeGpuFrameTimeQuerySlot =
 			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
 		m_pendingGpuFrameTimeQuerySlot =
@@ -270,7 +270,7 @@ void VulkanGraphicsDriver::PollGpuFrameTimeQueries()
 			m_gpuTimingScopeCounts[slot] = 0u;
 			m_gpuTimingScopeOverflows[slot] = false;
 			m_gpuTimingScopeRecords[slot] = {};
-			m_latestGpuTimings.Clear();
+			PublishGpuTimingResult(slot, false, 0.0f, {});
 			m_gpuFrameTimeQuerySlots.MarkCompleted(slot);
 			continue;
 		}
@@ -381,26 +381,9 @@ void VulkanGraphicsDriver::PollGpuFrameTimeQueries()
 			}
 		}
 
-		if (bFrameTimeValid && totalMilliseconds > 0.0f)
-		{
-			m_gpuFrameTimeMs.store(
-				totalMilliseconds,
-				std::memory_order_relaxed);
-			m_bHasGpuFrameTime.store(true, std::memory_order_release);
-		}
-		else
-		{
-			m_bHasGpuFrameTime.store(false, std::memory_order_release);
-		}
-
-		if (bGpuTimingsValid)
-		{
-			m_latestGpuTimings = std::move(timings);
-		}
-		else
-		{
-			m_latestGpuTimings.Clear();
-		}
+		PublishGpuTimingResult(slot,
+			bFrameTimeValid && totalMilliseconds > 0.0f && bGpuTimingsValid,
+			totalMilliseconds, std::move(timings));
 
 		m_gpuFrameTimeRangeCounts[slot] = 0u;
 		m_gpuFrameTimeRangeOverflows[slot] = false;
@@ -412,7 +395,26 @@ void VulkanGraphicsDriver::PollGpuFrameTimeQueries()
 	}
 }
 
-bool VulkanGraphicsDriver::BeginGpuFrameTimeQuery()
+void VulkanGraphicsDriver::PublishGpuTimingResult(
+	uint32_t slot, bool bValid, float milliseconds, TVector<RHI::GpuTiming> timings)
+{
+	const auto& query = m_gpuTimingQueries[slot];
+	if (query.m_queryId <= m_lastResolvedGpuQueryId)
+	{
+		return;
+	}
+
+	m_lastResolvedGpuQueryId = query.m_queryId;
+	auto& result = m_latestGpuTimingResult.emplace();
+	result.m_generation = query.m_generation;
+	result.m_queryId = query.m_queryId;
+	result.m_recordedAt = query.m_recordedAt;
+	result.m_bValid = bValid;
+	result.m_gpuWorkMilliseconds = milliseconds;
+	result.m_timings = std::move(timings);
+}
+
+bool VulkanGraphicsDriver::BeginGpuFrameTimeQuery(uint64_t generation)
 {
 	if (!SupportsGpuFrameTimeQueries() ||
 		m_activeGpuFrameTimeQuerySlot !=
@@ -445,6 +447,7 @@ bool VulkanGraphicsDriver::BeginGpuFrameTimeQuery()
 	m_gpuTimingScopeCounts[slot] = 0u;
 	m_gpuTimingScopeOverflows[slot] = false;
 	m_gpuTimingScopeRecords[slot] = {};
+	m_gpuTimingQueries[slot] = { generation, m_nextGpuQueryId++, std::chrono::steady_clock::now() };
 	m_activeGpuFrameTimeQuerySlot = slot;
 	return true;
 }
@@ -608,9 +611,7 @@ void VulkanGraphicsDriver::EndGpuFrameTimeQuery()
 	const uint32_t slot = m_activeGpuFrameTimeQuerySlot;
 	if (m_gpuFrameTimeRangeCounts[slot] == 0u)
 	{
-		m_gpuFrameTimeQuerySlots.CancelRecording(slot);
-		m_activeGpuFrameTimeQuerySlot =
-			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
+		CancelGpuFrameTimeQuery();
 		return;
 	}
 
@@ -675,6 +676,7 @@ void VulkanGraphicsDriver::CancelGpuFrameTimeQuery()
 	if (m_activeGpuFrameTimeQuerySlot !=
 		invalidSlot)
 	{
+		PublishGpuTimingResult(m_activeGpuFrameTimeQuerySlot, false, 0.0f, {});
 		m_gpuFrameTimeRangeCounts[m_activeGpuFrameTimeQuerySlot] = 0u;
 		m_gpuFrameTimeRangeOverflows[m_activeGpuFrameTimeQuerySlot] = false;
 		m_gpuFrameTimeRanges[m_activeGpuFrameTimeQuerySlot] = {};
@@ -689,6 +691,7 @@ void VulkanGraphicsDriver::CancelGpuFrameTimeQuery()
 	if (m_pendingGpuFrameTimeQuerySlot !=
 		invalidSlot)
 	{
+		PublishGpuTimingResult(m_pendingGpuFrameTimeQuerySlot, false, 0.0f, {});
 		m_gpuFrameTimeRangeCounts[m_pendingGpuFrameTimeQuerySlot] = 0u;
 		m_gpuFrameTimeRangeOverflows[m_pendingGpuFrameTimeQuerySlot] = false;
 		m_gpuFrameTimeRanges[m_pendingGpuFrameTimeQuerySlot] = {};
@@ -701,15 +704,11 @@ void VulkanGraphicsDriver::CancelGpuFrameTimeQuery()
 	}
 }
 
-bool VulkanGraphicsDriver::TryGetGpuFrameTimeMs(float& outMilliseconds) const
+std::optional<RHI::GpuTimingResult> VulkanGraphicsDriver::TakeGpuTimingResult()
 {
-	if (!m_bHasGpuFrameTime.load(std::memory_order_acquire))
-	{
-		return false;
-	}
-
-	outMilliseconds = m_gpuFrameTimeMs.load(std::memory_order_relaxed);
-	return true;
+	auto result = std::move(m_latestGpuTimingResult);
+	m_latestGpuTimingResult.reset();
+	return result;
 }
 
 uint32_t VulkanGraphicsDriver::GetNumSubmittedCommandBuffers() const
@@ -929,23 +928,30 @@ void VulkanGraphicsDriver::RefreshSwapchainTargets()
 	m_depthStencilBuffer->ForceSetDefaultLayout(
 		static_cast<RHI::EImageLayout>(
 			depthBufferView->GetImage()->m_defaultLayout));
-	m_depthStencilBuffer->m_depthAspect.Clear();
-	m_depthStencilBuffer->m_stencilAspect.Clear();
+	CreateDepthStencilViews(m_depthStencilBuffer);
+}
 
-	if (RHI::IsDepthFormat(m_depthStencilBuffer->GetFormat()))
+void VulkanGraphicsDriver::CreateDepthStencilViews(RHI::RHIRenderTargetPtr target)
+{
+	target->m_depthAspect.Clear();
+	target->m_stencilAspect.Clear();
+	const auto makeView = [&](VkImageAspectFlags aspect)
 	{
-		m_depthStencilBuffer->m_depthAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
-		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
-		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
-		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView->Compile();
+		auto view = RHI::RHITexturePtr::Make(target->GetFiltration(), target->GetClamping(),
+			false, target->GetDefaultLayout(), target->GetSamplerReduction());
+		view->m_vulkan.m_image = target->m_vulkan.m_image;
+		view->m_vulkan.m_imageView = VulkanImageViewPtr::Make(
+			m_vkInstance->GetMainDevice(), view->m_vulkan.m_image, aspect);
+		view->m_vulkan.m_imageView->Compile();
+		return view;
+	};
+	if (RHI::IsDepthFormat(target->GetFormat()))
+	{
+		target->m_depthAspect = makeView(VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
-
-	if (RHI::IsDepthStencilFormat(m_depthStencilBuffer->GetFormat()))
+	if (RHI::IsDepthStencilFormat(target->GetFormat()))
 	{
-		m_depthStencilBuffer->m_stencilAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
-		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
-		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
-		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView->Compile();
+		target->m_stencilAspect = makeView(VK_IMAGE_ASPECT_STENCIL_BIT);
 	}
 }
 
@@ -989,7 +995,7 @@ uint32_t VulkanGraphicsDriver::GetMaxFramesInFlight() const
 	return m_vkInstance->GetMainDevice()->GetMaxFramesInFlight();
 }
 
-bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
+RHI::FrameSubmissionResult VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers,
 	const TVector<RHI::RHISemaphorePtr>& waitSemaphores)
 {
@@ -997,7 +1003,7 @@ bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
 	{
 		CancelGpuFrameTimeQuery();
-		return false;
+		return {};
 	}
 
 	const TVector<VulkanCommandBufferPtr> primaryBuffers = primaryCommandBuffers.Select<VulkanCommandBufferPtr>([](const auto& lhs) { return lhs->m_vulkan.m_commandBuffer; });
@@ -1007,9 +1013,10 @@ bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 		state,
 		primaryBuffers,
 		vkWaitSemaphores);
+	const bool bSubmitted = m_vkInstance->GetMainDevice()->WasLastFrameSubmitSuccessful();
 	if (m_gpuFrameTimeQueryPool != VK_NULL_HANDLE)
 	{
-		if (m_vkInstance->GetMainDevice()->WasLastFrameSubmitSuccessful())
+		if (bSubmitted)
 		{
 			CommitGpuFrameTimeQuery();
 		}
@@ -1018,10 +1025,10 @@ bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 			CancelGpuFrameTimeQuery();
 		}
 	}
-	return bPresented;
+	return { bSubmitted, bPresented };
 }
 
-bool VulkanGraphicsDriver::SubmitFrameWithoutPresent(
+RHI::FrameSubmissionResult VulkanGraphicsDriver::SubmitFrameWithoutPresent(
 	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers,
 	const TVector<RHI::RHISemaphorePtr>& waitSemaphores)
 {
@@ -1029,7 +1036,7 @@ bool VulkanGraphicsDriver::SubmitFrameWithoutPresent(
 	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
 	{
 		CancelGpuFrameTimeQuery();
-		return false;
+		return {};
 	}
 
 	const TVector<VulkanCommandBufferPtr> primaryBuffers = primaryCommandBuffers.Select<VulkanCommandBufferPtr>([](const auto& lhs) { return lhs->m_vulkan.m_commandBuffer; });
@@ -1046,7 +1053,7 @@ bool VulkanGraphicsDriver::SubmitFrameWithoutPresent(
 	{
 		CancelGpuFrameTimeQuery();
 	}
-	return bSubmitted;
+	return { bSubmitted, false };
 }
 
 void VulkanGraphicsDriver::WaitIdle()
@@ -1593,12 +1600,11 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 			flags,
 			arrayLayers);
 
-		RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(
-			cmdList,
-			outTexture,
-			format,
-			RHI::EImageLayout::Undefined,
-			layout);
+		cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
+			outTexture->m_vulkan.m_image,
+			(VkFormat)format,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			(VkImageLayout)layout);
 	}
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
@@ -1812,21 +1818,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
 
-	if (RHI::IsDepthFormat(format))
-	{
-		outTexture->m_depthAspect = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout, reduction);
-		outTexture->m_depthAspect->m_vulkan.m_image = outTexture->m_vulkan.m_image;
-		outTexture->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
-		outTexture->m_depthAspect->m_vulkan.m_imageView->Compile();
-
-		if (RHI::IsDepthStencilFormat(format))
-		{
-			outTexture->m_stencilAspect = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout, reduction);
-			outTexture->m_stencilAspect->m_vulkan.m_image = outTexture->m_vulkan.m_image;
-			outTexture->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
-			outTexture->m_stencilAspect->m_vulkan.m_imageView->Compile();
-		}
-	}
+	CreateDepthStencilViews(outTexture);
 
 	for (uint32_t i = 0; i < mipLevels; i++)
 	{
@@ -2075,7 +2067,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 
 			if (layoutBinding.m_type == RHI::EShaderBindingType::UniformBuffer)
 			{
-				auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
+				auto uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
 				binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
 					uniformAllocator->Allocate(layoutBinding.m_size, device->GetMinUboOffsetAlignment()),
 					uniformAllocator);
@@ -2271,25 +2263,21 @@ TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetMaterialSsboAllocato
 	return m_materialSsboAllocator;
 }
 
-TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetUniformBufferAllocator(const std::string& uniformTypeId)
+TSharedPtr<VulkanBufferAllocator> VulkanGraphicsDriver::GetUniformBufferAllocator(const std::string& uniformTypeId)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto it = m_uniformBuffers.Find(uniformTypeId);
-	if (it != m_uniformBuffers.end())
+	auto& uniformAllocator = m_uniformBuffers.At_Lock(uniformTypeId);
+	if (!uniformAllocator)
 	{
-		return (*it).m_second;
+		uniformAllocator = TSharedPtr<VulkanBufferAllocator>::Make(1024 * 1024, 256, 1024 * 1024);
+		uniformAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+		uniformAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	}
 
-	auto& uniformAllocator = m_uniformBuffers.At_Lock(uniformTypeId);
-
-	uniformAllocator = TSharedPtr<VulkanBufferAllocator>::Make(1024 * 1024, 256, 1024 * 1024);
-	uniformAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-	uniformAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
+	auto result = uniformAllocator;
 	m_uniformBuffers.Unlock(uniformTypeId);
-
-	return uniformAllocator;
+	return result;
 }
 
 void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, const void* value, size_t size)
@@ -2355,7 +2343,7 @@ RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CloneMaterialShaderBindings(
 		if (layout.m_type == RHI::EShaderBindingType::UniformBuffer ||
 			layout.m_type == RHI::EShaderBindingType::UniformBufferDynamic)
 		{
-			auto& allocator = GetUniformBufferAllocator(layout.m_name);
+			auto allocator = GetUniformBufferAllocator(layout.m_name);
 			const size_t size = (std::max)(size_t{ 1u }, static_cast<size_t>(layout.m_size));
 			targetBinding->m_vulkan.m_valueBinding =
 				TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
@@ -2463,14 +2451,8 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 
 	const size_t paddedSize = SsboLayout::AlignSsboElementSize(elementSize);
 
-	size_t alignment = paddedSize;
-
-	if (bBindSsboWithOffset)
-	{
-		// We should use the correct alignment
-		const size_t reqAlignment = device->GetMinSsboOffsetAlignment();
-		alignment = reqAlignment > paddedSize ? (reqAlignment % paddedSize == 0 ? reqAlignment : paddedSize * reqAlignment) : paddedSize;
-	}
+	const size_t alignment = bBindSsboWithOffset ?
+		SsboLayout::ResolveSsboOffsetAlignment(paddedSize, device->GetMinSsboOffsetAlignment()) : paddedSize;
 
 	auto vulkanBufferMemoryPtr = allocator->Allocate(paddedSize * numElements, alignment);
 	binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(vulkanBufferMemoryPtr, allocator);
@@ -2856,7 +2838,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 			RHI::EImageLayout::DepthAttachmentOptimal) :
 		RHI::EImageLayout::ColorAttachmentOptimal;
 
-	RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(
+	auto target = RHI::RHIRenderTargetPtr::Make(
 		RHI::ETextureFiltration::Linear,
 		RHI::ETextureClamping::Clamp,
 		false,
@@ -2883,6 +2865,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 
 	target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
 	target->m_vulkan.m_imageView->Compile();
+	CreateDepthStencilViews(target);
 
 	RHI::RHICommandListPtr cmdList = CreateCommandList(
 		false,
@@ -2966,35 +2949,9 @@ void VulkanGraphicsDriver::MemoryBarrier(RHI::RHICommandListPtr cmd, RHI::EAcces
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout layout, bool bAllowToWriteFromComputeShader)
 {
-	VkImageMemoryBarrier barrier{};
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.oldLayout = (VkImageLayout)layout;
-	barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.image = *image->m_vulkan.m_image;
-	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat((VkFormat)format);
-	barrier.subresourceRange.baseMipLevel = 0;
-	barrier.subresourceRange.levelCount = image->m_vulkan.m_image->m_mipLevels;
-	barrier.subresourceRange.baseArrayLayer = 0;
-	barrier.subresourceRange.layerCount = image->m_vulkan.m_image->m_arrayLayers;
-
-	VkPipelineStageFlags sourceStage = bAllowToWriteFromComputeShader ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT : VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-	VkPipelineStageFlags destinationStage = bAllowToWriteFromComputeShader ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VulkanCommandBuffer::GetPipelineStage((VkImageLayout)layout);
-
-	barrier.srcAccessMask = bAllowToWriteFromComputeShader ? VulkanCommandBuffer::GetAccessFlags((VkImageLayout)layout) : VK_ACCESS_SHADER_WRITE_BIT;
-	barrier.dstAccessMask = bAllowToWriteFromComputeShader ? VK_ACCESS_SHADER_WRITE_BIT : VulkanCommandBuffer::GetAccessFlags((VkImageLayout)layout);
-
-	vkCmdPipelineBarrier(
-		*cmd->m_vulkan.m_commandBuffer,
-		sourceStage, destinationStage,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	cmd->m_vulkan.m_commandBuffer->AddDependency(image);
+	ImageMemoryBarrier(cmd, image, format,
+		bAllowToWriteFromComputeShader ? layout : RHI::EImageLayout::ComputeWrite,
+		bAllowToWriteFromComputeShader ? RHI::EImageLayout::ComputeWrite : layout);
 }
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EImageLayout newLayout)
@@ -3032,6 +2989,7 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 void VulkanGraphicsDriver::ImageMemoryBarrierForComputeSampling(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image)
 {
 	constexpr RHI::EImageLayout newLayout = RHI::EImageLayout::ShaderReadOnlyOptimal;
+	const VkQueueFlags queueFlags = cmd->m_vulkan.m_commandBuffer->GetQueueFlags();
 	if (m_bIsTrackingGpu)
 	{
 		m_lastFrameGpuStats.m_barriers[image][newLayout]++;
@@ -3051,9 +3009,9 @@ void VulkanGraphicsDriver::ImageMemoryBarrierForComputeSampling(RHI::RHICommandL
 		VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(oldLayout);
 	const VkAccessFlags oldAccess = bComputeOld ?
 		(oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT) :
-		VulkanCommandBuffer::GetAccessFlags(oldVkLayout);
+		VulkanCommandBuffer::GetAccessFlags(oldVkLayout, queueFlags);
 	const VkPipelineStageFlags oldStage = bComputeOld ?
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VulkanCommandBuffer::GetPipelineStage(oldVkLayout);
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VulkanCommandBuffer::GetPipelineStage(oldVkLayout, queueFlags);
 
 	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
 		image->m_vulkan.m_imageView,
@@ -3070,6 +3028,7 @@ void VulkanGraphicsDriver::ImageMemoryBarrierForComputeSampling(RHI::RHICommandL
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout)
 {
+	const VkQueueFlags queueFlags = cmd->m_vulkan.m_commandBuffer->GetQueueFlags();
 	const VkImageLayout defaultComputeLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
 	const VkAccessFlags oldComputeAccess = oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT;
 	const VkAccessFlags newComputeAccess = newLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT;
@@ -3091,16 +3050,16 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
 			(VkFormat)format,
 			defaultComputeLayout, (VkImageLayout)newLayout,
-			oldComputeAccess, VulkanCommandBuffer::GetAccessFlags((VkImageLayout)newLayout),
-			computeStage, VulkanCommandBuffer::GetPipelineStage((VkImageLayout)newLayout));
+			oldComputeAccess, VulkanCommandBuffer::GetAccessFlags((VkImageLayout)newLayout, queueFlags),
+			computeStage, VulkanCommandBuffer::GetPipelineStage((VkImageLayout)newLayout, queueFlags));
 	}
 	else if (!bComputeOld && bComputeNew)
 	{
 		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
 			(VkFormat)format,
 			(VkImageLayout)oldLayout, defaultComputeLayout,
-			VulkanCommandBuffer::GetAccessFlags((VkImageLayout)oldLayout), newComputeAccess,
-			VulkanCommandBuffer::GetPipelineStage((VkImageLayout)oldLayout), computeStage);
+			VulkanCommandBuffer::GetAccessFlags((VkImageLayout)oldLayout, queueFlags), newComputeAccess,
+			VulkanCommandBuffer::GetPipelineStage((VkImageLayout)oldLayout, queueFlags), computeStage);
 	}
 	else
 	{
@@ -3179,6 +3138,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 			bClearRenderTargets,
 			clearColor,
 			clearDepth,
+			false,
 			bStoreDepth);
 	}
 	else
@@ -3198,9 +3158,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 		rect.offset.x = renderArea.x;
 		rect.offset.y = renderArea.y;
 
-		VkClearValue clearValue;
-		clearValue.color = { {clearColor.x, clearColor.y, clearColor.z, clearColor.w } };
-		clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
+		const VulkanRenderPassClearValues clearValues(clearColor, clearDepth);
 
 		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
 		VulkanImageViewPtr vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
@@ -3215,7 +3173,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 			VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
 			VkOffset2D{ .x = offset.x, .y = offset.y },
 			bClearRenderTargets,
-			clearValue,
+			clearValues,
 			bStoreDepth);
 
 		for (auto& el : secondaryCmds)
@@ -3252,9 +3210,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 	rect.offset.x = renderArea.x;
 	rect.offset.y = renderArea.y;
 
-	VkClearValue clearValue;
-	clearValue.color = { {clearColor.x, clearColor.y, clearColor.z, clearColor.w} };
-	clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
+	const VulkanRenderPassClearValues clearValues(clearColor, clearDepth);
 
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
 		depthStencilAttachment->m_vulkan.m_imageView,
@@ -3263,7 +3219,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 		VkOffset2D{ .x = offset.x, .y = offset.y },
 		bSupportMultisampling,
 		bClearRenderTargets,
-		clearValue,
+		clearValues,
 		bStoreDepth);
 
 	for (auto& el : secondaryCmds)
@@ -3298,9 +3254,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 	rect.offset.x = renderArea.x;
 	rect.offset.y = renderArea.y;
 
-	VkClearValue clearValue;
-	clearValue.color = { {clearColor.x, clearColor.y, clearColor.z, clearColor.w} };
-	clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
+	const VulkanRenderPassClearValues clearValues(clearColor, clearDepth);
 
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
 		depthStencilAttachment ? depthStencilAttachment->m_vulkan.m_imageView : nullptr,
@@ -3309,7 +3263,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 		VkOffset2D{ .x = offset.x, .y = offset.y },
 		bSupportMultisampling,
 		bClearRenderTargets,
-		clearValue,
+		clearValues,
 		bStoreDepth);
 }
 
@@ -3334,7 +3288,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 		}
 
 		BeginRenderPass(cmd, resolved, depthStencilAttachment,
-			renderArea, offset, bClearRenderTargets, clearColor, clearDepth, false);
+			renderArea, offset, bClearRenderTargets, clearColor, clearDepth, false, bStoreDepth);
 	}
 	else
 	{
@@ -3356,9 +3310,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 		rect.offset.x = renderArea.x;
 		rect.offset.y = renderArea.y;
 
-		VkClearValue clearValue;
-		clearValue.color = { {clearColor.x, clearColor.y, clearColor.z, clearColor.w} };
-		clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
+		const VulkanRenderPassClearValues clearValues(clearColor, clearDepth);
 
 		VulkanImageViewPtr msaaDepthStencilTarget{};
 		VulkanImageViewPtr vulkanDepthStencil{};
@@ -3381,7 +3333,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 			0,
 			VkOffset2D{ .x = offset.x, .y = offset.y },
 			bClearRenderTargets,
-			clearValue,
+			clearValues,
 			bStoreDepth);
 	}
 }
@@ -4139,20 +4091,9 @@ void VulkanGraphicsDriver::CollectGarbage_RenderThread()
 bool VulkanGraphicsDriver::StartGpuTracking()
 {
 	m_lastFrameGpuStats.m_barriers.Clear();
-	const bool bExecuteQueries =
-		m_activeGpuFrameTimeQuerySlot !=
-		RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
-	if (bExecuteQueries)
-	{
-		m_lastFrameGpuStats.m_timings = std::move(m_latestGpuTimings);
-	}
-	else
-	{
-		m_lastFrameGpuStats.m_timings.Clear();
-		m_latestGpuTimings.Clear();
-	}
 	m_bIsTrackingGpu = true;
-	return bExecuteQueries;
+	return m_activeGpuFrameTimeQuerySlot !=
+		RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
 }
 
 RHI::GpuStats VulkanGraphicsDriver::FinishGpuTracking()
