@@ -255,6 +255,8 @@ namespace
 				{
 					Require(depthPasses == 2u && mainPasses == 0u,
 						"current-frame Hi-Z must follow both depth contributors and precede main drawing");
+					Require(GetFrameGraphAttachment(pass, "src") == "DepthBuffer",
+						"Hi-Z must reduce full-resolution depth, not a nearest-filtered depth blit");
 					currentDepthPyramid = GetFrameGraphAttachment(pass, "dst");
 					Require(!currentDepthPyramid.empty(), "Hi-Z must publish a named target");
 				}

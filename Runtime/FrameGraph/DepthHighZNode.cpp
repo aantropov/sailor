@@ -38,19 +38,33 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 	}
 
 	const size_t numMipBindings = highZRenderTarget->GetMipLevels() - 1;
+	if (depthAttachment == frameGraph->GetRenderTarget("DepthBuffer") &&
+		App::GetSubmodule<RHI::Renderer>()->GetMsaaSamples() != EMsaaSamples::Samples_1)
+	{
+		// Read the attachment written by the depth prepasses, before native resolve
+		// can lose uncovered samples. The device may clamp the requested MSAA count.
+		auto msaaDepth = driver->GetOrAddMsaaFramebufferRenderTarget(
+			depthAttachment->GetFormat(), depthAttachment->GetExtent());
+		if (msaaDepth->GetMsaaSamples() != EMsaaSamples::Samples_1)
+		{
+			depthAttachment = msaaDepth.StaticCast<RHIRenderTarget>();
+		}
+	}
+	const bool bMsaaDepth = depthAttachment->GetMsaaSamples() != EMsaaSamples::Samples_1;
+	auto& inputShader = bMsaaDepth ? m_pComputeDepthHighZMsaaShader : m_pComputeDepthHighZInputShader;
 
-	if (!m_pComputeDepthHighZShader || !m_pComputeDepthHighZInputShader)
+	if (!m_pComputeDepthHighZShader || !inputShader)
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeDepthHighZ.shader"))
 		{
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeDepthHighZShader);
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(
-				shaderInfo->GetFileId(), m_pComputeDepthHighZInputShader, { "DEPTH_INPUT" });
+				shaderInfo->GetFileId(), inputShader, { bMsaaDepth ? "MSAA_DEPTH_INPUT" : "DEPTH_INPUT" });
 		}
 	}
 
 	if (!m_pComputeDepthHighZShader || !m_pComputeDepthHighZShader->IsReady() ||
-		!m_pComputeDepthHighZInputShader || !m_pComputeDepthHighZInputShader->IsReady())
+		!inputShader || !inputShader->IsReady())
 	{
 		return;
 	}
@@ -106,7 +120,7 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 			commands->ImageMemoryBarrier(commandList, writeMipLevel, EImageLayout::ComputeWrite);
 
 			commands->Dispatch(commandList,
-				(bFirst ? m_pComputeDepthHighZInputShader : m_pComputeDepthHighZShader)->GetComputeShaderRHI(),
+				(bFirst ? inputShader : m_pComputeDepthHighZShader)->GetComputeShaderRHI(),
 				(uint32_t)glm::ceil(float(mipSize.x) / 8),
 				(uint32_t)glm::ceil(float(mipSize.y) / 8),
 				1u,
@@ -114,6 +128,8 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 				&params, sizeof(PushConstantsDownscale));
 		}
 	}
+	// The cached MSAA image is reused by the ordinary scene passes.
+	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetDefaultLayout());
 	commands->EndDebugRegion(commandList);
 	frameGraph->MarkCurrentDepthPyramid(highZRenderTarget);
 }

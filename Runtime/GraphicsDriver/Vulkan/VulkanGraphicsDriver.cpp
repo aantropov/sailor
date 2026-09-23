@@ -928,23 +928,30 @@ void VulkanGraphicsDriver::RefreshSwapchainTargets()
 	m_depthStencilBuffer->ForceSetDefaultLayout(
 		static_cast<RHI::EImageLayout>(
 			depthBufferView->GetImage()->m_defaultLayout));
-	m_depthStencilBuffer->m_depthAspect.Clear();
-	m_depthStencilBuffer->m_stencilAspect.Clear();
+	CreateDepthStencilViews(m_depthStencilBuffer);
+}
 
-	if (RHI::IsDepthFormat(m_depthStencilBuffer->GetFormat()))
+void VulkanGraphicsDriver::CreateDepthStencilViews(RHI::RHIRenderTargetPtr target)
+{
+	target->m_depthAspect.Clear();
+	target->m_stencilAspect.Clear();
+	const auto makeView = [&](VkImageAspectFlags aspect)
 	{
-		m_depthStencilBuffer->m_depthAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
-		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
-		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
-		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView->Compile();
+		auto view = RHI::RHITexturePtr::Make(target->GetFiltration(), target->GetClamping(),
+			false, target->GetDefaultLayout(), target->GetSamplerReduction());
+		view->m_vulkan.m_image = target->m_vulkan.m_image;
+		view->m_vulkan.m_imageView = VulkanImageViewPtr::Make(
+			m_vkInstance->GetMainDevice(), view->m_vulkan.m_image, aspect);
+		view->m_vulkan.m_imageView->Compile();
+		return view;
+	};
+	if (RHI::IsDepthFormat(target->GetFormat()))
+	{
+		target->m_depthAspect = makeView(VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
-
-	if (RHI::IsDepthStencilFormat(m_depthStencilBuffer->GetFormat()))
+	if (RHI::IsDepthStencilFormat(target->GetFormat()))
 	{
-		m_depthStencilBuffer->m_stencilAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
-		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
-		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
-		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView->Compile();
+		target->m_stencilAspect = makeView(VK_IMAGE_ASPECT_STENCIL_BIT);
 	}
 }
 
@@ -1811,21 +1818,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
 
-	if (RHI::IsDepthFormat(format))
-	{
-		outTexture->m_depthAspect = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout, reduction);
-		outTexture->m_depthAspect->m_vulkan.m_image = outTexture->m_vulkan.m_image;
-		outTexture->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
-		outTexture->m_depthAspect->m_vulkan.m_imageView->Compile();
-
-		if (RHI::IsDepthStencilFormat(format))
-		{
-			outTexture->m_stencilAspect = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout, reduction);
-			outTexture->m_stencilAspect->m_vulkan.m_image = outTexture->m_vulkan.m_image;
-			outTexture->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
-			outTexture->m_stencilAspect->m_vulkan.m_imageView->Compile();
-		}
-	}
+	CreateDepthStencilViews(outTexture);
 
 	for (uint32_t i = 0; i < mipLevels; i++)
 	{
@@ -2851,7 +2844,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 			RHI::EImageLayout::DepthAttachmentOptimal) :
 		RHI::EImageLayout::ColorAttachmentOptimal;
 
-	RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(
+	auto target = RHI::RHIRenderTargetPtr::Make(
 		RHI::ETextureFiltration::Linear,
 		RHI::ETextureClamping::Clamp,
 		false,
@@ -2878,6 +2871,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 
 	target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
 	target->m_vulkan.m_imageView->Compile();
+	CreateDepthStencilViews(target);
 
 	RHI::RHICommandListPtr cmdList = CreateCommandList(
 		false,

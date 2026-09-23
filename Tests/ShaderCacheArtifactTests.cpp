@@ -1583,6 +1583,8 @@ namespace
 		compileRuntimeFragment("Shaders/MotionBlur.shader", { "DEBUG_MOTIONS" });
 		compileRuntimeVertex("Experimental/MeshParticles/Particle.shader", {});
 		compileRuntimeFragment("Experimental/MeshParticles/Particle.shader", {});
+		compileRuntimeVertex("Tests/Shaders/DepthCoverage.shader", {});
+		compileRuntimeFragment("Tests/Shaders/DepthCoverage.shader", {});
 		const RHI::ShaderByteCode hbaoByteCode = compileRuntimeFragment(
 			"Shaders/HBAO.shader",
 			{});
@@ -1689,6 +1691,18 @@ namespace
 		const auto depthInput = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "DEPTH_INPUT" });
 		RequireSpirvCombinedImageSamplerBinding(depthInput, 0u, 0u);
 		RequireSpirvStorageImageBinding(depthInput, 0u, 1u);
+		const auto depthMsaa = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "MSAA_DEPTH_INPUT" });
+		RequireSpirvCombinedImageSamplerBinding(depthMsaa, 0u, 0u);
+		RequireSpirvStorageImageBinding(depthMsaa, 0u, 1u);
+		SpvReflectShaderModule depthModule{};
+		Require(spvReflectCreateShaderModule(depthMsaa.Num() * sizeof(uint32_t), depthMsaa.GetData(),
+			&depthModule) == SPV_REFLECT_RESULT_SUCCESS, "MSAA depth input must reflect");
+		SpvReflectResult depthStatus;
+		const auto* depthBinding = spvReflectGetDescriptorBinding(&depthModule, 0u, 0u, &depthStatus);
+		const bool multisampled = depthStatus == SPV_REFLECT_RESULT_SUCCESS && depthBinding &&
+			depthBinding->image.ms == 1u && depthBinding->image.dim == SpvDim2D;
+		spvReflectDestroyShaderModule(&depthModule);
+		Require(multisampled, "Hi-Z input must retain access to each depth sample before reduction");
 		const auto depthMips = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader");
 		RequireSpirvStorageImageBinding(depthMips, 0u, 0u);
 		RequireSpirvStorageImageBinding(depthMips, 0u, 1u);

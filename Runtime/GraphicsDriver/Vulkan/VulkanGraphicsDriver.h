@@ -390,6 +390,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API bool UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
 		SAILOR_API void RefreshSwapchainTargets();
+		void CreateDepthStencilViews(RHI::RHIRenderTargetPtr target);
 
 		// The resources that are used as default
 		VulkanImageViewPtr m_vkDefaultTexture;
