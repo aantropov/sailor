@@ -50,7 +50,7 @@ namespace Sailor
 			return *this;
 		}
 
-		operator TVectorIterator<const TDataType>() { return TVectorIterator<const TDataType>(m_element); }
+		operator TVectorIterator<const TDataType>() const { return TVectorIterator<const TDataType>(m_element); }
 
 		bool operator==(const TVectorIterator& rhs) const { return m_element == rhs.m_element; }
 		bool operator!=(const TVectorIterator& rhs) const { return m_element != rhs.m_element; }
@@ -104,12 +104,7 @@ namespace Sailor
 			return (difference_type)(m_element - other.m_element);
 		}
 
-		friend TVectorIterator<TDataType> operator-(const difference_type& offset, TVectorIterator<TDataType>& other)
-		{
-			return other - offset;
-		}
-
-		friend TVectorIterator<TDataType> operator+(const difference_type& offset, TVectorIterator<TDataType>& other)
+		friend TVectorIterator<TDataType> operator+(difference_type offset, const TVectorIterator<TDataType>& other)
 		{
 			return other + offset;
 		}
@@ -160,27 +155,21 @@ namespace Sailor
 
 		TVector(const TElementType* rawPtr, size_t count) requires IsCopyConstructible<TElementType>
 		{
-			ResizeIfNeeded(count);
-
-			m_arrayNum = count;
-			ConstructElements(0, rawPtr[0], count);
+			AddRange(rawPtr, count);
 		}
 
 		TVector(TElementType* rawPtr, size_t count) requires IsMoveConstructible<TElementType> && (!IsCopyConstructible<TElementType>)
 		{
-			ResizeIfNeeded(count);
-
-			m_arrayNum = count;
-			ConstructMoveElements(0, rawPtr[0], count);
+			MoveRange(rawPtr, count);
 		}
 
 		TVector(size_t size, const TElementType& defaultEl)
 		{
-			Resize(size);
+			Reserve(size);
 
-			for (uint32_t i = 0; i < size; i++)
+			for (size_t i = 0; i < size; i++)
 			{
-				Add(defaultEl);
+				Emplace(defaultEl);
 			}
 		}
 
@@ -244,8 +233,11 @@ namespace Sailor
 
 		TVector& operator=(const TVector& other) requires IsCopyConstructible<TElementType>
 		{
-			Clear(false);
-			AddRange(other);
+			if (this != &other)
+			{
+				Clear(false);
+				AddRange(other);
+			}
 			return *this;
 		}
 
@@ -281,7 +273,14 @@ namespace Sailor
 
 		size_t Add(TElementType item)
 		{
-			return Emplace(std::move(item));
+			if constexpr (IsMoveConstructible<TElementType>)
+			{
+				return Emplace(std::move(item));
+			}
+			else
+			{
+				return Emplace(item);
+			}
 		}
 
 		size_t AddUnique(TElementType item)
@@ -294,7 +293,14 @@ namespace Sailor
 				}
 			}
 
-			return Emplace(std::move(item));
+			if constexpr (IsMoveConstructible<TElementType>)
+			{
+				return Emplace(std::move(item));
+			}
+			else
+			{
+				return Emplace(item);
+			}
 		}
 
 		void MoveRange(TElementType* first, size_t count) requires IsMoveConstructible<TElementType>
@@ -523,49 +529,30 @@ namespace Sailor
 
 		void RemoveAt(size_t index, size_t count = 1)
 		{
-			check(index < m_arrayNum);
-			check(index + count <= m_arrayNum);
-
-			DestructElements(index, count);
-			if (m_arrayNum != index + count)
+			check(index <= m_arrayNum);
+			check(count <= m_arrayNum - index);
+			if (count == 0)
 			{
-				const size_t tailElementsNum = m_arrayNum - index - count;
-				const size_t elementsToRecreate = min(tailElementsNum, count);
-				const size_t elementsToMove = tailElementsNum - elementsToRecreate;
-
-				// Create new elements
-				if constexpr (IsMoveConstructible<TElementType>)
-				{
-					ConstructMoveElements(index, m_pRawPtr[index + count], elementsToRecreate);
-				}
-				else
-				{
-					ConstructElements(index, m_pRawPtr[index + count], elementsToRecreate);
-				}
-
-				if (elementsToMove)
-				{
-					MemMove(index + count, m_arrayNum - elementsToMove, elementsToMove);
-				}
+				return;
 			}
 
+			DestructElements(index, count);
+			MemMove(index, index + count, m_arrayNum - index - count);
 			m_arrayNum -= count;
 		}
 
 		void RemoveAtSwap(size_t index, size_t count = 1)
 		{
+			check(index <= m_arrayNum);
+			check(count <= m_arrayNum - index);
+			if (count == 0)
+			{
+				return;
+			}
+
+			const size_t numToMove = std::min(count, m_arrayNum - index - count);
 			DestructElements(index, count);
-
-			if constexpr (IsMoveConstructible<TElementType>)
-			{
-				ConstructMoveElements(index, m_pRawPtr[m_arrayNum - count], count);
-			}
-			else
-			{
-				ConstructElements(index, m_pRawPtr[m_arrayNum - count], count);
-			}
-
-			DestructElements(m_arrayNum - count, count);
+			MemMove(index, m_arrayNum - numToMove, numToMove);
 			m_arrayNum -= count;
 		}
 
@@ -575,15 +562,9 @@ namespace Sailor
 			{
 				if (m_pRawPtr[i] == item)
 				{
-					DestructElements(i, 1);
-
-					if (i != m_arrayNum - 1)
-					{
-						ConstructMoveElements(i, m_pRawPtr[i + 1], 1);
-						MemMove(i + 1, i + 2, m_arrayNum - i - 2);
-					}
-
-					return m_arrayNum--;
+					const size_t previousNum = m_arrayNum;
+					RemoveAt(i);
+					return previousNum;
 				}
 			}
 
@@ -612,12 +593,12 @@ namespace Sailor
 
 			m_capacity = newCapacity;
 
-			if (m_pRawPtr && m_allocator.Reallocate(m_pRawPtr, newCapacity * sizeof(TElementType)))
+			if (m_pRawPtr && m_allocator.Reallocate(m_pRawPtr, newCapacity * sizeof(TElementType), alignof(TElementType)))
 			{
 				return;
 			}
 
-			TElementType* pRawPtr = static_cast<TElementType*>(m_allocator.Allocate(newCapacity * sizeof(TElementType)));
+			TElementType* pRawPtr = static_cast<TElementType*>(m_allocator.Allocate(newCapacity * sizeof(TElementType), alignof(TElementType)));
 			std::swap(m_pRawPtr, pRawPtr);
 
 			if (m_arrayNum > 0)
@@ -766,6 +747,11 @@ namespace Sailor
 
 		__forceinline void MemMove(size_t to, size_t from, size_t count)
 		{
+			if (count == 0 || to == from)
+			{
+				return;
+			}
+
 			if constexpr (IsTriviallyCopyable<TElementType>)
 			{
 				memmove(&m_pRawPtr[to], &m_pRawPtr[from], count * sizeof(TElementType));
@@ -774,44 +760,16 @@ namespace Sailor
 			{
 				for (size_t i = 0; i < count; i++)
 				{
-					size_t shift = from < to ? (count - i - 1) : i;
-
-					// Move operator
-					if (to + shift < m_arrayNum)
+					const size_t shift = from < to ? (count - i - 1) : i;
+					if constexpr (IsMoveConstructible<TElementType>)
 					{
-						if constexpr (IsMoveAssignable<TElementType>)
-						{
-							m_pRawPtr[to + shift] = std::move(m_pRawPtr[from + shift]);
-						}
-						else
-						{
-							m_pRawPtr[to + shift] = m_pRawPtr[from + shift];
-						}
+						ConstructMoveElements(to + shift, m_pRawPtr[from + shift], 1);
 					}
 					else
 					{
-						// We need to create object if we are out of bounds
-						if constexpr (IsMoveConstructible<TElementType>)
-						{
-							ConstructMoveElements(to + shift, m_pRawPtr[from + shift], 1);
-						}
-						else
-						{
-							ConstructElements(to + shift, m_pRawPtr[from + shift], 1);
-						}
+						ConstructElements(to + shift, m_pRawPtr[from + shift], 1);
 					}
-
-				}
-
-				// Destruct unused elements
-				if (from < to)
-				{
-					DestructElements(from, min(count, to - from));
-				}
-				else
-				{
-					size_t shift = (size_t)max(0, (int32_t)to + (int32_t)count - (int32_t)from);
-					DestructElements(from + shift, count - shift);
+					DestructElements(from + shift, 1);
 				}
 			}
 		}

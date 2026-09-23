@@ -101,6 +101,15 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(MathContractTests)
 endif()
 
+add_executable(ContainerContractTests ContainerContractTests.cpp)
+target_compile_features(ContainerContractTests PRIVATE cxx_std_20)
+target_include_directories(ContainerContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ContainerContractTests PRIVATE Sailor::Runtime)
+add_test(NAME ContainerContractTests COMMAND ContainerContractTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ContainerContractTests)
+endif()
+
 add_executable(LandscapeStreamingTests
     LandscapeStreamingTests.cpp
 )
