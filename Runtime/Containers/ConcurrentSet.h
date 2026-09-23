@@ -5,11 +5,13 @@
 #include <concepts>
 #include <type_traits>
 #include "Core/Defines.h"
+#include "Memory/LockFreeHeapAllocator.h"
 #include "Memory/UniquePtr.hpp"
 #include "Memory/Memory.h"
 #include "Containers/Pair.h"
 #include "Containers/List.h"
 #include "Containers/Vector.h"
+#include "Containers/Hash.h"
 #include "Core/LogMacros.h"
 #include "Core/SpinLock.h"
 
@@ -25,6 +27,8 @@ namespace Sailor
 	template<typename TElementType, const uint32_t concurrencyLevel = 8, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class TConcurrentSet
 	{
+		static_assert(concurrencyLevel > 0);
+
 	public:
 
 		using TElementContainer = TList<TElementType, TAllocator>;
@@ -35,27 +39,10 @@ namespace Sailor
 
 			TEntry(size_t hashCode) : m_hashCode(hashCode) {}
 			TEntry(TEntry&&) = default;
-			TEntry(const TEntry& rhs)
-			{
-				m_bloom = rhs.m_bloom;
-				m_hashCode = rhs.m_hashCode;
-				m_elements = rhs.m_elements;
-
-				m_next = rhs.m_next;
-				m_prev = rhs.m_prev;
-			}
+			TEntry(const TEntry&) = default;
 
 			TEntry& operator=(TEntry&&) = default;
-			TEntry& operator=(const TEntry& rhs)
-			{
-				m_bloom = rhs.m_bloom;
-				m_hashCode = rhs.m_hashCode;
-				m_elements = rhs.m_elements;
-
-				m_next = rhs.m_next;
-				m_prev = rhs.m_prev;
-				return *this;
-			}
+			TEntry& operator=(const TEntry&) = default;
 
 			__forceinline explicit operator bool() const { return m_elements.Num() > 0; }
 			virtual ~TEntry() = default;
@@ -75,17 +62,9 @@ namespace Sailor
 			__forceinline size_t GetHash() const { return m_hashCode; }
 			__forceinline size_t LikelyContains(size_t hashCode) const { return (m_bloom & hashCode) == hashCode; }
 
-			// Should we hide the data in internal class 
-			// that programmer has no access but it could be used by derived classes?
-			//protected:
-
 			size_t m_bloom = 0;
 			size_t m_hashCode = 0;
 			TElementContainer m_elements;
-
-			// That's unsafe but we handle that properly
-			TEntry* m_next = nullptr;
-			TEntry* m_prev = nullptr;
 
 			friend class TConcurrentSet;
 		};
@@ -95,28 +74,40 @@ namespace Sailor
 		{
 		public:
 
+			using TSetType = std::conditional_t<std::is_const_v<TDataType>, const TConcurrentSet, TConcurrentSet>;
 			using iterator_category = std::bidirectional_iterator_tag;
-			using value_type = TDataType;
+			using value_type = std::remove_const_t<TDataType>;
 			using difference_type = int64_t;
 			using pointer = TDataType*;
 			using reference = TDataType&;
 
-			TBaseIterator() : m_it(nullptr), m_currentBucket(nullptr) {}
+			TBaseIterator() = default;
 
 			TBaseIterator(const TBaseIterator&) = default;
 			TBaseIterator(TBaseIterator&&) = default;
 
 			~TBaseIterator() = default;
 
-			TBaseIterator(TEntry* bucket, TElementIterator it) : m_currentBucket(bucket), m_it(std::move(it)){}
+			TBaseIterator(TSetType* owner, size_t bucketIndex, TElementIterator it = {}) :
+				m_owner(owner), m_bucketIndex(bucketIndex), m_it(std::move(it))
+			{
+				if (m_owner && m_it == TElementIterator{})
+				{
+					AdvanceToBucket();
+				}
+			}
 
-			operator TBaseIterator<const TDataType, TElementIterator>() { return TBaseIterator<const TDataType, TElementIterator>(m_currentBucket, m_it); }
+			operator TBaseIterator<const TElementType, typename TElementContainer::TConstIterator>() const
+				requires (!std::is_const_v<TDataType>)
+			{
+				return { m_owner, m_bucketIndex, m_it };
+			}
 
 			TBaseIterator& operator=(const TBaseIterator& rhs) = default;
 			TBaseIterator& operator=(TBaseIterator&& rhs) = default;
 
-			bool operator==(const TBaseIterator& rhs) const { return m_it == rhs.m_it; }
-			bool operator!=(const TBaseIterator& rhs) const { return m_it != rhs.m_it; }
+			bool operator==(const TBaseIterator& rhs) const { return m_owner == rhs.m_owner && m_bucketIndex == rhs.m_bucketIndex && m_it == rhs.m_it; }
+			bool operator!=(const TBaseIterator& rhs) const { return !(*this == rhs); }
 
 			pointer operator->() { return &*m_it; }
 			pointer operator->() const { return &*m_it; }
@@ -128,13 +119,10 @@ namespace Sailor
 			{
 				++m_it;
 
-				if (m_it == ((TEntry*)m_currentBucket)->GetContainer().end())
+				if (m_it == TElementIterator{})
 				{
-					if (m_currentBucket->m_next)
-					{
-						m_currentBucket = m_currentBucket->m_next;
-						m_it = ((TEntry*)m_currentBucket)->GetContainer().begin();
-					}
+					++m_bucketIndex;
+					AdvanceToBucket();
 				}
 
 				return *this;
@@ -142,12 +130,17 @@ namespace Sailor
 
 			TBaseIterator& operator--()
 			{
-				if (m_it == m_currentBucket->GetContainer().begin())
+				if (m_bucketIndex == m_owner->m_buckets.Num() ||
+					m_it == m_owner->m_buckets[m_bucketIndex]->GetContainer().begin())
 				{
-					if (m_currentBucket->m_prev)
+					while (m_bucketIndex > 0)
 					{
-						m_currentBucket = m_currentBucket->m_prev;
-						m_it = ((TEntry*)m_currentBucket)->GetContainer().Last();
+						auto& bucket = m_owner->m_buckets[--m_bucketIndex];
+						if (bucket)
+						{
+							m_it = bucket->GetContainer().Last();
+							break;
+						}
 					}
 				}
 				else
@@ -158,10 +151,40 @@ namespace Sailor
 				return *this;
 			}
 
+			TBaseIterator operator++(int)
+			{
+				auto previous = *this;
+				++(*this);
+				return previous;
+			}
+
+			TBaseIterator operator--(int)
+			{
+				auto previous = *this;
+				--(*this);
+				return previous;
+			}
+
 		protected:
 
-			TEntry* m_currentBucket;
-			TElementIterator m_it;
+			void AdvanceToBucket()
+			{
+				while (m_bucketIndex < m_owner->m_buckets.Num())
+				{
+					auto& bucket = m_owner->m_buckets[m_bucketIndex];
+					if (bucket)
+					{
+						m_it = bucket->GetContainer().begin();
+						return;
+					}
+					++m_bucketIndex;
+				}
+				m_it = {};
+			}
+
+			TSetType* m_owner = nullptr;
+			size_t m_bucketIndex = 0;
+			TElementIterator m_it{};
 
 			friend class TEntry;
 		};
@@ -173,7 +196,7 @@ namespace Sailor
 
 		SAILOR_API TConcurrentSet(const uint32_t desiredNumBuckets = 16, ERehashPolicy policy = ERehashPolicy::Never) : m_rehashPolicy(policy)
 		{
-			m_buckets.Resize(std::max(desiredNumBuckets, concurrencyLevel));
+			m_buckets.Resize(RoundBucketCount(desiredNumBuckets));
 		}
 
 		TConcurrentSet(TConcurrentSet&&) = default;
@@ -190,6 +213,10 @@ namespace Sailor
 
 		SAILOR_API TConcurrentSet& operator=(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType>
 		{
+			if (this == &rhs)
+			{
+				return *this;
+			}
 			m_rehashPolicy = rhs.m_rehashPolicy;
 
 			Clear((uint32_t)rhs.m_buckets.Num());
@@ -201,7 +228,7 @@ namespace Sailor
 			return *this;
 		}
 
-		SAILOR_API TConcurrentSet(std::initializer_list<TElementType> initList)
+		SAILOR_API TConcurrentSet(std::initializer_list<TElementType> initList) : TConcurrentSet()
 		{
 			for (const auto& el : initList)
 			{
@@ -210,7 +237,7 @@ namespace Sailor
 		}
 
 		// TODO: Rethink the approach of base class for iterators
-		SAILOR_API TConcurrentSet(const TVectorIterator<TElementType>& begin, const TVectorIterator<TElementType>& end)
+		SAILOR_API TConcurrentSet(const TVectorIterator<TElementType>& begin, const TVectorIterator<TElementType>& end) : TConcurrentSet()
 		{
 			TVectorIterator<TElementType> it = begin;
 			while (it != end)
@@ -226,17 +253,13 @@ namespace Sailor
 		bool Contains(const TElementType& inElement) const
 		{
 			const auto& hash = Sailor::GetHash(inElement);
-			const size_t index = hash % m_buckets.Num();
-			auto& element = m_buckets[index];
-
-			if (element && element->LikelyContains(hash))
-			{
-				return element->GetContainer().Contains(inElement);
-			}
-
-			return false;
+			Lock(hash);
+			const bool found = Contains_Internal(inElement, hash);
+			Unlock(hash);
+			return found;
 		}
 
+		// Caller owns the stripe, or all stripes. This entry point does not rehash.
 		void ForcelyInsert(TElementType inElement)
 		{
 			const auto& hash = Sailor::GetHash(inElement);
@@ -245,81 +268,30 @@ namespace Sailor
 
 		void Insert(TElementType inElement)
 		{
-			if (ShouldRehash())
-			{
-				if (m_numRehashingRequests++ == 0)
-				{
-					if (!(m_rehashPolicy == ERehashPolicy::IfNotWriting && !TryLockAll(-1)))
-					{
-						Rehash(m_buckets.Capacity() * 4);
-						UnlockAll();
-					}
-					else if (m_rehashPolicy == ERehashPolicy::Always)
-					{
-						LockAll();
-						Rehash(m_buckets.Capacity() * 4);
-						UnlockAll();
-					}
-				}
-
-				m_numRehashingRequests--;
-			}
-
 			const auto& hash = Sailor::GetHash(inElement);
-
 			Lock(hash);
-
+			RehashForInsert(hash);
 			Insert_Internal(std::move(inElement), hash);
-
 			Unlock(hash);
 		}
 
 		bool Remove(const TElementType& inElement)
 		{
 			const auto& hash = Sailor::GetHash(inElement);
+			Lock(hash);
 			const size_t index = hash % m_buckets.Num();
 			auto& element = m_buckets[index];
-
-			if (element)
+			const bool removed = element && element->GetContainer().RemoveFirst(inElement);
+			if (removed)
 			{
-				Lock(hash);
-
-				auto& container = element->GetContainer();
-				if (container.RemoveFirst(inElement))
+				if (element->GetContainer().IsEmpty())
 				{
-					if (container.Num() == 0)
-					{
-						if (element->m_next)
-						{
-							element->m_next->m_prev = element->m_prev;
-						}
-
-						if (element->m_prev)
-						{
-							element->m_prev->m_next = element->m_next;
-						}
-
-						if (m_last == element.GetRawPtr())
-						{
-							m_last = m_last->m_prev;
-						}
-
-						if (m_first == element.GetRawPtr())
-						{
-							m_first = m_first->m_next;
-						}
-
-						element.Clear();
-					}
-
-					m_num--;
-					Unlock(hash);
-					return true;
+					element.Clear();
 				}
-				Unlock(hash);
-				return false;
+				m_num--;
 			}
-			return false;
+			Unlock(hash);
+			return removed;
 		}
 
 		void Clear(uint32_t desiredBucketsNum = 8)
@@ -327,21 +299,21 @@ namespace Sailor
 			LockAll();
 
 			m_num = 0;
-			m_first = m_last = nullptr;
 			m_buckets.Clear();
 
-			m_buckets.Resize(desiredBucketsNum);
+			m_buckets.Resize(RoundBucketCount(desiredBucketsNum));
 
 			UnlockAll();
 		}
 
-		// Support ranged for
-		TIterator begin() { return TIterator(m_first, m_first ? ((TEntry*)m_first)->GetContainer().begin() : nullptr); }
-		TIterator end() { return TIterator(m_last, m_last ? ((TEntry*)m_last)->GetContainer().end() : nullptr); }
+		// Borrowed iterators: keep writers excluded (for example with LockAll) during traversal.
+		TIterator begin() { return TIterator(this, 0); }
+		TIterator end() { return TIterator(this, m_buckets.Num()); }
 
-		TConstIterator begin() const { return TConstIterator(m_first, m_first ? ((TEntry*)m_first)->GetContainer().begin() : nullptr); }
-		TConstIterator end() const { return TConstIterator(m_last, m_last ? ((TEntry*)m_last)->GetContainer().end() : nullptr); }
+		TConstIterator begin() const { return TConstIterator(this, 0); }
+		TConstIterator end() const { return TConstIterator(this, m_buckets.Num()); }
 
+		// Like iteration, comparison borrows both containers; the caller excludes their writers.
 		bool operator==(const TConcurrentSet& rhs) const
 		{
 			if (rhs.Num() != this->Num())
@@ -351,7 +323,7 @@ namespace Sailor
 
 			for (auto& el : rhs)
 			{
-				if (!this->Contains(el))
+				if (!Contains_Internal(el, Sailor::GetHash(el)))
 				{
 					return false;
 				}
@@ -359,7 +331,7 @@ namespace Sailor
 
 			for (auto& el : *this)
 			{
-				if (!rhs.Contains(el))
+				if (!rhs.Contains_Internal(el, Sailor::GetHash(el)))
 				{
 					return false;
 				}
@@ -368,7 +340,7 @@ namespace Sailor
 			return true;
 		}
 
-		__forceinline void LockAll()
+		__forceinline void LockAll() const
 		{
 			for (size_t i = 0; i < concurrencyLevel; i++)
 			{
@@ -376,7 +348,7 @@ namespace Sailor
 			}
 		}
 
-		__forceinline void UnlockAll()
+		__forceinline void UnlockAll() const
 		{
 			for (size_t i = 0; i < concurrencyLevel; i++)
 			{
@@ -386,6 +358,18 @@ namespace Sailor
 
 	protected:
 
+		static size_t RoundBucketCount(size_t requested)
+		{
+			const size_t count = std::max(requested, static_cast<size_t>(concurrencyLevel));
+			return ((count + concurrencyLevel - 1) / concurrencyLevel) * concurrencyLevel;
+		}
+
+		bool Contains_Internal(const TElementType& inElement, size_t hash) const
+		{
+			const auto& element = m_buckets[hash % m_buckets.Num()];
+			return element && element->LikelyContains(hash) && element->GetContainer().Contains(inElement);
+		}
+
 		__forceinline void Insert_Internal(TElementType inElement, const size_t& hash)
 		{
 			const size_t index = hash % m_buckets.Num();
@@ -394,17 +378,6 @@ namespace Sailor
 			if (!element)
 			{
 				element = TConcurrentEntryPtr::Make(hash);
-
-				if (!m_first)
-				{
-					m_last = m_first = element.GetRawPtr();
-				}
-				else
-				{
-					m_first->m_prev = element.GetRawPtr();
-					element->m_next = m_first;
-					m_first = element.GetRawPtr();
-				}
 			}
 
 			if (element->GetContainer().Contains(inElement))
@@ -418,22 +391,22 @@ namespace Sailor
 			m_num++;
 		}
 
-		__forceinline bool TryLock(size_t hash) { return m_locks[hash % concurrencyLevel].TryLock(); }
-		__forceinline void Lock(size_t hash) { m_locks[hash % concurrencyLevel].Lock(); }
-		__forceinline void Unlock(size_t hash) { m_locks[hash % concurrencyLevel].Unlock(); }
+		__forceinline bool TryLock(size_t hash) const { return m_locks[hash % concurrencyLevel].TryLock(); }
+		__forceinline void Lock(size_t hash) const { m_locks[hash % concurrencyLevel].Lock(); }
+		__forceinline void Unlock(size_t hash) const { m_locks[hash % concurrencyLevel].Unlock(); }
 
-		__forceinline void LockAll(uint32_t exceptConcurrencyLevel)
+		__forceinline void UnlockAll(uint32_t exceptConcurrencyLevel) const
 		{
 			for (size_t i = 0; i < concurrencyLevel; i++)
 			{
 				if (exceptConcurrencyLevel != (uint32_t)i)
 				{
-					m_locks[i].Lock();
+					m_locks[i].Unlock();
 				}
 			}
 		}
 
-		__forceinline bool TryLockAll(uint32_t exceptConcurrencyLevel)
+		__forceinline bool TryLockAll(uint32_t exceptConcurrencyLevel) const
 		{
 			for (uint32_t i = 0; i < concurrencyLevel; i++)
 			{
@@ -457,8 +430,34 @@ namespace Sailor
 			return m_rehashPolicy != ERehashPolicy::Never && (size_t)m_num > m_buckets.Num() * 4;
 		}
 
+		// Enter and return with the caller's stripe locked. A blocking upgrade must
+		// first drop that stripe so two writers cannot wait on each other's locks.
+		void RehashForInsert(size_t hash)
+		{
+			if (!ShouldRehash())
+			{
+				return;
+			}
+			const uint32_t stripe = static_cast<uint32_t>(hash % concurrencyLevel);
+			if (!TryLockAll(stripe))
+			{
+				if (m_rehashPolicy != ERehashPolicy::Always)
+				{
+					return;
+				}
+				Unlock(hash);
+				LockAll();
+			}
+			if (ShouldRehash())
+			{
+				Rehash(m_buckets.Num() * 4);
+			}
+			UnlockAll(stripe);
+		}
+
 		__forceinline void Rehash(size_t desiredBucketsNum)
 		{
+			desiredBucketsNum = RoundBucketCount(desiredBucketsNum);
 			if (desiredBucketsNum <= m_buckets.Num())
 			{
 				return;
@@ -467,15 +466,15 @@ namespace Sailor
 			TVector<TConcurrentEntryPtr, TAllocator> buckets(desiredBucketsNum);
 			TVector<TConcurrentEntryPtr, TAllocator>::Swap(buckets, m_buckets);
 
-			TEntry* current = (TEntry*)m_first;
-
 			m_num = 0;
-			m_first = nullptr;
-			m_last = nullptr;
 
-			while (current)
+			for (auto& bucket : buckets)
 			{
-				for (auto& el : ((TEntry*)current)->GetContainer())
+				if (!bucket)
+				{
+					continue;
+				}
+				for (auto& el : bucket->GetContainer())
 				{
 					const auto& hash = Sailor::GetHash(el);
 
@@ -488,25 +487,17 @@ namespace Sailor
 						Insert_Internal(el, hash);
 					}
 				}
-
-				current = current->m_next;
 			}
 
 			buckets.Clear();
 		}
 
-		std::atomic<uint32_t> m_numRehashingRequests = 0;
-
 		TBucketContainer m_buckets{};
-		SpinLock m_locks[concurrencyLevel];
+		mutable SpinLock m_locks[concurrencyLevel];
 
 		std::atomic<uint32_t> m_num = 0;
 
 		ERehashPolicy m_rehashPolicy;
-
-		// That's unsafe but we handle that properly
-		TEntry* m_first = nullptr;
-		TEntry* m_last = nullptr;
 	};
 
 	SAILOR_API void RunSetBenchmark();

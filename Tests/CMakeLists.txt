@@ -110,6 +110,16 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(ContainerContractTests)
 endif()
 
+add_executable(ConcurrentContainerTests ConcurrentContainerTests.cpp)
+target_compile_features(ConcurrentContainerTests PRIVATE cxx_std_20)
+target_include_directories(ConcurrentContainerTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ConcurrentContainerTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME ConcurrentContainerTests COMMAND ConcurrentContainerTests)
+set_tests_properties(ConcurrentContainerTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ConcurrentContainerTests)
+endif()
+
 add_executable(LandscapeStreamingTests
     LandscapeStreamingTests.cpp
 )
