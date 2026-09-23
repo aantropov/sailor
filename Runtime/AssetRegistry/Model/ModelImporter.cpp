@@ -187,25 +187,47 @@ void ModelImporter::PopulateModelSceneHierarchy(Model& model, TVector<GltfImport
 
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
 {
+	return LoadModel(uid, App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid),
+		*App::GetSubmodule<Tasks::Scheduler>(), outModel);
+}
+
+Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelAssetInfoPtr pAssetInfo,
+	Tasks::Scheduler& scheduler, ModelPtr& outModel)
+{
 	SAILOR_PROFILE_FUNCTION();
-	ModelAssetInfoPtr pAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid);
 
 	// Check promises first
 	auto& promise = m_promises.At_Lock(uid, nullptr);
 	auto& loadedModel = m_loadedModels.At_Lock(uid, ModelPtr());
 
+	if (promise && !promise->IsFinished())
+	{
+		// The RHI task may still be writing the model, including its CPU meshes.
+		outModel = loadedModel;
+		auto result = promise;
+		m_loadedModels.Unlock(uid);
+		m_promises.Unlock(uid);
+		return result;
+	}
+	if (promise && !promise->GetResult())
+	{
+		loadedModel = nullptr;
+		promise = nullptr;
+	}
+
 	// Check loaded assets
 	if (loadedModel)
 	{
 		const bool bNeedCpuBuffers = pAssetInfo && pAssetInfo->ShouldKeepCpuBuffers() && !loadedModel->HasCpuMeshes();
-		if (bNeedCpuBuffers && !promise)
+		if (bNeedCpuBuffers)
 		{
 			loadedModel = nullptr;
+			promise = nullptr;
 		}
 		else
 		{
 			outModel = loadedModel;
-			auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel);
+			auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel, &scheduler);
 
 			m_loadedModels.Unlock(uid);
 			m_promises.Unlock(uid);
@@ -237,7 +259,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 			bool m_bShouldGenerateBLAS = false;
 		};
 
-		auto loadDataTask = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
+		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>(scheduler, "Load model",
 			[pAssetInfo, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
@@ -274,14 +296,13 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 				return pData;
 			});
 		auto migrationTask = loadDataTask->Then(
-			[this, pAssetInfo, uid](TSharedPtr<Data> pData)
+			[this, pAssetInfo](TSharedPtr<Data> pData)
 			{
 				if (pData->m_bIsImported)
 				{
 					UpdateGeneratedMaterialPropertiesOnDemand(pAssetInfo, pData->m_gltfModel);
 				}
 				pData->m_gltfModel = tinygltf::Model();
-				m_generatedMaterialMigrationTasks.Remove(uid);
 			},
 			"Migrate generated model materials",
 			EThreadType::Main);
@@ -402,7 +423,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 							pModel->ProceedCpuMeshes(pData->m_bShouldGenerateBLAS, pData->m_bShouldKeepCpuBuffers);
 							pModel->Flush();
 						}
-						return pModel;
+						return pModel->IsStructurallyReady() ? pModel : ModelPtr{};
 					},
 					"Update RHI Meshes",
 					EThreadType::RHI)
@@ -410,11 +431,12 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 
 		outModel = loadedModel = pModel;
 		promise->Run();
+		auto result = promise;
 
 		m_loadedModels.Unlock(uid);
 		m_promises.Unlock(uid);
 
-		return promise;
+		return result;
 	}
 
 	outModel = nullptr;
@@ -426,9 +448,16 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 
 bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 {
+	return LoadModel_Immediate(uid, App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid),
+		*App::GetSubmodule<Tasks::Scheduler>(), outModel);
+}
+
+bool ModelImporter::LoadModel_Immediate(FileId uid, ModelAssetInfoPtr assetInfo,
+	Tasks::Scheduler& scheduler, ModelPtr& outModel)
+{
 	SAILOR_PROFILE_FUNCTION();
 
-	auto task = LoadModel(uid, outModel);
+	auto task = LoadModel(uid, assetInfo, scheduler, outModel);
 	if (!task)
 	{
 		outModel = nullptr;
@@ -436,7 +465,8 @@ bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 	}
 
 	task->Wait();
-	return task->GetResult().IsValid();
+	outModel = task->GetResult();
+	return outModel && outModel->IsStructurallyReady();
 }
 
 Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<MaterialPtr>& outMaterials)
@@ -488,34 +518,42 @@ bool ModelImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmedia
 		return bRes;
 	}
 
-	LoadModel(uid, outModel);
+	auto task = LoadModel(uid, outModel);
 	out = outModel;
-	return true;
+	return static_cast<bool>(task);
 }
 
 void ModelImporter::CollectGarbage()
 {
-	TVector<FileId> uidsToRemove;
-
 	m_promises.LockAll();
 	auto ids = m_promises.GetKeys();
 	m_promises.UnlockAll();
 
 	for (const auto& id : ids)
 	{
-		auto promise = m_promises.At_Lock(id);
-
-		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
+		auto& promise = m_promises.At_Lock(id);
+		if (!promise || promise->IsFinished())
 		{
-			FileId uid = id;
-			uidsToRemove.Emplace(uid);
+			if (promise && !promise->GetResult())
+			{
+				m_loadedModels.Remove(id);
+			}
+			// Read and removal share the stripe, so a retry cannot replace this attempt in between.
+			m_promises.ForcelyRemove(id);
 		}
-
 		m_promises.Unlock(id);
 	}
 
-	for (auto& uid : uidsToRemove)
+	m_generatedMaterialMigrationTasks.LockAll();
+	ids = m_generatedMaterialMigrationTasks.GetKeys();
+	m_generatedMaterialMigrationTasks.UnlockAll();
+	for (const auto& id : ids)
 	{
-		m_promises.Remove(uid);
+		auto& task = m_generatedMaterialMigrationTasks.At_Lock(id);
+		if (!task || task->IsFinished())
+		{
+			m_generatedMaterialMigrationTasks.ForcelyRemove(id);
+		}
+		m_generatedMaterialMigrationTasks.Unlock(id);
 	}
 }

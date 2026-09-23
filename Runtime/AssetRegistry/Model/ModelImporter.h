@@ -299,6 +299,12 @@ namespace Sailor
 
 		ObjectAllocatorPtr m_allocator;
 
+	private:
+		SAILOR_API Tasks::TaskPtr<ModelPtr> LoadModel(FileId uid, ModelAssetInfoPtr assetInfo,
+			Tasks::Scheduler& scheduler, ModelPtr& outModel);
+		SAILOR_API bool LoadModel_Immediate(FileId uid, ModelAssetInfoPtr assetInfo,
+			Tasks::Scheduler& scheduler, ModelPtr& outModel);
+
 		friend class ModelImporterTestAccess;
 	};
 }

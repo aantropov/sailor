@@ -11,9 +11,11 @@
 #include "Raytracing/PathTracer.h"
 #include "Components/MeshRendererComponent.h"
 #include "RHI/Buffer.h"
+#include "Tasks/Tasks.h"
 #include "Workspace/WorkspaceContext.h"
 
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -22,6 +24,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <sstream>
@@ -40,6 +43,51 @@ namespace Sailor
 		static bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& registry)
 		{
 			return ModelImporter::GenerateAnimationAssets(assetInfo, registry);
+		}
+
+		static Tasks::TaskPtr<ModelPtr> LoadModel(ModelImporter& importer, ModelAssetInfoPtr assetInfo,
+			Tasks::Scheduler& scheduler, ModelPtr& outModel)
+		{
+			return importer.LoadModel(assetInfo->GetFileId(), assetInfo, scheduler, outModel);
+		}
+
+		static bool LoadModelImmediate(ModelImporter& importer, ModelAssetInfoPtr assetInfo,
+			Tasks::Scheduler& scheduler, ModelPtr& outModel)
+		{
+			return importer.LoadModel_Immediate(assetInfo->GetFileId(), assetInfo, scheduler, outModel);
+		}
+
+		static ModelPtr CacheCompletedModel(ModelImporter& importer, const FileId& id,
+			const RHI::RHIMeshPtr& mesh, Tasks::Scheduler& scheduler)
+		{
+			auto model = ModelPtr::Make(importer.m_allocator, id, TVector<RHI::RHIMeshPtr>{ mesh });
+			model->Flush();
+			importer.m_promises.At_Lock(id) = Tasks::TaskPtr<ModelPtr>::Make(model, &scheduler);
+			importer.m_loadedModels.At_Lock(id) = model;
+			importer.m_loadedModels.Unlock(id);
+			importer.m_promises.Unlock(id);
+			return model;
+		}
+
+		static ModelPtr GetCachedModel(const ModelImporter& importer, const FileId& id)
+		{
+			ModelPtr model;
+			importer.m_loadedModels.TryGet(id, model);
+			return model;
+		}
+
+		static Tasks::TaskPtr<ModelPtr> GetPromise(const ModelImporter& importer, const FileId& id)
+		{
+			Tasks::TaskPtr<ModelPtr> task;
+			importer.m_promises.TryGet(id, task);
+			return task;
+		}
+
+		static Tasks::ITaskPtr GetMaterialMigration(const ModelImporter& importer, const FileId& id)
+		{
+			Tasks::ITaskPtr task;
+			importer.m_generatedMaterialMigrationTasks.TryGet(id, task);
+			return task;
 		}
 	};
 }
@@ -533,6 +581,146 @@ namespace
 		AnimationAssetInfoHandler m_animationHandler;
 		std::filesystem::path m_content;
 	};
+
+	bool WaitForModelTask(Tasks::Scheduler& scheduler, const Tasks::ITaskPtr& task)
+	{
+		auto& block = scheduler.GetTaskSyncBlock(*task);
+		std::unique_lock<std::mutex> lock(block.m_mutex);
+		return block.m_onComplete.wait_for(lock, std::chrono::seconds(5),
+			[&]() { return block.m_bCompletionFlag; });
+	}
+
+	void TestFailedModelImportCanBeRetried()
+	{
+		ModelCacheWorkspace workspace;
+		const auto sourcePath = workspace.Context().GetContent() / "Broken.gltf";
+		CreateAnimationTestModel(sourcePath);
+		WriteAnimationFixtureText(sourcePath, "{ incomplete glTF");
+		AnimationRegistryFixture fixture(workspace.Context());
+		auto info = fixture.LoadModel("Broken.gltf");
+		ModelImporter importer(&fixture.m_modelHandler);
+		// The scheduler drains Main callbacks before importer/metadata teardown, including on failure.
+		Tasks::Scheduler scheduler;
+		scheduler.Initialize();
+
+		ModelPtr firstModel;
+		auto first = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, firstModel);
+		Require(first && WaitForModelTask(scheduler, first),
+			"the real Worker/RHI chain must finish a failed model import");
+		Require(!first->GetResult() && firstModel && !firstModel->IsStructurallyReady(),
+			"failed parsing must return an empty result instead of its pending placeholder");
+
+		ModelPtr retryModel;
+		auto retry = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, retryModel);
+		Require(retry && retry != first && retryModel != firstModel,
+			"the same FileId must start a fresh attempt after failure without waiting for garbage collection");
+		Require(WaitForModelTask(scheduler, retry) && !retry->GetResult(),
+			"the retry must execute its own failed import and publish its own result");
+
+		ModelPtr immediateModel = firstModel;
+		Require(!ModelImporterTestAccess::LoadModelImmediate(importer, info.GetRawPtr(), scheduler, immediateModel) &&
+			!immediateModel,
+			"immediate loading must replace the output with the empty task result on failure");
+		scheduler.ProcessTasksOnMainThread();
+		importer.CollectGarbage();
+		Require(!ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) &&
+			!ModelImporterTestAccess::GetCachedModel(importer, info->GetFileId()) &&
+			!ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId()),
+			"garbage collection must retire the failed model and its finished tasks");
+		Require(firstModel && retryModel && !firstModel->IsStructurallyReady() && !retryModel->IsStructurallyReady(),
+			"retiring a failed cache entry must not force-destroy a caller's retained placeholder");
+	}
+
+	void TestPendingModelImportsShareTheirAttempt()
+	{
+		ModelCacheWorkspace workspace;
+		const auto sourcePath = workspace.Context().GetContent() / "Pending.gltf";
+		CreateAnimationTestModel(sourcePath);
+		WriteAnimationFixtureText(sourcePath, "{ incomplete glTF");
+		AnimationRegistryFixture fixture(workspace.Context());
+		auto info = fixture.LoadModel("Pending.gltf");
+		ModelImporter importer(&fixture.m_modelHandler);
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+
+		// Drain the real task queues explicitly to keep both attempts' Main callbacks pending.
+		auto finishImport = [&]()
+		{
+			Tasks::ITaskPtr task;
+			Require(scheduler.TryFetchNextAvailiableTask(task, EThreadType::Worker),
+				"model admission must enqueue its CPU import");
+			task->Execute();
+			while (scheduler.TryFetchNextAvailiableTask(task, EThreadType::RHI))
+			{
+				task->Execute();
+			}
+		};
+
+		ModelPtr firstModel;
+		auto first = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, firstModel);
+		ModelPtr duplicateModel;
+		auto duplicate = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, duplicateModel);
+		Require(first && !first->IsFinished() && duplicate == first && duplicateModel == firstModel,
+			"pending duplicate requests must share one task and one model placeholder");
+		finishImport();
+		Require(first->IsFinished() && !first->GetResult(), "the queued import must publish failure");
+		const auto oldMigration = ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId());
+
+		ModelPtr retryModel;
+		auto retry = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, retryModel);
+		const auto retryMigration = ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId());
+		Require(retry && retry != first && retryMigration && retryMigration != oldMigration,
+			"a retry must retain its own load and material migration tasks");
+		Tasks::ITaskPtr readyMain;
+		Require(scheduler.TryFetchNextAvailiableTask(readyMain, EThreadType::Main) && readyMain == oldMigration,
+			"the previous attempt's Main callback must still be available independently of the retry");
+		readyMain->Execute();
+		Require(ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId()) == retryMigration,
+			"an old Main callback must not erase the retry's migration tracking");
+		importer.CollectGarbage();
+		Require(ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) == retry &&
+			ModelImporterTestAccess::GetCachedModel(importer, info->GetFileId()) == retryModel,
+			"collection of old work must preserve a replacement attempt that is still pending");
+		duplicate = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, duplicateModel);
+		Require(duplicate == retry && duplicateModel == retryModel,
+			"a pending retry must remain the sole shared attempt after collection");
+
+		finishImport();
+		Require(retry->IsFinished() && !retry->GetResult(), "the retry must finish through the same task chain");
+		scheduler.ProcessTasksOnMainThread();
+		importer.CollectGarbage();
+		Require(!ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) &&
+			!ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId()),
+			"finished load and migration tasks must be collectible");
+	}
+
+	void TestCachedModelDoesNotWaitForGpuUploads()
+	{
+		ModelCacheWorkspace workspace;
+		CreateAnimationTestModel(workspace.Context().GetContent() / "Cached.gltf");
+		AnimationRegistryFixture fixture(workspace.Context());
+		auto info = fixture.LoadModel("Cached.gltf");
+		ModelImporter importer(&fixture.m_modelHandler);
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+		auto mesh = TRefPtr<ControllableMesh>::Make();
+		auto model = ModelImporterTestAccess::CacheCompletedModel(importer, info->GetFileId(), mesh, scheduler);
+		Require(model->IsStructurallyReady() && !model->IsReady(),
+			"the cached fixture must have complete structure and an unfinished GPU upload");
+		const uint32_t readinessChecks = mesh->GetNumIsReadyCalls();
+		ModelPtr immediateModel;
+		Require(ModelImporterTestAccess::LoadModelImmediate(importer, info.GetRawPtr(), scheduler, immediateModel) &&
+			immediateModel == model && mesh->GetNumIsReadyCalls() == readinessChecks,
+			"successful immediate loading must use structural completion without polling GPU readiness");
+		importer.CollectGarbage();
+		Require(!ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) &&
+			ModelImporterTestAccess::GetCachedModel(importer, info->GetFileId()) == model,
+			"retiring a successful promise must retain the cached model");
+		ModelPtr loadedModel;
+		auto cached = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, loadedModel);
+		Require(cached && cached->IsFinished() && cached->GetResult() == model && loadedModel == model,
+			"a successful cache hit must return the same model after its original promise is collected");
+	}
 
 	void TestAnimationRepairPreservesFileIds()
 	{
@@ -2158,6 +2346,9 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "ModelReadinessTracksMeshUploads", TestModelReadinessTracksMeshUploads },
+		{ "FailedModelImportCanBeRetried", TestFailedModelImportCanBeRetried },
+		{ "PendingModelImportsShareTheirAttempt", TestPendingModelImportsShareTheirAttempt },
+		{ "CachedModelDoesNotWaitForGpuUploads", TestCachedModelDoesNotWaitForGpuUploads },
 		{ "MeshContextRejectsEmptyGpuUploads", TestMeshContextRejectsEmptyGpuUploads },
 		{ "ModelLodMetadataDefaultsAndRoundTrip", TestModelLodMetadataDefaultsAndRoundTrip },
 		{ "ModelLodGenerationAndCacheNaming", TestModelLodGenerationAndCacheNaming },
