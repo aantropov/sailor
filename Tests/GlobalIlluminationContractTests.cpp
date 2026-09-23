@@ -4598,6 +4598,92 @@ components:
 		service.Disable();
 	}
 
+	void TestBakeCancellationBetweenPhases()
+	{
+		GIProbesBakeRequest request;
+		request.m_stateName = "Cancellation";
+		request.m_volumeMin = glm::vec3(0.0f);
+		request.m_volumeMax = glm::vec3(4.0f);
+		request.m_settings.m_raysPerProbe = 8u;
+		request.m_settings.m_bounceCount = 1u;
+		request.m_settings.m_maxSubdivisionLevel = 2u;
+		request.m_settings.m_minProbeSpacing = 1.0f;
+		Math::AABB geometry;
+		geometry.Extend(request.m_volumeMin);
+		geometry.Extend(request.m_volumeMax);
+		request.m_sceneGeometryBounds.Add(geometry);
+		const ConstantBakeRaySampler baselineSampler(glm::vec3(1.0f));
+		const auto baseline = GIProbesBaker::Bake(request, baselineSampler);
+		Require(baseline.IsSuccess() && baseline.m_data->m_bricks.Num() == 64u &&
+			baseline.m_data->m_probes.Num() == 512u,
+			"the cancellation fixture must reach multiple layout and canonicalization batches");
+		const GIProbesData retained = *baseline.m_data;
+
+		struct CancellationPoint
+		{
+			const char* m_stage;
+			uint32_t m_occurrence;
+			bool m_bAfterSampling;
+			bool m_bReuseLayout;
+		};
+		const CancellationPoint points[] =
+		{
+			{ "Building adaptive probe layout", 2u, false, false },
+			{ "Copying reusable probe layout", 2u, false, true },
+			{ "Collecting shared probe samples", 2u, true, false },
+			{ "Canonicalizing shared probe samples", 2u, true, false },
+			{ "Canonicalizing shared probe samples", 2u, true, true },
+			{ "Finalizing baked probes", 1u, true, false }
+		};
+		for (const auto& point : points)
+		{
+			std::atomic<bool> cancel{ false };
+			uint32_t occurrences = 0u;
+			float previousFraction = 0.0f;
+			bool bValidProgress = true;
+			GIProbesBakeRequest cancelled = request;
+			cancelled.m_cancel = &cancel;
+			cancelled.m_layoutSource = point.m_bReuseLayout ? baseline.m_data.GetRawPtr() : nullptr;
+			cancelled.m_progress = [&](const GIProbesBakeProgress& progress)
+			{
+				bValidProgress &= progress.m_fraction >= previousFraction &&
+					progress.m_fraction <= 1.0f && progress.m_completedProbes <= progress.m_totalProbes;
+				previousFraction = progress.m_fraction;
+				if (progress.m_stage == point.m_stage && ++occurrences == point.m_occurrence)
+				{
+					cancel.store(true, std::memory_order_release);
+				}
+			};
+			const ConstantBakeRaySampler sampler(glm::vec3(1.0f));
+			const auto result = GIProbesBaker::Bake(cancelled, sampler);
+			Require(occurrences == point.m_occurrence && bValidProgress &&
+				result.m_status == EGIProbesBakeStatus::Cancelled && !result.m_data,
+				std::string("cancellation must discard the result during ") + point.m_stage);
+			Require((sampler.GetIrradianceSampleCount() > 0u) == point.m_bAfterSampling,
+				"layout cancellation must stop before tracing, while finalization cancellation must follow it");
+			Require(baseline.m_data->m_layoutHash == retained.m_layoutHash &&
+				baseline.m_data->m_transportHash == retained.m_transportHash &&
+				baseline.m_data->m_lightingHash == retained.m_lightingHash,
+				"cancellation must leave the reusable source identity untouched");
+			for (size_t i = 0u; i < retained.m_probes.Num(); ++i)
+			{
+				Require(HasSameProbeBits(baseline.m_data->m_probes[i], retained.m_probes[i]),
+					"discarding a partially copied or canonicalized bake must not modify retained source probes");
+			}
+		}
+
+		const auto retry = GIProbesBaker::Bake(request, baselineSampler);
+		Require(retry.IsSuccess() && retry.m_data->m_layoutHash == retained.m_layoutHash &&
+			retry.m_data->m_transportHash == retained.m_transportHash &&
+			retry.m_data->m_lightingHash == retained.m_lightingHash,
+			"retrying after cancellation must preserve deterministic layout, transport and lighting hashes");
+		for (size_t i = 0u; i < retained.m_probes.Num(); ++i)
+		{
+			Require(HasSameProbeBits(retry.m_data->m_probes[i], retained.m_probes[i]),
+				"checkpoints must not change successful probe values or their canonical order");
+		}
+	}
+
 	void TestDeterministicBakeSeedsAndReusedLayoutValidation()
 	{
 		GIProbesBakeRequest request;
@@ -4627,11 +4713,11 @@ components:
 
 		GIProbesBakeRequest parallel = request;
 		parallel.m_threadCount = 4u;
-		std::string parallelStage;
-		parallel.m_progress = [&parallelStage](
+		bool bSawParallelStage = false;
+		parallel.m_progress = [&bSawParallelStage](
 			const GIProbesBakeProgress& progress)
 		{
-			parallelStage = progress.m_stage;
+			bSawParallelStage |= progress.m_stage.find("(4 threads)") != std::string::npos;
 		};
 		const ConcurrentSeedDrivenBakeRaySampler parallelSampler(4u);
 		const GIProbesBakeResult parallelResult = GIProbesBaker::Bake(
@@ -4652,7 +4738,7 @@ components:
 		}
 		Require(
 			parallelSampler.GetObservedThreadCount() == 4u &&
-			parallelStage.find("(4 threads)") != std::string::npos &&
+			bSawParallelStage &&
 			first.m_data->m_layoutHash == parallelResult.m_data->m_layoutHash &&
 			first.m_data->m_transportHash ==
 				parallelResult.m_data->m_transportHash &&
@@ -5343,6 +5429,160 @@ components:
 				}) &&
 			bCancellationRequested,
 			"path-tracer preparation must stop when its progress callback requests cancellation");
+	}
+
+	void TestPathTracerCancellationBetweenBlasBuilds()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		fixture.m_instances[0].m_blas.Clear();
+		auto second = fixture.m_instances[0];
+		second.m_triangles = TSharedPtr<TVector<Math::Triangle>>::Make(*fixture.m_triangles);
+		fixture.m_instances.Add(std::move(second));
+		const auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		GIProbesBakeSettings settings;
+		Raytracing::GIProbesPathTracer tracer;
+		bool bStoppedAfterFirstBlas = false;
+		Require(!tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings,
+			glm::vec3(0.0f), [&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Geometry &&
+					tracer.GetLastScenePreparationStats().m_builtBlasCount == 1u)
+				{
+					bStoppedAfterFirstBlas = progress.m_completed == 1u && progress.m_total == 2u;
+					return false;
+				}
+				return true;
+			}) && bStoppedAfterFirstBlas,
+			"preparation must observe cancellation after one real BLAS, before building the next");
+		Require(tracer.GetLastScenePreparationStats().m_builtBlasCount == 1u &&
+			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == 0u &&
+			!fixture.m_instances[0].m_blas && !fixture.m_instances[1].m_blas,
+			"cancelled preparation must not continue to materials or write BLAS into the source snapshot");
+		GIProbeBakeRaySample sample;
+		std::string diagnostic;
+		Require(!tracer.Sample(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
+			10.0f, 1u, sample, diagnostic),
+			"a cancelled GI tracer must not expose a partially prepared scene");
+		Require(tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings) &&
+			tracer.GetLastScenePreparationStats().m_builtBlasCount == 2u,
+			"the same tracer must rebuild both independent geometries when retried");
+
+		uint32_t completedMaterialReports = 0u;
+		Require(!tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings,
+			glm::vec3(0.0f), [&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Materials &&
+					progress.m_completed == materials.Num())
+				{
+					return ++completedMaterialReports < 2u;
+				}
+				return true;
+			}) && completedMaterialReports == 2u,
+			"cancellation after materials must still stop the remaining instance preparation");
+		Require(!tracer.Sample(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
+			10.0f, 1u, sample, diagnostic),
+			"a late cancellation must invalidate a previously successful tracer initialization");
+
+		TVector<Raytracing::PathTracer::TLASInstance> cheapInstances;
+		auto reused = fixture.m_instances[0];
+		reused.m_blas = fixture.m_blas;
+		for (uint32_t i = 0u; i < 256u; ++i)
+		{
+			cheapInstances.Add(i < 128u ? reused : Raytracing::PathTracer::TLASInstance{});
+		}
+		completedMaterialReports = 0u;
+		Require(tracer.InitializeSnapshot(cheapInstances, materials, fixture.m_lights, settings,
+			glm::vec3(0.0f), [&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Materials &&
+					progress.m_completed == materials.Num())
+				{
+					++completedMaterialReports;
+				}
+				return true;
+			}, [](const std::string&) {}) && completedMaterialReports > 1u && completedMaterialReports <= 8u,
+			"many reused or skipped instances must poll cancellation in batches, not publish progress per instance");
+	}
+
+	void TestPathTracerCancellationDuringTexturePreparation()
+	{
+		Tests::TempDirectory source("gi-cancel-texture");
+		const auto imagePath = source.Path("pixel.tga");
+		std::array<uint8_t, 21> bytes{};
+		bytes[2] = 2u;
+		bytes[12] = bytes[14] = 1u;
+		bytes[16] = 24u;
+		bytes[20] = 255u;
+		{
+			std::ofstream output(imagePath, std::ios::binary);
+			output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+			output.close();
+			Require(static_cast<bool>(output), "the cancellation fixture texture must be written");
+		}
+		TextureAssetInfo info;
+		auto metadata = info.Serialize();
+		const auto textureId = FileId::CreateNewFileId();
+		metadata["fileId"] = textureId;
+		metadata["filename"] = imagePath.string();
+		metadata["bShouldGenerateMips"] = false;
+		info.Deserialize(metadata);
+		auto texture = TSharedPtr<Raytracing::PathTracer::TextureSnapshot>::Make();
+		texture->m_fileId = textureId;
+		texture->m_sourceKey = imagePath.string();
+		Require(TextureImporter::CaptureCpuDecodeRequest(info, texture->m_decodeRequest),
+			"the cancellation fixture must capture a real nonresident texture decode request");
+
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		auto material = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*materials[0]);
+		Raytracing::PathTracer::SamplerSnapshot binding;
+		binding.m_texture = texture;
+		material->m_samplers.Add({ "baseColorSampler", std::move(binding) });
+		materials[0] = std::move(material);
+		GIProbesBakeSettings settings;
+		Raytracing::GIProbesPathTracer tracer;
+		uint32_t warnings = 0u;
+		bool bCancelledAfterDecode = false;
+		const auto warning = [&](const std::string&) { ++warnings; };
+		Require(!tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings,
+			glm::vec3(0.0f), [&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Materials &&
+					tracer.GetLastScenePreparationStats().m_decodedTextureCount == 1u)
+				{
+					bCancelledAfterDecode = progress.m_completed == 0u;
+					return false;
+				}
+				return true;
+			}, warning) && bCancelledAfterDecode && warnings == 0u &&
+			tracer.GetLastScenePreparationStats().m_uniqueTextureCount == 0u,
+			"cancellation after decoding must stop conversion without reporting a missing texture");
+		Require(texture->m_data.IsEmpty() &&
+			tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings,
+				glm::vec3(0.0f), {}, warning) && warnings == 0u &&
+			tracer.GetLastScenePreparationStats().m_decodedTextureCount == 1u &&
+			tracer.GetLastScenePreparationStats().m_uniqueTextureCount == 1u,
+			"retry must decode and convert the untouched captured source without a partial cache hit");
+
+		Require(std::filesystem::remove(imagePath), "the owned texture fixture must be removed");
+		GIProbesSceneSnapshot scene;
+		scene.m_instances = fixture.m_instances;
+		scene.m_materials = materials;
+		scene.m_lights = fixture.m_lights;
+		std::atomic<bool> cancel{ false };
+		GIProbesPreparedScene prepared;
+		std::string diagnostic;
+		Require(!PrepareGIProbesScene(scene, settings, &cancel, prepared, diagnostic,
+			[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Materials)
+				{
+					cancel.store(true, std::memory_order_release);
+				}
+				return true;
+			}, warning) && cancel.load(std::memory_order_acquire) && !prepared.m_sampler &&
+			warnings == 0u && diagnostic.find("cancelled") != std::string::npos,
+			"Prepare must recheck a callback-set cancellation before attempting the now-missing texture");
 	}
 
 	void TestProbeBakeSkipsUnavailableMeshAndMaterialInstances()
@@ -7276,6 +7516,7 @@ int main(int argc, char** argv)
 			TestGIBakeQualityLabCoversCanonicalCases);
 		RunTest("GpuPackingAndWeightOnlyUpdates", TestGpuPackingAndWeightOnlyUpdates);
 		RunTest("AdaptiveBakerAndLayoutReuse", TestAdaptiveBakerAndLayoutReuse);
+		RunTest("BakeCancellationBetweenPhases", TestBakeCancellationBetweenPhases);
 		RunTest(
 			"PrimaryDirectionPdfWeighting",
 			TestPrimaryDirectionPdfWeighting);
@@ -7347,6 +7588,8 @@ int main(int argc, char** argv)
 		RunTest(
 			"PathTracerPreparationDeduplicationAndProgress",
 			TestPathTracerPreparationDeduplicationAndProgress);
+		RunTest("PathTracerCancellationBetweenBlasBuilds", TestPathTracerCancellationBetweenBlasBuilds);
+		RunTest("PathTracerCancellationDuringTexturePreparation", TestPathTracerCancellationDuringTexturePreparation);
 		RunTest(
 			"ProbeBakeSkipsUnavailableMeshAndMaterialInstances",
 			TestProbeBakeSkipsUnavailableMeshAndMaterialInstances);

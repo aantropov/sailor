@@ -618,9 +618,15 @@ namespace
 			convertedMaterials;
 		TMap<const PathTracer::MaterialSnapshot*, uint8_t> convertedMaterialResolution;
 		TMap<std::string, TSharedPtr<const PathTracer::TextureSnapshot>> cpuTextureSnapshots;
+		size_t completedMaterials = 0u;
+		bool bCancelled = false;
 
 		auto reportMaterialProgress = [&](size_t completed) -> bool
 		{
+			if (bCancelled)
+			{
+				return false;
+			}
 			if (!progress)
 			{
 				return true;
@@ -629,7 +635,8 @@ namespace
 			update.m_stage = PathTracer::EScenePreparationStage::Materials;
 			update.m_completed = completed;
 			update.m_total = runtimeMaterials.Num();
-			return progress(update);
+			bCancelled = !progress(update);
+			return !bCancelled;
 		};
 		if (!reportMaterialProgress(0u))
 		{
@@ -673,14 +680,27 @@ namespace
 				auto snapshot = pTexture;
 				if (snapshot->m_data.IsEmpty())
 				{
+					if (!reportMaterialProgress(completedMaterials))
+					{
+						return false;
+					}
 					auto decoded = TSharedPtr<PathTracer::TextureSnapshot>::Make();
 					uint32_t mipLevels = 1u;
-					if (!TextureImporter::DecodeTextureCpu(
-							pTexture->m_decodeRequest,
-							decoded->m_data,
-							decoded->m_width,
-							decoded->m_height,
-							mipLevels))
+					const bool bDecoded = TextureImporter::DecodeTextureCpu(
+						pTexture->m_decodeRequest,
+						decoded->m_data,
+						decoded->m_width,
+						decoded->m_height,
+						mipLevels);
+					if (bDecoded)
+					{
+						++stats.m_decodedTextureCount;
+					}
+					if (!reportMaterialProgress(completedMaterials))
+					{
+						return false;
+					}
+					if (!bDecoded)
 					{
 						outDiagnostic = fileId ?
 							"the captured texture source changed or could not be decoded on the CPU" :
@@ -688,7 +708,6 @@ namespace
 						return false;
 					}
 					snapshot = std::move(decoded);
-					++stats.m_decodedTextureCount;
 				}
 				if (snapshot->m_width <= 0 || snapshot->m_height <= 0 ||
 					snapshot->m_data.IsEmpty())
@@ -719,6 +738,10 @@ namespace
 				return false;
 			}
 
+			if (!reportMaterialProgress(completedMaterials))
+			{
+				return false;
+			}
 			TSharedPtr<CombinedSampler2D> sampler = TSharedPtr<CombinedSampler2D>::Make();
 			sampler->m_width = width;
 			sampler->m_height = height;
@@ -769,6 +792,10 @@ namespace
 				}
 			}
 
+			if (!reportMaterialProgress(completedMaterials))
+			{
+				return false;
+			}
 			const uint32_t index = (uint32_t)outTextures.Num();
 			outTextures.Add(sampler);
 			outTextureMapping[key] = index;
@@ -782,10 +809,10 @@ namespace
 			const auto& pMaterial = runtimeMaterials[i];
 			auto reportCompletedMaterial = [&]() -> bool
 			{
-				const size_t completed = i + 1u;
-				return completed % 64u != 0u &&
-					completed != runtimeMaterials.Num() ?
-					true : reportMaterialProgress(completed);
+				completedMaterials = i + 1u;
+				return completedMaterials % 64u != 0u &&
+					completedMaterials != runtimeMaterials.Num() ?
+					true : reportMaterialProgress(completedMaterials);
 			};
 
 			if (!pMaterial)
@@ -840,6 +867,10 @@ namespace
 						channels,
 						outTextureIndex,
 						diagnostic))
+				{
+					return;
+				}
+				if (bCancelled)
 				{
 					return;
 				}
@@ -937,6 +968,10 @@ namespace
 				else if (samplerName == "sheenRoughnessSampler")
 				{
 					prepareTexture(samplerName, pTexture, false, false, 4, outMaterial.m_sheenRoughnessIndex);
+				}
+				if (bCancelled)
+				{
+					return false;
 				}
 			}
 
@@ -1236,11 +1271,20 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 				{
 					return false;
 				}
-				instance.m_blas = TSharedPtr<BVH>::Make(
+				if (!reportGeometryProgress(i))
+				{
+					return false;
+				}
+				auto blas = TSharedPtr<BVH>::Make(
 					static_cast<uint32_t>(triangles->Num()));
-				instance.m_blas->BuildBVH(*triangles);
-				preparedBlas.Add(triangles, instance.m_blas);
+				blas->BuildBVH(*triangles);
 				++m_lastScenePreparationStats.m_builtBlasCount;
+				if (!reportGeometryProgress(i + 1u))
+				{
+					return false;
+				}
+				instance.m_blas = std::move(blas);
+				preparedBlas.Add(triangles, instance.m_blas);
 			}
 		}
 
@@ -1316,8 +1360,14 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 	bool bHasGeometry = false;
 	TMap<const TVector<Math::Triangle>*, TVector<uint32_t>>
 		referencedMaterialSlots;
+	const ScenePreparationProgress preparedMaterials{ EScenePreparationStage::Materials,
+		materialCount, materialCount };
 	for (size_t i = 0u; i < m_tlasInstances.Num(); ++i)
 	{
+		if (i % 64u == 0u && progress && !progress(preparedMaterials))
+		{
+			return false;
+		}
 		const TLASInstance& instance = m_tlasInstances[i];
 		if (!HasInstanceGeometry(instance))
 		{
@@ -1433,6 +1483,10 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 			glm::max(integerExtents, glm::ivec3(1)),
 			i);
 		AppendEmissiveTriangles(static_cast<uint32_t>(i));
+	}
+	if (progress && !progress(preparedMaterials))
+	{
+		return false;
 	}
 	m_lastScenePreparationStats.m_emissiveTriangleCount =
 		m_emissiveTriangles.Num();

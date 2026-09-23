@@ -27,7 +27,36 @@ namespace
 			request.m_cancel->load(std::memory_order_acquire);
 	}
 
-	uint64_t ComputeTransportHash(const GIProbesData& data) noexcept
+	bool ReportProgress(const GIProbesBakeRequest& request, const char* stage,
+		uint32_t completedProbes = 0u, uint32_t totalProbes = 0u)
+	{
+		if (IsCancelled(request))
+		{
+			return false;
+		}
+		if (request.m_progress)
+		{
+			GIProbesBakeProgress progress;
+			progress.m_stage = stage;
+			progress.m_completedProbes = completedProbes;
+			progress.m_totalProbes = totalProbes;
+			progress.m_fraction = totalProbes > 0u ?
+				static_cast<float>(completedProbes) / static_cast<float>(totalProbes) : 0.0f;
+			request.m_progress(progress);
+		}
+		return !IsCancelled(request);
+	}
+
+	GIProbesBakeResult CancelledBake()
+	{
+		GIProbesBakeResult result;
+		result.m_status = EGIProbesBakeStatus::Cancelled;
+		result.m_diagnostic = "GI probe bake was cancelled";
+		return result;
+	}
+
+	bool ComputeTransportHash(const GIProbesData& data,
+		const GIProbesBakeRequest& request, uint64_t& outHash) noexcept
 	{
 		uint64_t hash = Fnv1aOffsetBasis;
 		HashValue(hash, data.m_layoutHash);
@@ -36,8 +65,13 @@ namespace
 		HashValue(hash, data.m_bakeSettings.m_normalBias);
 		HashValue(hash, data.m_bakeSettings.m_viewBias);
 		HashValue(hash, data.m_bakeSettings.m_maxRayDistance);
-		for (const GIProbe& probe : data.m_probes)
+		for (size_t probeIndex = 0u; probeIndex < data.m_probes.Num(); ++probeIndex)
 		{
+			if (probeIndex % 256u == 0u && IsCancelled(request))
+			{
+				return false;
+			}
+			const GIProbe& probe = data.m_probes[probeIndex];
 			HashValues(
 				hash,
 				probe.m_relocationOffset.x,
@@ -55,10 +89,12 @@ namespace
 				HashValue(hash, environmentVisibility);
 			}
 		}
-		return hash;
+		outHash = hash;
+		return !IsCancelled(request);
 	}
 
-	uint64_t ComputeLightingHash(const GIProbesData& data) noexcept
+	bool ComputeLightingHash(const GIProbesData& data,
+		const GIProbesBakeRequest& request, uint64_t& outHash) noexcept
 	{
 		uint64_t hash = Fnv1aOffsetBasis;
 		HashValue(hash, data.m_layoutHash);
@@ -66,8 +102,13 @@ namespace
 		HashValue(hash, data.m_bakeSettings.m_bounceCount);
 		HashValue(hash, data.m_bakeSettings.m_randomSeed);
 		HashValue(hash, data.m_bakeSettings.m_skyIndirectIntensity);
-		for (const GIProbe& probe : data.m_probes)
+		for (size_t probeIndex = 0u; probeIndex < data.m_probes.Num(); ++probeIndex)
 		{
+			if (probeIndex % 256u == 0u && IsCancelled(request))
+			{
+				return false;
+			}
+			const GIProbe& probe = data.m_probes[probeIndex];
 			for (const glm::vec3& coefficient : probe.m_irradiance)
 			{
 				HashValues(
@@ -77,7 +118,8 @@ namespace
 					coefficient.z);
 			}
 		}
-		return hash;
+		outHash = hash;
+		return !IsCancelled(request);
 	}
 
 	uint32_t CanonicalFloatBits(float value) noexcept
@@ -125,10 +167,16 @@ namespace
 			lhs.m_subdivisionLevel == rhs.m_subdivisionLevel;
 	}
 
-	void CanonicalizeSharedProbeSamples(
+	bool CanonicalizeSharedProbeSamples(
 		GIProbesData& data,
-		bool bCanonicalizeTransport)
+		bool bCanonicalizeTransport,
+		const GIProbesBakeRequest& request)
 	{
+		const uint32_t totalProbes = static_cast<uint32_t>(data.m_probes.Num());
+		if (!ReportProgress(request, "Collecting shared probe samples", totalProbes, totalProbes))
+		{
+			return false;
+		}
 		std::vector<SharedProbeEntry> entries;
 		entries.reserve(data.m_probes.Num());
 		for (const GIProbeBrick& brick : data.m_bricks)
@@ -168,18 +216,45 @@ namespace
 							},
 							brick.m_subdivisionLevel,
 							probeIndex });
+						if (entries.size() % 256u == 0u &&
+							!ReportProgress(request, "Collecting shared probe samples", totalProbes, totalProbes))
+						{
+							return false;
+						}
 					}
 				}
 			}
 		}
+		if (!ReportProgress(request, "Sorting shared probe samples", totalProbes, totalProbes))
+		{
+			return false;
+		}
 		std::sort(entries.begin(), entries.end(), SharedProbeEntryLess);
+		if (!ReportProgress(request, "Canonicalizing shared probe samples", totalProbes, totalProbes))
+		{
+			return false;
+		}
+		size_t visitedEntries = 0u;
+		const auto continueCanonicalization = [&]()
+		{
+			return ++visitedEntries % 256u != 0u ||
+				ReportProgress(request, "Canonicalizing shared probe samples", totalProbes, totalProbes);
+		};
 
 		for (size_t begin = 0u; begin < entries.size();)
 		{
+			if (!continueCanonicalization())
+			{
+				return false;
+			}
 			size_t end = begin + 1u;
 			while (end < entries.size() &&
 				HasSameNominalPosition(entries[begin], entries[end]))
 			{
+				if (!continueCanonicalization())
+				{
+					return false;
+				}
 				++end;
 			}
 			const size_t sampleCount = end - begin;
@@ -189,6 +264,10 @@ namespace
 					GIProbeSphericalHarmonicsCoefficientCount> irradiance{};
 				for (size_t entryIndex = begin; entryIndex < end; ++entryIndex)
 				{
+					if (!continueCanonicalization())
+					{
+						return false;
+					}
 					const GIProbe& probe =
 						data.m_probes[entries[entryIndex].m_probeIndex];
 					for (size_t coefficientIndex = 0u;
@@ -216,6 +295,10 @@ namespace
 				{
 					for (size_t entryIndex = begin; entryIndex < end; ++entryIndex)
 					{
+						if (!continueCanonicalization())
+						{
+							return false;
+						}
 						data.m_probes[entries[entryIndex].m_probeIndex].m_irradiance =
 							canonicalIrradiance;
 					}
@@ -234,6 +317,10 @@ namespace
 						entries[transportBegin],
 						entries[transportEnd]))
 					{
+						if (!continueCanonicalization())
+						{
+							return false;
+						}
 						++transportEnd;
 					}
 					const size_t transportSampleCount =
@@ -251,6 +338,10 @@ namespace
 						entryIndex < transportEnd;
 						++entryIndex)
 					{
+						if (!continueCanonicalization())
+						{
+							return false;
+						}
 						const GIProbe& probe =
 							data.m_probes[entries[entryIndex].m_probeIndex];
 						position += glm::dvec3(probe.m_position);
@@ -309,6 +400,10 @@ namespace
 						entryIndex < transportEnd;
 						++entryIndex)
 					{
+						if (!continueCanonicalization())
+						{
+							return false;
+						}
 						data.m_probes[entries[entryIndex].m_probeIndex] = canonical;
 					}
 					transportBegin = transportEnd;
@@ -316,17 +411,23 @@ namespace
 			}
 			begin = end;
 		}
+		return !IsCancelled(request);
 	}
 
 	bool IntersectsGeometryNeighborhood(
 		const glm::vec3& min,
 		const glm::vec3& max,
 		float margin,
-		const TVector<Math::AABB>& geometryBounds) noexcept
+		const GIProbesBakeRequest& request) noexcept
 	{
 		const glm::vec3 expansion((std::max)(margin, 0.0f));
-		for (const Math::AABB& bounds : geometryBounds)
+		for (size_t index = 0u; index < request.m_sceneGeometryBounds.Num(); ++index)
 		{
+			if (index % 256u == 0u && IsCancelled(request))
+			{
+				return false;
+			}
+			const Math::AABB& bounds = request.m_sceneGeometryBounds[index];
 			if (bounds.IsValid() &&
 				glm::all(glm::lessThanEqual(min, bounds.m_max + expansion)) &&
 				glm::all(glm::greaterThanEqual(max, bounds.m_min - expansion)))
@@ -386,6 +487,11 @@ namespace
 	{
 		if (request.m_layoutSource)
 		{
+			const uint32_t totalProbes = static_cast<uint32_t>(request.m_layoutSource->m_probes.Num());
+			if (!ReportProgress(request, "Copying reusable probe layout", 0u, totalProbes))
+			{
+				return false;
+			}
 			if (request.m_layoutSource->m_bakerVersion != request.m_bakerVersion)
 			{
 				outDiagnostic =
@@ -397,6 +503,10 @@ namespace
 			if (!request.m_layoutSource->Validate(sourceDiagnostic))
 			{
 				outDiagnostic = "layout source is invalid: " + sourceDiagnostic;
+				return false;
+			}
+			if (IsCancelled(request))
+			{
 				return false;
 			}
 			data.m_volumeMin = request.m_layoutSource->m_volumeMin;
@@ -411,25 +521,50 @@ namespace
 				request.m_layoutSource->m_bakeSettings.m_viewBias;
 			data.m_bakeSettings.m_maxRayDistance =
 				request.m_layoutSource->m_bakeSettings.m_maxRayDistance;
-			data.m_bricks = request.m_layoutSource->m_bricks;
-			data.m_probes = request.m_layoutSource->m_probes;
-			for (GIProbe& probe : data.m_probes)
+			data.m_bricks.Reserve(request.m_layoutSource->m_bricks.Num());
+			for (const GIProbeBrick& brick : request.m_layoutSource->m_bricks)
 			{
-				probe.m_irradiance = {};
+				data.m_bricks.Add(brick);
+				if (data.m_bricks.Num() % 256u == 0u &&
+					!ReportProgress(request, "Copying reusable probe layout", 0u, totalProbes))
+				{
+					return false;
+				}
+			}
+			data.m_probes.Reserve(totalProbes);
+			for (const GIProbe& probe : request.m_layoutSource->m_probes)
+			{
+				data.m_probes.Add(probe);
+				data.m_probes.Last()->m_irradiance = {};
+				if (data.m_probes.Num() % 256u == 0u &&
+					!ReportProgress(request, "Copying reusable probe layout", 0u, totalProbes))
+				{
+					return false;
+				}
 			}
 			data.m_layoutHash = request.m_layoutSource->m_layoutHash;
 			data.m_transportHash = request.m_layoutSource->m_transportHash;
-			return true;
+			return !IsCancelled(request);
 		}
 
+		if (!ReportProgress(request, "Building adaptive probe layout"))
+		{
+			return false;
+		}
 		data.m_volumeMin = request.m_volumeMin;
 		data.m_volumeMax = request.m_volumeMax;
+		size_t visitedNodes = 0u;
 		std::function<bool(const glm::vec3&, const glm::vec3&, uint32_t)>
 			appendNode;
 		appendNode = [&](const glm::vec3& min,
 			const glm::vec3& max,
 			uint32_t subdivisionLevel) -> bool
 		{
+			if (++visitedNodes % 64u == 0u &&
+				!ReportProgress(request, "Building adaptive probe layout"))
+			{
+				return false;
+			}
 			const glm::vec3 childExtent = (max - min) * 0.5f;
 			const glm::bvec3 splitAxes =
 				subdivisionLevel < request.m_settings.m_maxSubdivisionLevel ?
@@ -446,7 +581,11 @@ namespace
 					min,
 					max,
 					request.m_settings.m_minProbeSpacing,
-					request.m_sceneGeometryBounds);
+					request);
+			if (IsCancelled(request))
+			{
+				return false;
+			}
 			if (!bShouldSubdivide)
 			{
 				return AppendBrick(
@@ -490,12 +629,12 @@ namespace
 			return true;
 		};
 
-		if (!appendNode(data.m_volumeMin, data.m_volumeMax, 0u))
+		if (!appendNode(data.m_volumeMin, data.m_volumeMax, 0u) || IsCancelled(request))
 		{
 			return false;
 		}
 		data.m_layoutHash = ComputeGIProbesLayoutHash(data);
-		return true;
+		return !IsCancelled(request);
 	}
 
 	uint32_t CalculateRequiredSubdivisionLevel(
@@ -523,12 +662,10 @@ namespace
 			GIProbesMaxSubdivisionLevel + 1u : level;
 	}
 
-	std::vector<float> CalculateProbeVisibilityMaxDistances(
-		const GIProbesData& data)
+	bool CalculateProbeVisibilityMaxDistances(const GIProbesData& data,
+		const GIProbesBakeRequest& request, std::vector<float>& outDistances)
 	{
-		std::vector<float> result(
-			data.m_probes.Num(),
-			data.m_bakeSettings.m_maxRayDistance);
+		outDistances.resize(data.m_probes.Num(), data.m_bakeSettings.m_maxRayDistance);
 		for (const GIProbeBrick& brick : data.m_bricks)
 		{
 			const float maxDistance = CalculateGIProbeVisibilityMaxDistance(
@@ -536,15 +673,19 @@ namespace
 				brick);
 			const uint32_t endProbeIndex = (std::min)(
 				brick.m_firstProbeIndex + brick.m_probeCount,
-				static_cast<uint32_t>(result.size()));
+				static_cast<uint32_t>(outDistances.size()));
 			for (uint32_t probeIndex = brick.m_firstProbeIndex;
 				probeIndex < endProbeIndex;
 				++probeIndex)
 			{
-				result[probeIndex] = maxDistance;
+				if (probeIndex % 256u == 0u && IsCancelled(request))
+				{
+					return false;
+				}
+				outDistances[probeIndex] = maxDistance;
 			}
 		}
-		return result;
+		return !IsCancelled(request);
 	}
 
 	bool BakeProbe(
@@ -675,7 +816,7 @@ namespace
 				request.m_volumeMin,
 				request.m_volumeMax,
 				request.m_settings.m_minProbeSpacing,
-				request.m_sceneGeometryBounds))
+				request))
 		{
 			const uint32_t requiredSubdivisionLevel =
 				CalculateRequiredSubdivisionLevel(
@@ -729,9 +870,7 @@ GIProbesBakeResult GIProbesBaker::Bake(
 		}
 		if (IsCancelled(request))
 		{
-			result.m_status = EGIProbesBakeStatus::Cancelled;
-			result.m_diagnostic = "GI probe bake was cancelled before layout generation";
-			return result;
+			return CancelledBake();
 		}
 
 		Utils::Timer timer;
@@ -747,6 +886,10 @@ GIProbesBakeResult GIProbesBaker::Bake(
 			data->m_compression);
 		if (!BuildAdaptiveLayout(request, *data, result.m_diagnostic))
 		{
+			if (IsCancelled(request))
+			{
+				return CancelledBake();
+			}
 			result.m_status = EGIProbesBakeStatus::InvalidRequest;
 			return result;
 		}
@@ -758,8 +901,12 @@ GIProbesBakeResult GIProbesBaker::Bake(
 		effectiveRequest.m_volumeMax = data->m_volumeMax;
 		const uint32_t totalProbes = static_cast<uint32_t>(
 			data->m_probes.Num());
-		const std::vector<float> visibilityMaxDistances =
-			CalculateProbeVisibilityMaxDistances(*data);
+		std::vector<float> visibilityMaxDistances;
+		if (!ReportProgress(request, "Preparing probe visibility", 0u, totalProbes) ||
+			!CalculateProbeVisibilityMaxDistances(*data, request, visibilityMaxDistances))
+		{
+			return CancelledBake();
+		}
 		const uint32_t threadCount = (std::min)(
 			request.m_threadCount,
 			totalProbes);
@@ -773,6 +920,10 @@ GIProbesBakeResult GIProbesBaker::Bake(
 		if (request.m_progress)
 		{
 			request.m_progress(progress);
+		}
+		if (IsCancelled(request))
+		{
+			return CancelledBake();
 		}
 
 		std::atomic<uint32_t> nextProbeIndex{ 0u };
@@ -904,9 +1055,7 @@ GIProbesBakeResult GIProbesBaker::Bake(
 
 		if (IsCancelled(effectiveRequest))
 		{
-			result.m_status = EGIProbesBakeStatus::Cancelled;
-			result.m_diagnostic = "GI probe bake was cancelled";
-			return result;
+			return CancelledBake();
 		}
 		result.m_status = workerStatus.load(std::memory_order_acquire);
 		if (result.m_status != EGIProbesBakeStatus::Success)
@@ -916,16 +1065,31 @@ GIProbesBakeResult GIProbesBaker::Bake(
 			return result;
 		}
 
-		CanonicalizeSharedProbeSamples(*data, !bReuseTransport);
+		if (!CanonicalizeSharedProbeSamples(*data, !bReuseTransport, request) ||
+			!ReportProgress(request, "Hashing baked probes", totalProbes, totalProbes))
+		{
+			return CancelledBake();
+		}
 		if (!bReuseTransport)
 		{
 			data->m_layoutHash = ComputeGIProbesLayoutHash(*data);
-			data->m_transportHash = ComputeTransportHash(*data);
+			if (!ComputeTransportHash(*data, request, data->m_transportHash))
+			{
+				return CancelledBake();
+			}
 		}
-		data->m_lightingHash = ComputeLightingHash(*data);
-		float validity = 0.0f;
-		for (const GIProbe& probe : data->m_probes)
+		if (!ComputeLightingHash(*data, request, data->m_lightingHash))
 		{
+			return CancelledBake();
+		}
+		float validity = 0.0f;
+		for (size_t probeIndex = 0u; probeIndex < data->m_probes.Num(); ++probeIndex)
+		{
+			if (probeIndex % 256u == 0u && IsCancelled(request))
+			{
+				return CancelledBake();
+			}
+			const GIProbe& probe = data->m_probes[probeIndex];
 			validity += probe.m_validity;
 			if ((probe.m_flags & static_cast<uint32_t>(
 				EGIProbeFlag::Valid)) == 0u)
@@ -948,12 +1112,25 @@ GIProbesBakeResult GIProbesBaker::Bake(
 			"baked one adaptive irradiance-probe state";
 
 		std::string validationDiagnostic;
-		if (!data->Validate(validationDiagnostic))
+		if (!ReportProgress(request, "Validating baked probes", totalProbes, totalProbes))
+		{
+			return CancelledBake();
+		}
+		const bool bValid = data->Validate(validationDiagnostic);
+		if (IsCancelled(request))
+		{
+			return CancelledBake();
+		}
+		if (!bValid)
 		{
 			result.m_status = EGIProbesBakeStatus::InvalidResult;
 			result.m_diagnostic = "baker produced invalid .probes data: " +
 				validationDiagnostic;
 			return result;
+		}
+		if (!ReportProgress(request, "Finalizing baked probes", totalProbes, totalProbes))
+		{
+			return CancelledBake();
 		}
 
 		result.m_status = EGIProbesBakeStatus::Success;

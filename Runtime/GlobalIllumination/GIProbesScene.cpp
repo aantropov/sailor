@@ -795,7 +795,7 @@ bool Sailor::PrepareGIProbesScene(
 		[&progress, &isCancelled](
 			const Raytracing::PathTracer::ScenePreparationProgress& state)
 		{
-			return !isCancelled() && (!progress || progress(state));
+			return !isCancelled() && (!progress || progress(state)) && !isCancelled();
 		};
 	if (!sampler->InitializeSnapshot(
 			scene.m_instances,
@@ -828,7 +828,7 @@ bool Sailor::PrepareGIProbesScene(
 				{
 					return !isCancelled();
 				});
-		if (!bGenerated)
+		if (!bGenerated || isCancelled())
 		{
 			outDiagnostic = isCancelled() ?
 				"GI scene preparation was cancelled while generating the sky environment" :
