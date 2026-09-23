@@ -128,7 +128,13 @@ Settings::ERenderStatsMode App::GetRenderStatsMode()
 
 bool App::SetRenderStatsMode(Settings::ERenderStatsMode mode)
 {
-	g_renderStatsMode.store(mode, std::memory_order_release);
+	if (g_renderStatsMode.exchange(mode, std::memory_order_acq_rel) != mode)
+	{
+		if (auto renderer = GetSubmodule<RHI::Renderer>())
+		{
+			renderer->RefreshGpuTimings();
+		}
+	}
 	return true;
 }
 
@@ -790,7 +796,6 @@ void App::Start()
 		return;
 	}
 
-	uint32_t frameCounter = 0U;
 	Utils::Timer timer{};
 	Utils::Timer trackEditor{};
 	FrameState currentFrame{};
@@ -908,7 +913,6 @@ void App::Start()
 			lastFrame = currentFrame;
 
 			//Frame successfully pushed
-			frameCounter++;
 			SAILOR_PROFILE_END_FRAME();
 			if (bRunsInsideEditor)
 			{
@@ -953,8 +957,9 @@ void App::Start()
 			const Stats& stats = renderer->GetStats();
 
 			char Buff[256];
-			SAILOR_SNPRINTF(Buff, sizeof(Buff), "Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb, CmdLists: %u", frameCounter,
-				stats.m_gpuFps.load(std::memory_order_relaxed),
+			SAILOR_SNPRINTF(Buff, sizeof(Buff), "Sailor Render FPS: %u, Present: %u /s, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb, CmdLists: %u",
+				stats.m_renderFps.load(std::memory_order_relaxed),
+				stats.m_presentFps.load(std::memory_order_relaxed),
 				(uint32_t)pEngineLoop->GetCpuFps(),
 				(float)stats.m_gpuHeapUsage / (1024.0f * 1024.0f),
 				(float)stats.m_gpuHeapBudget / (1024.0f * 1024.0f),
@@ -970,7 +975,6 @@ void App::Start()
 				pMainWindow->SetWindowTitle(Buff);
 			}
 
-			frameCounter = 0U;
 			timer.Clear();
 		}
 

@@ -6,6 +6,8 @@
 #include "Math/Math.h"
 #include "Containers/Containers.h"
 #include "Containers/Hash.h"
+#include <chrono>
+#include <optional>
 
 #if defined(_MSC_VER)
 # pragma warning(push)
@@ -810,10 +812,27 @@ namespace Sailor::RHI
 		float m_durationMilliseconds = 0.0f;
 	};
 
+	struct GpuTimingResult
+	{
+		uint64_t m_generation = 0u;
+		uint64_t m_queryId = 0u;
+		std::chrono::steady_clock::time_point m_recordedAt{};
+		bool m_bValid = false;
+		// Sum of measured command-list ranges, not a frame interval or display cadence.
+		float m_gpuWorkMilliseconds = 0.0f;
+		TVector<GpuTiming> m_timings;
+	};
+
+	// Accepted queue operations, not GPU completion or display scanout.
+	struct FrameSubmissionResult
+	{
+		bool m_bSubmitted = false;
+		bool m_bPresented = false;
+	};
+
 	struct GpuStats
 	{
 		TMap<RHI::RHITexturePtr, TMap<RHI::EImageLayout, uint32_t>> m_barriers;
-		TVector<GpuTiming> m_timings;
 	};
 
 	static constexpr uint32_t InvalidGpuTimestampQuery = ~0u;
@@ -833,7 +852,10 @@ namespace Sailor::RHI
 
 	struct Stats
 	{
-		std::atomic<uint32_t> m_gpuFps = 0u;
+		// Successful rendered submissions and accepted swapchain presents per wall-clock second.
+		// Present counts do not measure display scanout; offscreen frames only increase render FPS.
+		std::atomic<uint32_t> m_renderFps = 0u;
+		std::atomic<uint32_t> m_presentFps = 0u;
 		std::atomic<uint32_t> m_numBatches = 0u;
 		std::atomic<uint32_t> m_numInstances = 0u;
 		std::atomic<size_t> m_materialsMemoryUsage = 0u;

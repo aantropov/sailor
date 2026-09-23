@@ -16,7 +16,6 @@
 #include "Submodules/ImGuiApi.h"
 #include "RHI/Types.h"
 #include "RHI/CommandList.h"
-#include "RHI/GpuFrameTimeQueryRing.h"
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
 #include "Settings/GraphicsSettings.h"
@@ -34,7 +33,8 @@ namespace
 {
 	void DrawViewportStatsOverlay(
 		uint32_t cpuFps,
-		uint32_t gpuFps,
+		uint32_t renderFps,
+		uint32_t presentFps,
 		uint32_t numBatches,
 		uint32_t numInstances,
 		float shadowMemoryMb,
@@ -89,7 +89,7 @@ namespace
 		std::snprintf(
 			text,
 			sizeof(text),
-			"CPU %u FPS\nGPU %u FPS\nBatches %u\nInstances %u\n"
+			"CPU %u FPS\nRender %u FPS\nPresent %u /s\nBatches %u\nInstances %u\n"
 			"Shadows %.1f / %.0f MB\n  CSM %.1f MB\n  Local %.1f MB\n"
 			"GI %s (%s) rev %llu flight %s\n"
 			"  States %u / %u, bricks %u / %u, probes %u\n"
@@ -97,7 +97,8 @@ namespace
 			"  Copy %.1f KB, upload %.1f KB\n"
 			"GPU memory\n  Materials %.1f MB\n  Textures %.1f MB\n  Meshes %.1f MB\n  General %.1f MB%s%s",
 			cpuFps,
-			gpuFps,
+			renderFps,
+			presentFps,
 			numBatches,
 			numInstances,
 			shadowMemoryMb,
@@ -323,8 +324,6 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		const auto& stats = renderer->GetStats();
 		const RHI::RHIGlobalIlluminationRenderStats globalIlluminationStats =
 			renderer->GetGlobalIlluminationRenderStats();
-		uint32_t displayedGpuFps =
-			stats.m_gpuFps.load(std::memory_order_relaxed);
 		std::string gpuQueryText;
 		if (statsMode == Settings::ERenderStatsMode::RenderStatsAndQueries)
 		{
@@ -334,41 +333,37 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 			}
 			else
 			{
-				float gpuFrameTimeMs = 0.0f;
-				if (renderer->GetDriver()->TryGetGpuFrameTimeMs(gpuFrameTimeMs))
+				const auto gpuTimings = renderer->GetGpuTimings();
+				if (gpuTimings.m_bValid)
 				{
-					char frameTimeText[64]{};
-					const uint32_t measuredGpuFps =
-						RHI::CalculateGpuFramesPerSecond(gpuFrameTimeMs);
-					if (measuredGpuFps > 0u)
-					{
-						displayedGpuFps = measuredGpuFps;
-					}
+					char frameTimeText[96]{};
 					std::snprintf(
 						frameTimeText,
 						sizeof(frameTimeText),
-						"GPU frame %.2f ms",
-						gpuFrameTimeMs);
+						"GPU work (sum) %.2f ms, sample %.0f ms old",
+						gpuTimings.m_gpuWorkMilliseconds,
+						gpuTimings.GetAgeMilliseconds(std::chrono::steady_clock::now()));
 					gpuQueryText = frameTimeText;
 
-					const TVector<RHI::GpuTiming> topGpuTimings =
-						renderer->GetSlowestGpuTimings();
+					const auto& topGpuTimings = gpuTimings.m_timings;
 					if (topGpuTimings.IsEmpty())
 					{
-						gpuQueryText += "\nGPU nodes/ops pending";
+						gpuQueryText += "\nGPU nodes/ops not recorded";
 					}
 					else
 					{
 						gpuQueryText += "\nSlowest GPU nodes (avg):";
-						for (size_t i = 0u; i < topGpuTimings.Num(); ++i)
+						for (size_t i = 0u; i < std::min<size_t>(3u, topGpuTimings.Num()); ++i)
 						{
-							char timingText[128]{};
+							char timingText[160]{};
+							const std::string queue(magic_enum::enum_name(topGpuTimings[i].m_queue));
 							std::snprintf(
 								timingText,
 								sizeof(timingText),
-								"\n%zu. %.64s %.3f ms",
+								"\n%zu. %.64s [%s] %.3f ms",
 								i + 1u,
 								topGpuTimings[i].m_name.c_str(),
+								queue.c_str(),
 								topGpuTimings[i].m_durationMilliseconds);
 							gpuQueryText += timingText;
 						}
@@ -376,13 +371,14 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 				}
 				else
 				{
-					gpuQueryText = "GPU query pending";
+					gpuQueryText = gpuTimings.m_queryId == 0u ? "GPU query pending" : "GPU query invalid";
 				}
 			}
 		}
 		DrawViewportStatsOverlay(
 			m_cpuFps,
-			displayedGpuFps,
+			stats.m_renderFps.load(std::memory_order_relaxed),
+			stats.m_presentFps.load(std::memory_order_relaxed),
 			stats.m_numBatches.load(std::memory_order_relaxed),
 			stats.m_numInstances.load(std::memory_order_relaxed),
 			shadowMemoryMb,
