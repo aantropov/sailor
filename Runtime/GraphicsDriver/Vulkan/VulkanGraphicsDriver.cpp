@@ -2451,14 +2451,8 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 
 	const size_t paddedSize = SsboLayout::AlignSsboElementSize(elementSize);
 
-	size_t alignment = paddedSize;
-
-	if (bBindSsboWithOffset)
-	{
-		// We should use the correct alignment
-		const size_t reqAlignment = device->GetMinSsboOffsetAlignment();
-		alignment = reqAlignment > paddedSize ? (reqAlignment % paddedSize == 0 ? reqAlignment : paddedSize * reqAlignment) : paddedSize;
-	}
+	const size_t alignment = bBindSsboWithOffset ?
+		SsboLayout::ResolveSsboOffsetAlignment(paddedSize, device->GetMinSsboOffsetAlignment()) : paddedSize;
 
 	auto vulkanBufferMemoryPtr = allocator->Allocate(paddedSize * numElements, alignment);
 	binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(vulkanBufferMemoryPtr, allocator);

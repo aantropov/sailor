@@ -143,6 +143,39 @@ namespace
 			"non-array storage blocks must fall back to their reflected padded size");
 	}
 
+	void TestSsboOffsetsRespectDeviceAlignmentAndStride()
+	{
+		using Allocation = Memory::TMemoryPtr<Memory::VulkanBufferMemoryPtr>;
+		const Memory::VulkanBufferMemoryPtr storage({}, 0u, 65536u);
+		for (const size_t stride : { 16u, 48u, 112u, 144u, 176u, 256u, 512u })
+		{
+			for (const size_t deviceAlignment : { 1u, 16u, 32u, 64u, 128u, 256u })
+			{
+				size_t expected = stride;
+				while (expected % deviceAlignment != 0u)
+				{
+					expected += stride;
+				}
+				const size_t alignment = SsboLayout::ResolveSsboOffsetAlignment(stride, deviceAlignment);
+				Require(alignment == expected,
+					"SSBO alignment must be the smallest multiple of both element stride and device offset alignment");
+				for (size_t offset = 0u; offset < 4096u; ++offset)
+				{
+					uint32_t padding = 0u;
+					Require(Memory::Align(stride * 3u, alignment,
+						Memory::Shift(storage, offset), storage.m_size - offset, padding),
+						"the SSBO array must fit after aligning the suballocation");
+					const Allocation allocation(offset, padding, stride * 3u, storage, 0u);
+					const auto range = *allocation;
+					Require(range.m_offset % stride == 0u && range.m_offset % deviceAlignment == 0u &&
+						range.m_offset == (offset + expected - 1u) / expected * expected &&
+						range.m_size == stride * 3u,
+						"descriptor offsets must satisfy both alignments without changing array stride or size");
+				}
+			}
+		}
+	}
+
 	void TestMaterialInstanceIndexIncludesAllocationPadding()
 	{
 		using Allocation = Memory::TMemoryPtr<Memory::VulkanBufferMemoryPtr>;
@@ -419,6 +452,8 @@ int main()
 			TestStagingAllocationIdentityKeepsEveryRange },
 		{ "SsboElementAlignmentPreservesStd430Stride",
 			TestSsboElementAlignmentPreservesStd430Stride },
+		{ "SsboOffsetsRespectDeviceAlignmentAndStride",
+			TestSsboOffsetsRespectDeviceAlignmentAndStride },
 		{ "MaterialInstanceIndexIncludesAllocationPadding",
 			TestMaterialInstanceIndexIncludesAllocationPadding },
 		{ "DescriptorCacheKeyKeepsItsCompatibilitySnapshot",

@@ -18,6 +18,7 @@
 #include <array>
 #include <atomic>
 #include <mutex>
+#include <numeric>
 
 #ifdef SAILOR_BUILD_WITH_VULKAN
 
@@ -33,6 +34,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 			return remainder == 0u ?
 				elementSize :
 				elementSize + SsboElementAlignment - remainder;
+		}
+
+		constexpr size_t ResolveSsboOffsetAlignment(size_t stride, size_t deviceAlignment) noexcept
+		{
+			// Keep the element index integral while satisfying descriptor-offset alignment.
+			return std::lcm(stride, deviceAlignment);
 		}
 
 		inline uint32_t ResolveInstanceIndex(
