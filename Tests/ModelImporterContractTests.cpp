@@ -887,8 +887,8 @@ namespace
 				ModelImporterTestAccess::GenerateAnimationAssets(foreign.GetRawPtr(), fixture.m_registry), "both fixture models must generate clips");
 			ownIds = own->GetAnimations();
 			foreignIds = foreign->GetAnimations();
-			own->SaveMetaFile();
-			foreign->SaveMetaFile();
+			Require(own->SaveMetaFile(), "the first model fixture must persist its animation identities");
+			Require(foreign->SaveMetaFile(), "the foreign model fixture must persist its animation identities");
 			fixture.Scan();
 		}
 		AnimationRegistryFixture fixture(workspace.Context());

@@ -7,6 +7,7 @@
 #include "Core/Reflection.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "Workspace/WorkspaceCacheContract.h"
 #include "YamlExceptionBoundary.h"
 #include <cerrno>
 #include <cstdio>
@@ -114,22 +115,34 @@ void AssetInfo::Deserialize(const YAML::Node& inData)
 	DeserializeReflectedAssetInfo(*this, inData);
 }
 
-void AssetInfo::SaveMetaFile()
+bool AssetInfo::SaveMetaFile()
 {
+	const std::string filepath = GetMetaFilepath();
 	if (!m_bWritable)
 	{
-		SAILOR_LOG_ERROR("Cannot write read-only engine asset metadata: %s", GetMetaFilepath().c_str());
-		return;
+		SAILOR_LOG_ERROR("Cannot write read-only engine asset metadata: %s", filepath.c_str());
+		return false;
 	}
 
-	std::ofstream assetFile{ GetMetaFilepath() };
+	std::string contents, diagnostic;
+	if (!External::GuardYamlExceptions(
+		[this, &contents]() { contents = YAML::Dump(Serialize()); }, diagnostic) ||
+		!Workspace::AtomicReplaceWorkspaceCacheText(filepath, contents, diagnostic))
+	{
+		SAILOR_LOG_ERROR("Cannot save asset metadata '%s': %s", filepath.c_str(), diagnostic.c_str());
+		return false;
+	}
 
-	YAML::Node node = Serialize();
-	assetFile << node;
-	assetFile.close();
-
-	m_metaLoadTime = GetMetaLastModificationTime();
-	Utils::TryGetFileRevision(GetMetaFilepath(), m_metadataRevision);
+	const std::time_t metadataLoadTime = GetMetaLastModificationTime();
+	FileRevision metadataRevision;
+	if (!Utils::TryGetFileRevision(filepath, metadataRevision))
+	{
+		SAILOR_LOG_ERROR("Cannot capture saved asset metadata revision: %s", filepath.c_str());
+		return false;
+	}
+	m_metaLoadTime = metadataLoadTime;
+	m_metadataRevision = metadataRevision;
+	return true;
 }
 
 AssetInfo::AssetInfo()

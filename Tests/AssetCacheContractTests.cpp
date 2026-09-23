@@ -109,19 +109,28 @@ namespace
 			return m_metaLoadTime;
 		}
 
+		const FileRevision& GetMetadataRevision() const { return m_metadataRevision; }
+		const FileRevision& GetImportedSourceRevision() const { return m_importedSourceRevision; }
+		void SetWritable(bool bWritable) { m_bWritable = bWritable; }
+
 		void SetPendingUpdate(bool bWasExpired)
 		{
 			m_bPendingUpdateNotification = true;
 			m_bPendingWasExpired = bWasExpired;
 		}
 
-		void SaveMetaFile() override
+		bool SaveMetaFile() override
 		{
 			++m_numMetaSaves;
+			return true;
 		}
 
 		YAML::Node Serialize() const override
 		{
+			if (m_bThrowOnSerialize)
+			{
+				throw std::runtime_error("Metadata serialization failed in the test fixture");
+			}
 			YAML::Node result(YAML::NodeType::Map);
 			result["fileId"] = m_fileId;
 			result["testValue"] = m_testValue;
@@ -143,6 +152,7 @@ namespace
 
 		uint32_t m_numMetaSaves = 0;
 		int32_t m_testValue = 0;
+		bool m_bThrowOnSerialize = false;
 		std::function<void()> m_onDeserialize;
 	};
 
@@ -490,6 +500,15 @@ namespace
 		stream << content;
 	}
 
+	std::string ReadFile(const std::filesystem::path& path)
+	{
+		std::ifstream stream(path, std::ios::binary);
+		Require(stream.is_open(), "the fixture file must be readable");
+		const std::string contents((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+		Require(!stream.bad(), "the complete fixture file must be read");
+		return contents;
+	}
+
 	void RewriteFileWithNewRevision(
 		const std::filesystem::path& path,
 		const std::string& content)
@@ -505,6 +524,114 @@ namespace
 		Require(
 			!timestampError,
 			"the targeted update fixture must advance the file revision");
+	}
+
+	void TestMetadataSavePublishesCompleteState()
+	{
+		TempDirectory directory("metadata-save");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		WriteFile(sourcePath, "source");
+		WriteFile(metadataPath, "previous metadata");
+		std::filesystem::last_write_time(metadataPath,
+			std::filesystem::last_write_time(metadataPath) - std::chrono::hours(1));
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-SAVE}"), sourcePath, metadataPath);
+		info.SetProcessingTimes(11, 13);
+		info.m_testValue = 42;
+		const FileRevision previousMetadata = info.GetMetadataRevision();
+		const FileRevision importedSource = info.GetImportedSourceRevision();
+
+		Require(info.AssetInfo::SaveMetaFile(), "saving complete metadata must report success");
+		TestAssetInfo restored;
+		restored.Deserialize(YAML::Load(ReadFile(metadataPath)));
+		Require(restored.GetFileId() == info.GetFileId() && restored.m_testValue == 42,
+			"saved metadata must round-trip its identity and values");
+		FileRevision savedRevision;
+		Require(Utils::TryGetFileRevision(metadataPath.string(), savedRevision) &&
+			info.GetMetadataRevision() == savedRevision && savedRevision != previousMetadata && !info.IsMetaExpired(),
+			"successful save must acknowledge the newly published metadata revision");
+		Require(info.GetRuntimeMetadataLoadTime() == info.GetMetaLastModificationTime() &&
+			info.GetRuntimeMetadataLoadTime() != 13 && info.GetAssetImportTime() == 11 &&
+			info.GetImportedSourceRevision() == importedSource,
+			"metadata save must update its load time without acknowledging source processing");
+	}
+
+	void TestMetadataSerializationFailurePreservesTheFile()
+	{
+		TempDirectory directory("metadata-serialization-failure");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		WriteFile(sourcePath, "source");
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-SERIALIZATION-FAILURE}"), sourcePath, metadataPath);
+		info.m_testValue = 7;
+		const std::string previousContents = YAML::Dump(info.Serialize());
+		WriteFile(metadataPath, previousContents);
+		info.SetProcessingTimes(11, 13);
+		const FileRevision previousRevision = info.GetMetadataRevision();
+		info.m_testValue = 99;
+		info.m_bThrowOnSerialize = true;
+
+		Require(!info.AssetInfo::SaveMetaFile(), "serialization failure must be returned, not thrown");
+		FileRevision preservedRevision;
+		Require(ReadFile(metadataPath) == previousContents && info.GetMetadataRevision() == previousRevision &&
+			Utils::TryGetFileRevision(metadataPath.string(), preservedRevision) && preservedRevision == previousRevision &&
+			info.GetRuntimeMetadataLoadTime() == 13 && info.m_testValue == 99,
+			"serialization failure must preserve the file revision and acknowledgement while retaining unsaved edits");
+		info.m_bThrowOnSerialize = false;
+		Require(info.AssetInfo::SaveMetaFile() && YAML::Load(ReadFile(metadataPath))["testValue"].as<int32_t>() == 99,
+			"the same metadata object must be saveable after serialization recovers");
+	}
+
+	void TestBlockedMetadataSaveCanBeRetried()
+	{
+		TempDirectory directory("metadata-blocked-save");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		const auto previousPath = directory.Path("Content/Previous.asset");
+		const auto markerPath = metadataPath / "keep.txt";
+		WriteFile(sourcePath, "source");
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-BLOCKED-SAVE}"), sourcePath, metadataPath);
+		const std::string previousContents = YAML::Dump(info.Serialize());
+		WriteFile(metadataPath, previousContents);
+		info.SetProcessingTimes(11, 13);
+		const FileRevision previousRevision = info.GetMetadataRevision();
+		std::filesystem::rename(metadataPath, previousPath);
+		WriteFile(markerPath, "keep");
+		info.m_testValue = 99;
+
+		Require(!info.AssetInfo::SaveMetaFile(), "a directory blocking the metadata destination must reject publication");
+		Require(ReadFile(markerPath) == "keep" && ReadFile(previousPath) == previousContents &&
+			info.GetMetadataRevision() == previousRevision && info.GetRuntimeMetadataLoadTime() == 13,
+			"failed publication must preserve the blocker and previous acknowledgement");
+		Require(std::filesystem::remove(markerPath) && std::filesystem::remove(metadataPath),
+			"the fixture must remove only its own blocking directory");
+		std::filesystem::rename(previousPath, metadataPath);
+		Require(info.AssetInfo::SaveMetaFile(), "restoring the destination must allow the same save to succeed");
+		FileRevision savedRevision;
+		Require(YAML::Load(ReadFile(metadataPath))["testValue"].as<int32_t>() == 99 &&
+			Utils::TryGetFileRevision(metadataPath.string(), savedRevision) && info.GetMetadataRevision() == savedRevision &&
+			info.GetRuntimeMetadataLoadTime() == info.GetMetaLastModificationTime(),
+			"retry must publish the retained edits and acknowledge the actual file");
+	}
+
+	void TestReadOnlyMetadataCannotBeSaved()
+	{
+		TempDirectory directory("metadata-read-only");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		WriteFile(sourcePath, "source");
+		WriteFile(metadataPath, "read-only metadata");
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-READ-ONLY}"), sourcePath, metadataPath);
+		info.SetProcessingTimes(11, 13);
+		const FileRevision previousRevision = info.GetMetadataRevision();
+		info.SetWritable(false);
+		Require(!info.AssetInfo::SaveMetaFile() && ReadFile(metadataPath) == "read-only metadata" &&
+			info.GetMetadataRevision() == previousRevision && info.GetRuntimeMetadataLoadTime() == 13,
+			"read-only metadata must report failure without changing bytes or acknowledgement");
 	}
 
 	Workspace::WorkspaceContext CreateWorkspaceContext(
@@ -2250,6 +2377,10 @@ int main()
 		TestEntryDeserializeDoesNotThrow();
 		TestEveryAssetInfoSerializerWritesItsConcreteType();
 		TestGeneratedGlbMetadataUsesTypedDefaults();
+		TestMetadataSavePublishesCompleteState();
+		TestMetadataSerializationFailurePreservesTheFile();
+		TestBlockedMetadataSaveCanBeRetried();
+		TestReadOnlyMetadataCannotBeSaved();
 		TestImportAndUpdateCallbackContract();
 		TestImportNeverOverwritesExistingMetadata();
 		TestRejectedReloadRestoresTheLiveAsset();
