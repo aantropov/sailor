@@ -46,5 +46,28 @@ namespace Sailor
 			EAnimationInterpolation interpolation,
 			float time,
 			glm::quat& outValue);
+
+	private:
+		// The importer validates its channel arrays before baking and keeps them immutable.
+		static bool ResolveKeyframeSpanValidated(
+			const TVector<float>& timestamps,
+			float time,
+			AnimationKeyframeSpan& outSpan);
+
+		static bool SampleVectorValidated(
+			const TVector<float>& timestamps,
+			const TVector<glm::vec4>& values,
+			EAnimationInterpolation interpolation,
+			float time,
+			glm::vec4& outValue);
+
+		static bool SampleRotationValidated(
+			const TVector<float>& timestamps,
+			const TVector<glm::vec4>& values,
+			EAnimationInterpolation interpolation,
+			float time,
+			glm::quat& outValue);
+
+		friend class AnimationImporter;
 	};
 }

@@ -119,6 +119,50 @@ namespace
 			WriteFixtureText(m_directory.Path("Content/Hierarchy.anim.asset"), YAML::Dump(metadata));
 		}
 
+		void WriteSource(const std::string& source, const TVector<float>& samples)
+		{
+			std::ofstream binary(m_directory.Path("Content/Hierarchy.bin"), std::ios::binary);
+			binary.write(reinterpret_cast<const char*>(samples.GetData()), samples.Num() * sizeof(float));
+			binary.close();
+			Require(static_cast<bool>(binary), "animation channel samples must be written");
+			WriteFixtureText(m_directory.Path("Content/Hierarchy.gltf"), source);
+			auto metadata = CreateAssetInfoMetadata<AnimationAssetInfo>(m_animation->GetFileId(), "Hierarchy.gltf");
+			WriteFixtureText(m_directory.Path("Content/Hierarchy.anim.asset"), YAML::Dump(metadata));
+		}
+
+		void WriteSamples(const std::string& target, const std::string& interpolation,
+			const TVector<float>& timestamps, const TVector<glm::vec4>& values)
+		{
+			const size_t components = target == "rotation" ? 4 : 3;
+			TVector<float> samples = timestamps;
+			for (const auto& value : values)
+			{
+				for (size_t component = 0; component < components; ++component)
+				{
+					samples.Add(value[static_cast<glm::length_t>(component)]);
+				}
+			}
+			const size_t timestampBytes = timestamps.Num() * sizeof(float);
+			const size_t valueBytes = values.Num() * components * sizeof(float);
+			const float first = !timestamps.IsEmpty() && std::isfinite(timestamps[0]) ? timestamps[0] : 0.0f;
+			const float last = !timestamps.IsEmpty() && std::isfinite(timestamps[timestamps.Num() - 1]) ?
+				timestamps[timestamps.Num() - 1] : 0.0f;
+			std::ostringstream source;
+			source << std::setprecision(std::numeric_limits<float>::max_digits10)
+				<< R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
+				"nodes":[{"name":"Root","translation":[3,-2,1]}],"skins":[{"joints":[0]}],
+				"buffers":[{"uri":"Hierarchy.bin","byteLength":)" << samples.Num() * sizeof(float) << R"(}],
+				"bufferViews":[{"buffer":0,"byteLength":)" << timestampBytes << R"(},
+				{"buffer":0,"byteOffset":)" << timestampBytes << R"(,"byteLength":)" << valueBytes << R"(}],
+				"accessors":[{"bufferView":0,"componentType":5126,"type":"SCALAR","count":)" << timestamps.Num()
+				<< R"(,"min":[)" << std::fmin(first, last) << R"(],"max":[)" << std::fmax(first, last) << R"(]},
+				{"bufferView":1,"componentType":5126,"type":")" << (components == 4 ? "VEC4" : "VEC3")
+				<< R"(","count":)" << values.Num() << R"(}],
+				"animations":[{"channels":[{"sampler":0,"target":{"node":0,"path":")" << target << R"("}}],
+				"samplers":[{"input":0,"output":1,"interpolation":")" << interpolation << R"("}]}]})";
+			WriteSource(source.str(), samples);
+		}
+
 		bool Import()
 		{
 			TUniquePtr<AnimationAssetInfo> info(static_cast<AnimationAssetInfoPtr>(m_handler.LoadAssetInfo(
@@ -263,6 +307,281 @@ namespace
 			fixture.m_animation->m_skeletonSignature == signature,
 			"a rejected cyclic hierarchy must not publish a new pose or revision");
 		CheckImportedHierarchy(fixture.m_animation, scale);
+	}
+
+	void TestImportedLinearAndStepChannels()
+	{
+		const TVector<float> timestamps{ 0.2f, 0.6f, 2.0f };
+		const TVector<glm::vec4> values{
+			glm::vec4(1.0f, 2.0f, 3.0f, 0.0f),
+			glm::vec4(5.0f, 6.0f, 7.0f, 0.0f),
+			glm::vec4(12.0f, 13.0f, 14.0f, 0.0f)
+		};
+		for (const std::string target : { "translation", "scale" })
+		{
+			for (const auto interpolation : { EAnimationInterpolation::Linear, EAnimationInterpolation::Step })
+			{
+				AnimationImportFixture fixture;
+				fixture.WriteSamples(target, interpolation == EAnimationInterpolation::Linear ? "LINEAR" : "STEP", timestamps, values);
+				Require(fixture.Import(), "the actual importer must bake LINEAR and STEP channels");
+				auto animation = fixture.m_animation;
+				Require(animation->m_numBones == 1 && animation->m_numFrames == 61 &&
+					NearlyEqual(animation->m_fps, 30.0f) && NearlyEqual(animation->m_duration, 2.0f),
+					"prepared channels must preserve the 30 fps bake and source duration");
+				for (uint32_t frame = 0; frame < animation->m_numFrames; ++frame)
+				{
+					const float time = static_cast<float>(frame) / animation->m_fps;
+					glm::vec4 sampled;
+					Require(AnimationClipSampler::SampleVector(timestamps, values, interpolation, time, sampled),
+						"the public sampler must accept the same authored channel");
+					const glm::vec3 actual(target == "translation" ?
+						animation->m_frames[frame].m_position : animation->m_frames[frame].m_scale);
+					Require(glm::length(actual - glm::vec3(sampled)) < 0.0001f,
+						"every baked vector must match the independently validated public sampling path");
+					float expected = time < 0.6f ? 1.0f : (time < 2.0f ? 5.0f : 12.0f);
+					if (interpolation == EAnimationInterpolation::Linear)
+					{
+						expected = time <= 0.2f ? 1.0f : (time <= 0.6f ?
+							1.0f + 10.0f * (time - 0.2f) : 5.0f + 5.0f * (time - 0.6f));
+					}
+					Require(glm::length(actual - glm::vec3(expected, expected + 1.0f, expected + 2.0f)) < 0.0001f,
+						"nonuniform keys, pre-first clamping and exact STEP boundaries must retain their numeric values");
+				}
+			}
+		}
+
+		for (const float timestamp : { 0.0f, 0.75f })
+		{
+			AnimationImportFixture fixture;
+			fixture.WriteSamples("translation", "LINEAR", { timestamp }, { values[1] });
+			Require(fixture.Import(), "a single-key channel must import");
+			Require(fixture.m_animation->m_numFrames == (timestamp == 0.0f ? 1u : 24u),
+				"single-key duration must retain the existing bake interval count");
+			for (const auto& frame : fixture.m_animation->m_frames)
+			{
+				Require(glm::length(glm::vec3(frame.m_position) - glm::vec3(values[1])) < 0.0001f,
+					"a single key must remain constant before and at its timestamp");
+			}
+		}
+	}
+
+	void TestImportedCubicVectorTangents()
+	{
+		AnimationImportFixture fixture;
+		const TVector<float> timestamps{ 0.0f, 2.0f };
+		const TVector<glm::vec4> values{
+			glm::vec4(0.0f), glm::vec4(0.0f), glm::vec4(2.0f, 0.0f, 0.0f, 0.0f),
+			glm::vec4(0.0f), glm::vec4(4.0f, 0.0f, 0.0f, 0.0f), glm::vec4(0.0f)
+		};
+		fixture.WriteSamples("translation", "CUBICSPLINE", timestamps, values);
+		Require(fixture.Import() && fixture.m_animation->m_numFrames == 61,
+			"CUBICSPLINE channel triples must bake through the real importer");
+		for (uint32_t frame = 0; frame < fixture.m_animation->m_numFrames; ++frame)
+		{
+			const float time = static_cast<float>(frame) / fixture.m_animation->m_fps;
+			glm::vec4 sampled;
+			Require(AnimationClipSampler::SampleVector(timestamps, values, EAnimationInterpolation::CubicSpline, time, sampled),
+				"the public cubic sampler must accept the authored channel");
+			const glm::vec3 actual(fixture.m_animation->m_frames[frame].m_position);
+			const float alpha = time / 2.0f;
+			const float expected = 4.0f * alpha * (1.0f + alpha - alpha * alpha);
+			Require(glm::length(actual - glm::vec3(sampled)) < 0.0001f &&
+				glm::length(actual - glm::vec3(expected, 0.0f, 0.0f)) < 0.0001f,
+				"baked cubic values must include asymmetric tangents scaled by the two-second interval");
+		}
+		Require(NearlyEqual(fixture.m_animation->m_frames[15].m_position.x, 1.1875f) &&
+			NearlyEqual(fixture.m_animation->m_frames[30].m_position.x, 2.5f),
+			"quarter and midpoint values must distinguish cubic interpolation from LINEAR and unscaled tangents");
+	}
+
+	void TestImportedQuaternionChannels()
+	{
+		const TVector<float> timestamps{ 0.0f, 2.0f };
+		const TVector<glm::vec4> linearValues{
+			glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+			glm::vec4(0.0f, 0.0f, -std::sin(glm::radians(60.0f)), -std::cos(glm::radians(60.0f)))
+		};
+		const TVector<glm::vec4> cubicValues{
+			glm::vec4(0.0f), glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), glm::vec4(0.0f, 0.0f, 0.5f, 0.0f),
+			glm::vec4(0.0f, 0.0f, -0.25f, 0.1f), glm::vec4(0.0f, 0.0f, 1.0f, 0.0f), glm::vec4(0.0f)
+		};
+		for (const auto interpolation : { EAnimationInterpolation::Linear, EAnimationInterpolation::Step, EAnimationInterpolation::CubicSpline })
+		{
+			AnimationImportFixture fixture;
+			const auto& values = interpolation == EAnimationInterpolation::CubicSpline ? cubicValues : linearValues;
+			const char* mode = interpolation == EAnimationInterpolation::CubicSpline ? "CUBICSPLINE" :
+				(interpolation == EAnimationInterpolation::Step ? "STEP" : "LINEAR");
+			fixture.WriteSamples("rotation", mode, timestamps, values);
+			Require(fixture.Import() && fixture.m_animation->m_numFrames == 61,
+				"rotation channels must bake through the real importer");
+			for (uint32_t frame = 0; frame < fixture.m_animation->m_numFrames; ++frame)
+			{
+				const float time = static_cast<float>(frame) / fixture.m_animation->m_fps;
+				glm::quat sampled;
+				Require(AnimationClipSampler::SampleRotation(timestamps, values, interpolation, time, sampled),
+					"the public rotation sampler must accept the same authored channel");
+				glm::quat expected;
+				if (interpolation == EAnimationInterpolation::CubicSpline)
+				{
+					const float alpha = time / 2.0f;
+					const float alpha2 = alpha * alpha;
+					const float alpha3 = alpha2 * alpha;
+					expected = glm::normalize(glm::quat(2.2f * alpha3 - 3.2f * alpha2 + 1.0f,
+						0.0f, 0.0f, -1.5f * alpha3 + 1.5f * alpha2 + alpha));
+				}
+				else
+				{
+					const float angle = interpolation == EAnimationInterpolation::Step ?
+						(time < 2.0f ? 0.0f : 120.0f) : 60.0f * time;
+					expected = glm::angleAxis(glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
+				}
+				const auto& actual = fixture.m_animation->m_frames[frame].m_rotation;
+				Require(NearlyEqual(glm::length(actual), 1.0f) &&
+					std::abs(glm::dot(actual, sampled)) > 0.9999f,
+					"baked quaternion signs may differ but normalized rotations must match public sampling");
+				for (const glm::vec3 axis : { glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f) })
+				{
+					Require(glm::length(actual * axis - expected * axis) < 0.0001f,
+						"baked basis vectors must follow shortest-path LINEAR, STEP and normalized cubic rotations");
+				}
+			}
+		}
+	}
+
+	void TestImportedMalformedChannelsRetainPreviousPose()
+	{
+		AnimationImportFixture fixture;
+		const TVector<glm::vec4> values{ glm::vec4(0.0f), glm::vec4(4.0f, 0.0f, 0.0f, 0.0f) };
+		fixture.WriteSamples("translation", "LINEAR", { 0.0f, 2.0f }, values);
+		Require(fixture.Import(), "the last-good clip must import before failed reloads");
+		const auto frames = fixture.m_animation->m_frames;
+		const auto rest = fixture.m_animation->m_restPose[0];
+		const uint64_t revision = fixture.m_animation->m_revision;
+		const uint64_t signature = fixture.m_animation->m_skeletonSignature;
+		const auto requireRetained = [&]()
+		{
+			Require(!fixture.Import(), "a clip without any valid channel must reject the reload");
+			auto animation = fixture.m_animation;
+			Require(animation->m_revision == revision && animation->m_skeletonSignature == signature &&
+				animation->m_numBones == 1 && animation->m_numFrames == 61 && animation->m_frames.Num() == frames.Num() &&
+				NearlyEqual(animation->m_fps, 30.0f) && NearlyEqual(animation->m_duration, 2.0f) &&
+				animation->m_parentBoneIndices == TVector<int32_t>{ -1 } && animation->m_restPose.Num() == 1,
+				"rejected prepared channels must not publish new clip metadata or revision");
+			Require(animation->m_restPose[0].m_position == rest.m_position &&
+				animation->m_restPose[0].m_rotation == rest.m_rotation && animation->m_restPose[0].m_scale == rest.m_scale,
+				"a rejected reload must retain the rest pose");
+			for (size_t frame = 0; frame < frames.Num(); ++frame)
+			{
+				Require(animation->m_frames[frame].m_position == frames[frame].m_position &&
+					animation->m_frames[frame].m_rotation == frames[frame].m_rotation &&
+					animation->m_frames[frame].m_scale == frames[frame].m_scale,
+					"a rejected reload must retain every last-good baked transform");
+			}
+		};
+		const float nan = (std::numeric_limits<float>::quiet_NaN)();
+		for (const TVector<float>& timestamps : TVector<TVector<float>>{
+			{ -1.0f, 2.0f }, { 0.0f, 0.0f }, { 2.0f, 1.0f }, { 0.0f, nan } })
+		{
+			fixture.WriteSamples("translation", "LINEAR", timestamps, values);
+			requireRetained();
+		}
+		fixture.WriteSamples("translation", "CUBICSPLINE", { 0.0f, 2.0f },
+			{ glm::vec4(0.0f), glm::vec4(0.0f), glm::vec4(0.0f), glm::vec4(0.0f), glm::vec4(4.0f) });
+		requireRetained();
+		fixture.WriteSamples("translation", "LINEAR", { 0.0f, 2.0f },
+			{ glm::vec4(0.0f), glm::vec4(nan, 0.0f, 0.0f, 0.0f) });
+		requireRetained();
+		fixture.WriteSamples("translation", "UNKNOWN", { 0.0f, 2.0f }, values);
+		requireRetained();
+		fixture.WriteSamples("translation", "LINEAR", { 0.0f, 2.0f }, values);
+		Require(fixture.Import() && fixture.m_animation->m_revision == revision + 1 &&
+			fixture.m_animation->m_skeletonSignature == signature,
+			"repairing the source must allow a new revision with the same skeleton identity");
+	}
+
+	void TestImportedMixedChannelsAndRotationFallback()
+	{
+		AnimationImportFixture fixture;
+		const float halfSqrt = std::sqrt(0.5f);
+		fixture.WriteSource(R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
+			"nodes":[{"name":"Root","translation":[3,-2,1]}],"skins":[{"joints":[0]}],
+			"buffers":[{"uri":"Hierarchy.bin","byteLength":72}],
+			"bufferViews":[{"buffer":0,"byteLength":8},{"buffer":0,"byteOffset":8,"byteLength":24},
+			{"buffer":0,"byteOffset":32,"byteLength":8},{"buffer":0,"byteOffset":40,"byteLength":32}],
+			"accessors":[{"bufferView":0,"componentType":5126,"type":"SCALAR","count":2,"min":[0],"max":[0]},
+			{"bufferView":1,"componentType":5126,"type":"VEC3","count":2},
+			{"bufferView":2,"componentType":5126,"type":"SCALAR","count":2,"min":[0],"max":[1]},
+			{"bufferView":3,"componentType":5126,"type":"VEC4","count":2}],
+			"animations":[{"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}},
+			{"sampler":1,"target":{"node":0,"path":"rotation"}}],
+			"samplers":[{"input":0,"output":1,"interpolation":"LINEAR"},
+			{"input":2,"output":3,"interpolation":"LINEAR"}]}]})",
+			{ 0.0f, 0.0f, 100.0f, 200.0f, 300.0f, 400.0f, 500.0f, 600.0f,
+				0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, halfSqrt, halfSqrt });
+		Require(fixture.Import() && fixture.m_animation->m_numFrames == 31,
+			"one malformed channel must not discard the independently valid channel");
+		for (uint32_t frame = 0; frame < fixture.m_animation->m_numFrames; ++frame)
+		{
+			const auto& pose = fixture.m_animation->m_frames[frame];
+			const glm::quat expected = glm::angleAxis(glm::radians(3.0f * frame), glm::vec3(0.0f, 0.0f, 1.0f));
+			Require(glm::vec3(pose.m_position) == glm::vec3(3.0f, -2.0f, 1.0f) &&
+				std::abs(glm::dot(pose.m_rotation, expected)) > 0.9999f,
+				"skipped translation keys must leave the rest position while valid rotations continue baking");
+		}
+
+		fixture.WriteSamples("rotation", "LINEAR", { 0.0f, 1.0f }, { glm::vec4(0.0f), glm::vec4(0.0f) });
+		Require(fixture.Import(), "zero-length rotations must retain the existing per-sample fallback contract");
+		for (const auto& pose : fixture.m_animation->m_frames)
+		{
+			Require(NearlyEqual(std::abs(pose.m_rotation.w), 1.0f) && NearlyEqual(glm::length(pose.m_rotation), 1.0f),
+				"failed quaternion normalization must leave the rest rotation intact");
+		}
+	}
+
+	void TestPublicSamplersRetainInputValidation()
+	{
+		const float nan = (std::numeric_limits<float>::quiet_NaN)();
+		const TVector<glm::vec4> values{ glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), glm::vec4(0.0f, 0.0f, 1.0f, 0.0f) };
+		for (const TVector<float>& timestamps : TVector<TVector<float>>{
+			{}, { -1.0f, 2.0f }, { 0.0f, 0.0f }, { 2.0f, 1.0f }, { 0.0f, nan } })
+		{
+			AnimationKeyframeSpan span{ 7u, 8u, 0.5f, 4.0f };
+			Require(!AnimationClipSampler::ResolveKeyframeSpan(timestamps, 0.5f, span) &&
+				span.m_first == 0 && span.m_second == 0 && span.m_alpha == 0.0f && span.m_duration == 0.0f,
+				"public span resolution must reject malformed timestamps and clear the output");
+			glm::vec4 vector(7.0f);
+			glm::quat rotation(1.0f, 0.0f, 0.0f, 0.0f);
+			Require(!AnimationClipSampler::SampleVector(timestamps, values, EAnimationInterpolation::Linear, 0.5f, vector) &&
+				!AnimationClipSampler::SampleRotation(timestamps, values, EAnimationInterpolation::Linear, 0.5f, rotation) &&
+				vector == glm::vec4(7.0f) && rotation == glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+				"public samplers must keep validating raw timestamps without changing output on rejection");
+		}
+		for (const float time : { nan, (std::numeric_limits<float>::infinity)() })
+		{
+			glm::vec4 vector;
+			glm::quat rotation;
+			Require(!AnimationClipSampler::SampleVector({ 0.0f, 2.0f }, values, EAnimationInterpolation::Linear, time, vector) &&
+				!AnimationClipSampler::SampleRotation({ 0.0f, 2.0f }, values, EAnimationInterpolation::Linear, time, rotation),
+				"public samplers must still reject nonfinite sample times");
+		}
+		glm::vec4 vector;
+		glm::quat rotation;
+		Require(!AnimationClipSampler::SampleVector({ 0.0f, 2.0f }, { values[0] }, EAnimationInterpolation::Linear, 0.5f, vector) &&
+			!AnimationClipSampler::SampleRotation({ 0.0f, 2.0f }, values, EAnimationInterpolation::CubicSpline, 0.5f, rotation),
+			"public samplers must still reject mismatched ordinary and cubic value counts");
+		for (const auto interpolation : { EAnimationInterpolation::Linear, EAnimationInterpolation::Step, EAnimationInterpolation::CubicSpline })
+		{
+			const glm::vec4 constant(0.0f, 0.0f, 2.0f, 2.0f);
+			const TVector<glm::vec4> single = interpolation == EAnimationInterpolation::CubicSpline ?
+				TVector<glm::vec4>{ glm::vec4(0.0f), constant, glm::vec4(0.0f) } : TVector<glm::vec4>{ constant };
+			for (const float time : { -1.0f, 0.5f, 10.0f })
+			{
+				Require(AnimationClipSampler::SampleVector({ 0.5f }, single, interpolation, time, vector) && vector == constant &&
+					AnimationClipSampler::SampleRotation({ 0.5f }, single, interpolation, time, rotation) &&
+					NearlyEqual(rotation.z, std::sqrt(0.5f)) && NearlyEqual(rotation.w, std::sqrt(0.5f)),
+					"public single-key sampling must clamp and normalize independently of interpolation mode");
+			}
+		}
 	}
 
 	void TestTimestampValidationAndNonUniformSpan()
@@ -809,6 +1128,12 @@ int main()
 		{ "ImportedHierarchyMatchesRuntimeMatrices", TestImportedHierarchyMatchesRuntimeMatrices },
 		{ "ImportedNonJointHierarchyPreservesJointOrder", TestImportedNonJointHierarchyPreservesJointOrder },
 		{ "CyclicImportedHierarchyRetainsPreviousPose", TestCyclicImportedHierarchyRetainsPreviousPose },
+		{ "ImportedLinearAndStepChannels", TestImportedLinearAndStepChannels },
+		{ "ImportedCubicVectorTangents", TestImportedCubicVectorTangents },
+		{ "ImportedQuaternionChannels", TestImportedQuaternionChannels },
+		{ "ImportedMalformedChannelsRetainPreviousPose", TestImportedMalformedChannelsRetainPreviousPose },
+		{ "ImportedMixedChannelsAndRotationFallback", TestImportedMixedChannelsAndRotationFallback },
+		{ "PublicSamplersRetainInputValidation", TestPublicSamplersRetainInputValidation },
 		{ "TimestampValidationAndNonUniformSpan", TestTimestampValidationAndNonUniformSpan },
 		{ "LinearAndStepVectorSampling", TestLinearAndStepVectorSampling },
 		{ "CubicSplineSamplingScalesTangentsByInterval", TestCubicSplineSamplingScalesTangentsByInterval },

@@ -843,7 +843,7 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationAssetInfoPtr info, 
 					Math::Transform& target = local[channel.m_targetNode];
 					if (channel.m_target == EAnimationTarget::Rotation)
 					{
-						AnimationClipSampler::SampleRotation(
+						AnimationClipSampler::SampleRotationValidated(
 							channel.m_timestamps,
 							channel.m_values,
 							channel.m_interpolation,
@@ -853,7 +853,7 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationAssetInfoPtr info, 
 					else
 					{
 						glm::vec4 value;
-						if (AnimationClipSampler::SampleVector(
+						if (AnimationClipSampler::SampleVectorValidated(
 							channel.m_timestamps,
 							channel.m_values,
 							channel.m_interpolation,
