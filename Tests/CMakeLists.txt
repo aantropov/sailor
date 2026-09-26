@@ -2,6 +2,7 @@ find_package(ixwebsocket CONFIG QUIET)
 find_package(imgui CONFIG REQUIRED)
 find_package(magic_enum CONFIG REQUIRED)
 find_package(Jolt CONFIG REQUIRED)
+include("${PROJECT_SOURCE_DIR}/CMake/SailorJolt.cmake")
 find_package(Threads REQUIRED)
 
 add_executable(SpinLockTests SpinLockTests.cpp)

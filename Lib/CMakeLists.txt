@@ -75,6 +75,8 @@ find_package(Jolt CONFIG QUIET)
 if(NOT Jolt_FOUND)
 	list(APPEND SAILOR_MISSING_DEPS "Jolt")
 	sailor_create_stub_target(Jolt::Jolt)
+else()
+	include("${PROJECT_SOURCE_DIR}/CMake/SailorJolt.cmake")
 endif()
 
 find_package(magic_enum CONFIG QUIET)
