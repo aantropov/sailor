@@ -212,7 +212,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	{
 		const auto& block = module.push_constant_blocks[i];
 		// SPIRV-Reflect reports the absolute end, including any leading offset.
-		m_pushConstants[i] = { m_stage, block.offset, block.size - block.offset };
+		m_pushConstants[i] = { static_cast<VkShaderStageFlags>(m_stage), block.offset, block.size - block.offset };
 	}
 
 	spvReflectDestroyShaderModule(&module);
