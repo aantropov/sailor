@@ -1198,11 +1198,11 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(RHI::RHICommandListPtr& cmd
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	RHI::RHIBufferPtr outBuffer = CreateBuffer(size, usage, properties);
+	RHI::RHIBufferPtr outBuffer = RHI::RHIBufferPtr::Make(usage, properties);
 
 	auto buffer = m_vkInstance->CreateBuffer(cmdList->m_vulkan.m_commandBuffer,
 		m_vkInstance->GetMainDevice(),
-		pData, size, (uint16_t)usage);
+		pData, size, (uint16_t)usage, properties);
 
 	// Hack to store ordinary buffer in TMemoryPtr
 	outBuffer->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);

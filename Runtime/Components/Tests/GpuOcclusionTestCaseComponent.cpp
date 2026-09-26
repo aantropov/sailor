@@ -5,12 +5,14 @@
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "RHI/Buffer.h"
+#include "RHI/CommandList.h"
 #include "RHI/Fence.h"
 #include "RHI/GpuCulling.h"
 #include "RHI/Renderer.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/VertexDescription.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <format>
@@ -24,6 +26,87 @@ namespace
 	constexpr uint32_t StoragePrefix = 3u;
 	constexpr uint32_t OutputStart = 7u;
 	constexpr uint32_t CandidateStart = OutputStart + NumInstances + 11u;
+
+	std::string ValidateBufferUploads()
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		const EMemoryPropertyFlags hostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
+		const EBufferUsageFlags usage = EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit;
+		std::array<uint32_t, 257> expected;
+		for (uint32_t i = 0u; i < expected.size(); ++i)
+		{
+			expected[i] = 0x53ae0000u ^ (i * 2654435761u);
+		}
+		for (uint32_t scenario = 0u; scenario < 2u; ++scenario)
+		{
+			auto cmd = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(cmd, true);
+			auto source = expected;
+			auto uploaded = scenario == 0u ?
+				driver->CreateBuffer(cmd, source.data(), sizeof(source), usage, hostMemory) :
+				driver->CreateBuffer(cmd, source.data(), sizeof(source), usage);
+			source.fill(0xdeadbeefu);
+			const EMemoryPropertyFlags properties = scenario == 0u ? hostMemory : EMemoryPropertyBit::DeviceLocal;
+			std::string error;
+			if (uploaded->GetSize() != sizeof(expected) || uploaded->GetUsage() != usage ||
+				uploaded->GetMemoryProperty() != properties)
+			{
+				error = std::format("buffer upload scenario {}: RHI size, usage or memory properties changed", scenario);
+			}
+			{
+				auto& native = uploaded->m_vulkan.m_buffer.m_ptr.m_buffer;
+				const auto nativeProperties = native->GetMemoryDevice()->GetMemoryPropertyFlags();
+				if (nativeProperties != properties)
+				{
+					error = std::format("buffer upload scenario {}: requested memory properties {}, native allocation has {}",
+						scenario, properties, nativeProperties);
+				}
+				else if (native->m_usage != (usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT) ||
+					native->m_size != sizeof(expected))
+				{
+					error = std::format("buffer upload scenario {}: native size or transfer destination usage is incorrect", scenario);
+				}
+				else if (scenario == 0u && !native->GetMemoryDevice()->GetPointer())
+				{
+					error = "host-visible buffer upload returned unmapped memory";
+				}
+			}
+			if (!error.empty())
+			{
+				commands->EndCommandList(cmd);
+				return error;
+			}
+
+			RHIBufferPtr readback = uploaded;
+			if (scenario == 1u)
+			{
+				readback = driver->CreateBuffer(sizeof(expected), EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
+				std::memset(readback->GetPointer(), 0, sizeof(expected));
+				commands->MemoryBarrier(cmd, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
+					static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit));
+				commands->MemoryBarrier(cmd, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+					static_cast<EAccessFlags>(EAccessBit::TransferRead_Bit));
+				cmd->m_vulkan.m_commandBuffer->CopyBuffer(*uploaded->m_vulkan.m_buffer, *readback->m_vulkan.m_buffer, sizeof(expected));
+				// Only recorded command dependencies retain the source buffer until submission finishes.
+				uploaded.Clear();
+			}
+			commands->MemoryBarrier(cmd, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+			commands->EndCommandList(cmd);
+			auto fence = RHIFencePtr::Make();
+			if (!driver->SubmitCommandList(cmd, fence)) return "buffer upload validation submission failed";
+			fence->Wait(5000000000ull);
+			if (!fence->IsFinished()) return "buffer upload validation fence exceeded five seconds";
+			const auto* actual = static_cast<const uint32_t*>(readback->GetPointer());
+			for (uint32_t i = 0u; i < expected.size(); ++i)
+			{
+				if (actual[i] != expected[i])
+					return std::format("buffer upload scenario {} word {}: expected {}, got {}", scenario, i, expected[i], actual[i]);
+			}
+		}
+		return {};
+	}
 
 	bool ExpectedVisible(uint32_t instance, uint32_t pattern, bool occlusion, bool cameraBack)
 	{
@@ -371,6 +454,8 @@ void GpuOcclusionTestCaseComponent::Tick(float)
 				result.m_samples > 1u ? 10u : 4u, result.m_samples,
 				result.m_samples > 1u ? "all-sample MIN and raw source selection verified" : "single-sample path only, multisample coverage not exercised"),
 			Utils::GetCurrentTimeMs() - m_gpuStartTimeMs);
+		AddJournalEvent("BufferUploadEvidence",
+			"Host-coherent and DeviceLocal uploads preserved all 257 words after source mutation; recorded commands retained the released DeviceLocal wrapper's buffer");
 		MarkPassed();
 		return;
 	}
@@ -409,7 +494,8 @@ void GpuOcclusionTestCaseComponent::Tick(float)
 				coverage = m_depthCoverageShader]()
 			{
 				ValidationResult result;
-				result.m_error = ValidateGpuCulling(culling, input, mips);
+				result.m_error = ValidateBufferUploads();
+				if (result.m_error.empty()) result.m_error = ValidateGpuCulling(culling, input, mips);
 				if (result.m_error.empty()) result.m_error = ValidateRasterizedDepth(coverage, result.m_samples);
 				return result;
 			}, EThreadType::RHI);

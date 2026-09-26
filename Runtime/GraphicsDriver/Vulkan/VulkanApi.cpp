@@ -1071,14 +1071,15 @@ VulkanBufferPtr VulkanApi::CreateBuffer(VulkanDevicePtr device, VkDeviceSize siz
 	return outBuffer;
 }
 
-VulkanBufferPtr VulkanApi::CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
+VulkanBufferPtr VulkanApi::CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device,
+	const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode)
 {
 	VulkanBufferPtr outbuffer = VulkanApi::CreateBuffer(
 		device,
 		size,
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		VK_SHARING_MODE_CONCURRENT);
+		properties,
+		sharingMode);
 
 	const auto requirements = outbuffer->GetMemoryRequirements();
 
@@ -1113,7 +1114,8 @@ VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const 
 	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
 	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateBuffer_Immediate");
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanBufferPtr resBuffer = CreateBuffer(cmdBuffer, device, pData, size, usage, sharingMode);
+	VulkanBufferPtr resBuffer = CreateBuffer(cmdBuffer, device, pData, size, usage,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sharingMode);
 	cmdBuffer->EndCommandList();
 
 	auto fence = VulkanFencePtr::Make(device);
