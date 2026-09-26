@@ -30,7 +30,7 @@ namespace Sailor::Framegraph
 			alignas(8) int32_t m_lightsNum;
 		};
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 
 		ShaderSetPtr m_pComputeShader{};
 	};
