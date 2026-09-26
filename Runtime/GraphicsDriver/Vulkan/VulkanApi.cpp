@@ -1192,7 +1192,8 @@ VulkanImagePtr VulkanApi::CreateImageUpload(
 		static_cast<uint32_t>(extent.width),
 		static_cast<uint32_t>(extent.height),
 		static_cast<uint32_t>(extent.depth),
-		(*stagingBufferManagedPtr).m_offset);
+		(*stagingBufferManagedPtr).m_offset,
+		arrayLayers);
 
 	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 

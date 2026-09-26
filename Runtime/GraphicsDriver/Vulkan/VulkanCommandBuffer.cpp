@@ -165,7 +165,7 @@ void VulkanCommandBuffer::CopyBuffer(VulkanBufferMemoryPtr src, VulkanBufferMemo
 }
 
 void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferMemoryPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth,
-	VkDeviceSize srcOffset)
+	VkDeviceSize srcOffset, uint32_t layerCount)
 {
 	VkBufferImageCopy region{};
 	region.bufferOffset = srcOffset + src.m_offset;
@@ -175,7 +175,7 @@ void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferMemoryPtr src, VulkanIma
 	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	region.imageSubresource.mipLevel = 0;
 	region.imageSubresource.baseArrayLayer = 0;
-	region.imageSubresource.layerCount = 1;
+	region.imageSubresource.layerCount = layerCount;
 
 	region.imageOffset = { 0, 0, 0 };
 	region.imageExtent = {

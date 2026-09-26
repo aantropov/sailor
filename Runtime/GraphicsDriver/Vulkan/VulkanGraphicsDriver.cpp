@@ -107,8 +107,8 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 		renderDocApi->SetActiveWindow((*((void**)(m_vkInstance->GetVkInstance()))), pViewport->GetHWND());
 	}
 
-	DWORD invalidColor = 0xe567ff;
-	auto defaultImage = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(DWORD), VkExtent3D{ 1,1,1 }, 1,
+	const uint32_t invalidColor = 0x00e567ffu;
+	auto defaultImage = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(invalidColor), VkExtent3D{ 1,1,1 }, 1,
 		VK_IMAGE_TYPE_2D,
 		VkFormat::VK_FORMAT_R8G8B8A8_SRGB,
 		VK_IMAGE_TILING_OPTIMAL,
@@ -116,7 +116,9 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 		VK_SHARING_MODE_EXCLUSIVE,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-	auto defaultCubemap = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(DWORD), VkExtent3D{ 1,1,1 }, 1,
+	std::array<uint32_t, 6> invalidFaces;
+	invalidFaces.fill(invalidColor);
+	auto defaultCubemap = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), invalidFaces.data(), sizeof(invalidFaces), VkExtent3D{ 1,1,1 }, 1,
 		VK_IMAGE_TYPE_2D,
 		VkFormat::VK_FORMAT_R8G8B8A8_SRGB,
 		VK_IMAGE_TILING_OPTIMAL,
