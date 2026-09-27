@@ -492,6 +492,108 @@ namespace
 		return Record(node, state.m_graph, snapshot, 4u, { true, true, true });
 	}
 
+	std::string ValidateBlurPublication(RHIFrameGraphPtr graph, RHIMaterialPtr horizontal, RHIMaterialPtr vertical)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto node = TRefPtr<ShadowProbe>::Make();
+		RHISceneViewSnapshot snapshot;
+		InitializeSnapshot(snapshot, {});
+		RHIUpdateShadowMapCommand pass;
+		pass.m_shadowType = EShadowType::PCF;
+		pass.m_lightMatrix = glm::mat4(1.0f);
+		pass.m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
+		pass.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(8), 1u, EFormat::R16_UNORM);
+		snapshot.m_shadowMapsToUpdate.Add(std::move(pass));
+		Prepare(*node, graph, snapshot);
+		if (auto error = Record(*node, graph, snapshot, 0u, { true }); !error.empty()) return "blur publication initialization: " + error;
+		node->SetBlurMaterials(horizontal, vertical);
+		auto resources = node->Resources(snapshot);
+		auto bindings = resources->m_blurShaderBindings;
+		auto extra = driver->AddBufferToShaderBindings(bindings, "unusedProducer", sizeof(glm::vec4), 31u, EShaderBindingType::UniformBuffer);
+		if (!extra || !extra->m_vulkan.m_valueBinding) return "unused producer buffer could not be published";
+		for (auto material : { horizontal, vertical })
+		{
+			const auto& layouts = material->m_vulkan.m_pipelines[0]->m_layout->m_descriptionSetLayouts;
+			if (layouts.Num() != 2u || layouts[1]->m_descriptorSetLayoutBindings.Num() != 1u ||
+				layouts[1]->m_descriptorSetLayoutBindings[0].binding != 1u) return "normal blur projection must omit unused producer binding 31";
+		}
+		auto& request = snapshot.m_shadowMapsToUpdate[0];
+		request.m_shadowType = EShadowType::EVSM;
+		request.m_blurRadius = glm::vec2(1.0f);
+		request.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(32), 1u, EFormat::R32G32B32A32_SFLOAT);
+		auto readback = driver->CreateBuffer(1024u * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+		auto checkPixels = [&](uint32_t count, glm::vec4 expected, const char* phase) -> std::string
+		{
+			const auto* pixels = static_cast<const glm::vec4*>(readback->GetPointer());
+			for (uint32_t p = 0u; p < count; ++p)
+				for (uint32_t c = 0u; c < 4u; ++c)
+					if (!std::isfinite(pixels[p][c]) || std::abs(pixels[p][c] - expected[c]) > 0.00001f)
+						return std::format("blur publication {} pixel {} channel {}: expected {}, got {}", phase, p, c, expected[c], pixels[p][c]);
+			return {};
+		};
+		Prepare(*node, graph, snapshot);
+		if (!Tokens(snapshot, { true }) || resources->m_activeShadowViews[0]->m_packet.GetNumDrawInstances()) return "blur publication A has no complete empty packet";
+		if (auto error = Record(*node, graph, snapshot, 2u, { true }, readback); !error.empty()) return "blur publication A: " + error;
+		if (auto error = checkPixels(1024u, glm::vec4(1.25f, 1.5f, -1, 1), "A"); !error.empty()) return error;
+		RHIShaderBindingPtr samplerA;
+		if (!bindings->GetShaderBindings().TryGet("colorSampler", samplerA) || !samplerA->GetTextureBinding()) return "blur publication A has no sampler";
+		auto textureA = samplerA->GetTextureBinding();
+		auto viewA = textureA->m_vulkan.m_imageView;
+		auto nativeA = bindings->m_vulkan.m_descriptorSet;
+		const auto revisionA = bindings->GetDescriptorRevision();
+		const auto hashA = bindings->GetCompatibilityHashCode();
+		if (textureA == request.m_shadowMap || textureA->GetExtent() != glm::ivec2(32) || !nativeA ||
+			!nativeA->IsCompiled() || !nativeA->ReferencesImageView(1u, 0u, viewA)) return "A does not retain its real horizontal temporary image";
+		for (auto material : { horizontal, vertical })
+			if (VulkanApi::IsCompatible(material->m_vulkan.m_pipelines[0]->m_layout, nativeA, 1u)) return "unused producer binding did not force blur projection";
+
+		struct RestoreBuffer
+		{
+			RHIShaderBindingPtr m_binding;
+			decltype(m_binding->m_vulkan.m_valueBinding) m_value;
+			void Restore() { m_binding->m_vulkan.m_valueBinding = m_value; }
+			~RestoreBuffer() { Restore(); }
+		} restore{ extra, extra->m_vulkan.m_valueBinding };
+		// A's sampled 32x32 temporary cannot alias the pool's new 16x16 H output.
+		auto targetB = driver->CreateRenderTarget(glm::ivec2(16), 1u, EFormat::R32G32B32A32_SFLOAT);
+		request.m_shadowMap = targetB;
+		Prepare(*node, graph, snapshot);
+		if (!Tokens(snapshot, { true }) || resources->m_activeShadowViews[0]->m_packet.GetNumDrawInstances()) return "blur publication B did not start Prepare-complete";
+		auto unavailable = restore.m_value->Get();
+		auto originalBuffer = unavailable.m_ptr.m_buffer;
+		unavailable.m_ptr.m_buffer = VulkanBufferPtr::Make(VulkanApi::GetInstance()->GetMainDevice(),
+			originalBuffer->m_size, originalBuffer->m_usage, originalBuffer->m_sharingMode);
+		if (static_cast<VkBuffer>(*unavailable.m_ptr.m_buffer) != VK_NULL_HANDLE) return "producer failure buffer unexpectedly has a native handle";
+		extra->m_vulkan.m_valueBinding = decltype(restore.m_value)::Make(unavailable, TWeakPtr<RHIShaderBinding::VulkanBufferAllocator>{});
+		// Record rejects old-owner stale draws before submission, even though projecting
+		// A for these normal materials legitimately excludes the unavailable binding 31.
+		const auto rejected = Record(*node, graph, snapshot, 0u, { false }, readback);
+		RHIShaderBindingPtr retained;
+		const bool unchanged = resources->m_blurShaderBindings == bindings && bindings->GetShaderBindings().TryGet("colorSampler", retained) &&
+			retained == samplerA && retained->GetTextureBinding() == textureA && textureA->m_vulkan.m_imageView == viewA &&
+			bindings->m_vulkan.m_descriptorSet == nativeA && bindings->GetDescriptorRevision() == revisionA &&
+			bindings->GetCompatibilityHashCode() == hashA && nativeA->IsCompiled() && nativeA->ReferencesImageView(1u, 0u, viewA);
+		if (!rejected.empty()) return std::format("blur producer refusal: {}; A publication unchanged={}", rejected, unchanged);
+		if (!unchanged) return "rejected blur producer changed A sampler/native/revision/hash";
+		if (auto error = checkPixels(256u, glm::vec4(1, 1, -1, 1), "B rejected"); !error.empty()) return error;
+		if (!Tokens(snapshot, { false })) return "rejected B payload became successful before retry";
+		restore.Restore();
+		Prepare(*node, graph, snapshot);
+		if (request.m_shadowMap != targetB || !Tokens(snapshot, { true }) ||
+			resources->m_activeShadowViews[0]->m_packet.GetNumDrawInstances()) return "same-target blur retry did not prepare successfully";
+		if (auto error = Record(*node, graph, snapshot, 2u, { true }, readback); !error.empty()) return "blur publication retry: " + error;
+		if (auto error = checkPixels(256u, glm::vec4(1.25f, 1.5f, -1, 1), "B retry"); !error.empty()) return error;
+		RHIShaderBindingPtr samplerC;
+		if (!bindings->GetShaderBindings().TryGet("colorSampler", samplerC) || samplerC != samplerA ||
+			!samplerC->GetTextureBinding() || samplerC->GetTextureBinding() == textureA || samplerC->GetTextureBinding() == targetB ||
+			samplerC->GetTextureBinding()->GetExtent() != glm::ivec2(16) ||
+			bindings->m_vulkan.m_descriptorSet == nativeA || !bindings->m_vulkan.m_descriptorSet->IsCompiled() ||
+			bindings->GetDescriptorRevision() <= revisionA ||
+			!bindings->m_vulkan.m_descriptorSet->ReferencesImageView(1u, 0u, samplerC->GetTextureBinding()->m_vulkan.m_imageView) ||
+			!nativeA->IsCompiled() || !nativeA->ReferencesImageView(1u, 0u, viewA)) return "same-target retry did not publish B while retaining native A's original image";
+		return {};
+	}
+
 	std::string ValidateBlur(ShadowDrawCompletionState& state)
 	{
 		auto& driver = Renderer::GetDriver();
@@ -553,7 +655,7 @@ namespace
 				restore.Restore();
 			}
 		}
-		return {};
+		return ValidateBlurPublication(state.m_graph, materials[0], materials[1]);
 	}
 
 	std::string WriteTexture(const std::filesystem::path& filename, uint8_t red)
@@ -674,6 +776,7 @@ void ShadowDrawCompletionTestComponent::Tick(float)
 	AddJournalEvent("ShadowDrawCompletionEvidence", "Dense-cache Lighting/dependency failures are macOS-only and were not executed with this platform's global sampler set");
 #endif
 	AddJournalEvent("ShadowBlurEvidence", "Actual empty EVSM Prepare/Process: horizontal reject 0, vertical reject 1, each restored retry 2 blur draws; all 1024 float pixels checked per submission with five-second fence bounds");
+	AddJournalEvent("ShadowBlurPublicationEvidence", "Own unused buffer 31 caused actual H sampler producer refusal: A32 retained sampler/view/native/revision/hash, B16 recorded zero with failed token and all 256 clear pixels; exact range restoration retried B with two draws and all 256 blurred pixels, retaining native A; no V-only producer-failure coverage");
 	AddJournalEvent("ShadowDrawCompletionScope", "Recorded candidates, existing completion tokens and blur pixels; not CSM atlas/matrix atomic publication, visual quality, performance or Windows GPU coverage");
 	MarkPassed();
 }

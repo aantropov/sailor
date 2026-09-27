@@ -1200,12 +1200,11 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					// Blur Horizontal
 					commands->BeginDebugRegion(commandList, "Blur Horizontal", DebugContext::Color_CmdPostProcess);
 					{
-						driver->AddSamplerToShaderBindings(
+						bBlurComplete = static_cast<bool>(driver->AddSamplerToShaderBindings(
 							blurShaderBindings,
 							"colorSampler",
 							shadowPass.m_shadowMap,
-							1);
-						blurShaderBindings->RecalculateCompatibility();
+							1));
 
 						commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, EImageLayout::ShaderReadOnlyOptimal);
 						commands->ImageMemoryBarrier(commandList, blurAttachment, EImageLayout::ColorAttachmentOptimal);
@@ -1226,7 +1225,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						blurDrawBindingSets.Clear(false);
 						blurDrawBindingSets.Add(sceneView.m_frameBindings);
 						blurDrawBindingSets.Add(blurShaderBindings);
-						bBlurComplete = commands->BindShaderBindings(
+						bBlurComplete = bBlurComplete && commands->BindShaderBindings(
 							commandList,
 							m_pBlurHorizontalMaterial,
 							blurDrawBindingSets);
@@ -1254,12 +1253,11 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					{
 						// Blur Vertical
 						commands->BeginDebugRegion(commandList, "Blur Vertical", DebugContext::Color_CmdPostProcess);
-						driver->AddSamplerToShaderBindings(
+						bBlurComplete = static_cast<bool>(driver->AddSamplerToShaderBindings(
 							blurShaderBindings,
 							"colorSampler",
 							blurAttachment,
-							1);
-						blurShaderBindings->RecalculateCompatibility();
+							1));
 
 						renderPassColorAttachments.Clear(false);
 						renderPassColorAttachments.Add(shadowPass.m_shadowMap);
@@ -1277,7 +1275,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						blurDrawBindingSets.Clear(false);
 						blurDrawBindingSets.Add(sceneView.m_frameBindings);
 						blurDrawBindingSets.Add(blurShaderBindings);
-						bBlurComplete = commands->BindShaderBindings(
+						bBlurComplete = bBlurComplete && commands->BindShaderBindings(
 							commandList,
 							m_pBlurVerticalMaterial,
 							blurDrawBindingSets);
