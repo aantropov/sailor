@@ -68,7 +68,7 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool
 
 	if (auto fence = TRefPtr<RHI::RHIFence>(visitor.GetRawPtr()))
 	{
-		if (fence->IsFinished())
+		if (fence->HasFailed() || fence->IsFinished())
 		{
 			m_dependenciesLock.Lock();
 			auto it = std::find_if(m_dependencies.begin(), m_dependencies.end(),
@@ -79,6 +79,7 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool
 
 			if (it != std::end(m_dependencies))
 			{
+				m_bInitializationFailed |= fence->HasFailed();
 				std::iter_swap(it, m_dependencies.end() - 1);
 				m_dependencies.RemoveLast();
 				bShouldRemoveFromList = true;
@@ -91,9 +92,17 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool
 bool IDelayedInitialization::IsReady() const
 {
 	m_dependenciesLock.Lock();
-	const bool bIsReady = m_dependencies.IsEmpty();
+	const bool bIsReady = !m_bInitializationFailed && m_dependencies.IsEmpty();
 	m_dependenciesLock.Unlock();
 	return bIsReady;
+}
+
+bool IDelayedInitialization::HasInitializationFailed() const
+{
+	m_dependenciesLock.Lock();
+	const bool bFailed = m_bInitializationFailed;
+	m_dependenciesLock.Unlock();
+	return bFailed;
 }
 
 Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)

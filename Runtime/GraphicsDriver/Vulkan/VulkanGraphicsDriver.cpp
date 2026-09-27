@@ -1074,10 +1074,12 @@ bool VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList,
 	SAILOR_PROFILE_FUNCTION();
 	if (!commandList ||
 		!commandList->m_vulkan.m_commandBuffer ||
+		(fence && fence->HasFailed()) ||
 		!m_vkInstance ||
 		!m_vkInstance->GetMainDevice())
 	{
-		SAILOR_LOG_ERROR("VulkanGraphicsDriver::SubmitCommandList: command list or Vulkan device is unavailable.");
+		SAILOR_LOG_ERROR("VulkanGraphicsDriver::SubmitCommandList: invalid command list, failed fence or unavailable device.");
+		if (fence) fence->MarkSubmissionFailed();
 		return false;
 	}
 
@@ -1115,6 +1117,7 @@ bool VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList,
 	if (!bSubmitted)
 	{
 		SAILOR_LOG_ERROR("VulkanGraphicsDriver::SubmitCommandList: vkQueueSubmit failed.");
+		if (fence) fence->MarkSubmissionFailed();
 		return false;
 	}
 

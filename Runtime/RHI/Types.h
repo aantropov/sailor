@@ -983,6 +983,10 @@ namespace Sailor::RHI
 
 		virtual void TraceVisit(class TRefPtr<RHIResource> visitor, bool& bShouldRemoveFromList) override;
 		virtual bool IsReady() const;
+		bool HasInitializationFailed() const;
+
+	protected:
+		bool m_bInitializationFailed = false;
 	};
 
 	// Used as composing approach to build the object by functionality

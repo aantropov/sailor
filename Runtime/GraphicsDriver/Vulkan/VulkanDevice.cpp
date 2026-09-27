@@ -460,17 +460,19 @@ bool VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	_freea(signals);
 	_freea(waitStages);
 
-	m_numSubmittedCommandBuffersAcc++;
-
 	if (submitResult == VK_ERROR_DEVICE_LOST)
 	{
 		m_bIsDeviceLost = true;
+	}
+
+	if (submitResult != VK_SUCCESS)
+	{
+		SAILOR_LOG_ERROR("VulkanDevice::SubmitCommandBuffer failed: %d", static_cast<int>(submitResult));
 		return false;
 	}
 
-	check(submitResult == VK_SUCCESS);
-
-	return submitResult == VK_SUCCESS;
+	m_numSubmittedCommandBuffersAcc++;
+	return true;
 }
 
 void VulkanDevice::CreateDefaultRenderPass()

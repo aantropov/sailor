@@ -35,7 +35,10 @@ namespace Sailor::RHI
 		SAILOR_API void Wait(uint64_t timeout = UINT64_MAX) const;
 		SAILOR_API void Reset() const;
 		SAILOR_API bool IsFinished() const;
+		bool HasFailed() const { return m_bSubmissionFailed.load(std::memory_order_acquire); }
+		SAILOR_API void MarkSubmissionFailed();
 
 	protected:
+		std::atomic<bool> m_bSubmissionFailed{ false };
 	};
 };
