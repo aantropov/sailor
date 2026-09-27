@@ -135,8 +135,14 @@ void LightingECS::PublishShadowMapBindings()
 
 	auto& driver = Sailor::RHI::Renderer::GetDriver();
 	auto immutableTemplate = driver->CreateShaderBindings();
-	m_shadowMaps = driver->AddSamplerToShaderBindings(immutableTemplate, "shadowMaps", m_shadowMapTextures, 9u);
+	auto shadowMaps = driver->AddSamplerToShaderBindings(immutableTemplate, "shadowMaps", m_shadowMapTextures, 9u);
+	if (!shadowMaps)
+	{
+		m_bShadowMapBindingsDirty = true;
+		return;
+	}
 	immutableTemplate->RecalculateCompatibility();
+	m_shadowMaps = std::move(shadowMaps);
 	m_lightsData = std::move(immutableTemplate);
 	m_bShadowMapBindingsDirty = false;
 }
