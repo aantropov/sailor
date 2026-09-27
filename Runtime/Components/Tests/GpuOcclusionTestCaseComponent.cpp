@@ -190,6 +190,69 @@ namespace
 		return {};
 	}
 
+	std::string ValidateImmediateBindingUpdates()
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		const EMemoryPropertyFlags hostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
+		const EBufferUsageFlags usage = EBufferUsageBit::UniformBuffer_Bit |
+			EBufferUsageBit::BufferTransferSrc_Bit | EBufferUsageBit::BufferTransferDst_Bit;
+		constexpr std::array<const char*, 2> Names{ "immediateNeighbor", "immediateTarget" };
+		std::array<std::array<uint32_t, 257>, 2> expected{};
+		std::array<RHIBufferPtr, 2> buffers;
+		auto bindings = driver->CreateShaderBindings();
+		for (uint32_t i = 0u; i < buffers.size(); ++i)
+		{
+			buffers[i] = driver->CreateBuffer(sizeof(expected[i]), usage, EMemoryPropertyBit::DeviceLocal);
+			auto binding = driver->AddBufferToShaderBindings(bindings, buffers[i], Names[i], i);
+			if (!binding || !binding->IsBind()) return "immediate update validation could not bind its uniform buffers";
+		}
+		for (uint32_t word = 0u; word < expected[0].size(); ++word)
+			expected[0][word] = 0x75ab1234u ^ (word * 2654435761u);
+		auto source = expected[0];
+		driver->UpdateShaderBinding_Immediate(bindings, Names[0], source.data(), sizeof(source));
+		source.fill(0xdeadbeefu);
+		for (uint32_t round = 0u; round < 2u; ++round)
+		{
+			for (uint32_t word = 0u; word < expected[1].size(); ++word)
+				expected[1][word] = (0x219c0000u | (round << 12u)) ^ (word * 2246822519u);
+			source = expected[1];
+			driver->UpdateShaderBinding_Immediate(bindings, Names[1], source.data(), sizeof(source));
+			source.fill(0xdeadbeefu);
+
+			// Read on the same queue as the immediate updates; no cross-queue handoff is implied.
+			auto cmd = driver->CreateCommandList(false, ECommandListQueue::Transfer);
+			commands->BeginCommandList(cmd, true);
+			auto& native = cmd->m_vulkan.m_commandBuffer;
+			native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+			std::array<RHIBufferPtr, 2> readbacks;
+			for (uint32_t i = 0u; i < readbacks.size(); ++i)
+			{
+				readbacks[i] = driver->CreateBuffer(sizeof(expected[i]), EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
+				native->CopyBuffer(*buffers[i]->m_vulkan.m_buffer, *readbacks[i]->m_vulkan.m_buffer, sizeof(expected[i]));
+			}
+			native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+			commands->EndCommandList(cmd);
+			auto fence = RHIFencePtr::Make();
+			if (!driver->SubmitCommandList(cmd, fence)) return "immediate update readback submission failed";
+			fence->Wait(5000000000ull);
+			if (!fence->IsFinished()) return "immediate update readback fence exceeded five seconds";
+			native->Reset();
+			fence->ClearDependencies();
+			for (uint32_t i = 0u; i < readbacks.size(); ++i)
+			{
+				const auto* actual = static_cast<const uint32_t*>(readbacks[i]->GetPointer());
+				for (uint32_t word = 0u; word < expected[i].size(); ++word)
+				{
+					if (actual[word] != expected[i][word])
+						return std::format("immediate update round {} {} word {}: expected {:#x}, got {:#x}",
+							round, Names[i], word, expected[i][word], actual[word]);
+				}
+			}
+		}
+		return {};
+	}
+
 	bool ExpectedVisible(uint32_t instance, uint32_t pattern, bool occlusion, bool cameraBack)
 	{
 		const uint32_t kind = instance % 8u;
@@ -542,6 +605,9 @@ void GpuOcclusionTestCaseComponent::Tick(float)
 			"3 rounds of non-Indirect UpdateBuffer and native Update passed for 1028/65540-byte payloads; "
 			"offset 28 (native subrange 16 + extra 12), complete readbacks including 28/36-byte canaries, "
 			"mutated CPU sources and released destination wrappers; all 4 cases recorded before each submit");
+		AddJournalEvent("ImmediateBindingUpdateEvidence",
+			"Named public Immediate updates passed target A/B and unchanged-neighbor checks across all 257 words each; "
+			"CPU sources mutated after return, same-Transfer-queue readbacks. This does not establish GPU completion before public return");
 		MarkPassed();
 		return;
 	}
@@ -582,6 +648,7 @@ void GpuOcclusionTestCaseComponent::Tick(float)
 				ValidationResult result;
 				result.m_error = ValidateBufferUploads();
 				if (result.m_error.empty()) result.m_error = ValidateBufferUpdates();
+				if (result.m_error.empty()) result.m_error = ValidateImmediateBindingUpdates();
 				if (result.m_error.empty()) result.m_error = ValidateGpuCulling(culling, input, mips);
 				if (result.m_error.empty()) result.m_error = ValidateRasterizedDepth(coverage, result.m_samples);
 				return result;

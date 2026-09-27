@@ -2283,10 +2283,8 @@ void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSe
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto device = m_vkInstance->GetMainDevice();
-
-	RHI::RHICommandListPtr commandList = RHI::RHICommandListPtr::Make(RHI::ECommandListQueue::Transfer);
-	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_transferCommandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+	RHI::RHICommandListPtr commandList = CreateCommandList(false, RHI::ECommandListQueue::Transfer);
+	BeginCommandList(commandList, true);
 
 	auto& shaderBinding = bindings->GetOrAddShaderBinding(parameter);
 
@@ -2294,6 +2292,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSe
 	check(shaderBinding->IsBind());
 
 	UpdateShaderBinding(commandList, shaderBinding, value, size);
+	EndCommandList(commandList);
 
 	SubmitCommandList_Immediate(commandList);
 }
