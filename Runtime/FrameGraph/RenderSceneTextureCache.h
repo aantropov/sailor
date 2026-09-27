@@ -205,11 +205,13 @@ namespace Sailor::Framegraph::Details
 		return DefaultRequestedTextures;
 	}
 
+	// A cached fallback remains usable even when the current request could not be prepared.
 	SAILOR_API RHI::RHIShaderBindingSetPtr GetTextureBindingSet(
 		TextureBindingCache& cache,
 		const TSet<uint32_t>& requestedTextures,
 		uint64_t frame,
-		uint32_t& outSupportedMeshesPerBatch);
+		uint32_t& outSupportedMeshesPerBatch,
+		bool& outCurrent);
 
 	SAILOR_API void EvictTextureBindingCache(
 		TextureBindingCache& cache,

@@ -626,6 +626,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					if (bRequiredCustomDepth || bMaskedQueue)
 					{
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+						bool bCurrentTextureBindings = false;
 #if defined(__APPLE__)
 						const auto& requestedTextures =
 							source->m_materialTextureSamplers.Num() > i ?
@@ -635,12 +636,14 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							m_textureBindingCache,
 							requestedTextures,
 							sceneViewSnapshot.m_frame,
-							supportedMeshesPerBatch);
+							supportedMeshesPerBatch,
+							bCurrentTextureBindings);
 #else
 						batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+						bCurrentTextureBindings = batch.m_textureBindings.IsValid();
 #endif
 						batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
-						if (!batch.m_textureBindings)
+						if (!bCurrentTextureBindings)
 						{
 							if (bRequiredCustomDepth)
 							{
@@ -650,6 +653,9 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							{
 								bPacketPayloadComplete[payloadIndex] = false;
 							}
+						}
+						if (!batch.m_textureBindings)
+						{
 							continue;
 						}
 					}
@@ -818,6 +824,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						if (bRequiredCustomDepth || bMaskedQueue)
 						{
 							uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+							bool bCurrentTextureBindings = false;
 #if defined(__APPLE__)
 							const auto& requestedTextures =
 								meshIndex < group.m_materialTextureSamplers.Num() ?
@@ -827,12 +834,14 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 								m_textureBindingCache,
 								requestedTextures,
 								sceneViewSnapshot.m_frame,
-								supportedMeshesPerBatch);
+								supportedMeshesPerBatch,
+								bCurrentTextureBindings);
 #else
 							batchTemplate.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+							bCurrentTextureBindings = batchTemplate.m_textureBindings.IsValid();
 #endif
 							batchTemplate.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
-							if (!batchTemplate.m_textureBindings)
+							if (!bCurrentTextureBindings)
 							{
 								if (bRequiredCustomDepth)
 								{
@@ -842,6 +851,9 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 								{
 									bPacketPayloadComplete[payloadIndex] = false;
 								}
+							}
+							if (!batchTemplate.m_textureBindings)
+							{
 								continue;
 							}
 						}

@@ -646,16 +646,22 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 						if (bMasked || depthMaterial->GetRenderState().IsRequiredCustomDepthShader())
 						{
 							uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+							bool bCurrentTextureBindings = false;
 	#if defined(__APPLE__)
 							batch.m_textureBindings = Framegraph::Details::GetTextureBindingSet(m_textureBindingCache,
-								shadowMesh.m_materialTextureSamplers, sceneView.m_frame, supportedMeshesPerBatch);
+								shadowMesh.m_materialTextureSamplers, sceneView.m_frame, supportedMeshesPerBatch,
+								bCurrentTextureBindings);
 	#else
 							batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+							bCurrentTextureBindings = batch.m_textureBindings.IsValid();
 	#endif
 							batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
-							if (!batch.m_textureBindings)
+							if (!bCurrentTextureBindings)
 							{
 								bShadowPayloadComplete[passIndex][payloadIndex] = false;
+							}
+							if (!batch.m_textureBindings)
+							{
 								continue;
 							}
 						}
@@ -748,20 +754,26 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 							if (bMasked || depthMaterial->GetRenderState().IsRequiredCustomDepthShader())
 							{
 								uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+								bool bCurrentTextureBindings = false;
 	#if defined(__APPLE__)
 								const auto& requestedTextures = meshIndex < group.m_materialTextureSamplers.Num()
 									? group.m_materialTextureSamplers[meshIndex]
 									: Framegraph::Details::GetDefaultRequestedTextures();
 								batchTemplate.m_textureBindings = Framegraph::Details::GetTextureBindingSet(
-									m_textureBindingCache, requestedTextures, sceneView.m_frame, supportedMeshesPerBatch);
+									m_textureBindingCache, requestedTextures, sceneView.m_frame, supportedMeshesPerBatch,
+									bCurrentTextureBindings);
 	#else
 								batchTemplate.m_textureBindings =
 									App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+								bCurrentTextureBindings = batchTemplate.m_textureBindings.IsValid();
 	#endif
 								batchTemplate.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
-								if (!batchTemplate.m_textureBindings)
+								if (!bCurrentTextureBindings)
 								{
 									bShadowPayloadComplete[passIndex][payloadIndex] = false;
+								}
+								if (!batchTemplate.m_textureBindings)
+								{
 									continue;
 								}
 							}

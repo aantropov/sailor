@@ -237,8 +237,10 @@ RHIShaderBindingSetPtr Details::GetTextureBindingSet(
 	TextureBindingCache& textureBindingCache,
 	const TSet<uint32_t>& requestedTextures,
 	uint64_t frame,
-	uint32_t& outSupportedMeshesPerBatch)
+	uint32_t& outSupportedMeshesPerBatch,
+	bool& outCurrent)
 {
+	outCurrent = false;
 	auto textureImporter = App::GetSubmodule<TextureImporter>();
 	if (!textureImporter)
 	{
@@ -271,6 +273,7 @@ RHIShaderBindingSetPtr Details::GetTextureBindingSet(
 		}
 #endif
 		outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, cachedEntry->m_textureSetSize));
+		outCurrent = true;
 		return cachedEntry->m_textureBindings;
 	}
 
@@ -294,8 +297,22 @@ RHIShaderBindingSetPtr Details::GetTextureBindingSet(
 		cachedEntry->m_sourceDescriptorRevision = sourceSnapshot.m_descriptorRevision;
 		cachedEntry->m_lastUsedFrame = frame;
 		outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, cachedEntry->m_textureSetSize));
+		outCurrent = true;
 		return cachedEntry->m_textureBindings;
 	}
+
+	auto getFallbackBindings = [&]() -> RHIShaderBindingSetPtr
+		{
+			if (cachedEntry)
+			{
+				cachedEntry->m_lastUsedFrame = frame;
+				outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, cachedEntry->m_textureSetSize));
+				return cachedEntry->m_textureBindings;
+			}
+
+			outSupportedMeshesPerBatch = 1u;
+			return nullptr;
+		};
 
 	RHITexturePtr defaultTexture = driver->GetDefaultTexture();
 	TVector<RHITexturePtr> localTextures{ defaultTexture };
@@ -325,37 +342,34 @@ RHIShaderBindingSetPtr Details::GetTextureBindingSet(
 			RHI::EMemoryPropertyBit::HostCoherent);
 	if (!remapBuffer || !remapBuffer->GetPointer())
 	{
-		outSupportedMeshesPerBatch = 1u;
-		return cachedEntry ? cachedEntry->m_textureBindings : nullptr;
+		return getFallbackBindings();
 	}
 	memcpy(remapBuffer->GetPointer(), globalToLocal.GetData(), remapBufferSize);
 
-	driver->AddBufferToShaderBindings(
+	if (!driver->AddBufferToShaderBindings(
 		localTextureSet,
 		remapBuffer,
 		"textureSamplerRemap",
-		0);
-	driver->AddSamplerToShaderBindings(
+		0))
+	{
+		return getFallbackBindings();
+	}
+	if (!driver->AddSamplerToShaderBindings(
 		localTextureSet,
 		"textureSamplers",
 		localTextures,
 		1,
 		true,
-		denseTextureCount);
+		denseTextureCount))
+	{
+		return getFallbackBindings();
+	}
 	localTextureSet->RecalculateCompatibility();
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 	if (!localTextureSet->m_vulkan.m_descriptorSet || !localTextureSet->m_vulkan.m_descriptorSet->IsCompiled())
 	{
-		if (cachedEntry)
-		{
-			cachedEntry->m_lastUsedFrame = frame;
-			outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, cachedEntry->m_textureSetSize));
-			return cachedEntry->m_textureBindings;
-		}
-
-		outSupportedMeshesPerBatch = 1u;
-		return nullptr;
+		return getFallbackBindings();
 	}
 #endif
 
@@ -378,9 +392,11 @@ RHIShaderBindingSetPtr Details::GetTextureBindingSet(
 	entry.m_sourceSlotRevisions = std::move(currentSlotRevisions);
 
 	outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, entry.m_textureSetSize));
+	outCurrent = true;
 	return entry.m_textureBindings;
 #else
 	outSupportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+	outCurrent = globalTextureSet.IsValid();
 	return globalTextureSet;
 #endif
 }
@@ -768,6 +784,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						const uint32_t materialInstance = preparedMaterials.Get(material).m_materialInstance;
 
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+						bool bCurrentTextureBindings = false;
 #if defined(__APPLE__)
 						const auto& requestedTextures =
 							source->m_materialTextureSamplers.Num() > i ?
@@ -777,11 +794,21 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 							m_textureBindingCache,
 							requestedTextures,
 							sceneViewSnapshot.m_frame,
-							supportedMeshesPerBatch);
+							supportedMeshesPerBatch,
+							bCurrentTextureBindings);
 #else
 						batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+						bCurrentTextureBindings = batch.m_textureBindings.IsValid();
 #endif
 						batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
+						if (!bCurrentTextureBindings)
+						{
+							bPayloadComplete[payloadIndex] = false;
+						}
+						if (!batch.m_textureBindings)
+						{
+							continue;
+						}
 						const uint64_t stableKey = BuildPackedDrawStableKey(
 							proxy.m_handle,
 							source->m_staticMeshEcs,
@@ -884,6 +911,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						const uint32_t materialInstance = preparedMaterials.Get(material).m_materialInstance;
 
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+						bool bCurrentTextureBindings = false;
 #if defined(__APPLE__)
 						const auto& requestedTextures =
 							meshIndex < group.m_materialTextureSamplers.Num() ?
@@ -893,11 +921,21 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 							m_textureBindingCache,
 							requestedTextures,
 							sceneViewSnapshot.m_frame,
-							supportedMeshesPerBatch);
+							supportedMeshesPerBatch,
+							bCurrentTextureBindings);
 #else
 						batchTemplate.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+						bCurrentTextureBindings = batchTemplate.m_textureBindings.IsValid();
 #endif
 						batchTemplate.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
+						if (!bCurrentTextureBindings)
+						{
+							bPayloadComplete[payloadIndex] = false;
+						}
+						if (!batchTemplate.m_textureBindings)
+						{
+							continue;
+						}
 
 						for (size_t instanceIndex = 0u;
 							instanceIndex < group.m_instanceTransforms.Num(); ++instanceIndex)
