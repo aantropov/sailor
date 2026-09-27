@@ -182,7 +182,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Begin Immediate context
 		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage) override;
-		SAILOR_API virtual void CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIBufferPtr dst, size_t size) override;
+		SAILOR_API virtual bool CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIBufferPtr dst, size_t size, size_t srcOffset = 0, size_t dstOffset = 0) override;
 		SAILOR_API virtual RHI::RHITexturePtr CreateImage_Immediate(
 			const void* pData,
 			size_t size,

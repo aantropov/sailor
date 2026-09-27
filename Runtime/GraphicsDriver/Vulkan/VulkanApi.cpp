@@ -1106,36 +1106,6 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 	return cmdBuffer;
 }
 
-VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
-{
-	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateBuffer_Immediate");
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanBufferPtr resBuffer = CreateBuffer(cmdBuffer, device, pData, size, usage,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sharingMode);
-	cmdBuffer->EndCommandList();
-
-	auto fence = VulkanFencePtr::Make(device);
-	device->SubmitCommandBuffer(cmdBuffer, fence);
-	fence->Wait();
-
-	return resBuffer;
-}
-
-void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferMemoryPtr src, VulkanBufferMemoryPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
-{
-	auto fence = VulkanFencePtr::Make(device);
-
-	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CopyBuffer_Immediate");
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	cmdBuffer->CopyBuffer(src, dst, size, srcOffset, dstOffset);
-	cmdBuffer->EndCommandList();
-	device->SubmitCommandBuffer(cmdBuffer, fence);
-
-	fence->Wait();
-}
-
 VulkanImagePtr VulkanApi::CreateImageUpload(
 	VulkanCommandBufferPtr& cmdBuffer,
 	VulkanDevicePtr device,

@@ -214,8 +214,9 @@ namespace Sailor::RHI
 
 		//Immediate context
 		SAILOR_API virtual bool UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
+		// An incomplete wait returns nullptr/false; accepted commands remain tracked until completion.
 		SAILOR_API virtual RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
-		SAILOR_API virtual void CopyBuffer_Immediate(RHIBufferPtr src, RHIBufferPtr dst, size_t size) = 0;
+		SAILOR_API virtual bool CopyBuffer_Immediate(RHIBufferPtr src, RHIBufferPtr dst, size_t size, size_t srcOffset = 0, size_t dstOffset = 0) = 0;
 		SAILOR_API virtual bool SubmitCommandList_Immediate(RHICommandListPtr commandList);
 
                 SAILOR_API virtual RHITexturePtr CreateImage_Immediate(

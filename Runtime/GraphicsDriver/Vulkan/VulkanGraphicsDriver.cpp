@@ -1226,13 +1226,12 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer_Immediate(const void* pData
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage, RHI::EMemoryPropertyBit::DeviceLocal);
-	auto buffer = m_vkInstance->CreateBuffer_Immediate(m_vkInstance->GetMainDevice(), pData, size, (uint32_t)usage);
-
-	res->m_vulkan.m_buffer = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
-		TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1),
-		TWeakPtr<VulkanBufferAllocator>{});
-	return res;
+	auto command = CreateCommandList(false, RHI::ECommandListQueue::Transfer);
+	BeginCommandList(command, true);
+	auto buffer = CreateBuffer(command, pData, size, usage);
+	EndCommandList(command);
+	if (!SubmitCommandList_Immediate(command)) return nullptr;
+	return buffer;
 }
 
 void VulkanGraphicsDriver::CopyBufferToImage(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr src, RHI::RHITexturePtr dst)
@@ -1257,9 +1256,18 @@ void VulkanGraphicsDriver::CopyImageToBuffer(RHI::RHICommandListPtr cmd, RHI::RH
 		src->GetExtent().x, src->GetExtent().y, 1, mipLevel, baseArrayLayer, 0u);
 }
 
-void VulkanGraphicsDriver::CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIBufferPtr dst, size_t size)
+bool VulkanGraphicsDriver::CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIBufferPtr dst, size_t size, size_t srcOffset, size_t dstOffset)
 {
-	m_vkInstance->CopyBuffer_Immediate(m_vkInstance->GetMainDevice(), *src->m_vulkan.m_buffer->Get(), *dst->m_vulkan.m_buffer->Get(), size);
+	auto command = CreateCommandList(false, RHI::ECommandListQueue::Transfer);
+	BeginCommandList(command, true);
+	auto& native = command->m_vulkan.m_commandBuffer;
+	native->AddDependency(src->m_vulkan.m_buffer);
+	native->AddDependency(dst->m_vulkan.m_buffer);
+	native->MemoryBarrier(VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT);
+	native->CopyBuffer(*src->m_vulkan.m_buffer->Get(), *dst->m_vulkan.m_buffer->Get(), size, srcOffset, dstOffset);
+	native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_HOST_READ_BIT);
+	EndCommandList(command);
+	return SubmitCommandList_Immediate(command);
 }
 
 void VulkanGraphicsDriver::RestoreImageBarriers(RHI::RHICommandListPtr cmd)

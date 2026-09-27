@@ -1,5 +1,6 @@
 #include "Sailor.h"
 #include "Engine/Frame.h"
+#include "FrameGraph/ParticlesNode.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
 #include "GraphicsDriver/Vulkan/VulkanQueue.h"
 #include "GraphicsDriver/Vulkan/VulkanFence.h"
@@ -81,6 +82,7 @@ namespace
 	thread_local uint32_t lastCommandCount = 0u;
 	thread_local bool rejectNativeSubmit = false;
 	thread_local bool submitBeforeFailure = false;
+	thread_local uint32_t submitsBeforeFailure = 0u;
 	thread_local VkSemaphore lastWait = VK_NULL_HANDLE;
 	thread_local VkSemaphore lastSignal = VK_NULL_HANDLE;
 	PFN_vkQueueSubmit forwardNativeSubmit = nullptr;
@@ -93,6 +95,7 @@ namespace
 	thread_local VkResult fenceWaitResult = VK_TIMEOUT;
 	thread_local bool captureNextFenceWait = false;
 	thread_local bool capturedFenceCompleted = false;
+	thread_local uint32_t waitsBeforeCapture = 0u;
 
 	VKAPI_ATTR VkResult VKAPI_CALL NativeFenceStatus(VkDevice device, VkFence fence)
 	{
@@ -112,6 +115,11 @@ namespace
 	{
 		if (count == 1u && captureNextFenceWait)
 		{
+			if (waitsBeforeCapture > 0u)
+			{
+				--waitsBeforeCapture;
+				return forwardFenceWait(device, count, fences, all, timeout);
+			}
 			captureNextFenceWait = false;
 			observedFences[0] = fences[0];
 			const auto actual = forwardFenceWait(device, count, fences, all, 5000000000ull);
@@ -142,6 +150,7 @@ namespace
 			VulkanSubmissionTestAccess::ExchangeFenceDispatch(m_device, m_status, m_wait);
 			observedFences = {};
 			captureNextFenceWait = false;
+			waitsBeforeCapture = 0u;
 		}
 
 	private:
@@ -159,6 +168,11 @@ namespace
 
 	VKAPI_ATTR VkResult VKAPI_CALL NativeSubmit(VkQueue queue, uint32_t count, const VkSubmitInfo* info, VkFence fence)
 	{
+		if (rejectNativeSubmit && submitsBeforeFailure > 0u)
+		{
+			--submitsBeforeFailure;
+			return forwardNativeSubmit(queue, count, info, fence);
+		}
 		if (rejectNativeSubmit)
 		{
 			StubSubmit(queue, count, info, fence);
@@ -193,10 +207,11 @@ namespace
 	class SubmitOverride
 	{
 	public:
-		SubmitOverride(VulkanQueuePtr queue, VkResult result, bool accepted = false) : m_queue(std::move(queue))
+		SubmitOverride(VulkanQueuePtr queue, VkResult result, bool accepted = false, uint32_t precedingSubmits = 0u) : m_queue(std::move(queue))
 		{
 			nextResult = result;
 			submitBeforeFailure = accepted;
+			submitsBeforeFailure = precedingSubmits;
 			rejectNativeSubmit = true;
 			m_previous = VulkanSubmissionTestAccess::ExchangeSubmit(*m_queue, NativeSubmit, &forwardNativeSubmit);
 		}
@@ -640,6 +655,167 @@ namespace
 		}
 	}
 
+	void TestImmediateBufferCreation(bool lost = false)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		std::array<uint32_t, 64> data{};
+		data.fill(0x17bac012u);
+		FenceDispatchOverride dispatch(*device);
+		fenceResults = { VK_NOT_READY, VK_NOT_READY };
+		fenceWaitResult = lost ? VK_ERROR_DEVICE_LOST : VK_ERROR_OUT_OF_HOST_MEMORY;
+		captureNextFenceWait = true;
+		capturedFenceCompleted = false;
+		auto buffer = driver->CreateBuffer_Immediate(data.data(), sizeof(data), EBufferUsageBit::StorageBuffer_Bit);
+		fenceResults[0] = VK_SUCCESS;
+		driver->TrackResources_ThreadSafe();
+		Require(capturedFenceCompleted, "buffer creation fixture must complete native work before injecting wait failure");
+		Require(!buffer, "an incomplete immediate upload must not publish a usable buffer");
+	}
+
+	void TestImmediateBufferCopy(bool lost)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		std::array<uint32_t, 64> data{};
+		for (uint32_t i = 0u; i < data.size(); ++i) data[i] = 719u + 97u * i;
+		auto createSource = [&]()
+			{
+				return driver->CreateBuffer_Immediate(data.data(), sizeof(data), EBufferUsageBit::BufferTransferSrc_Bit);
+			};
+		auto createDestination = [&]()
+			{
+				auto result = driver->CreateBuffer(sizeof(data), EBufferUsageBit::BufferTransferDst_Bit,
+					EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+				std::fill_n(static_cast<uint32_t*>(result->GetPointer()), data.size(), 0xdeadbeefu);
+				return result;
+			};
+		auto source = createSource();
+		auto destination = createDestination();
+		Require(source.IsValid(), "successful immediate creation must publish a buffer");
+		Require(driver->CopyBuffer_Immediate(source, destination, 31u * sizeof(uint32_t), 7u * sizeof(uint32_t), 11u * sizeof(uint32_t)),
+			"immediate subrange copy did not complete");
+		const auto* copied = static_cast<const uint32_t*>(destination->GetPointer());
+		for (uint32_t i = 0u; i < data.size(); ++i)
+			Require(copied[i] == (i >= 11u && i < 42u ? data[i - 11u + 7u] : 0xdeadbeefu),
+				"immediate copy must preserve offsets and untouched neighboring bytes");
+		Require(driver->CopyBuffer_Immediate(source, destination, sizeof(data)), "immediate full copy did not complete");
+		Require(std::equal(data.begin(), data.end(), copied), "immediate create/copy data mismatch");
+		source.Clear();
+		destination.Clear();
+
+		using BufferOwner = Memory::TManagedMemory<Memory::VulkanBufferMemoryPtr, RHIBuffer::VulkanBufferAllocator>;
+		for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			if (!lost)
+			{
+				auto refusedDestination = createDestination();
+				auto refusedSource = createSource();
+				{
+					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device, true), error);
+					Require(!createSource(), "rejected immediate creation must not publish a buffer");
+					Require(!driver->CopyBuffer_Immediate(refusedSource, refusedDestination, sizeof(data)),
+						"immediate copy must propagate submission refusal");
+				}
+				const auto* untouched = static_cast<const uint32_t*>(refusedDestination->GetPointer());
+				Require(std::all_of(untouched, untouched + data.size(), [](uint32_t value) { return value == 0xdeadbeefu; }),
+					"rejected copy changed its destination");
+				Require(driver->CopyBuffer_Immediate(refusedSource, refusedDestination, sizeof(data)), "copy retry did not complete");
+				Require(std::equal(data.begin(), data.end(), untouched), "copy retry data mismatch");
+			}
+			auto pendingSource = createSource();
+			auto pendingDestination = createDestination();
+			TWeakPtr<BufferOwner> sourceOwner(pendingSource->m_vulkan.m_buffer);
+			TWeakPtr<BufferOwner> destinationOwner(pendingDestination->m_vulkan.m_buffer);
+			{
+				FenceDispatchOverride dispatch(*device);
+				fenceResults = { VK_NOT_READY, VK_NOT_READY };
+				fenceWaitResult = lost ? VK_ERROR_DEVICE_LOST : error;
+				captureNextFenceWait = true;
+				capturedFenceCompleted = false;
+				Require(!driver->CopyBuffer_Immediate(pendingSource, pendingDestination, sizeof(data)) && capturedFenceCompleted,
+					"immediate copy must report an accepted wait failure");
+				Require(std::equal(data.begin(), data.end(), static_cast<const uint32_t*>(pendingDestination->GetPointer())),
+					"the fault fixture must finish its real copy before simulating loss");
+				pendingSource.Clear();
+				pendingDestination.Clear();
+				driver->TrackResources_ThreadSafe();
+				Require(static_cast<bool>(sourceOwner.TryLock()) == !lost && static_cast<bool>(destinationOwner.TryLock()) == !lost,
+					"pending copies must retain original managed allocations; terminal loss must release them");
+				if (!lost)
+				{
+					fenceResults[0] = VK_SUCCESS;
+					driver->TrackResources_ThreadSafe();
+					Require(!sourceOwner.TryLock() && !destinationOwner.TryLock(), "completed copies must release both allocation owners");
+				}
+			}
+			if (lost) break;
+		}
+	}
+
+	struct ParticleBufferNode : Framegraph::Experimental::ParticlesNode
+	{
+		using ParticlesNode::InitializeBuffers;
+		using ParticlesNode::m_instances;
+		using ParticlesNode::m_particlesFrames;
+		using ParticlesNode::m_particlesDataBinary;
+		using ParticlesNode::m_perInstanceData;
+		using ParticlesNode::m_numInstances;
+	};
+
+	void TestParticleBufferPublication()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		TVector<ParticleBufferNode::PerInstanceData> instances(3u);
+		for (auto& instance : instances)
+		{
+			instance = {};
+			instance.model = glm::mat4(1.0f);
+			instance.color = glm::vec4(1.0f);
+		}
+		for (uint32_t failedUpload : { 0u, 1u })
+		{
+			for (bool waitFailure : { false, true })
+			{
+				for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+				{
+					ParticleBufferNode node;
+					node.m_particlesDataBinary.Resize(3u);
+					for (auto& particle : node.m_particlesDataBinary) particle = {};
+					node.m_particlesDataBinary[1].m_x2 = 123.5f;
+					if (waitFailure)
+					{
+						FenceDispatchOverride dispatch(*device);
+						fenceResults = { VK_NOT_READY, VK_NOT_READY };
+						fenceWaitResult = error;
+						waitsBeforeCapture = failedUpload;
+						captureNextFenceWait = true;
+						capturedFenceCompleted = false;
+						Require(!node.InitializeBuffers(instances) && capturedFenceCompleted,
+							"particle initialization must propagate either upload's wait failure");
+						fenceResults[0] = VK_SUCCESS;
+						driver->TrackResources_ThreadSafe();
+					}
+					else
+					{
+						SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device, true), error, false, failedUpload);
+						Require(!node.InitializeBuffers(instances), "particle initialization must propagate either upload's submission refusal");
+					}
+					Require(!node.m_instances && !node.m_particlesFrames && !node.m_perInstanceData && node.m_numInstances == 0u &&
+						node.m_particlesDataBinary.Num() == 3u && node.m_particlesDataBinary[1].m_x2 == 123.5f,
+						"partial particle initialization must publish nothing and retain its CPU source for retry");
+					Require(node.InitializeBuffers(instances), "particle initialization retry did not complete");
+					Require(node.m_instances && node.m_particlesFrames && node.m_perInstanceData && node.m_numInstances == 3u &&
+						node.m_particlesDataBinary.IsEmpty(), "successful particle initialization must publish both buffers and consume its CPU source");
+					Require(node.m_perInstanceData->GetOrAddShaderBinding("data")->m_vulkan.m_valueBinding == node.m_instances->m_vulkan.m_buffer &&
+						node.m_perInstanceData->GetOrAddShaderBinding("particlesData")->m_vulkan.m_valueBinding == node.m_particlesFrames->m_vulkan.m_buffer,
+						"particle bindings must retain the published buffers' original allocations");
+				}
+			}
+		}
+	}
+
 	int RunFenceGpu(int argc, const char** argv, std::string_view mode)
 	{
 		App::Initialize(argv, argc);
@@ -650,7 +826,16 @@ namespace
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 			OnRender([&]()
 				{
-					if (mode == "--gpu-immediate")
+					if (mode == "--gpu-immediate-buffer-create") TestImmediateBufferCreation();
+					else if (mode == "--gpu-immediate-buffers")
+					{
+						TestImmediateBufferCreation();
+						TestImmediateBufferCopy(false);
+						TestParticleBufferPublication();
+					}
+					else if (mode == "--gpu-immediate-buffer-create-lost") TestImmediateBufferCreation(true);
+					else if (mode == "--gpu-immediate-buffer-copy-lost") TestImmediateBufferCopy(true);
+					else if (mode == "--gpu-immediate")
 					{
 						TestImmediateSubmission(false);
 						TestImmediateBindingUpdate(false);
@@ -735,7 +920,9 @@ int main(int argc, const char** argv)
 	{
 		const std::string_view mode(argv[i]);
 		if (mode == "--gpu-fence-poll-loss" || mode == "--gpu-fence-wait-loss" || mode == "--gpu-fence-completion" ||
-			mode == "--gpu-immediate" || mode == "--gpu-immediate-lost" || mode == "--gpu-immediate-binding-lost")
+			mode == "--gpu-immediate" || mode == "--gpu-immediate-lost" || mode == "--gpu-immediate-binding-lost" ||
+			mode == "--gpu-immediate-buffer-create" || mode == "--gpu-immediate-buffers" ||
+			mode == "--gpu-immediate-buffer-create-lost" || mode == "--gpu-immediate-buffer-copy-lost")
 			return RunFenceGpu(argc, argv, mode);
 		if (std::string_view(argv[i]) == "--gpu-present") return RunGpu(argc, argv, true, false);
 		if (std::string_view(argv[i]) == "--gpu-offscreen") return RunGpu(argc, argv, false, false);
