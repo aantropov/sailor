@@ -59,7 +59,7 @@ namespace Sailor::RHI
 		SAILOR_API RHISceneViewPtr GetOrAddSceneView(WorldPtr worldPtr);
 		SAILOR_API void RemoveSceneView(WorldPtr worldPtr);
 
-		SAILOR_API void BeginConditionalDestroy();
+		SAILOR_API bool BeginConditionalDestroy();
 		SAILOR_API void RefreshFrameGraph() { m_bFrameGraphOutdated = true; }
 		SAILOR_API bool EnsureFrameGraph();
 

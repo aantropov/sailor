@@ -204,11 +204,11 @@ VulkanDevice::~VulkanDevice()
 	vkDestroyDevice(m_device, nullptr);
 }
 
-void VulkanDevice::BeginConditionalDestroy()
+bool VulkanDevice::BeginConditionalDestroy()
 {
-	//Clear dependencies
-	ConsumeAcquiredImage();
-	WaitIdle();
+	// Keep device resources alive if pending work could not be drained.
+	if (!m_bIsDeviceLost && (!ConsumeAcquiredImage() || WaitIdle() != VK_SUCCESS) && !m_bIsDeviceLost)
+		return false;
 
 	CleanupSwapChain();
 
@@ -241,10 +241,12 @@ void VulkanDevice::BeginConditionalDestroy()
 	m_syncFences.Clear();
 
 	m_frameDeps.Clear();
+	m_acquiredImageFlight.reset();
 
 	m_samplers.Clear();
 	m_pipelineBuilder.Clear();
 	m_surface.Clear();
+	return true;
 }
 
 void VulkanDevice::Shutdown()

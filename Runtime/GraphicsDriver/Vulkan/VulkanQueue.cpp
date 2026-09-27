@@ -53,7 +53,7 @@ VkResult VulkanQueue::Present(const VkPresentInfoKHR& info)
 VkResult VulkanQueue::WaitIdle()
 {
 	m_lock.Lock();
-	auto res = vkQueueWaitIdle(m_queue);
+	auto res = m_queueWaitIdle(m_queue);
 	m_lock.Unlock();
 
 	return res;

@@ -330,31 +330,23 @@ RHI::EFormat Renderer::GetDepthFormat() const
 	return Renderer::GetDriver()->GetDepthBuffer()->GetFormat();
 }
 
-void Renderer::BeginConditionalDestroy()
+bool Renderer::BeginConditionalDestroy()
 {
 	m_bForceStop = true;
 
 	if (!m_driverInstance)
 	{
-		return;
-	}
-
-	if (!m_bIsInitialized)
-	{
-		m_previousRenderFrame.Clear();
-		m_previousSceneVersionRelease.Clear();
-		m_frameGraph.Clear();
-		m_cachedSceneViews.Clear();
-		m_submissionContexts.Clear();
-		return;
+		return true;
 	}
 
 	WaitIdle();
+	if (!m_driverInstance->BeginConditionalDestroy()) return false;
+	m_bIsInitialized = false;
 
 	m_frameGraph.Clear();
 	m_cachedSceneViews.Clear();
 	m_submissionContexts.Clear();
-	m_driverInstance->BeginConditionalDestroy();
+	return true;
 }
 
 TUniquePtr<IGraphicsDriver>& Renderer::GetDriver()

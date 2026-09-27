@@ -1165,7 +1165,7 @@ void App::ProcessAssetReloadRequestOnEngineMainThread()
 	QueueAssetReloadTaskLocked(scheduler);
 }
 
-void App::Shutdown()
+bool App::Shutdown()
 {
 	{
 		std::unique_lock<std::mutex> shutdownLock(g_engineShutdownMutex);
@@ -1173,7 +1173,7 @@ void App::Shutdown()
 		{
 			if (g_engineShutdownOwner == std::this_thread::get_id())
 			{
-				return;
+				return false;
 			}
 			g_engineShutdownCondition.wait(
 				shutdownLock,
@@ -1181,11 +1181,11 @@ void App::Shutdown()
 				{
 					return !g_engineShutdownInProgress;
 				});
-			return;
+			return s_pInstance == nullptr;
 		}
 		if (!s_pInstance)
 		{
-			return;
+			return true;
 		}
 
 		g_engineStopRequested = true;
@@ -1208,11 +1208,14 @@ void App::Shutdown()
 	{
 		scheduler->AttachCurrentThreadAsMainThread();
 		ProcessPendingEngineMainThreadTasks(scheduler);
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
+			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
 	}
 
-	if (renderer)
+	if (renderer && !renderer->BeginConditionalDestroy())
 	{
-		renderer->BeginConditionalDestroy();
+		SAILOR_LOG_ERROR("Engine shutdown could not drain GPU work; resources are retained for another shutdown attempt.");
+		return false;
 	}
 
 	if (auto* editor = GetSubmodule<Editor>())
@@ -1290,6 +1293,7 @@ void App::Shutdown()
 	g_graphicsSettingsState = Settings::GraphicsSettingsState{};
 	g_renderStatsMode.store(Settings::ERenderStatsMode::None, std::memory_order_release);
 	g_editorRenderMode.store(RHI::ESceneViewRenderMode::Lit, std::memory_order_release);
+	return true;
 }
 
 bool App::IsRendererInitialized()

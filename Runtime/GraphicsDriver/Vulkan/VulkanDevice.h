@@ -51,7 +51,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples requestMsaa);
 		SAILOR_API virtual ~VulkanDevice();
 
-		SAILOR_API void BeginConditionalDestroy();
+		SAILOR_API bool BeginConditionalDestroy();
 		SAILOR_API void Shutdown();
 
 		SAILOR_API VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }

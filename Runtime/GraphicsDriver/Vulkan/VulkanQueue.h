@@ -38,6 +38,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		uint32_t m_queueFamilyIndex;
 		uint32_t m_queueIndex;
 		PFN_vkQueueSubmit m_queueSubmit;
+		PFN_vkQueueWaitIdle m_queueWaitIdle = vkQueueWaitIdle;
 		
 		mutable SpinLock m_lock;
 		friend class VulkanSubmissionTestAccess;

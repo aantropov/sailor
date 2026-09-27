@@ -67,7 +67,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
 		SAILOR_API virtual ~IGraphicsDriver() = default;
 
-		SAILOR_API virtual void BeginConditionalDestroy() = 0;
+		SAILOR_API virtual bool BeginConditionalDestroy() = 0;
 
 		SAILOR_API virtual bool StartGpuTracking() = 0;
 		SAILOR_API virtual RHI::GpuStats FinishGpuTracking() = 0;

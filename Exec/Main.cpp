@@ -45,7 +45,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 	App::Start();
 	const int32_t exitCode = App::GetExitCode();
 	App::Stop();
-	App::Shutdown();
+	const bool bShutdown = App::Shutdown();
 
 	for (int i = 0; i < nArgs; ++i)
 	{
@@ -59,7 +59,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 		LocalFree(szArglist);
 	}
 
-	return exitCode;
+	return bShutdown ? exitCode : 1;
 }
 
 #else
@@ -75,8 +75,7 @@ int main(int argc, const char** argv)
 	App::Start();
 	const int32_t exitCode = App::GetExitCode();
 	App::Stop();
-	App::Shutdown();
-	return exitCode;
+	return App::Shutdown() ? exitCode : 1;
 }
 
 #endif

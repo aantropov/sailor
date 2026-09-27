@@ -25,6 +25,8 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
+extern "C" SAILOR_SHARED_API int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
+
 namespace Sailor::GraphicsDriver::Vulkan
 {
 	class VulkanSubmissionTestAccess
@@ -47,6 +49,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		}
 
 		static size_t Flight(const VulkanDevice& device) { return device.m_currentFrame; }
+		static PFN_vkQueueWaitIdle ExchangeQueueWait(VulkanQueue& queue, PFN_vkQueueWaitIdle wait)
+		{
+			queue.m_lock.Lock();
+			const auto previous = std::exchange(queue.m_queueWaitIdle, wait);
+			queue.m_lock.Unlock();
+			return previous;
+		}
 		static VulkanFencePtr FlightFence(const VulkanDevice& device) { return device.m_syncFences[device.m_currentFrame]; }
 		static VulkanSemaphorePtr AcquireSemaphore(const VulkanDevice& device) { return device.m_imageAvailableSemaphores[device.m_currentFrame]; }
 		static VulkanSemaphorePtr PresentSemaphore(const VulkanDevice& device) { return device.m_renderFinishedSemaphores[device.m_currentSwapchainImageIndex]; }
@@ -86,6 +95,9 @@ namespace
 	thread_local VkSemaphore lastWait = VK_NULL_HANDLE;
 	thread_local VkSemaphore lastSignal = VK_NULL_HANDLE;
 	PFN_vkQueueSubmit forwardNativeSubmit = nullptr;
+	PFN_vkQueueWaitIdle forwardQueueWait = nullptr;
+	thread_local VkResult queueWaitResult = VK_SUCCESS;
+	thread_local uint32_t queueWaitCalls = 0u;
 	PFN_vkGetFenceStatus forwardFenceStatus = nullptr;
 	PFN_vkWaitForFences forwardFenceWait = nullptr;
 	thread_local std::array<VkFence, 2> observedFences{};
@@ -96,6 +108,29 @@ namespace
 	thread_local bool captureNextFenceWait = false;
 	thread_local bool capturedFenceCompleted = false;
 	thread_local uint32_t waitsBeforeCapture = 0u;
+
+	VKAPI_ATTR VkResult VKAPI_CALL NativeQueueWait(VkQueue queue)
+	{
+		// Finish actual work before reporting a synthetic shutdown failure.
+		const auto result = forwardQueueWait(queue);
+		++queueWaitCalls;
+		return result == VK_SUCCESS ? queueWaitResult : result;
+	}
+
+	class QueueWaitOverride
+	{
+	public:
+		QueueWaitOverride(VulkanQueuePtr queue, VkResult result) : m_queue(std::move(queue))
+		{
+			queueWaitResult = result;
+			m_original = VulkanSubmissionTestAccess::ExchangeQueueWait(*m_queue, NativeQueueWait);
+			forwardQueueWait = m_original;
+		}
+		~QueueWaitOverride() { VulkanSubmissionTestAccess::ExchangeQueueWait(*m_queue, m_original); }
+	private:
+		VulkanQueuePtr m_queue;
+		PFN_vkQueueWaitIdle m_original;
+	};
 
 	VKAPI_ATTR VkResult VKAPI_CALL NativeFenceStatus(VkDevice device, VkFence fence)
 	{
@@ -816,6 +851,68 @@ namespace
 		}
 	}
 
+	int RunShutdownGpu(int argc, const char** argv, bool idleFailure, bool localHost = false)
+	{
+		App::Initialize(argv, argc);
+		int result = 1;
+		auto shutdown = [localHost]() { return localHost ? SailorProtocolStopLocalHost(true) != 0 : App::Shutdown(); };
+		try
+		{
+			Require(App::IsRendererInitialized(), "shutdown test requires an initialized renderer");
+			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			{
+				FailedFrame failed;
+				OnRender([&]() { TestNativeFrameFailure(true, VK_ERROR_OUT_OF_HOST_MEMORY, failed); });
+				auto device = VulkanApi::GetInstance()->GetMainDevice();
+				auto swapchain = device->GetSwapchain();
+				auto* renderer = App::GetSubmodule<Renderer>();
+				auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+				for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+				{
+					bool stopped;
+					if (idleFailure)
+					{
+						const auto before = queueWaitCalls;
+						QueueWaitOverride refusal(device->GetGraphicsQueue(), error);
+						stopped = shutdown();
+						Require(queueWaitCalls > before, "shutdown must reach the actual queue-idle failure");
+					}
+					else
+					{
+						const auto before = submitCalls;
+						SubmitOverride refusal(device->GetGraphicsQueue(), error);
+						stopped = shutdown();
+						Require(submitCalls == before + 1u && lastWait == *failed.acquire &&
+							lastSignal == VK_NULL_HANDLE && lastCommandCount == 0u,
+							"shutdown must consume the outstanding acquisition before releasing its owners");
+					}
+					Require(!stopped && App::GetSubmodule<Renderer>() == renderer && App::GetSubmodule<Tasks::Scheduler>() == scheduler,
+						"failed shutdown must retain the App, renderer and scheduler for retry");
+					Require(device->GetSwapchain() == swapchain, "failed shutdown must retain the swapchain");
+					VulkanSubmissionTestAccess::CheckSyncCounts(*device);
+					Require(VulkanSubmissionTestAccess::FlightFence(*device) == failed.fence &&
+						failed.frame.command->m_vulkan.m_commandBuffer.NumRefs() == 2u,
+						"failed shutdown must retain frame synchronization and command dependencies");
+					CheckReadback(failed.frame, false);
+				}
+			}
+			// Release test-owned native references before the successful App teardown.
+			Require(shutdown() && App::GetSubmodule<Renderer>() == nullptr && App::GetSubmodule<Tasks::Scheduler>() == nullptr,
+				"shutdown must complete after the refusal is removed");
+			Require(shutdown(), "a completed shutdown must remain idempotent");
+			App::Initialize(argv, argc);
+			Require(App::IsRendererInitialized(), "a completed shutdown must allow a new native session");
+			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			OnRender([]() { TestImmediateSubmission(false); });
+			std::cout << "Native shutdown ownership test passed: " << (idleFailure ? "idle" : "acquire") << (localHost ? " host" : " App") << '\n';
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		App::Stop();
+		if (!shutdown()) result = 1;
+		return result;
+	}
+
 	int RunFenceGpu(int argc, const char** argv, std::string_view mode)
 	{
 		App::Initialize(argv, argc);
@@ -850,7 +947,7 @@ namespace
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
 		App::Stop();
-		App::Shutdown();
+		if (!App::Shutdown()) result = 1;
 		return result;
 	}
 
@@ -909,7 +1006,7 @@ namespace
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
 		App::Stop();
-		App::Shutdown();
+		if (!App::Shutdown()) result = 1;
 		return result;
 	}
 }
@@ -919,6 +1016,10 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
+		if (mode == "--gpu-shutdown-acquire") return RunShutdownGpu(argc, argv, false);
+		if (mode == "--gpu-shutdown-idle") return RunShutdownGpu(argc, argv, true);
+		if (mode == "--gpu-host-shutdown-acquire") return RunShutdownGpu(argc, argv, false, true);
+		if (mode == "--gpu-host-shutdown-idle") return RunShutdownGpu(argc, argv, true, true);
 		if (mode == "--gpu-fence-poll-loss" || mode == "--gpu-fence-wait-loss" || mode == "--gpu-fence-completion" ||
 			mode == "--gpu-immediate" || mode == "--gpu-immediate-lost" || mode == "--gpu-immediate-binding-lost" ||
 			mode == "--gpu-immediate-buffer-create" || mode == "--gpu-immediate-buffers" ||

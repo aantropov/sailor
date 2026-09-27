@@ -28,14 +28,13 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		Sailor::App::Stop();
 	}
 
-	static void ShutdownEngine(const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	static bool ShutdownEngine(const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
 	{
 		if (dependencies.m_shutdown)
 		{
-			dependencies.m_shutdown(dependencies.m_context);
-			return;
+			return dependencies.m_shutdown(dependencies.m_context);
 		}
-		Sailor::App::Shutdown();
+		return Sailor::App::Shutdown();
 	}
 
 	void SetError(ProtocolResponse& response, const std::string& error)
@@ -218,8 +217,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kShutdown:
-			ShutdownEngine(dependencies);
-			SetEmptyResult(response);
+			if (ShutdownEngine(dependencies)) SetEmptyResult(response);
+			else SetError(response, "Engine shutdown could not drain GPU work. Retry shutdown before initializing another session.");
 			break;
 
 		case ProtocolRequest::kRequestAssetReload:

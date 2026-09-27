@@ -67,7 +67,7 @@ internal static class EngineProtocolNative
         EntryPoint = "SailorProtocolStopLocalHost",
         ExactSpelling = true,
         CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void SailorProtocolStopLocalHost(
+    internal static extern int SailorProtocolStopLocalHost(
         [MarshalAs(UnmanagedType.I1)] bool shutdownEngine);
 
 #if WINDOWS

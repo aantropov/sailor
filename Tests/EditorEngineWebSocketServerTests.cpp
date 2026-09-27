@@ -23,7 +23,7 @@
 
 extern "C"
 {
-	void SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
+	int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 }
 
 namespace

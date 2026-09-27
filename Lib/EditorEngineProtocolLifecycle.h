@@ -215,11 +215,11 @@ namespace Sailor::Protocol
 			}
 		}
 
-		void CompleteShutdown()
+		void CompleteShutdown(bool bSucceeded = true)
 		{
 			{
 				const std::lock_guard<std::mutex> lock(m_mutex);
-				m_state = EState::ShutdownComplete;
+				m_state = bSucceeded ? EState::ShutdownComplete : EState::ShutdownFailed;
 				m_bInitializationActive = false;
 				m_bStartIssued = false;
 				m_bStopRequested = true;
@@ -308,6 +308,7 @@ namespace Sailor::Protocol
 			Initializing,
 			Ready,
 			ShuttingDown,
+			ShutdownFailed,
 			ShutdownComplete
 		};
 

@@ -154,14 +154,15 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    internal Task CompleteLocalShutdownFallbackAsync()
+    internal async Task<bool> CompleteLocalShutdownFallbackAsync()
     {
         if (transport is ILocalEngineProtocolTransport localTransport)
         {
-            return localTransport.CompleteShutdownAsync(
-                shutdownEngine: true);
+            await localTransport.CompleteShutdownAsync(
+                shutdownEngine: true).ConfigureAwait(false);
+            return true;
         }
-        return Task.CompletedTask;
+        return false;
     }
 
     public async Task<bool> RequestAssetReloadAsync(

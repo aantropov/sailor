@@ -14,7 +14,8 @@ namespace Sailor::Protocol
 		ListenFailed = 3,
 		InitializationFailed = 4,
 		ExecutionFailed = 5,
-		NetworkInitializationFailed = 6
+		NetworkInitializationFailed = 6,
+		ShutdownFailed = 7
 	};
 
 	inline constexpr const char* EditorEngineWebSocketPath =

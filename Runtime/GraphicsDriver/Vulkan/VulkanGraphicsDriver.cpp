@@ -1,4 +1,5 @@
 #include "VulkanGraphicsDriver.h"
+#include <exception>
 #include "RHI/Texture.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Cubemap.h"
@@ -144,27 +145,12 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
 {
-	m_materialSsboAllocator.Clear();
-	m_generalSsboAllocator.Clear();
-	m_meshSsboAllocator.Clear();
-
-	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
+	if (!m_vkInstance) return;
+	if (!BeginConditionalDestroy())
 	{
-		GraphicsDriver::Vulkan::VulkanApi::Shutdown();
-		return;
+		SAILOR_LOG_ERROR("Vulkan driver destroyed before its GPU work could be drained.");
+		std::terminate();
 	}
-
-	if (m_gpuFrameTimeQueryPool != VK_NULL_HANDLE)
-	{
-		m_vkInstance->WaitIdle();
-		vkDestroyQueryPool(
-			*m_vkInstance->GetMainDevice(),
-			m_gpuFrameTimeQueryPool,
-			nullptr);
-		m_gpuFrameTimeQueryPool = VK_NULL_HANDLE;
-	}
-
-	m_vkInstance->GetMainDevice()->Shutdown();
 
 	// Waiting finishing releasing of rendering resources
 	if (auto scheduler = App::GetSubmodule<Tasks::Scheduler>())
@@ -178,17 +164,22 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 			});
 	}
 
+	m_materialSsboAllocator.Clear();
+	m_generalSsboAllocator.Clear();
+	m_meshSsboAllocator.Clear();
+	if (auto device = m_vkInstance->GetMainDevice()) device->Shutdown();
+
 	check(m_cachedDescriptorSets.Num() == 0);
 
 	GraphicsDriver::Vulkan::VulkanApi::Shutdown();
 }
 
-void VulkanGraphicsDriver::BeginConditionalDestroy()
+bool VulkanGraphicsDriver::BeginConditionalDestroy()
 {
-	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
-	{
-		return;
-	}
+	if (m_bShutdownStarted || !m_vkInstance || !m_vkInstance->GetMainDevice()) return true;
+	if (!m_vkInstance->GetMainDevice()->BeginConditionalDestroy()) return false;
+	m_bShutdownStarted = true;
+	m_bIsInitialized = false;
 
 	m_cachedMsaaRenderTargets.Clear();
 	m_temporaryRenderTargets.Clear();
@@ -202,6 +193,9 @@ void VulkanGraphicsDriver::BeginConditionalDestroy()
 
 	TrackResources_ThreadSafe();
 
+	// GPU work is drained (or the device is lost). Cancel any initialization
+	// whose fence status could not be queried before releasing its owners.
+	for (auto& fence : m_trackedFences) fence->MarkSubmissionFailed();
 	m_trackedFences.Clear();
 	m_uniformBuffers.Clear();
 	if (m_gpuFrameTimeQueryPool != VK_NULL_HANDLE)
@@ -225,7 +219,7 @@ void VulkanGraphicsDriver::BeginConditionalDestroy()
 			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
 	}
 
-	m_vkInstance->GetMainDevice()->BeginConditionalDestroy();
+	return true;
 }
 
 bool VulkanGraphicsDriver::SupportsGpuFrameTimeQueries() const

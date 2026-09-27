@@ -1703,13 +1703,14 @@ namespace
 		source.m_condition.notify_all();
 	}
 
-	void RecordShutdown(void* context)
+	bool RecordShutdown(void* context)
 	{
 		auto& source =
 			*static_cast<TBlockingLifecycleSource*>(context);
 		const std::lock_guard<std::mutex> lock(source.m_mutex);
 		++source.m_numShutdowns;
 		source.m_bShutdownObservedStartExit = source.m_bStartExited;
+		return true;
 	}
 
 	class TBlockingLifecycleRelease final
@@ -1756,6 +1757,57 @@ namespace
 			gate.TryBeginInitialization(error),
 			"async lifecycle test must initialize its session");
 		gate.CompleteInitialization(true);
+	}
+
+	void TestFailedShutdownKeepsAdmissionClosedUntilRetry()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		PrepareInitializedLifecycle(gate);
+		uint32_t attempts = 0u;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &attempts;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_stop = [](void*) {};
+		dependencies.m_shutdown = [](void* context)
+			{
+				const auto attempt = ++*static_cast<uint32_t*>(context);
+				if (attempt == 2u) throw std::runtime_error("shutdown test failure");
+				return attempt == 3u;
+			};
+		for (uint32_t attempt = 1u; attempt <= 3u; ++attempt)
+		{
+			TProtocolBuffer buffer;
+			TDecodedResponse response{};
+			bool bThrew = false;
+			try
+			{
+				response = RequireProtocolResponse(
+					MakeRequest(EditorEngineProtocolVersion, attempt, c_shutdownCommandField), buffer, dependencies);
+			}
+			catch (const std::runtime_error& exception)
+			{
+				Require(attempt == 2u && std::string(exception.what()) == "shutdown test failure",
+					"internal invocation must propagate the original shutdown exception to its transport boundary");
+				bThrew = true;
+			}
+			Require(bThrew == (attempt == 2u), "throwing shutdown must reach the native transport boundary");
+			Require(attempts == attempt, "Shutdown must execute each explicit retry exactly once");
+			Require(response.m_success == (attempt == 3u), "Shutdown must report native completion, not just dispatch");
+			std::string error;
+			if (attempt < 3u)
+			{
+				Require(bThrew || (!response.m_error.empty() && response.m_resultField != c_emptyResultField),
+					"failed Shutdown must carry an error instead of an empty success result");
+				Require(!gate.TryBeginInitialization(error) && !gate.TryBeginStart(error) &&
+					!gate.TryAcquireOperation(error, true), "failed Shutdown must keep the old session closed");
+			}
+			else
+			{
+				Require(response.m_resultField == c_emptyResultField && gate.TryBeginInitialization(error),
+					"successful Shutdown retry must allow a fresh session");
+				gate.CompleteInitialization(true);
+			}
+		}
 	}
 
 	TDecodedResponse InvokeStartPromptly(
@@ -2028,12 +2080,13 @@ namespace
 		source.m_condition.notify_all();
 	}
 
-	void RecordEditorDispatchShutdown(void* context)
+	bool RecordEditorDispatchShutdown(void* context)
 	{
 		auto& source =
 			*static_cast<TBlockingEditorDispatchSource*>(context);
 		const std::lock_guard<std::mutex> lock(source.m_mutex);
 		++source.m_numShutdowns;
+		return true;
 	}
 
 	struct TEditorExceptionSource
@@ -2240,6 +2293,7 @@ int main()
 		TestViewportAssetDropEventIsTypedAndValidated();
 		TestViewportToolShortcutEventIsTypedAndValidated();
 		TestLifecycleGateDrainsStartAndOperationsBeforeShutdown();
+		TestFailedShutdownKeepsAdmissionClosedUntilRetry();
 		TestStartAcknowledgesBeforeWorkerExitAndStopJoins();
 		TestImmediateStopAfterStartAcknowledgementCannotBeLost();
 		TestShutdownStopsAndJoinsWorkerBeforeShutdownRoutine();

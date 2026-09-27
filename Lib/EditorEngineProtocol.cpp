@@ -146,7 +146,7 @@ namespace
 				break;
 
 			case EProtocolLifecycleCompletion::Shutdown:
-				m_gate.CompleteShutdown();
+				m_gate.CompleteShutdown(m_bSucceeded);
 				break;
 
 			case EProtocolLifecycleCompletion::None:
@@ -228,7 +228,7 @@ namespace
 				return;
 			}
 
-			const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Shutdown);
+			TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Shutdown);
 			// Initialization owns partially built App state. Once it drains,
 			// Stop can safely release a blocking Start before the remaining
 			// regular operation leases are joined.
@@ -237,6 +237,7 @@ namespace
 			gate.WaitForShutdownDrain();
 			gate.WaitForStartDrainAndJoin();
 			DispatchRequest(request, response, dependencies);
+			if (response.success()) completion.MarkSucceeded();
 			return;
 		}
 
@@ -386,4 +387,9 @@ void Sailor::Protocol::WaitForEditorEngineProtocolStartDrain()
 void Sailor::Protocol::ResetEditorEngineProtocolLifecycle()
 {
 	GetEditorEngineProtocolLifecycleGate().Reset();
+}
+
+void Sailor::Protocol::FailEditorEngineProtocolShutdown()
+{
+	GetEditorEngineProtocolLifecycleGate().CompleteShutdown(false);
 }

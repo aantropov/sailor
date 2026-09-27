@@ -702,6 +702,42 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public async Task ShutdownFallback_DoesNotReportRemoteTeardownAsCompleted()
+    {
+        using var client = CreateClient(request => Success(request,
+            response => response.EmptyResult = new Empty()));
+        Assert.False(await client.CompleteLocalShutdownFallbackAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ShutdownFallback_ReportsActualLocalCompletion(bool fail)
+    {
+        var calls = 0;
+        var transport = new LocalCapabilityRecordingTransport
+        {
+            Shutdown = shutdownEngine =>
+            {
+                Assert.True(shutdownEngine);
+                ++calls;
+                return fail ? Task.FromException(new InvalidOperationException("shutdown failed")) : Task.CompletedTask;
+            }
+        };
+        using var client = new EngineProtocolClient(transport);
+        if (fail)
+        {
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CompleteLocalShutdownFallbackAsync());
+            Assert.Equal("shutdown failed", exception.Message);
+        }
+        else
+        {
+            Assert.True(await client.CompleteLocalShutdownFallbackAsync());
+        }
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
     public async Task StopAsync_UsesBoundedLifecycleTransportTimeout()
     {
         EngineProtocolInvocationKind? capturedKind = null;
@@ -1490,6 +1526,7 @@ public sealed class EngineProtocolClientTests
         IEngineProtocolTransport,
         ILocalEngineProtocolTransport
     {
+        public Func<bool, Task> Shutdown { get; init; } = _ => Task.CompletedTask;
         public List<ProtocolRequest> InitializeRequests { get; } = [];
         public List<ProtocolRequest> InvokedRequests { get; } = [];
 
@@ -1538,7 +1575,7 @@ public sealed class EngineProtocolClientTests
             => Task.CompletedTask;
 
         public Task CompleteShutdownAsync(bool shutdownEngine)
-            => Task.CompletedTask;
+            => Shutdown(shutdownEngine);
 
         public void Dispose()
         {
