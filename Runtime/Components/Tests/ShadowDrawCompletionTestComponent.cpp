@@ -38,6 +38,11 @@ namespace
 	class ShadowProbe final : public ShadowPrepassNode
 	{
 	public:
+		using ShadowPrepassNode::m_pBlurHorizontalShader;
+		using ShadowPrepassNode::m_pBlurVerticalShader;
+		using ShadowPrepassNode::m_pBlurHorizontalMaterial;
+		using ShadowPrepassNode::m_pBlurVerticalMaterial;
+		using ShadowPrepassNode::m_pBlurShaderBindings;
 		ShadowProbe() { SetString("VirtualizeInstancePayloads", "false"); }
 		auto Resources(const RHISceneViewSnapshot& scene)
 		{
@@ -115,7 +120,7 @@ namespace
 		return result;
 	}
 
-	RHISpatialSceneVersionPtr CreateCaster(RHIMeshPtr mesh, uint32_t sampler)
+	RHISpatialSceneVersionPtr CreateCaster(RHIMeshPtr mesh, uint32_t sampler, uint32_t meshCount = 1u)
 	{
 		RHISceneViewProxy proxy;
 		proxy.m_staticMeshEcs = 1u;
@@ -133,7 +138,7 @@ namespace
 #if defined(__APPLE__)
 		shadow.m_materialTextureSamplers = { 0u, sampler };
 #endif
-		proxy.m_shadowCaster->m_meshes.Add(std::move(shadow));
+		for (uint32_t i = 0u; i < meshCount; ++i) proxy.m_shadowCaster->m_meshes.Add(shadow);
 		auto topology = RHISceneProxyResourcePtr::Make(std::move(proxy));
 		RHISceneInstanceRecord record;
 		record.m_producerKey = 1u;
@@ -220,7 +225,7 @@ namespace
 	}
 
 	std::string Record(ShadowProbe& node, RHIFrameGraphPtr graph, const RHISceneViewSnapshot& snapshot,
-		uint32_t expectedDraws, const TVector<bool>& tokens, RHIBufferPtr readback = {})
+		uint32_t expectedDraws, const TVector<bool>& tokens, RHIBufferPtr readback = {}, uint32_t expectedCandidates = 0u)
 	{
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
@@ -237,7 +242,8 @@ namespace
 			static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
 		node.Process(graph, upload, graphics, snapshot);
 		const auto stats = node.GetDrawCallStats();
-		const bool recorded = stats.m_numBatches == expectedDraws && stats.m_numInstances == expectedDraws && Tokens(snapshot, tokens);
+		const uint32_t candidates = expectedCandidates ? expectedCandidates : expectedDraws;
+		const bool recorded = stats.m_numBatches == expectedDraws && stats.m_numInstances == candidates && Tokens(snapshot, tokens);
 		if (recorded && readback)
 		{
 			auto target = snapshot.m_shadowMapsToUpdate[0].m_shadowMap;
@@ -251,8 +257,8 @@ namespace
 		{
 			upload->m_vulkan.m_commandBuffer->Reset();
 			graphics->m_vulkan.m_commandBuffer->Reset();
-			return std::format("recording mismatch: batches={}, candidates={}, expected={}, tokens={}; discarded before submission",
-				stats.m_numBatches, stats.m_numInstances, expectedDraws, Tokens(snapshot, tokens));
+			return std::format("recording mismatch: batches={}, candidates={}, expected={}/{}, tokens={}; discarded before submission",
+				stats.m_numBatches, stats.m_numInstances, expectedDraws, candidates, Tokens(snapshot, tokens));
 		}
 		auto ready = driver->CreateWaitSemaphore();
 		auto uploadFence = RHIFencePtr::Make();
@@ -365,6 +371,213 @@ namespace
 			state.m_warmNative[i] = entry->m_textureBindings->m_vulkan.m_descriptorSet;
 #endif
 		}
+		return {};
+	}
+
+	bool HasPublishedBuffer(RHIShaderBindingSetPtr set, const char* name, uint32_t index, EShaderBindingType type, size_t bytes)
+	{
+		RHIShaderBindingPtr binding;
+		if (!set || !set->m_vulkan.m_descriptorSet || !set->m_vulkan.m_descriptorSet->IsCompiled() ||
+			!set->GetShaderBindings().TryGet(name, binding) || !binding || !binding->m_vulkan.m_valueBinding ||
+			binding->GetLayout().m_binding != index || binding->GetLayout().m_type != type) return false;
+		const auto range = *binding->m_vulkan.m_valueBinding->Get();
+		if (!range.m_buffer || static_cast<VkBuffer>(*range.m_buffer) == VK_NULL_HANDLE || range.m_size < bytes) return false;
+		const size_t offset = type == EShaderBindingType::StorageBuffer && !binding->m_vulkan.m_bBindSsboWithOffset ? 0u : range.m_offset;
+		for (const auto& descriptor : set->m_vulkan.m_descriptorSet->m_descriptors)
+		{
+			if (descriptor->GetBinding() != index) continue;
+			VkWriteDescriptorSet write{};
+			descriptor->Apply(write);
+			if (!write.pBufferInfo || write.pBufferInfo->offset > range.m_buffer->m_size) return false;
+			const auto nativeBytes = write.pBufferInfo->range == VK_WHOLE_SIZE ?
+				range.m_buffer->m_size - write.pBufferInfo->offset : write.pBufferInfo->range;
+			return write.descriptorType == static_cast<VkDescriptorType>(type) && write.descriptorCount == 1u &&
+				write.pBufferInfo->buffer == static_cast<VkBuffer>(*range.m_buffer) && write.pBufferInfo->offset == offset &&
+				nativeBytes >= range.m_offset - offset + bytes;
+		}
+		return false;
+	}
+
+	bool CompleteBlurTuple(const ShadowProbe& node)
+	{
+		return node.m_pBlurHorizontalMaterial && node.m_pBlurVerticalMaterial &&
+			node.m_pBlurHorizontalMaterial->IsReady() && node.m_pBlurVerticalMaterial->IsReady() &&
+			node.m_pBlurHorizontalMaterial->GetBindings() == node.m_pBlurShaderBindings &&
+			node.m_pBlurVerticalMaterial->GetBindings() == node.m_pBlurShaderBindings &&
+			HasPublishedBuffer(node.m_pBlurShaderBindings, "data", 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4));
+	}
+
+	std::string ValidateColdPublication(ShadowDrawCompletionState& state)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto gate = TRefPtr<ShadowProbe>::Make();
+		gate->m_pBlurHorizontalShader = state.m_shaders[5];
+		gate->m_pBlurVerticalShader = state.m_shaders[6];
+		RHISceneViewSnapshot empty;
+		InitializeSnapshot(empty, {});
+		auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		auto graphics = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		for (auto cmd : { upload, graphics })
+		{
+			commands->BeginCommandList(cmd, true);
+			cmd->m_vulkan.m_commandBuffer->AddDependency(empty.m_submissionContext);
+			cmd->m_vulkan.m_commandBuffer->AddDependency(state.m_graph);
+		}
+		gate->Process(state.m_graph, upload, graphics, empty);
+		commands->EndCommandList(upload);
+		commands->EndCommandList(graphics);
+		const bool complete = CompleteBlurTuple(*gate);
+		auto firstFlight = gate->Resources(empty)->m_blurShaderBindings;
+		const bool flightReady = HasPublishedBuffer(firstFlight, "data", 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4));
+		if (!complete || !flightReady)
+		{
+			upload->m_vulkan.m_commandBuffer->Reset();
+			graphics->m_vulkan.m_commandBuffer->Reset();
+			return std::format("preloaded shader latch: complete tuple={}, flight UBO={}; discarded before submission; incompatible-reflection cases not entered", complete, flightReady);
+		}
+		// Old81 returns above. Only a complete owner may reach the real rejection cases.
+		auto ready = driver->CreateWaitSemaphore();
+		auto uploadFence = RHIFencePtr::Make();
+		auto fence = RHIFencePtr::Make();
+		if (!driver->SubmitCommandList(upload, uploadFence, ready) || !driver->SubmitCommandList(graphics, fence, nullptr, ready)) return "cold tuple submission failed";
+		fence->Wait(5000000000ull);
+		uploadFence->Wait(5000000000ull);
+		if (!fence->IsFinished() || !uploadFence->IsFinished()) return "cold tuple fence exceeded five seconds; dependencies retained";
+		upload->m_vulkan.m_commandBuffer->Reset();
+		graphics->m_vulkan.m_commandBuffer->Reset();
+		auto firstTemplate = gate->m_pBlurShaderBindings;
+		auto firstHorizontal = gate->m_pBlurHorizontalMaterial;
+		auto firstVertical = gate->m_pBlurVerticalMaterial;
+		auto templateNative = firstTemplate->m_vulkan.m_descriptorSet;
+		const auto templateRevision = firstTemplate->GetDescriptorRevision();
+		const auto templateHash = firstTemplate->GetCompatibilityHashCode();
+		auto firstNative = firstFlight->m_vulkan.m_descriptorSet;
+		const auto firstRevision = firstFlight->GetDescriptorRevision();
+		if (auto error = Record(*gate, state.m_graph, empty, 0u, {}); !error.empty()) return error;
+		if (!CompleteBlurTuple(*gate) || gate->m_pBlurShaderBindings != firstTemplate || gate->m_pBlurHorizontalMaterial != firstHorizontal ||
+			gate->m_pBlurVerticalMaterial != firstVertical || gate->Resources(empty)->m_blurShaderBindings != firstFlight ||
+			firstTemplate->m_vulkan.m_descriptorSet != templateNative || firstTemplate->GetDescriptorRevision() != templateRevision ||
+			firstTemplate->GetCompatibilityHashCode() != templateHash ||
+			firstFlight->m_vulkan.m_descriptorSet != firstNative || firstFlight->GetDescriptorRevision() != firstRevision) return "committed cold tuple or flight UBO was rebuilt on reuse";
+
+		auto incompatible = driver->CreateShaderBindings();
+		if (!driver->FillShadersLayout(incompatible, { state.m_shaders[4]->GetDebugVertexShaderRHI(), state.m_shaders[4]->GetDebugFragmentShaderRHI() }, 1u)) return "ShadowCaster reflection is unavailable";
+		const auto& reflected = incompatible->GetLayoutBindings();
+		if (reflected.FindIf([](const ShaderLayoutBinding& binding)
+			{ return binding.m_binding == 0u && binding.m_name == "data" && binding.m_type == EShaderBindingType::StorageBuffer; }) == static_cast<size_t>(-1)) return "real ShadowCaster data binding is not the incompatible StorageBuffer prerequisite";
+		for (uint32_t flightOnly = 0u; flightOnly < 2u; ++flightOnly)
+		{
+			auto node = TRefPtr<ShadowProbe>::Make();
+			node->m_pBlurHorizontalShader = state.m_shaders[5];
+			node->m_pBlurVerticalShader = state.m_shaders[6];
+			RHISceneViewSnapshot previousFlight;
+			InitializeSnapshot(previousFlight, {});
+			if (flightOnly)
+			{
+				if (auto error = Record(*node, state.m_graph, previousFlight, 0u, {}); !error.empty()) return error;
+				if (!CompleteBlurTuple(*node)) return "submission rejection requires a complete retained node tuple";
+			}
+			auto oldTemplate = node->m_pBlurShaderBindings;
+			auto oldHorizontal = node->m_pBlurHorizontalMaterial;
+			auto oldVertical = node->m_pBlurVerticalMaterial;
+			auto oldNative = oldTemplate ? oldTemplate->m_vulkan.m_descriptorSet : VulkanDescriptorSetPtr{};
+			const auto oldRevision = oldTemplate ? oldTemplate->GetDescriptorRevision() : 0u;
+			const auto oldHash = oldTemplate ? oldTemplate->GetCompatibilityHashCode() : 0u;
+			auto oldFlight = flightOnly ? node->Resources(previousFlight)->m_blurShaderBindings : RHIShaderBindingSetPtr{};
+			if (flightOnly && !HasPublishedBuffer(oldFlight, "data", 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4))) return "submission rejection requires a complete previous flight UBO";
+			auto oldFlightNative = oldFlight ? oldFlight->m_vulkan.m_descriptorSet : VulkanDescriptorSetPtr{};
+			const auto oldFlightRevision = oldFlight ? oldFlight->GetDescriptorRevision() : 0u;
+			RHISceneViewSnapshot snapshot;
+			InitializeSnapshot(snapshot, state.m_neighbor);
+			RHIUpdateShadowMapCommand evsm;
+			evsm.m_shadowType = EShadowType::EVSM;
+			evsm.m_lightMatrix = glm::mat4(1.0f);
+			evsm.m_blurRadius = glm::vec2(1.0f);
+			evsm.m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
+			evsm.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(32), 1u, EFormat::R32G32B32A32_SFLOAT);
+			snapshot.m_shadowMapsToUpdate.Add(std::move(evsm));
+			AddPass(snapshot, state.m_neighbor, 1u);
+			auto resources = node->Resources(snapshot);
+			if (resources->m_blurShaderBindings) return "fresh private flight already has blur bindings";
+			auto target = snapshot.m_shadowMapsToUpdate[0].m_shadowMap;
+			auto readback = driver->CreateBuffer(1024u * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+			node->m_pBlurVerticalShader = state.m_shaders[4];
+			for (uint32_t retry = 0u; retry < 2u; ++retry)
+			{
+				if (retry) node->m_pBlurVerticalShader = state.m_shaders[6];
+				Prepare(*node, state.m_graph, snapshot);
+				if (!Tokens(snapshot, { true, true }) || resources->m_activeShadowViews[0]->m_packet.GetNumDrawInstances() != 0u ||
+					resources->m_activeShadowViews[1]->m_packet.GetNumDrawInstances() != 1u ||
+					resources->m_activeShadowViews[1]->m_packet.GetGroups().Num() != 1u) return "cold rejection needs one independent real PCF caster and an empty EVSM packet";
+				if (auto error = Record(*node, state.m_graph, snapshot, retry ? 3u : 1u, { retry != 0u, true }, readback); !error.empty())
+					return std::format("{} UBO {}: {}", flightOnly ? "flight" : "template", retry ? "retry" : "rejection", error);
+				const auto* pixels = static_cast<const glm::vec4*>(readback->GetPointer());
+				const glm::vec4 expected(1, 1, -1, 1);
+				for (uint32_t p = 0u; p < 1024u; ++p)
+					for (uint32_t c = 0u; c < 4u; ++c)
+						if (!std::isfinite(pixels[p][c]) || std::abs(pixels[p][c] - expected[c]) > 0.00001f)
+							return std::format("cold {} UBO retry {} pixel {} channel {}: expected {}, got {}; pixel=({}, {}, {}, {})",
+								flightOnly ? "flight" : "template", retry, p, c, expected[c], pixels[p][c],
+								pixels[p].x, pixels[p].y, pixels[p].z, pixels[p].w);
+				if (snapshot.m_shadowMapsToUpdate[0].m_shadowMap != target) return "UBO retry changed the requested target";
+				if (flightOnly && (node->Resources(previousFlight)->m_blurShaderBindings != oldFlight ||
+					oldFlight->m_vulkan.m_descriptorSet != oldFlightNative || oldFlight->GetDescriptorRevision() != oldFlightRevision)) return "new flight preparation changed the retained previous flight UBO";
+				if (!retry || flightOnly)
+				{
+					if (node->m_pBlurShaderBindings != oldTemplate || node->m_pBlurHorizontalMaterial != oldHorizontal || node->m_pBlurVerticalMaterial != oldVertical ||
+						(oldTemplate && (oldTemplate->m_vulkan.m_descriptorSet != oldNative || oldTemplate->GetDescriptorRevision() != oldRevision || oldTemplate->GetCompatibilityHashCode() != oldHash))) return "UBO rejection changed the retained node tuple";
+				}
+				if (!retry)
+				{
+					if (resources->m_blurShaderBindings || !Tokens(snapshot, { false, true })) return "failed candidate was published or its failed token was lost before retry";
+				}
+				else if (!CompleteBlurTuple(*node) || resources->m_blurShaderBindings == oldFlight ||
+					!HasPublishedBuffer(resources->m_blurShaderBindings, "data", 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4))) return "corrected same-owner UBO retry did not publish complete native data bindings";
+			}
+		}
+
+		// Positive cold/growth/reuse coverage only: no deterministic SSBO failure seam.
+		auto node = TRefPtr<ShadowProbe>::Make();
+		node->m_pBlurHorizontalShader = state.m_shaders[5];
+		node->m_pBlurVerticalShader = state.m_shaders[6];
+		RHISceneViewSnapshot snapshot;
+		InitializeSnapshot(snapshot, state.m_neighbor);
+		AddPass(snapshot, state.m_neighbor, 0u);
+		auto resources = node->Resources(snapshot);
+		Prepare(*node, state.m_graph, snapshot);
+		auto view = resources->m_activeShadowViews[0];
+		if (view->m_perInstanceData || view->m_sizePerInstanceData || view->m_sizeInstanceIndices) return "cold SSBO view was already populated";
+		RHIShaderBindingSetPtr previousSet;
+		VulkanDescriptorSetPtr previousNative;
+		RHIShaderBindingSetPtr coldSet;
+		for (uint32_t phase = 0u; phase < 3u; ++phase)
+		{
+			const uint32_t count = phase ? 3u : 1u;
+			if (phase == 1u)
+			{
+				auto larger = CreateCaster(state.m_graph->GetFullscreenNdcQuad(), 0u, 3u);
+				snapshot.m_shadowMapsToUpdate.Clear(false);
+				AddPass(snapshot, larger, 0u);
+			}
+			Prepare(*node, state.m_graph, snapshot);
+			if (!Tokens(snapshot, { true }) || resources->m_activeShadowViews[0] != view || view->m_packet.GetNumStorageInstances() != count ||
+				view->m_packet.GetNumDrawInstances() != count || view->m_packet.GetGroups().Num() != 1u) return "SSBO growth did not use one real same-view packed run";
+			if (auto error = Record(*node, state.m_graph, snapshot, 1u, { true }, {}, count); !error.empty()) return "SSBO cold/growth/reuse: " + error;
+			const size_t dataBytes = sizeof(ShadowPrepassNode::PerInstanceData) * count;
+			const size_t indexBytes = sizeof(uint32_t) * count;
+			auto set = view->m_perInstanceData;
+			if (!view->m_bUploadedThisSubmission || view->m_sizePerInstanceData != dataBytes || view->m_sizeInstanceIndices != indexBytes ||
+				!HasPublishedBuffer(set, "data", 0u, EShaderBindingType::StorageBuffer, dataBytes) ||
+				!HasPublishedBuffer(set, "indices", 1u, EShaderBindingType::StorageBuffer, indexBytes)) return "SSBO pair/capacity/native publication is incomplete";
+			if (phase == 1u && (set == previousSet || set->m_vulkan.m_descriptorSet == previousNative)) return "larger packet did not publish a fresh SSBO pair";
+			if (phase == 2u && (set != previousSet || set->m_vulkan.m_descriptorSet != previousNative)) return "same-size packet unnecessarily replaced its SSBO pair";
+			if (!phase) coldSet = set;
+			previousSet = set;
+			previousNative = set->m_vulkan.m_descriptorSet;
+		}
+		if (!HasPublishedBuffer(coldSet, "data", 0u, EShaderBindingType::StorageBuffer, sizeof(ShadowPrepassNode::PerInstanceData)) ||
+			!HasPublishedBuffer(coldSet, "indices", 1u, EShaderBindingType::StorageBuffer, sizeof(uint32_t))) return "retained original SSBO pair lost its native resources after growth";
 		return {};
 	}
 
@@ -745,6 +958,7 @@ void ShadowDrawCompletionTestComponent::Tick(float)
 		state.m_phase = Phase::Validate;
 		m_validation = Tasks::CreateTaskWithResult<std::string>("Validate shadow draw completion", [hold = m_state]()
 		{
+			if (auto error = ValidateColdPublication(*hold); !error.empty()) return error;
 #if defined(__APPLE__)
 			if (auto error = ValidateLighting(*hold); !error.empty()) return error;
 			if (auto error = ValidateDependencies(*hold); !error.empty()) return error;
@@ -777,6 +991,7 @@ void ShadowDrawCompletionTestComponent::Tick(float)
 #endif
 	AddJournalEvent("ShadowBlurEvidence", "Actual empty EVSM Prepare/Process: horizontal reject 0, vertical reject 1, each restored retry 2 blur draws; all 1024 float pixels checked per submission with five-second fence bounds");
 	AddJournalEvent("ShadowBlurPublicationEvidence", "Own unused buffer 31 caused actual H sampler producer refusal: A32 retained sampler/view/native/revision/hash, B16 recorded zero with failed token and all 256 clear pixels; exact range restoration retried B with two draws and all 256 blurred pixels, retaining native A; no V-only producer-failure coverage");
+	AddJournalEvent("ShadowColdPublicationEvidence", "Preloaded-shader owner latch completed/reused template plus H/V and flight UBO; real reflected Storage-vs-Uniform rejected template/fresh-flight candidates, each retained node publication and allowed one independent PCF caster draw; same-owner retries accepted two normal blur draws plus PCF and all 1024 EVSM pixels; real SSBO 1/3/3 storage+candidates grew then reused one view, retaining the original pair; positive SSBO coverage is not failure rollback proof");
 	AddJournalEvent("ShadowDrawCompletionScope", "Recorded candidates, existing completion tokens and blur pixels; not CSM atlas/matrix atomic publication, visual quality, performance or Windows GPU coverage");
 	MarkPassed();
 }

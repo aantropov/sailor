@@ -917,40 +917,49 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	if (!m_pBlurVerticalShader)
+	if (!m_pBlurShaderBindings)
 	{
-		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0.0f, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 0, false };
-
 		auto shaderFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blur.shader");
-		const bool bVerticalReady = App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), m_pBlurVerticalShader, { "VERTICAL", "EVSM" });
-		const bool bHorizontalReady = App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), m_pBlurHorizontalShader, { "HORIZONTAL", "EVSM" });
+		const bool bVerticalReady = m_pBlurVerticalShader ||
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), m_pBlurVerticalShader, { "VERTICAL", "EVSM" });
+		const bool bHorizontalReady = m_pBlurHorizontalShader ||
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), m_pBlurHorizontalShader, { "HORIZONTAL", "EVSM" });
 
-		m_pBlurShaderBindings = driver->CreateShaderBindings();
-		driver->FillShadersLayout(m_pBlurShaderBindings, { m_pBlurVerticalShader->GetDebugVertexShaderRHI(), m_pBlurVerticalShader->GetDebugFragmentShaderRHI() }, 1);
-		driver->AddBufferToShaderBindings(m_pBlurShaderBindings, "data", sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer);
-
-		if (bVerticalReady)
+		if (bVerticalReady && bHorizontalReady)
 		{
-			m_pBlurVerticalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurVerticalShader, m_pBlurShaderBindings);
-		}
-		if (bHorizontalReady)
-		{
-			m_pBlurHorizontalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurHorizontalShader, m_pBlurShaderBindings);
+			auto candidateBindings = driver->CreateShaderBindings();
+			if (driver->FillShadersLayout(candidateBindings, { m_pBlurVerticalShader->GetDebugVertexShaderRHI(), m_pBlurVerticalShader->GetDebugFragmentShaderRHI() }, 1) &&
+				driver->AddBufferToShaderBindings(candidateBindings, "data", sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer))
+			{
+				RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+				RenderState renderState{ false, false, 0.0f, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 0, false };
+				auto verticalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurVerticalShader, candidateBindings);
+				auto horizontalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurHorizontalShader, candidateBindings);
+				if (verticalMaterial && horizontalMaterial)
+				{
+					m_pBlurVerticalMaterial = verticalMaterial;
+					m_pBlurHorizontalMaterial = horizontalMaterial;
+					m_pBlurShaderBindings = candidateBindings;
+				}
+			}
 		}
 	}
 
-	if (!blurShaderBindings)
+	if (!blurShaderBindings && m_pBlurShaderBindings)
 	{
-		blurShaderBindings = driver->CreateShaderBindings();
-		driver->FillShadersLayout(blurShaderBindings, { m_pBlurVerticalShader->GetDebugVertexShaderRHI(), m_pBlurVerticalShader->GetDebugFragmentShaderRHI() }, 1);
-		RHIShaderBindingPtr initialBlurDataBinding = driver->AddBufferToShaderBindings(blurShaderBindings, "data", sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer);
-		const float defaultBlurRadius = 3.0f;
-		glm::vec4 blurData[] = { {defaultBlurRadius, 0, 0, 0}, {0,0,0,0}, {0,0,0,0} };
-		RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCommandList, initialBlurDataBinding, &blurData, sizeof(glm::vec4) * 3);
+		auto candidateBindings = driver->CreateShaderBindings();
+		if (driver->FillShadersLayout(candidateBindings, { m_pBlurVerticalShader->GetDebugVertexShaderRHI(), m_pBlurVerticalShader->GetDebugFragmentShaderRHI() }, 1))
+		{
+			RHIShaderBindingPtr initialBlurDataBinding = driver->AddBufferToShaderBindings(candidateBindings, "data", sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer);
+			if (initialBlurDataBinding)
+			{
+				const float defaultBlurRadius = 3.0f;
+				glm::vec4 blurData[] = { {defaultBlurRadius, 0, 0, 0}, {0,0,0,0}, {0,0,0,0} };
+				RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCommandList, initialBlurDataBinding, &blurData, sizeof(glm::vec4) * 3);
+				blurShaderBindings = candidateBindings;
+			}
+		}
 	}
-
-	RHIShaderBindingPtr blurDataBinding = blurShaderBindings->GetOrAddShaderBinding("data");
 
 	if (!sceneView.m_shadowMapsToBlit.IsEmpty())
 	{
@@ -1044,21 +1053,24 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				viewResources.m_sizePerInstanceData < sizeof(PerInstanceData) * numInstances ||
 				viewResources.m_sizeInstanceIndices < sizeof(uint32_t) * numInstanceIndices)
 			{
-				viewResources.m_perInstanceData = driver->CreateShaderBindings();
-				driver->AddSsboToShaderBindings(
-					viewResources.m_perInstanceData,
+				auto candidateBindings = driver->CreateShaderBindings();
+				if (driver->AddSsboToShaderBindings(
+					candidateBindings,
 					"data",
 					sizeof(PerInstanceData),
 					numInstances,
-					0u);
-				driver->AddSsboToShaderBindings(
-					viewResources.m_perInstanceData,
-					"indices",
-					sizeof(uint32_t),
-					numInstanceIndices,
-					1u);
-				viewResources.m_sizePerInstanceData = sizeof(PerInstanceData) * numInstances;
-				viewResources.m_sizeInstanceIndices = sizeof(uint32_t) * numInstanceIndices;
+					0u) &&
+					driver->AddSsboToShaderBindings(
+						candidateBindings,
+						"indices",
+						sizeof(uint32_t),
+						numInstanceIndices,
+						1u))
+				{
+					viewResources.m_perInstanceData = candidateBindings;
+					viewResources.m_sizePerInstanceData = sizeof(PerInstanceData) * numInstances;
+					viewResources.m_sizeInstanceIndices = sizeof(uint32_t) * numInstanceIndices;
+				}
 			}
 		}
 
@@ -1124,7 +1136,9 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					}
 					auto& viewResources = *submissionResources->m_activeShadowViews[packetIndex];
 					DrawCallStats stats{};
-					if (!viewResources.m_packet.GetGroups().IsEmpty() && viewResources.m_perInstanceData)
+					if (!viewResources.m_packet.GetGroups().IsEmpty() && viewResources.m_perInstanceData &&
+						viewResources.m_sizePerInstanceData >= sizeof(PerInstanceData) * viewResources.m_packet.GetNumStorageInstances() &&
+						viewResources.m_sizeInstanceIndices >= sizeof(uint32_t) * viewResources.m_packet.GetNumDrawInstances())
 					{
 						const auto prepareShadowMaterial = [&](
 							const RHIBatch& batch,
@@ -1191,10 +1205,15 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
 				commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
 
-				if (shadowPass.m_shadowType == EShadowType::EVSM && shadowPass.m_blurRadius.length() > 0.1f)
+				const bool bRequiresBlur = shadowPass.m_shadowType == EShadowType::EVSM && shadowPass.m_blurRadius.length() > 0.1f;
+				if (bRequiresBlur && blurShaderBindings)
 				{
 					RHI::RHIRenderTargetPtr blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 1);
-					RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(commandList, blurDataBinding, &shadowPass.m_blurRadius, sizeof(glm::vec2));
+					RHIShaderBindingPtr blurDataBinding = blurShaderBindings->GetOrAddShaderBinding("data");
+					// The flight reuses this UBO for every shadow map.
+					commands->MemoryBarrier(commandList, static_cast<EAccessFlags>(EAccessBit::UniformRead_Bit), static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit));
+					commands->UpdateShaderBinding(commandList, blurDataBinding, &shadowPass.m_blurRadius, sizeof(glm::vec2));
+					commands->MemoryBarrier(commandList, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::UniformRead_Bit));
 					bool bBlurComplete = false;
 
 					// Blur Horizontal
@@ -1298,6 +1317,10 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 					bShadowMapComplete &= bBlurComplete;
 					driver->ReleaseTemporaryRenderTarget(blurAttachment);
+				}
+				else if (bRequiresBlur)
+				{
+					bShadowMapComplete = false;
 				}
 				if (!bShadowMapComplete && shadowPass.m_payloadCompletionToken)
 				{
