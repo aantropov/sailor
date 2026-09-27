@@ -1,0 +1,18 @@
+name: BufferLifetime
+prefabs:
+  - gameObjects:
+      - name: Buffer lifetime validation
+        mobilityType: Stationary
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: 18400000000000000001
+        components: [0]
+    components:
+      - typename: Sailor::BufferLifetimeTestComponent
+        overrideProperties:
+          testName: BufferLifetime
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 1840000000000001_18400000000000000001

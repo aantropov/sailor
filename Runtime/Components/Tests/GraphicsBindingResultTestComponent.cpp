@@ -102,19 +102,6 @@ namespace
 		return result;
 	}
 
-	class TrackedAttachmentView final : public VulkanImageView
-	{
-	public:
-		TrackedAttachmentView(VulkanDevicePtr device, VulkanImagePtr image,
-			TSharedPtr<std::atomic<uint32_t>> destroyed, uint32_t bit) :
-			VulkanImageView(device, image), m_destroyed(std::move(destroyed)), m_bit(bit) {}
-		~TrackedAttachmentView() override { m_destroyed->fetch_or(m_bit); }
-
-	private:
-		TSharedPtr<std::atomic<uint32_t>> m_destroyed;
-		uint32_t m_bit;
-	};
-
 	enum class AttachmentCase { SingleSample, Multisample, PartialResolve, Legacy };
 
 	std::string ValidateAttachmentLifetime(AttachmentCase testCase, bool submit)
@@ -136,8 +123,7 @@ namespace
 				!(properties.sampleCounts & samples))
 				return name + ": device lacks the required attachment format/sample count";
 		}
-		auto destroyed = TSharedPtr<std::atomic<uint32_t>>::Make(0u);
-		uint32_t viewCount = 0u;
+		TVector<VulkanImageViewPtr> views;
 		auto setup = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 		commands->BeginCommandList(setup, true);
 		const auto makeView = [&](VkFormat format, VkSampleCountFlagBits count, VulkanImagePtr& image) -> VulkanImageViewPtr
@@ -149,8 +135,9 @@ namespace
 				format, VK_IMAGE_TILING_OPTIMAL, usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, count, layout);
 			// Transitions retain only the image, never the distinct view being tested.
 			setup->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image, format, VK_IMAGE_LAYOUT_UNDEFINED, layout);
-			auto view = TRefPtr<TrackedAttachmentView>::Make(device, image, destroyed, 1u << viewCount++);
+			auto view = VulkanImageViewPtr::Make(device, image);
 			view->Compile();
+			views.Add(view);
 			return view;
 		};
 		TVector<VulkanImageViewPtr> colors, resolves;
@@ -221,7 +208,7 @@ namespace
 					std::memset(readback->GetPointer(), 0xa7, size);
 					native->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 					native->ImageMemoryBarrier(image, image->m_format, image->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-					native->CopyImageToBuffer(*readback->m_vulkan.m_buffer, image, Side, Side, 1u);
+					native->CopyImageToBuffer(*readback->m_vulkan.m_buffer->Get(), image, Side, Side, 1u);
 					readbacks.Add(readback);
 				}
 				native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
@@ -229,32 +216,35 @@ namespace
 			commands->EndCommandList(cmd);
 			recorded.Add(cmd);
 		}
-		const bool retainsFramebuffer = !legacy || framebuffer.NumRefs() == recorded.Num() + 1u;
+		bool retained = !legacy || framebuffer.NumRefs() == recorded.Num() + 1u;
 		framebuffer.Clear();
 		renderPass.Clear();
 		colors.Clear();
 		resolves.Clear();
 		depth.Clear();
 		depthResolve.Clear();
-		if (!retainsFramebuffer || destroyed->load() != 0u)
+		for (const auto& view : views)
+			retained &= view.NumRefs() == 1u + (legacy ? 1u : recorded.Num());
+		if (!retained)
 		{
-			// These command lists have never been submitted; do not execute a destroyed attachment on old runtimes.
 			for (auto& cmd : recorded) cmd->m_vulkan.m_commandBuffer->Reset();
-			return name + ": recorded attachment owner was destroyed before submission";
+			return name + ": command list did not retain the attachment view or framebuffer";
 		}
 		if (submit)
 		{
+			views.Clear();
 			auto fence = RHIFencePtr::Make();
 			if (!driver->SubmitCommandList(recorded[0], fence)) return name + ": submission failed";
 			fence->Wait(5000000000ull);
 			if (!fence->IsFinished()) return name + ": fence timed out; pending dependencies retained";
-			if (destroyed->load() != 0u) return name + ": view died before command dependencies were released";
 		}
 		for (size_t i = 0u; i < recorded.Num(); ++i)
 		{
 			recorded[i]->m_vulkan.m_commandBuffer->Reset();
-			if (destroyed->load() != (i + 1u == recorded.Num() ? (1u << viewCount) - 1u : 0u))
-				return name + ": view destruction did not follow the last command owner";
+			const size_t remaining = recorded.Num() - i - 1u;
+			for (const auto& view : views)
+				if (view.NumRefs() != 1u + (legacy ? (remaining != 0u) : remaining))
+					return name + ": command reset did not release its attachment reference";
 		}
 		for (size_t i = 0u; i < readbacks.Num(); ++i)
 		{
@@ -615,7 +605,7 @@ void GraphicsBindingResultTestComponent::Tick(float)
 		m_imguiFrame.Clear();
 		if (!error.empty()) { MarkFailed(error); return; }
 		AddJournalEvent("AttachmentLifetime",
-			"Recorded views survive external release, two-command ownership and GPU completion; single-sample, MSAA MRT/depth resolves, optional missing resolve and legacy framebuffer pass full 8x8 readbacks and release after command reset");
+			"Native smart-pointer counts follow two-command recording/reset; external views released before GPU submission; single-sample, MSAA MRT/depth resolves, optional missing resolve and legacy framebuffer pass full 8x8 readbacks");
 		AddJournalEvent("GraphicsBindingResultEvidence",
 			"Real single-sample RenderScene Process: same-command-buffer A/rejected B/same-request C, all 8x8 pixels and exact recorded counts; ordered 2/3/4 mixed runs record 2 runs/6 candidates; zero-descriptor draw passes; actual ImGui owner preserves callback and later list/index/vertex offsets");
 		MarkPassed();

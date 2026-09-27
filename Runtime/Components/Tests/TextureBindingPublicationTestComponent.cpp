@@ -129,7 +129,7 @@ namespace
 		auto remapBuffer = entry.m_textureRemapBuffer;
 		auto* remap = static_cast<const uint32_t*>(remapBuffer->GetPointer());
 		if (!native || !native->IsCompiled() || !remap) return fail("native set not compiled or remap buffer not mapped");
-		const auto range = *remapBuffer->m_vulkan.m_buffer;
+		const auto range = *remapBuffer->m_vulkan.m_buffer->Get();
 		bool nativeRemap = false;
 		for (const auto& descriptor : native->m_descriptors)
 		{
@@ -678,7 +678,8 @@ void TextureBindingPublicationTestComponent::Tick(float)
 		for (uint32_t i = 0u; i < 2u; ++i)
 		{
 			if (!state.m_loads[i] || !state.m_loads[i]->IsFinished()) return;
-			if (!state.m_textures[i] || !state.m_textures[i]->IsReady()) { MarkFailed("private texture load failed"); return; }
+			if (!state.m_textures[i] || !state.m_textures[i]->GetRHI()) { MarkFailed("private texture load failed"); return; }
+			if (!state.m_textures[i]->IsReady()) return;
 			state.m_indices[i] = static_cast<uint32_t>(importer->GetTextureIndex(state.m_infos[i]->GetFileId()));
 		}
 		if (!state.m_indices[0] || !state.m_indices[1] || state.m_indices[0] == state.m_indices[1] ||

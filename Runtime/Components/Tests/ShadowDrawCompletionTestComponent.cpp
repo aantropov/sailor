@@ -281,7 +281,7 @@ namespace
 		auto buffer = entry.m_textureRemapBuffer;
 		const auto* remap = static_cast<const uint32_t*>(buffer->GetPointer());
 		if (!remap) return false;
-		const auto range = *buffer->m_vulkan.m_buffer;
+		const auto range = *buffer->m_vulkan.m_buffer->Get();
 		bool nativeRemap = false;
 		for (const auto& descriptor : native->m_descriptors)
 		{

@@ -1174,13 +1174,7 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateIndirectBuffer(size_t size)
 	const uint32_t usage = RHI::EBufferUsageBit::IndirectBuffer_Bit | RHI::EBufferUsageBit::StorageBuffer_Bit | RHI::EBufferUsageBit::BufferTransferDst_Bit | RHI::EBufferUsageBit::BufferTransferSrc_Bit;
 	const RHI::EMemoryPropertyFlags properties = RHI::EMemoryPropertyBit::HostCoherent | RHI::EMemoryPropertyBit::HostVisible;
 
-	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage, properties);
-	auto buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, (VkMemoryPropertyFlagBits)properties);
-
-	// Hack to store ordinary buffer in TMemoryPtr
-	res->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);
-
-	return res;
+	return CreateBuffer(size, usage, properties);
 }
 
 RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage, RHI::EMemoryPropertyFlags properties)
@@ -1190,8 +1184,9 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(size_t size, RHI::EBufferUs
 	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage, properties);
 	auto buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, properties);
 
-	// Hack to store ordinary buffer in TMemoryPtr
-	res->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);
+	res->m_vulkan.m_buffer = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
+		TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1),
+		TWeakPtr<VulkanBufferAllocator>{});
 
 	return res;
 }
@@ -1206,8 +1201,10 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(RHI::RHICommandListPtr& cmd
 		m_vkInstance->GetMainDevice(),
 		pData, size, (uint16_t)usage, properties);
 
-	// Hack to store ordinary buffer in TMemoryPtr
-	outBuffer->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);
+	outBuffer->m_vulkan.m_buffer = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
+		TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1),
+		TWeakPtr<VulkanBufferAllocator>{});
+	cmdList->m_vulkan.m_commandBuffer->AddDependency(outBuffer->m_vulkan.m_buffer);
 
 	return outBuffer;
 }
@@ -1230,14 +1227,16 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer_Immediate(const void* pData
 	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage, RHI::EMemoryPropertyBit::DeviceLocal);
 	auto buffer = m_vkInstance->CreateBuffer_Immediate(m_vkInstance->GetMainDevice(), pData, size, (uint32_t)usage);
 
-	// Hack to store ordinary buffer in TMemoryPtr
-	res->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);
+	res->m_vulkan.m_buffer = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
+		TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1),
+		TWeakPtr<VulkanBufferAllocator>{});
 	return res;
 }
 
 void VulkanGraphicsDriver::CopyBufferToImage(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr src, RHI::RHITexturePtr dst)
 {
-	cmd->m_vulkan.m_commandBuffer->CopyBufferToImage(*src->m_vulkan.m_buffer, dst->m_vulkan.m_image,
+	cmd->m_vulkan.m_commandBuffer->AddDependency(src->m_vulkan.m_buffer);
+	cmd->m_vulkan.m_commandBuffer->CopyBufferToImage(*src->m_vulkan.m_buffer->Get(), dst->m_vulkan.m_image,
 		dst->GetExtent().x, dst->GetExtent().y, 1, 0u);
 }
 
@@ -1251,13 +1250,14 @@ void VulkanGraphicsDriver::CopyImageToBuffer(RHI::RHICommandListPtr cmd, RHI::RH
 		baseArrayLayer = src->m_vulkan.m_imageView->m_subresourceRange.baseArrayLayer;
 	}
 
-	cmd->m_vulkan.m_commandBuffer->CopyImageToBuffer(*dst->m_vulkan.m_buffer, src->m_vulkan.m_image,
+	cmd->m_vulkan.m_commandBuffer->AddDependency(dst->m_vulkan.m_buffer);
+	cmd->m_vulkan.m_commandBuffer->CopyImageToBuffer(*dst->m_vulkan.m_buffer->Get(), src->m_vulkan.m_image,
 		src->GetExtent().x, src->GetExtent().y, 1, mipLevel, baseArrayLayer, 0u);
 }
 
 void VulkanGraphicsDriver::CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIBufferPtr dst, size_t size)
 {
-	m_vkInstance->CopyBuffer_Immediate(m_vkInstance->GetMainDevice(), *src->m_vulkan.m_buffer, *dst->m_vulkan.m_buffer, size);
+	m_vkInstance->CopyBuffer_Immediate(m_vkInstance->GetMainDevice(), *src->m_vulkan.m_buffer->Get(), *dst->m_vulkan.m_buffer->Get(), size);
 }
 
 void VulkanGraphicsDriver::RestoreImageBarriers(RHI::RHICommandListPtr cmd)
@@ -2481,8 +2481,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 
 	RHI::RHIShaderBindingPtr binding = RHI::RHIShaderBindingPtr::Make();
 
-	auto vulkanBufferMemoryPtr = buffer->m_vulkan.m_buffer;
-	binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(vulkanBufferMemoryPtr, TSharedPtr<VulkanBufferAllocator>(nullptr));
+	binding->m_vulkan.m_valueBinding = buffer->m_vulkan.m_buffer;
 	binding->m_vulkan.m_storageInstanceIndex = 0;
 	binding->m_vulkan.m_bBindSsboWithOffset = true;
 
@@ -3469,13 +3468,12 @@ void VulkanGraphicsDriver::UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBuff
 
 	if (buffer->GetUsage() & RHI::EBufferUsageBit::IndirectBuffer_Bit)
 	{
-		// We store IndirectBuffer in Device memory
-		auto& vulkanBuffer = buffer->m_vulkan.m_buffer.m_ptr.m_buffer;
-		vulkanBuffer->GetMemoryDevice()->Copy((*vulkanBuffer->GetBufferMemoryPtr()).m_offset + offset, size, pData);
+		auto memory = **buffer->m_vulkan.m_buffer->Get();
+		memory.m_deviceMemory->Copy(memory.m_offset + offset, size, pData);
 	}
 	else
 	{
-		Update(cmd, (*buffer->m_vulkan.m_buffer), pData, size, offset);
+		Update(cmd, *buffer->m_vulkan.m_buffer->Get(), pData, size, offset, buffer->m_vulkan.m_buffer);
 	}
 }
 
@@ -3617,11 +3615,10 @@ void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertice
 	mesh->m_vertexBuffer = RHI::RHIBufferPtr::Make(flags, memFlags);
 	mesh->m_indexBuffer = RHI::RHIBufferPtr::Make(flags, memFlags);
 
-	mesh->m_vertexBuffer->m_vulkan.m_buffer = ssboAllocator->Allocate(bufferSize, mesh->m_vertexDescription->GetVertexStride());
-	mesh->m_vertexBuffer->m_vulkan.m_bufferAllocator = ssboAllocator;
-
-	mesh->m_indexBuffer->m_vulkan.m_buffer = ssboAllocator->Allocate(indexBufferSize, device->GetMinSsboOffsetAlignment());
-	mesh->m_indexBuffer->m_vulkan.m_bufferAllocator = ssboAllocator;
+	mesh->m_vertexBuffer->m_vulkan.m_buffer = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
+		ssboAllocator->Allocate(bufferSize, mesh->m_vertexDescription->GetVertexStride()), ssboAllocator);
+	mesh->m_indexBuffer->m_vulkan.m_buffer = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
+		ssboAllocator->Allocate(indexBufferSize, device->GetMinSsboOffsetAlignment()), ssboAllocator);
 
 	UpdateBuffer(cmdList, mesh->m_vertexBuffer, pVertices, bufferSize);
 	UpdateBuffer(cmdList, mesh->m_indexBuffer, pIndices, indexBufferSize);
@@ -3714,16 +3711,18 @@ void VulkanGraphicsDriver::BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMate
 
 void VulkanGraphicsDriver::BindVertexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer, uint32_t offset)
 {
-	auto ptr = *vertexBuffer->m_vulkan.m_buffer;
+	auto ptr = *vertexBuffer->m_vulkan.m_buffer->Get();
 	TVector<VulkanBufferPtr> buffers{ ptr.m_buffer };
 
 	//The offset is handled by RHI::RHIBuffer
+	cmd->m_vulkan.m_commandBuffer->AddDependency(vertexBuffer->m_vulkan.m_buffer);
 	cmd->m_vulkan.m_commandBuffer->BindVertexBuffers(buffers, { offset });
 }
 
 void VulkanGraphicsDriver::BindIndexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t offset, bool bUint16InsteadOfUint32)
 {
-	cmd->m_vulkan.m_commandBuffer->BindIndexBuffer(indexBuffer->m_vulkan.m_buffer.m_ptr.m_buffer, offset, bUint16InsteadOfUint32);
+	cmd->m_vulkan.m_commandBuffer->AddDependency(indexBuffer->m_vulkan.m_buffer);
+	cmd->m_vulkan.m_commandBuffer->BindIndexBuffer(indexBuffer->m_vulkan.m_buffer->Get().m_ptr.m_buffer, offset, bUint16InsteadOfUint32);
 }
 
 void VulkanGraphicsDriver::SetViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2  scissorExtent, float minDepth, float maxDepth)
@@ -4076,15 +4075,16 @@ bool VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::R
 void VulkanGraphicsDriver::DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, size_t offset, uint32_t drawCount, uint32_t stride)
 {
 	auto mainDevice = m_vkInstance->GetMainDevice();
+	cmd->m_vulkan.m_commandBuffer->AddDependency(buffer->m_vulkan.m_buffer);
 	if (mainDevice->IsMultiDrawIndirectSupported())
 	{
-		cmd->m_vulkan.m_commandBuffer->DrawIndexedIndirect(*buffer->m_vulkan.m_buffer, offset, drawCount, stride);
+		cmd->m_vulkan.m_commandBuffer->DrawIndexedIndirect(*buffer->m_vulkan.m_buffer->Get(), offset, drawCount, stride);
 	}
 	else
 	{
 		for (size_t j = 0; j < drawCount; j++)
 		{
-			cmd->m_vulkan.m_commandBuffer->DrawIndexedIndirect(*buffer->m_vulkan.m_buffer, offset + j * stride, 1, stride);
+			cmd->m_vulkan.m_commandBuffer->DrawIndexedIndirect(*buffer->m_vulkan.m_buffer->Get(), offset + j * stride, 1, stride);
 		}
 	}
 }

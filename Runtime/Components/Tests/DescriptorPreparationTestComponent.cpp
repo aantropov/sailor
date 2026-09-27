@@ -68,7 +68,7 @@ namespace
 			EShaderBindingType type = EShaderBindingType::StorageBuffer) -> VulkanDescriptorPtr
 		{
 			return VulkanDescriptorBufferPtr::Make(binding, element,
-				buffers[buffer]->m_vulkan.m_buffer.m_ptr.m_buffer, 0u, sizeof(Values), type);
+				buffers[buffer]->m_vulkan.m_buffer->Get().m_ptr.m_buffer, 0u, sizeof(Values), type);
 		};
 		const auto makeSet = [&](TVector<VulkanDescriptorPtr> writes)
 		{
@@ -210,7 +210,7 @@ namespace
 			readbacks[i] = driver->CreateBuffer(OutputSize, EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
 			std::memset(readbacks[i]->GetPointer(), 0xa7, OutputSize);
 			VulkanDescriptorPtr output = VulkanDescriptorBufferPtr::Make(0u, 0u,
-				outputs[i]->m_vulkan.m_buffer.m_ptr.m_buffer, 0u, OutputSize, EShaderBindingType::StorageBuffer);
+				outputs[i]->m_vulkan.m_buffer->Get().m_ptr.m_buffer, 0u, OutputSize, EShaderBindingType::StorageBuffer);
 			outputSets[i] = VulkanDescriptorSetPtr::Make(device, pool, pipeline->m_layout->m_descriptionSetLayouts[1],
 				TVector<VulkanDescriptorPtr>{ output });
 			if (!outputSets[i]->TryCompile()) return "descriptor readback output set could not be compiled";
@@ -228,7 +228,7 @@ namespace
 				VK_PIPELINE_BIND_POINT_COMPUTE);
 			native->Dispatch(1u, 1u, 1u);
 			native->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-			native->CopyBuffer(*outputs[i]->m_vulkan.m_buffer, *readbacks[i]->m_vulkan.m_buffer, OutputSize);
+			native->CopyBuffer(*outputs[i]->m_vulkan.m_buffer->Get(), *readbacks[i]->m_vulkan.m_buffer->Get(), OutputSize);
 		}
 		native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
 		native->EndCommandList();
@@ -393,7 +393,7 @@ namespace
 		auto native = cmd->m_vulkan.m_commandBuffer;
 		native->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 		native->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-		native->CopyBuffer(*output->m_vulkan.m_buffer, *readback.m_buffer->m_vulkan.m_buffer, size);
+		native->CopyBuffer(*output->m_vulkan.m_buffer->Get(), *readback.m_buffer->m_vulkan.m_buffer->Get(), size);
 		readbacks.Emplace(std::move(readback));
 		return {};
 	}
@@ -501,7 +501,7 @@ namespace
 		const uint64_t revision = inputs->GetDescriptorRevision();
 		auto neighbor = CreatePublicationBuffer(InputValues[1]);
 		VulkanDescriptorPtr neighborDescriptor = VulkanDescriptorBufferPtr::Make(0u, 0u,
-			neighbor->m_vulkan.m_buffer.m_ptr.m_buffer, 0u, sizeof(Values), EShaderBindingType::StorageBuffer);
+			neighbor->m_vulkan.m_buffer->Get().m_ptr.m_buffer, 0u, sizeof(Values), EShaderBindingType::StorageBuffer);
 		const auto rawSet = [&](const Memory::VulkanBufferMemoryPtr& range)
 		{
 			// This overload owns only the backing buffer, not the managed reservation being tested.
@@ -545,7 +545,7 @@ namespace
 			std::memset(readback.m_buffer->GetPointer(), 0xa7, size);
 			native->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 			native->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-			native->CopyBuffer(*output->m_vulkan.m_buffer, *readback.m_buffer->m_vulkan.m_buffer, size);
+			native->CopyBuffer(*output->m_vulkan.m_buffer->Get(), *readback.m_buffer->m_vulkan.m_buffer->Get(), size);
 			readbacks.Emplace(std::move(readback));
 			return {};
 		};
@@ -722,7 +722,7 @@ namespace
 			std::memset(readback.m_buffer->GetPointer(), 0xa7, size);
 			native->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 			native->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-			native->CopyBuffer(*output->m_vulkan.m_buffer, *readback.m_buffer->m_vulkan.m_buffer, size);
+			native->CopyBuffer(*output->m_vulkan.m_buffer->Get(), *readback.m_buffer->m_vulkan.m_buffer->Get(), size);
 			readbacks.Emplace(std::move(readback));
 			return {};
 		};
@@ -908,8 +908,9 @@ namespace
 		const PublishedState before(bindings);
 		auto unavailable = RHIBufferPtr::Make(EBufferUsageBit::StorageBuffer_Bit, EMemoryPropertyBit::DeviceLocal);
 		auto uncompiled = VulkanBufferPtr::Make(device, sizeof(Values), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
-		unavailable->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0u, 0u, sizeof(Values),
-			VulkanBufferMemoryPtr(uncompiled, 0u, sizeof(Values)), UINT32_MAX);
+		unavailable->m_vulkan.m_buffer = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
+			TMemoryPtr<VulkanBufferMemoryPtr>(0u, 0u, sizeof(Values), VulkanBufferMemoryPtr(uncompiled, 0u, sizeof(Values)), UINT32_MAX),
+			TWeakPtr<VulkanBufferAllocator>{});
 		if (driver->AddBufferToShaderBindings(bindings, unavailable, "source", 1u) || !before.Unchanged() ||
 			driver->AddBufferToShaderBindings(bindings, unavailable, "failedSource", 2u) || !before.Unchanged())
 			return "unavailable external buffer changed published state or left a placeholder";

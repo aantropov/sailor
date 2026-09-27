@@ -44,7 +44,7 @@ namespace
 		constexpr size_t TotalSize = Prefix + PayloadSize + Suffix;
 		const EMemoryPropertyFlags hostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
 		auto buffer = Renderer::GetDriver()->CreateBuffer(TotalSize, EBufferUsageBit::BufferTransferSrc_Bit, hostMemory);
-		auto range = **buffer->m_vulkan.m_buffer;
+		auto range = **buffer->m_vulkan.m_buffer->Get();
 		auto* mapped = static_cast<uint8_t*>(buffer->GetPointer());
 		if (!mapped) return "mapped copy validation received unmapped host-visible memory";
 		TVector<uint8_t> source(PayloadSize);
@@ -235,9 +235,9 @@ namespace
 				if (!readbacks[i]) continue;
 				auto& resource = resources[i];
 				if (resource.m_isBuffer)
-					native->CopyBuffer(resource.m_buffer->GetBufferMemoryPtr(), *readbacks[i]->m_vulkan.m_buffer, ByteCount);
+					native->CopyBuffer(resource.m_buffer->GetBufferMemoryPtr(), *readbacks[i]->m_vulkan.m_buffer->Get(), ByteCount);
 				else
-					native->CopyImageToBuffer(*readbacks[i]->m_vulkan.m_buffer, resource.m_image, Extent.width, Extent.height, Extent.depth);
+					native->CopyImageToBuffer(*readbacks[i]->m_vulkan.m_buffer->Get(), resource.m_image, Extent.width, Extent.height, Extent.depth);
 			}
 			native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
 			commands->EndCommandList(cmd);

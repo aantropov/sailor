@@ -15,11 +15,9 @@ namespace Sailor::RHI
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		using VulkanBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
 
-		// TODO: Refactoring move to TManagedMemoryPtr<VulkanBufferAllocator, VulkanBufferAllocator>
 		struct
 		{
-			TWeakPtr<VulkanBufferAllocator> m_bufferAllocator;
-			TMemoryPtr<Memory::VulkanBufferMemoryPtr> m_buffer;
+			TManagedMemoryPtr<Memory::VulkanBufferMemoryPtr, VulkanBufferAllocator> m_buffer;
 		} m_vulkan;
 #endif
 

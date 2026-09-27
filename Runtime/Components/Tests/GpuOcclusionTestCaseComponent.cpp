@@ -56,7 +56,7 @@ namespace
 				error = std::format("buffer upload scenario {}: RHI size, usage or memory properties changed", scenario);
 			}
 			{
-				auto& native = uploaded->m_vulkan.m_buffer.m_ptr.m_buffer;
+				auto& native = uploaded->m_vulkan.m_buffer->Get().m_ptr.m_buffer;
 				const auto nativeProperties = native->GetMemoryDevice()->GetMemoryPropertyFlags();
 				if (nativeProperties != properties)
 				{
@@ -88,7 +88,7 @@ namespace
 					static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit));
 				commands->MemoryBarrier(cmd, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
 					static_cast<EAccessFlags>(EAccessBit::TransferRead_Bit));
-				cmd->m_vulkan.m_commandBuffer->CopyBuffer(*uploaded->m_vulkan.m_buffer, *readback->m_vulkan.m_buffer, sizeof(expected));
+				cmd->m_vulkan.m_commandBuffer->CopyBuffer(*uploaded->m_vulkan.m_buffer->Get(), *readback->m_vulkan.m_buffer->Get(), sizeof(expected));
 				// Only recorded command dependencies retain the source buffer until submission finishes.
 				uploaded.Clear();
 			}
@@ -154,7 +154,7 @@ namespace
 				}
 				else
 				{
-					auto subrange = *destination->m_vulkan.m_buffer;
+					auto subrange = *destination->m_vulkan.m_buffer->Get();
 					subrange.m_offset += 16u;
 					subrange.m_size -= 16u;
 					nativeDriver->Update(cmd, subrange, source.GetData(), payloadBytes, 12u);
@@ -162,7 +162,7 @@ namespace
 				std::fill(source.begin(), source.end(), 0xdeadbeefu);
 				native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 				readback.m_buffer = driver->CreateBuffer(byteCount, EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
-				native->CopyBuffer(*destination->m_vulkan.m_buffer, *readback.m_buffer->m_vulkan.m_buffer, byteCount);
+				native->CopyBuffer(*destination->m_vulkan.m_buffer->Get(), *readback.m_buffer->m_vulkan.m_buffer->Get(), byteCount);
 				// Only recorded dependencies retain the destination and each pending staging range.
 				destination.Clear();
 			}
@@ -229,7 +229,7 @@ namespace
 			for (uint32_t i = 0u; i < readbacks.size(); ++i)
 			{
 				readbacks[i] = driver->CreateBuffer(sizeof(expected[i]), EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
-				native->CopyBuffer(*buffers[i]->m_vulkan.m_buffer, *readbacks[i]->m_vulkan.m_buffer, sizeof(expected[i]));
+				native->CopyBuffer(*buffers[i]->m_vulkan.m_buffer->Get(), *readbacks[i]->m_vulkan.m_buffer->Get(), sizeof(expected[i]));
 			}
 			native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
 			commands->EndCommandList(cmd);
