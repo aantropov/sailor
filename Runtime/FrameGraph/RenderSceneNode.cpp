@@ -86,9 +86,10 @@ namespace
 			}
 
 			const auto& layout = binding->GetLayout();
+			RHIShaderBindingPtr copiedBinding;
 			if (layout.m_type == EShaderBindingType::CombinedImageSampler)
 			{
-				driver->AddSamplerToShaderBindings(
+				copiedBinding = driver->AddSamplerToShaderBindings(
 					result,
 					name,
 					binding->GetTextureBindings(),
@@ -98,7 +99,7 @@ namespace
 			}
 			else if (layout.m_type == EShaderBindingType::StorageImage)
 			{
-				driver->AddStorageImageToShaderBindings(
+				copiedBinding = driver->AddStorageImageToShaderBindings(
 					result,
 					name,
 					binding->GetTextureBindings(),
@@ -106,7 +107,11 @@ namespace
 			}
 			else
 			{
-				driver->AddShaderBinding(result, binding, name, layout.m_binding);
+				copiedBinding = driver->AddShaderBinding(result, binding, name, layout.m_binding);
+			}
+			if (!copiedBinding)
+			{
+				return {};
 			}
 		}
 
@@ -116,11 +121,14 @@ namespace
 			{
 				continue;
 			}
-			driver->AddSamplerToShaderBindings(
+			if (!driver->AddSamplerToShaderBindings(
 				result,
 				samplerOverride.m_name,
 				samplerOverride.m_texture,
-				samplerOverride.m_binding);
+				samplerOverride.m_binding))
+			{
+				return {};
+			}
 		}
 		result->RecalculateCompatibility();
 		return result;
@@ -1120,7 +1128,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				globalIlluminationProbeCellIndicesTexture;
 		if (bCloneOutdated)
 		{
-			resources->m_nodeLightsBindings = CloneBindingsWithSamplers(
+			auto clonedBindings = CloneBindingsWithSamplers(
 				sceneView.m_rhiLightsData,
 				{
 					{ "g_transmissionFramebufferSampler",
@@ -1129,6 +1137,12 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					{ "g_globalIlluminationProbeCellIndicesSampler",
 						desiredGlobalIlluminationProbeCellIndicesTexture, 18u }
 				});
+			if (sceneView.m_rhiLightsData && !clonedBindings)
+			{
+				m_syncSharedResources.Unlock();
+				return;
+			}
+			resources->m_nodeLightsBindings = std::move(clonedBindings);
 			resources->m_nodeLightsSource = sceneView.m_rhiLightsData;
 			resources->m_nodeLightsSourceRevision = sourceRevision;
 			resources->m_transmissionTexture = transmissionFramebuffer;
