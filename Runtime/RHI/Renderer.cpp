@@ -68,7 +68,8 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool
 
 	if (auto fence = TRefPtr<RHI::RHIFence>(visitor.GetRawPtr()))
 	{
-		if (fence->HasFailed() || fence->IsFinished())
+		const auto status = fence->GetStatus();
+		if (status != RHI::EFenceStatus::Pending)
 		{
 			m_dependenciesLock.Lock();
 			auto it = std::find_if(m_dependencies.begin(), m_dependencies.end(),
@@ -79,7 +80,7 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool
 
 			if (it != std::end(m_dependencies))
 			{
-				m_bInitializationFailed |= fence->HasFailed();
+				m_bInitializationFailed |= status == RHI::EFenceStatus::Failed;
 				std::iter_swap(it, m_dependencies.end() - 1);
 				m_dependencies.RemoveLast();
 				bShouldRemoveFromList = true;

@@ -205,6 +205,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		VkPhysicalDevice m_physicalDevice = 0;
 		VkDevice m_device = 0;
+		PFN_vkGetFenceStatus m_getFenceStatus{};
+		PFN_vkWaitForFences m_waitForFences{};
 		VulkanQueueFamilyIndices m_queueFamilies;
 
 		// Swapchain
@@ -277,6 +279,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		std::atomic<bool> m_bIsDeviceLost = false;
 		bool m_bLastFrameSubmitSuccessful = false;
+		friend class VulkanFence;
 		friend class VulkanSubmissionTestAccess;
 	};
 }

@@ -789,6 +789,8 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	}
 
 	VK_CHECK(vkCreateDevice(physicalDevice, &createInfo, nullptr, &m_device));
+	m_getFenceStatus = reinterpret_cast<PFN_vkGetFenceStatus>(vkGetDeviceProcAddr(m_device, "vkGetFenceStatus"));
+	m_waitForFences = reinterpret_cast<PFN_vkWaitForFences>(vkGetDeviceProcAddr(m_device, "vkWaitForFences"));
 
 	pVkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdBeginRenderingKHR");
 	pVkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdEndRenderingKHR");

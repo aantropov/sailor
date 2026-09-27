@@ -25,6 +25,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	protected:
 
 		virtual ~VulkanFence();
+		VkResult CheckResult(VkResult result) const;
 
 		VulkanDevicePtr m_device;
 		VkFence m_fence;

@@ -28,6 +28,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanSubmissionTestAccess
 	{
 	public:
+		static void ExchangeFenceDispatch(VulkanDevice& device, PFN_vkGetFenceStatus& status, PFN_vkWaitForFences& wait)
+		{
+			std::swap(device.m_getFenceStatus, status);
+			std::swap(device.m_waitForFences, wait);
+		}
+
 		static PFN_vkQueueSubmit ExchangeSubmit(VulkanQueue& queue, PFN_vkQueueSubmit submit,
 			PFN_vkQueueSubmit* forward = nullptr)
 		{
@@ -77,6 +83,60 @@ namespace
 	thread_local VkSemaphore lastWait = VK_NULL_HANDLE;
 	thread_local VkSemaphore lastSignal = VK_NULL_HANDLE;
 	PFN_vkQueueSubmit forwardNativeSubmit = nullptr;
+	PFN_vkGetFenceStatus forwardFenceStatus = nullptr;
+	PFN_vkWaitForFences forwardFenceWait = nullptr;
+	thread_local std::array<VkFence, 2> observedFences{};
+	thread_local std::array<VkResult, 2> fenceResults{};
+	thread_local uint32_t fenceStatusCalls = 0u;
+	thread_local uint32_t fenceWaitCalls = 0u;
+	thread_local VkResult fenceWaitResult = VK_TIMEOUT;
+
+	VKAPI_ATTR VkResult VKAPI_CALL NativeFenceStatus(VkDevice device, VkFence fence)
+	{
+		for (size_t i = 0; i < observedFences.size(); ++i)
+		{
+			if (fence == observedFences[i])
+			{
+				++fenceStatusCalls;
+				return fenceResults[i];
+			}
+		}
+		return forwardFenceStatus(device, fence);
+	}
+
+	VKAPI_ATTR VkResult VKAPI_CALL NativeFenceWait(VkDevice device, uint32_t count, const VkFence* fences,
+		VkBool32 all, uint64_t timeout)
+	{
+		if (count == 1u && fences[0] == observedFences[0])
+		{
+			++fenceWaitCalls;
+			return fenceWaitResult;
+		}
+		return forwardFenceWait(device, count, fences, all, timeout);
+	}
+
+	class FenceDispatchOverride
+	{
+	public:
+		explicit FenceDispatchOverride(VulkanDevice& device) : m_device(device)
+		{
+			// App::Start is never called; all scheduler queues are drained before this scope.
+			VulkanSubmissionTestAccess::ExchangeFenceDispatch(device, m_status, m_wait);
+			forwardFenceStatus = m_status;
+			forwardFenceWait = m_wait;
+		}
+
+		~FenceDispatchOverride()
+		{
+			VulkanSubmissionTestAccess::ExchangeFenceDispatch(m_device, m_status, m_wait);
+			observedFences = {};
+		}
+
+	private:
+		VulkanDevice& m_device;
+		PFN_vkGetFenceStatus m_status = NativeFenceStatus;
+		PFN_vkWaitForFences m_wait = NativeFenceWait;
+	};
 
 	VKAPI_ATTR VkResult VKAPI_CALL StubSubmit(VkQueue, uint32_t count, const VkSubmitInfo*, VkFence)
 	{
@@ -286,7 +346,7 @@ namespace
 		Require(!submitted && submitCalls == callsBefore + 1u, "upload must reach the injected native submit");
 		Require(fence->HasFailed() && !fence->IsFinished() && resource->HasInitializationFailed() && !resource->IsReady(),
 			"a failed native upload must not publish successful initialization");
-		Require(fence->m_vulkan.m_fence->Status() == (accepted ? VK_SUCCESS : VK_NOT_READY),
+		Require(fence->m_vulkan.m_fence->Status() == (accepted ? VK_ERROR_DEVICE_LOST : VK_NOT_READY),
 			"potentially submitted work must drain before failed-upload dependencies are released");
 		Require(resource.NumRefs() == 1u && fence.NumRefs() == 1u && frame.command.NumRefs() == 1u,
 			"a native refusal must release the upload's initialization owners");
@@ -317,6 +377,161 @@ namespace
 		task->Wait();
 		const auto error = task->GetResult();
 		if (!error.empty()) throw std::runtime_error(error);
+	}
+
+	void TestAcceptedUploadLoss(bool waitForLoss)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		driver->TrackResources_ThreadSafe();
+		auto first = RecordFrame(301u);
+		auto second = RecordFrame(701u);
+		auto shared = RHITexturePtr::Make(ETextureFiltration::Linear, ETextureClamping::Clamp, false);
+		auto firstOnly = RHITexturePtr::Make(ETextureFiltration::Linear, ETextureClamping::Clamp, false);
+		auto secondOnly = RHITexturePtr::Make(ETextureFiltration::Linear, ETextureClamping::Clamp, false);
+		auto firstFence = RHIFencePtr::Make();
+		auto secondFence = RHIFencePtr::Make();
+		driver->TrackDelayedInitialization(shared.GetRawPtr(), firstFence);
+		driver->TrackDelayedInitialization(firstOnly.GetRawPtr(), firstFence);
+		driver->TrackDelayedInitialization(shared.GetRawPtr(), secondFence);
+		driver->TrackDelayedInitialization(secondOnly.GetRawPtr(), secondFence);
+		try
+		{
+			Require(driver->SubmitCommandList(first.command, firstFence) && driver->SubmitCommandList(second.command, secondFence),
+				"both uploads must be accepted before injecting a later fence error");
+			// Real completion makes both the injected error and predecessor cleanup safe.
+			Require(firstFence->m_vulkan.m_fence->Wait(5000000000ull) == VK_SUCCESS &&
+				secondFence->m_vulkan.m_fence->Wait(5000000000ull) == VK_SUCCESS, "native uploads did not finish");
+			CheckReadback(first, true);
+			CheckReadback(second, true);
+			FenceDispatchOverride dispatch(*device);
+			observedFences = { *firstFence->m_vulkan.m_fence, *secondFence->m_vulkan.m_fence };
+			for (VkResult result : { VK_NOT_READY, VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			{
+				fenceResults = { result, result };
+				driver->TrackResources_ThreadSafe();
+				Require(first.command.NumRefs() == 2u && second.command.NumRefs() == 2u &&
+					firstFence.NumRefs() == 4u && secondFence.NumRefs() == 4u && shared.NumRefs() == 3u &&
+					firstOnly.NumRefs() == 2u && secondOnly.NumRefs() == 2u,
+					"pending/error queries must retain every accepted upload owner");
+				Require(!firstFence->HasFailed() && !secondFence->HasFailed() && !shared->IsReady(),
+					"query OOM is neither upload failure nor proof of GPU completion");
+			}
+			fenceResults = { VK_NOT_READY, VK_NOT_READY };
+			for (VkResult result : { VK_TIMEOUT, VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			{
+				fenceWaitResult = result;
+				Require(firstFence->Wait(0u) == EFenceStatus::Pending && !firstFence->HasFailed() && first.command.NumRefs() == 2u,
+					"timeout/wait OOM must leave the upload pending with its recorded dependencies");
+			}
+			fenceStatusCalls = 0u;
+			fenceWaitCalls = 0u;
+			if (waitForLoss)
+			{
+				fenceWaitResult = VK_ERROR_DEVICE_LOST;
+				firstFence->Wait(5000000000ull);
+				fenceResults[0] = VK_SUCCESS;
+			}
+			else fenceResults[0] = VK_ERROR_DEVICE_LOST;
+			driver->TrackResources_ThreadSafe();
+			Require(firstFence->HasFailed() && !firstFence->IsFinished() && firstOnly->HasInitializationFailed(),
+				"accepted upload loss was not published as terminal initialization failure");
+			Require(first.command.NumRefs() == 1u && firstFence.NumRefs() == 1u && firstOnly.NumRefs() == 1u &&
+				shared.NumRefs() == 2u && secondFence.NumRefs() == 4u && second.command.NumRefs() == 2u,
+				"loss must retire its own owners without releasing a still-pending second upload");
+			Require(!shared->IsReady() && shared->HasInitializationFailed() && !secondOnly->HasInitializationFailed(),
+				"shared initialization must remember failure without poisoning pending observers");
+			const auto queries = fenceStatusCalls;
+			const auto waits = fenceWaitCalls;
+			firstFence->Wait(0u);
+			Require(!firstFence->Reset(), "a failed fence cannot be reset for reuse");
+			Require(firstFence->HasFailed() && !firstFence->IsFinished() &&
+				fenceStatusCalls == queries && fenceWaitCalls == waits &&
+				forwardFenceStatus(*device, observedFences[0]) == VK_SUCCESS,
+				"terminal failure must stay latched without resetting or re-querying its native fence");
+			fenceResults[1] = VK_SUCCESS;
+			driver->TrackResources_ThreadSafe();
+			driver->TrackResources_ThreadSafe();
+			Require(secondFence->HasFailed() && !secondFence->IsFinished() && secondOnly->HasInitializationFailed() &&
+				!secondOnly->IsReady() && !shared->IsReady(), "a lost device must not publish subsequent completions as ready");
+			Require(second.command.NumRefs() == 1u && secondFence.NumRefs() == 1u &&
+				shared.NumRefs() == 1u && secondOnly.NumRefs() == 1u, "all completed failure owners must be released exactly once");
+			auto retry = RHIFencePtr::Make();
+			Require(!driver->SubmitCommandList(first.command, retry) && retry->HasFailed(),
+				"loss detected by a fence must stop subsequent native submissions");
+			uint32_t flight = 0u;
+			bool hasImage = false;
+			Require(!device->BeginRenderSubmission(flight, hasImage) &&
+				!device->FixLostDevice(App::GetMainWindow().GetRawPtr()),
+				"fence-reported device loss must stop new frames and cannot be repaired by recreating the swapchain");
+		}
+		catch (...)
+		{
+			device->WaitIdle();
+			firstFence->MarkSubmissionFailed();
+			secondFence->MarkSubmissionFailed();
+			driver->TrackResources_ThreadSafe();
+			throw;
+		}
+	}
+
+	void TestFenceCompletionAndReuse()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		driver->TrackResources_ThreadSafe();
+		auto resource = RHITexturePtr::Make(ETextureFiltration::Linear, ETextureClamping::Clamp, false);
+		auto fence = RHIFencePtr::Make();
+		for (uint32_t round = 0; round < 3u; ++round)
+		{
+			auto frame = RecordFrame(400u + 300u * round);
+			driver->TrackDelayedInitialization(resource.GetRawPtr(), fence);
+			Require(!resource->IsReady() && driver->SubmitCommandList(frame.command, fence), "upload must become pending on each reuse");
+			Require(fence->m_vulkan.m_fence->Wait(5000000000ull) == VK_SUCCESS, "reused native fence did not complete");
+			CheckReadback(frame, true);
+			{
+				FenceDispatchOverride dispatch(*device);
+				observedFences = { *fence->m_vulkan.m_fence, VK_NULL_HANDLE };
+				fenceResults = { VK_NOT_READY, VK_NOT_READY };
+				Require(fence->GetStatus() == EFenceStatus::Pending, "reset must discard cached completion");
+				driver->TrackResources_ThreadSafe();
+				Require(!resource->IsReady() && frame.command.NumRefs() == 2u, "pending reuse must retain commands and initialization");
+				fenceResults[0] = VK_SUCCESS;
+				fenceStatusCalls = 0u;
+				Require(fence->IsFinished(), "successful poll must complete the fence");
+				fenceResults[0] = VK_NOT_READY;
+				driver->TrackResources_ThreadSafe();
+				driver->TrackResources_ThreadSafe();
+				Require(fence->Wait(0u) == EFenceStatus::Finished && fence->IsFinished() && fenceStatusCalls == 1u,
+					"all completion consumers must share one terminal result, not re-poll the driver");
+				Require(resource->IsReady() && !resource->HasInitializationFailed() && resource.NumRefs() == 1u &&
+					fence.NumRefs() == 1u && frame.command.NumRefs() == 1u, "successful completion must release all initialization owners");
+			}
+			Require(fence->Reset() && fence->m_vulkan.m_fence->Status() == VK_NOT_READY && !fence->IsFinished(),
+				"successful reset must clear both native and cached completion");
+		}
+	}
+
+	int RunFenceGpu(int argc, const char** argv, std::string_view mode)
+	{
+		App::Initialize(argv, argc);
+		int result = 1;
+		try
+		{
+			Require(App::IsRendererInitialized(), "fence test requires an initialized renderer");
+			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			OnRender([&]()
+				{
+					if (mode == "--gpu-fence-completion") TestFenceCompletionAndReuse();
+					else TestAcceptedUploadLoss(mode == "--gpu-fence-wait-loss");
+				});
+			std::cout << "Native fence test passed: " << mode << '\n';
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		App::Stop();
+		App::Shutdown();
+		return result;
 	}
 
 	int RunGpu(int argc, const char** argv, bool present, bool lost, bool upload = false, bool accepted = false)
@@ -383,6 +598,9 @@ int main(int argc, const char** argv)
 {
 	for (int i = 1; i < argc; ++i)
 	{
+		const std::string_view mode(argv[i]);
+		if (mode == "--gpu-fence-poll-loss" || mode == "--gpu-fence-wait-loss" || mode == "--gpu-fence-completion")
+			return RunFenceGpu(argc, argv, mode);
 		if (std::string_view(argv[i]) == "--gpu-present") return RunGpu(argc, argv, true, false);
 		if (std::string_view(argv[i]) == "--gpu-offscreen") return RunGpu(argc, argv, false, false);
 		if (std::string_view(argv[i]) == "--gpu-lost-present") return RunGpu(argc, argv, true, true);

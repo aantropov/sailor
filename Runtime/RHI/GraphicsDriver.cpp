@@ -73,7 +73,7 @@ void IGraphicsDriver::TrackResources_ThreadSafe()
 	{
 		RHIFencePtr fence = m_trackedFences[index];
 
-		if (fence->IsFinished())
+		if (fence->GetStatus() != EFenceStatus::Pending)
 		{
 			fence->TraceObservables();
 			fence->ClearDependencies();

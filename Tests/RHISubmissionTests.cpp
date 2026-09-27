@@ -42,8 +42,8 @@ namespace
 		Require(!ready, "failed initialization must not become ready after releasing its fence");
 		Require(resource->HasInitializationFailed() && fence->HasFailed() && !fence->IsFinished(),
 			"submission failure must be observable without pretending that the GPU signaled");
-		fence->Wait();
-		fence->Reset();
+		Require(fence->Wait() == EFenceStatus::Failed && !fence->Reset(),
+			"wait/reset must report terminal failure without a native fence");
 		Require(fence->HasFailed() && !fence->IsFinished(), "a failed fence is terminal, including after reset");
 		driver.TrackResources_ThreadSafe();
 		Require(!resource->IsReady(), "garbage collection must not turn a rejected upload into success");
@@ -110,6 +110,14 @@ namespace
 		Require(replacement->IsReady() && !replacement->HasInitializationFailed(),
 			"failure belongs to one resource, not the driver or future resource instances");
 	}
+
+	void TestUnsubmittedFenceStaysPending()
+	{
+		auto fence = RHIFencePtr::Make();
+		Require(fence->GetStatus() == EFenceStatus::Pending && fence->Wait(0u) == EFenceStatus::Pending &&
+			!fence->IsFinished() && !fence->HasFailed() && !fence->Reset(),
+			"a fence without a submission cannot report successful completion");
+	}
 }
 
 int main()
@@ -120,6 +128,7 @@ int main()
 		TestFailureOnlyRemovesItsOwnDependencies();
 		TestFailedFenceReleasesRecordedDependencies();
 		TestRepeatedTrackingAndFailureStayTerminal();
+		TestUnsubmittedFenceStaysPending();
 		std::cout << "RHI submission tests passed\n";
 		return 0;
 	}
