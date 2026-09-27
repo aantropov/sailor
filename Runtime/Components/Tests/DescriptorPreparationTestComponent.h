@@ -1,6 +1,7 @@
 #pragma once
 #include "Components/Tests/TestCaseComponent.h"
 #include "Tasks/Tasks.h"
+#include <array>
 
 namespace Sailor
 {
@@ -16,9 +17,11 @@ namespace Sailor
 		{
 			std::string m_error;
 			bool m_bVariableDescriptorsTested = false;
+			bool m_bSparsePublicationTested = false;
 		};
 
 		ShaderSetPtr m_shader;
+		std::array<ShaderSetPtr, 5> m_publicationShaders;
 		Tasks::TaskPtr<ValidationResult> m_validation;
 	};
 }
