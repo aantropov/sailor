@@ -4,6 +4,7 @@
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/RenderSceneNode.h"
+#include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "RHI/Buffer.h"
 #include "RHI/CommandList.h"
 #include "RHI/Fence.h"
@@ -103,6 +104,87 @@ namespace
 			{
 				if (actual[i] != expected[i])
 					return std::format("buffer upload scenario {} word {}: expected {}, got {}", scenario, i, expected[i], actual[i]);
+			}
+		}
+		return {};
+	}
+
+	std::string ValidateBufferUpdates()
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto* nativeDriver = driver.DynamicCast<GraphicsDriver::Vulkan::VulkanGraphicsDriver>();
+		const EMemoryPropertyFlags hostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
+		const EBufferUsageFlags usage = EBufferUsageBit::StorageBuffer_Bit |
+			EBufferUsageBit::BufferTransferSrc_Bit | EBufferUsageBit::BufferTransferDst_Bit;
+		constexpr size_t PrefixWords = 7u;
+		constexpr size_t SuffixWords = 9u;
+		struct Readback
+		{
+			RHIBufferPtr m_buffer{};
+			TVector<uint32_t> m_expected;
+		};
+		for (uint32_t round = 0u; round < 3u; ++round)
+		{
+			auto cmd = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(cmd, true);
+			auto& native = cmd->m_vulkan.m_commandBuffer;
+			std::array<Readback, 4> readbacks;
+			for (uint32_t scenario = 0u; scenario < readbacks.size(); ++scenario)
+			{
+				const size_t payloadWords = scenario % 2u == 0u ? 257u : 16385u;
+				const size_t payloadBytes = payloadWords * sizeof(uint32_t);
+				auto& readback = readbacks[scenario];
+				readback.m_expected.Resize(PrefixWords + payloadWords + SuffixWords);
+				for (size_t word = 0u; word < readback.m_expected.Num(); ++word)
+					readback.m_expected[word] = 0xc7ad0000u ^ (round << 16u) ^ (scenario << 12u) ^ uint32_t(word);
+				const size_t byteCount = readback.m_expected.Num() * sizeof(uint32_t);
+				auto source = readback.m_expected;
+				auto destination = driver->CreateBuffer(byteCount, usage, EMemoryPropertyBit::DeviceLocal);
+				commands->UpdateBuffer(cmd, destination, source.GetData(), byteCount);
+				native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+				for (size_t word = 0u; word < payloadWords; ++word)
+				{
+					source[word] = (0x71bc0000u | (round << 8u) | scenario) ^ (uint32_t(word) * 2654435761u);
+					readback.m_expected[PrefixWords + word] = source[word];
+				}
+				if (scenario < 2u)
+				{
+					commands->UpdateBuffer(cmd, destination, source.GetData(), payloadBytes, PrefixWords * sizeof(uint32_t));
+				}
+				else
+				{
+					auto subrange = *destination->m_vulkan.m_buffer;
+					subrange.m_offset += 16u;
+					subrange.m_size -= 16u;
+					nativeDriver->Update(cmd, subrange, source.GetData(), payloadBytes, 12u);
+				}
+				std::fill(source.begin(), source.end(), 0xdeadbeefu);
+				native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+				readback.m_buffer = driver->CreateBuffer(byteCount, EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
+				native->CopyBuffer(*destination->m_vulkan.m_buffer, *readback.m_buffer->m_vulkan.m_buffer, byteCount);
+				// Only recorded dependencies retain the destination and each pending staging range.
+				destination.Clear();
+			}
+			native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+			commands->EndCommandList(cmd);
+			auto fence = RHIFencePtr::Make();
+			if (!driver->SubmitCommandList(cmd, fence)) return "buffer update validation submission failed";
+			fence->Wait(5000000000ull);
+			if (!fence->IsFinished()) return "buffer update validation fence exceeded five seconds";
+			native->Reset();
+			fence->ClearDependencies();
+			for (uint32_t scenario = 0u; scenario < readbacks.size(); ++scenario)
+			{
+				auto& readback = readbacks[scenario];
+				const auto* actual = static_cast<const uint32_t*>(readback.m_buffer->GetPointer());
+				for (size_t word = 0u; word < readback.m_expected.Num(); ++word)
+				{
+					if (actual[word] != readback.m_expected[word])
+						return std::format("buffer update round {} {} payload {} bytes, word {}: expected {:#x}, got {:#x}",
+							round, scenario < 2u ? "public" : "native subrange", scenario % 2u == 0u ? 1028u : 65540u,
+							word, readback.m_expected[word], actual[word]);
+				}
 			}
 		}
 		return {};
@@ -456,6 +538,10 @@ void GpuOcclusionTestCaseComponent::Tick(float)
 			Utils::GetCurrentTimeMs() - m_gpuStartTimeMs);
 		AddJournalEvent("BufferUploadEvidence",
 			"Host-coherent and DeviceLocal uploads preserved all 257 words after source mutation; recorded commands retained the released DeviceLocal wrapper's buffer");
+		AddJournalEvent("BufferUpdateEvidence",
+			"3 rounds of non-Indirect UpdateBuffer and native Update passed for 1028/65540-byte payloads; "
+			"offset 28 (native subrange 16 + extra 12), complete readbacks including 28/36-byte canaries, "
+			"mutated CPU sources and released destination wrappers; all 4 cases recorded before each submit");
 		MarkPassed();
 		return;
 	}
@@ -495,6 +581,7 @@ void GpuOcclusionTestCaseComponent::Tick(float)
 			{
 				ValidationResult result;
 				result.m_error = ValidateBufferUploads();
+				if (result.m_error.empty()) result.m_error = ValidateBufferUpdates();
 				if (result.m_error.empty()) result.m_error = ValidateGpuCulling(culling, input, mips);
 				if (result.m_error.empty()) result.m_error = ValidateRasterizedDepth(coverage, result.m_samples);
 				return result;
