@@ -114,6 +114,11 @@ VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TV
 	m_device(pDevice),
 	m_variableDescriptorBinding(variableDescriptorBinding)
 {
+	// Direct bindings and shader reflection can arrive in different orders.
+	m_descriptorSetLayoutBindings.Sort([](const auto& lhs, const auto& rhs)
+		{
+			return lhs.binding < rhs.binding;
+		});
 }
 
 VulkanDescriptorSetLayout::~VulkanDescriptorSetLayout()

@@ -30,6 +30,17 @@ namespace
 		Values{ 53u, 79u, 0x87654321u, 0xabcddcbau }
 	};
 
+	std::string ValidateLayoutOrder()
+	{
+		const VkDescriptorSetLayoutBinding storage{ 0u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr };
+		const VkDescriptorSetLayoutBinding uniform{ 1u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr };
+		auto forward = VulkanDescriptorSetLayoutPtr::Make(VulkanDevicePtr{}, TVector<VkDescriptorSetLayoutBinding>{ storage, uniform });
+		auto reverse = VulkanDescriptorSetLayoutPtr::Make(VulkanDevicePtr{}, TVector<VkDescriptorSetLayoutBinding>{ uniform, storage });
+		if (!(*forward == *reverse) || forward->GetHash() != reverse->GetHash())
+			return "equivalent native layouts with opposite binding order were rejected before submission";
+		return {};
+	}
+
 	std::string ValidateDescriptors(ShaderSetPtr shader, bool& outVariableDescriptorsTested)
 	{
 		auto& driver = Renderer::GetDriver();
@@ -171,6 +182,20 @@ namespace
 			if (!variable->UpdateDescriptor(neighbor) || variable->m_descriptors.Num() != 2u ||
 				static_cast<VkDescriptorSet>(*variable) != variableHandle)
 				return "valid append into the variable descriptor allocation failed";
+
+			auto mixedLayout = VulkanDescriptorSetLayoutPtr::Make(device, TVector<VkDescriptorSetLayoutBinding>{
+				{ 7u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
+				{ 0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr } }, 7);
+			auto mixed = VulkanDescriptorSetPtr::Make(device, pool, mixedLayout, TVector<VulkanDescriptorPtr>{
+				descriptor(0u, 0u, 7u), descriptor(1u, 0u, 0u, EShaderBindingType::UniformBuffer) }, 2u);
+			if (!mixed->TryCompile() || !mixed->IsCompiled() || mixed->GetVariableDescriptorCount() != 2u ||
+				mixedLayout->GetVariableDescriptorBinding() != 7 || mixedLayout->m_descriptorSetLayoutBindings[1].binding != 7u)
+				return "reversed mixed layout lost its numeric variable binding or native allocation capacity";
+			const VkDescriptorSet mixedHandle = *mixed;
+			if (!mixed->UpdateDescriptor(descriptor(2u, 1u, 7u)) || mixed->m_descriptors.Num() != 3u ||
+				mixed->UpdateDescriptor(descriptor(2u, 2u, 7u)) || mixed->m_descriptors.Num() != 3u ||
+				static_cast<VkDescriptorSet>(*mixed) != mixedHandle)
+				return "mixed fixed/variable layout did not preserve allocated append bounds";
 			outVariableDescriptorsTested = true;
 		}
 
@@ -650,13 +675,6 @@ namespace
 					actual.stageFlags != expected.stageFlags || actual.pImmutableSamplers != expected.pImmutableSamplers)
 					return std::format("{}: direct binding {} differs from reflection", name, expected.binding);
 			}
-			// The engine compares layout vectors in order. Keep the same interface without changing the cached pipeline.
-			auto layout = VulkanPipelineLayoutPtr::Make(device,
-				TVector<VulkanDescriptorSetLayoutPtr>{ directLayout, pipeline->m_layout->m_descriptionSetLayouts[1] },
-				pipeline->m_layout->GetShaderLayout(), pipeline->m_layout->m_pushConstantRanges, pipeline->m_layout->m_flags);
-			auto directPipeline = VulkanComputePipelinePtr::Make(device, layout, pipeline->m_stage);
-			if (!directPipeline->Compile()) return name + ": private direct-layout pipeline could not be compiled";
-			pipeline = std::move(directPipeline);
 		}
 		if (nativeDriver->IsCompatible(pipeline->m_layout, { inputs })[0] == projected)
 		{
@@ -671,11 +689,10 @@ namespace
 			}
 			return error;
 		}
-		if (projected)
 		{
 			auto sets = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
-			if (sets.Num() != 1u || !sets[0] || !sets[0]->IsCompiled() || sets[0] == nativeA)
-				return name + ": projected A was not prepared independently";
+			if (sets.Num() != 1u || !sets[0] || !sets[0]->IsCompiled() || (sets[0] == nativeA) == projected)
+				return name + ": A did not preserve exact direct reuse or independent projection";
 			nativeA = sets[0];
 			sets.Clear();
 		}
@@ -717,11 +734,10 @@ namespace
 		auto nativeB = inputs->m_vulkan.m_descriptorSet;
 		if (nativeDriver->IsCompatible(pipeline->m_layout, { inputs })[0] == projected)
 			return name + ": B did not keep the requested direct/projected path";
-		if (projected)
 		{
 			auto sets = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
-			if (sets.Num() != 1u || !sets[0] || !sets[0]->IsCompiled() || sets[0] == nativeB || sets[0] == nativeA)
-				return name + ": projected B was not prepared independently";
+			if (sets.Num() != 1u || !sets[0] || !sets[0]->IsCompiled() || (sets[0] == nativeB) == projected || sets[0] == nativeA)
+				return name + ": B did not preserve exact direct reuse or independent projection";
 			nativeB = sets[0];
 			sets.Clear();
 		}
@@ -1097,6 +1113,8 @@ void DescriptorPreparationTestComponent::Tick(float)
 		if (!m_validation->IsFinished()) return;
 		const auto& result = m_validation->GetResult();
 		if (!result.m_error.empty()) { MarkFailed(result.m_error); return; }
+		AddJournalEvent("DescriptorLayoutOrder",
+			"Opposite input orders compare equally; direct UBO/SSBO A/B/A uses the original reflected pipeline and exact native sets; extra-binding sets still require projection");
 		AddJournalEvent("ManagedUploadRetention",
 			"Bare UBO/offset-SSBO uploads retain replaced destinations until reset, destruction or last-command release; 2 x A/B/A full 8-word readbacks passed with poisoned CPU data and aligned byte-offset updates; weak owners expired while raw descriptors stayed alive");
 		AddJournalEvent("DescriptorManagedRetention",
@@ -1104,7 +1122,7 @@ void DescriptorPreparationTestComponent::Tick(float)
 		AddJournalEvent("DescriptorPreparationEvidence",
 			"All-or-none native preparation, buffer/image handle rejection, same-candidate retry, empty/sparse sets and 4 x 8-word GPU readbacks (A/C/A and appended set, each with neighbor) passed");
 		AddJournalEvent("DescriptorVariableCapacity", result.m_bVariableDescriptorsTested ?
-			"Layout capacity 4, allocation capacity 2: rejected elements 2/3, sparse retry and valid append passed" :
+			"Layout capacity 4, allocation capacity 2: rejected elements 2/3, sparse retry, valid append and reversed mixed fixed/variable layout passed" :
 			"Skipped: device lacks variable-count, partially-bound or update-unused descriptor support");
 		AddJournalEvent("DescriptorPublicationEvidence",
 			"Failed replace/new-name/copy preserved CPU/native state; sampler/storage/buffer A before C, copied arrays/buffers and corrected compatible projections passed full GPU readback with unchanged neighbors");
@@ -1141,6 +1159,8 @@ void DescriptorPreparationTestComponent::Tick(float)
 			[shader = m_shader, publication = m_publicationShaders]()
 			{
 				ValidationResult result;
+				result.m_error = ValidateLayoutOrder();
+				if (!result.m_error.empty()) return result;
 				// The native command layout changed: old runtimes must stop here without inline native access or GPU submission.
 				for (bool uniform : { true, false })
 					for (UploadRelease release : { UploadRelease::Reset, UploadRelease::Destroy, UploadRelease::TwoCommands })

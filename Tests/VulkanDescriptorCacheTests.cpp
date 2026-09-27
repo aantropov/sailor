@@ -8,6 +8,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <functional>
@@ -482,6 +483,63 @@ namespace
 
 	}
 
+	void TestDescriptorLayoutsIgnoreBindingOrder()
+	{
+		std::array<VkSampler, 2> samplers{};
+		std::array<VkSampler, 2> otherSamplers{};
+		const TVector<VkDescriptorSetLayoutBinding> bindings{
+			{ 0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
+			{ 4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2u, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+			{ 13u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2u, VK_SHADER_STAGE_FRAGMENT_BIT, samplers.data() }
+		};
+		auto expected = VulkanDescriptorSetLayoutPtr::Make(VulkanDevicePtr{}, bindings, 13);
+		std::array<size_t, 3> order{ 0u, 1u, 2u };
+		do
+		{
+			auto layout = VulkanDescriptorSetLayoutPtr::Make(VulkanDevicePtr{},
+				TVector<VkDescriptorSetLayoutBinding>{ bindings[order[0]], bindings[order[1]], bindings[order[2]] }, 13);
+			Require(*layout == *expected && layout->GetHash() == expected->GetHash(),
+				"permuting numbered bindings must preserve native layout equality and hash");
+			Require(layout->GetVariableDescriptorBinding() == 13 && layout->m_descriptorSetLayoutBindings.Num() == 3u,
+				"normalization must preserve the numeric variable binding and every sparse entry");
+			for (size_t i = 0u; i < bindings.Num(); ++i)
+			{
+				const auto& actual = layout->m_descriptorSetLayoutBindings[i];
+				const auto& binding = bindings[i];
+				Require(actual.binding == binding.binding && actual.descriptorType == binding.descriptorType &&
+					actual.descriptorCount == binding.descriptorCount && actual.stageFlags == binding.stageFlags &&
+					actual.pImmutableSamplers == binding.pImmutableSamplers,
+					"canonical bindings must keep type, count, stages and immutable samplers with their binding number");
+			}
+		} while (std::next_permutation(order.begin(), order.end()));
+
+		for (uint32_t field = 0u; field < 5u; ++field)
+		{
+			auto different = bindings;
+			switch (field)
+			{
+			case 0u: different[0].descriptorCount = 2u; break;
+			case 1u: different[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; break;
+			case 2u: different[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; break;
+			case 3u: different[2].pImmutableSamplers = otherSamplers.data(); break;
+			case 4u: different[1].binding = 5u; break;
+			}
+			auto layout = VulkanDescriptorSetLayoutPtr::Make(VulkanDevicePtr{}, std::move(different), 13);
+			Require(!(*layout == *expected), "normalization must not ignore a changed layout field");
+		}
+		auto fixed = VulkanDescriptorSetLayoutPtr::Make(VulkanDevicePtr{}, bindings);
+		Require(!(*fixed == *expected), "fixed and variable descriptor layouts must remain different");
+		for (const auto& entries : { TVector<VkDescriptorSetLayoutBinding>{},
+			TVector<VkDescriptorSetLayoutBinding>{ bindings[0] } })
+		{
+			auto first = VulkanDescriptorSetLayoutPtr::Make(VulkanDevicePtr{}, entries);
+			auto second = VulkanDescriptorSetLayoutPtr::Make(VulkanDevicePtr{}, entries);
+			Require(*first == *second && first->GetHash() == second->GetHash() &&
+				first->m_descriptorSetLayoutBindings.Num() == entries.Num(),
+				"empty and single-binding layouts must keep stable identity");
+		}
+	}
+
 	void TestVariableDescriptorCompatibilityUsesItsFixedLayout()
 	{
 		const VkDescriptorSetLayoutBinding textureLayout =
@@ -601,6 +659,7 @@ int main()
 			TestRenderSceneTextureBindingsUseDenseLocalIndices },
 		{ "TextureSamplerCapacityReservesDefaultSlot",
 			TestTextureSamplerCapacityReservesDefaultSlot },
+		{ "DescriptorLayoutsIgnoreBindingOrder", TestDescriptorLayoutsIgnoreBindingOrder },
 		{ "VariableDescriptorCompatibilityUsesItsFixedLayout",
 			TestVariableDescriptorCompatibilityUsesItsFixedLayout },
 		{ "VariableDescriptorCompatibilityRejectsDifferentLayoutCapacity",
