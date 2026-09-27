@@ -313,6 +313,145 @@ namespace
 		for (uint32_t i = 0u; i < count; ++i) draw.m_resources->m_packet.Add(batch, mesh, instance);
 	}
 
+	template<typename TRecord>
+	std::string ValidateFlightUploads(std::array<SceneDraw, 5>& draws, RHIMaterialPtr material,
+		RHIMeshPtr mesh, RHIShaderBindingSetPtr textures, TRecord&& recordDraw)
+	{
+		using Instance = RenderSceneProbe::PerInstanceData;
+		using PayloadPtr = TPackedDrawPacketPayloadPtr<Instance>;
+		constexpr uint32_t StationaryCount = TPackedDrawArenaPage<Instance>::NumInstances + 1u;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		for (uint32_t numFlights : { 2u, 3u })
+		for (bool paged : { false, true })
+		{
+			auto scene = RHIScenePtr::Make(numFlights);
+			TVector<RenderInstanceHandle> handles;
+			for (uint32_t i = 0u; i <= StationaryCount; ++i)
+			{
+				RHISceneInstanceRecord instance;
+				instance.m_producerKey = i;
+				instance.m_mobility = i < StationaryCount ? EMobilityType::Stationary : EMobilityType::Dynamic;
+				instance.m_worldMatrix[3].x = static_cast<float>(i);
+				handles.Add(scene->AddInstance(instance));
+			}
+			const auto values = [&](RHISceneVersionPtr version)
+			{
+				TVector<Instance> result;
+				for (const auto handle : handles)
+				{
+					const RHISceneInstanceRecord* source = nullptr;
+					if (!version->Resolve(handle, source)) return TVector<Instance>{};
+					Instance instance{};
+					instance.model = source->m_worldMatrix;
+					instance.sphereBounds = glm::vec4(0, 0, 0, 1);
+					result.Add(instance);
+				}
+				return result;
+			};
+			TPackedDrawPagedArenaCache<Instance> arena;
+			const auto payload = [&](RHISceneVersionPtr version) -> PayloadPtr
+			{
+				if (!paged) return {};
+				const auto data = values(version);
+				arena.BeginUpdate(1u, version->m_stationaryRevision, version->m_sceneRevision);
+				if (!arena.TryReuseRange(10u, 1u))
+				{
+					TVector<Instance> firstPage;
+					TVector<uint64_t> keys;
+					for (uint32_t i = 0u; i + 1u < StationaryCount; ++i)
+					{
+						firstPage.Add(data[i]);
+						keys.Add(i);
+					}
+					if (!arena.ReplaceRange(10u, 1u, firstPage, keys)) return {};
+				}
+				if (!arena.ReplaceRange(20u, version->m_stationaryRevision,
+					{ data[StationaryCount - 1u] }, { StationaryCount - 1u })) return {};
+				return arena.EndUpdate();
+			};
+			const auto checkData = [](RHIBufferPtr readback, const TVector<Instance>& expected) -> std::string
+			{
+				const auto* actual = static_cast<const Instance*>(readback->GetPointer());
+				for (size_t i = 0u; i < expected.Num(); ++i)
+					if (!(actual[i] == expected[i])) return std::format("flight upload changed instance {}", i);
+				return {};
+			};
+			TVector<RHICommandListPtr> deferred;
+			RHIBufferPtr deferredReadback;
+			const auto run = [&](uint32_t slot, RHISceneVersionPtr version, PayloadPtr shared,
+				uint32_t uploadedInstances, uint32_t uploadRanges, bool defer = false) -> std::string
+			{
+				auto flight = scene->PrepareFlight(slot, version);
+				if (!flight || flight->m_appliedVersion != version) return "flight did not retain its target version";
+				const auto expected = values(flight->m_appliedVersion);
+				if (expected.Num() != handles.Num() || (paged && !shared)) return "flight payload preparation failed";
+				auto& draw = draws[slot];
+				auto& packet = draw.m_resources->m_packet;
+				packet.Reset();
+				RHIBatch batch(material, mesh);
+				batch.m_textureBindings = textures;
+				if (paged) packet.UseSharedArenaPayload(EMobilityType::Stationary, shared);
+				for (uint32_t i = 0u; i < StationaryCount; ++i)
+				{
+					if (paged)
+					{
+						if (!packet.AddArenaView(batch, mesh, i + 1u < StationaryCount ? 10u : 20u,
+							i, EMobilityType::Stationary)) return "flight arena view did not resolve";
+					}
+					else packet.Add(batch, mesh, expected[i], i, EMobilityType::Stationary);
+				}
+				packet.Add(batch, mesh, expected[StationaryCount], StationaryCount, EMobilityType::Dynamic);
+				packet.Finalize();
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto graphics = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(graphics, true);
+				recordDraw(draw, upload, graphics);
+				if (packet.m_metrics.m_instanceUploadBytes != sizeof(Instance) * uploadedInstances ||
+					packet.m_metrics.m_dirtyInstanceRanges != uploadRanges ||
+					draw.m_stats.m_numInstances != handles.Num()) return "unexpected flight upload bytes, ranges or draw count";
+				auto readback = driver->CreateBuffer(sizeof(Instance) * expected.Num(), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				const auto binding = draw.m_resources->m_perInstanceData->GetOrAddShaderBinding("data");
+				graphics->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+				graphics->m_vulkan.m_commandBuffer->CopyBuffer(*binding->m_vulkan.m_valueBinding->Get(),
+					*readback->m_vulkan.m_buffer->Get(), readback->GetSize());
+				if (defer)
+				{
+					deferred = { upload, graphics };
+					deferredReadback = readback;
+					return {};
+				}
+				if (auto error = Submit(upload, graphics); !error.empty()) return error;
+				return checkData(readback, expected);
+			};
+			for (uint32_t slot = 0u; slot < numFlights; ++slot) draws[slot].m_resources->m_packet.InvalidateUploadedState();
+			auto first = scene->PublishVersion();
+			auto firstPayload = payload(first);
+			for (uint32_t slot = 0u; slot < numFlights; ++slot)
+				if (auto error = run(slot, first, firstPayload, StationaryCount + 1u, paged ? 3u : 2u); !error.empty()) return error;
+			if (auto error = run(numFlights - 1u, first, firstPayload, 1u, 1u, true); !error.empty()) return error;
+			for (const uint32_t i : { StationaryCount - 1u, StationaryCount })
+			{
+				RHISceneInstanceRecord updated;
+				if (!scene->ResolveCurrent(handles[i], updated)) return "flight source disappeared";
+				updated.m_worldMatrix[3].x += 1000.0f;
+				scene->UpdateInstance(handles[i], updated, ToMask(ESceneChangeBit::Transform));
+			}
+			auto second = scene->PublishVersion();
+			auto secondPayload = payload(second);
+			if (paged && (firstPayload->m_arenaPages[0] != secondPayload->m_arenaPages[0] ||
+				firstPayload->m_arenaPages[1] == secondPayload->m_arenaPages[1])) return "arena did not preserve the unchanged page";
+			if (auto error = run(0u, second, secondPayload, 2u, 2u); !error.empty()) return error;
+			if (auto error = Submit(deferred[0], deferred[1]); !error.empty()) return error;
+			if (auto error = checkData(deferredReadback, values(first)); !error.empty()) return "retained flight: " + error;
+			if (auto error = run(0u, second, secondPayload, 1u, 1u); !error.empty()) return error;
+			for (uint32_t slot = 1u; slot < numFlights; ++slot)
+				if (auto error = run(slot, second, secondPayload, 2u, 2u); !error.empty()) return error;
+		}
+		return {};
+	}
+
 	std::string ValidateScene(const std::array<ShaderSetPtr, 3>& shaders)
 	{
 		auto& driver = Renderer::GetDriver();
@@ -458,7 +597,8 @@ namespace
 		if (auto error = CheckPixels(draws[3].m_readback, mixedPixels, "mixed"); !error.empty()) return error;
 		if (draws[4].m_stats.m_numBatches != 1u || draws[4].m_stats.m_numInstances != 1u)
 			return "descriptor-free material did not record a draw";
-		return CheckPixels(draws[4].m_readback, Solid(EmptyColor), "zero descriptors");
+		if (auto error = CheckPixels(draws[4].m_readback, Solid(EmptyColor), "zero descriptors"); !error.empty()) return error;
+		return ValidateFlightUploads(draws, material, quad, bindingsA, record);
 	}
 
 	void CountCallback(const ImDrawList*, const ImDrawCmd* command)
@@ -608,6 +748,8 @@ void GraphicsBindingResultTestComponent::Tick(float)
 			"Native smart-pointer counts follow two-command recording/reset; external views released before GPU submission; single-sample, MSAA MRT/depth resolves, optional missing resolve and legacy framebuffer pass full 8x8 readbacks");
 		AddJournalEvent("GraphicsBindingResultEvidence",
 			"Real single-sample RenderScene Process: same-command-buffer A/rejected B/same-request C, all 8x8 pixels and exact recorded counts; ordered 2/3/4 mixed runs record 2 runs/6 candidates; zero-descriptor draw passes; actual ImGui owner preserves callback and later list/index/vertex offsets");
+		AddJournalEvent("SceneFlightUploads",
+			"Two/three flights, contiguous/paged stationary payloads and dynamic rewrites: exact recorded upload bytes/ranges, all 66 GPU records, unchanged-page identity, and an older recorded flight submitted after its successor");
 		MarkPassed();
 		return;
 	}
