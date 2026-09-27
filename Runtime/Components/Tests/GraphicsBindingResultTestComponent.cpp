@@ -2,6 +2,8 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "FrameGraph/RenderSceneNode.h"
+#include "GraphicsDriver/Vulkan/VulkanFramebuffer.h"
+#include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
 #include "RHI/Buffer.h"
 #include "RHI/CommandList.h"
@@ -98,6 +100,174 @@ namespace
 		Pixels result;
 		result.fill(color);
 		return result;
+	}
+
+	class TrackedAttachmentView final : public VulkanImageView
+	{
+	public:
+		TrackedAttachmentView(VulkanDevicePtr device, VulkanImagePtr image,
+			TSharedPtr<std::atomic<uint32_t>> destroyed, uint32_t bit) :
+			VulkanImageView(device, image), m_destroyed(std::move(destroyed)), m_bit(bit) {}
+		~TrackedAttachmentView() override { m_destroyed->fetch_or(m_bit); }
+
+	private:
+		TSharedPtr<std::atomic<uint32_t>> m_destroyed;
+		uint32_t m_bit;
+	};
+
+	enum class AttachmentCase { SingleSample, Multisample, PartialResolve, Legacy };
+
+	std::string ValidateAttachmentLifetime(AttachmentCase testCase, bool submit)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		const std::string name = std::format("AttachmentLifetime_{}_{}", static_cast<uint32_t>(testCase), submit ? "GPU" : "gate");
+		const bool multisample = testCase == AttachmentCase::Multisample || testCase == AttachmentCase::PartialResolve;
+		const bool hasDepth = testCase == AttachmentCase::SingleSample || testCase == AttachmentCase::Multisample;
+		const bool legacy = testCase == AttachmentCase::Legacy;
+		const auto samples = multisample ? VK_SAMPLE_COUNT_2_BIT : VK_SAMPLE_COUNT_1_BIT;
+		for (VkFormat format : { VK_FORMAT_R32G32B32A32_SFLOAT, VK_FORMAT_D32_SFLOAT })
+		{
+			VkImageFormatProperties properties{};
+			const auto usage = format == VK_FORMAT_D32_SFLOAT ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+			if (vkGetPhysicalDeviceImageFormatProperties(device->GetPhysicalDevice(), format, VK_IMAGE_TYPE_2D,
+				VK_IMAGE_TILING_OPTIMAL, usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, 0u, &properties) != VK_SUCCESS ||
+				!(properties.sampleCounts & samples))
+				return name + ": device lacks the required attachment format/sample count";
+		}
+		auto destroyed = TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		uint32_t viewCount = 0u;
+		auto setup = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(setup, true);
+		const auto makeView = [&](VkFormat format, VkSampleCountFlagBits count, VulkanImagePtr& image) -> VulkanImageViewPtr
+		{
+			const bool depth = format == VK_FORMAT_D32_SFLOAT;
+			const auto layout = depth ? VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			const auto usage = depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+			image = VulkanApi::GetInstance()->CreateImage(device, { Side, Side, 1u }, 1u, VK_IMAGE_TYPE_2D,
+				format, VK_IMAGE_TILING_OPTIMAL, usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, count, layout);
+			// Transitions retain only the image, never the distinct view being tested.
+			setup->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image, format, VK_IMAGE_LAYOUT_UNDEFINED, layout);
+			auto view = TRefPtr<TrackedAttachmentView>::Make(device, image, destroyed, 1u << viewCount++);
+			view->Compile();
+			return view;
+		};
+		TVector<VulkanImageViewPtr> colors, resolves;
+		TVector<VulkanImagePtr> outputImages;
+		for (uint32_t i = 0u; i < (multisample ? 2u : 1u); ++i)
+		{
+			VulkanImagePtr image;
+			colors.Add(makeView(VK_FORMAT_R32G32B32A32_SFLOAT, samples, image));
+			if (!multisample) outputImages.Add(image);
+			else if (testCase == AttachmentCase::PartialResolve && i == 1u) resolves.Add({});
+			else
+			{
+				resolves.Add(makeView(VK_FORMAT_R32G32B32A32_SFLOAT, VK_SAMPLE_COUNT_1_BIT, image));
+				outputImages.Add(image);
+			}
+		}
+		VulkanImageViewPtr depth, depthResolve;
+		if (hasDepth)
+		{
+			VulkanImagePtr image;
+			depth = makeView(VK_FORMAT_D32_SFLOAT, samples, image);
+			if (multisample) depthResolve = makeView(VK_FORMAT_D32_SFLOAT, VK_SAMPLE_COUNT_1_BIT, image);
+			outputImages.Add(image);
+		}
+		auto emptyUpload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(emptyUpload, true);
+		if (auto error = Submit(emptyUpload, setup); !error.empty()) return name + ": " + error;
+
+		VulkanRenderPassPtr renderPass;
+		VulkanFramebufferPtr framebuffer;
+		if (legacy)
+		{
+			const VkAttachmentDescription attachment{ 0u, VK_FORMAT_R32G32B32A32_SFLOAT, VK_SAMPLE_COUNT_1_BIT,
+				VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+				VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+			VulkanSubpassDescription subpass;
+			subpass.m_colorAttachments = { { 0u, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL } };
+			renderPass = VulkanRenderPassPtr::Make(device, TVector<VkAttachmentDescription>{ attachment },
+				TVector<VulkanSubpassDescription>{ subpass }, TVector<VkSubpassDependency>{});
+			framebuffer = VulkanFramebufferPtr::Make(renderPass, colors, Side, Side, 1u);
+		}
+		TVector<RHICommandListPtr> recorded;
+		TVector<RHIBufferPtr> readbacks;
+		for (uint32_t i = 0u; i < (submit ? 1u : 2u); ++i)
+		{
+			auto cmd = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(cmd, true);
+			auto native = cmd->m_vulkan.m_commandBuffer;
+			if (legacy)
+			{
+				VkClearValue clear{};
+				std::memcpy(clear.color.float32, &ColorC, sizeof(ColorC));
+				native->BeginRenderPass(renderPass, framebuffer, { Side, Side }, VK_SUBPASS_CONTENTS_INLINE, {}, clear);
+				native->EndRenderPass();
+			}
+			else
+			{
+				native->BeginRenderPassEx(colors, resolves, depth, depthResolve, { {}, { Side, Side } }, 0u, {},
+					true, VulkanRenderPassClearValues(ColorC, 0.375f, 0u), true);
+				native->EndRenderPassEx();
+			}
+			if (submit)
+			{
+				for (const auto& image : outputImages)
+				{
+					const size_t size = image->m_format == VK_FORMAT_D32_SFLOAT ? Side * Side * sizeof(float) : sizeof(Pixels);
+					auto readback = driver->CreateBuffer(size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+					std::memset(readback->GetPointer(), 0xa7, size);
+					native->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+					native->ImageMemoryBarrier(image, image->m_format, image->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+					native->CopyImageToBuffer(*readback->m_vulkan.m_buffer, image, Side, Side, 1u);
+					readbacks.Add(readback);
+				}
+				native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+			}
+			commands->EndCommandList(cmd);
+			recorded.Add(cmd);
+		}
+		const bool retainsFramebuffer = !legacy || framebuffer.NumRefs() == recorded.Num() + 1u;
+		framebuffer.Clear();
+		renderPass.Clear();
+		colors.Clear();
+		resolves.Clear();
+		depth.Clear();
+		depthResolve.Clear();
+		if (!retainsFramebuffer || destroyed->load() != 0u)
+		{
+			// These command lists have never been submitted; do not execute a destroyed attachment on old runtimes.
+			for (auto& cmd : recorded) cmd->m_vulkan.m_commandBuffer->Reset();
+			return name + ": recorded attachment owner was destroyed before submission";
+		}
+		if (submit)
+		{
+			auto fence = RHIFencePtr::Make();
+			if (!driver->SubmitCommandList(recorded[0], fence)) return name + ": submission failed";
+			fence->Wait(5000000000ull);
+			if (!fence->IsFinished()) return name + ": fence timed out; pending dependencies retained";
+			if (destroyed->load() != 0u) return name + ": view died before command dependencies were released";
+		}
+		for (size_t i = 0u; i < recorded.Num(); ++i)
+		{
+			recorded[i]->m_vulkan.m_commandBuffer->Reset();
+			if (destroyed->load() != (i + 1u == recorded.Num() ? (1u << viewCount) - 1u : 0u))
+				return name + ": view destruction did not follow the last command owner";
+		}
+		for (size_t i = 0u; i < readbacks.Num(); ++i)
+		{
+			if (outputImages[i]->m_format == VK_FORMAT_D32_SFLOAT)
+			{
+				const auto* pixels = static_cast<const float*>(readbacks[i]->GetPointer());
+				for (size_t pixel = 0u; pixel < Side * Side; ++pixel)
+					if (!std::isfinite(pixels[pixel]) || std::abs(pixels[pixel] - 0.375f) > 0.00001f)
+						return std::format("{} depth pixel {}: expected 0.375, got {}", name, pixel, pixels[pixel]);
+			}
+			else if (auto error = CheckPixels(readbacks[i], Solid(ColorC), name.c_str()); !error.empty()) return error;
+		}
+		return {};
 	}
 
 	RHITexturePtr PrivateTextureView(RHITexturePtr source)
@@ -444,6 +614,8 @@ void GraphicsBindingResultTestComponent::Tick(float)
 		const auto& error = m_validation->GetResult();
 		m_imguiFrame.Clear();
 		if (!error.empty()) { MarkFailed(error); return; }
+		AddJournalEvent("AttachmentLifetime",
+			"Recorded views survive external release, two-command ownership and GPU completion; single-sample, MSAA MRT/depth resolves, optional missing resolve and legacy framebuffer pass full 8x8 readbacks and release after command reset");
 		AddJournalEvent("GraphicsBindingResultEvidence",
 			"Real single-sample RenderScene Process: same-command-buffer A/rejected B/same-request C, all 8x8 pixels and exact recorded counts; ordered 2/3/4 mixed runs record 2 runs/6 candidates; zero-descriptor draw passes; actual ImGui owner preserves callback and later list/index/vertex offsets");
 		MarkPassed();
@@ -469,7 +641,15 @@ void GraphicsBindingResultTestComponent::Tick(float)
 		m_validation = Tasks::CreateTaskWithResult<std::string>("Graphics binding result validation",
 			[shaders = m_shaders, frame = m_imguiFrame.GetRawPtr(), callbacks = &m_callbacks]()
 			{
-				auto error = ValidateScene(shaders);
+				auto error = ValidateAttachmentLifetime(AttachmentCase::SingleSample, false);
+				if (!error.empty()) return error;
+				for (const auto testCase : { AttachmentCase::SingleSample, AttachmentCase::Multisample,
+					AttachmentCase::PartialResolve, AttachmentCase::Legacy })
+				{
+					error = ValidateAttachmentLifetime(testCase, true);
+					if (!error.empty()) return error;
+				}
+				error = ValidateScene(shaders);
 				if (error.empty()) error = ValidateImGui(shaders[2], *frame, *callbacks);
 				return error;
 			}, EThreadType::RHI);

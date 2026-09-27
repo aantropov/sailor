@@ -351,22 +351,25 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 
 	if (depthStencilAttachmentResolve)
 	{
-		m_rhiDependecies.Insert(depthStencilAttachmentResolve->GetImage());
+		m_rhiDependecies.Insert(depthStencilAttachmentResolve);
 	}
 
 	for (auto& attachment : colorAttachments)
 	{
-		m_rhiDependecies.Insert(attachment->GetImage());
+		m_rhiDependecies.Insert(attachment);
 	}
 
 	for (auto& attachment : colorAttachmentResolves)
 	{
-		m_rhiDependecies.Insert(attachment->GetImage());
+		if (attachment)
+		{
+			m_rhiDependecies.Insert(attachment);
+		}
 	}
 
 	if (depthStencilAttachment)
 	{
-		m_rhiDependecies.Insert(depthStencilAttachment->GetImage());
+		m_rhiDependecies.Insert(depthStencilAttachment);
 	}
 
 	m_device->vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
@@ -439,6 +442,7 @@ void VulkanCommandBuffer::EndRenderPassEx()
 void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, VulkanFramebufferPtr frameBuffer, VkExtent2D extent, VkSubpassContents content, VkOffset2D offset, VkClearValue clearColor)
 {
 	m_rhiDependecies.Insert(renderPass);
+	m_rhiDependecies.Insert(frameBuffer);
 
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
