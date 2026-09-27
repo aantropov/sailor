@@ -250,18 +250,19 @@ void BlitNode::BlitRaw(RHI::RHICommandListPtr commandList,
 	commands->BindMaterial(commandList, material);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, material, { sceneView.m_frameBindings, m_shaderBindings });
+	if (commands->BindShaderBindings(commandList, material, { sceneView.m_frameBindings, m_shaderBindings }))
+	{
+		// TODO: Support regions
+		commands->SetViewport(commandList,
+			0, 0,
+			(float)dst->GetExtent().x, (float)dst->GetExtent().y,
+			glm::vec2(0, 0),
+			glm::vec2(dst->GetExtent().x, dst->GetExtent().y),
+			0, 1.0f);
 
-	// TODO: Support regions
-	commands->SetViewport(commandList,
-		0, 0,
-		(float)dst->GetExtent().x, (float)dst->GetExtent().y,
-		glm::vec2(0, 0),
-		glm::vec2(dst->GetExtent().x, dst->GetExtent().y),
-		0, 1.0f);
-
-	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-	RecordDrawCallStats(1);
+		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		RecordDrawCallStats(1);
+	}
 	commands->EndRenderPass(commandList);
 }
 

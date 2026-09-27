@@ -1120,62 +1120,70 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				{
 					if (packetIndex >= submissionResources->m_activeShadowViews.Num())
 					{
-						return;
+						return false;
 					}
 					auto& viewResources = *submissionResources->m_activeShadowViews[packetIndex];
-					if (viewResources.m_packet.GetGroups().IsEmpty() || !viewResources.m_perInstanceData)
+					DrawCallStats stats{};
+					if (!viewResources.m_packet.GetGroups().IsEmpty() && viewResources.m_perInstanceData)
 					{
-						return;
-					}
-					const auto prepareShadowMaterial = [&](
-						const RHIBatch& batch,
-						TVector<RHIShaderBindingSetPtr>& sets)
-					{
-						commands->PushConstants(commandList, batch.m_material,
-							sizeof(shadowPass.m_lightMatrix), &shadowPass.m_lightMatrix);
-						if (batch.m_material->GetRenderState().IsRequiredCustomDepthShader())
+						const auto prepareShadowMaterial = [&](
+							const RHIBatch& batch,
+							TVector<RHIShaderBindingSetPtr>& sets)
 						{
-							sets.Add(sceneView.m_frameBindings);
-							sets.Add(sceneView.m_rhiLightsData);
-							sets.Add(viewResources.m_perInstanceData);
-							sets.Add(batch.GetMaterialBindings());
-							sets.Add(batch.m_textureBindings);
-						}
-						else
-						{
-							sets.Add(sceneView.m_frameBindings);
-							sets.Add(viewResources.m_perInstanceData);
-							if (batch.m_textureBindings)
+							commands->PushConstants(commandList, batch.m_material,
+								sizeof(shadowPass.m_lightMatrix), &shadowPass.m_lightMatrix);
+							if (batch.m_material->GetRenderState().IsRequiredCustomDepthShader())
 							{
+								sets.Add(sceneView.m_frameBindings);
+								sets.Add(sceneView.m_rhiLightsData);
+								sets.Add(viewResources.m_perInstanceData);
+								sets.Add(batch.GetMaterialBindings());
 								sets.Add(batch.m_textureBindings);
 							}
-						}
-						const bool bSkinned =
-							batch.m_mesh->m_vertexDescription->HasAttribute(RHIVertexDescription::DefaultBoneIdsBinding) &&
-							batch.m_mesh->m_vertexDescription->HasAttribute(RHIVertexDescription::DefaultBoneWeightsBinding);
-						if (bSkinned && sceneView.m_boneMatrices)
-						{
-							sets.Add(sceneView.m_boneMatrices);
-						}
-					};
+							else
+							{
+								sets.Add(sceneView.m_frameBindings);
+								sets.Add(viewResources.m_perInstanceData);
+								if (batch.m_textureBindings)
+								{
+									sets.Add(batch.m_textureBindings);
+								}
+							}
+							const bool bSkinned =
+								batch.m_mesh->m_vertexDescription->HasAttribute(RHIVertexDescription::DefaultBoneIdsBinding) &&
+								batch.m_mesh->m_vertexDescription->HasAttribute(RHIVertexDescription::DefaultBoneWeightsBinding);
+							if (bSkinned && sceneView.m_boneMatrices)
+							{
+								sets.Add(sceneView.m_boneMatrices);
+							}
+						};
 
-					m_drawCallStats += RHIRecordPackedDrawPacket(
-						viewResources.m_packet,
-						commandList,
-						transferCommandList,
-						prepareShadowMaterial,
-						viewResources.m_perInstanceData,
-						viewResources.m_indirectBuffer,
-						glm::ivec4(renderArea.x, renderArea.y + renderArea.w, renderArea.z, -renderArea.w),
-						glm::uvec4(renderArea),
-						glm::vec2(0.0f, 1.0f));
-					viewResources.m_bUploadedThisSubmission = true;
+						stats = RHIRecordPackedDrawPacket(
+							viewResources.m_packet,
+							commandList,
+							transferCommandList,
+							prepareShadowMaterial,
+							viewResources.m_perInstanceData,
+							viewResources.m_indirectBuffer,
+							glm::ivec4(renderArea.x, renderArea.y + renderArea.w, renderArea.z, -renderArea.w),
+							glm::uvec4(renderArea),
+							glm::vec2(0.0f, 1.0f));
+						viewResources.m_bUploadedThisSubmission = true;
+					}
+					m_drawCallStats += stats;
+					const bool bComplete = stats.m_numInstances == viewResources.m_packet.GetNumDrawInstances();
+					const auto& token = sceneView.m_shadowMapsToUpdate[packetIndex].m_payloadCompletionToken;
+					if (!bComplete && token)
+					{
+						token->Complete(false);
+					}
+					return bComplete && (!token || token->IsSuccessful());
 				};
 
-				recordShadowPacket(index);
+				bool bShadowMapComplete = recordShadowPacket(index);
 				for (uint32_t dependencyPass : shadowPass.m_internalCommandsList)
 				{
-					recordShadowPacket(dependencyPass);
+					bShadowMapComplete &= recordShadowPacket(dependencyPass);
 				}
 
 				commands->EndRenderPass(commandList);
@@ -1185,8 +1193,9 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 				if (shadowPass.m_shadowType == EShadowType::EVSM && shadowPass.m_blurRadius.length() > 0.1f)
 				{
-					RHI::RHIRenderTargetPtr blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 6);
+					RHI::RHIRenderTargetPtr blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 1);
 					RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(commandList, blurDataBinding, &shadowPass.m_blurRadius, sizeof(glm::vec2));
+					bool bBlurComplete = false;
 
 					// Blur Horizontal
 					commands->BeginDebugRegion(commandList, "Blur Horizontal", DebugContext::Color_CmdPostProcess);
@@ -1217,21 +1226,23 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						blurDrawBindingSets.Clear(false);
 						blurDrawBindingSets.Add(sceneView.m_frameBindings);
 						blurDrawBindingSets.Add(blurShaderBindings);
-						commands->BindShaderBindings(
+						bBlurComplete = commands->BindShaderBindings(
 							commandList,
 							m_pBlurHorizontalMaterial,
 							blurDrawBindingSets);
+						if (bBlurComplete)
+						{
+							commands->SetViewport(commandList,
+								0, 0,
+								(float)shadowPass.m_shadowMap->GetExtent().x, (float)shadowPass.m_shadowMap->GetExtent().y,
+								glm::vec2(0, 0),
+								glm::vec2(shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
+								0, 1.0f);
 
-						commands->SetViewport(commandList,
-							0, 0,
-							(float)shadowPass.m_shadowMap->GetExtent().x, (float)shadowPass.m_shadowMap->GetExtent().y,
-							glm::vec2(0, 0),
-							glm::vec2(shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
-							0, 1.0f);
-
-						commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-						m_drawCallStats.m_numBatches++;
-						m_drawCallStats.m_numInstances++;
+							commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+							m_drawCallStats.m_numBatches++;
+							m_drawCallStats.m_numInstances++;
+						}
 						commands->EndRenderPass(commandList);
 
 						commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, EImageLayout::ColorAttachmentOptimal);
@@ -1239,9 +1250,10 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					}
 					commands->EndDebugRegion(commandList);
 
-					// Blur Vertical
-					commands->BeginDebugRegion(commandList, "Blur Vertical", DebugContext::Color_CmdPostProcess);
+					if (bBlurComplete)
 					{
+						// Blur Vertical
+						commands->BeginDebugRegion(commandList, "Blur Vertical", DebugContext::Color_CmdPostProcess);
 						driver->AddSamplerToShaderBindings(
 							blurShaderBindings,
 							"colorSampler",
@@ -1265,26 +1277,33 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						blurDrawBindingSets.Clear(false);
 						blurDrawBindingSets.Add(sceneView.m_frameBindings);
 						blurDrawBindingSets.Add(blurShaderBindings);
-						commands->BindShaderBindings(
+						bBlurComplete = commands->BindShaderBindings(
 							commandList,
 							m_pBlurVerticalMaterial,
 							blurDrawBindingSets);
+						if (bBlurComplete)
+						{
+							commands->SetViewport(commandList,
+								0, 0,
+								(float)shadowPass.m_shadowMap->GetExtent().x, (float)shadowPass.m_shadowMap->GetExtent().y,
+								glm::vec2(0, 0),
+								glm::vec2(shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
+								0, 1.0f);
 
-						commands->SetViewport(commandList,
-							0, 0,
-							(float)shadowPass.m_shadowMap->GetExtent().x, (float)shadowPass.m_shadowMap->GetExtent().y,
-							glm::vec2(0, 0),
-							glm::vec2(shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
-							0, 1.0f);
-
-						commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-						m_drawCallStats.m_numBatches++;
-						m_drawCallStats.m_numInstances++;
+							commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+							m_drawCallStats.m_numBatches++;
+							m_drawCallStats.m_numInstances++;
+						}
 						commands->EndRenderPass(commandList);
+						commands->EndDebugRegion(commandList);
 					}
-					commands->EndDebugRegion(commandList);
 
+					bShadowMapComplete &= bBlurComplete;
 					driver->ReleaseTemporaryRenderTarget(blurAttachment);
+				}
+				if (!bShadowMapComplete && shadowPass.m_payloadCompletionToken)
+				{
+					shadowPass.m_payloadCompletionToken->Complete(false);
 				}
 
 				// Lighting samples every completed shadow map later in the same

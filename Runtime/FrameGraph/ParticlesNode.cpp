@@ -231,11 +231,13 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 			glm::vec2(scissors.z, scissors.w),
 			0.0f, 1.0f);
 
-		commands->BindShaderBindings(commandList, m_material, sets);
-		commands->BindVertexBuffer(commandList, m_mesh->m_vertexBuffer, 0);
-		commands->BindIndexBuffer(commandList, m_mesh->m_indexBuffer, 0);
-		commands->DrawIndexed(commandList, m_mesh->GetIndexCount(), m_numInstances, m_mesh->GetFirstIndex(), m_mesh->GetVertexOffset(), 0);
-		RecordDrawCallStats(m_numInstances);
+		if (commands->BindShaderBindings(commandList, m_shadowMaterial, sets))
+		{
+			commands->BindVertexBuffer(commandList, m_mesh->m_vertexBuffer, 0);
+			commands->BindIndexBuffer(commandList, m_mesh->m_indexBuffer, 0);
+			commands->DrawIndexed(commandList, m_mesh->GetIndexCount(), m_numInstances, m_mesh->GetFirstIndex(), m_mesh->GetVertexOffset(), 0);
+			RecordDrawCallStats(m_numInstances);
+		}
 
 		commands->EndRenderPass(commandList);
 		commands->ImageMemoryBarrier(commandList, m_shadowMap, EImageLayout::ShaderReadOnlyOptimal);
@@ -263,11 +265,13 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		glm::vec2(scissors.z, scissors.w),
 		0.0f, 1.0f);
 
-	commands->BindShaderBindings(commandList, m_material, sets);
-	commands->BindVertexBuffer(commandList, m_mesh->m_vertexBuffer, 0);
-	commands->BindIndexBuffer(commandList, m_mesh->m_indexBuffer, 0);
-	commands->DrawIndexed(commandList, m_mesh->GetIndexCount(), m_numInstances, m_mesh->GetFirstIndex(), m_mesh->GetVertexOffset(), 0);
-	RecordDrawCallStats(m_numInstances);
+	if (commands->BindShaderBindings(commandList, m_material, sets))
+	{
+		commands->BindVertexBuffer(commandList, m_mesh->m_vertexBuffer, 0);
+		commands->BindIndexBuffer(commandList, m_mesh->m_indexBuffer, 0);
+		commands->DrawIndexed(commandList, m_mesh->GetIndexCount(), m_numInstances, m_mesh->GetFirstIndex(), m_mesh->GetVertexOffset(), 0);
+		RecordDrawCallStats(m_numInstances);
+	}
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);

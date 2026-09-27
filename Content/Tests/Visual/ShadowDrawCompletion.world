@@ -1,0 +1,18 @@
+name: ShadowDrawCompletion
+prefabs:
+  - gameObjects:
+      - name: Shadow draw completion validation
+        mobilityType: Stationary
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: 18220000000000000001
+        components: [0]
+    components:
+      - typename: Sailor::ShadowDrawCompletionTestComponent
+        overrideProperties:
+          testName: ShadowDrawCompletion
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 1822000000000001_18220000000000000001

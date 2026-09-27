@@ -603,15 +603,17 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	}
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, bUseMsaaTarget ? m_overlayMaterialMsaa : m_overlayMaterial, { sceneView.m_frameBindings, m_shaderBindings });
-	commands->SetViewport(commandList,
-		0.0f, 0.0f,
-		(float)dst->GetExtent().x, (float)dst->GetExtent().y,
-		glm::vec2(0.0f, 0.0f),
-		glm::vec2((float)dst->GetExtent().x, (float)dst->GetExtent().y),
-		0.0f, 1.0f);
-	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-	RecordDrawCallStats(1);
+	if (commands->BindShaderBindings(commandList, bUseMsaaTarget ? m_overlayMaterialMsaa : m_overlayMaterial, { sceneView.m_frameBindings, m_shaderBindings }))
+	{
+		commands->SetViewport(commandList,
+			0.0f, 0.0f,
+			(float)dst->GetExtent().x, (float)dst->GetExtent().y,
+			glm::vec2(0.0f, 0.0f),
+			glm::vec2((float)dst->GetExtent().x, (float)dst->GetExtent().y),
+			0.0f, 1.0f);
+		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		RecordDrawCallStats(1);
+	}
 	commands->EndRenderPass(commandList);
 	commands->EndDebugRegion(commandList);
 }

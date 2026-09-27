@@ -219,17 +219,18 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	commands->BindMaterial(commandList, m_postEffectMaterial);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_shaderBindings, sceneView.m_rhiLightsData });
+	if (commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_shaderBindings, sceneView.m_rhiLightsData }))
+	{
+		commands->SetViewport(commandList,
+			0, 0,
+			(float)target->GetExtent().x, (float)target->GetExtent().y,
+			glm::vec2(0, 0),
+			glm::vec2(target->GetExtent().x, target->GetExtent().y),
+			0, 1.0f);
 
-	commands->SetViewport(commandList,
-		0, 0,
-		(float)target->GetExtent().x, (float)target->GetExtent().y,
-		glm::vec2(0, 0),
-		glm::vec2(target->GetExtent().x, target->GetExtent().y),
-		0, 1.0f);
-
-	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-	RecordDrawCallStats(1);
+		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		RecordDrawCallStats(1);
+	}
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);

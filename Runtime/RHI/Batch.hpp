@@ -1638,7 +1638,6 @@ namespace Sailor::RHI
 			command.m_firstIndex = group.m_mesh->GetFirstIndex();
 			command.m_vertexOffset = group.m_mesh->GetVertexOffset();
 			command.m_firstInstance = firstIndexInstance + group.m_firstInstance;
-			stats.m_numInstances += group.m_numInstances;
 		}
 
 		for (const auto& upload : instanceUploads)
@@ -1757,19 +1756,25 @@ namespace Sailor::RHI
 				depthRange.y);
 			drawBindingSets.Clear(false);
 			collectShaderBindings(batch, drawBindingSets);
-			commands->BindShaderBindings(
+			if (commands->BindShaderBindings(
 				graphicsCmdList,
 				batch.m_material,
-				drawBindingSets);
-			commands->BindVertexBuffer(graphicsCmdList, batch.m_mesh->m_vertexBuffer, 0u);
-			commands->BindIndexBuffer(graphicsCmdList, batch.m_mesh->m_indexBuffer, 0u);
-			commands->DrawIndexedIndirect(
-				graphicsCmdList,
-				indirectCommandBuffer,
-				sizeof(DrawIndexedIndirectData) * runBegin,
-				runEnd - runBegin,
-				sizeof(DrawIndexedIndirectData));
-			++stats.m_numBatches;
+				drawBindingSets))
+			{
+				commands->BindVertexBuffer(graphicsCmdList, batch.m_mesh->m_vertexBuffer, 0u);
+				commands->BindIndexBuffer(graphicsCmdList, batch.m_mesh->m_indexBuffer, 0u);
+				commands->DrawIndexedIndirect(
+					graphicsCmdList,
+					indirectCommandBuffer,
+					sizeof(DrawIndexedIndirectData) * runBegin,
+					runEnd - runBegin,
+					sizeof(DrawIndexedIndirectData));
+				++stats.m_numBatches;
+				for (uint32_t groupIndex = runBegin; groupIndex < runEnd; ++groupIndex)
+				{
+					stats.m_numInstances += groups[groupIndex].m_numInstances;
+				}
+			}
 			runBegin = runEnd;
 		}
 		drawBindingSets.Clear(false);

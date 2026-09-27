@@ -4036,7 +4036,7 @@ VulkanGraphicsDriver::CachedDescriptorSet::CachedDescriptorSet(const VulkanPipel
 	m_initialDescriptorRevision = m_binding->GetDescriptorRevision();
 }
 
-void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)
+bool VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -4046,16 +4046,20 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::R
 		SAILOR_LOG_ERROR("VulkanGraphicsDriver::BindShaderBindings: cannot bind the complete descriptor set list. expected=%zu, actual=%zu",
 			material->m_vulkan.m_pipelines[0]->m_layout->m_descriptionSetLayouts.Num(),
 			sets.Num());
-		return;
+		return false;
 	}
 
-	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipelines[0]->m_layout, sets, VK_PIPELINE_BIND_POINT_GRAPHICS);
+	if (!sets.IsEmpty())
+	{
+		cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipelines[0]->m_layout, sets, VK_PIPELINE_BIND_POINT_GRAPHICS);
+	}
 
 	// Need to handle ShaderBindingSet, since it auto destructs all bindings and buffers
 	for (const auto& dep : bindings)
 	{
 		cmd->m_vulkan.m_commandBuffer->AddDependency(dep);
 	}
+	return true;
 }
 
 void VulkanGraphicsDriver::DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, size_t offset, uint32_t drawCount, uint32_t stride)

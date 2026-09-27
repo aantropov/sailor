@@ -299,7 +299,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API virtual void SetViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) override;
 		SAILOR_API virtual void SetDefaultViewport(RHI::RHICommandListPtr cmd) override;
-		SAILOR_API virtual void BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) override;
+		SAILOR_API virtual bool BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) override;
 		SAILOR_API virtual void DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, size_t offset, uint32_t drawCount, uint32_t stride) override;
 		SAILOR_API virtual void DrawIndexed(RHI::RHICommandListPtr cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance) override;
 		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary) override;

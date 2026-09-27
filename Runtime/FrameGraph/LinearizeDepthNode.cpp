@@ -116,15 +116,16 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 		0, 1.0f);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_linearizeDepth });
-	
-	//commands->PushConstants(commandList, m_postEffectMaterial, sizeof(PushConstants), &constants);
-	
-	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+	if (commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_linearizeDepth }))
+	{
+		//commands->PushConstants(commandList, m_postEffectMaterial, sizeof(PushConstants), &constants);
 
-	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-	RecordDrawCallStats(1);
+		const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
+		const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+
+		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		RecordDrawCallStats(1);
+	}
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);

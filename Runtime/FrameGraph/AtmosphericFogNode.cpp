@@ -159,13 +159,15 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 	commands->BindMaterial(commandList, m_material);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_material, { sceneView.m_frameBindings, m_bindings });
-	commands->SetViewport(commandList, 0, 0, viewport.z, viewport.w,
-		glm::vec2(0), glm::vec2(viewport.z, viewport.w), 0, 1.0f);
-	commands->DrawIndexed(commandList, 6, 1,
-		uint32_t(mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t)),
-		uint32_t(mesh->m_vertexBuffer->GetOffset() / mesh->m_vertexDescription->GetVertexStride()), 0);
-	RecordDrawCallStats(1);
+	if (commands->BindShaderBindings(commandList, m_material, { sceneView.m_frameBindings, m_bindings }))
+	{
+		commands->SetViewport(commandList, 0, 0, viewport.z, viewport.w,
+			glm::vec2(0), glm::vec2(viewport.z, viewport.w), 0, 1.0f);
+		commands->DrawIndexed(commandList, 6, 1,
+			uint32_t(mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t)),
+			uint32_t(mesh->m_vertexBuffer->GetOffset() / mesh->m_vertexDescription->GetVertexStride()), 0);
+		RecordDrawCallStats(1);
+	}
 	commands->EndRenderPass(commandList);
 	commands->EndDebugRegion(commandList);
 }

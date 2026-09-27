@@ -527,7 +527,10 @@ void ImGuiApi::ImGui_RenderDrawData(const PreparedFrame& frame, RHI::RHICommandL
 
 				const auto texture = frame.TextureBindings.find(pcmd->GetTexID());
 				const auto& bindings = texture != frame.TextureBindings.end() ? texture->second : frame.ShaderBindings;
-				RHI::Renderer::GetDriverCommands()->BindShaderBindings(drawCmdList, frame.Material, { bindings });
+				if (!RHI::Renderer::GetDriverCommands()->BindShaderBindings(drawCmdList, frame.Material, { bindings }))
+				{
+					continue;
+				}
 				RHI::Renderer::GetDriverCommands()->DrawIndexed(drawCmdList,
 					pcmd->ElemCount,
 					1,
