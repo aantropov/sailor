@@ -368,7 +368,7 @@ namespace
 		return {};
 	}
 
-	std::string ValidateLighting(ShadowDrawCompletionState& state)
+	[[maybe_unused]] std::string ValidateLighting(ShadowDrawCompletionState& state)
 	{
 		ShadowWorld world;
 		auto owner = world.Instantiate("Private directional light");
@@ -452,7 +452,7 @@ namespace
 		return snapshot.m_shadowMapsToUpdate.IsEmpty() ? std::string{} : "unchanged D did not reuse successful C";
 	}
 
-	std::string ValidateDependencies(ShadowDrawCompletionState& state)
+	[[maybe_unused]] std::string ValidateDependencies(ShadowDrawCompletionState& state)
 	{
 		auto& node = *state.m_nodes[1];
 		RHISceneViewSnapshot snapshot;
