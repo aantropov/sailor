@@ -210,14 +210,16 @@ namespace
 		for (uint32_t word = 0u; word < expected[0].size(); ++word)
 			expected[0][word] = 0x75ab1234u ^ (word * 2654435761u);
 		auto source = expected[0];
-		driver->UpdateShaderBinding_Immediate(bindings, Names[0], source.data(), sizeof(source));
+		if (!driver->UpdateShaderBinding_Immediate(bindings, Names[0], source.data(), sizeof(source)))
+			return "immediate neighbor update did not complete";
 		source.fill(0xdeadbeefu);
 		for (uint32_t round = 0u; round < 2u; ++round)
 		{
 			for (uint32_t word = 0u; word < expected[1].size(); ++word)
 				expected[1][word] = (0x219c0000u | (round << 12u)) ^ (word * 2246822519u);
 			source = expected[1];
-			driver->UpdateShaderBinding_Immediate(bindings, Names[1], source.data(), sizeof(source));
+			if (!driver->UpdateShaderBinding_Immediate(bindings, Names[1], source.data(), sizeof(source)))
+				return "immediate target update did not complete";
 			source.fill(0xdeadbeefu);
 
 			// Read on the same queue as the immediate updates; no cross-queue handoff is implied.

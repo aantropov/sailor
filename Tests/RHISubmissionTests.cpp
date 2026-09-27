@@ -118,6 +118,13 @@ namespace
 			!fence->IsFinished() && !fence->HasFailed() && !fence->Reset(),
 			"a fence without a submission cannot report successful completion");
 	}
+
+	void TestImmediateRefusalWithoutRenderer()
+	{
+		VulkanGraphicsDriver driver;
+		Require(!driver.SubmitCommandList_Immediate({}),
+			"immediate submission must report refusal without accessing a global renderer");
+	}
 }
 
 int main()
@@ -129,6 +136,7 @@ int main()
 		TestFailedFenceReleasesRecordedDependencies();
 		TestRepeatedTrackingAndFailureStayTerminal();
 		TestUnsubmittedFenceStaysPending();
+		TestImmediateRefusalWithoutRenderer();
 		std::cout << "RHI submission tests passed\n";
 		return 0;
 	}

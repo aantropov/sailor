@@ -109,19 +109,14 @@ void IGraphicsDriver::TrackPendingCommandList_ThreadSafe(RHIFencePtr handle)
 	m_lockTrackedFences.Unlock();
 }
 
-void IGraphicsDriver::SubmitCommandList_Immediate(RHICommandListPtr commandList)
+bool IGraphicsDriver::SubmitCommandList_Immediate(RHICommandListPtr commandList)
 {
 	RHIFencePtr fence = RHIFencePtr::Make();
-	RHI::Renderer::GetDriver()->SetDebugName(fence, "SubmitCommandList_Immediate");
-
-	if (SubmitCommandList(commandList, fence))
-	{
-		fence->Wait();
-	}
-	else
-	{
-		SAILOR_LOG_ERROR("IGraphicsDriver::SubmitCommandList_Immediate: command list submission failed.");
-	}
+	if (!SubmitCommandList(commandList, fence)) return false;
+	SetDebugName(fence, "SubmitCommandList_Immediate");
+	const auto status = fence->Wait();
+	TrackResources_ThreadSafe();
+	return status == EFenceStatus::Finished;
 }
 
 RHIVertexDescriptionPtr& IGraphicsDriver::GetOrAddVertexDescription(VertexAttributeBits bits)

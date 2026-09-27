@@ -8,6 +8,7 @@
 #include "RHI/Buffer.h"
 #include "RHI/CommandList.h"
 #include "RHI/Fence.h"
+#include "RHI/Material.h"
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
 #include "Tasks/Tasks.h"
@@ -49,11 +50,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 		static VulkanSemaphorePtr AcquireSemaphore(const VulkanDevice& device) { return device.m_imageAvailableSemaphores[device.m_currentFrame]; }
 		static VulkanSemaphorePtr PresentSemaphore(const VulkanDevice& device) { return device.m_renderFinishedSemaphores[device.m_currentSwapchainImageIndex]; }
 		static uint32_t ImageIndex(const VulkanDevice& device) { return device.m_currentSwapchainImageIndex; }
-		static VulkanQueuePtr UploadQueue(VulkanDevice& device)
+		static VulkanQueuePtr UploadQueue(VulkanDevice& device, bool transfer = false)
 		{
-			const auto graphics = device.m_queueFamilies.m_graphicsFamily;
-			if (graphics == device.m_queueFamilies.m_computeFamily) return device.m_computeQueue;
-			if (graphics == device.m_queueFamilies.m_transferFamily) return device.m_transferQueue;
+			const auto family = transfer ? device.m_queueFamilies.m_transferFamily : device.m_queueFamilies.m_graphicsFamily;
+			if (family == device.m_queueFamilies.m_computeFamily) return device.m_computeQueue;
+			if (family == device.m_queueFamilies.m_transferFamily) return device.m_transferQueue;
 			return device.m_graphicsQueue;
 		}
 		static void CheckSyncCounts(const VulkanDevice& device)
@@ -90,6 +91,8 @@ namespace
 	thread_local uint32_t fenceStatusCalls = 0u;
 	thread_local uint32_t fenceWaitCalls = 0u;
 	thread_local VkResult fenceWaitResult = VK_TIMEOUT;
+	thread_local bool captureNextFenceWait = false;
+	thread_local bool capturedFenceCompleted = false;
 
 	VKAPI_ATTR VkResult VKAPI_CALL NativeFenceStatus(VkDevice device, VkFence fence)
 	{
@@ -107,6 +110,14 @@ namespace
 	VKAPI_ATTR VkResult VKAPI_CALL NativeFenceWait(VkDevice device, uint32_t count, const VkFence* fences,
 		VkBool32 all, uint64_t timeout)
 	{
+		if (count == 1u && captureNextFenceWait)
+		{
+			captureNextFenceWait = false;
+			observedFences[0] = fences[0];
+			const auto actual = forwardFenceWait(device, count, fences, all, 5000000000ull);
+			capturedFenceCompleted = actual == VK_SUCCESS;
+			if (!capturedFenceCompleted) return actual;
+		}
 		if (count == 1u && fences[0] == observedFences[0])
 		{
 			++fenceWaitCalls;
@@ -130,6 +141,7 @@ namespace
 		{
 			VulkanSubmissionTestAccess::ExchangeFenceDispatch(m_device, m_status, m_wait);
 			observedFences = {};
+			captureNextFenceWait = false;
 		}
 
 	private:
@@ -512,6 +524,122 @@ namespace
 		}
 	}
 
+	void TestImmediateSubmission(bool lost)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		auto success = RecordFrame(811u);
+		const bool completed = driver->SubmitCommandList_Immediate(success.command);
+		Require(completed && success.command.NumRefs() == 1u,
+			"immediate success must report completion and release its command owner");
+		CheckReadback(success, true);
+		for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			if (!lost)
+			{
+				auto rejected = RecordFrame(911u);
+				{
+					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+					const bool accepted = driver->SubmitCommandList_Immediate(rejected.command);
+					Require(!accepted && rejected.command.NumRefs() == 1u,
+						"immediate refusal must report failure without retaining an unsubmitted command");
+				}
+				CheckReadback(rejected, false);
+				Require(driver->SubmitCommandList_Immediate(rejected.command), "a refused immediate command must remain retryable");
+				CheckReadback(rejected, true);
+			}
+			auto pending = RecordFrame(1011u);
+			{
+				FenceDispatchOverride dispatch(*device);
+				fenceResults = { VK_NOT_READY, VK_NOT_READY };
+				fenceWaitResult = lost ? VK_ERROR_DEVICE_LOST : error;
+				captureNextFenceWait = true;
+				capturedFenceCompleted = false;
+				fenceWaitCalls = 0u;
+				Require(!driver->SubmitCommandList_Immediate(pending.command) && capturedFenceCompleted && fenceWaitCalls == 1u,
+					"an unsuccessful immediate wait must reach the caller as failure");
+				Require(pending.command.NumRefs() == (lost ? 1u : 2u),
+					"immediate failure must retire terminal loss but retain a pending command after wait OOM");
+				if (!lost)
+				{
+					driver->TrackResources_ThreadSafe();
+					Require(pending.command.NumRefs() == 2u, "pending immediate ownership must survive repeated collection");
+					fenceResults[0] = VK_SUCCESS;
+					driver->TrackResources_ThreadSafe();
+					Require(pending.command.NumRefs() == 1u, "later completion must release the pending immediate command");
+				}
+			}
+			CheckReadback(pending, true);
+			if (lost)
+			{
+				Require(!driver->SubmitCommandList_Immediate(pending.command), "a lost device must refuse later immediate work");
+				break;
+			}
+		}
+	}
+
+	void TestImmediateBindingUpdate(bool lost)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		std::array<uint32_t, 64> data{};
+		for (uint32_t i = 0; i < data.size(); ++i) data[i] = 171u + 43u * i;
+		auto buffer = driver->CreateBuffer(sizeof(data), EBufferUsageBit::UniformBuffer_Bit |
+			EBufferUsageBit::BufferTransferSrc_Bit | EBufferUsageBit::BufferTransferDst_Bit, EMemoryPropertyBit::DeviceLocal);
+		auto bindings = driver->CreateShaderBindings();
+		driver->AddBufferToShaderBindings(bindings, buffer, "immediate", 0u);
+		auto checkData = [&]()
+			{
+				auto readback = driver->CreateBuffer(sizeof(data), EBufferUsageBit::BufferTransferDst_Bit,
+					EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+				auto command = driver->CreateCommandList(false, ECommandListQueue::Transfer);
+				commands->BeginCommandList(command, true);
+				auto& native = command->m_vulkan.m_commandBuffer;
+				native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+				native->CopyBuffer(*buffer->m_vulkan.m_buffer->Get(), *readback->m_vulkan.m_buffer->Get(), sizeof(data));
+				native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+				commands->EndCommandList(command);
+				Require(driver->SubmitCommandList_Immediate(command), "binding readback did not complete");
+				const auto* actual = static_cast<const uint32_t*>(readback->GetPointer());
+				Require(std::equal(data.begin(), data.end(), actual), "immediate binding contents mismatch");
+			};
+		Require(driver->UpdateShaderBinding_Immediate(bindings, "immediate", data.data(), sizeof(data)),
+			"successful binding upload must report completion");
+		checkData();
+		for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			if (!lost)
+			{
+				auto refused = data;
+				refused.fill(0xdeadbeefu);
+				{
+					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device, true), error);
+					Require(!driver->UpdateShaderBinding_Immediate(bindings, "immediate", refused.data(), sizeof(refused)),
+						"binding update must propagate submit refusal");
+				}
+				checkData();
+			}
+			for (auto& value : data) value += 121u;
+			{
+				FenceDispatchOverride dispatch(*device);
+				fenceResults = { VK_NOT_READY, VK_NOT_READY };
+				fenceWaitResult = lost ? VK_ERROR_DEVICE_LOST : error;
+				captureNextFenceWait = true;
+				capturedFenceCompleted = false;
+				Require(!driver->UpdateShaderBinding_Immediate(bindings, "immediate", data.data(), sizeof(data)) && capturedFenceCompleted,
+					"binding update must propagate accepted wait failure");
+				if (!lost)
+				{
+					fenceResults[0] = VK_SUCCESS;
+					driver->TrackResources_ThreadSafe();
+				}
+			}
+			if (lost) break;
+			checkData();
+		}
+	}
+
 	int RunFenceGpu(int argc, const char** argv, std::string_view mode)
 	{
 		App::Initialize(argv, argc);
@@ -522,7 +650,14 @@ namespace
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 			OnRender([&]()
 				{
-					if (mode == "--gpu-fence-completion") TestFenceCompletionAndReuse();
+					if (mode == "--gpu-immediate")
+					{
+						TestImmediateSubmission(false);
+						TestImmediateBindingUpdate(false);
+					}
+					else if (mode == "--gpu-immediate-lost") TestImmediateSubmission(true);
+					else if (mode == "--gpu-immediate-binding-lost") TestImmediateBindingUpdate(true);
+					else if (mode == "--gpu-fence-completion") TestFenceCompletionAndReuse();
 					else TestAcceptedUploadLoss(mode == "--gpu-fence-wait-loss");
 				});
 			std::cout << "Native fence test passed: " << mode << '\n';
@@ -599,7 +734,8 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
-		if (mode == "--gpu-fence-poll-loss" || mode == "--gpu-fence-wait-loss" || mode == "--gpu-fence-completion")
+		if (mode == "--gpu-fence-poll-loss" || mode == "--gpu-fence-wait-loss" || mode == "--gpu-fence-completion" ||
+			mode == "--gpu-immediate" || mode == "--gpu-immediate-lost" || mode == "--gpu-immediate-binding-lost")
 			return RunFenceGpu(argc, argv, mode);
 		if (std::string_view(argv[i]) == "--gpu-present") return RunGpu(argc, argv, true, false);
 		if (std::string_view(argv[i]) == "--gpu-offscreen") return RunGpu(argc, argv, false, false);

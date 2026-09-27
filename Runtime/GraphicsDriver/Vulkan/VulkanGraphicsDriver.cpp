@@ -2360,7 +2360,7 @@ TSharedPtr<VulkanBufferAllocator> VulkanGraphicsDriver::GetUniformBufferAllocato
 	return result;
 }
 
-void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, const void* value, size_t size)
+bool VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, const void* value, size_t size)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -2375,7 +2375,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSe
 	UpdateShaderBinding(commandList, shaderBinding, value, size);
 	EndCommandList(commandList);
 
-	SubmitCommandList_Immediate(commandList);
+	return SubmitCommandList_Immediate(commandList);
 }
 
 RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CreateShaderBindings()

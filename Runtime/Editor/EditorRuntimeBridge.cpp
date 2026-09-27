@@ -14,7 +14,6 @@
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "Platform/Win32/Input.h"
 #include "RHI/Buffer.h"
-#include "RHI/Fence.h"
 #include "RHI/Renderer.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Surface.h"
@@ -137,15 +136,11 @@ namespace
 		commands->ImageMemoryBarrier(cmd, renderTarget, renderTarget->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, renderTarget->GetDefaultLayout());
 		commands->EndCommandList(cmd);
 
-		auto fence = RHI::RHIFencePtr::Make();
-		if (!driver->SubmitCommandList(cmd, fence))
+		if (!driver->SubmitCommandList_Immediate(cmd))
 		{
-			SAILOR_LOG_ERROR("EditorRuntimeBridge: viewport readback submission failed.");
+			SAILOR_LOG_ERROR("EditorRuntimeBridge: viewport readback did not complete.");
 			return nullptr;
 		}
-		fence->Wait();
-		fence->ClearDependencies();
-		fence->ClearObservables();
 
 		const auto* src = reinterpret_cast<const uint8_t*>(readbackBuffer->GetPointer());
 		if (!src)

@@ -213,10 +213,10 @@ namespace Sailor::RHI
 		SAILOR_API virtual void ReleaseTemporaryRenderTarget(RHI::RHIRenderTargetPtr renderTarget);
 
 		//Immediate context
-		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
+		SAILOR_API virtual bool UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		SAILOR_API virtual void CopyBuffer_Immediate(RHIBufferPtr src, RHIBufferPtr dst, size_t size) = 0;
-		SAILOR_API virtual void SubmitCommandList_Immediate(RHICommandListPtr commandList);
+		SAILOR_API virtual bool SubmitCommandList_Immediate(RHICommandListPtr commandList);
 
                 SAILOR_API virtual RHITexturePtr CreateImage_Immediate(
                         const void* pData,
