@@ -312,12 +312,11 @@ VkFormat VulkanDevice::GetDepthFormat() const
 	);
 }
 
-TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
+VulkanDeviceMemoryAllocator& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties,
+	VkMemoryRequirements requirements, EVulkanMemoryClass memoryClass)
 {
-	size_t hash{};
-	HashCombine(hash, properties, requirements.memoryTypeBits);
-
-	auto& pAllocator = m_memoryAllocators.At_Lock(hash);
+	const MemoryAllocatorKey key{ properties, requirements.memoryTypeBits, memoryClass };
+	auto& pAllocator = m_memoryAllocators.At_Lock(key);
 
 	if (!pAllocator)
 	{
@@ -326,13 +325,14 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 		const size_t ReservedSize = 64 * AverageElementSize;
 
 		pAllocator = TUniquePtr<VulkanDeviceMemoryAllocator>::Make(BlockSize, AverageElementSize, ReservedSize);
+
+		// Pool configuration stays immutable while allocations use their own lock.
+		auto& vulkanAllocator = pAllocator->GetGlobalAllocator();
+		vulkanAllocator.SetMemoryProperties(properties);
+		vulkanAllocator.SetMemoryRequirements(requirements);
 	}
 
-	auto& vulkanAllocator = pAllocator->GetGlobalAllocator();
-	vulkanAllocator.SetMemoryProperties(properties);
-	vulkanAllocator.SetMemoryRequirements(requirements);
-
-	m_memoryAllocators.Unlock(hash);
+	m_memoryAllocators.Unlock(key);
 
 	return *pAllocator;
 }

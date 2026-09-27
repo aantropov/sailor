@@ -26,6 +26,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 	using VulkanDeviceMemoryAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanMemoryAllocator, VulkanMemoryPtr>;
 	using VulkanBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
 
+	enum class EVulkanMemoryClass
+	{
+		Linear,
+		OptimalImage
+	};
+
 	// Thread independent resources
 	struct ThreadContext
 	{
@@ -131,7 +137,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API ThreadContext& GetCurrentThreadContext();
 		SAILOR_API ThreadContext& GetOrAddThreadContext(DWORD threadId);
-		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
+		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties,
+			VkMemoryRequirements requirements, EVulkanMemoryClass memoryClass);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetStagingBufferAllocator() { return GetCurrentThreadContext().m_stagingBufferAllocator; }
 		SAILOR_API VulkanStateViewportPtr GetCurrentFrameViewport() const { return m_pCurrentFrameViewport; }
 		SAILOR_API const auto& GetMemoryAllocators() const { return m_memoryAllocators; }
@@ -222,8 +229,24 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		TConcurrentMap<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
 
-		// We're sharing the same device memory between the different buffers
-		TConcurrentMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>, 16u, ERehashPolicy::Never> m_memoryAllocators;
+		struct MemoryAllocatorKey
+		{
+			VkMemoryPropertyFlags m_properties = 0;
+			uint32_t m_memoryTypeBits = 0;
+			EVulkanMemoryClass m_memoryClass = EVulkanMemoryClass::Linear;
+
+			bool operator==(const MemoryAllocatorKey& rhs) const = default;
+
+			size_t GetHash() const
+			{
+				size_t hash{};
+				HashCombine(hash, m_properties, m_memoryTypeBits, static_cast<uint32_t>(m_memoryClass));
+				return hash;
+			}
+		};
+
+		// Linear resources and optimal images must not share device-memory blocks.
+		TConcurrentMap<MemoryAllocatorKey, TUniquePtr<VulkanDeviceMemoryAllocator>, 16u, ERehashPolicy::Never> m_memoryAllocators;
 
 		// Dynamic rendering extension
 		PFN_vkCmdBeginRendering pVkCmdBeginRendering{};

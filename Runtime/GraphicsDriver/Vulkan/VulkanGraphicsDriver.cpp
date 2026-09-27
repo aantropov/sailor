@@ -3453,7 +3453,8 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 	cmd->m_vulkan.m_commandBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 #elif defined(SAILOR_VULKAN_SHARE_DEVICE_MEMORY_FOR_STAGING_BUFFERS)
 
-	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
+	auto& stagingMemoryAllocator = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		requirements, EVulkanMemoryClass::Linear);
 
 	SAILOR_PROFILE_BLOCK("Allocate staging memory"_h);
 	auto pData = stagingMemoryAllocator.Allocate(size, requirements.alignment);

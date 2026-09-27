@@ -1059,13 +1059,10 @@ VulkanBufferPtr VulkanApi::CreateBuffer(VulkanDevicePtr device, VkDeviceSize siz
 	VulkanBufferPtr outBuffer = VulkanBufferPtr::Make(device, size, usage, sharingMode);
 	outBuffer->Compile();
 
-	// TODO: Pass into Allocate the correct allignment for memory device allocation
 	auto requirements = outBuffer->GetMemoryRequirements();
 
-	//requirements.size += device->GetBufferImageGranuality();
-	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
-
-	auto data = device->GetMemoryAllocator(properties, requirements).Allocate(requirements.size, requirements.alignment);
+	auto data = device->GetMemoryAllocator(properties, requirements, EVulkanMemoryClass::Linear)
+		.Allocate(requirements.size, requirements.alignment);
 	outBuffer->Bind(data);
 
 	return outBuffer;
@@ -1177,11 +1174,9 @@ VulkanImagePtr VulkanApi::CreateImageUpload(
 
 	auto requirements = outImage->GetMemoryRequirements();
 
-	// We must respect bufferImageGranuality
-	//requirements.size += device->GetBufferImageGranuality();
-	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
-
-	auto& imageMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), requirements);
+	const EVulkanMemoryClass memoryClass = outImage->m_tiling == VK_IMAGE_TILING_LINEAR ?
+		EVulkanMemoryClass::Linear : EVulkanMemoryClass::OptimalImage;
+	auto& imageMemoryAllocator = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements, memoryClass);
 	auto data = imageMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
 	outImage->Bind(data);
@@ -1242,11 +1237,9 @@ VulkanImagePtr VulkanApi::CreateImage(
 
 	auto requirements = outImage->GetMemoryRequirements();
 
-	// We must respect bufferImageGranuality
-	//requirements.size += device->GetBufferImageGranuality();
-	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
-
-	auto& imageMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), requirements);
+	const EVulkanMemoryClass memoryClass = outImage->m_tiling == VK_IMAGE_TILING_LINEAR ?
+		EVulkanMemoryClass::Linear : EVulkanMemoryClass::OptimalImage;
+	auto& imageMemoryAllocator = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements, memoryClass);
 	auto data = imageMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
 	outImage->Bind(data);

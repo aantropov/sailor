@@ -11,7 +11,10 @@ void VulkanImage::Release()
 {
 	if (m_ptr)
 	{
-		m_device->GetMemoryAllocator(m_deviceMemory->GetMemoryPropertyFlags(), m_deviceMemory->GetMemoryRequirements()).Free(m_ptr);
+		const EVulkanMemoryClass memoryClass = m_tiling == VK_IMAGE_TILING_LINEAR ?
+			EVulkanMemoryClass::Linear : EVulkanMemoryClass::OptimalImage;
+		m_device->GetMemoryAllocator(m_deviceMemory->GetMemoryPropertyFlags(),
+			m_deviceMemory->GetMemoryRequirements(), memoryClass).Free(m_ptr);
 	}
 
 	if (m_image)
