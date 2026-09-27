@@ -336,6 +336,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API const TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>>& GetUniformBufferAllocators() const { return m_uniformBuffers; }
 
 	protected:
+		void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr bufferPtr,
+			const void* data, size_t size, size_t offset,
+			TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator> allocation);
+
 		TVector<uint32_t> CollectPublishedVariableDescriptorCounts(const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindingSets) const;
 
 		class ComputePipelineCacheKey

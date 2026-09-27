@@ -3445,12 +3445,11 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHICommandListPtr cmd, RHI::
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto device = m_vkInstance->GetMainDevice();
-
 	if (parameter->IsBind())
 	{
-		auto& binding = parameter->m_vulkan.m_valueBinding->Get();
-		Update(cmd, *binding, pData, size, variableOffset);
+		auto allocation = parameter->m_vulkan.m_valueBinding;
+		auto binding = *allocation->Get();
+		Update(cmd, binding, pData, size, variableOffset, std::move(allocation));
 	}
 }
 
@@ -3482,6 +3481,13 @@ void VulkanGraphicsDriver::UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBuff
 
 void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr bufferPtr, const void* data, size_t size, size_t offset)
 {
+	Update(std::move(cmd), std::move(bufferPtr), data, size, offset, {});
+}
+
+void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr bufferPtr,
+	const void* data, size_t size, size_t offset,
+	TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator> allocation)
+{
 	SAILOR_PROFILE_FUNCTION();
 	if (size == 0)
 	{
@@ -3492,6 +3498,11 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 		SAILOR_LOG_ERROR(
 			"VulkanGraphicsDriver::Update: invalid buffer upload.");
 		return;
+	}
+
+	if (allocation)
+	{
+		cmd->m_vulkan.m_commandBuffer->AddDependency(std::move(allocation));
 	}
 
 	auto device = m_vkInstance->GetMainDevice();

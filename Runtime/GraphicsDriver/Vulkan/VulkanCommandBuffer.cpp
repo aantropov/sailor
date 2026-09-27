@@ -836,6 +836,11 @@ void VulkanCommandBuffer::AddDependency(RHI::RHIResourcePtr resource)
 	m_rhiDependecies.Insert(resource);
 }
 
+void VulkanCommandBuffer::AddDependency(TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator> allocation)
+{
+	m_managedMemoryPtrs.Insert(std::move(allocation));
+}
+
 void VulkanCommandBuffer::AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator)
 {
 	m_memoryPtrs.Insert(TPair(ptr, allocator));
@@ -843,6 +848,7 @@ void VulkanCommandBuffer::AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, T
 
 void VulkanCommandBuffer::ClearDependencies()
 {
+	m_managedMemoryPtrs.Clear();
 	m_rhiDependecies.Clear();
 	m_imageBarriers.Clear();
 

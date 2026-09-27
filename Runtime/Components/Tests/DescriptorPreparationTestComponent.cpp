@@ -403,6 +403,159 @@ namespace
 			driver->AddSsboToShaderBindings(bindings, name, sizeof(Values), 1u, 1u, true);
 	}
 
+	enum class UploadRelease { Reset, Destroy, TwoCommands };
+
+	std::string ValidateBareUploadOwners(bool uniform, UploadRelease release)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		const std::string name = std::format("ManagedUploadGate_{}_{}", uniform ? "UBO" : "SSBO", static_cast<uint32_t>(release));
+		auto inputs = driver->CreateShaderBindings();
+		auto binding = AddManagedSource(inputs, name, uniform);
+		if (!binding || !binding->m_vulkan.m_valueBinding) return name + ": managed A allocation failed";
+		TWeakPtr<ManagedBufferOwner> weakA(binding->m_vulkan.m_valueBinding);
+		const VkDescriptorSet originalNative = *inputs->m_vulkan.m_descriptorSet;
+		const uint64_t revision = inputs->GetDescriptorRevision();
+		std::array<RHICommandListPtr, 2> uploads;
+		const size_t count = release == UploadRelease::TwoCommands ? 2u : 1u;
+		for (size_t i = 0u; i < count; ++i)
+		{
+			uploads[i] = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(uploads[i], true);
+			Values data = InputValues[0];
+			commands->UpdateShaderBinding(uploads[i], binding, data.data(), sizeof(data));
+			data.fill(0xdeadbeefu);
+			commands->EndCommandList(uploads[i]);
+		}
+		const bool replaced = AddManagedSource(inputs, name, uniform) == binding &&
+			inputs->GetDescriptorRevision() == revision + 1u &&
+			static_cast<VkDescriptorSet>(*inputs->m_vulkan.m_descriptorSet) != originalNative;
+		binding.Clear();
+		inputs.Clear();
+		// Old runtimes must reach only this out-of-line Reset, never inline native command fields or a submission.
+		if (!replaced || !weakA.TryLock())
+		{
+			for (size_t i = 0u; i < count; ++i) uploads[i]->m_vulkan.m_commandBuffer->Reset();
+			return name + (replaced ? ": bare upload lost A after same-binding replacement, before submission" :
+				": B did not preserve binding identity and publish once");
+		}
+		if (release == UploadRelease::Destroy) uploads[0].Clear();
+		else uploads[0]->m_vulkan.m_commandBuffer->Reset();
+		if (count == 2u)
+		{
+			const bool retainedBySecond = static_cast<bool>(weakA.TryLock());
+			uploads[1]->m_vulkan.m_commandBuffer->Reset();
+			if (!retainedBySecond) return name + ": first reset released A while the second upload command remained";
+		}
+		if (weakA.TryLock()) return name + ": A remained owned after the last upload command was reset or destroyed";
+		return {};
+	}
+
+	std::string ValidateBareUploadReadbacks(ShaderSetPtr shader, bool uniform)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		const std::string name = uniform ? "ManagedUploadGpu_UBO" : "ManagedUploadGpu_SSBO";
+		auto pipeline = nativeDriver->GetOrAddComputePipeline(shader->GetComputeShaderRHI());
+		if (!pipeline || !pipeline->IsCompiled() || pipeline->m_layout->m_descriptionSetLayouts.Num() != 2u)
+			return name + ": compute pipeline did not expose two sets";
+		auto blocker = driver->CreateShaderBindings();
+		if (!AddManagedSource(blocker, name, uniform)) return name + ": live allocation blocker failed";
+		auto inputs = driver->CreateShaderBindings();
+		auto binding = AddManagedSource(inputs, name, uniform);
+		if (!binding || !binding->m_vulkan.m_valueBinding) return name + ": managed A allocation failed";
+		const size_t alignment = uniform ? device->GetMinUboOffsetAlignment() : device->GetMinSsboOffsetAlignment();
+		if (binding->GetBufferOffset() % alignment != 0u || (uniform && binding->GetBufferOffset() == 0u) ||
+			(!uniform && !binding->m_vulkan.m_bBindSsboWithOffset))
+			return name + ": managed source did not expose the required aligned offset";
+		TWeakPtr<ManagedBufferOwner> weakA(binding->m_vulkan.m_valueBinding);
+		const auto rangeA = *binding->m_vulkan.m_valueBinding->Get();
+		const VkDescriptorSet originalNative = *inputs->m_vulkan.m_descriptorSet;
+		const uint64_t revision = inputs->GetDescriptorRevision();
+		auto neighbor = CreatePublicationBuffer(InputValues[1]);
+		VulkanDescriptorPtr neighborDescriptor = VulkanDescriptorBufferPtr::Make(0u, 0u,
+			neighbor->m_vulkan.m_buffer.m_ptr.m_buffer, 0u, sizeof(Values), EShaderBindingType::StorageBuffer);
+		const auto rawSet = [&](const Memory::VulkanBufferMemoryPtr& range)
+		{
+			// This overload owns only the backing buffer, not the managed reservation being tested.
+			VulkanDescriptorPtr source = VulkanDescriptorBufferPtr::Make(1u, 0u, range.m_buffer, range.m_offset, range.m_size,
+				uniform ? EShaderBindingType::UniformBuffer : EShaderBindingType::StorageBuffer);
+			return VulkanDescriptorSetPtr::Make(device, device->GetCurrentThreadContext().m_descriptorPool,
+				pipeline->m_layout->m_descriptionSetLayouts[0], TVector<VulkanDescriptorPtr>{ source, neighborDescriptor });
+		};
+		auto rawA = rawSet(rangeA);
+		if (!rawA->TryCompile() || !VulkanApi::IsCompatible(pipeline->m_layout, rawA, 0u))
+			return name + ": raw A descriptors did not match the shader";
+		auto cmd = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(cmd, true);
+		auto native = cmd->m_vulkan.m_commandBuffer;
+		native->BindPipeline(pipeline);
+		native->AddDependency(shader->GetComputeShaderRHI());
+		native->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+		Values dataA = InputValues[0];
+		dataA[1] ^= 0x13579bdfu;
+		commands->UpdateShaderBinding(cmd, binding, dataA.data(), sizeof(dataA));
+		dataA.fill(0xdeadbeefu);
+		native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		uint32_t word = InputValues[0][1];
+		commands->UpdateShaderBinding(cmd, binding, &word, sizeof(word), sizeof(uint32_t));
+		word = 0xdeadbeefu;
+		native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT);
+		TVector<PublicationReadback> readbacks;
+		const auto record = [&](VulkanDescriptorSetPtr source, const Values& expected, const char* version) -> std::string
+		{
+			constexpr size_t size = 2u * sizeof(Values);
+			auto output = driver->CreateBuffer(size, EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit,
+				EMemoryPropertyBit::DeviceLocal);
+			auto outputBindings = driver->CreateShaderBindings();
+			if (!driver->AddBufferToShaderBindings(outputBindings, output, "outputValue", 0u) ||
+				!VulkanApi::IsCompatible(pipeline->m_layout, outputBindings->m_vulkan.m_descriptorSet, 1u))
+				return name + ": output descriptor setup failed";
+			native->BindDescriptorSet(pipeline->m_layout, { source, outputBindings->m_vulkan.m_descriptorSet }, VK_PIPELINE_BIND_POINT_COMPUTE);
+			native->Dispatch(1u, 1u, 1u);
+			PublicationReadback readback{ driver->CreateBuffer(size, EBufferUsageBit::BufferTransferDst_Bit, PublicationHostMemory),
+				Expected({ expected, InputValues[1] }), name + " " + version };
+			std::memset(readback.m_buffer->GetPointer(), 0xa7, size);
+			native->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+			native->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+			native->CopyBuffer(*output->m_vulkan.m_buffer, *readback.m_buffer->m_vulkan.m_buffer, size);
+			readbacks.Emplace(std::move(readback));
+			return {};
+		};
+		auto error = record(rawA, InputValues[0], "A after partial word update");
+		if (!error.empty()) return error;
+		if (AddManagedSource(inputs, name, uniform) != binding || inputs->GetDescriptorRevision() != revision + 1u ||
+			static_cast<VkDescriptorSet>(*inputs->m_vulkan.m_descriptorSet) == originalNative)
+			return name + ": replacement B did not preserve binding identity and publish once";
+		TWeakPtr<ManagedBufferOwner> weakB(binding->m_vulkan.m_valueBinding);
+		const auto rangeB = *binding->m_vulkan.m_valueBinding->Get();
+		auto rawB = rawSet(rangeB);
+		if (!rawB->TryCompile() || !VulkanApi::IsCompatible(pipeline->m_layout, rawB, 0u))
+			return name + ": raw B descriptors did not match the shader";
+		native->MemoryBarrier(VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		Values dataB = InputValues[2];
+		commands->UpdateShaderBinding(cmd, binding, dataB.data(), sizeof(dataB));
+		dataB.fill(0xdeadbeefu);
+		native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT);
+		error = record(rawB, InputValues[2], "B");
+		if (!error.empty()) return error;
+		error = record(rawA, InputValues[0], "retained A");
+		if (!error.empty()) return error;
+		binding.Clear();
+		inputs.Clear();
+		blocker.Clear();
+		if (!weakA.TryLock() || !weakB.TryLock())
+			return name + ": bare uploads did not retain both managed destinations before submission";
+		error = FinishPublication(cmd, readbacks);
+		if (!error.empty()) return name + ": " + error;
+		if (weakA.TryLock() || weakB.TryLock())
+			return name + ": a managed destination remained owned after fence/reset while raw descriptors stayed alive";
+		if (!rawA->IsCompiled() || !rawB->IsCompiled()) return name + ": raw descriptors were not retained through the expiry check";
+		return {};
+	}
+
 	std::string ValidateManagedOwnerGate(ShaderSetPtr shader, bool uniform, bool projected)
 	{
 		auto& driver = Renderer::GetDriver();
@@ -944,6 +1097,8 @@ void DescriptorPreparationTestComponent::Tick(float)
 		if (!m_validation->IsFinished()) return;
 		const auto& result = m_validation->GetResult();
 		if (!result.m_error.empty()) { MarkFailed(result.m_error); return; }
+		AddJournalEvent("ManagedUploadRetention",
+			"Bare UBO/offset-SSBO uploads retain replaced destinations until reset, destruction or last-command release; 2 x A/B/A full 8-word readbacks passed with poisoned CPU data and aligned byte-offset updates; weak owners expired while raw descriptors stayed alive");
 		AddJournalEvent("DescriptorManagedRetention",
 			"Direct/projected UBO and offset-bound AddSsbo retain A across replacement B: factory-only weak gates, 4 x A/B/A full 8-word GPU readbacks, stale-cache collection and weak expiry after fence/reset passed");
 		AddJournalEvent("DescriptorPreparationEvidence",
@@ -986,6 +1141,13 @@ void DescriptorPreparationTestComponent::Tick(float)
 			[shader = m_shader, publication = m_publicationShaders]()
 			{
 				ValidationResult result;
+				// The native command layout changed: old runtimes must stop here without inline native access or GPU submission.
+				for (bool uniform : { true, false })
+					for (UploadRelease release : { UploadRelease::Reset, UploadRelease::Destroy, UploadRelease::TwoCommands })
+					{
+						result.m_error = ValidateBareUploadOwners(uniform, release);
+						if (!result.m_error.empty()) return result;
+					}
 				// A final-header executable on old runtimes must stop before any test-side native descriptor construction or submission.
 				for (bool projected : { false, true })
 					for (bool uniform : { true, false })
@@ -993,6 +1155,11 @@ void DescriptorPreparationTestComponent::Tick(float)
 						result.m_error = ValidateManagedOwnerGate(publication[uniform ? 4u : 0u], uniform, projected);
 						if (!result.m_error.empty()) return result;
 					}
+				for (bool uniform : { true, false })
+				{
+					result.m_error = ValidateBareUploadReadbacks(publication[uniform ? 4u : 0u], uniform);
+					if (!result.m_error.empty()) return result;
+				}
 				for (bool projected : { false, true })
 					for (bool uniform : { true, false })
 					{

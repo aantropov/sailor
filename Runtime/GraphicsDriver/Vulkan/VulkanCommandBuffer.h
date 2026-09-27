@@ -1,5 +1,6 @@
 #pragma once
 #include "VulkanApi.h"
+#include "VulkanBufferMemory.h"
 #include "Memory/RefPtr.hpp"
 #include "RHI/Types.h"
 #include "VulkanGraphicsDriver.h"
@@ -151,6 +152,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void Reset();
 
 		SAILOR_API void AddDependency(RHI::RHIResourcePtr resource);
+		SAILOR_API void AddDependency(TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator> allocation);
 		SAILOR_API void AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator);
 
 		SAILOR_API bool BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration = VkFilter::VK_FILTER_LINEAR);
@@ -184,6 +186,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkFormat m_currentDepthAttachment = VkFormat::VK_FORMAT_UNDEFINED;
 
 		TSet<RHI::RHIResourcePtr> m_rhiDependecies;
+		TSet<TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>> m_managedMemoryPtrs;
 		TSet<TPair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;
 
 		// That is used for image barrier optimization
