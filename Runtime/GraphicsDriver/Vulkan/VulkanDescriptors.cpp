@@ -662,6 +662,18 @@ VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
 	m_bufferInfo.range = m_range;
 }
 
+VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
+	uint32_t dstArrayElement,
+	TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator> allocation,
+	VkDeviceSize offset,
+	VkDeviceSize range,
+	RHI::EShaderBindingType bufferType) :
+	VulkanDescriptorBuffer(dstBinding, dstArrayElement, (*allocation->Get()).m_buffer,
+		offset, range, bufferType)
+{
+	m_allocation = std::move(allocation);
+}
+
 void VulkanDescriptorBuffer::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
 {
 	VulkanDescriptor::Apply(writeDescriptorSet);

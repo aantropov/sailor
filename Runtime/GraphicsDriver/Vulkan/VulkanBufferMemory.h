@@ -134,3 +134,10 @@ namespace Sailor::Memory
 		return true;
 	}
 }
+
+namespace Sailor::GraphicsDriver::Vulkan
+{
+	using VulkanBufferAllocator = Sailor::Memory::TBlockAllocator<
+		Sailor::Memory::GlobalVulkanBufferAllocator,
+		Sailor::Memory::VulkanBufferMemoryPtr>;
+}

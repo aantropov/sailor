@@ -24,7 +24,6 @@ using namespace Sailor::Memory;
 namespace Sailor::GraphicsDriver::Vulkan
 {
 	using VulkanDeviceMemoryAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanMemoryAllocator, VulkanMemoryPtr>;
-	using VulkanBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
 
 	enum class EVulkanMemoryClass
 	{

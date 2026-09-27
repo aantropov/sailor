@@ -394,6 +394,206 @@ namespace
 		return {};
 	}
 
+	using ManagedBufferOwner = Memory::TManagedMemory<Memory::VulkanBufferMemoryPtr, VulkanBufferAllocator>;
+
+	RHIShaderBindingPtr AddManagedSource(RHIShaderBindingSetPtr& bindings, const std::string& name, bool uniform)
+	{
+		auto& driver = Renderer::GetDriver();
+		return uniform ? driver->AddBufferToShaderBindings(bindings, name, sizeof(Values), 1u, EShaderBindingType::UniformBuffer) :
+			driver->AddSsboToShaderBindings(bindings, name, sizeof(Values), 1u, 1u, true);
+	}
+
+	std::string ValidateManagedOwnerGate(ShaderSetPtr shader, bool uniform, bool projected)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
+		const std::string name = std::format("DescriptorRetentionGate_{}_{}", uniform ? "UBO" : "SSBO", projected ? "projected" : "direct");
+		auto inputs = driver->CreateShaderBindings();
+		VulkanComputePipelinePtr pipeline;
+		if (projected)
+		{
+			auto neighbor = CreatePublicationBuffer(InputValues[1]);
+			if (!driver->AddBufferToShaderBindings(inputs, neighbor, "neighbor", 0u) ||
+				!driver->AddBufferToShaderBindings(inputs, neighbor, "unused", 31u))
+				return name + ": projection input setup failed";
+			pipeline = nativeDriver->GetOrAddComputePipeline(shader->GetComputeShaderRHI());
+			if (!pipeline || !pipeline->IsCompiled()) return name + ": compute pipeline is unavailable";
+		}
+		auto binding = AddManagedSource(inputs, name, uniform);
+		if (!binding || !binding->m_vulkan.m_valueBinding || !inputs->m_vulkan.m_descriptorSet ||
+			!inputs->m_vulkan.m_descriptorSet->IsCompiled()) return name + ": managed A was not published";
+		TWeakPtr<ManagedBufferOwner> weakA(binding->m_vulkan.m_valueBinding);
+		auto directA = inputs->m_vulkan.m_descriptorSet;
+		auto retainedA = directA;
+		const uint64_t revision = inputs->GetDescriptorRevision();
+		if (projected)
+		{
+			if (nativeDriver->IsCompatible(pipeline->m_layout, { inputs })[0])
+				return name + ": unused binding did not force projection";
+			auto sets = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
+			if (sets.Num() != 1u || !sets[0] || !sets[0]->IsCompiled() || sets[0] == directA)
+				return name + ": distinct projected A was not prepared";
+			retainedA = sets[0];
+			sets.Clear();
+		}
+		if (AddManagedSource(inputs, name, uniform) != binding || inputs->GetDescriptorRevision() != revision + 1u ||
+			inputs->m_vulkan.m_descriptorSet == directA || !inputs->m_vulkan.m_descriptorSet->IsCompiled())
+			return name + ": replacement B did not preserve binding identity and publish once";
+		// Neither a saved m_vulkan value nor the direct set may mask projection ownership.
+		directA.Clear();
+		if (!weakA.TryLock()) return name + ": A expired while its retained native descriptor set was still alive";
+		if (projected)
+		{
+			nativeDriver->CollectGarbage_RenderThread();
+			if (!weakA.TryLock()) return name + ": projected A lost its allocation when the stale cache key was removed";
+		}
+		retainedA.Clear();
+		if (weakA.TryLock()) return name + ": A remained owned after its last native descriptor was released";
+		return {};
+	}
+
+	std::string ValidateManagedReadbacks(ShaderSetPtr shader, bool uniform, bool projected)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		const std::string name = std::format("DescriptorRetentionGpu_{}_{}", uniform ? "UBO" : "SSBO", projected ? "projected" : "direct");
+		auto pipeline = nativeDriver->GetOrAddComputePipeline(shader->GetComputeShaderRHI());
+		if (!pipeline || !pipeline->IsCompiled() || pipeline->m_layout->m_descriptionSetLayouts.Num() != 2u)
+			return name + ": compute pipeline did not expose two sets";
+		auto blocker = driver->CreateShaderBindings();
+		if (!AddManagedSource(blocker, name, uniform)) return name + ": live allocation blocker failed";
+		auto inputs = driver->CreateShaderBindings();
+		auto neighbor = CreatePublicationBuffer(InputValues[1]);
+		if (!driver->AddBufferToShaderBindings(inputs, neighbor, "neighbor", 0u) ||
+			(projected && !driver->AddBufferToShaderBindings(inputs, neighbor, "unused", 31u)))
+			return name + ": input setup failed";
+		auto binding = AddManagedSource(inputs, name, uniform);
+		if (!binding || !binding->m_vulkan.m_valueBinding) return name + ": managed A allocation failed";
+		const size_t alignment = uniform ? device->GetMinUboOffsetAlignment() : device->GetMinSsboOffsetAlignment();
+		if (binding->GetBufferOffset() % alignment != 0u || (uniform && binding->GetBufferOffset() == 0u) ||
+			(!uniform && !binding->m_vulkan.m_bBindSsboWithOffset))
+			return name + ": managed source did not expose the required aligned offset";
+		TWeakPtr<ManagedBufferOwner> weakA(binding->m_vulkan.m_valueBinding);
+		auto nativeA = inputs->m_vulkan.m_descriptorSet;
+		const VkDescriptorSet directHandleA = *nativeA;
+		const uint64_t revision = inputs->GetDescriptorRevision();
+		if (!projected)
+		{
+			auto reflectedLayout = pipeline->m_layout->m_descriptionSetLayouts[0];
+			auto directLayout = nativeA->GetDescriptorSetLayout();
+			const auto& reflectedBindings = reflectedLayout->m_descriptorSetLayoutBindings;
+			const auto& directBindings = directLayout->m_descriptorSetLayoutBindings;
+			if (directBindings.Num() != reflectedBindings.Num() ||
+				directLayout->GetVariableDescriptorBinding() != reflectedLayout->GetVariableDescriptorBinding())
+				return name + ": direct layout count/variable binding differs from reflection";
+			for (const auto& expected : reflectedBindings)
+			{
+				const size_t index = directBindings.FindIf([&](const auto& actual) { return actual.binding == expected.binding; });
+				if (index == size_t(-1)) return name + ": direct layout lacks a reflected binding";
+				const auto& actual = directBindings[index];
+				if (actual.descriptorType != expected.descriptorType || actual.descriptorCount != expected.descriptorCount ||
+					actual.stageFlags != expected.stageFlags || actual.pImmutableSamplers != expected.pImmutableSamplers)
+					return std::format("{}: direct binding {} differs from reflection", name, expected.binding);
+			}
+			// The engine compares layout vectors in order. Keep the same interface without changing the cached pipeline.
+			auto layout = VulkanPipelineLayoutPtr::Make(device,
+				TVector<VulkanDescriptorSetLayoutPtr>{ directLayout, pipeline->m_layout->m_descriptionSetLayouts[1] },
+				pipeline->m_layout->GetShaderLayout(), pipeline->m_layout->m_pushConstantRanges, pipeline->m_layout->m_flags);
+			auto directPipeline = VulkanComputePipelinePtr::Make(device, layout, pipeline->m_stage);
+			if (!directPipeline->Compile()) return name + ": private direct-layout pipeline could not be compiled";
+			pipeline = std::move(directPipeline);
+		}
+		if (nativeDriver->IsCompatible(pipeline->m_layout, { inputs })[0] == projected)
+		{
+			std::string error = name + ": source did not take the requested direct/projected path";
+			for (const auto& layout : { pipeline->m_layout->m_descriptionSetLayouts[0], nativeA->GetDescriptorSetLayout() })
+			{
+				error += " [";
+				for (const auto& entry : layout->m_descriptorSetLayoutBindings)
+					error += std::format(" binding={},type={},count={},stages={}", entry.binding,
+						static_cast<uint32_t>(entry.descriptorType), entry.descriptorCount, entry.stageFlags);
+				error += " ]";
+			}
+			return error;
+		}
+		if (projected)
+		{
+			auto sets = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
+			if (sets.Num() != 1u || !sets[0] || !sets[0]->IsCompiled() || sets[0] == nativeA)
+				return name + ": projected A was not prepared independently";
+			nativeA = sets[0];
+			sets.Clear();
+		}
+		auto cmd = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(cmd, true);
+		auto native = cmd->m_vulkan.m_commandBuffer;
+		native->BindPipeline(pipeline);
+		native->AddDependency(shader->GetComputeShaderRHI());
+		native->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+		commands->UpdateShaderBinding(cmd, binding, InputValues[0].data(), sizeof(Values));
+		native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT);
+		TVector<PublicationReadback> readbacks;
+		const auto record = [&](VulkanDescriptorSetPtr source, const Values& expected, const char* version) -> std::string
+		{
+			constexpr size_t size = 2u * sizeof(Values);
+			auto output = driver->CreateBuffer(size, EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit,
+				EMemoryPropertyBit::DeviceLocal);
+			auto outputBindings = driver->CreateShaderBindings();
+			if (!driver->AddBufferToShaderBindings(outputBindings, output, "outputValue", 0u) ||
+				!VulkanApi::IsCompatible(pipeline->m_layout, outputBindings->m_vulkan.m_descriptorSet, 1u))
+				return name + ": output descriptor setup failed";
+			// Bind the immutable native version, not the RHI entry that will become B.
+			native->BindDescriptorSet(pipeline->m_layout, { source, outputBindings->m_vulkan.m_descriptorSet }, VK_PIPELINE_BIND_POINT_COMPUTE);
+			native->Dispatch(1u, 1u, 1u);
+			PublicationReadback readback{ driver->CreateBuffer(size, EBufferUsageBit::BufferTransferDst_Bit, PublicationHostMemory),
+				Expected({ expected, InputValues[1] }), name + " " + version };
+			std::memset(readback.m_buffer->GetPointer(), 0xa7, size);
+			native->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+			native->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+			native->CopyBuffer(*output->m_vulkan.m_buffer, *readback.m_buffer->m_vulkan.m_buffer, size);
+			readbacks.Emplace(std::move(readback));
+			return {};
+		};
+		auto error = record(nativeA, InputValues[0], "A");
+		if (!error.empty()) return error;
+		if (AddManagedSource(inputs, name, uniform) != binding || inputs->GetDescriptorRevision() != revision + 1u ||
+			static_cast<VkDescriptorSet>(*inputs->m_vulkan.m_descriptorSet) == directHandleA)
+			return name + ": replacement B did not preserve binding identity and publish once";
+		auto nativeB = inputs->m_vulkan.m_descriptorSet;
+		if (nativeDriver->IsCompatible(pipeline->m_layout, { inputs })[0] == projected)
+			return name + ": B did not keep the requested direct/projected path";
+		if (projected)
+		{
+			auto sets = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
+			if (sets.Num() != 1u || !sets[0] || !sets[0]->IsCompiled() || sets[0] == nativeB || sets[0] == nativeA)
+				return name + ": projected B was not prepared independently";
+			nativeB = sets[0];
+			sets.Clear();
+		}
+		native->MemoryBarrier(VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		commands->UpdateShaderBinding(cmd, binding, InputValues[2].data(), sizeof(Values));
+		native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT);
+		error = record(nativeB, InputValues[2], "B");
+		if (!error.empty()) return error;
+		error = record(nativeA, InputValues[0], "retained A");
+		if (!error.empty()) return error;
+		nativeA.Clear();
+		nativeB.Clear();
+		binding.Clear();
+		inputs.Clear();
+		blocker.Clear();
+		neighbor.Clear();
+		nativeDriver->CollectGarbage_RenderThread();
+		if (!weakA.TryLock()) return name + ": recorded native descriptors did not retain A before submission";
+		error = FinishPublication(cmd, readbacks);
+		if (!error.empty()) return name + ": " + error;
+		nativeDriver->CollectGarbage_RenderThread();
+		if (weakA.TryLock()) return name + ": A remained owned after the fence, command reset and cache collection";
+		return {};
+	}
+
 	bool PublishedHashIsCurrent(RHIShaderBindingSetPtr bindings)
 	{
 		const size_t published = bindings->GetCompatibilityHashCode();
@@ -744,6 +944,8 @@ void DescriptorPreparationTestComponent::Tick(float)
 		if (!m_validation->IsFinished()) return;
 		const auto& result = m_validation->GetResult();
 		if (!result.m_error.empty()) { MarkFailed(result.m_error); return; }
+		AddJournalEvent("DescriptorManagedRetention",
+			"Direct/projected UBO and offset-bound AddSsbo retain A across replacement B: factory-only weak gates, 4 x A/B/A full 8-word GPU readbacks, stale-cache collection and weak expiry after fence/reset passed");
 		AddJournalEvent("DescriptorPreparationEvidence",
 			"All-or-none native preparation, buffer/image handle rejection, same-candidate retry, empty/sparse sets and 4 x 8-word GPU readbacks (A/C/A and appended set, each with neighbor) passed");
 		AddJournalEvent("DescriptorVariableCapacity", result.m_bVariableDescriptorsTested ?
@@ -784,6 +986,19 @@ void DescriptorPreparationTestComponent::Tick(float)
 			[shader = m_shader, publication = m_publicationShaders]()
 			{
 				ValidationResult result;
+				// A final-header executable on old runtimes must stop before any test-side native descriptor construction or submission.
+				for (bool projected : { false, true })
+					for (bool uniform : { true, false })
+					{
+						result.m_error = ValidateManagedOwnerGate(publication[uniform ? 4u : 0u], uniform, projected);
+						if (!result.m_error.empty()) return result;
+					}
+				for (bool projected : { false, true })
+					for (bool uniform : { true, false })
+					{
+						result.m_error = ValidateManagedReadbacks(publication[uniform ? 4u : 0u], uniform, projected);
+						if (!result.m_error.empty()) return result;
+					}
 				result.m_error = ValidateDescriptors(shader, result.m_bVariableDescriptorsTested);
 				if (result.m_error.empty()) result.m_error = ValidateImagePublication(publication[1], false);
 				if (result.m_error.empty()) result.m_error = ValidateImagePublication(publication[2], true);
@@ -791,7 +1006,7 @@ void DescriptorPreparationTestComponent::Tick(float)
 				if (result.m_error.empty()) result.m_error = ValidateVariablePublication(publication[3],
 					result.m_bVariableDescriptorsTested, result.m_bSparsePublicationTested);
 				return result;
-			}, EThreadType::RHI);
+			}, EThreadType::Render);
 		m_validation->Run();
 	}
 	else if (Utils::GetCurrentTimeMs() - GetStartTimeMs() > 30000)

@@ -2047,7 +2047,7 @@ bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 
 				const auto valueBinding = *(binding->m_vulkan.m_valueBinding->Get());
 				auto descr = VulkanDescriptorBufferPtr::Make(binding->m_vulkan.m_descriptorSetLayout.binding, 0,
-					valueBinding.m_buffer,
+					binding->m_vulkan.m_valueBinding,
 					bBindWithoutOffset ? 0 : valueBinding.m_offset,
 					valueBinding.m_size,
 					type);
@@ -3894,7 +3894,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 						const auto valueBinding = *(binding.m_second->m_vulkan.m_valueBinding->Get());
 						auto descr = VulkanDescriptorBufferPtr::Make(matchedLayoutBinding.binding,
 							0,
-							valueBinding.m_buffer,
+							binding.m_second->m_vulkan.m_valueBinding,
 							bBindWithoutOffset ? 0 : valueBinding.m_offset,
 							valueBinding.m_size,
 							binding.m_second->GetLayout().m_type);
