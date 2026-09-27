@@ -747,7 +747,6 @@ bool VulkanGraphicsDriver::FixLostDevice(Win32::Window* pViewport)
 		auto fixLostDevice_RenderThread = [this, pViewport, &recovered]()
 			{
 				SAILOR_PROFILE_SCOPE("Fix lost device");
-				m_vkInstance->WaitIdle();
 				if (!m_vkInstance->GetMainDevice()->FixLostDevice(pViewport)) return;
 				RefreshSwapchainTargets();
 				m_cachedMsaaRenderTargets.Clear();

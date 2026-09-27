@@ -243,6 +243,17 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(VulkanRenderPassTests)
 endif()
 
+add_executable(VulkanSubmissionTests VulkanSubmissionTests.cpp)
+target_compile_features(VulkanSubmissionTests PRIVATE cxx_std_20)
+target_include_directories(VulkanSubmissionTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(VulkanSubmissionTests PRIVATE Sailor::Runtime)
+# GPU scenarios are explicit command-line modes; default CTest needs no device.
+add_test(NAME VulkanSubmissionTests COMMAND VulkanSubmissionTests)
+set_tests_properties(VulkanSubmissionTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(VulkanSubmissionTests)
+endif()
+
 add_executable(EditorViewportControllerContractTests
     EditorViewportControllerContractTests.cpp
 )

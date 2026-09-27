@@ -61,7 +61,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API const TUniquePtr<VulkanSamplerCache>& GetSamplers() const { return m_samplers; }
 		SAILOR_API TUniquePtr<VulkanPipelineStateBuilder>& GetPipelineBuilder() { return m_pipelineBuilder; }
 
-		SAILOR_API void WaitIdle();
+		SAILOR_API VkResult WaitIdle();
 		SAILOR_API void WaitIdlePresentQueue();
 
 		SAILOR_API bool BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage);
@@ -172,6 +172,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void CreateFrameDependencies();
 		SAILOR_API void CreateFrameSyncSemaphores();
 		SAILOR_API void CleanupSwapChain();
+		void PrepareFrameCommands(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers,
+			bool hasSwapchainImage, TVector<VkCommandBuffer>& outCommands);
+		bool SubmitFrame(const VkSubmitInfo& submitInfo);
+		bool ConsumeAcquiredImage();
 
 		VkPhysicalDeviceProperties m_physicalDeviceProperties{};
 		VkPhysicalDeviceDepthStencilResolveProperties m_depthStencilResolveProperties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES };
@@ -216,9 +220,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanSemaphorePtr> m_renderFinishedSemaphores;
 		TVector<VulkanFencePtr> m_syncFences;
 		TVector<VulkanFencePtr> m_syncImages;
+		TVector<bool> m_swapchainImagesInitialized;
+		std::optional<uint32_t> m_acquiredImageFlight;
 		size_t m_currentFrame = 0;
 		uint32_t m_currentSwapchainImageIndex = 0;
-		bool m_bNeedToTransitSwapchainToPresent = true;
+		bool m_bDepthBufferInitialized = false;
+		VkResult m_frameSubmissionError = VK_SUCCESS;
 
 		std::atomic<bool> m_bIsSwapChainOutdated = true;
 		std::atomic<bool> m_bIsSwapChainSuboptimal = false;
@@ -268,7 +275,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		uint32_t m_numSubmittedCommandBuffersAcc = 0;
 		uint32_t m_numSubmittedCommandBuffers = 0;
 
-		bool m_bIsDeviceLost = false;
+		std::atomic<bool> m_bIsDeviceLost = false;
 		bool m_bLastFrameSubmitSuccessful = false;
+		friend class VulkanSubmissionTestAccess;
 	};
 }
