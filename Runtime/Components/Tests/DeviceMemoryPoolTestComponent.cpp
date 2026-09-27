@@ -9,7 +9,9 @@
 #include "RHI/Fence.h"
 #include "RHI/Renderer.h"
 #include "RHI/RenderTarget.h"
+#include <algorithm>
 #include <array>
+#include <cstring>
 #include <format>
 
 using namespace Sailor;
@@ -33,6 +35,41 @@ namespace
 		VulkanImagePtr m_image{};
 		std::array<uint8_t, ByteCount> m_expected{};
 	};
+
+	std::string ValidateMappedMemoryCopy(std::string& evidence)
+	{
+		constexpr size_t Prefix = 37u;
+		constexpr size_t PayloadSize = 4u * 1024u * 1024u + 3u;
+		constexpr size_t Suffix = 53u;
+		constexpr size_t TotalSize = Prefix + PayloadSize + Suffix;
+		const EMemoryPropertyFlags hostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
+		auto buffer = Renderer::GetDriver()->CreateBuffer(TotalSize, EBufferUsageBit::BufferTransferSrc_Bit, hostMemory);
+		auto range = **buffer->m_vulkan.m_buffer;
+		auto* mapped = static_cast<uint8_t*>(buffer->GetPointer());
+		if (!mapped) return "mapped copy validation received unmapped host-visible memory";
+		TVector<uint8_t> source(PayloadSize);
+		const auto pattern = [](size_t byte, uint32_t pass)
+		{
+			return uint8_t(byte * 29u + (byte >> 8u) + pass * 101u + 17u);
+		};
+		for (uint32_t pass = 0u; pass < 2u; ++pass)
+		{
+			const uint8_t canary = uint8_t(0xb7u + pass);
+			std::memset(mapped, canary, TotalSize);
+			for (size_t byte = 0u; byte < PayloadSize; ++byte) source[byte] = pattern(byte, pass);
+			range.m_deviceMemory->Copy(range.m_offset + Prefix, PayloadSize, source.GetData());
+			std::fill(source.begin(), source.end(), uint8_t(0xeeu));
+			for (size_t byte = 0u; byte < TotalSize; ++byte)
+			{
+				const uint8_t expected = byte >= Prefix && byte < Prefix + PayloadSize ? pattern(byte - Prefix, pass) : canary;
+				if (mapped[byte] != expected)
+					return std::format("mapped copy pass {} byte {}: expected {:#x}, got {:#x}", pass, byte, expected, mapped[byte]);
+			}
+		}
+		evidence += std::format("mapped Copy passed 2 full {}-byte payloads at buffer offset 37 (physical base {}), "
+			"37/53-byte canaries and poisoned CPU sources; no GPU transfer used; ", PayloadSize, range.m_offset);
+		return {};
+	}
 
 	std::string ValidatePoolSelection(VulkanBufferPtr buffer, std::string& evidence)
 	{
@@ -255,6 +292,7 @@ void DeviceMemoryPoolTestComponent::Tick(float)
 				ValidationResult result;
 				result.m_error = ValidateMemoryPools(result.m_evidence, result.m_linearBuffer);
 				if (result.m_error.empty()) result.m_error = ValidatePoolSelection(result.m_linearBuffer, result.m_evidence);
+				if (result.m_error.empty()) result.m_error = ValidateMappedMemoryCopy(result.m_evidence);
 				return result;
 			}, EThreadType::RHI);
 			m_validation->Run();
