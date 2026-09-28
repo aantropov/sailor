@@ -533,6 +533,98 @@ namespace
 	}
 
 #if defined(__APPLE__)
+	void TestRepeatedReadbacksReuseUploadedPixels()
+	{
+		bool copiedAgain = false;
+		for (const auto [width, height] : { std::pair{64u, 48u}, std::pair{1280u, 720u}, std::pair{1920u, 1080u} })
+		{
+			FakeMacRendererFrameSourceProvider input;
+			input.m_nextSource = MakeMacReadbackSource(width, height, 0x44);
+			MacLoopbackIOSurfaceProvider provider(&input);
+			MacViewportTransportBackend backend(provider);
+			const auto viewport = MakeViewport(89, width, height);
+			TransportDescriptor transport;
+			Require(backend.EnsureSurface(viewport, 1, 1, transport).IsOk(), "repeat readback needs a real native surface");
+			ExportReadyFrame(backend, viewport, 1, 1);
+			const auto* allocation = provider.FindAllocation({ viewport.m_viewportId, 1, 1 });
+			const auto originalCopy = allocation->m_currentCopyToken;
+			const auto start = std::chrono::steady_clock::now();
+			for (uint32_t i = 0; i < 100; ++i)
+			{
+				const auto frame = ExportReadyFrame(backend, viewport, 1, 1);
+				Require(frame.m_frameIndex == i + 2, "unchanged pixels must still allow export and presentation retry");
+			}
+			const auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+			std::cout << "Readback reuse " << width << 'x' << height << ": 100 exports " << elapsed << " ms" << std::endl;
+			copiedAgain |= allocation->m_currentCopyToken != originalCopy;
+			Require(originalCopy != 0 && allocation->m_lastProducerCopyToken == allocation->m_currentCopyToken &&
+				ReadIOSurfaceBGRA8Pixel(allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, width / 2, height / 2) == 0x44444444u,
+				"repeated export must preserve real native pixels and their write provenance");
+			Require(backend.ReleaseSurface(viewport.m_viewportId, 1, 1).IsOk(), "repeat readback must release its allocation");
+		}
+		Require(!copiedAgain, "the same immutable readback must not upload again on repeated export");
+	}
+
+	void TestReadbackReuseInvalidationAndMutableSources()
+	{
+		FakeMacRendererFrameSourceProvider input;
+		input.m_nextSource = MakeMacReadbackSource(64, 48, 0x11);
+		MacLoopbackIOSurfaceProvider provider(&input);
+		MacViewportTransportBackend backend(provider);
+		const auto viewport = MakeViewport(90, 64, 48);
+		TransportDescriptor transport;
+		Require(backend.EnsureSurface(viewport, 1, 1, transport).IsOk(), "readback invalidation needs a native surface");
+		ExportReadyFrame(backend, viewport, 1, 1);
+		auto allocation = std::as_const(backend).FindSurface(viewport.m_viewportId, 1, 1)->m_nativeAllocation;
+		const auto firstCopy = allocation->m_currentCopyToken;
+		input.m_nextSource = MakeMacReadbackSource(64, 48, 0x22);
+		Require(backend.BeginFrame(viewport, 1, 1).IsOk(), "a distinct readback with the same frame token must prepare");
+		const auto nextCopy = allocation->m_currentCopyToken;
+		Require(nextCopy != firstCopy && backend.BeginFrame(viewport, 1, 1).IsOk() && allocation->m_currentCopyToken == nextCopy,
+			"prepared retry must not copy again, but a new immutable record must upload");
+		ExportReadyFrame(backend, viewport, 1, 1);
+		Require(ReadIOSurfaceBGRA8Pixel(allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 0, 0) == 0x22222222u,
+			"new record contents must replace the previous image");
+
+		// A write abandoned before export must invalidate reuse of the last exported source.
+		std::vector<uint8_t> overwritten(64u * 48u * 4u, 0x33);
+		MacNativeBridgeRendererFrameInfo write;
+		Require(UploadMacRendererBytesToProducerTexture(*allocation, overwritten.data(), 64u * 4u, write).IsOk() &&
+			allocation->m_currentCopyToken != allocation->m_lastProducerCopyToken, "unexported write must have distinct native provenance");
+		ExportReadyFrame(backend, viewport, 1, 1);
+		Require(allocation->m_currentCopyToken != write.m_producerCopyToken &&
+			ReadIOSurfaceBGRA8Pixel(allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 0, 0) == 0x22222222u,
+			"the last exported record must be uploaded again after an unexported overwrite");
+
+		Require(backend.EnsureSurface(viewport, 1, 2, transport).IsOk(), "a new generation must allocate its own surface");
+		ExportReadyFrame(backend, viewport, 1, 2);
+		auto replacement = std::as_const(backend).FindSurface(viewport.m_viewportId, 1, 2)->m_nativeAllocation;
+		Require(replacement != allocation && replacement->m_currentCopyToken != allocation->m_currentCopyToken &&
+			ReadIOSurfaceBGRA8Pixel(replacement->m_surfaceObject, replacement->m_plane.m_bytesPerRow, 0, 0) == 0x22222222u,
+			"a new native allocation must upload even an unchanged readback record");
+
+		input.m_nextSource.m_readback.Clear();
+		input.m_nextSource.m_cpuBytes = Sailor::TSharedPtr<std::vector<uint8_t>>::Make(overwritten.size(), 0x44);
+		ExportReadyFrame(backend, viewport, 1, 2);
+		const auto externalCopy = replacement->m_currentCopyToken;
+		for (auto& byte : *input.m_nextSource.m_cpuBytes) byte = 0x55;
+		ExportReadyFrame(backend, viewport, 1, 2);
+		Require(replacement->m_currentCopyToken != externalCopy &&
+			ReadIOSurfaceBGRA8Pixel(replacement->m_surfaceObject, replacement->m_plane.m_bytesPerRow, 0, 0) == 0x55555555u,
+			"an external CPU vector may change in place and must never be deduplicated by address or frame token");
+		const auto resized = MakeViewport(viewport.m_viewportId, 80, 56);
+		input.m_nextSource = MakeMacReadbackSource(80, 56, 0x66);
+		Require(backend.EnsureSurface(resized, 1, 3, transport).IsOk(), "resize must create a correctly sized allocation");
+		const auto resizedFrame = ExportReadyFrame(backend, resized, 1, 3);
+		const auto resizedAllocation = std::as_const(backend).FindSurface(viewport.m_viewportId, 1, 3)->m_nativeAllocation;
+		Require(resizedFrame.m_frameIndex == 1 && resizedFrame.m_width == 80 && resizedFrame.m_height == 56 &&
+			ReadIOSurfaceBGRA8Pixel(resizedAllocation->m_surfaceObject, resizedAllocation->m_plane.m_bytesPerRow, 79, 55) == 0x66666666u,
+			"resize must upload the new record, including its final row and column");
+		Require(backend.ReleaseSurface(viewport.m_viewportId, 1, 1).IsOk() && backend.ReleaseSurface(viewport.m_viewportId, 1, 2).IsOk() &&
+			backend.ReleaseSurface(viewport.m_viewportId, 1, 3).IsOk() && provider.GetLiveAllocationCount() == 0,
+			"all native generations must release");
+	}
+
 	void TestConcreteMacLoopbackProviderDefersStaleRendererSource()
 	{
 		FakeMacRendererFrameSourceProvider sourceProvider{};
@@ -786,6 +878,8 @@ int main()
 		{ "MacNativeHostImportPresentResetAndFailures", TestMacNativeHostImportPresentResetAndFailures },
 		{ "MacLoopbackBindingCreateResizeVisibilityAndDestroy", TestMacLoopbackBindingCreateResizeVisibilityAndDestroy },
 #if defined(__APPLE__)
+		{ "RepeatedReadbacksReuseUploadedPixels", TestRepeatedReadbacksReuseUploadedPixels },
+		{ "ReadbackReuseInvalidationAndMutableSources", TestReadbackReuseInvalidationAndMutableSources },
 		{ "MacProducerCpuUploadWritesIOSurface", TestMacProducerCpuUploadWritesIOSurface },
 		{ "ConcreteMacLoopbackProviderCopiesRendererOwnedMetalTextureIntoIOSurface", TestConcreteMacLoopbackProviderCopiesRendererOwnedMetalTextureIntoIOSurface },
 		{ "MacExportCarriesCrossApiSyncMetadataFromRendererSource", TestMacExportCarriesCrossApiSyncMetadataFromRendererSource },

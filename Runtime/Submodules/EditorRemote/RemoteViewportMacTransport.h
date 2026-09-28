@@ -413,11 +413,24 @@ namespace Sailor::EditorRemote
 			}
 
 			MacNativeBridgeRendererFrameInfo rendererFrameInfo{};
-			m_lastFailure = bHasMetalTexture ?
-				CopyMacRendererIntermediateToProducerTexture(*state.m_nativeAllocation, rendererSource.m_textureObject, rendererFrameInfo,
-					rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue) :
-				UploadMacRendererBytesToProducerTexture(*state.m_nativeAllocation, rendererSource.GetCpuBytes(),
-					rendererSource.m_bytesPerRow, rendererFrameInfo);
+			const auto& allocation = *state.m_nativeAllocation;
+			const auto& previousSource = allocation.m_lastRendererSource;
+			if (bHasCpuPayload && rendererSource.m_readback && rendererSource.m_readback == previousSource.m_readback &&
+				rendererSource.m_bytesPerRow == previousSource.m_bytesPerRow && rendererSource.m_pixelFormat == previousSource.m_pixelFormat &&
+				allocation.m_currentCopyToken != 0 && allocation.m_currentCopyToken == allocation.m_lastProducerCopyToken)
+			{
+				// Re-present immutable pixels, unless a later unexported write replaced them.
+				rendererFrameInfo.m_rendererTextureToken = allocation.m_lastRendererTextureToken;
+				rendererFrameInfo.m_producerCopyToken = allocation.m_lastProducerCopyToken;
+			}
+			else
+			{
+				m_lastFailure = bHasMetalTexture ?
+					CopyMacRendererIntermediateToProducerTexture(*state.m_nativeAllocation, rendererSource.m_textureObject, rendererFrameInfo,
+						rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue) :
+					UploadMacRendererBytesToProducerTexture(*state.m_nativeAllocation, rendererSource.GetCpuBytes(),
+						rendererSource.m_bytesPerRow, rendererFrameInfo);
+			}
 			ReleaseRendererFrameSourceResources(rendererSource);
 			if (!m_lastFailure.IsOk()) return m_lastFailure;
 

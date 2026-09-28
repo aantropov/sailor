@@ -785,9 +785,15 @@ namespace
 	{
 	public:
 		uint32_t m_calls = 0;
+		MacRendererFrameSource m_immutableSource;
 		Failure AcquireFrameSource(const MacViewportSurfaceState& state, FrameIndex frameIndex, MacRendererFrameSource& out) override
 		{
 			++m_calls;
+			if (m_immutableSource.IsValid())
+			{
+				out = m_immutableSource;
+				return Failure::Ok();
+			}
 			out.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
 			out.m_width = state.m_viewport.m_width;
 			out.m_height = state.m_viewport.m_height;
@@ -996,9 +1002,10 @@ namespace
 		watchdog.join();
 	}
 
-	void TestPresentFailuresAndCompletedReadRetention()
+	void TestPresentFailuresAndCompletedReadRetention(bool immutable)
 	{
 		CpuSource source;
+		if (immutable) source.m_immutableSource = MakeMacReadbackSource(64, 48, 0x66);
 		MacLoopbackIOSurfaceProvider provider(&source);
 		MacLoopbackViewportPresenter presenter;
 		ViewportDescriptor viewport;
@@ -1020,6 +1027,7 @@ namespace
 		native->m_commandQueueObject = reinterpret_cast<uintptr_t>([probe retain]);
 		layer->m_refuseDrawable = true;
 		Require(!binding.PumpFrame().IsOk() && allocation->m_presentCommandBufferObject == 0, "drawable refusal must not reserve a surface reader");
+		const auto initialCopy = allocation->m_currentCopyToken;
 		layer->m_refuseDrawable = false;
 		probe->m_refuseCommandBuffer = true;
 		Require(!binding.PumpFrame().IsOk() && allocation->m_presentCommandBufferObject == 0, "command refusal must leave the surface reusable");
@@ -1052,6 +1060,14 @@ namespace
 			"final completed read must release the last retained native command");
 		RequireNativeReleases(commands, 100, "all completed native read commands must be released");
 		Require(probe->m_commandBufferCount == 102, "refusal, terminal error and successful frames must not create extra native work");
+		if (immutable)
+		{
+			Require(allocation->m_currentCopyToken == initialCopy && allocation->m_lastProducerCopyToken == initialCopy,
+				"drawable, submit and completion retries must re-present an unchanged record without uploading it again");
+			Require(presenter.CaptureFrameEvidence(viewport.m_viewportId).IsOk() &&
+				presenter.FindImportedState(viewport.m_viewportId)->m_lastFrameEvidence.m_center.m_r == 0x66,
+				"recovered native presentation must still expose the retained readback's actual pixels");
+		}
 	}
 
 	void TestDelayedProducerCopyPublicationAndRetirement()
@@ -1299,6 +1315,53 @@ namespace
 			Require(releases->load() == 0, "retained allocation must keep the producer queue alive after unregister");
 		}
 		RequireNativeReleases(releases, 1, "repeated copies and failures must release their one native queue");
+	}
+
+	void TestFailedNativeWriteInvalidatesReadbackReuse()
+	{
+		@autoreleasepool
+		{
+			CpuSource source;
+			source.m_immutableSource = MakeMacReadbackSource(64, 48, 0x66);
+			MacLoopbackIOSurfaceProvider provider(&source);
+			MacViewportSurfaceState state;
+			ViewportDescriptor viewport;
+			viewport.m_viewportId = 113;
+			viewport.m_width = 64;
+			viewport.m_height = 48;
+			viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+			FramePacket frame;
+			Require(provider.CreateOrResizeSurface(viewport, 1, 1, state).IsOk() &&
+				provider.BeginFrame(state).IsOk() && provider.ExportFrame(state, frame).IsOk(), "initial immutable frame must upload and export");
+			auto allocation = state.m_nativeAllocation;
+			const auto firstCopy = allocation->m_lastProducerCopyToken;
+			id<MTLCommandQueue> queue = (id<MTLCommandQueue>)allocation->m_producerCommandQueueObject;
+			ProducerQueueProbe* probe = [[ProducerQueueProbe alloc] initWithQueue:queue];
+			[queue release];
+			allocation->m_producerCommandQueueObject = reinterpret_cast<uintptr_t>(probe);
+			uintptr_t texture = 0;
+			Require(CreateMacRendererIntermediateTexture(allocation->m_producerDeviceObject, 64, 48, PixelFormat::B8G8R8A8_UNorm, texture).IsOk(),
+				"native overwrite needs an actual source texture");
+			[(id)texture autorelease];
+			const MacNativeBridgeProducerPattern pattern{ viewport.m_viewportId, 1, 1, 99, 64, 48 };
+			Require(UploadMacRendererPatternToIntermediateTexture(texture, 64, 48, pattern).IsOk(), "native overwrite source must contain known pixels");
+			probe->m_failCompletion = true;
+			MacNativeBridgeRendererFrameInfo write;
+			Require(CopyMacRendererIntermediateToProducerTexture(*allocation, texture, write).IsOk(), "native overwrite must submit before its status is known");
+			[(id<MTLCommandBuffer>)allocation->m_copyCommandBufferObject waitUntilCompleted];
+			bool completed = false;
+			Require(PollMacIOSurfaceCopyCompletion(*allocation, completed).m_nativeCode == 1033 &&
+				allocation->m_currentCopyToken != firstCopy && allocation->m_lastProducerCopyToken == firstCopy,
+				"failed write must retain last-export metadata but invalidate physical-content identity");
+			Require(ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 23, 11) ==
+				ExpectedProducerPatternBGRA8(pattern, 23, 11), "reported copy failure may leave newer pixels in the surface");
+			probe->m_failCompletion = false;
+			Require(provider.BeginFrame(state).IsOk() && provider.ExportFrame(state, frame).IsOk() &&
+				allocation->m_currentCopyToken != write.m_producerCopyToken &&
+				ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 23, 11) == 0x66666666u,
+				"retrying the old immutable record must restore its pixels after a failed native overwrite");
+			Require(provider.ReleaseSurface(state).IsOk(), "failed overwrite fixture must release its surface");
+		}
 	}
 
 	void TestFailedQueueCreationPreservesBindingAndReleasesCandidate()
@@ -1652,7 +1715,9 @@ int main()
 		{ "DelayedProducerCopyPublicationAndRetirement", TestDelayedProducerCopyPublicationAndRetirement },
 		{ "ProducerCopyReturnsBeforeSourceCompletion", TestProducerCopyReturnsBeforeSourceCompletion },
 		{ "LoopbackDefersWritesUntilPresentationCompletes", TestLoopbackDefersWritesUntilPresentationCompletes },
-		{ "PresentFailuresAndCompletedReadRetention", TestPresentFailuresAndCompletedReadRetention },
+		{ "PresentFailuresAndCompletedReadRetention", []() { TestPresentFailuresAndCompletedReadRetention(false); } },
+		{ "ImmutableReadbackPresentationRetry", []() { TestPresentFailuresAndCompletedReadRetention(true); } },
+		{ "FailedNativeWriteInvalidatesReadbackReuse", TestFailedNativeWriteInvalidatesReadbackReuse },
 		{ "ProviderDestructionReleasesNativeTextures", TestProviderDestructionReleasesNativeTextures },
 		{ "ProducerAllocationSharedLifetimeAndReplacement", TestProducerAllocationSharedLifetimeAndReplacement },
 		{ "ProducerCopiesReuseQueueAndPropagateFailure", TestProducerCopiesReuseQueueAndPropagateFailure },

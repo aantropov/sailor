@@ -540,6 +540,15 @@ namespace
 		Require(evidence.m_center.m_b == pixel[0] && evidence.m_center.m_g == pixel[1] &&
 			evidence.m_center.m_r == pixel[2] && evidence.m_center.m_a == pixel[3],
 			"Metal upload must preserve normalized readback channels and alpha");
+		const auto copyToken = state.m_nativeAllocation->m_currentCopyToken;
+		for (uint32_t i = 0; i < 100; ++i)
+		{
+			Require(provider.BeginFrame(state).IsOk() && provider.ExportFrame(state, packet).IsOk(),
+				"the same completed GPU readback must remain exportable for presentation retry");
+		}
+		Require(state.m_nativeAllocation->m_currentCopyToken == copyToken &&
+			state.m_nativeAllocation->m_lastProducerCopyToken == copyToken && packet.m_frameIndex == 101,
+			"repeated export of an actual Vulkan readback must not upload its pixels again");
 		Require(provider.ReleaseSurface(state).IsOk() && provider.GetLiveAllocationCount() == 0,
 			"native readback upload fixture must release its registration");
 	}
