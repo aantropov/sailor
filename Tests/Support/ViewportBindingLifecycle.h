@@ -12,6 +12,89 @@ namespace Sailor::Tests
 	}
 
 	template<typename TBinding, typename TProvider, typename TPresenter>
+	void TestViewportResizeAndRecoveryLoop(const ViewportDescriptor& viewport)
+	{
+		TProvider provider;
+		TPresenter presenter;
+		TBinding binding(viewport, provider, presenter, 17);
+		auto& session = binding.GetRuntimeSession();
+		RequireViewport(binding.Create().IsOk() && binding.SetFocused(true).IsOk() && binding.PumpFrame().IsOk(),
+			"resize loop must start with a focused, presented viewport");
+		for (uint32_t resize = 1; resize <= 32; ++resize)
+		{
+			const auto oldInput = *session.GetLastInput();
+			const auto width = viewport.m_width + resize * 8;
+			const auto height = viewport.m_height + resize * 4;
+			RequireViewport(binding.Resize(width, height).IsOk() && binding.PumpFrame().IsOk(),
+				"each resize must import and present its new surface");
+			const auto& frame = presenter.m_presentCalls.back();
+			RequireViewport(session.GetGeneration() == resize + 1 && frame.m_generation == session.GetGeneration() &&
+				frame.m_connectionEpoch == 17 && frame.m_frameIndex == 1 && frame.m_width == width && frame.m_height == height &&
+				presenter.m_importViewport == session.GetDescriptor() && presenter.m_importGeneration == frame.m_generation,
+				"repeated resize must keep runtime, imported surface and presented frame on the same generation and extent");
+			RequireViewport(!session.IsInputCurrent(oldInput) && !session.HandleInput(oldInput).IsOk() &&
+				session.GetLastInput()->m_focused && session.GetLastInput()->m_generation == frame.m_generation,
+				"queued old-generation input must be rejected without replacing the restored focus");
+			RequireViewport(provider.m_liveSurfaces.size() == 1 && binding.GetTransportBackend().GetSurfaceCount() == 1,
+				"a resize storm must retire every superseded allocation");
+		}
+
+		RequireViewport(binding.SetVisible(false).IsOk(), "recovery loop must preserve hidden state");
+		const auto presents = presenter.m_presentCalls.size();
+		const auto descriptor = session.GetDescriptor();
+		for (ConnectionEpoch epoch = 18; epoch < 24; ++epoch)
+		{
+			const auto oldInput = *session.GetLastInput();
+			RequireViewport(session.MarkFailure(Failure::FromDomain(ErrorDomain::Session, 2, "recreate viewport")).IsOk() &&
+				binding.PumpFrame().IsOk(), "a session failure must recreate its actual backend through the ordinary pump");
+			RequireViewport(session.GetConnectionEpoch() == epoch && session.GetGeneration() == 1 &&
+				session.GetDescriptor() == descriptor && session.GetState() == SessionState::Paused &&
+				presenter.m_importEpoch == epoch && presenter.m_importViewport == descriptor &&
+				presenter.m_presentCalls.size() == presents && session.GetLastPublishedFrameIndex() == 0,
+				"hidden recovery must retain the latest extent and avoid presenting a prior-epoch frame");
+			RequireViewport(!session.IsInputCurrent(oldInput) && !session.HandleInput(oldInput).IsOk() &&
+				session.GetLastInput()->m_focused && session.GetLastInput()->m_connectionEpoch == epoch &&
+				provider.m_liveSurfaces.size() == 1 && binding.GetTransportBackend().GetSurfaceCount() == 1,
+				"each recovery must invalidate old input, restore focus and keep exactly one native surface");
+		}
+		RequireViewport(binding.SetVisible(true).IsOk() && binding.PumpFrame().IsOk() &&
+			presenter.m_presentCalls.size() == presents + 1 && presenter.m_presentCalls.back().m_connectionEpoch == 23 &&
+			presenter.m_presentCalls.back().m_frameIndex == 1, "showing the recovered viewport must present the current epoch");
+		RequireViewport(binding.Destroy().IsOk() && provider.m_liveSurfaces.empty(), "loop fixture must release all its surfaces");
+	}
+
+	template<typename TBinding, typename TProvider, typename TPresenter>
+	void TestViewportFrameFlood(const ViewportDescriptor& viewport)
+	{
+		TProvider provider;
+		TPresenter presenter;
+		TBinding binding(viewport, provider, presenter);
+		auto& session = binding.GetRuntimeSession();
+		RequireViewport(binding.Create().IsOk(), "frame flood must create its real transport binding");
+		constexpr size_t frames = 128;
+		for (size_t frame = 1; frame <= frames; ++frame)
+		{
+			RequireViewport(binding.PumpFrame().IsOk() && presenter.m_presentCalls.size() == frame &&
+				presenter.m_presentCalls.back().m_frameIndex == frame &&
+				presenter.m_presentCalls.back().m_generation == session.GetGeneration(),
+				"each pump must reach the presenter exactly once with the newest frame");
+		}
+		RequireViewport(provider.m_beginCalls.size() == frames && provider.m_exportCalls.size() == frames &&
+			session.GetDiagnostics().m_lastGoodFrameIndex == frames && session.GetState() == SessionState::Active &&
+			provider.m_createCalls.size() == 1 && provider.m_liveSurfaces.size() == 1,
+			"steady frame traffic must not duplicate native preparation, recreate surfaces or drift diagnostics");
+		RequireViewport(binding.SetVisible(false).IsOk(), "frame flood viewport must hide");
+		for (size_t frame = 0; frame < 32; ++frame) RequireViewport(binding.PumpFrame().IsOk(), "hidden pumping must be harmless");
+		RequireViewport(presenter.m_presentCalls.size() == frames && provider.m_beginCalls.size() == frames &&
+			provider.m_exportCalls.size() == frames, "a hidden binding must not schedule or present native frames");
+		RequireViewport(binding.SetVisible(true).IsOk() && binding.PumpFrame().IsOk() &&
+			presenter.m_presentCalls.back().m_frameIndex == frames + 1 && presenter.m_presentCalls.size() == frames + 1,
+			"resuming must advance from the last actual frame without queued hidden work");
+		RequireViewport(binding.Destroy().IsOk() && provider.m_liveSurfaces.empty() && !binding.PumpFrame().IsOk(),
+			"destroyed frame flood must release its surface and stop presentation");
+	}
+
+	template<typename TBinding, typename TProvider, typename TPresenter>
 	void TestViewportPresentFailure(const ViewportDescriptor& viewport)
 	{
 		TProvider provider;

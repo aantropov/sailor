@@ -221,6 +221,16 @@ namespace
 		Sailor::Tests::TestViewportRecoveryUsesElapsedTime<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
 	}
 
+	void TestWindowsLoopbackResizeAndRecoveryLoop()
+	{
+		Sailor::Tests::TestViewportResizeAndRecoveryLoop<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
+	}
+
+	void TestWindowsLoopbackFrameFlood()
+	{
+		Sailor::Tests::TestViewportFrameFlood<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
+	}
+
 	void TestWindowsBackendCreateResizeExportAndRelease()
 	{
 		FakeWindowsSharedSurfaceProvider provider{};
@@ -317,6 +327,8 @@ int main()
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "WindowsBackendCreateResizeExportAndRelease", TestWindowsBackendCreateResizeExportAndRelease },
 		{ "WindowsLoopbackRecoveryUsesElapsedTime", TestWindowsLoopbackRecoveryUsesElapsedTime },
+		{ "WindowsLoopbackResizeAndRecoveryLoop", TestWindowsLoopbackResizeAndRecoveryLoop },
+		{ "WindowsLoopbackFrameFlood", TestWindowsLoopbackFrameFlood },
 		{ "WindowsLoopbackResizeIsTransactional", TestWindowsLoopbackResizeIsTransactional },
 		{ "WindowsLoopbackImportAndRetirementFailures", TestWindowsLoopbackImportAndRetirementFailures },
 		{ "WindowsBackendFailurePropagationAndOrdering", TestWindowsBackendFailurePropagationAndOrdering },

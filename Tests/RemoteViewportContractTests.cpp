@@ -5,9 +5,10 @@
 #include <utility>
 
 #include "Submodules/EditorRemote/RemoteViewportFoundation.h"
-#include "Submodules/EditorRemote/RemoteViewportHarness.h"
+#include "Support/RemoteViewportHarness.h"
 
 using namespace Sailor::EditorRemote;
+using Sailor::Tests::RemoteViewportHarness;
 
 namespace
 {

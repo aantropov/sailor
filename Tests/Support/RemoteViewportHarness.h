@@ -2,12 +2,14 @@
 
 #include <array>
 #include <deque>
-#include <optional>
 
-#include "RemoteViewportFoundation.h"
+#include "Submodules/EditorRemote/RemoteViewportFoundation.h"
 
-namespace Sailor::EditorRemote
+namespace Sailor::Tests
 {
+	using namespace EditorRemote;
+
+	// Queued protocol/guard fixture; the live App uses the native viewport binding.
 	class RemoteViewportHarness
 	{
 	public:
@@ -115,23 +117,6 @@ namespace Sailor::EditorRemote
 			auto message = m_engineToEditor.front();
 			m_engineToEditor.pop_front();
 			HandleEditorMessage(message);
-		}
-
-		void EngineReceiveExternalCommand(const ProtocolMessage& message)
-		{
-			HandleEngineMessage(message);
-		}
-
-		std::optional<ProtocolMessage> PopEngineEventForExternalEditor()
-		{
-			if (m_engineToEditor.empty())
-			{
-				return std::nullopt;
-			}
-
-			auto message = m_engineToEditor.front();
-			m_engineToEditor.pop_front();
-			return message;
 		}
 
 		void EngineBeginInFlightFrame()

@@ -4,6 +4,9 @@
 #include "MacViewportPresentation.h"
 #include "Sailor.h"
 #include "Editor/EditorRuntimeBridge.h"
+#include "EditorEngineProtocolInternal.h"
+#include "EditorEngineProtocolLifecycle.h"
+#include "Protocol/Generated/editor_engine.pb.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
 
 #include <algorithm>
@@ -13,6 +16,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <thread>
+
+extern "C" SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noexcept;
 
 // Observe the queue created by the real App binding without replacing its work.
 @interface ViewportQueueDevice : NSProxy
@@ -423,10 +428,39 @@ namespace Sailor::Tests
 	void CheckMacAppViewportPump(const MacRendererFrameSource& initial,
 		const std::function<MacRendererFrameSource()>& captureNextFrame)
 	{
+		using sailor::editor::v1::ProtocolRequest;
+		using sailor::editor::v1::ProtocolResponse;
 		auto require = [](bool value, const char* message)
 			{
 				if (!value) throw std::runtime_error(message);
 			};
+		// This fixture initializes App directly, without the local protocol host.
+		Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		require(gate.TryBeginInitialization(error), "App viewport protocol gate must initialize");
+		gate.CompleteInitialization(true);
+		Protocol::EditorEngineProtocolDependencies dependencies;
+		dependencies.m_lifecycleGate = &gate;
+		uint64_t requestId = 0;
+		auto invoke = [&](ProtocolRequest& request)
+		{
+			request.set_protocol_version(1);
+			request.set_request_id(++requestId);
+			const auto bytes = request.SerializeAsString();
+			uint8_t* data = nullptr;
+			uint32_t size = 0;
+			const auto status = Protocol::InvokeEditorEngineProtocol(reinterpret_cast<const uint8_t*>(bytes.data()),
+				static_cast<uint32_t>(bytes.size()), &data, &size, dependencies);
+			ProtocolResponse response;
+			const bool decoded = response.ParseFromArray(data, static_cast<int>(size));
+			SailorProtocolFreeBuffer(data);
+			require(status == static_cast<int32_t>(Protocol::EEditorEngineTransportStatus::Ok) && decoded &&
+				response.protocol_version() == 1 && response.request_id() == requestId && response.success(),
+				"viewport protobuf request must reach the native handler and return its correlated response");
+			require(request.has_get_remote_viewport_state() ? response.has_uint32_result() : response.has_bool_result(),
+				"viewport response must contain the result type required by its command");
+			return response;
+		};
 		@autoreleasepool
 		{
 			constexpr uint64_t viewportId = 203;
@@ -434,11 +468,35 @@ namespace Sailor::Tests
 			layer->m_queueDevice = [[ViewportQueueDevice alloc] initWithDevice:[MTLCreateSystemDefaultDevice() autorelease]];
 			try
 			{
-				require(App::SetEditorRemoteViewportMacHostHandle(viewportId, static_cast<uint32_t>(MacNativeHostHandleKind::CAMetalLayer),
-					reinterpret_cast<uint64_t>(layer)) &&
-					App::UpsertEditorRemoteViewport(viewportId, 0, 0, initial.m_width, initial.m_height, true, false),
-					"actual App must create its native viewport at the applied render size");
+				ProtocolRequest hostRequest;
+				auto* host = hostRequest.mutable_set_remote_viewport_mac_host_handle();
+				host->set_viewport_id(viewportId);
+				host->set_host_handle_kind(static_cast<uint32_t>(MacNativeHostHandleKind::CAMetalLayer));
+				host->set_host_handle_value(reinterpret_cast<uint64_t>(layer));
+				require(invoke(hostRequest).bool_result().value(), "protobuf host binding must accept the actual Metal layer");
+				ProtocolRequest updateRequest;
+				auto* update = updateRequest.mutable_upsert_remote_viewport();
+				update->set_viewport_id(viewportId);
+				update->set_width(initial.m_width);
+				update->set_height(initial.m_height);
+				update->set_visible(true);
+				require(invoke(updateRequest).bool_result().value(), "protobuf create must import the actual App viewport");
 				require(layer->m_queueDevice->m_queue != nil, "actual App binding must create a native presentation queue");
+				ProtocolRequest stateRequest;
+				stateRequest.mutable_get_remote_viewport_state()->set_viewport_id(viewportId);
+				auto state = invoke(stateRequest);
+				require(state.has_uint32_result() && state.uint32_result().value() == static_cast<uint32_t>(SessionState::Active),
+					"protobuf state must describe the created live binding");
+				update->set_visible(false);
+				require(invoke(updateRequest).bool_result().value() &&
+					invoke(stateRequest).uint32_result().value() == static_cast<uint32_t>(SessionState::Paused),
+					"protobuf visibility must pause that same live binding");
+				EditorRuntime::PumpEditorRemoteViewportsOnEngineThread();
+				require(layer->m_lastDrawable == nil, "hidden App viewport must not acquire or present a native drawable");
+				update->set_visible(true);
+				require(invoke(updateRequest).bool_result().value() &&
+					invoke(stateRequest).uint32_result().value() == static_cast<uint32_t>(SessionState::Active),
+					"protobuf visibility must resume the live binding before its frame pump");
 				auto source = initial;
 				double captureUs = 0, pumpUs = 0, drawableUs = 0, completeUs = 0, maxPumpUs = 0, repeatPumpUs = 0;
 				constexpr uint32_t frames = 24;
@@ -499,8 +557,14 @@ namespace Sailor::Tests
 				require(uploaded == static_cast<uint64_t>(frames) * initial.m_width * initial.m_height * 4u,
 					"each new App frame must upload once; repeated presentation must not upload the same pixels again");
 				std::cout << "App native upload bytes " << initial.m_width << 'x' << initial.m_height << ": " << uploaded << '\n';
-				require(App::DestroyEditorRemoteViewport(viewportId), "actual App viewport must release after its GPU work");
-				App::SetEditorRemoteViewportMacHostHandle(viewportId, 0, 0);
+				ProtocolRequest destroyRequest;
+				destroyRequest.mutable_destroy_remote_viewport()->set_viewport_id(viewportId);
+				require(invoke(destroyRequest).bool_result().value(), "protobuf destroy must release the actual App viewport after GPU completion");
+				require(invoke(stateRequest).uint32_result().value() == static_cast<uint32_t>(SessionState::Created) &&
+					!invoke(destroyRequest).bool_result().value(), "native binding must be absent after protobuf destroy");
+				host->set_host_handle_kind(0);
+				host->set_host_handle_value(0);
+				require(invoke(hostRequest).bool_result().value(), "protobuf cleanup must clear the native host reference");
 			}
 			catch (...)
 			{

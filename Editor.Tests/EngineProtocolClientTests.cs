@@ -143,6 +143,37 @@ public sealed class EngineProtocolClientTests
                 request.CommandCase));
     }
 
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task UpsertRemoteViewportAsync_PreservesIdentityExtentAndDesiredState(
+        bool visible, bool focused)
+    {
+        ProtocolRequest? capturedRequest = null;
+        using var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(request, response =>
+                response.BoolResult = new BoolResult { Value = true });
+        });
+
+        Assert.True(await client.UpsertRemoteViewportAsync(73, 19, 29, 3840, 2160, visible, focused));
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(ProtocolRequest.CommandOneofCase.UpsertRemoteViewport, capturedRequest.CommandCase);
+        Assert.Equal(new RemoteViewportRequest
+        {
+            ViewportId = 73,
+            WindowPosX = 19,
+            WindowPosY = 29,
+            Width = 3840,
+            Height = 2160,
+            Visible = visible,
+            Focused = focused
+        }, capturedRequest.UpsertRemoteViewport);
+    }
+
     [Fact]
     public async Task UpdateAssetAsync_SendsExactFileId()
     {

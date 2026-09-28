@@ -70,10 +70,6 @@ add_executable(EditorEngineWebSocketServerTests
     EditorEngineWebSocketServerTests.cpp
 )
 
-add_executable(EditorViewportSessionTests
-    EditorViewportSessionTests.cpp
-)
-
 add_executable(SmartPointerTests
     SmartPointerTests.cpp
 )
@@ -249,8 +245,10 @@ target_compile_features(VulkanSubmissionTests PRIVATE cxx_std_20)
 target_include_directories(VulkanSubmissionTests PRIVATE ${SAILOR_RUNTIME_DIR})
 target_link_libraries(VulkanSubmissionTests PRIVATE Sailor::Runtime)
 if(APPLE)
+    find_package(Protobuf CONFIG REQUIRED)
     target_sources(VulkanSubmissionTests PRIVATE Support/MacViewportPresentation.mm)
-    target_link_libraries(VulkanSubmissionTests PRIVATE "-framework IOSurface" "-framework CoreFoundation"
+    target_include_directories(VulkanSubmissionTests PRIVATE ${PROJECT_SOURCE_DIR}/Lib)
+    target_link_libraries(VulkanSubmissionTests PRIVATE protobuf::libprotobuf "-framework IOSurface" "-framework CoreFoundation"
         "-framework QuartzCore" "-framework Metal")
 endif()
 # GPU scenarios are explicit command-line modes; default CTest needs no device.
@@ -412,7 +410,6 @@ target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(EditorEngineProtocolTests PRIVATE cxx_std_20)
 target_compile_features(EditorEngineWebSocketServerTests PRIVATE cxx_std_20)
-target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
 target_compile_features(SmartPointerTests PRIVATE cxx_std_20)
 target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
 target_compile_features(YamlUtilsContractTests PRIVATE cxx_std_20)
@@ -477,7 +474,6 @@ target_link_libraries(EditorEngineWebSocketServerTests PRIVATE
     Sailor::Runtime
     ixwebsocket::ixwebsocket
 )
-target_link_libraries(EditorViewportSessionTests PRIVATE Sailor::Runtime)
 target_link_libraries(SmartPointerTests PRIVATE Sailor::Runtime)
 target_link_libraries(InstanceIdContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(YamlUtilsContractTests PRIVATE Sailor::Runtime)
@@ -580,9 +576,6 @@ target_include_directories(EditorEngineProtocolTests PRIVATE
 target_include_directories(EditorEngineWebSocketServerTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
     ${PROJECT_SOURCE_DIR}/Lib
-)
-target_include_directories(EditorViewportSessionTests PRIVATE
-    ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(SmartPointerTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
@@ -731,11 +724,6 @@ add_test(
     NAME EditorEngineWebSocketLateStopTests
     COMMAND EditorEngineWebSocketServerTests
         --late-stop-after-static-teardown
-)
-
-add_test(
-    NAME EditorViewportSessionTests
-    COMMAND EditorViewportSessionTests
 )
 
 add_test(

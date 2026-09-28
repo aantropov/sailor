@@ -413,6 +413,16 @@ namespace
 		Sailor::Tests::TestViewportRecoveryUsesElapsedTime<MacViewportLoopbackBinding, FakeMacIOSurfaceProvider, FakeMacViewportPresenter>(MakeViewport());
 	}
 
+	void TestMacLoopbackResizeAndRecoveryLoop()
+	{
+		Sailor::Tests::TestViewportResizeAndRecoveryLoop<MacViewportLoopbackBinding, FakeMacIOSurfaceProvider, FakeMacViewportPresenter>(MakeViewport());
+	}
+
+	void TestMacLoopbackFrameFlood()
+	{
+		Sailor::Tests::TestViewportFrameFlood<MacViewportLoopbackBinding, FakeMacIOSurfaceProvider, FakeMacViewportPresenter>(MakeViewport());
+	}
+
 	void TestMacLoopbackBindingCreateResizeVisibilityAndDestroy()
 	{
 		FakeMacIOSurfaceProvider provider{};
@@ -882,6 +892,8 @@ int main()
 		{ "MacLoopbackPresentFailure", TestMacLoopbackPresentFailure },
 		{ "MacLoopbackBindingCreateResizeVisibilityAndDestroy", TestMacLoopbackBindingCreateResizeVisibilityAndDestroy },
 		{ "MacLoopbackRecoveryUsesElapsedTime", TestMacLoopbackRecoveryUsesElapsedTime },
+		{ "MacLoopbackResizeAndRecoveryLoop", TestMacLoopbackResizeAndRecoveryLoop },
+		{ "MacLoopbackFrameFlood", TestMacLoopbackFrameFlood },
 		{ "MacLoopbackResizeIsTransactional", TestMacLoopbackResizeIsTransactional },
 		{ "MacLoopbackImportAndRetirementFailures", TestMacLoopbackImportAndRetirementFailures },
 #if defined(__APPLE__)
