@@ -1307,35 +1307,6 @@ VulkanImagePtr VulkanApi::CreateExportableImage(
 }
 #endif
 
-VulkanImagePtr VulkanApi::CreateImage_Immediate(
-        VulkanDevicePtr device,
-        const void* pData,
-        VkDeviceSize size,
-        VkExtent3D extent,
-	uint32_t mipLevels,
-	VkImageType type,
-	VkFormat format,
-	VkImageTiling tiling,
-	VkImageUsageFlags usage,
-	VkSharingMode sharingMode,
-	VkImageLayout defaultLayout,
-	VkImageCreateFlags flags,
-	uint32_t arrayLayers)
-{
-
-	auto cmdBuffer = device->CreateCommandBuffer();
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateImage_Immediate");
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanImagePtr res = CreateImageUpload(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode, defaultLayout, flags, arrayLayers);
-	cmdBuffer->EndCommandList();
-
-	auto fence = VulkanFencePtr::Make(device);
-	device->SubmitCommandBuffer(cmdBuffer, fence);
-        fence->Wait();
-
-        return res;
-}
-
 #ifdef _WIN32
 void* VulkanApi::ExportImage(VulkanDevicePtr device, VulkanImagePtr image, VkExternalMemoryHandleTypeFlagBits handleType)
 {

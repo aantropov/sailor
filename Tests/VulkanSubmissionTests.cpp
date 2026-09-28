@@ -2,6 +2,9 @@
 #include "Engine/Frame.h"
 #include "FrameGraph/ParticlesNode.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
+#include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
+#include "GraphicsDriver/Vulkan/VulkanImage.h"
+#include "GraphicsDriver/Vulkan/VulkanImageView.h"
 #include "GraphicsDriver/Vulkan/VulkanQueue.h"
 #include "GraphicsDriver/Vulkan/VulkanFence.h"
 #include "GraphicsDriver/Vulkan/VulkanSemaphore.h"
@@ -17,9 +20,11 @@
 #include <iostream>
 #include <algorithm>
 #include <array>
+#include <filesystem>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -708,6 +713,234 @@ namespace
 		Require(!buffer, "an incomplete immediate upload must not publish a usable buffer");
 	}
 
+	void TestImmediateImageCreation(bool lost)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		std::array<uint32_t, 16> data{};
+		for (uint32_t i = 0; i < data.size(); ++i) data[i] = 0xff100000u + 739u * i;
+		FenceDispatchOverride dispatch(*device);
+		fenceResults = { VK_NOT_READY, VK_NOT_READY };
+		fenceWaitResult = lost ? VK_ERROR_DEVICE_LOST : VK_ERROR_OUT_OF_HOST_MEMORY;
+		captureNextFenceWait = true;
+		capturedFenceCompleted = false;
+		auto texture = driver->CreateImage_Immediate(data.data(), sizeof(data), glm::ivec3(4, 4, 1));
+		fenceResults[0] = VK_SUCCESS;
+		driver->TrackResources_ThreadSafe();
+		Require(capturedFenceCompleted, "image fixture must finish native work before injecting wait failure");
+		Require(!texture, "an incomplete immediate upload must not publish a usable texture");
+	}
+
+	std::vector<uint32_t> ReadImage(IGraphicsDriver& driver, VulkanImagePtr image, uint32_t mip = 0u, uint32_t layer = 0u)
+	{
+		const uint32_t width = std::max(1u, image->m_extent.width >> mip);
+		const uint32_t height = std::max(1u, image->m_extent.height >> mip);
+		const uint32_t depth = std::max(1u, image->m_extent.depth >> mip);
+		std::vector<uint32_t> result(width * height * depth);
+		auto buffer = driver.CreateBuffer(result.size() * sizeof(uint32_t), EBufferUsageBit::BufferTransferDst_Bit,
+			EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+		auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+		auto& native = command->m_vulkan.m_commandBuffer;
+		native->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+		native->ImageMemoryBarrier(image, image->m_format, image->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		native->CopyImageToBuffer(*buffer->m_vulkan.m_buffer->Get(), image, width, height, depth, mip, layer);
+		native->ImageMemoryBarrier(image, image->m_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image->m_defaultLayout);
+		native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+		native->EndCommandList();
+		Require(driver.SubmitCommandList_Immediate(command), "image readback did not complete");
+		std::copy_n(static_cast<const uint32_t*>(buffer->GetPointer()), result.size(), result.begin());
+		return result;
+	}
+
+	void TestImmediateImageContents()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver();
+		std::array<uint32_t, 16> data{};
+		for (uint32_t i = 0; i < data.size(); ++i) data[i] = 0xff102030u + 137u * i;
+		auto create = [&]() { return driver.CreateImage_Immediate(data.data(), sizeof(data), glm::ivec3(4, 4, 1), 1u,
+			ETextureType::Texture2D, ETextureFormat::R8G8B8A8_UNORM, ETextureFiltration::Nearest, ETextureClamping::Repeat); };
+		auto verify = [&]()
+			{
+				auto image = create();
+				Require(image && image->IsReady() && image->m_vulkan.m_imageView, "completed upload must publish a ready texture and view");
+				Require(image->GetFiltration() == ETextureFiltration::Nearest && image->GetClamping() == ETextureClamping::Repeat &&
+					image->GetFormat() == ETextureFormat::R8G8B8A8_UNORM && !image->HasMipMaps() &&
+					image->GetDefaultLayout() == EImageLayout::ShaderReadOnlyOptimal, "immediate upload changed texture sampling properties");
+				const auto readback = ReadImage(driver, image->m_vulkan.m_image);
+				Require(std::equal(data.begin(), data.end(), readback.begin()), "2D upload changed source pixels");
+			};
+		verify();
+		for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			{
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+				Require(!create(), "refused image upload must not publish a texture");
+			}
+			verify();
+			{
+				FenceDispatchOverride dispatch(*device);
+				fenceResults = { VK_NOT_READY, VK_NOT_READY };
+				fenceWaitResult = error;
+				captureNextFenceWait = true;
+				capturedFenceCompleted = false;
+				Require(!create() && capturedFenceCompleted, "image upload must propagate accepted wait failure");
+				driver.TrackResources_ThreadSafe();
+				fenceResults[0] = VK_SUCCESS;
+				driver.TrackResources_ThreadSafe();
+			}
+			verify();
+		}
+
+		std::array<uint32_t, 96> faces{};
+		for (uint32_t face = 0; face < 6u; ++face)
+			std::fill_n(faces.begin() + 16u * face, 16u, 0xff123420u + 17u * face);
+		auto cubemap = driver.CreateImage_Immediate(faces.data(), sizeof(faces), glm::ivec3(4, 4, 1), 3u,
+			ETextureType::Cubemap, ETextureFormat::R8G8B8A8_UNORM);
+		Require(cubemap && cubemap->m_vulkan.m_image->m_arrayLayers == 6u && cubemap->m_vulkan.m_image->m_mipLevels == 3u &&
+			cubemap->HasMipMaps() && cubemap->m_vulkan.m_imageView->m_viewType == VK_IMAGE_VIEW_TYPE_CUBE,
+			"cubemap upload lost its layers, mip chain or cube view");
+		for (uint32_t mip = 0; mip < 3u; ++mip)
+		{
+			for (uint32_t face = 0; face < 6u; ++face)
+			{
+				const auto readback = ReadImage(driver, cubemap->m_vulkan.m_image, mip, face);
+				Require(std::all_of(readback.begin(), readback.end(), [&](uint32_t value) { return value == faces[16u * face]; }),
+					"cubemap face or generated mip contains incorrect pixels");
+			}
+		}
+		auto volume = driver.CreateImage_Immediate(data.data(), 8u * sizeof(uint32_t), glm::ivec3(2), 1u,
+			ETextureType::Texture3D, ETextureFormat::R8G8B8A8_UNORM);
+		Require(volume && volume->m_vulkan.m_imageView->m_viewType == VK_IMAGE_VIEW_TYPE_3D, "volume upload lost its 3D view");
+		const auto volumeData = ReadImage(driver, volume->m_vulkan.m_image);
+		Require(std::equal(data.begin(), data.begin() + 8u, volumeData.begin()), "volume upload changed source voxels");
+	}
+
+	class BootstrapDriver final : public VulkanGraphicsDriver
+	{
+	public:
+		BootstrapDriver(uint32_t failureCall, VkResult error, bool waitFailure) :
+			m_failureCall(failureCall), m_error(error), m_waitFailure(waitFailure) {}
+
+		RHITexturePtr CreateImage_Immediate(const void* data, size_t size, glm::ivec3 extent, uint32_t mipLevels,
+			ETextureType type, ETextureFormat format, ETextureFiltration filtration,
+			ETextureClamping clamping, ETextureUsageFlags usage) override
+		{
+			if (++imageCalls == m_failureCall)
+			{
+				auto device = VulkanApi::GetInstance()->GetMainDevice();
+				if (m_waitFailure)
+				{
+					m_wait = TUniquePtr<FenceDispatchOverride>::Make(*device);
+					fenceResults = { VK_NOT_READY, VK_NOT_READY };
+					fenceWaitResult = m_error;
+					captureNextFenceWait = true;
+					capturedFenceCompleted = false;
+				}
+				else m_submit = TUniquePtr<SubmitOverride>::Make(VulkanSubmissionTestAccess::UploadQueue(*device), m_error);
+			}
+			return VulkanGraphicsDriver::CreateImage_Immediate(data, size, extent, mipLevels, type, format, filtration, clamping, usage);
+		}
+
+		bool SubmitCommandList(RHICommandListPtr command, RHIFencePtr fence, RHISemaphorePtr signal, RHISemaphorePtr wait) override
+		{
+			lastCommand = command;
+			return VulkanGraphicsDriver::SubmitCommandList(command, fence, signal, wait);
+		}
+
+		bool HasAnyDefault() const { return m_defaultTexture || m_vkDefaultTexture || m_vkDefaultCubemap; }
+		VulkanImagePtr DefaultCubemap() const { return m_vkDefaultCubemap ? m_vkDefaultCubemap->GetImage() : nullptr; }
+		size_t PendingCount() const { return m_trackedFences.Num(); }
+		void ResetFailure() { m_wait.Clear(); m_submit.Clear(); }
+
+		uint32_t imageCalls = 0u;
+		RHICommandListPtr lastCommand;
+
+	private:
+		uint32_t m_failureCall;
+		VkResult m_error;
+		bool m_waitFailure;
+		TUniquePtr<FenceDispatchOverride> m_wait;
+		TUniquePtr<SubmitOverride> m_submit;
+	};
+
+	int RunBootstrapGpu(int argc, const char** argv, bool waitFailure, bool lost)
+	{
+		int result = 1;
+		try
+		{
+			// Stop App bootstrap before it creates a renderer; the driver still gets
+			// its normal window and scheduler dependencies, with no Renderer singleton.
+			const auto missingManifest = (std::filesystem::temp_directory_path() / "sailor-bootstrap-missing-manifest.yaml").string();
+			Require(!std::filesystem::exists(missingManifest), "bootstrap fixture needs an absent manifest");
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--workspace-manifest", missingManifest.c_str() });
+			App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size()));
+			Require(App::GetInstance() && !App::GetSubmodule<Renderer>() && !VulkanApi::GetInstance(),
+				"bootstrap fixture must start without an existing renderer or Vulkan instance");
+			App::AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
+			auto& window = App::GetMainWindow();
+			window = TUniquePtr<Win32::Window>::Make();
+			window->Create("VulkanBootstrapTests", "VulkanBootstrapTests", 320, 240, false, false, 0);
+			window->Show(false);
+
+			for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			{
+				for (uint32_t failureCall : { 1u, 2u })
+				{
+					BootstrapDriver driver(failureCall, lost ? VK_ERROR_DEVICE_LOST : error, waitFailure);
+					driver.Initialize(window.GetRawPtr(), EMsaaSamples::Samples_1, false);
+					Require(driver.imageCalls == failureCall && !driver.IsInitialized() && !driver.HasAnyDefault(),
+						"failed bootstrap must stop at the failed upload without publishing either fallback");
+					const bool pending = waitFailure && !lost;
+					Require(driver.PendingCount() == (pending ? 1u : 0u) && driver.lastCommand.NumRefs() == (pending ? 2u : 1u),
+						"bootstrap must retain accepted pending commands but release refused or lost work");
+					if (waitFailure) Require(capturedFenceCompleted, "bootstrap failure fixture must finish its real GPU upload");
+					if (pending)
+					{
+						driver.TrackResources_ThreadSafe();
+						Require(driver.PendingCount() == 1u && driver.lastCommand.NumRefs() == 2u,
+							"partial initialization must retain the upload across resource collection");
+						{
+							auto device = VulkanApi::GetInstance()->GetMainDevice();
+							QueueWaitOverride refusal(device->GetGraphicsQueue(), error);
+							Require(!driver.BeginConditionalDestroy() && driver.PendingCount() == 1u && driver.lastCommand.NumRefs() == 2u,
+								"failed partial shutdown must retain the original pending upload");
+						}
+					}
+					driver.ResetFailure();
+					Require(driver.BeginConditionalDestroy() && driver.PendingCount() == 0u && driver.lastCommand.NumRefs() == 1u,
+						"completed partial shutdown must release the tracked upload");
+					driver.lastCommand.Clear();
+				}
+				if (lost) break;
+			}
+			Require(!VulkanApi::GetInstance(), "failed bootstrap destruction must release the Vulkan instance");
+			{
+				BootstrapDriver driver(0u, VK_SUCCESS, false);
+				driver.Initialize(window.GetRawPtr(), EMsaaSamples::Samples_1, false);
+				Require(driver.IsInitialized() && driver.imageCalls == 2u && driver.GetDefaultTexture() && driver.DefaultCubemap(),
+					"fresh bootstrap must publish both fallback resources together");
+				Require(ReadImage(driver, driver.GetDefaultTexture()->m_vulkan.m_image) == std::vector<uint32_t>{ 0x00e567ffu },
+					"fallback texture color changed");
+				for (uint32_t face = 0; face < 6u; ++face)
+					Require(ReadImage(driver, driver.DefaultCubemap(), 0u, face) == std::vector<uint32_t>{ 0x00e567ffu },
+						"fallback cubemap face color changed");
+				driver.lastCommand.Clear();
+				Require(driver.BeginConditionalDestroy(), "successful bootstrap did not drain");
+			}
+			Require(App::Shutdown(), "bootstrap harness did not shut down");
+			App::Initialize(argv, argc);
+			Require(App::IsRendererInitialized(), "normal App must initialize after failed backend bootstraps");
+			std::cout << "Native fallback bootstrap test passed\n";
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		App::Stop();
+		if (!App::Shutdown()) result = 1;
+		return result;
+	}
+
 	void TestImmediateBufferCopy(bool lost)
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
@@ -923,7 +1156,10 @@ namespace
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 			OnRender([&]()
 				{
-					if (mode == "--gpu-immediate-buffer-create") TestImmediateBufferCreation();
+					if (mode == "--gpu-immediate-image-create") TestImmediateImageCreation(false);
+					else if (mode == "--gpu-immediate-images") TestImmediateImageContents();
+					else if (mode == "--gpu-immediate-image-create-lost") TestImmediateImageCreation(true);
+					else if (mode == "--gpu-immediate-buffer-create") TestImmediateBufferCreation();
 					else if (mode == "--gpu-immediate-buffers")
 					{
 						TestImmediateBufferCreation();
@@ -1016,6 +1252,10 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
+		if (mode == "--gpu-bootstrap-submit") return RunBootstrapGpu(argc, argv, false, false);
+		if (mode == "--gpu-bootstrap-submit-lost") return RunBootstrapGpu(argc, argv, false, true);
+		if (mode == "--gpu-bootstrap-wait") return RunBootstrapGpu(argc, argv, true, false);
+		if (mode == "--gpu-bootstrap-lost") return RunBootstrapGpu(argc, argv, true, true);
 		if (mode == "--gpu-shutdown-acquire") return RunShutdownGpu(argc, argv, false);
 		if (mode == "--gpu-shutdown-idle") return RunShutdownGpu(argc, argv, true);
 		if (mode == "--gpu-host-shutdown-acquire") return RunShutdownGpu(argc, argv, false, true);
@@ -1023,6 +1263,8 @@ int main(int argc, const char** argv)
 		if (mode == "--gpu-fence-poll-loss" || mode == "--gpu-fence-wait-loss" || mode == "--gpu-fence-completion" ||
 			mode == "--gpu-immediate" || mode == "--gpu-immediate-lost" || mode == "--gpu-immediate-binding-lost" ||
 			mode == "--gpu-immediate-buffer-create" || mode == "--gpu-immediate-buffers" ||
+			mode == "--gpu-immediate-image-create" || mode == "--gpu-immediate-image-create-lost" ||
+			mode == "--gpu-immediate-images" ||
 			mode == "--gpu-immediate-buffer-create-lost" || mode == "--gpu-immediate-buffer-copy-lost")
 			return RunFenceGpu(argc, argv, mode);
 		if (std::string_view(argv[i]) == "--gpu-present") return RunGpu(argc, argv, true, false);

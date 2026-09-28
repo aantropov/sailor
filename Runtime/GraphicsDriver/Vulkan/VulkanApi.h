@@ -249,22 +249,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API static VulkanCommandBufferPtr UpdateBuffer(VulkanDevicePtr device, const VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size);
 
-		//Immediate context
-                SAILOR_API static VulkanImagePtr CreateImage_Immediate(
-                        VulkanDevicePtr device,
-                        const void* pData,
-                        VkDeviceSize size,
-                        VkExtent3D extent,
-			uint32_t mipLevels = 1,
-			VkImageType type = VK_IMAGE_TYPE_2D,
-			VkFormat format = VK_FORMAT_R8G8B8A8_SRGB,
-			VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
-			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-			VkImageLayout defaultLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        VkImageCreateFlags flags = 0,
-                        uint32_t arrayLayer = 1);
-
 #ifdef _WIN32
 		SAILOR_API static void* ExportImage(VulkanDevicePtr device, VulkanImagePtr image,
 			VkExternalMemoryHandleTypeFlagBits handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT);

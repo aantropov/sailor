@@ -109,37 +109,28 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 	}
 
 	const uint32_t invalidColor = 0x00e567ffu;
-	auto defaultImage = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(invalidColor), VkExtent3D{ 1,1,1 }, 1,
-		VK_IMAGE_TYPE_2D,
-		VkFormat::VK_FORMAT_R8G8B8A8_SRGB,
-		VK_IMAGE_TILING_OPTIMAL,
-		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-		VK_SHARING_MODE_EXCLUSIVE,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	auto defaultTexture = CreateImage_Immediate(&invalidColor, sizeof(invalidColor), glm::ivec3(1), 1,
+		RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB,
+		RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat);
+	if (!defaultTexture)
+	{
+		SAILOR_LOG_ERROR("VulkanGraphicsDriver initialization failed: fallback texture upload did not complete.");
+		return;
+	}
 
 	std::array<uint32_t, 6> invalidFaces;
 	invalidFaces.fill(invalidColor);
-	auto defaultCubemap = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), invalidFaces.data(), sizeof(invalidFaces), VkExtent3D{ 1,1,1 }, 1,
-		VK_IMAGE_TYPE_2D,
-		VkFormat::VK_FORMAT_R8G8B8A8_SRGB,
-		VK_IMAGE_TILING_OPTIMAL,
-		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-		VK_SHARING_MODE_EXCLUSIVE,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
-		6);
+	auto defaultCubemap = CreateImage_Immediate(invalidFaces.data(), sizeof(invalidFaces), glm::ivec3(1), 1,
+		RHI::ETextureType::Cubemap, RHI::ETextureFormat::R8G8B8A8_SRGB);
+	if (!defaultCubemap)
+	{
+		SAILOR_LOG_ERROR("VulkanGraphicsDriver initialization failed: fallback cubemap upload did not complete.");
+		return;
+	}
 
-	m_defaultTexture = RHI::RHITexturePtr::Make(
-		RHI::ETextureFiltration::Linear,
-		RHI::ETextureClamping::Repeat,
-		false,
-		RHI::EImageLayout::ShaderReadOnlyOptimal);
-
-	m_vkDefaultTexture = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultImage, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
-	m_vkDefaultCubemap = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultCubemap, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
-
-	m_defaultTexture->m_vulkan.m_image = defaultImage;
-	m_defaultTexture->m_vulkan.m_imageView = m_vkDefaultTexture;
+	m_vkDefaultTexture = defaultTexture->m_vulkan.m_imageView;
+	m_vkDefaultCubemap = defaultCubemap->m_vulkan.m_imageView;
+	m_defaultTexture = std::move(defaultTexture);
 	m_bIsInitialized = true;
 }
 
@@ -1394,8 +1385,11 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 		arrayLayers = 6;
 	}
 
-	RHI::RHITexturePtr res = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1, RHI::EImageLayout::ShaderReadOnlyOptimal);
-	res->m_vulkan.m_image = m_vkInstance->CreateImage_Immediate(m_vkInstance->GetMainDevice(),
+	auto commandList = CreateCommandList(false, RHI::ECommandListQueue::Graphics);
+	SetDebugName(commandList, "CreateImage_Immediate");
+	auto& commandBuffer = commandList->m_vulkan.m_commandBuffer;
+	commandBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	auto image = VulkanApi::CreateImageUpload(commandBuffer, device,
 		pData,
 		size,
 		vkExtent,
@@ -1408,7 +1402,11 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal,
 		flags,
 		arrayLayers);
+	commandBuffer->EndCommandList();
+	if (!SubmitCommandList_Immediate(commandList)) return nullptr;
 
+	RHI::RHITexturePtr res = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1, RHI::EImageLayout::ShaderReadOnlyOptimal);
+	res->m_vulkan.m_image = std::move(image);
 	res->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, res->m_vulkan.m_image);
 	res->m_vulkan.m_imageView->Compile();
 
