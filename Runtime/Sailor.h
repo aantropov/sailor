@@ -50,6 +50,13 @@ namespace Sailor
 		std::string m_world = "Editor.world";
 	};
 
+	enum class EAppInitializationResult : uint8_t
+	{
+		Failed,
+		Ready,
+		Completed
+	};
+
 	class App
 	{
 		static constexpr size_t MaxSubmodules = 128u;
@@ -70,7 +77,7 @@ namespace Sailor
 		SAILOR_API static RHI::ESceneViewRenderMode GetEditorRenderMode();
 		SAILOR_API static bool SetEditorRenderMode(RHI::ESceneViewRenderMode mode);
 
-		SAILOR_API static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
+		SAILOR_API static EAppInitializationResult Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
 		SAILOR_API static void Start();
 		SAILOR_API static void Stop();
 		SAILOR_API static bool Shutdown();
@@ -281,7 +288,7 @@ namespace Sailor
 		TUniquePtr<Win32::Window> m_pMainWindow;
 		TUniquePtr<Workspace::WorkspaceModuleManager> m_pWorkspaceModuleManager;
 		Workspace::WorkspaceContext m_workspaceContext;
-		bool m_bSkipMainLoop = false;
+		EAppInitializationResult m_initializationResult = EAppInitializationResult::Failed;
 		int32_t m_exitCode = 0;
 		AppArgs m_args{};
 

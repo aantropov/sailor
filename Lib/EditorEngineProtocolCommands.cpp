@@ -156,8 +156,18 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			}
 		}
 
-		Sailor::App::Initialize(arguments.GetRawPtr(), numArguments);
-		SetEmptyResult(response);
+		switch (Sailor::App::Initialize(arguments.GetRawPtr(), numArguments))
+		{
+		case EAppInitializationResult::Ready:
+			SetEmptyResult(response);
+			break;
+		case EAppInitializationResult::Completed:
+			SetError(response, "The command completed without creating an interactive Engine session.");
+			break;
+		case EAppInitializationResult::Failed:
+			SetError(response, "Engine initialization failed. See the engine log for details.");
+			break;
+		}
 	}
 
 	static void DispatchMessages(const sailor::editor::v1::CountRequest& request, ProtocolResponse& response)

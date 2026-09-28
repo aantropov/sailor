@@ -203,7 +203,7 @@ namespace
 
 			TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Initialization);
 			DispatchRequest(request, response, dependencies);
-			completion.MarkSucceeded();
+			if (response.success()) completion.MarkSucceeded();
 			return;
 		}
 

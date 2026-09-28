@@ -1,5 +1,8 @@
 #include "EditorEngineProtocolInternal.h"
 #include "EditorEngineWebSocketServer.h"
+#include "Sailor.h"
+#include "Support/TempDirectory.h"
+#include "Support/EditorProtocolWire.h"
 
 #include <ixwebsocket/IXGetFreePort.h>
 #include <ixwebsocket/IXNetSystem.h>
@@ -23,6 +26,8 @@
 
 extern "C"
 {
+	int32_t SailorProtocolStartLocalHost(const uint8_t* requestData, uint32_t requestSize,
+		uint16_t port, const char* token, uint32_t tokenSize) noexcept;
 	int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 }
 
@@ -39,187 +44,7 @@ namespace
 	constexpr uint16_t c_closeUnsupportedData = 1003u;
 	constexpr uint16_t c_closeInvalidPayload = 1007u;
 
-	void AppendVarint(std::string& payload, uint64_t value)
-	{
-		while (value >= 0x80u)
-		{
-			payload.push_back(static_cast<char>(
-				(value & 0x7fu) | 0x80u));
-			value >>= 7u;
-		}
-		payload.push_back(static_cast<char>(value));
-	}
-
-	void AppendKey(
-		std::string& payload,
-		const uint32_t fieldNumber,
-		const uint8_t wireType)
-	{
-		AppendVarint(
-			payload,
-			(static_cast<uint64_t>(fieldNumber) << 3u) | wireType);
-	}
-
-	void AppendVarintField(
-		std::string& payload,
-		const uint32_t fieldNumber,
-		const uint64_t value)
-	{
-		AppendKey(payload, fieldNumber, 0u);
-		AppendVarint(payload, value);
-	}
-
-	void AppendBytesField(
-		std::string& payload,
-		const uint32_t fieldNumber,
-		const std::string& value)
-	{
-		AppendKey(payload, fieldNumber, 2u);
-		AppendVarint(payload, value.size());
-		payload.append(value);
-	}
-
-	std::string MakeRequest(
-		const uint64_t requestId,
-		const uint32_t commandField,
-		const std::string& commandPayload = {})
-	{
-		std::string payload;
-		AppendVarintField(
-			payload,
-			1u,
-			EditorEngineProtocolVersion);
-		AppendVarintField(payload, 2u, requestId);
-		AppendBytesField(payload, commandField, commandPayload);
-		return payload;
-	}
-
-	bool ReadVarint(
-		const std::string& payload,
-		size_t& offset,
-		uint64_t& outValue)
-	{
-		outValue = 0u;
-		for (uint32_t shift = 0u;
-			shift < 64u && offset < payload.size();
-			shift += 7u)
-		{
-			const uint8_t byte = static_cast<uint8_t>(
-				payload[offset++]);
-			outValue |= static_cast<uint64_t>(byte & 0x7fu) << shift;
-			if ((byte & 0x80u) == 0u)
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
-	bool ReadBytes(
-		const std::string& payload,
-		size_t& offset,
-		std::string& outValue)
-	{
-		uint64_t length = 0u;
-		if (!ReadVarint(payload, offset, length) ||
-			length > payload.size() - offset)
-		{
-			return false;
-		}
-
-		outValue.assign(
-			payload.data() + offset,
-			static_cast<size_t>(length));
-		offset += static_cast<size_t>(length);
-		return true;
-	}
-
-	struct TProtocolResponseWire
-	{
-		uint64_t m_protocolVersion = 0u;
-		uint64_t m_requestId = 0u;
-		bool m_bSuccess = false;
-		bool m_bSupportsStrictInstanceIds = false;
-		std::string m_error{};
-		uint32_t m_resultField = 0u;
-		std::string m_resultPayload{};
-	};
-
-	bool ParseResponse(
-		const std::string& payload,
-		TProtocolResponseWire& outResponse)
-	{
-		size_t offset = 0u;
-		while (offset < payload.size())
-		{
-			uint64_t key = 0u;
-			if (!ReadVarint(payload, offset, key))
-			{
-				return false;
-			}
-
-			const uint32_t fieldNumber =
-				static_cast<uint32_t>(key >> 3u);
-			const uint8_t wireType =
-				static_cast<uint8_t>(key & 0x07u);
-			if (wireType == 0u)
-			{
-				uint64_t value = 0u;
-				if (!ReadVarint(payload, offset, value))
-				{
-					return false;
-				}
-				switch (fieldNumber)
-				{
-				case 1u:
-					outResponse.m_protocolVersion = value;
-					break;
-
-				case 2u:
-					outResponse.m_requestId = value;
-					break;
-
-				case 3u:
-					outResponse.m_bSuccess = value != 0u;
-					break;
-
-				case 5u:
-					outResponse.m_bSupportsStrictInstanceIds =
-						value != 0u;
-					break;
-
-				default:
-					break;
-				}
-				continue;
-			}
-			if (wireType == 2u)
-			{
-				std::string value;
-				if (!ReadBytes(payload, offset, value))
-				{
-					return false;
-				}
-				if (fieldNumber == 4u)
-				{
-					outResponse.m_error = std::move(value);
-				}
-				else if (fieldNumber >= 10u &&
-					fieldNumber <= 19u)
-				{
-					outResponse.m_resultField = fieldNumber;
-					outResponse.m_resultPayload = std::move(value);
-				}
-				continue;
-			}
-
-			// The protocol envelopes currently use only varint and
-			// length-delimited fields. Rejecting other wire types keeps this
-			// test decoder intentionally small and strict.
-			return false;
-		}
-		return true;
-	}
+	using namespace Sailor::Tests::ProtocolWire;
 
 	bool ReadNestedScalar(
 		const std::string& payload,
@@ -303,6 +128,36 @@ namespace
 
 		// Deliberately leave the server running. StopLocalHostAtProcessExit
 		// performs the only teardown after later-registered static finalizers.
+	}
+
+	void TestFailedLocalHostInitialization(const std::string& authorizationToken)
+	{
+		Sailor::Tests::TempDirectory workspace("local-host-initialization");
+		Require(ix::initNetSystem(), "port reservation must initialize the network system");
+		const int port = ix::getFreePort();
+		Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "port reservation must complete");
+		std::string arguments;
+		for (const auto& argument : { std::string("SailorEngine"), std::string("--workspace"),
+			workspace.Path("missing").string(), std::string("--noconsole"), std::string("--new-world") })
+		{
+			AppendBytesField(arguments, 1u, argument);
+		}
+		const auto request = MakeRequest(1u, 10u, arguments);
+		for (uint32_t attempt = 0; attempt < 3u; ++attempt)
+		{
+			const int32_t status = SailorProtocolStartLocalHost(
+				reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+				static_cast<uint16_t>(port), authorizationToken.data(), static_cast<uint32_t>(authorizationToken.size()));
+			const bool bRolledBack = Sailor::App::GetInstance() == nullptr;
+			if (!bRolledBack) SailorProtocolStopLocalHost(true);
+			RequireHostStatus(status, EEditorEngineWebSocketHostStatus::InitializationFailed,
+				"local host must report the actual initialization failure on every attempt");
+			Require(bRolledBack, "failed local host bootstrap must release its partial App");
+			RequireHostStatus(Sailor::Protocol::StartEditorEngineWebSocketServer(static_cast<uint16_t>(port),
+				authorizationToken.data(), static_cast<uint32_t>(authorizationToken.size())),
+				EEditorEngineWebSocketHostStatus::Ok, "failed bootstrap must release its listening socket");
+			Sailor::Protocol::StopEditorEngineWebSocketServer();
+		}
 	}
 
 	class TServerGuard final
@@ -937,6 +792,7 @@ int main(const int argc, const char* const argv[])
 			const std::string authorizationToken =
 				"0123456789abcdef0123456789abcdef";
 			TestInvalidServerArguments(authorizationToken);
+			TestFailedLocalHostInitialization(authorizationToken);
 			{
 				const TServerGuard server(authorizationToken);
 

@@ -3,6 +3,11 @@
 #include "Engine/EngineLoop.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Support/TempDirectory.h"
+#include "EditorEngineProtocolInternal.h"
+#include "EditorEngineWebSocketServer.h"
+#include "Support/EditorProtocolWire.h"
+#include <ixwebsocket/IXGetFreePort.h>
+#include <ixwebsocket/IXNetSystem.h>
 #if defined(__APPLE__)
 #include "Support/MacViewportPresentation.h"
 #endif
@@ -62,6 +67,12 @@ using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
+extern "C" SAILOR_SHARED_API int32_t SailorProtocolStartLocalHost(const uint8_t* requestData, uint32_t requestSize,
+	uint16_t port, const char* token, uint32_t tokenSize) noexcept;
+extern "C" SAILOR_SHARED_API void SailorProtocolRequestLocalHostStop() noexcept;
+extern "C" SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noexcept;
+extern "C" SAILOR_SHARED_API int32_t SailorProtocolInvoke(const uint8_t* requestData, uint32_t requestSize,
+	uint8_t** responseData, uint32_t* responseSize) noexcept;
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
@@ -1763,6 +1774,125 @@ namespace
 		}
 	}
 
+	int RunInitializationGpu(int argc, const char** argv)
+	{
+		Tests::TempDirectory workspace("host-initialization");
+		int result = 1;
+		try
+		{
+			std::filesystem::create_directory(workspace.Path("Content"));
+			std::string enginePath = std::filesystem::current_path().string();
+			for (int i = 1; i + 1 < argc; ++i)
+				if (std::string_view(argv[i]) == "--workspace") enginePath = argv[i + 1];
+			YAML::Node manifest;
+			manifest["manifestVersion"] = 1;
+			manifest["workspaceId"] = "00000000-0000-0000-0000-000000000120";
+			manifest["name"] = "Initialization test";
+			manifest["enginePath"] = enginePath;
+			manifest["engineReferenceKind"] = "source";
+			manifest["contentPath"] = "Content";
+			manifest["sourcePath"] = "Source";
+			manifest["generatedProjectPath"] = "Generated";
+			manifest["cachePath"] = "Cache";
+			manifest["buildPath"] = "Cache/Build";
+			manifest["logicOutputPath"] = "Binaries";
+			manifest["logicModuleName"] = "MissingInitializationModule";
+			std::ofstream(workspace.Path("workspace.sailor")) << manifest;
+			std::filesystem::copy_file(std::filesystem::path(enginePath) / "Content/Models/DuckGlb/Duck.glb",
+				workspace.Path("Content/Test.glb"));
+			YAML::Node model;
+			model["assetInfoType"] = "Sailor::ModelAssetInfo";
+			model["fileId"] = "{00000000-0000-0000-0000-000000000120}";
+			model["filename"] = "Test.glb";
+			model["bShouldGenerateMaterials"] = false;
+			model["bShouldKeepCpuBuffers"] = true;
+			model["bGenerateBLAS"] = true;
+			model["unitScale"] = 1;
+			std::ofstream(workspace.Path("Content/Test.glb.asset")) << model;
+			const std::string workspacePath = workspace.Get().string();
+			const std::string output = workspace.Path("command.png").string();
+			std::vector<const char*> commandArguments(argv, argv + argc);
+			commandArguments.insert(commandArguments.end(), { "--workspace", workspacePath.c_str(), "--editor", "--port", "0",
+				"--pathtracer", "--in", "Test.glb",
+				"--out", output.c_str(), "--height", "8", "--samples", "1", "--ambientSamples", "1", "--bounces", "1" });
+			Require(App::Initialize(commandArguments.data(), static_cast<int32_t>(commandArguments.size())) ==
+				EAppInitializationResult::Completed && std::filesystem::is_regular_file(output) &&
+				std::filesystem::file_size(output) > 32u, "an offline command must complete without claiming an interactive session");
+			App::Start();
+			Require(!App::GetSubmodule<EngineLoop>(), "a completed command must not create or enter a game loop");
+			Require(App::Shutdown() && !App::GetInstance(), "a completed command must release its App before another startup");
+
+			const char* missingWorld = "Tests/Visual/MissingRequiredStartup.world";
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--world", missingWorld });
+			const auto initialization = App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size()));
+			Require(initialization == EAppInitializationResult::Failed && App::IsRendererInitialized() && App::GetExitCode() != 0,
+				"a missing required startup world must fail even after the renderer has initialized");
+			App::Start();
+			Require(App::GetSubmodule<EngineLoop>()->GetWorlds().IsEmpty() &&
+				App::Initialize() == EAppInitializationResult::Failed, "failed startup must not create a fallback game world or become Ready");
+			Require(App::Shutdown() && !App::GetInstance(), "failed startup must release its GPU and App resources");
+
+			std::string initialize;
+			for (int i = 0; i < argc; ++i) Tests::ProtocolWire::AppendBytesField(initialize, 1u, argv[i]);
+			for (const auto& argument : { std::string("--workspace"), workspace.Get().string(),
+				std::string("--new-world"), std::string("--port"), std::string("0") })
+			{
+				Tests::ProtocolWire::AppendBytesField(initialize, 1u, argument);
+			}
+			Require(ix::initNetSystem(), "port reservation must initialize the network system");
+			const int port = ix::getFreePort();
+			Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "port reservation must complete");
+			const std::string token = "0123456789abcdef0123456789abcdef";
+			auto startHost = [&]()
+				{
+					const std::string payload = Tests::ProtocolWire::MakeRequest(1u, 10u, initialize);
+					return static_cast<Protocol::EEditorEngineWebSocketHostStatus>(SailorProtocolStartLocalHost(
+						reinterpret_cast<const uint8_t*>(payload.data()), static_cast<uint32_t>(payload.size()),
+						static_cast<uint16_t>(port), token.data(), static_cast<uint32_t>(token.size())));
+				};
+			Require(startHost() == Protocol::EEditorEngineWebSocketHostStatus::InitializationFailed && !App::GetInstance(),
+				"a game session without its required module must fail and roll back its native host");
+
+			Tests::ProtocolWire::AppendBytesField(initialize, 1u, "--editor");
+			for (uint32_t attempt = 0u; attempt < 2u; ++attempt)
+			{
+				Require(startHost() == Protocol::EEditorEngineWebSocketHostStatus::Ok,
+					"the editor must start without its workspace module, including after shutdown and retry");
+				auto* loop = App::GetSubmodule<EngineLoop>();
+				Require(App::IsRendererInitialized() && App::HasEditor() && loop && loop->GetWorlds().Num() == 1u &&
+					App::GetLoadedWorldPath().empty(), "limited editor mode must still own a renderer and editable empty world");
+				Require(App::Initialize() == EAppInitializationResult::Ready,
+					"an already initialized editor must retain its successful result");
+				App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker,
+					EThreadType::RHI, EThreadType::Render, EThreadType::Editor });
+
+				SailorProtocolRequestLocalHostStop();
+				const std::string payload = Tests::ProtocolWire::MakeRequest(2u, 11u);
+				uint8_t* responseData = nullptr;
+				uint32_t responseSize = 0u;
+				const auto status = SailorProtocolInvoke(reinterpret_cast<const uint8_t*>(payload.data()),
+					static_cast<uint32_t>(payload.size()), &responseData, &responseSize);
+				std::string responsePayload;
+				if (responseData) responsePayload.assign(reinterpret_cast<const char*>(responseData), responseSize);
+				SailorProtocolFreeBuffer(responseData);
+				Tests::ProtocolWire::TProtocolResponseWire response;
+				Require(status == static_cast<int32_t>(Protocol::EEditorEngineTransportStatus::Ok) &&
+					Tests::ProtocolWire::ParseResponse(responsePayload, response) &&
+					response.m_protocolVersion == Protocol::EditorEngineProtocolVersion && response.m_requestId == 2u &&
+					!response.m_bSuccess && !response.m_error.empty(),
+					"the real native Stop request must prevent a later protocol Start");
+				Require(SailorProtocolStopLocalHost(true) != 0 && !App::GetInstance(),
+					"editor host shutdown must release its initialized App before retry");
+			}
+			std::cout << "Native initialization outcomes test passed\n";
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		if (SailorProtocolStopLocalHost(true) == 0) result = 1;
+		return result;
+	}
+
 	int RunShutdownGpu(int argc, const char** argv, bool idleFailure, bool localHost = false)
 	{
 		App::Initialize(argv, argc);
@@ -2185,6 +2315,7 @@ int main(int argc, const char** argv)
 		}
 #endif
 		if (mode == "--gpu-bootstrap-submit") return RunBootstrapGpu(argc, argv, false, false);
+		if (mode == "--gpu-initialization") return RunInitializationGpu(argc, argv);
 		if (mode == "--gpu-bootstrap-submit-lost") return RunBootstrapGpu(argc, argv, false, true);
 		if (mode == "--gpu-bootstrap-wait") return RunBootstrapGpu(argc, argv, true, false);
 		if (mode == "--gpu-bootstrap-lost") return RunBootstrapGpu(argc, argv, true, true);

@@ -62,7 +62,7 @@ namespace Sailor::Protocol
 				m_bInitializationActive = false;
 				if (m_state == EState::Initializing)
 				{
-					m_state = bSucceeded ? EState::Ready : EState::Idle;
+					m_state = bSucceeded ? EState::Ready : EState::InitializationFailed;
 				}
 				m_bStartIssued = false;
 				m_bStartActive = false;
@@ -306,6 +306,7 @@ namespace Sailor::Protocol
 		{
 			Idle,
 			Initializing,
+			InitializationFailed,
 			Ready,
 			ShuttingDown,
 			ShutdownFailed,

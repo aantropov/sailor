@@ -427,13 +427,13 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 	return params;
 }
 
-void App::Initialize(const char** commandLineArgs, int32_t num)
+EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t num)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	if (s_pInstance != nullptr)
 	{
-		return;
+		return s_pInstance->m_initializationResult;
 	}
 
 	EditorRuntime::ResetForAppLifecycle();
@@ -491,8 +491,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	{
 		SAILOR_LOG_ERROR("%s", workspaceContextResult.m_message.c_str());
 		SetExitCode(1);
-		s_pInstance->m_bSkipMainLoop = true;
-		return;
+		return EAppInitializationResult::Failed;
 	}
 
 	s_pInstance->m_workspaceContext = workspaceContextResult.m_context;
@@ -561,8 +560,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		if (!params.m_bIsEditor)
 		{
 			SetExitCode(1);
-			s_pInstance->m_bSkipMainLoop = true;
-			return;
+			return EAppInitializationResult::Failed;
 		}
 	}
 
@@ -621,7 +619,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	if (!renderer->IsInitialized())
 	{
 		SAILOR_LOG_ERROR("App initialization aborted: renderer backend failed to initialize.");
-		return;
+		SetExitCode(1);
+		return EAppInitializationResult::Failed;
 	}
 
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
@@ -666,15 +665,14 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		if (pathTracerParams.m_pathToModel.empty())
 		{
 			SAILOR_LOG_ERROR("PathTracer mode requires --in <modelPath> and --out <imagePath>.");
-		}
-		else
-		{
-			Raytracing::PathTracer tracer;
-			tracer.Run(pathTracerParams);
+			SetExitCode(1);
+			return EAppInitializationResult::Failed;
 		}
 
-		s_pInstance->m_bSkipMainLoop = true;
-		return;
+		Raytracing::PathTracer tracer;
+		tracer.Run(pathTracerParams);
+		s_pInstance->m_initializationResult = EAppInitializationResult::Completed;
+		return s_pInstance->m_initializationResult;
 	}
 
 	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
@@ -702,8 +700,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 			if (!params.m_bIsEditor)
 			{
-				s_pInstance->m_bSkipMainLoop = true;
-				return;
+				return EAppInitializationResult::Failed;
 			}
 		}
 	}
@@ -730,6 +727,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	SAILOR_LOG("Sailor Engine initialized");
+	s_pInstance->m_initializationResult = EAppInitializationResult::Ready;
+	return s_pInstance->m_initializationResult;
 }
 
 void App::Start()
@@ -744,7 +743,7 @@ void App::Start()
 		}
 	}
 
-	if (s_pInstance->m_bSkipMainLoop)
+	if (s_pInstance->m_initializationResult != EAppInitializationResult::Ready)
 	{
 		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
 		g_engineMainLoopState = EEngineMainLoopState::Exited;

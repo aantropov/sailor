@@ -1,6 +1,8 @@
 #include "EditorEngineProtocolInternal.h"
 #include "EditorEngineProtocolLifecycle.h"
 #include "Protocol/Generated/editor_engine.pb.h"
+#include "Sailor.h"
+#include "Support/TempDirectory.h"
 
 #include <atomic>
 #include <chrono>
@@ -10,6 +12,7 @@
 #include <cstring>
 #include <condition_variable>
 #include <future>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <mutex>
@@ -33,6 +36,7 @@ extern "C"
 		uint32_t* responseSize) noexcept;
 
 	SAILOR_PROTOCOL_TEST_IMPORT void SailorProtocolFreeBuffer(uint8_t* buffer) noexcept;
+	SAILOR_PROTOCOL_TEST_IMPORT int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 }
 
 namespace
@@ -918,6 +922,8 @@ namespace
 		Require(
 			responseData == nullptr && responseSize == 0,
 			"an execution failure must not publish a partial response");
+		Require(SailorProtocolStopLocalHost(true) != 0,
+			"an initialization exception must be rolled back before starting another session");
 	}
 
 	void TestEnvelopeValidation()
@@ -1838,6 +1844,43 @@ namespace
 		}
 	}
 
+	void TestFailedInitializationRequiresRollbackBeforeRetry()
+	{
+		Sailor::Tests::TempDirectory workspace("protocol-initialization");
+		std::ofstream(workspace.Path("file")) << "not a directory";
+		std::filesystem::create_directory(workspace.Path("invalid"));
+		std::ofstream(workspace.Path("invalid/project.sailor")) << "manifestVersion: [";
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_lifecycleGate = &gate;
+
+		for (const char* path : { "missing", "file", "invalid", "missing" })
+		{
+			std::string arguments;
+			for (const auto& argument : { std::string("SailorEngine"), std::string("--workspace"),
+				workspace.Path(path).string(), std::string("--noconsole"), std::string("--new-world") })
+			{
+				AppendMessageField(arguments, 1u, argument);
+			}
+			TProtocolBuffer buffer;
+			const auto response = RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
+				c_initializeCommandField, arguments), buffer, dependencies);
+			Require(!response.m_success && !response.m_error.empty(),
+				"Initialize must report the real App failure, not successful dispatch");
+			Require(Sailor::App::GetInstance() && Sailor::App::GetExitCode() != 0 &&
+				Sailor::App::Initialize() == Sailor::EAppInitializationResult::Failed,
+				"failed initialization must retain its partial App and diagnostic until rollback");
+			std::string error;
+			Require(!gate.TryBeginStart(error) && !gate.TryAcquireOperation(error, false) &&
+				!gate.TryBeginInitialization(error),
+				"failed initialization must not admit commands or another App before rollback");
+			TProtocolBuffer shutdownBuffer;
+			Require(RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 2u,
+				c_shutdownCommandField), shutdownBuffer, dependencies).m_success && !Sailor::App::GetInstance(),
+				"shutdown must release a partially initialized App and allow the next attempt");
+		}
+	}
+
 	void TestStopWaitsForInitializationAndSkipsClosedSessions()
 	{
 		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
@@ -2445,6 +2488,7 @@ int main()
 		TestViewportToolShortcutEventIsTypedAndValidated();
 		TestLifecycleGateDrainsStartAndOperationsBeforeShutdown();
 		TestFailedShutdownKeepsAdmissionClosedUntilRetry();
+		TestFailedInitializationRequiresRollbackBeforeRetry();
 		TestShutdownDrainsAnAdmittedStop();
 		TestStopWaitsForInitializationAndSkipsClosedSessions();
 		TestThrowingStopReleasesItsOperation();
