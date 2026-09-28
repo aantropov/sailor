@@ -160,7 +160,7 @@ namespace Sailor::Raytracing
 		SAILOR_SHARED_API void SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		SAILOR_SHARED_API void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		void ClearRuntimeEnvironment();
-		bool RenderPreparedScene(const Params& params);
+		SAILOR_SHARED_API bool RenderPreparedScene(const Params& params);
 		SAILOR_SHARED_API bool SamplePreparedSceneRay(
 			const vec3& origin,
 			const vec3& direction,
@@ -185,7 +185,7 @@ namespace Sailor::Raytracing
 		const TVector<u8vec4>& GetLastRenderedImage() const { return m_lastRenderedImage; }
 		glm::uvec2 GetLastRenderedExtent() const { return m_lastRenderedExtent; }
 
-		void Run(const Params& params);
+		SAILOR_SHARED_API void Run(const Params& params);
 
 	protected:
 
@@ -292,7 +292,6 @@ namespace Sailor::Raytracing
 			float& outPdf) const;
 
 
-		TVector<DirectionalLight> m_directionalLights{};
 		TVector<LightProxy> m_lightProxies{};
 		TVector<TLASInstance> m_tlasInstances{};
 		TOctree<size_t> m_tlasOctree{ glm::ivec3(0, 0, 0), 16536 * 16, 4 };

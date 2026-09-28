@@ -66,6 +66,8 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
+namespace Sailor::Tests { int RunPathTracerCommandTests(int argc, const char** argv); }
+
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStartLocalHost(const uint8_t* requestData, uint32_t requestSize,
 	uint16_t port, const char* token, uint32_t tokenSize) noexcept;
@@ -2316,6 +2318,7 @@ int main(int argc, const char** argv)
 #endif
 		if (mode == "--gpu-bootstrap-submit") return RunBootstrapGpu(argc, argv, false, false);
 		if (mode == "--gpu-initialization") return RunInitializationGpu(argc, argv);
+		if (mode == "--gpu-pathtracer") return Tests::RunPathTracerCommandTests(argc, argv);
 		if (mode == "--gpu-bootstrap-submit-lost") return RunBootstrapGpu(argc, argv, false, true);
 		if (mode == "--gpu-bootstrap-wait") return RunBootstrapGpu(argc, argv, true, false);
 		if (mode == "--gpu-bootstrap-lost") return RunBootstrapGpu(argc, argv, true, true);

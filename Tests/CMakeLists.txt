@@ -240,7 +240,7 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(VulkanRenderPassTests)
 endif()
 
-add_executable(VulkanSubmissionTests VulkanSubmissionTests.cpp)
+add_executable(VulkanSubmissionTests VulkanSubmissionTests.cpp PathTracerCommandTests.cpp)
 target_compile_features(VulkanSubmissionTests PRIVATE cxx_std_20)
 target_include_directories(VulkanSubmissionTests PRIVATE ${SAILOR_RUNTIME_DIR} ${PROJECT_SOURCE_DIR}/Lib)
 target_link_libraries(VulkanSubmissionTests PRIVATE Sailor::Runtime ixwebsocket::ixwebsocket)

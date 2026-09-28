@@ -286,7 +286,7 @@ namespace
 			{
 				const tinygltf::Camera& camera = gltfModel.cameras[node.camera];
 				const bool bNameMatch = !params.m_camera.empty() && ((camera.name == params.m_camera) || (node.name == params.m_camera));
-				const bool bUseCamera = bNameMatch || (params.m_camera.empty() && !bFallbackCameraSet);
+				const bool bUseCamera = !bFoundNamedCamera && (bNameMatch || (params.m_camera.empty() && !bFallbackCameraSet));
 
 				if (bUseCamera && camera.type == "perspective")
 				{
@@ -334,11 +334,6 @@ namespace
 				}
 			}
 
-			if (bFoundNamedCamera)
-			{
-				return;
-			}
-
 			for (int32_t child : node.children)
 			{
 				traverseNode(child, world);
@@ -348,10 +343,6 @@ namespace
 		for (int32_t root : scene.nodes)
 		{
 			traverseNode(root, glm::mat4(1.0f));
-			if (bFoundNamedCamera)
-			{
-				break;
-			}
 		}
 	}
 
@@ -2051,9 +2042,25 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 			}
 		}
 
+		float lastProgress = 0.0f;
+		auto reportProgress = [&]()
+		{
+			const float progress = finishedTasks.load() / static_cast<float>(numTasks);
+			if (!params.m_output.empty() && progress - lastProgress > 0.05f)
+			{
+				if (lastProgress == 0.0f)
+				{
+					const float eta = raytracingTimer.ResultAccumulatedMs() * 0.001f / progress;
+					SAILOR_LOG("PathTracer ETA: ~%.2fsec (%.2fmin)", eta, round(eta / 60.0f));
+				}
+				SAILOR_LOG("PathTracer Progress: %.2f", progress);
+				lastProgress = progress;
+			}
+		};
 		for (auto& task : tasksThisThread)
 		{
 			task->Execute();
+			reportProgress();
 		}
 
 		for (auto& task : tasks)
@@ -2062,6 +2069,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 			{
 				task->Wait();
 			}
+			reportProgress();
 		}
 	}
 
@@ -2222,14 +2230,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 		pModelImporter->OnImportAsset(pModelAssetInfo);
 	}
 
-	m_directionalLights.Clear();
-	m_lightProxies.Clear();
-	m_tlasInstances.Clear();
-	m_tlasOctree.Clear();
-	m_materials.Clear();
-	m_textures.Clear();
-	m_textureMapping.Clear();
-
 	if (!pModelAssetInfo->ShouldKeepCpuBuffers())
 	{
 		SAILOR_LOG_ERROR("Path tracer requires bShouldKeepCpuBuffers=true in model asset info: %s", params.m_pathToModel.string().c_str());
@@ -2254,8 +2254,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	const Math::Sphere boundsSphere = pModel->GetBoundsSphere();
 
-	auto defaultMaterials = pModelAssetInfo->GetDefaultMaterials();
-	m_materials.Resize(defaultMaterials.Num());
+	const auto& defaultMaterials = pModelAssetInfo->GetDefaultMaterials();
 
 	if (!pModel->HasBLAS() || pModel->GetBLASTriangles().Num() == 0)
 	{
@@ -2279,263 +2278,45 @@ void PathTracer::Run(const PathTracer::Params& params)
 		}
 	}
 
-	m_lastScenePreparationStats = {};
-	bool bAllTexturesResolved = true;
-	BuildRaytracingMaterials(
-		CaptureMaterials(runtimeMaterials),
-		m_materials,
-		m_resolvedMaterialSlots,
-		m_textures,
-		m_textureMapping,
-		{},
-		{},
-		m_lastScenePreparationStats,
-		bAllTexturesResolved);
-	m_bMaterialsFullyResolved = bAllTexturesResolved;
-	if (m_materials.Num() == 0)
-	{
-		m_materials.Add(Material{});
-		m_resolvedMaterialSlots.Add(1u);
-		m_bMaterialsFullyResolved = true;
-	}
-
-	Raytracing::PathTracer::TLASInstance instance{};
+	TLASInstance instance{};
 	instance.m_model = pModel;
-	instance.m_worldMatrix = glm::mat4(1.0f);
-	instance.m_inverseWorldMatrix = glm::mat4(1.0f);
 	instance.m_worldBounds = Math::AABB(boundsSphere.m_center - vec3(boundsSphere.m_radius), boundsSphere.m_center + vec3(boundsSphere.m_radius));
-	instance.m_materialBaseOffset = 0;
-	m_tlasInstances.Add(instance);
 
 	PathTracerView view{};
+	TVector<DirectionalLight> directionalLights;
 	tinygltf::Model gltfModel;
+	tinygltf::TinyGLTF loader;
+	std::string err;
+	std::string warn;
+	const bool bIsGlb = Utils::GetFileExtension(pModelAssetInfo->GetAssetFilepath().c_str()) == "glb";
+	const bool bParsed = bIsGlb ?
+		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, pModelAssetInfo->GetAssetFilepath().c_str()) :
+		loader.LoadASCIIFromFile(&gltfModel, &err, &warn, pModelAssetInfo->GetAssetFilepath().c_str());
+	if (bParsed)
 	{
-		tinygltf::TinyGLTF loader;
-		std::string err;
-		std::string warn;
-		const bool bIsGlb = Utils::GetFileExtension(pModelAssetInfo->GetAssetFilepath().c_str()) == "glb";
-		const bool bParsed = bIsGlb ?
-			loader.LoadBinaryFromFile(&gltfModel, &err, &warn, pModelAssetInfo->GetAssetFilepath().c_str()) :
-			loader.LoadASCIIFromFile(&gltfModel, &err, &warn, pModelAssetInfo->GetAssetFilepath().c_str());
-
-		if (bParsed)
-		{
-			ResolveViewAndDirectionalLights(gltfModel, params, boundsSphere, view, m_directionalLights);
-		}
+		ResolveViewAndDirectionalLights(gltfModel, params, boundsSphere, view, directionalLights);
 	}
 
-	Utils::Timer raytracingTimer;
-	raytracingTimer.Start();
-
-	const vec3 cameraPos = view.m_cameraPos;
-	vec3 cameraForward = view.m_cameraForward;
-	vec3 cameraUp = view.m_cameraUp;
-	if (abs(dot(cameraForward, cameraUp)) > 0.99f || length(cameraForward) < 0.001f)
+	TVector<LightProxy> lights;
+	lights.Reserve(directionalLights.Num());
+	for (const auto& directional : directionalLights)
 	{
-		cameraUp = vec3(0.0f, 0.0f, 1.0f);
-		cameraForward = glm::normalize(vec3(0, 0, -1.0f));
+		lights.Add(MakeDirectionalLightProxy(directional));
+	}
+	if (!InitializeScene({ instance }, runtimeMaterials, lights))
+	{
+		SAILOR_LOG_ERROR("Cannot prepare model for path tracing: %s", params.m_pathToModel.string().c_str());
+		return;
 	}
 
-	const float aspectRatio = std::max(view.m_aspectRatio, 0.1f);
-	const uint32_t height = params.m_height;
-	const uint32_t width = (std::max)(1u, (uint32_t)std::lround((double)height * (double)aspectRatio));
-
-	const float hFov = std::max(view.m_hFov, glm::radians(10.0f));
-
-	const float vFov = 2.0f * atan(tan(hFov * 0.5f) * (1.0f / aspectRatio));
-	if (m_directionalLights.Num() == 0)
-	{
-		DirectionalLight sun{};
-		sun.m_direction = glm::normalize(vec3(-0.7f, -1.0f, -0.2f));
-		sun.m_intensity = vec3(1.0f);
-		m_directionalLights.Add(sun);
-	}
-
-	m_lightProxies.Reserve(m_directionalLights.Num());
-	for (const auto& directional : m_directionalLights)
-	{
-		m_lightProxies.Add(MakeDirectionalLightProxy(directional));
-	}
-
-	CombinedSampler2D outputTex;
-	outputTex.Initialize<vec3>(width, height);
-	CombinedSampler2D alphaTex;
-	alphaTex.Initialize<float>(width, height);
-
-	float h = tan(vFov / 2);
-	const float ViewportHeight = 2.0f * h;
-	const float ViewportWidth = aspectRatio * ViewportHeight;
-	
-	vec3 _u = normalize(cross(cameraUp, -cameraForward));
-	vec3 _v = cross(-cameraForward, _u);
-
-	const vec3 ViewportU = ViewportWidth * _u;
-	const vec3 ViewportV = ViewportHeight * _v;
-	const vec3 ViewportPivot = cameraPos - (ViewportU + ViewportV) * 0.5f + cameraForward;
-
-	const vec3 _pixelDeltaU = ViewportU / (float)width;
-	const vec3 _pixelDeltaV = ViewportV / (float)height;
-	const vec3 _pixel00Dir = ViewportPivot + 0.5f * (_pixelDeltaU + _pixelDeltaV) - cameraPos;
-
-	// Raytracing
-	{
-		SAILOR_PROFILE_SCOPE("Prepare raytracing tasks");
-
-		TVector<Tasks::ITaskPtr> tasks;
-		TVector<Tasks::ITaskPtr> tasksThisThread;
-
-		std::atomic<uint32_t> finishedTasks = 0;
-		const uint32_t numTasksX = (width + DefaultGroupSize - 1) / DefaultGroupSize;
-		const uint32_t numTasksY = (height + DefaultGroupSize - 1) / DefaultGroupSize;
-		const uint32_t numTasks = std::max(1u, numTasksX * numTasksY);
-
-		tasks.Reserve(numTasks);
-		tasksThisThread.Reserve(numTasks / 32);
-
-		for (uint32_t y = 0; y < height; y += DefaultGroupSize)
-		{
-			for (uint32_t x = 0; x < width; x += DefaultGroupSize)
-			{
-				auto task = Tasks::CreateTask("Calculate raytracing",
-					[=,
-					&finishedTasks,
-					&outputTex,
-					&alphaTex,
-					this]() mutable
-					{
-						Ray ray;
-						ray.SetOrigin(cameraPos);
-
-						for (uint32_t v = 0; (v < DefaultGroupSize) && (y + v) < height; v++)
-						{
-							for (uint32_t u = 0; u < DefaultGroupSize && (u + x) < width; u++)
-							{
-								vec3 accumulator = vec3(0);
-								float alphaCoverage = 0.0f;
-								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
-								{
-									uint32_t randomState = NextRandomU32();
-									const vec2 offset = sample == 0 ?
-										vec2(0.5f, 0.5f) :
-										NextRandomVec2_01(randomState);
-									const vec3 pixelDir = _pixel00Dir + ((float)(u + x) + offset.x) * _pixelDeltaU + ((float)(y + v) - offset.y) * _pixelDeltaV;
-
-									ray.SetDirection(glm::normalize(pixelDir));
-									TLASHit primaryHit{};
-									alphaCoverage += IntersectScene(ray, primaryHit, std::numeric_limits<float>::max(), (uint32_t)(-1), (uint32_t)(-1)) ? 1.0f : 0.0f;
-
-									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), std::numeric_limits<float>::max(), params, 1.0f, randomState, true);
-								}
-
-								vec3 res = accumulator / (float)params.m_msaa;
-								outputTex.SetPixel(x + u, height - (y + v) - 1, res);
-								alphaTex.SetPixel(x + u, height - (y + v) - 1, alphaCoverage / (float)params.m_msaa);
-								}
-							}
-
-						finishedTasks++;
-
-					}, EThreadType::Worker);
-
-				if (((x + y) / DefaultGroupSize) % 32 == 0)
-				{
-					tasksThisThread.Emplace(task);
-				}
-				else
-				{
-					task->Run();
-					tasks.Emplace(std::move(task));
-				}
-			}
-		}
-
-		float lastPrg = 0.0f;
-		{
-			SAILOR_PROFILE_SCOPE("Calcs on Main thread");
-			float eta = 0.0f;
-			for (auto& task : tasksThisThread)
-			{
-				task->Execute();
-
-				const float progress = finishedTasks.load() / (float)numTasks;
-
-				if (progress - lastPrg > 0.05f)
-				{
-					if (eta == 0.0f)
-					{
-						eta = raytracingTimer.ResultAccumulatedMs() * 20.0f * 0.001f * 1.5f;
-						SAILOR_LOG("PathTracer ETA: ~%.2fsec (%.2fmin)", eta, round(eta / 60.0f));
-					}
-
-					SAILOR_LOG("PathTracer Progress: %.2f", progress);
-					lastPrg = progress;
-				}
-			}
-		}
-
-		{
-			SAILOR_PROFILE_SCOPE("Wait all calcs");
-			for (auto& task : tasks)
-			{
-				if (!task->IsFinished())
-				{
-					task->Wait();
-
-					const float progress = finishedTasks.load() / (float)numTasks;
-					if (progress - lastPrg > 0.05f)
-					{
-						SAILOR_LOG("PathTracer Progress: %.2f", progress);
-						lastPrg = progress;
-					}
-				}
-			}
-		}
-	}
-
-	raytracingTimer.Stop();
-	m_lastRaytraceTimeMs = static_cast<double>(raytracingTimer.ResultAccumulatedMs());
-
-	{
-		SAILOR_PROFILE_SCOPE("Write Image");
-
-		TVector<u8vec4> outSrgb(width * height);
-		const float aberrationAmount = (0.5f / width);
-
-		for (uint32_t y = 0; y < height; y++)
-		{
-			for (uint32_t x = 0; x < width; x++)
-			{
-				vec2 uv = vec2((float)x / width, (float)y / height);
-
-				// Fetch the color values from the offset positions
-				vec3 greenColor = outputTex.Sample<vec3>(uv + vec2(aberrationAmount, 0));
-				vec3 blueColor = outputTex.Sample<vec3>(uv + vec2(aberrationAmount, aberrationAmount));
-				vec3 redColor = outputTex.Sample<vec3>(uv + vec2(-aberrationAmount, -aberrationAmount));
-
-				// Combine the shifted channels
-				vec3 chromaAberratedColor = vec3(redColor.r, greenColor.g, blueColor.b);
-				const float alpha = glm::clamp(alphaTex.Sample<float>(uv), 0.0f, 1.0f);
-				const u8vec3 rgb = alpha > 0.0f ?
-					u8vec3(glm::clamp(Utils::LinearToSRGB(chromaAberratedColor) * 255.0f, 0.0f, 255.0f)) :
-					u8vec3(0, 0, 0);
-
-				// Write the result back to the output array
-				outSrgb[x + y * width] = u8vec4(rgb, (uint8_t)glm::round(alpha * 255.0f));
-			}
-		}
-
-		m_lastRenderedImage = outSrgb;
-		m_lastRenderedExtent = glm::uvec2(width, height);
-
-		if (!params.m_output.empty())
-		{
-			const uint32_t Channels = 4;
-			if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
-			{
-				SAILOR_LOG("Raytracing WriteImage error");
-			}
-		}
-	}
+	Params renderParams = params;
+	renderParams.m_bUseRuntimeCamera = true;
+	renderParams.m_runtimeCameraPos = view.m_cameraPos;
+	renderParams.m_runtimeCameraForward = view.m_cameraForward;
+	renderParams.m_runtimeCameraUp = view.m_cameraUp;
+	renderParams.m_runtimeAspectRatio = view.m_aspectRatio;
+	renderParams.m_runtimeHFov = view.m_hFov;
+	RenderPreparedScene(renderParams);
 }
 
 bool PathTracer::IntersectSceneGeometry(const Math::Ray& worldRay,
