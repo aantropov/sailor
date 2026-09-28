@@ -3015,6 +3015,61 @@ components:
 			"the visual lab must use only its four controlled PBR reference materials");
 	}
 
+	void TestGpuLayoutContentIdentity()
+	{
+		auto original = GIProbesDataPtr::Make(MakeVolume(1.0f, 41u));
+		Require(ComputeGIProbesTransportHash(*original, original->m_transportHash),
+			"valid probe transport must have a content hash");
+		RHI::RHIGlobalIlluminationSnapshot before;
+		before.m_layout = original;
+		RHI::RHIGlobalIlluminationState state;
+		state.m_data = original;
+		before.m_states.Add(state);
+		auto refined = GIProbesDataPtr::Make(*original);
+		refined->m_probes[0].m_irradiance[0] *= 2.0f;
+		++refined->m_lightingHash;
+		auto after = before;
+		after.m_layout = refined;
+		after.m_states[0].m_data = refined;
+		const auto signature = RHI::ComputeGlobalIlluminationLayoutSignature(before);
+		Require(original != refined && RHI::ComputeGlobalIlluminationLayoutSignature(after) == signature,
+			"SH-only publication in a fresh allocation must preserve layout identity");
+		Require(RHI::ComputeGlobalIlluminationCoefficientSignature(after) !=
+			RHI::ComputeGlobalIlluminationCoefficientSignature(before),
+			"SH refinement must still invalidate coefficient uploads");
+
+		auto changesLayout = [&](auto edit)
+		{
+			auto changed = GIProbesDataPtr::Make(*original);
+			edit(*changed);
+			changed->m_layoutHash = ComputeGIProbesLayoutHash(*changed);
+			Require(ComputeGIProbesTransportHash(*changed, changed->m_transportHash),
+				"edited probe transport must hash successfully");
+			after.m_layout = changed;
+			Require(RHI::ComputeGlobalIlluminationLayoutSignature(after) != signature,
+				"GPU spatial, visibility or packing inputs must invalidate layout uploads");
+		};
+		changesLayout([](GIProbesData& data) { data.m_probes[0].m_position.x += 0.01f; });
+		changesLayout([](GIProbesData& data) { data.m_probes[0].m_validity = 0.5f; });
+		changesLayout([](GIProbesData& data) { data.m_probes[0].m_visibility[0] *= 0.5f; });
+		changesLayout([](GIProbesData& data) { data.m_probes[0].m_environmentVisibility[1] = 0.5f; });
+		changesLayout([](GIProbesData& data) { data.m_probes[0].m_flags ^= GIProbeBlockedDirectionBit(2); });
+		changesLayout([](GIProbesData& data) { data.m_bakeSettings.m_minProbeSpacing *= 2; });
+		changesLayout([](GIProbesData& data) { data.m_bakeSettings.m_normalBias *= 2; });
+		changesLayout([](GIProbesData& data) { data.m_bakeSettings.m_viewBias *= 2; });
+		changesLayout([](GIProbesData& data) { data.m_bakeSettings.m_maxRayDistance *= 2; });
+
+		refined->m_layoutHash = 0;
+		refined->m_transportHash = 0;
+		after.m_layout = refined;
+		Require(RHI::ComputeGlobalIlluminationLayoutSignature(after) == signature,
+			"in-memory payloads without stored hashes must use the same content identity");
+		uint64_t untouched = 17;
+		std::atomic<bool> cancel{ true };
+		Require(!ComputeGIProbesTransportHash(*original, untouched, &cancel) && untouched == 17,
+			"cancelled transport hashing must not publish a partial identity");
+	}
+
 	void TestGpuPackingAndWeightOnlyUpdates()
 	{
 		GIProbesDataPtr day = GIProbesDataPtr::Make();
@@ -4518,6 +4573,17 @@ components:
 			Require(analyticSampler->GetSampleCount() == static_cast<uint64_t>(initial.m_activeProbeCount) * 65u,
 				"refinement must extend each prefix without retracing its earlier irradiance samples");
 			const GIProbesDataPtr finalData = service.GetPublishedData();
+			uint64_t transportHash = 0;
+			Require(ComputeGIProbesTransportHash(*finalData, transportHash) &&
+				finalData->m_transportHash == transportHash && finalData != initialData,
+				"the real runtime publisher must use complete transport content identity");
+			RHI::RHIGlobalIlluminationSnapshot initialSnapshot;
+			initialSnapshot.m_layout = initialData;
+			RHI::RHIGlobalIlluminationSnapshot finalSnapshot;
+			finalSnapshot.m_layout = finalData;
+			Require(RHI::ComputeGlobalIlluminationLayoutSignature(initialSnapshot) ==
+				RHI::ComputeGlobalIlluminationLayoutSignature(finalSnapshot),
+				"fully covered runtime SH refinement must not invalidate the GPU layout");
 			for (const GIProbe& probe : finalData->m_probes)
 			{
 				Require(HasSameIrradianceBits(probe, complete),
@@ -7696,6 +7762,7 @@ int main(int argc, char** argv)
 		RunTest(
 			"GIBakeQualityLabCoversCanonicalCases",
 			TestGIBakeQualityLabCoversCanonicalCases);
+		RunTest("GpuLayoutContentIdentity", TestGpuLayoutContentIdentity);
 		RunTest("GpuPackingAndWeightOnlyUpdates", TestGpuPackingAndWeightOnlyUpdates);
 		RunTest("AdaptiveBakerAndLayoutReuse", TestAdaptiveBakerAndLayoutReuse);
 		RunTest("BakeWorkerFailureDiagnostics", TestBakeWorkerFailureDiagnostics);

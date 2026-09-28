@@ -5,6 +5,7 @@
 #include "Memory/SharedPtr.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -165,6 +166,10 @@ namespace Sailor
 
 	SAILOR_SHARED_API uint64_t ComputeGIProbesLayoutHash(
 		const GIProbesData& data) noexcept;
+	SAILOR_SHARED_API bool ComputeGIProbesTransportHash(
+		const GIProbesData& data,
+		uint64_t& outHash,
+		const std::atomic<bool>* cancel = nullptr) noexcept;
 	SAILOR_SHARED_API uint64_t ComputeGIProbesRepresentationHash(
 		uint32_t formatVersion,
 		uint32_t shOrder,

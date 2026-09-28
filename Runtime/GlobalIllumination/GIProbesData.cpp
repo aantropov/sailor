@@ -84,6 +84,45 @@ uint64_t Sailor::ComputeGIProbesLayoutHash(
 	return hash;
 }
 
+bool Sailor::ComputeGIProbesTransportHash(
+	const GIProbesData& data,
+	uint64_t& outHash,
+	const std::atomic<bool>* cancel) noexcept
+{
+	uint64_t hash = Fnv1aOffsetBasis;
+	HashValue(hash, data.m_layoutHash != 0u ? data.m_layoutHash : ComputeGIProbesLayoutHash(data));
+	HashValues(hash,
+		data.m_bakeSettings.m_maxSubdivisionLevel,
+		data.m_bakeSettings.m_minProbeSpacing,
+		data.m_bakeSettings.m_normalBias,
+		data.m_bakeSettings.m_viewBias,
+		data.m_bakeSettings.m_maxRayDistance);
+	for (size_t index = 0u; index < data.m_probes.Num(); ++index)
+	{
+		if (index % 256u == 0u && cancel && cancel->load(std::memory_order_acquire))
+		{
+			return false;
+		}
+		const GIProbe& probe = data.m_probes[index];
+		HashValues(hash, probe.m_relocationOffset.x, probe.m_relocationOffset.y, probe.m_relocationOffset.z);
+		HashValues(hash, probe.m_validity, probe.m_flags);
+		for (const glm::vec2& moments : probe.m_visibility)
+		{
+			HashValues(hash, moments.x, moments.y);
+		}
+		for (const float visibility : probe.m_environmentVisibility)
+		{
+			HashValue(hash, visibility);
+		}
+	}
+	if (cancel && cancel->load(std::memory_order_acquire))
+	{
+		return false;
+	}
+	outHash = hash;
+	return true;
+}
+
 float Sailor::CalculateGIProbeVisibilityMaxDistance(
 	const GIProbesData& data,
 	const GIProbeBrick& brick) noexcept

@@ -1,7 +1,5 @@
 #include "GlobalIllumination/RuntimeGIProbesServiceInternal.h"
 
-#include "Containers/Hash.h"
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -176,8 +174,7 @@ namespace Sailor
 				? "runtime GI probes reached the target sample count"
 				: "runtime GI probes are refining with environment fallback for missing cells";
 		working.m_layoutHash = ComputeGIProbesLayoutHash(working);
-		working.m_transportHash = m_generation->m_request.m_geometryGeneration;
-		HashCombine(working.m_transportHash, m_generation->m_readyCount);
+		ComputeGIProbesTransportHash(working, working.m_transportHash);
 		working.m_lightingHash = (m_generation->m_request.m_lightingGeneration << 32u) ^ m_nextPublishedRevision;
 
 		GIProbesDataPtr published = GIProbesDataPtr::Make(working);

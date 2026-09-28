@@ -220,12 +220,14 @@ uint64_t Sailor::RHI::ComputeGlobalIlluminationLayoutSignature(
 		return 0u;
 	}
 	uint64_t hash = Fnv1aOffsetBasis;
-	HashValue(hash, snapshot.m_layout->m_layoutHash);
-	HashValue(hash, snapshot.m_layout->m_transportHash);
-	HashValue(
-		hash,
-		static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
-			snapshot.m_layout.GetRawPtr())));
+	const GIProbesData& layout = *snapshot.m_layout;
+	uint64_t transportHash = layout.m_transportHash;
+	if (transportHash == 0u)
+	{
+		ComputeGIProbesTransportHash(layout, transportHash);
+	}
+	HashValue(hash, layout.m_layoutHash != 0u ? layout.m_layoutHash : ComputeGIProbesLayoutHash(layout));
+	HashValue(hash, transportHash);
 	HashValue(hash, static_cast<uint64_t>(snapshot.m_layout->m_bricks.Num()));
 	HashValue(hash, static_cast<uint64_t>(snapshot.m_layout->m_probes.Num()));
 	return hash;

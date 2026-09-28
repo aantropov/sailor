@@ -55,44 +55,6 @@ namespace
 		return result;
 	}
 
-	bool ComputeTransportHash(const GIProbesData& data,
-		const GIProbesBakeRequest& request, uint64_t& outHash) noexcept
-	{
-		uint64_t hash = Fnv1aOffsetBasis;
-		HashValue(hash, data.m_layoutHash);
-		HashValue(hash, data.m_bakeSettings.m_maxSubdivisionLevel);
-		HashValue(hash, data.m_bakeSettings.m_minProbeSpacing);
-		HashValue(hash, data.m_bakeSettings.m_normalBias);
-		HashValue(hash, data.m_bakeSettings.m_viewBias);
-		HashValue(hash, data.m_bakeSettings.m_maxRayDistance);
-		for (size_t probeIndex = 0u; probeIndex < data.m_probes.Num(); ++probeIndex)
-		{
-			if (probeIndex % 256u == 0u && IsCancelled(request))
-			{
-				return false;
-			}
-			const GIProbe& probe = data.m_probes[probeIndex];
-			HashValues(
-				hash,
-				probe.m_relocationOffset.x,
-				probe.m_relocationOffset.y,
-				probe.m_relocationOffset.z);
-			HashValue(hash, probe.m_validity);
-			HashValue(hash, probe.m_flags);
-			for (const glm::vec2& moments : probe.m_visibility)
-			{
-				HashValues(hash, moments.x, moments.y);
-			}
-			for (const float environmentVisibility :
-				probe.m_environmentVisibility)
-			{
-				HashValue(hash, environmentVisibility);
-			}
-		}
-		outHash = hash;
-		return !IsCancelled(request);
-	}
-
 	bool ComputeLightingHash(const GIProbesData& data,
 		const GIProbesBakeRequest& request, uint64_t& outHash) noexcept
 	{
@@ -1070,7 +1032,7 @@ GIProbesBakeResult GIProbesBaker::Bake(
 		if (!bReuseTransport)
 		{
 			data->m_layoutHash = ComputeGIProbesLayoutHash(*data);
-			if (!ComputeTransportHash(*data, request, data->m_transportHash))
+			if (!ComputeGIProbesTransportHash(*data, data->m_transportHash, request.m_cancel))
 			{
 				return CancelledBake();
 			}

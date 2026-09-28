@@ -13,11 +13,15 @@
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "GlobalIllumination/GIProbesBinary.h"
+#include "FrameGraph/RHIFrameGraph.h"
+#include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
+#include "RHI/CommandList.h"
 #include "Settings/GraphicsSettings.h"
 
 #include <array>
 #include <barrier>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -270,6 +274,144 @@ namespace
 			"a stale first preparation must recover once the scene becomes stable");
 	}
 
+	void TestGpuLayoutUploads(const GIProbesDataPtr& data)
+	{
+		auto task = Tasks::CreateTaskWithResult<std::string>("GI layout upload validation", [data]()
+		{
+			try
+			{
+				using namespace RHI;
+				auto& driver = Renderer::GetDriver();
+				auto commands = Renderer::GetDriverCommands();
+				auto graph = RHIFrameGraphPtr::Make();
+				std::array<RHIRenderSubmissionContextPtr, 2> flights{
+					RHIRenderSubmissionContextPtr::Make(), RHIRenderSubmissionContextPtr::Make() };
+				uint64_t submission = 0;
+				auto checkBuffers = [&](RHIShaderBindingSetPtr bindings, const GIProbesDataPtr& expected,
+					RHISemaphorePtr wait = {})
+				{
+					RHIGlobalIlluminationGpuLayout layout;
+					std::string diagnostic;
+					Require(BuildGlobalIlluminationGpuLayout(*expected, layout, diagnostic), diagnostic);
+					RHIGlobalIlluminationSnapshot snapshot;
+					snapshot.m_layout = expected;
+					snapshot.m_qualityBudget = 1;
+					RHIGlobalIlluminationState state;
+					state.m_data = expected;
+					state.m_effectiveWeight = 1;
+					snapshot.m_states.Add(state);
+					TVector<RHIGlobalIlluminationGpuCoefficients> coefficients;
+					Require(BuildGlobalIlluminationGpuCoefficients(snapshot, coefficients, diagnostic), diagnostic);
+					const std::array<const char*, 4> names{ "globalIlluminationBvh", "globalIlluminationBricks",
+						"globalIlluminationProbes", "globalIlluminationCoefficients" };
+					const std::array<const void*, 4> values{ layout.m_nodes.GetData(), layout.m_bricks.GetData(),
+						layout.m_probes.GetData(), coefficients.GetData() };
+					const std::array<size_t, 4> sizes{ layout.m_nodes.Num() * sizeof(RHIGlobalIlluminationGpuBvhNode),
+						layout.m_bricks.Num() * sizeof(RHIGlobalIlluminationGpuBrick),
+						layout.m_probes.Num() * sizeof(RHIGlobalIlluminationGpuProbe),
+						coefficients.Num() * sizeof(RHIGlobalIlluminationGpuCoefficients) };
+					std::array<RHIBufferPtr, 4> readbacks;
+					auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(command, true);
+					command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+					for (size_t i = 0; i < names.size(); ++i)
+					{
+						auto binding = bindings->GetOrAddShaderBinding(names[i]);
+						Require(binding && binding->m_vulkan.m_valueBinding, "framegraph must publish each GI buffer");
+						readbacks[i] = driver->CreateBuffer(sizes[i], EBufferUsageBit::BufferTransferDst_Bit,
+							EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+						command->m_vulkan.m_commandBuffer->CopyBuffer(*binding->m_vulkan.m_valueBinding->Get(),
+							*readbacks[i]->m_vulkan.m_buffer->Get(), sizes[i]);
+					}
+					command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+					commands->EndCommandList(command);
+					auto fence = RHIFencePtr::Make();
+					Require(driver->SubmitCommandList(command, fence, {}, wait), "GI readback submission must succeed");
+					fence->Wait(5000000000ull);
+					Require(fence->IsFinished(), "GI readback must complete");
+					for (size_t i = 0; i < names.size(); ++i)
+					{
+						Require(std::memcmp(readbacks[i]->GetPointer(), values[i], sizes[i]) == 0,
+							std::string("GPU GI bytes must match the retained publication: ") + names[i]);
+					}
+					fence->ClearDependencies();
+				};
+				auto upload = [&](uint32_t flight, const GIProbesDataPtr& payload, uint64_t revision, uint64_t expectedBytes)
+				{
+					flights[flight]->BeginSubmission(++submission, flight);
+					auto view = RHISceneViewPtr::Make();
+					view->m_snapshots.Resize(1);
+					auto& snapshot = view->m_snapshots[0];
+					snapshot.m_submissionContext = flights[flight];
+					snapshot.m_camera = TUniquePtr<CameraData>::Make();
+					snapshot.m_globalIlluminationMode = EGlobalIlluminationMode::Runtime;
+					snapshot.m_bGlobalIlluminationEnabled = true;
+					snapshot.m_globalIllumination = RHIGlobalIlluminationSnapshotPtr::Make();
+					auto& gi = *snapshot.m_globalIllumination;
+					gi.m_generation = revision;
+					gi.m_lightingHash = payload->m_lightingHash;
+					gi.m_layout = payload;
+					gi.m_qualityBudget = 1;
+					RHIGlobalIlluminationState state;
+					state.m_data = payload;
+					state.m_effectiveWeight = 1;
+					gi.m_states.Add(state);
+					TVector<RHICommandListPtr> transfers, graphics;
+					RHISemaphorePtr chain;
+					Require(graph->Process(view, transfers, graphics, {}, chain), "the actual GI framegraph must process");
+					for (size_t i = 0; i < transfers.Num(); ++i)
+					{
+						for (const auto& command : { transfers[i], graphics[i] })
+						{
+							auto next = driver->CreateWaitSemaphore();
+							Require(driver->SubmitCommandList(command, RHIFencePtr::Make(), next, chain),
+								"framegraph commands must submit in dependency order");
+							chain = next;
+						}
+					}
+					checkBuffers(snapshot.m_rhiLightsData, payload, chain);
+					const auto stats = graph->GetGlobalIlluminationRenderStats();
+					Require(stats.m_bActive, "the submitted GI payload must stay active");
+					Require(stats.m_uploadedGpuBytes == expectedBytes && stats.m_copiedCpuBytes == expectedBytes,
+						"GI uploaded " + std::to_string(stats.m_uploadedGpuBytes) + " bytes; expected " +
+						std::to_string(expectedBytes) + " for changed payload ranges");
+					return snapshot.m_rhiLightsData;
+				};
+				Require(data->m_bricks.Num() == 1 && data->m_probes.Num() == 8, "GI upload fixture must have eight probes");
+				const uint64_t layoutBytes = sizeof(RHIGlobalIlluminationGpuBvhNode) + sizeof(RHIGlobalIlluminationGpuBrick) +
+					8 * sizeof(RHIGlobalIlluminationGpuProbe);
+				const uint64_t lightingBytes = 8 * sizeof(RHIGlobalIlluminationGpuCoefficients) +
+					sizeof(RHIGlobalIlluminationGpuState) + sizeof(RHIGlobalIlluminationGpuHeader);
+				auto olderFlight = upload(0, data, 1, layoutBytes + lightingBytes);
+				auto refined = GIProbesDataPtr::Make(*data);
+				++refined->m_lightingHash;
+				for (auto& probe : refined->m_probes)
+				{
+					probe.m_irradiance[0] += glm::vec3(0.25f);
+				}
+				auto otherFlight = upload(1, refined, 2, layoutBytes + lightingBytes);
+				checkBuffers(olderFlight, data);
+				upload(0, refined, 2, lightingBytes);
+				upload(0, refined, 2, 0);
+				auto changed = GIProbesDataPtr::Make(*refined);
+				changed->m_probes[0].m_validity = changed->m_probes[0].m_validity < 0.5f ? 0.75f : 0.25f;
+				Require(ComputeGIProbesTransportHash(*changed, changed->m_transportHash), "transport edit must hash");
+				upload(0, changed, 3, layoutBytes + lightingBytes);
+				checkBuffers(otherFlight, refined);
+				std::cout << "GI GPU layout uploads passed: full=" << layoutBytes + lightingBytes
+					<< ", SH-only=" << lightingBytes << ", unchanged=0; both flights retain exact buffer contents\n";
+				return std::string{};
+			}
+			catch (const std::exception& error)
+			{
+				return std::string(error.what());
+			}
+		}, EThreadType::RHI);
+		task->Run();
+		task->Wait();
+		Require(task->GetResult().empty(), task->GetResult());
+	}
+
 	void TestImporterRetry(const std::filesystem::path& workspace, const GIProbesData& data, bool collectFailed)
 	{
 		auto* importer = App::GetSubmodule<GIProbesImporter>();
@@ -351,6 +493,7 @@ namespace Sailor::Tests
 		run("Stale preparation recovery", [&]() { TestStalePreparationRecovery(); });
 		if (data)
 		{
+			run("GI layout uploads", [&]() { TestGpuLayoutUploads(data); });
 			run("Importer retry", [&]() { TestImporterRetry(workspace, *data, false); });
 			run("Importer retry after GC", [&]() { TestImporterRetry(workspace, *data, true); });
 		}
