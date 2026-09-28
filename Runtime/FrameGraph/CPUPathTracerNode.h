@@ -96,7 +96,7 @@ namespace Sailor::Framegraph
 		uint32_t m_lastCameraIndex = 0;
 		uint64_t m_nextImageRevision = 0;
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 	};
 
 	template class TFrameGraphNode<CPUPathTracerNode>;

@@ -81,8 +81,8 @@ namespace Sailor
 	{
 	public:
 
-		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
-		void CopySceneView(RHI::RHISceneViewPtr& outSceneView);
+		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
+		SAILOR_API void CopySceneView(RHI::RHISceneViewPtr& outSceneView);
 		void SetPathTracingEnabled(bool bEnabled) { m_bPathTracingEnabled = bEnabled; }
 		bool IsPathTracingEnabled() const { return m_bPathTracingEnabled; }
 		virtual uint32_t GetOrder() const override { return 1100; }
