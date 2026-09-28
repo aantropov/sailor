@@ -108,7 +108,7 @@ layout(std430, set = 1, binding = 17) readonly buffer GlobalIlluminationStatesSS
 #endif
 
 #ifdef FRAGMENT
-layout(set = 1, binding = 18) uniform sampler2D g_globalIlluminationProbeCellIndicesSampler;
+layout(set = 2, binding = 4) uniform sampler2D g_globalIlluminationProbeCellIndicesSampler;
 #endif
 
 struct GlobalIlluminationProbeCell

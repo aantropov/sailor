@@ -498,9 +498,7 @@ namespace
 		auto graph = RHIFrameGraphPtr::Make();
 		graph->SetRenderTarget("DepthBuffer", depth);
 		auto lights = driver->CreateShaderBindings();
-		if (!driver->AddSamplerToShaderBindings(lights, "g_transmissionFramebufferSampler", driver->GetDefaultTexture(), 10u) ||
-			!driver->AddSamplerToShaderBindings(lights, "g_globalIlluminationProbeCellIndicesSampler", driver->GetDefaultTexture(), 18u))
-			return "valid lighting placeholders could not be created";
+		const auto lightsRevision = lights->GetDescriptorRevision();
 		std::array<SceneDraw, 5> draws;
 		for (uint32_t i = 0u; i < draws.size(); ++i)
 		{
@@ -559,8 +557,8 @@ namespace
 		if (bindingsB->m_vulkan.m_descriptorSet != nativeB || bindingsB->GetDescriptorRevision() != revisionB ||
 			bindingsB->GetCompatibilityHashCode() != hashB || bindingsA->m_vulkan.m_descriptorSet != nativeA || !nativeA->IsCompiled())
 			return "view repair changed request identity/revision or invalidated retained A";
-		for (const auto& draw : draws)
-			if (draw.m_resources->m_nodeLightsBindings) return "unexpected lighting clone obscures the packed binding failure";
+		if (lights->GetDescriptorRevision() != lightsRevision || !lights->GetShaderBindings().IsEmpty())
+			return "RenderScene changed the shared lighting bindings";
 
 		// A fresh rejected set avoids C's now-successful compatible-set cache entry.
 		auto mixedTexture = PrivateTextureView(textureC);

@@ -1612,8 +1612,9 @@ void main() { gl_Position = position; }
 					sizeof(RHI::RHIGlobalIlluminationGpuState));
 				RequireSpirvCombinedImageSamplerBinding(
 					byteCode,
-					1u,
-					18u);
+					2u,
+					4u);
+				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 18u);
 				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 19u);
 				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 22u);
 			}
@@ -1633,6 +1634,14 @@ void main() { gl_Position = position; }
 			1u,
 			19u);
 		RequireLocalReflectionUniformLayout(materialExtensionsByteCode);
+		for (const bool debug : { false, true })
+		{
+			const auto transmission = compileRuntimeFragment("Shaders/Standard_glTF.shader", { "TRANSMISSION" }, debug);
+			RequireSpirvCombinedImageSamplerBinding(transmission, 2u, 2u);
+			RequireSpirvCombinedImageSamplerBinding(transmission, 2u, 4u);
+			RequireSpirvDescriptorBindingAbsent(transmission, 1u, 10u);
+			RequireSpirvDescriptorBindingAbsent(transmission, 1u, 18u);
+		}
 		RequireGltfMaterialLayout(materialExtensionsByteCode, compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader", { "CLEAR_COAT", "SHEEN", "TRANSMISSION" }, true), 176u, 176u);
 		RequireGltfMaterialLayout(compileRuntimeFragment(

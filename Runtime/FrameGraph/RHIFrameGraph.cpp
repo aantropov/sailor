@@ -854,19 +854,6 @@ namespace
 					resources->m_lightsBindings,
 					"g_localSheenEnvCubemap", localSheen, 22u);
 			}
-			if (auto texture = driver->GetDefaultTexture())
-			{
-				driver->AddSamplerToShaderBindings(
-					resources->m_lightsBindings,
-					"g_transmissionFramebufferSampler",
-					texture,
-					10u);
-				driver->AddSamplerToShaderBindings(
-					resources->m_lightsBindings,
-					"g_globalIlluminationProbeCellIndicesSampler",
-					texture,
-					18u);
-			}
 			resources->m_lightsBindings->RecalculateCompatibility();
 			resources->m_lightsTemplate = lightsTemplate;
 			resources->m_sharedLightsStorage = sharedResources->m_lightsStorage;

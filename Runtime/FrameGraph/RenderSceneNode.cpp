@@ -16,7 +16,6 @@
 #include "Core/SpinLock.h"
 
 #include <cmath>
-#include <initializer_list>
 #include <limits>
 
 using namespace Sailor;
@@ -50,88 +49,6 @@ namespace
 		HashCombine(revision, valid);
 		if (valid)
 			HashCombine(revision, std::hash<glm::mat4>{}(previous.GetWorldMatrix()), previous.GetSkeletonOffset());
-	}
-
-	struct SamplerOverride final
-	{
-		const char* m_name;
-		RHITexturePtr m_texture;
-		uint32_t m_binding;
-	};
-
-	RHIShaderBindingSetPtr CloneBindingsWithSamplers(
-		const RHIShaderBindingSetPtr& source,
-		std::initializer_list<SamplerOverride> overrides)
-	{
-		if (!source)
-		{
-			return source;
-		}
-
-		auto& driver = Renderer::GetDriver();
-		auto result = driver->CreateShaderBindings();
-		for (const auto& entry : source->GetShaderBindings())
-		{
-			const auto& name = entry.m_first;
-			const auto& binding = entry.m_second;
-			bool bOverridden = false;
-			for (const SamplerOverride& samplerOverride : overrides)
-			{
-				bOverridden = bOverridden ||
-					(samplerOverride.m_texture && name == samplerOverride.m_name);
-			}
-			if (!binding || bOverridden)
-			{
-				continue;
-			}
-
-			const auto& layout = binding->GetLayout();
-			RHIShaderBindingPtr copiedBinding;
-			if (layout.m_type == EShaderBindingType::CombinedImageSampler)
-			{
-				copiedBinding = driver->AddSamplerToShaderBindings(
-					result,
-					name,
-					binding->GetTextureBindings(),
-					layout.m_binding,
-					layout.m_bVariableDescriptorCount,
-					layout.m_arrayCount);
-			}
-			else if (layout.m_type == EShaderBindingType::StorageImage)
-			{
-				copiedBinding = driver->AddStorageImageToShaderBindings(
-					result,
-					name,
-					binding->GetTextureBindings(),
-					layout.m_binding);
-			}
-			else
-			{
-				copiedBinding = driver->AddShaderBinding(result, binding, name, layout.m_binding);
-			}
-			if (!copiedBinding)
-			{
-				return {};
-			}
-		}
-
-		for (const SamplerOverride& samplerOverride : overrides)
-		{
-			if (!samplerOverride.m_texture)
-			{
-				continue;
-			}
-			if (!driver->AddSamplerToShaderBindings(
-				result,
-				samplerOverride.m_name,
-				samplerOverride.m_texture,
-				samplerOverride.m_binding))
-			{
-				return {};
-			}
-		}
-		result->RecalculateCompatibility();
-		return result;
 	}
 
 	RHITexturePtr GetBoundTexture(
@@ -1122,7 +1039,6 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		return;
 	}
 
-	RHIShaderBindingSetPtr nodeLightsData = sceneView.m_rhiLightsData;
 	RHI::RHITexturePtr transmissionFramebuffer = GetResolvedAttachment("transmissionFramebuffer");
 	RHI::RHITexturePtr sceneDepth = GetResolvedAttachment("sceneDepth");
 	RHI::RHITexturePtr sampledSceneDepth = sceneDepth;
@@ -1135,61 +1051,6 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	}
 	RHI::RHITexturePtr globalIlluminationProbeCellIndicesTexture =
 		GetResolvedAttachment("globalIlluminationProbeCellIndicesSampler");
-	const RHITexturePtr defaultTexture = driver->GetDefaultTexture();
-	const RHITexturePtr desiredTransmissionTexture = transmissionFramebuffer ?
-		transmissionFramebuffer : defaultTexture;
-	const bool bNeedsSceneDepthOverride = sceneDepth &&
-		GetBoundTexture(sceneView.m_rhiLightsData, "g_sceneDepthSampler") != sampledSceneDepth;
-	const RHITexturePtr desiredGlobalIlluminationProbeCellIndicesTexture =
-		globalIlluminationProbeCellIndicesTexture ?
-			globalIlluminationProbeCellIndicesTexture : defaultTexture;
-	const bool bNeedsTransmissionOverride =
-		GetBoundTexture(
-			sceneView.m_rhiLightsData,
-			"g_transmissionFramebufferSampler") != desiredTransmissionTexture;
-	const bool bNeedsGlobalIlluminationProbeCellIndicesOverride =
-		GetBoundTexture(
-			sceneView.m_rhiLightsData,
-			"g_globalIlluminationProbeCellIndicesSampler") !=
-			desiredGlobalIlluminationProbeCellIndicesTexture;
-	if (bNeedsTransmissionOverride || bNeedsSceneDepthOverride ||
-		bNeedsGlobalIlluminationProbeCellIndicesOverride)
-	{
-		const uint64_t sourceRevision = sceneView.m_rhiLightsData ?
-			sceneView.m_rhiLightsData->GetDescriptorRevision() : 0ull;
-		const bool bCloneOutdated = !resources->m_nodeLightsBindings ||
-			resources->m_nodeLightsSource != sceneView.m_rhiLightsData ||
-			resources->m_nodeLightsSourceRevision != sourceRevision ||
-			resources->m_transmissionTexture != transmissionFramebuffer ||
-			resources->m_sceneDepthTexture != sceneDepth ||
-			resources->m_globalIlluminationProbeCellIndicesTexture !=
-				globalIlluminationProbeCellIndicesTexture;
-		if (bCloneOutdated)
-		{
-			auto clonedBindings = CloneBindingsWithSamplers(
-				sceneView.m_rhiLightsData,
-				{
-					{ "g_transmissionFramebufferSampler",
-						desiredTransmissionTexture, 10u },
-					{ "g_sceneDepthSampler", sampledSceneDepth, 23u },
-					{ "g_globalIlluminationProbeCellIndicesSampler",
-						desiredGlobalIlluminationProbeCellIndicesTexture, 18u }
-				});
-			if (sceneView.m_rhiLightsData && !clonedBindings)
-			{
-				m_syncSharedResources.Unlock();
-				return;
-			}
-			resources->m_nodeLightsBindings = std::move(clonedBindings);
-			resources->m_nodeLightsSource = sceneView.m_rhiLightsData;
-			resources->m_nodeLightsSourceRevision = sourceRevision;
-			resources->m_transmissionTexture = transmissionFramebuffer;
-			resources->m_sceneDepthTexture = sceneDepth;
-			resources->m_globalIlluminationProbeCellIndicesTexture =
-				globalIlluminationProbeCellIndicesTexture;
-		}
-		nodeLightsData = resources->m_nodeLightsBindings;
-	}
 	if (transmissionFramebuffer)
 	{
 		commands->ImageMemoryBarrier(commandList, transmissionFramebuffer, RHI::EImageLayout::ShaderReadOnlyOptimal);
@@ -1236,6 +1097,21 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		resources->m_sizePerInstanceData = sizeof(PerInstanceData) * numInstances;
 		resources->m_sizeInstanceIndices =
 			sizeof(uint32_t) * numAllocatedInstanceIndices;
+	}
+
+	// Pass inputs live with the instance data; lighting remains shared by the view.
+	const auto bindPassTexture = [&](const char* name, RHITexturePtr texture, uint32_t binding)
+	{
+		if (!texture) texture = driver->GetDefaultTexture();
+		return GetBoundTexture(resources->m_perInstanceData, name) == texture ||
+			driver->AddSamplerToShaderBindings(resources->m_perInstanceData, name, texture, binding);
+	};
+	if (!bindPassTexture("g_transmissionFramebufferSampler", transmissionFramebuffer, 2u) ||
+		!bindPassTexture("g_sceneDepthSampler", sampledSceneDepth, 3u) ||
+		!bindPassTexture("g_globalIlluminationProbeCellIndicesSampler", globalIlluminationProbeCellIndicesTexture, 4u))
+	{
+		m_syncSharedResources.Unlock();
+		return;
 	}
 
 	if (resources->m_indirectBuffers.IsEmpty())
@@ -1297,7 +1173,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		TVector<RHIShaderBindingSetPtr>& sets)
 		{
 			sets.Add(sceneView.m_frameBindings);
-			sets.Add(nodeLightsData);
+			sets.Add(sceneView.m_rhiLightsData);
 			sets.Add(resources->m_perInstanceData);
 			sets.Add(batch.GetMaterialBindings());
 			sets.Add(batch.m_textureBindings);

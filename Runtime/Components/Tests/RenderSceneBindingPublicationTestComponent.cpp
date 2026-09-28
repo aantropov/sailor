@@ -34,47 +34,32 @@ namespace
 		}
 	};
 
-	struct PublishedClone
+	struct PublishedBindings
 	{
-		RHIShaderBindingSetPtr m_clone;
+		RHIShaderBindingSetPtr m_bindings;
 		VulkanDescriptorSetPtr m_native;
-		RHIShaderBindingSetPtr m_source;
-		uint64_t m_sourceRevision;
-		RHITexturePtr m_transmission;
-		RHITexturePtr m_depth;
-		RHITexturePtr m_cells;
+		uint64_t m_revision;
 
-		explicit PublishedClone(const RenderSceneProbe::SubmissionResources& resources) :
-			m_clone(resources.m_nodeLightsBindings),
-			m_native(m_clone ? m_clone->m_vulkan.m_descriptorSet : nullptr),
-			m_source(resources.m_nodeLightsSource), m_sourceRevision(resources.m_nodeLightsSourceRevision),
-			m_transmission(resources.m_transmissionTexture), m_depth(resources.m_sceneDepthTexture),
-			m_cells(resources.m_globalIlluminationProbeCellIndicesTexture)
+		explicit PublishedBindings(RHIShaderBindingSetPtr bindings) :
+			m_bindings(bindings), m_native(bindings->m_vulkan.m_descriptorSet),
+			m_revision(bindings->GetDescriptorRevision())
 		{}
 
-		bool Unchanged(const RenderSceneProbe::SubmissionResources& resources) const
+		bool Unchanged(RHIShaderBindingSetPtr bindings) const
 		{
-			return resources.m_nodeLightsBindings == m_clone && m_clone &&
-				m_clone->m_vulkan.m_descriptorSet == m_native && m_native && m_native->IsCompiled() &&
-				resources.m_nodeLightsSource == m_source && resources.m_nodeLightsSourceRevision == m_sourceRevision &&
-				resources.m_transmissionTexture == m_transmission && resources.m_sceneDepthTexture == m_depth &&
-				resources.m_globalIlluminationProbeCellIndicesTexture == m_cells;
+			return bindings == m_bindings && bindings->m_vulkan.m_descriptorSet == m_native &&
+				m_native && m_native->IsCompiled() && bindings->GetDescriptorRevision() == m_revision;
 		}
 	};
 
-	struct RestoreResource
+	struct RestoreView
 	{
 		RHITexturePtr m_texture;
 		VulkanImageViewPtr m_view;
-		RHIShaderBindingPtr m_binding;
-		Memory::TManagedMemoryPtr<Memory::VulkanBufferMemoryPtr, RHIShaderBinding::VulkanBufferAllocator> m_buffer;
 
-		void Restore()
-		{
-			if (m_texture) m_texture->m_vulkan.m_imageView = m_view;
-			if (m_binding) m_binding->m_vulkan.m_valueBinding = m_buffer;
-		}
-		~RestoreResource() { Restore(); }
+		explicit RestoreView(RHITexturePtr texture) : m_texture(texture), m_view(texture->m_vulkan.m_imageView) {}
+		void Restore() { m_texture->m_vulkan.m_imageView = m_view; }
+		~RestoreView() { Restore(); }
 	};
 
 	std::string ValidatePublication(ShaderSetPtr shader)
@@ -93,7 +78,11 @@ namespace
 		for (uint32_t y = 0u; y < Side; ++y)
 			for (uint32_t x = 0u; x < Side; ++x)
 				pixels[y * Side + x] = glm::vec4((x + 1u) / 16.0f, (y + 1u) / 16.0f, (x + y + 1u) / 32.0f, 1.0f);
-		auto transmission = driver->CreateTexture(pixels.data(), sizeof(pixels), glm::ivec3(Side, Side, 1),
+		auto textureA = driver->CreateTexture(pixels.data(), sizeof(pixels), glm::ivec3(Side, Side, 1),
+			1u, ETextureType::Texture2D, EFormat::R32G32B32A32_SFLOAT, ETextureFiltration::Nearest, ETextureClamping::Clamp);
+		auto reversedPixels = pixels;
+		for (auto& pixel : reversedPixels) pixel = glm::vec4(1.0f) - pixel;
+		auto textureB = driver->CreateTexture(reversedPixels.data(), sizeof(reversedPixels), glm::ivec3(Side, Side, 1),
 			1u, ETextureType::Texture2D, EFormat::R32G32B32A32_SFLOAT, ETextureFiltration::Nearest, ETextureClamping::Clamp);
 		const auto textureView = [&](RHITexturePtr texture)
 		{
@@ -101,8 +90,10 @@ namespace
 			result->m_vulkan = texture->m_vulkan;
 			return result;
 		};
-		auto sceneDepth = textureView(transmission);
-		auto cells = textureView(transmission);
+		auto transmission = textureView(textureA);
+		auto sceneDepth = textureView(textureA);
+		auto cells = textureView(textureA);
+		std::array<bool, 4> useTextureB{};
 
 		auto setup = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 		commands->BeginCommandList(setup, true);
@@ -111,8 +102,6 @@ namespace
 			ETextureUsageBit::ColorAttachment_Bit | ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 		auto depth = driver->CreateRenderTarget(setup, glm::ivec2(Side), 1u, EFormat::D32_SFLOAT_S8_UINT,
 			ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit);
-		auto storageImage = driver->CreateRenderTarget(setup, glm::ivec2(Side), 1u, EFormat::R32G32B32A32_SFLOAT,
-			ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::Storage_Bit);
 		commands->EndCommandList(setup);
 		auto setupFence = RHIFencePtr::Make();
 		if (!driver->SubmitCommandList(setup, setupFence)) return "RenderScene target initialization submission failed";
@@ -140,7 +129,7 @@ namespace
 		scene.m_submissionContext->BeginSubmission(78u, 0u);
 		scene.m_frameBindings = driver->CreateShaderBindings();
 		scene.m_rhiLightsData = driver->CreateShaderBindings();
-		if (!driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "copiedInput", transmission, 7u))
+		if (!driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "lightingSampler", textureA, 7u))
 			return "RenderScene initial lighting source could not be created";
 		auto graph = RHIFrameGraphPtr::Make();
 		graph->SetRenderTarget("DepthBuffer", depth);
@@ -162,8 +151,9 @@ namespace
 		if (resources->m_packet.GetNumInstances() != 1u || resources->m_packet.GetGroups().Num() != 1u)
 			return "RenderScene fixture did not prepare one real draw group";
 
-		const auto draw = [&](const char* name, const PublishedClone* rejected = nullptr) -> std::string
+		const auto draw = [&](const char* name, const PublishedBindings* rejected = nullptr) -> std::string
 		{
+			const PublishedBindings lights(scene.m_rhiLightsData);
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			auto graphics = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(upload, true);
@@ -177,7 +167,7 @@ namespace
 			commands->ClearImage(graphics, color, sentinel);
 			node->Process(graph, upload, graphics, scene);
 			const auto stats = node->GetDrawCallStats();
-			const bool unchanged = rejected && rejected->Unchanged(*resources);
+			const bool unchanged = rejected && rejected->Unchanged(resources->m_perInstanceData);
 			const bool expectedDraw = rejected ? stats.m_numBatches == 0u && stats.m_numInstances == 0u :
 				stats.m_numBatches == 1u && stats.m_numInstances == 1u;
 			const auto discard = [&]()
@@ -187,22 +177,22 @@ namespace
 				upload->m_vulkan.m_commandBuffer->Reset();
 				graphics->m_vulkan.m_commandBuffer->Reset();
 			};
-			if (!expectedDraw || (rejected && !unchanged))
+			if (!expectedDraw || (rejected && !unchanged) || !lights.Unchanged(scene.m_rhiLightsData))
 			{
-				// Old code publishes an incomplete clone. Never submit its recorded draw.
 				discard();
 				return std::format("{}: cache unchanged={}, batches={}, instances={} (expected {} draw)",
 					name, unchanged, stats.m_numBatches, stats.m_numInstances, rejected ? "no" : "one");
 			}
-			if (!rejected && (!resources->m_nodeLightsBindings || !resources->m_nodeLightsBindings->m_vulkan.m_descriptorSet ||
-				!resources->m_nodeLightsBindings->m_vulkan.m_descriptorSet->IsCompiled() ||
-				resources->m_nodeLightsSource != scene.m_rhiLightsData ||
-				resources->m_nodeLightsSourceRevision != scene.m_rhiLightsData->GetDescriptorRevision() ||
-				resources->m_transmissionTexture != transmission || resources->m_sceneDepthTexture != sceneDepth ||
-				resources->m_globalIlluminationProbeCellIndicesTexture != cells))
+			if (!rejected && (!resources->m_perInstanceData ||
+				!resources->m_perInstanceData->m_vulkan.m_descriptorSet ||
+				!resources->m_perInstanceData->m_vulkan.m_descriptorSet->IsCompiled() ||
+				resources->m_perInstanceData->GetShaderBindings().Num() != 5u ||
+				resources->m_perInstanceData->GetOrAddShaderBinding("g_transmissionFramebufferSampler")->GetTextureBinding() != transmission ||
+				resources->m_perInstanceData->GetOrAddShaderBinding("g_sceneDepthSampler")->GetTextureBinding() != sceneDepth ||
+				resources->m_perInstanceData->GetOrAddShaderBinding("g_globalIlluminationProbeCellIndicesSampler")->GetTextureBinding() != cells))
 			{
 				discard();
-				return std::format("{}: clone did not publish the complete current request", name);
+				return std::format("{}: pass bindings did not publish the current inputs", name);
 			}
 			auto readback = driver->CreateBuffer(sizeof(pixels), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
 			commands->ImageMemoryBarrier(graphics, color, EImageLayout::TransferSrcOptimal);
@@ -227,7 +217,8 @@ namespace
 			{
 				for (uint32_t channel = 0u; channel < 4u; ++channel)
 				{
-					const float expected = rejected ? sentinel[channel] : pixels[pixel][channel];
+					const float expected = rejected ? sentinel[channel] :
+						(useTextureB[channel] ? reversedPixels[pixel][channel] : pixels[pixel][channel]);
 					const float value = actual[pixel * 4u + channel];
 					if (!std::isfinite(value) || std::abs(value - expected) > 0.00001f)
 						return std::format("{} pixel {} channel {}: expected {}, got {}", name, pixel, channel, expected, value);
@@ -239,62 +230,65 @@ namespace
 		};
 
 		if (auto error = draw("initial A"); !error.empty()) return error;
-		const char* cases[] = { "copied sampler", "copied storage image", "copied buffer", "unused GI override" };
-		for (uint32_t scenario = 0u; scenario < 4u; ++scenario)
+		const char* inputs[] = { "transmissionFramebuffer", "sceneDepth", "globalIlluminationProbeCellIndicesSampler" };
+		RHITexturePtr* textures[] = { &transmission, &sceneDepth, &cells };
+		for (uint32_t scenario = 0u; scenario < 3u; ++scenario)
 		{
-			const PublishedClone before(*resources);
-			RestoreResource restore;
-			if (scenario < 3u)
-			{
-				scene.m_rhiLightsData = driver->CreateShaderBindings();
-				if (scenario < 2u)
-				{
-					restore.m_texture = textureView(scenario == 0u ? transmission : storageImage);
-					auto added = scenario == 0u ?
-						driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "copiedInput", restore.m_texture, 7u) :
-						driver->AddStorageImageToShaderBindings(scene.m_rhiLightsData, "copiedInput", restore.m_texture, 7u);
-					if (!added) return std::format("{}: valid source could not be created", cases[scenario]);
-					restore.m_view = restore.m_texture->m_vulkan.m_imageView;
-					restore.m_texture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, restore.m_texture->m_vulkan.m_image);
-				}
-				else
-				{
-					auto buffer = driver->CreateBuffer(16u, EBufferUsageBit::StorageBuffer_Bit, HostMemory);
-					restore.m_binding = driver->AddBufferToShaderBindings(scene.m_rhiLightsData, buffer, "copiedInput", 7u);
-					if (!restore.m_binding) return "copied buffer: valid source could not be created";
-					restore.m_buffer = restore.m_binding->m_vulkan.m_valueBinding;
-					auto uncompiled = VulkanBufferPtr::Make(device, 16u, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
-					auto range = restore.m_buffer->Get();
-					range.m_ptr.m_buffer = uncompiled;
-					restore.m_binding->m_vulkan.m_valueBinding = decltype(restore.m_buffer)::Make(range,
-						TWeakPtr<RHIShaderBinding::VulkanBufferAllocator>{});
-				}
-			}
-			else
-			{
-				cells = textureView(transmission);
-				node->SetRHIResource("globalIlluminationProbeCellIndicesSampler", cells);
-				restore.m_texture = cells;
-				restore.m_view = cells->m_vulkan.m_imageView;
-				cells->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, cells->m_vulkan.m_image);
-			}
-			const auto requestSource = scene.m_rhiLightsData;
-			const uint64_t requestRevision = requestSource->GetDescriptorRevision();
-			if (auto error = draw(cases[scenario], &before); !error.empty()) return error;
+			const PublishedBindings before(resources->m_perInstanceData);
+			auto& texture = *textures[scenario];
+			texture = textureView(textureB);
+			node->SetRHIResource(inputs[scenario], texture);
+			RestoreView restore(texture);
+			texture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, texture->m_vulkan.m_image);
+			if (auto error = draw(inputs[scenario], &before); !error.empty()) return error;
 			restore.Restore();
-			if (scene.m_rhiLightsData != requestSource || requestSource->GetDescriptorRevision() != requestRevision)
-				return "repair unexpectedly changed the source identity/revision";
-			if (auto error = draw("same-request C"); !error.empty()) return std::format("{}: {}", cases[scenario], error);
-			if (resources->m_nodeLightsBindings == before.m_clone ||
-				resources->m_nodeLightsBindings->m_vulkan.m_descriptorSet == before.m_native ||
-				!resources->m_nodeLightsBindings->HasBinding("copiedInput"))
-				return std::format("{}: retry did not publish a new complete clone", cases[scenario]);
-			const PublishedClone stable(*resources);
+			useTextureB[scenario] = true;
+			if (auto error = draw("same-request retry"); !error.empty()) return error;
+			if (resources->m_perInstanceData != before.m_bindings ||
+				resources->m_perInstanceData->m_vulkan.m_descriptorSet == before.m_native ||
+				resources->m_perInstanceData->GetDescriptorRevision() != before.m_revision + 1u || !before.m_native->IsCompiled())
+				return std::format("{}: retry did not update exactly one pass binding", inputs[scenario]);
+			const PublishedBindings stable(resources->m_perInstanceData);
 			if (auto error = draw("stable request"); !error.empty()) return error;
-			if (!stable.Unchanged(*resources)) return "unchanged successful request republished its clone";
+			if (!stable.Unchanged(resources->m_perInstanceData)) return "unchanged pass inputs rebuilt descriptors";
 		}
+
+		const PublishedBindings pass(resources->m_perInstanceData);
+		if (!driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "lightingSampler", textureB, 7u))
+			return "lighting update failed";
+		useTextureB[3] = true;
+		if (auto error = draw("lighting revision changed"); !error.empty()) return error;
+		if (!pass.Unchanged(resources->m_perInstanceData)) return "lighting revision rebuilt pass bindings";
 		scene.m_rhiLightsData = driver->CreateShaderBindings();
-		if (auto error = draw("nonnull empty source"); !error.empty()) return error;
+		if (!driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "lightingSampler", textureA, 7u))
+			return "replacement lighting set failed";
+		useTextureB[3] = false;
+		if (auto error = draw("lighting identity changed"); !error.empty()) return error;
+		if (!pass.Unchanged(resources->m_perInstanceData)) return "lighting identity rebuilt pass bindings";
+
+		auto firstNode = node;
+		auto firstResources = resources;
+		node = TRefPtr<RenderSceneProbe>::Make();
+		node->SetString("Tag", "BindingPublicationOtherPass");
+		node->SetString("GPUCulling", "false");
+		node->SetRHIResource("color", color);
+		transmission = sceneDepth = cells = textureA;
+		for (const auto* input : inputs) node->SetRHIResource(input, textureA);
+		resources = node->GetResources(scene);
+		resources->m_packet.Add(batch, mesh, instance);
+		resources->m_packet.Finalize();
+		useTextureB.fill(false);
+		if (auto error = draw("second pass, same lighting"); !error.empty()) return error;
+		if (resources->m_perInstanceData == firstResources->m_perInstanceData ||
+			!pass.Unchanged(firstResources->m_perInstanceData)) return "passes did not retain independent local inputs";
+		node = firstNode;
+		resources = firstResources;
+		transmission = resources->m_perInstanceData->GetOrAddShaderBinding("g_transmissionFramebufferSampler")->GetTextureBinding();
+		sceneDepth = resources->m_perInstanceData->GetOrAddShaderBinding("g_sceneDepthSampler")->GetTextureBinding();
+		cells = resources->m_perInstanceData->GetOrAddShaderBinding("g_globalIlluminationProbeCellIndicesSampler")->GetTextureBinding();
+		useTextureB = { true, true, true, false };
+		if (auto error = draw("first pass reused"); !error.empty()) return error;
+		if (!pass.Unchanged(resources->m_perInstanceData)) return "second pass invalidated the first pass";
 		return {};
 	}
 }
@@ -308,7 +302,7 @@ void RenderSceneBindingPublicationTestComponent::Tick(float)
 		const auto& error = m_validation->GetResult();
 		if (!error.empty()) { MarkFailed(error); return; }
 		AddJournalEvent("RenderSceneBindingEvidence",
-			"Real nonempty Process passed A/failed B/same-request C/stable draw for sampler, storage image, buffer and unused GI override; all 8x8 pixels, rejected-draw sentinels and nonnull empty source passed with resolved current-MSAA output");
+			"All 8x8 pixels passed for shared lighting plus three independent pass samplers; invalid view/retry and warm reuse passed for each sampler. Lighting revision/identity changes preserved pass descriptors; two passes retained separate inputs with shared lighting.");
 		MarkPassed();
 		return;
 	}
