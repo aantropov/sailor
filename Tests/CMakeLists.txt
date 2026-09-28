@@ -224,6 +224,7 @@ add_executable(RHISceneVirtualizationTests
 
 add_executable(ModelImporterContractTests
     ModelImporterContractTests.cpp
+    ${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelLodCache.cpp
 )
 
 add_executable(AnimationSamplingContractTests

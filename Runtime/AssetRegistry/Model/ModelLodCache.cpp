@@ -1,5 +1,6 @@
 #include "AssetRegistry/Model/ModelLodCache.h"
 
+#include "AssetRegistry/AssetRegistry.h"
 #include "Containers/Concepts.h"
 #include "RHI/VertexDescription.h"
 #include "Sailor.h"
@@ -82,21 +83,20 @@ namespace
 		return true;
 	}
 
-	std::filesystem::path GetPath(const std::filesystem::path& cacheFolder, const FileId& fileId, uint32_t lodLevel)
+	std::filesystem::path GetPath(const FileId& fileId, uint32_t lodLevel)
 	{
 		const std::filesystem::path filename = ModelImporter::GetLodCacheFilename(fileId, lodLevel);
 		return filename.empty() ? std::filesystem::path{}
-								: cacheFolder / "Lods" / filename;
+								: std::filesystem::path(AssetRegistry::GetCacheFolder()) / "Lods" / filename;
 	}
 }
 
-bool Sailor::ModelLodCache::Load(const std::filesystem::path& cacheFolder,
-	const ModelAssetInfo& assetInfo,
+bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 	const FileRevision& sourceRevision,
 	uint32_t lodLevel,
 	TVector<ModelImporter::MeshContext>& meshes)
 {
-	const std::filesystem::path path = GetPath(cacheFolder, assetInfo.GetFileId(), lodLevel);
+	const std::filesystem::path path = GetPath(assetInfo.GetFileId(), lodLevel);
 	std::error_code error;
 	const uint64_t fileSize = path.empty() ? 0u : std::filesystem::file_size(path, error);
 	if (error || fileSize < sizeof(Header) || fileSize > MaxBytes)
@@ -174,8 +174,7 @@ bool Sailor::ModelLodCache::Load(const std::filesystem::path& cacheFolder,
 	return true;
 }
 
-void Sailor::ModelLodCache::Save(const std::filesystem::path& cacheFolder,
-	const ModelAssetInfo& assetInfo,
+void Sailor::ModelLodCache::Save(const ModelAssetInfo& assetInfo,
 	const FileRevision& sourceRevision,
 	uint32_t lodLevel,
 	const TVector<ModelImporter::MeshContext>& meshes)
@@ -213,7 +212,7 @@ void Sailor::ModelLodCache::Save(const std::filesystem::path& cacheFolder,
 		return;
 	}
 
-	const std::filesystem::path path = GetPath(cacheFolder, assetInfo.GetFileId(), lodLevel);
+	const std::filesystem::path path = GetPath(assetInfo.GetFileId(), lodLevel);
 	std::string diagnostic;
 	if (!path.empty() && !Workspace::AtomicReplaceWorkspaceCacheBinary(path, bytes.data(), bytes.size(), diagnostic))
 	{
