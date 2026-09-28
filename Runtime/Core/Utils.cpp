@@ -378,6 +378,13 @@ glm::vec3 Utils::LinearToSRGB(const glm::vec3& linearRGB)
 	//return vec3(powf(linearRGB.x, 1.0f / 2.2f), powf(linearRGB.y, 1.0f / 2.2f), powf(linearRGB.z, 1.0f / 2.2f));
 }
 
+glm::u8vec4 Utils::LinearToSRGB8(const glm::vec4& linearRGBA)
+{
+	const glm::u8vec3 rgb(glm::clamp(LinearToSRGB(glm::vec3(linearRGBA)) * 255.0f, 0.0f, 255.0f));
+	const auto alpha = static_cast<uint8_t>(glm::round(glm::clamp(linearRGBA.a, 0.0f, 1.0f) * 255.0f));
+	return glm::u8vec4(rgb, alpha);
+}
+
 glm::vec3 Utils::SRGBToLinear(const glm::vec3& srgbIn)
 {
 	glm::vec3 bLess = glm::step(glm::vec3(0.04045f), srgbIn);

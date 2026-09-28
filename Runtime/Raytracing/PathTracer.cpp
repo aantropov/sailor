@@ -1886,6 +1886,7 @@ bool PathTracer::SampleDirectEnvironment(
 bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 {
 	m_lastRaytraceTimeMs = 0.0;
+	m_lastRenderedImageLinear.Clear();
 	m_lastRenderedImage.Clear();
 	m_lastRenderedExtent = glm::uvec2(0, 0);
 
@@ -2076,7 +2077,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	raytracingTimer.Stop();
 	m_lastRaytraceTimeMs = static_cast<double>(raytracingTimer.ResultAccumulatedMs());
 
-	TVector<u8vec4> outSrgb(width * height);
+	m_lastRenderedImageLinear.Resize(width * height);
 	const float aberrationAmount = (0.5f / width);
 
 	for (uint32_t y = 0; y < height; y++)
@@ -2089,20 +2090,16 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 			vec3 redColor = outputTex.Sample<vec3>(uv + vec2(-aberrationAmount, -aberrationAmount));
 			vec3 chromaAberratedColor = vec3(redColor.r, greenColor.g, blueColor.b);
 			const float alpha = glm::clamp(alphaTex.Sample<float>(uv), 0.0f, 1.0f);
-			const u8vec3 rgb = alpha > 0.0f ?
-				u8vec3(glm::clamp(Utils::LinearToSRGB(chromaAberratedColor) * 255.0f, 0.0f, 255.0f)) :
-				u8vec3(0, 0, 0);
-			outSrgb[x + y * width] = u8vec4(rgb, (uint8_t)glm::round(alpha * 255.0f));
+			m_lastRenderedImageLinear[x + y * width] = vec4(alpha > 0.0f ? chromaAberratedColor : vec3(0.0f), alpha);
 		}
 	}
 
-	m_lastRenderedImage = outSrgb;
 	m_lastRenderedExtent = glm::uvec2(width, height);
 
 	if (!params.m_output.empty())
 	{
 		const uint32_t Channels = 4;
-		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
+		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, GetLastRenderedImage().GetData(), width * Channels))
 		{
 			SAILOR_LOG_ERROR("Raytracing WriteImage error");
 			return false;
@@ -2110,6 +2107,19 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	}
 
 	return true;
+}
+
+const TVector<u8vec4>& PathTracer::GetLastRenderedImage() const
+{
+	if (m_lastRenderedImage.IsEmpty())
+	{
+		m_lastRenderedImage.Resize(m_lastRenderedImageLinear.Num());
+		for (size_t i = 0; i < m_lastRenderedImageLinear.Num(); ++i)
+		{
+			m_lastRenderedImage[i] = Utils::LinearToSRGB8(m_lastRenderedImageLinear[i]);
+		}
+	}
+	return m_lastRenderedImage;
 }
 
 bool PathTracer::SamplePreparedSceneRay(
@@ -2198,6 +2208,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_lastRaytraceTimeMs = 0.0;
+	m_lastRenderedImageLinear.Clear();
 	m_lastRenderedImage.Clear();
 	m_lastRenderedExtent = glm::uvec2(0, 0);
 
@@ -2280,7 +2291,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	TLASInstance instance{};
 	instance.m_model = pModel;
-	instance.m_worldBounds = Math::AABB(boundsSphere.m_center - vec3(boundsSphere.m_radius), boundsSphere.m_center + vec3(boundsSphere.m_radius));
+	instance.m_worldBounds = Math::AABB(boundsSphere.m_center, vec3(boundsSphere.m_radius));
 
 	PathTracerView view{};
 	TVector<DirectionalLight> directionalLights;

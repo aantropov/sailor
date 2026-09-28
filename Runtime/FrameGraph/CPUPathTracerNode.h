@@ -21,6 +21,8 @@ namespace Sailor::Framegraph
 		SAILOR_API bool GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm::uvec2& outExtent) const;
 
 	protected:
+		SAILOR_API void AccumulateImage(const TVector<glm::vec4>& image, glm::uvec2 extent, uint32_t samples);
+
 		struct CubemapReadbackState
 		{
 			RHI::RHICubemapPtr m_source{};
@@ -35,14 +37,12 @@ namespace Sailor::Framegraph
 		RHI::RHIMaterialPtr m_overlayMaterial{};
 		RHI::RHIMaterialPtr m_overlayMaterialMsaa{};
 		RHI::RHITexturePtr m_runtimeTexture{};
-		RHI::RHITexturePtr m_currentFrameTexture{};
 		RHI::RHIBufferPtr m_uploadBuffer{};
 		RHI::RHIShaderBindingSetPtr m_shaderBindings{};
 		Raytracing::PathTracer m_pathTracer{};
 		CubemapReadbackState m_environmentReadback{};
 		CubemapReadbackState m_diffuseEnvironmentReadback{};
 		TVector<glm::vec4> m_accumulatedImage{};
-		TVector<glm::u8vec4> m_accumulatedDisplayImage{};
 		uint64_t m_accumulatedSamples = 0ull;
 		glm::vec3 m_lastCameraPosition{ 0.0f };
 		glm::vec3 m_lastCameraForward{ 0.0f, 0.0f, -1.0f };

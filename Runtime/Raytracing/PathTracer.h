@@ -182,7 +182,8 @@ namespace Sailor::Raytracing
 		{
 			return m_lastScenePreparationStats;
 		}
-		const TVector<u8vec4>& GetLastRenderedImage() const { return m_lastRenderedImage; }
+		SAILOR_SHARED_API const TVector<u8vec4>& GetLastRenderedImage() const;
+		const TVector<vec4>& GetLastRenderedImageLinear() const { return m_lastRenderedImageLinear; }
 		glm::uvec2 GetLastRenderedExtent() const { return m_lastRenderedExtent; }
 
 		SAILOR_SHARED_API void Run(const Params& params);
@@ -307,7 +308,8 @@ namespace Sailor::Raytracing
 		bool m_bMaterialsFullyResolved = false;
 		ScenePreparationStats m_lastScenePreparationStats{};
 		double m_lastRaytraceTimeMs = 0.0;
-		TVector<u8vec4> m_lastRenderedImage{};
+		TVector<vec4> m_lastRenderedImageLinear{};
+		mutable TVector<u8vec4> m_lastRenderedImage{};
 		glm::uvec2 m_lastRenderedExtent{ 0, 0 };
 		CombinedSampler2D m_runtimeEnvironment{};
 		CombinedSampler2D m_runtimeDiffuseEnvironment{};

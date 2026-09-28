@@ -3,11 +3,24 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "ECS/CameraECS.h"
+#include "FrameGraph/CPUPathTracerNode.h"
+#include "RHI/Buffer.h"
+#include "RHI/CommandList.h"
+#include "RHI/Material.h"
+#include "RHI/Mesh.h"
+#include "RHI/RenderTarget.h"
+#include "RHI/SceneView.h"
+#include "RHI/Shader.h"
+#include "RHI/VertexDescription.h"
 #include "Raytracing/PathTracer.h"
 #include "Support/TempDirectory.h"
+#include <glm/gtc/packing.hpp>
 
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -114,6 +127,155 @@ namespace
 			Require(first[i] == second[i], "CLI and prepared paths must produce the same RGBA pixels");
 	}
 
+	class ImageNode final : public Framegraph::CPUPathTracerNode
+	{
+	public:
+		using CPUPathTracerNode::m_accumulatedImage;
+		using CPUPathTracerNode::m_accumulatedSamples;
+		using CPUPathTracerNode::m_extent;
+		using CPUPathTracerNode::m_pShader;
+		using CPUPathTracerNode::m_uploadBuffer;
+	};
+
+	class ImageGraph final : public RHI::RHIFrameGraph
+	{
+	public:
+		ImageGraph()
+		{
+			using namespace RHI;
+			auto& driver = Renderer::GetDriver();
+			VertexP3N3UV2C4 vertices[4]{};
+			for (uint32_t i = 0u; i < 4u; ++i)
+			{
+				vertices[i].m_texcoord = vec2(i % 2u, i / 2u);
+				vertices[i].m_position = vec3(vertices[i].m_texcoord * 2.0f - 1.0f, 0);
+			}
+			const uint32_t indices[] = { 0, 1, 2, 2, 1, 3 };
+			const auto memory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
+			m_postEffectPlane = RHIMeshPtr::Make();
+			m_postEffectPlane->m_vertexDescription = driver->GetOrAddVertexDescription<VertexP3N3UV2C4>();
+			m_postEffectPlane->m_vertexBuffer = driver->CreateBuffer(sizeof(vertices), EBufferUsageBit::VertexBuffer_Bit, memory);
+			m_postEffectPlane->m_indexBuffer = driver->CreateBuffer(sizeof(indices), EBufferUsageBit::IndexBuffer_Bit, memory);
+			std::memcpy(m_postEffectPlane->m_vertexBuffer->GetPointer(), vertices, sizeof(vertices));
+			std::memcpy(m_postEffectPlane->m_indexBuffer->GetPointer(), indices, sizeof(indices));
+		}
+	};
+
+	void TestHdrCompositing()
+	{
+		using namespace RHI;
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		const auto info = registry->GetAssetInfoPtr<ModelAssetInfoPtr>("Quad.gltf");
+		ModelPtr model;
+		Require(info && App::GetSubmodule<ModelImporter>()->LoadModel_Immediate(info->GetFileId(), model),
+			"the HDR fixture must reuse the temporary model");
+		ShaderSetPtr shader;
+		const auto shaderInfo = registry->GetAssetInfoPtr("Shaders/PathTracerComposite.shader");
+		Require(shaderInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), shader),
+			"the actual path tracer composite shader must load");
+		auto task = Tasks::CreateTaskWithResult<std::string>("Path tracer HDR composite validation", [model, shader]()
+			{
+				try
+				{
+					constexpr uint32_t side = 512;
+					auto& driver = Renderer::GetDriver();
+					auto commands = Renderer::GetDriverCommands();
+					auto graph = TRefPtr<ImageGraph>::Make();
+					auto node = TRefPtr<ImageNode>::Make();
+					node->m_pShader = shader;
+					node->SetFloat("enabled", 1);
+					node->SetFloat("maxBounces", 1);
+					node->SetFloat("maxAccumulatedSamples", 1);
+					auto allocator = Memory::ObjectAllocatorPtr::Make();
+					auto material = MaterialPtr::Make(allocator, FileId::Invalid);
+					material->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
+					material->SetUniform("material.emissiveFactor", vec4(2, 0.5f, 0.125f, 0));
+					RHISceneViewSnapshot scene;
+					scene.m_camera = TUniquePtr<CameraData>::Make();
+					scene.m_camera->SetAspect(1);
+					scene.m_camera->SetFov(glm::degrees(0.8f));
+					scene.m_cameraTransform.m_position = vec4(0, 0, 3, 1);
+					scene.m_pathTracerProxies.Resize(1);
+					PathTracer::TLASInstance instance;
+					instance.m_model = model;
+					instance.m_worldBounds = Math::AABB(vec3(0), vec3(1, 1, 0));
+					scene.m_pathTracerTLASInstances.Add(instance);
+					scene.m_pathTracerMaterials.Add(material);
+					LightProxy light;
+					light.m_type = ELightType::Directional;
+					light.m_direction = vec3(0, 0, -1);
+					light.m_intensity = vec3(0);
+					scene.m_pathTracerLights.Add(light);
+					scene.m_frameBindings = driver->CreateShaderBindings();
+					auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(command, true);
+					UboFrameData frame{};
+					for (uint32_t i = 0; i < 2; ++i)
+					{
+						auto binding = driver->AddBufferToShaderBindings(scene.m_frameBindings,
+							i ? "previousFrameData" : "frameData", sizeof(frame), i, EShaderBindingType::UniformBuffer);
+						commands->UpdateShaderBinding(command, binding, &frame, sizeof(frame));
+					}
+					auto target = driver->CreateRenderTarget(command, ivec2(side), 1, ETextureFormat::R16G16B16A16_SFLOAT);
+					node->SetRHIResource("color", target);
+					commands->ImageMemoryBarrier(command, target, EImageLayout::ColorAttachmentOptimal);
+					commands->BeginRenderPass(command, TVector<RHITexturePtr>{ target }, nullptr, ivec4(0, 0, side, side),
+						ivec2(0), true, vec4(0.125f, 1.5f, 4, 1), 0, false);
+					commands->EndRenderPass(command);
+					node->Process(graph, command, command, scene);
+					auto readback = driver->CreateBuffer(side * side * 8u, EBufferUsageBit::BufferTransferDst_Bit,
+						EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+					commands->ImageMemoryBarrier(command, target, EImageLayout::TransferSrcOptimal);
+					commands->CopyImageToBuffer(command, target, readback);
+					command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+					commands->EndCommandList(command);
+					Require(driver->SubmitCommandList_Immediate(command), "HDR composite and readback must complete");
+					const size_t center = (side / 2u) * side + side / 2u;
+					const size_t sourceCenter = (node->m_extent.y / 2u) * node->m_extent.x + node->m_extent.x / 2u;
+					const vec4 expected(2, 0.5f, 0.125f, 1);
+					Require(node->m_accumulatedImage.Num() > sourceCenter &&
+						length(node->m_accumulatedImage[sourceCenter] - expected) < 0.001f,
+						"CPU accumulation must retain linear HDR radiance instead of clamped sRGB bytes");
+#ifdef __APPLE__
+					Require(node->m_extent == uvec2(474), "float output must preserve the macOS pixel budget rather than reduce resolution");
+#else
+					Require(node->m_extent == uvec2(side), "float output must preserve the requested resolution");
+#endif
+					Require(node->m_uploadBuffer->GetSize() == node->m_accumulatedImage.Num() * sizeof(vec4) &&
+						node->m_uploadBuffer->GetSize() > 900000u, "the HDR upload must contain full float pixels, including transfers above 900KB");
+					const auto* pixels = static_cast<const uint32_t*>(readback->GetPointer());
+					auto pixel = [&](size_t i) { return vec4(glm::unpackHalf2x16(pixels[2 * i]), glm::unpackHalf2x16(pixels[2 * i + 1])); };
+					// HDR target alpha carries renderer metadata, not source coverage.
+					Require(length(vec3(pixel(center)) - vec3(expected)) < 0.001f, "GPU composite must receive the same linear HDR color");
+					Require(length(vec3(pixel(0)) - vec3(0.125f, 1.5f, 4)) < 0.001f, "transparent tracer pixels must preserve the HDR background");
+					Require(node->GetDrawCallStats().m_numBatches == 1u, "HDR validation must execute the real composite draw");
+
+					node->SetFloat("blend", 0.25f);
+					command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(command, true);
+					commands->ImageMemoryBarrier(command, target, EImageLayout::ColorAttachmentOptimal);
+					commands->BeginRenderPass(command, TVector<RHITexturePtr>{ target }, nullptr, ivec4(0, 0, side, side),
+						ivec2(0), true, vec4(0.125f, 1.5f, 4, 1), 0, false);
+					commands->EndRenderPass(command);
+					node->Process(graph, command, command, scene);
+					commands->ImageMemoryBarrier(command, target, EImageLayout::TransferSrcOptimal);
+					commands->CopyImageToBuffer(command, target, readback);
+					command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+					commands->EndCommandList(command);
+					Require(driver->SubmitCommandList_Immediate(command), "partial HDR blending must complete");
+					Require(length(vec3(pixel(center)) - vec3(0.59375f, 1.25f, 3.03125f)) < 0.001f,
+						"partial blending must mix source and background in linear HDR space");
+					Require(node->m_accumulatedSamples == 1u && node->GetDrawCallStats().m_numBatches == 1u,
+						"the sample limit must reuse the float image while still drawing the composite");
+					return std::string{};
+				}
+				catch (const std::exception& error) { return std::string(error.what()); }
+			}, EThreadType::Render);
+		task->Run();
+		task->Wait();
+		if (!task->GetResult().empty()) throw std::runtime_error(task->GetResult());
+	}
+
 	void TestPreparedParity(const Tests::TempDirectory& workspace, const TVector<u8vec4>& png)
 	{
 		auto* registry = App::GetSubmodule<AssetRegistry>();
@@ -129,7 +291,7 @@ namespace
 		PathTracer::TLASInstance instance;
 		instance.m_model = model;
 		const auto bounds = model->GetBoundsSphere();
-		instance.m_worldBounds = Math::AABB(bounds.m_center - vec3(bounds.m_radius), bounds.m_center + vec3(bounds.m_radius));
+		instance.m_worldBounds = Math::AABB(bounds.m_center, vec3(bounds.m_radius));
 		LightProxy sun;
 		sun.m_type = ELightType::Directional;
 		sun.m_direction = vec3(0, 0, -1);
@@ -244,7 +406,11 @@ namespace Sailor::Tests
 			for (size_t i = 0; i < bytes.Num(); i += 4)
 				pixels.Add(u8vec4(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]));
 			CheckCoverage(pixels);
+			for (int32_t y : { height / 3, 2 * height / 3 })
+				for (int32_t x : { width / 3, 2 * width / 3 })
+					Require(pixels[x + y * width].a == 255, "CLI instance bounds must retain all four quadrants of the model");
 			TestPreparedParity(workspace, pixels);
+			TestHdrCompositing();
 			std::cout << "PathTracer CLI/prepared pixel parity test passed\n";
 			result = 0;
 		}

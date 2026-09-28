@@ -78,6 +78,7 @@ namespace Sailor
 		SAILOR_API __forceinline glm::vec4 SRGBToLinear(const glm::vec4& srgbIn);
 
 		SAILOR_API __forceinline glm::vec3 LinearToSRGB(const glm::vec3& linearRGB);
+		SAILOR_API glm::u8vec4 LinearToSRGB8(const glm::vec4& linearRGBA);
 		SAILOR_API __forceinline glm::vec3 SRGBToLinear(const glm::vec3& srgbIn);
 
 		SAILOR_API int64_t GetCurrentTimeMs();
