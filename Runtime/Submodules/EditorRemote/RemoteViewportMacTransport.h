@@ -117,6 +117,7 @@ namespace Sailor::EditorRemote
 		uintptr_t m_producerDeviceObject = 0;
 		uintptr_t m_producerTextureObject = 0;
 		uintptr_t m_producerCommandQueueObject = 0;
+		uintptr_t m_copyCommandBufferObject = 0;
 		// Reader completion belongs to the surface, even when its host is rebound.
 		uintptr_t m_presentCommandBufferObject = 0;
 		uintptr_t m_rendererIntermediateTextureObject = 0;
@@ -195,6 +196,8 @@ namespace Sailor::EditorRemote
 		FrameIndex m_lastExportedFrameIndex = 0;
 		bool m_frameBegun = false;
 		bool m_needsHostReset = false;
+		MacRendererFrameSource m_pendingRendererSource{};
+		MacNativeBridgeRendererFrameInfo m_pendingFrameInfo{};
 		TSharedPtr<MacIOSurfaceAllocation> m_nativeAllocation{};
 		std::optional<MacIOSurfaceExportMetadata> m_lastExport{};
 	};
@@ -212,6 +215,7 @@ namespace Sailor::EditorRemote
 		virtual ~IMacIOSurfaceProvider() = default;
 		virtual Failure CreateOrResizeSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, MacViewportSurfaceState& inOutState) = 0;
 		virtual Failure BeginFrame(MacViewportSurfaceState& state) = 0;
+		virtual Failure PollFrameReady(MacViewportSurfaceState& state, bool& outReady) = 0;
 		virtual Failure ExportFrame(MacViewportSurfaceState& state, FramePacket& outFrame) = 0;
 		virtual Failure ReleaseSurface(const MacViewportSurfaceState& state) = 0;
 		virtual Failure GetLastFailure() const = 0;
@@ -349,6 +353,11 @@ namespace Sailor::EditorRemote
 
 		Failure BeginFrame(MacViewportSurfaceState& state) override
 		{
+			if (state.m_frameBegun)
+			{
+				m_lastFailure = Failure::Ok();
+				return m_lastFailure;
+			}
 			if (!state.m_nativeAllocation || !state.m_nativeAllocation->IsValid())
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1002, "macOS frame begin requires a live IOSurface allocation");
@@ -453,26 +462,29 @@ namespace Sailor::EditorRemote
 				return copyResult;
 			}
 
-			state.m_nativeAllocation->m_lastWrittenFrameIndex = nextFrameIndex;
-			state.m_nativeAllocation->m_lastRendererTextureToken = rendererSource.m_sourceToken != 0 ? rendererSource.m_sourceToken : rendererFrameInfo.m_rendererTextureToken;
-			state.m_nativeAllocation->m_lastProducerCopyToken = rendererFrameInfo.m_producerCopyToken;
-			state.m_nativeAllocation->m_lastCrossApiAcquireValue = rendererSource.m_crossApiAcquireValue;
-			state.m_nativeAllocation->m_lastRendererSource = rendererSource;
-			if (state.m_lastExport.has_value())
-			{
-				state.m_lastExport->m_lastCrossApiAcquireValue = rendererSource.m_crossApiAcquireValue;
-				state.m_lastExport->m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
-				state.m_lastExport->m_handle.m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
-				state.m_lastExport->m_crossApiSyncKind = rendererSource.m_crossApiSyncKind;
-				state.m_lastExport->m_crossApiCpuWaited = rendererSource.m_crossApiCpuWaited;
-			}
-			if (!state.m_transport.m_macSurfaces.empty())
-			{
-				state.m_transport.m_macSurfaces.front().m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
-			}
+			state.m_pendingRendererSource = std::move(rendererSource);
+			state.m_pendingFrameInfo = rendererFrameInfo;
 			state.m_frameBegun = true;
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
+		}
+
+		Failure PollFrameReady(MacViewportSurfaceState& state, bool& outReady) override
+		{
+			outReady = false;
+			if (!state.m_frameBegun)
+			{
+				m_lastFailure = Failure::FromDomain(ErrorDomain::Protocol, 1, "macOS frame readiness requires BeginFrame first");
+				return m_lastFailure;
+			}
+			m_lastFailure = PollMacIOSurfaceCopyCompletion(*state.m_nativeAllocation, outReady);
+			if (!m_lastFailure.IsOk())
+			{
+				state.m_frameBegun = false;
+				state.m_pendingRendererSource = {};
+				state.m_pendingFrameInfo = {};
+			}
+			return m_lastFailure;
 		}
 
 		Failure ExportFrame(MacViewportSurfaceState& state, FramePacket& outFrame) override
@@ -483,8 +495,31 @@ namespace Sailor::EditorRemote
 				return m_lastFailure;
 			}
 
+			bool ready = false;
+			auto result = PollFrameReady(state, ready);
+			if (!result.IsOk()) return result;
+			if (!ready)
+			{
+				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1036, "macOS producer copy is still pending");
+				return m_lastFailure;
+			}
+
 			auto& exportMetadata = *state.m_lastExport;
 			const auto frameIndex = ++state.m_lastExportedFrameIndex;
+			auto& rendererSource = state.m_pendingRendererSource;
+			state.m_nativeAllocation->m_lastWrittenFrameIndex = frameIndex;
+			state.m_nativeAllocation->m_lastRendererTextureToken = rendererSource.m_sourceToken != 0 ? rendererSource.m_sourceToken : state.m_pendingFrameInfo.m_rendererTextureToken;
+			state.m_nativeAllocation->m_lastProducerCopyToken = state.m_pendingFrameInfo.m_producerCopyToken;
+			state.m_nativeAllocation->m_lastCrossApiAcquireValue = rendererSource.m_crossApiAcquireValue;
+			exportMetadata.m_lastCrossApiAcquireValue = rendererSource.m_crossApiAcquireValue;
+			exportMetadata.m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
+			exportMetadata.m_handle.m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
+			exportMetadata.m_crossApiSyncKind = rendererSource.m_crossApiSyncKind;
+			exportMetadata.m_crossApiCpuWaited = rendererSource.m_crossApiCpuWaited;
+			state.m_transport.m_macSurfaces.front().m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
+			state.m_nativeAllocation->m_lastRendererSource = std::move(rendererSource);
+			state.m_pendingRendererSource = {};
+			state.m_pendingFrameInfo = {};
 
 			outFrame.m_viewportId = state.m_key.m_viewportId;
 			outFrame.m_connectionEpoch = state.m_key.m_epoch;
@@ -614,6 +649,12 @@ namespace Sailor::EditorRemote
 				return m_lastFailure;
 			}
 
+			if (state->m_frameBegun)
+			{
+				m_lastFailure = Failure::Ok();
+				return m_lastFailure;
+			}
+
 			auto result = m_provider.BeginFrame(*state);
 			if (!result.IsOk())
 			{
@@ -689,17 +730,21 @@ namespace Sailor::EditorRemote
 
 		size_t GetSurfaceCount() const { return m_surfaces.Num(); }
 
-		Failure PollFrameReadCompletion(ViewportId viewportId, ConnectionEpoch epoch, SurfaceGeneration generation, bool& outCompleted)
+		Failure PrepareFrame(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, bool& outReady)
 		{
-			outCompleted = false;
-			auto* state = FindSurface(viewportId, epoch, generation);
+			outReady = false;
+			auto* state = FindSurface(viewport.m_viewportId, epoch, generation);
 			if (!state)
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 2, "Missing macOS transport surface for frame begin");
 				return m_lastFailure;
 			}
-			outCompleted = true;
-			m_lastFailure = state->m_nativeAllocation ? PollMacIOSurfaceReadCompletion(*state->m_nativeAllocation, outCompleted) : Failure::Ok();
+			bool readCompleted = true;
+			m_lastFailure = state->m_nativeAllocation ? PollMacIOSurfaceReadCompletion(*state->m_nativeAllocation, readCompleted) : Failure::Ok();
+			if (!m_lastFailure.IsOk() || !readCompleted) return m_lastFailure;
+			auto result = BeginFrame(viewport, epoch, generation);
+			if (!result.IsOk()) return result;
+			m_lastFailure = m_provider.PollFrameReady(*state, outReady);
 			return m_lastFailure;
 		}
 
@@ -1162,9 +1207,9 @@ namespace Sailor::EditorRemote
 				return Failure::Ok();
 			}
 
-			bool readCompleted = false;
-			auto result = m_transportBackend.PollFrameReadCompletion(m_runtimeSession.GetViewportId(), m_runtimeSession.GetConnectionEpoch(), m_runtimeSession.GetGeneration(), readCompleted);
-			if (!result.IsOk() || !readCompleted)
+			bool ready = false;
+			auto result = m_transportBackend.PrepareFrame(m_runtimeSession.GetDescriptor(), m_runtimeSession.GetConnectionEpoch(), m_runtimeSession.GetGeneration(), ready);
+			if (!result.IsOk() || !ready)
 			{
 				return result;
 			}

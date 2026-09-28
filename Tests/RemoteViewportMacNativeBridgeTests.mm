@@ -346,6 +346,13 @@ namespace
 		return allocation;
 	}
 
+	void CompleteNativeCopy(MacIOSurfaceAllocation& allocation)
+	{
+		[(id<MTLCommandBuffer>)allocation.m_copyCommandBufferObject waitUntilCompleted];
+		bool completed = false;
+		Require(PollMacIOSurfaceCopyCompletion(allocation, completed).IsOk() && completed, "native producer copy must complete successfully");
+	}
+
 	void TestGetMacRendererSourceSelectionPriorityPrefersSceneViewResolvedOutputs()
 	{
 		Require(GetMacRendererSourceSelectionPriority("Renderer.SceneView.Main.Resolved") < GetMacRendererSourceSelectionPriority("Renderer.Driver.BackBuffer"), "source-priority helper should prefer the final scene-view resolve over the driver backbuffer");
@@ -422,12 +429,47 @@ namespace
 
 		MacNativeBridgeRendererFrameInfo frameInfo{};
 		Require(CopyMacRendererIntermediateToProducerTexture(*producer, rendererTextureObject, frameInfo, reinterpret_cast<uintptr_t>((__bridge void*)sharedEvent), 9ull).IsOk(), "shared-event test should copy through a Metal shared-event wait");
+		CompleteNativeCopy(*producer);
 		Require(frameInfo.m_waitedOnCrossApiSharedEvent, "shared-event test should report that the producer copy waited on a Metal shared event");
 		Require(frameInfo.m_crossApiWaitValue == 9ull, "shared-event test should preserve the waited Metal shared-event value");
 		Require(ReadIOSurfaceBGRA8Pixel(surface, width * 4u, 0, 0) == ExpectedProducerPatternBGRA8(pattern, 0, 0), "shared-event test should still land the renderer pixel into the IOSurface after the wait");
 
 		ReleaseMacRendererIntermediateTexture(rendererTextureObject);
 		CFRelease(surface);
+	}
+
+	void TestProducerCopyReturnsBeforeSourceCompletion()
+	{
+		NativeSurface surface(64, 48);
+		auto producer = MakeNativeProducer(surface.m_surface, 64, 48);
+		uintptr_t source = 0;
+		Require(CreateMacRendererIntermediateTexture(producer->m_producerDeviceObject, 64, 48, PixelFormat::B8G8R8A8_UNorm, source).IsOk(),
+			"nonblocking copy test needs a native source");
+		const MacNativeBridgeProducerPattern pattern{ 105, 1, 1, 1, 64, 48 };
+		Require(UploadMacRendererPatternToIntermediateTexture(source, 64, 48, pattern).IsOk(), "source pixels must be prepared");
+		id<MTLSharedEvent> gate = [[(id<MTLDevice>)producer->m_producerDeviceObject newSharedEvent] autorelease];
+		Require(gate != nil, "copy test needs a native event");
+		std::promise<void> finished;
+		auto finish = finished.get_future();
+		std::thread watchdog([&]()
+		{
+			if (finish.wait_for(std::chrono::milliseconds(250)) == std::future_status::timeout) gate.signaledValue = 9;
+		});
+		MacNativeBridgeRendererFrameInfo info;
+		const auto result = CopyMacRendererIntermediateToProducerTexture(*producer, source, info, reinterpret_cast<uintptr_t>(gate), 9);
+		const bool returnedBeforeSignal = gate.signaledValue == 0;
+		gate.signaledValue = 9;
+		finished.set_value();
+		watchdog.join();
+		id<MTLCommandBuffer> completion = [(id<MTLCommandQueue>)producer->m_producerCommandQueueObject commandBuffer];
+		[completion commit];
+		[completion waitUntilCompleted];
+		ReleaseMacRendererIntermediateTexture(source);
+		Require(returnedBeforeSignal, "producer copy must return while the actual GPU source event is still unsignaled");
+		Require(result.IsOk(), "copy submission must succeed: " + result.m_message);
+		CompleteNativeCopy(*producer);
+		Require(ReadIOSurfaceBGRA8Pixel(surface.m_surface, producer->m_plane.m_bytesPerRow, 23, 11) ==
+			ExpectedProducerPatternBGRA8(pattern, 23, 11), "submitted copy must preserve pixels after source completion");
 	}
 
 	void TestBridgeBindsExistingCAMetalLayerAndPresentsDrawable()
@@ -495,6 +537,7 @@ namespace
 		MacNativeBridgeRendererFrameInfo rendererFrameInfo{};
 		auto copyResult = CopyMacRendererIntermediateToProducerTexture(*producer, rendererTextureObject, rendererFrameInfo);
 		Require(copyResult.IsOk(), "test should copy renderer-shaped output into the IOSurface-backed producer texture");
+		CompleteNativeCopy(*producer);
 		Require(rendererFrameInfo.m_usedRendererIntermediateTexture, "copy result should report renderer-intermediate usage");
 		Require(rendererFrameInfo.m_usedGpuCopyIntoProducerTexture, "copy result should report GPU copy into the producer texture");
 		Require(rendererFrameInfo.m_rendererTextureToken != 0 && rendererFrameInfo.m_producerCopyToken != 0, "copy result should stamp renderer/copy tokens");
@@ -594,24 +637,26 @@ namespace
 		Require(textures->load() == 2, "provider and state destruction must release both owned native textures without manual cleanup");
 	}
 
+	class CpuSource : public IMacRendererFrameSourceProvider
+	{
+	public:
+		uint32_t m_calls = 0;
+		Failure AcquireFrameSource(const MacViewportSurfaceState& state, FrameIndex frameIndex, MacRendererFrameSource& out) override
+		{
+			++m_calls;
+			out.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
+			out.m_width = state.m_viewport.m_width;
+			out.m_height = state.m_viewport.m_height;
+			out.m_pixelFormat = state.m_viewport.m_pixelFormat;
+			out.m_bytesPerRow = out.m_width * 4;
+			out.m_cpuBytes = Sailor::TSharedPtr<std::vector<uint8_t>>::Make(out.m_bytesPerRow * out.m_height, static_cast<uint8_t>(frameIndex));
+			return Failure::Ok();
+		}
+	};
+
 	void TestLoopbackDefersWritesUntilPresentationCompletes()
 	{
-		class CpuSource : public IMacRendererFrameSourceProvider
-		{
-		public:
-			uint32_t m_calls = 0;
-			Failure AcquireFrameSource(const MacViewportSurfaceState& state, FrameIndex frameIndex, MacRendererFrameSource& out) override
-			{
-				++m_calls;
-				out.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
-				out.m_width = state.m_viewport.m_width;
-				out.m_height = state.m_viewport.m_height;
-				out.m_pixelFormat = state.m_viewport.m_pixelFormat;
-				out.m_bytesPerRow = out.m_width * 4;
-				out.m_cpuBytes = Sailor::TSharedPtr<std::vector<uint8_t>>::Make(out.m_bytesPerRow * out.m_height, static_cast<uint8_t>(frameIndex));
-				return Failure::Ok();
-			}
-		} source;
+		CpuSource source;
 		MacLoopbackIOSurfaceProvider provider(&source);
 		MacLoopbackViewportPresenter presenter;
 		ViewportDescriptor viewport;
@@ -716,7 +761,8 @@ namespace
 
 	void TestPresentFailuresAndCompletedReadRetention()
 	{
-		MacLoopbackIOSurfaceProvider provider;
+		CpuSource source;
+		MacLoopbackIOSurfaceProvider provider(&source);
 		MacLoopbackViewportPresenter presenter;
 		ViewportDescriptor viewport;
 		viewport.m_viewportId = 104;
@@ -769,6 +815,135 @@ namespace
 			"final completed read must release the last retained native command");
 		RequireNativeReleases(commands, 100, "all completed native read commands must be released");
 		Require(probe->m_commandBufferCount == 102, "refusal, terminal error and successful frames must not create extra native work");
+	}
+
+	void TestDelayedProducerCopyPublicationAndRetirement()
+	{
+		class MetalSource : public IMacRendererFrameSourceProvider
+		{
+		public:
+			id<MTLSharedEvent> m_gate = nil;
+			uint64_t m_waitValue = 9;
+			uint32_t m_calls = 0;
+			Sailor::TSharedPtr<std::atomic<uint32_t>> m_releases = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+			Failure AcquireFrameSource(const MacViewportSurfaceState& state, FrameIndex frame, MacRendererFrameSource& out) override
+			{
+				++m_calls;
+				const auto& allocation = *state.m_nativeAllocation;
+				Require(CreateMacRendererIntermediateTexture(allocation.m_producerDeviceObject, state.m_viewport.m_width,
+					state.m_viewport.m_height, state.m_viewport.m_pixelFormat, out.m_textureObject).IsOk(), "source must create a native texture");
+				const MacNativeBridgeProducerPattern pattern{ state.m_key.m_viewportId, state.m_key.m_epoch, state.m_key.m_generation,
+					frame, state.m_viewport.m_width, state.m_viewport.m_height };
+				Require(UploadMacRendererPatternToIntermediateTexture(out.m_textureObject, pattern.m_width, pattern.m_height, pattern).IsOk(),
+					"source texture must contain its own frame pixels");
+				ObserveNativeRelease((id)out.m_textureObject, m_releases);
+				out.m_kind = MacRendererFrameSourceKind::RendererOwnedMetalTexture;
+				out.m_width = pattern.m_width;
+				out.m_height = pattern.m_height;
+				out.m_pixelFormat = state.m_viewport.m_pixelFormat;
+				out.m_sourceToken = frame;
+				out.m_releaseTextureObjectAfterUse = true;
+				out.m_crossApiSharedEventObject = reinterpret_cast<uintptr_t>([m_gate retain]);
+				out.m_crossApiAcquireValue = m_waitValue;
+				out.m_crossApiSyncKind = CrossApiSyncKind::MetalSharedEvent;
+				return Failure::Ok();
+			}
+		} source;
+		@autoreleasepool
+		{
+			MacLoopbackIOSurfaceProvider provider(&source);
+			MacLoopbackViewportPresenter presenter;
+			ViewportDescriptor viewport;
+			viewport.m_viewportId = 106;
+			viewport.m_width = 64;
+			viewport.m_height = 48;
+			viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+			viewport.m_colorSpace = ColorSpace::Srgb;
+			viewport.m_presentMode = PresentMode::Mailbox;
+			MacViewportLoopbackBinding binding(viewport, provider, presenter);
+			presenter.BindHostHandle(viewport.m_viewportId, LayerHandle([CAMetalLayer layer]));
+			Require(binding.Create().IsOk(), "delayed producer test needs a local surface");
+			auto allocation = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 1)->m_nativeAllocation;
+			const std::vector<uint8_t> priorPixels(64 * 48 * 4, 0x44);
+			MacNativeBridgeRendererFrameInfo info;
+			Require(UploadMacRendererBytesToProducerTexture(*allocation, priorPixels.data(), 64 * 4, info).IsOk(), "destination must have known prior pixels");
+			source.m_gate = [[(id<MTLDevice>)allocation->m_producerDeviceObject newSharedEvent] autorelease];
+			Require(source.m_gate != nil, "delayed producer test needs a native gate");
+			std::promise<void> finished;
+			auto finish = finished.get_future();
+			std::thread watchdog([&]()
+			{
+				if (finish.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) source.m_gate.signaledValue = UINT64_MAX;
+			});
+			try
+			{
+				Require(binding.PumpFrame().IsOk(), "pending native copy must submit without blocking the pump");
+				Require(source.m_gate.signaledValue == 0 && allocation->m_copyCommandBufferObject != 0,
+					"copy must remain pending on the real unsignaled source event");
+				for (uint32_t i = 0; i < 100; ++i) Require(binding.PumpFrame().IsOk(), "pending copy must defer without failure");
+				Require(source.m_calls == 1 && source.m_releases->load() == 0, "one native source must stay alive through the pending copy");
+				Require(binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 0 && allocation->m_lastWrittenFrameIndex == 0 &&
+					allocation->m_lastProducerCopyToken == 0 && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::Unknown,
+					"an accepted copy must not publish unfinished pixels or provenance");
+				Require(presenter.FindImportedState(viewport.m_viewportId)->m_presentedFrameCount == 0,
+					"presenter must not see an unfinished producer frame");
+				FramePacket early;
+				Require(binding.GetTransportBackend().ExportFrame(viewport, 1, 1, early).m_nativeCode == 1036,
+					"direct export must report pending completion without discarding preparation");
+				Require(UploadMacRendererBytesToProducerTexture(*allocation, priorPixels.data(), 64 * 4, info).m_nativeCode == 1036,
+					"CPU upload must not race a submitted copy");
+				Require(CopyMacRendererIntermediateToProducerTexture(*allocation, allocation->m_rendererIntermediateTextureObject, info).m_nativeCode == 1036,
+					"a second direct copy must not replace outstanding work");
+				MacNativeBridgePresentResult presented;
+				const auto native = presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding.GetRawPtr();
+				Require(PresentMacNativeLayerFrame(*native, {}, early, presented, allocation.GetRawPtr()).m_nativeCode == 1036,
+					"direct presentation must reject an unfinished copy");
+				Require(ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 23, 11) == 0x44444444u,
+					"pending copy must preserve the prior destination pixels");
+				source.m_gate.signaledValue = 9;
+				[(id<MTLCommandBuffer>)allocation->m_copyCommandBufferObject waitUntilCompleted];
+				Require(binding.PumpFrame().IsOk() && binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1 && source.m_calls == 1,
+					"completed copy must publish its original preparation exactly once");
+				const MacNativeBridgeProducerPattern first{ 106, 1, 1, 1, 64, 48 };
+				Require(ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 23, 11) ==
+					ExpectedProducerPatternBGRA8(first, 23, 11), "completed copy must publish the correct source pixels");
+				RequireNativeReleases(source.m_releases, 1, "completed source texture must release exactly once");
+				[(id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject waitUntilCompleted];
+				source.m_waitValue = 10;
+				Require(binding.PumpFrame().IsOk() && source.m_calls == 2, "next native copy must submit independently");
+				id<MTLCommandBuffer> retiredCopy = [[(id<MTLCommandBuffer>)allocation->m_copyCommandBufferObject retain] autorelease];
+				id<MTLTexture> retiredTexture = [[(id<MTLTexture>)allocation->m_producerTextureObject retain] autorelease];
+				Require(source.m_gate.signaledValue == 9 && retiredCopy.status != MTLCommandBufferStatusCompleted,
+					"old generation's copy must remain pending before resize");
+				Require(binding.Resize(80, 56).IsOk() && !allocation.IsShared(), "resize must unregister and unimport the old allocation");
+				allocation.Clear();
+				Require(source.m_releases->load() == 1, "native pending copy must retain its source after owner destruction");
+				source.m_waitValue = 9;
+				Require(binding.PumpFrame().IsOk(), "new generation must submit without waiting for the old copy");
+				auto replacement = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 2)->m_nativeAllocation;
+				[(id<MTLCommandBuffer>)replacement->m_copyCommandBufferObject waitUntilCompleted];
+				if (binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 0) Require(binding.PumpFrame().IsOk(), "new generation must publish after its own copy completes");
+				Require(binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1 && source.m_calls == 3,
+					"new generation must publish one independently prepared frame");
+				source.m_gate.signaledValue = 10;
+				[retiredCopy waitUntilCompleted];
+				Require(retiredCopy.status == MTLCommandBufferStatusCompleted, "retired copy must finish after its source signals");
+				uint32_t pixel = 0;
+				[retiredTexture getBytes:&pixel bytesPerRow:4 fromRegion:MTLRegionMake2D(23, 11, 1, 1) mipmapLevel:0];
+				const MacNativeBridgeProducerPattern second{ 106, 1, 1, 2, 64, 48 };
+				Require(pixel == ExpectedProducerPatternBGRA8(second, 23, 11), "retired copy must preserve its own frame pixels");
+			}
+			catch (...)
+			{
+				source.m_gate.signaledValue = UINT64_MAX;
+				finished.set_value();
+				watchdog.join();
+				throw;
+			}
+			finished.set_value();
+			watchdog.join();
+		}
+		RequireNativeReleases(source.m_releases, 3, "all submitted native sources must retire after their owners and commands");
 	}
 
 	void TestProducerAllocationSharedLifetimeAndReplacement()
@@ -839,6 +1014,7 @@ namespace
 			for (uint32_t i = 1; i <= 100; ++i)
 			{
 				Require(backend.BeginFrame(viewport, 1, 1).IsOk(), "native producer copy must succeed");
+				[(id<MTLCommandBuffer>)allocation->m_copyCommandBufferObject waitUntilCompleted];
 				FramePacket frame;
 				Require(backend.ExportFrame(viewport, 1, 1, frame).IsOk() && frame.m_frameIndex == i, "completed copy must publish the matching frame index");
 				MacNativeBridgeProducerPattern pattern{ viewport.m_viewportId, 1, 1, i, viewport.m_width, viewport.m_height };
@@ -850,12 +1026,19 @@ namespace
 			Require(!backend.BeginFrame(viewport, 1, 1).IsOk(), "native command buffer refusal must propagate");
 			probe->m_refuseCommandBuffer = false;
 			probe->m_failCompletion = true;
-			Require(!backend.BeginFrame(viewport, 1, 1).IsOk(), "failed native terminal status must propagate after the real copy");
+			const auto completedCopyToken = allocation->m_lastProducerCopyToken;
+			Require(backend.BeginFrame(viewport, 1, 1).IsOk(), "copy submission must precede its terminal status");
+			[(id<MTLCommandBuffer>)allocation->m_copyCommandBufferObject waitUntilCompleted];
+			FramePacket failedFrame;
+			Require(backend.ExportFrame(viewport, 1, 1, failedFrame).m_nativeCode == 1033, "failed native terminal status must propagate before export");
 			Require(allocation->m_lastWrittenFrameIndex == 100 && !state->m_frameBegun, "failed native work must not publish success metadata");
+			Require(allocation->m_lastProducerCopyToken == completedCopyToken && state->m_pendingRendererSource.m_kind == MacRendererFrameSourceKind::Unknown,
+				"failed copy must discard preparation without changing the last completed provenance");
 			FramePacket rejected;
 			Require(!backend.ExportFrame(viewport, 1, 1, rejected).IsOk(), "failed copy must not export a frame");
 			probe->m_failCompletion = false;
 			Require(backend.BeginFrame(viewport, 1, 1).IsOk(), "retry must reuse the existing native queue");
+			[(id<MTLCommandBuffer>)allocation->m_copyCommandBufferObject waitUntilCompleted];
 			Require(backend.ExportFrame(viewport, 1, 1, rejected).IsOk() && rejected.m_frameIndex == 101, "retry must not skip failed frame indices");
 			id<MTLSharedEvent> event = [[(id<MTLDevice>)allocation->m_producerDeviceObject newSharedEvent] autorelease];
 			MacNativeBridgeRendererFrameInfo info;
@@ -1211,6 +1394,8 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "DelayedProducerCopyPublicationAndRetirement", TestDelayedProducerCopyPublicationAndRetirement },
+		{ "ProducerCopyReturnsBeforeSourceCompletion", TestProducerCopyReturnsBeforeSourceCompletion },
 		{ "LoopbackDefersWritesUntilPresentationCompletes", TestLoopbackDefersWritesUntilPresentationCompletes },
 		{ "PresentFailuresAndCompletedReadRetention", TestPresentFailuresAndCompletedReadRetention },
 		{ "ProviderDestructionReleasesNativeTextures", TestProviderDestructionReleasesNativeTextures },

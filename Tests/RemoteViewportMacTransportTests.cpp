@@ -1,7 +1,9 @@
+#include <chrono>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
@@ -68,9 +70,33 @@ namespace
 		return viewport;
 	}
 
+	FramePacket ExportReadyFrame(MacViewportTransportBackend& backend, const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation)
+	{
+		bool ready = false;
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+		do
+		{
+			Require(backend.PrepareFrame(viewport, epoch, generation, ready).IsOk(), "prepared copy must complete successfully");
+			if (!ready) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		} while (!ready && std::chrono::steady_clock::now() < deadline);
+		Require(ready, "native copy must complete before export");
+		FramePacket frame;
+		Require(backend.ExportFrame(viewport, epoch, generation, frame).IsOk(), "completed frame must export");
+		return frame;
+	}
+
 	class FakeMacIOSurfaceProvider : public IMacIOSurfaceProvider
 	{
 	public:
+		bool m_frameReady = true;
+
+		Failure PollFrameReady(MacViewportSurfaceState&, bool& outReady) override
+		{
+			outReady = m_frameReady;
+			m_lastFailure = Failure::Ok();
+			return m_lastFailure;
+		}
+
 		Failure CreateOrResizeSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, MacViewportSurfaceState& inOutState) override
 		{
 			m_createCalls.push_back({ viewport.m_viewportId, epoch, generation });
@@ -291,6 +317,34 @@ namespace
 		Require(backend.GetSurfaceCount() == 0, "all generations should be released cleanly");
 	}
 
+	void TestPendingMacFrameIsPreparedOnlyOnce()
+	{
+		FakeMacIOSurfaceProvider provider;
+		FakeMacViewportPresenter presenter;
+		const auto viewport = MakeViewport(86, 64, 48);
+		MacViewportLoopbackBinding binding(viewport, provider, presenter);
+		Require(binding.Create().IsOk(), "pending-frame test must create the local transport");
+		provider.m_frameReady = false;
+		for (uint32_t i = 0; i < 100; ++i)
+		{
+			Require(binding.PumpFrame().IsOk(), "pending preparation must defer a frame without failing");
+		}
+		Require(provider.m_beginCalls.size() == 1 && provider.m_exportCalls.empty() && presenter.m_presentCalls.empty(),
+			"pending pumps must retain one prepared frame without export or presentation");
+		Require(binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 0, "pending preparation must not advance publication");
+		provider.m_frameReady = true;
+		provider.m_nextExportFailure = Failure::FromDomain(ErrorDomain::Session, 73, "export refused");
+		Require(!binding.PumpFrame().IsOk(), "export failure must propagate");
+		Require(binding.PumpFrame().IsOk(), "the prepared frame must survive an export retry");
+		Require(provider.m_beginCalls.size() == 1 && provider.m_exportCalls.size() == 2 && presenter.m_presentCalls.size() == 1,
+			"retry must publish the original preparation exactly once");
+		Require(binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1, "successful retry must publish frame one");
+		provider.m_frameReady = false;
+		Require(binding.PumpFrame().IsOk() && provider.m_beginCalls.size() == 2 && presenter.m_presentCalls.size() == 1,
+			"the next pending frame must not re-present the last published frame");
+		Require(binding.Destroy().IsOk(), "pending preparation must be releasable on destruction");
+	}
+
 	void TestMacBackendFailurePropagationAndOrdering()
 	{
 		FakeMacIOSurfaceProvider provider{};
@@ -420,6 +474,7 @@ namespace
 		TransportDescriptor transport{};
 		Require(backend.EnsureSurface(viewport, 32, 1, transport).IsOk(), "concrete mac provider should create transport when a renderer source provider is attached");
 		Require(backend.BeginFrame(viewport, 32, 1).IsOk(), "begin frame should tolerate metadata-only renderer source adapters and keep the IOSurface copy path alive");
+		ExportReadyFrame(backend, viewport, 32, 1);
 
 		auto key = MacViewportSurfaceKey{ viewport.m_viewportId, 32, 1 };
 		auto* allocation = provider.FindAllocation(key);
@@ -442,6 +497,7 @@ namespace
 		TransportDescriptor transport{};
 		Require(backend.EnsureSurface(viewport, 35, 1, transport).IsOk(), "unavailable-source fallback should create the requested IOSurface transport");
 		Require(backend.BeginFrame(viewport, 35, 1).IsOk(), "a temporarily unavailable renderer source should fall back to the synthetic intermediate");
+		const auto frame = ExportReadyFrame(backend, viewport, 35, 1);
 
 		auto key = MacViewportSurfaceKey{ viewport.m_viewportId, 35, 1 };
 		auto* allocation = provider.FindAllocation(key);
@@ -449,8 +505,6 @@ namespace
 		Require(allocation != nullptr && allocation->m_lastRendererSource.m_width == viewport.m_width && allocation->m_lastRendererSource.m_height == viewport.m_height, "synthetic fallback should match the current IOSurface extents");
 		Require(transport.m_width == viewport.m_width && transport.m_height == viewport.m_height, "synthetic fallback should not rewrite the host viewport transport descriptor");
 
-		FramePacket frame{};
-		Require(backend.ExportFrame(viewport, 35, 1, frame).IsOk(), "unavailable-source fallback should still export the transition frame");
 		Require(frame.m_width == viewport.m_width && frame.m_height == viewport.m_height, "exported fallback frame should retain the requested viewport extents");
 		Require(sourceProvider.m_calls.size() == 1 && sourceProvider.m_calls.front().second == 1, "unavailable-source fallback should still probe the renderer once for the frame");
 		Require(backend.ReleaseSurface(viewport.m_viewportId, 35, 1).IsOk(), "unavailable-source fallback should release its IOSurface cleanly");
@@ -493,6 +547,7 @@ namespace
 		sourceProvider.m_nextSource.m_releaseTextureObjectAfterUse = true;
 
 		Require(backend.BeginFrame(viewport, 36, 1).IsOk(), "a copyable renderer source with stale extents should fall back to the synthetic intermediate");
+		const auto frame = ExportReadyFrame(backend, viewport, 36, 1);
 		allocation = provider.FindAllocation(key);
 		Require(allocation != nullptr && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::SyntheticIntermediate, "stale renderer extents should record the synthetic intermediate used for the transition frame");
 		Require(allocation != nullptr && allocation->m_lastRendererSource.m_width == viewport.m_width && allocation->m_lastRendererSource.m_height == viewport.m_height, "stale-source fallback should match the current IOSurface instead of resizing it back");
@@ -501,8 +556,6 @@ namespace
 		Require(CFGetRetainCount(sharedEventSentinel) == sharedEventRetainCountBefore - 1, "stale-source fallback should release the rejected shared event");
 		Require(transport.m_width == viewport.m_width && transport.m_height == viewport.m_height, "stale-source fallback should preserve the host viewport transport descriptor");
 
-		FramePacket frame{};
-		Require(backend.ExportFrame(viewport, 36, 1, frame).IsOk(), "stale-source fallback should still export the transition frame");
 		Require(frame.m_width == viewport.m_width && frame.m_height == viewport.m_height, "stale-source fallback frame should retain the requested viewport extents");
 		Require(backend.ReleaseSurface(viewport.m_viewportId, 36, 1).IsOk(), "stale-source fallback should release its IOSurface cleanly");
 
@@ -571,11 +624,12 @@ namespace
 		TransportDescriptor transport{};
 		Require(backend.EnsureSurface(viewport, 33, 1, transport).IsOk(), "metal-source validation should create transport using the live provider");
 		Require(backend.BeginFrame(viewport, 33, 1).IsOk(), "metal-source validation should copy the renderer-owned Metal texture into the IOSurface-backed producer texture");
+		ExportReadyFrame(backend, viewport, 33, 1);
 
 		auto key = MacViewportSurfaceKey{ viewport.m_viewportId, 33, 1 };
 		auto* allocation = liveProvider.FindAllocation(key);
-		Require(allocation != nullptr && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture, "begin frame should record the renderer-owned Metal texture source kind");
-		Require(allocation != nullptr && allocation->m_lastRendererTextureToken == 0xfeedfaceull, "begin frame should preserve the renderer-owned Metal texture token");
+		Require(allocation != nullptr && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture, "completed export should record the renderer-owned Metal texture source kind");
+		Require(allocation != nullptr && allocation->m_lastRendererTextureToken == 0xfeedfaceull, "completed export should preserve the renderer-owned Metal texture token");
 		Require(allocation != nullptr && allocation->m_lastCrossApiAcquireValue == 0, "inline Metal source tests should not claim Vulkan->Metal sync metadata when the source is already a native Metal texture");
 		Require(ReadIOSurfaceBGRA8Pixel(allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 0, 0) == ExpectedProducerPatternBGRA8(viewport.m_viewportId, 33, 1, 1, viewport.m_width, viewport.m_height, 0, 0), "renderer-owned Metal texture path should land the first deterministic pixel into the shared IOSurface");
 		Require(ReadIOSurfaceBGRA8Pixel(allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 5, 2) == ExpectedProducerPatternBGRA8(viewport.m_viewportId, 33, 1, 1, viewport.m_width, viewport.m_height, 5, 2), "renderer-owned Metal texture path should preserve later pixels through the GPU copy into the IOSurface");
@@ -628,8 +682,7 @@ namespace
 		TransportDescriptor transport{};
 		Require(backend.EnsureSurface(viewport, 34, 1, transport).IsOk(), "cross-api sync validation should create transport");
 		Require(backend.BeginFrame(viewport, 34, 1).IsOk(), "cross-api sync validation should begin frame");
-		FramePacket frame{};
-		Require(backend.ExportFrame(viewport, 34, 1, frame).IsOk(), "cross-api sync validation should export frame");
+		const auto frame = ExportReadyFrame(backend, viewport, 34, 1);
 		Require(frame.m_sync.m_crossApiSyncKind == CrossApiSyncKind::MetalSharedEvent, "exported frame should preserve the Metal shared-event sync kind when supplied");
 		Require(frame.m_sync.m_crossApiAcquireValue == 77ull, "exported frame should preserve the explicit Vulkan->Metal acquire value");
 		Require(!frame.m_sync.m_crossApiCpuWaited, "exported frame should preserve that Metal shared-event metadata avoids claiming CPU fallback");
@@ -660,15 +713,15 @@ namespace
 
 		FramePacket frame{};
 		Require(backend.BeginFrame(viewport, 31, 1).IsOk(), "concrete mac provider should begin frame");
+		frame = ExportReadyFrame(backend, viewport, 31, 1);
 		allocation = provider.FindAllocation(key);
-		Require(allocation != nullptr && allocation->m_lastWrittenFrameIndex == 1, "begin frame should populate producer content into the live IOSurface allocation");
-		Require(allocation != nullptr && allocation->m_lastRendererTextureToken != 0, "begin frame should stamp renderer-intermediate activity");
-		Require(allocation != nullptr && allocation->m_lastProducerCopyToken != 0, "begin frame should stamp GPU copy activity into the IOSurface-backed producer texture");
+		Require(allocation != nullptr && allocation->m_lastWrittenFrameIndex == 1, "completed export should record the written IOSurface frame");
+		Require(allocation != nullptr && allocation->m_lastRendererTextureToken != 0, "completed export should stamp renderer-intermediate activity");
+		Require(allocation != nullptr && allocation->m_lastProducerCopyToken != 0, "completed export should stamp GPU copy activity into the IOSurface-backed producer texture");
 #if defined(__APPLE__)
-		Require(ReadIOSurfaceBGRA8Pixel(allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 0, 0) == ExpectedProducerPatternBGRA8(viewport.m_viewportId, 31, 1, 1, viewport.m_width, viewport.m_height, 0, 0), "GPU copy path should land the renderer-intermediate BGRA pattern into the IOSurface before export");
+		Require(ReadIOSurfaceBGRA8Pixel(allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 0, 0) == ExpectedProducerPatternBGRA8(viewport.m_viewportId, 31, 1, 1, viewport.m_width, viewport.m_height, 0, 0), "exported IOSurface must contain the renderer-intermediate BGRA pattern");
 		Require(ReadIOSurfaceBGRA8Pixel(allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 17, 9) == ExpectedProducerPatternBGRA8(viewport.m_viewportId, 31, 1, 1, viewport.m_width, viewport.m_height, 17, 9), "renderer-intermediate copy should vary per pixel and remain addressable from the shared IOSurface");
 #endif
-		Require(backend.ExportFrame(viewport, 31, 1, frame).IsOk(), "concrete mac provider should export frame");
 		Require(transport.m_syncMode == SyncMode::Implicit && frame.m_sync.m_acquireValue == 0 && frame.m_sync.m_releaseValue == 0,
 			"internally synchronized loopback must not advertise fictitious exported fences");
 		Require(frame.m_sync.m_crossApiSyncKind == CrossApiSyncKind::None, "synthetic intermediate path should not claim Vulkan->Metal sync metadata");
@@ -699,6 +752,7 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "PendingMacFrameIsPreparedOnlyOnce", TestPendingMacFrameIsPreparedOnlyOnce },
 		{ "MacBackendCreateResizeExportAndRelease", TestMacBackendCreateResizeExportAndRelease },
 		{ "MacBackendFailurePropagationAndOrdering", TestMacBackendFailurePropagationAndOrdering },
 		{ "MacNativeHostImportPresentResetAndFailures", TestMacNativeHostImportPresentResetAndFailures },

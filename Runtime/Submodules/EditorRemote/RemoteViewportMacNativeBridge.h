@@ -178,9 +178,11 @@ namespace Sailor::EditorRemote
 	uint32_t GetMacIOSurfaceBytesPerRowAlignment(PixelFormat pixelFormat);
 	Failure CreateMacIOSurfaceProducerTexture(MacIOSurfaceAllocation& allocation);
 	Failure PollMacIOSurfaceReadCompletion(MacIOSurfaceAllocation& allocation, bool& outCompleted);
+	Failure PollMacIOSurfaceCopyCompletion(MacIOSurfaceAllocation& allocation, bool& outCompleted);
 	Failure CreateMacRendererIntermediateTexture(uintptr_t deviceObject, uint32_t width, uint32_t height, PixelFormat pixelFormat, uintptr_t& outTextureObject);
 	Failure UploadMacRendererPatternToIntermediateTexture(uintptr_t textureObject, uint32_t width, uint32_t height, const MacNativeBridgeProducerPattern& pattern);
 	Failure UploadMacRendererBytesToProducerTexture(MacIOSurfaceAllocation& allocation, const void* bytes, uint32_t bytesPerRow, MacNativeBridgeRendererFrameInfo& outFrameInfo);
+	// Submission only; consume copy completion before reading or reusing the surface.
 	Failure CopyMacRendererIntermediateToProducerTexture(MacIOSurfaceAllocation& allocation, uintptr_t sourceTextureObject, MacNativeBridgeRendererFrameInfo& outFrameInfo, uintptr_t sharedEventObject = 0, uint64_t sharedEventValue = 0);
 	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t vulkanDeviceHandle, uintptr_t vulkanSemaphoreHandle, uintptr_t& outSharedEventObject, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited);
 	void SetMacVulkanMetalInteropTestMode(bool enabled);

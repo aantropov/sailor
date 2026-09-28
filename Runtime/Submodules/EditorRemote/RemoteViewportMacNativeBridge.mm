@@ -314,34 +314,45 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	Failure PollMacIOSurfaceReadCompletion(MacIOSurfaceAllocation& allocation, bool& outCompleted)
+	static Failure PollMacCommandCompletion(uintptr_t& commandObject, bool& outCompleted, uint32_t errorCode, const char* errorMessage)
 	{
-		outCompleted = allocation.m_presentCommandBufferObject == 0;
+		outCompleted = commandObject == 0;
 		if (outCompleted)
 		{
 			return Failure::Ok();
 		}
 
-		id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)reinterpret_cast<void*>(allocation.m_presentCommandBufferObject);
+		id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)reinterpret_cast<void*>(commandObject);
 		const auto status = command.status;
 		if (status == MTLCommandBufferStatusError)
 		{
 			const char* description = command.error.localizedDescription.UTF8String;
-			auto failure = WriteProducerFailure(1035, description ? description : "macOS IOSurface presentation failed");
-			ReleaseObjectiveCObject(allocation.m_presentCommandBufferObject);
+			auto failure = WriteProducerFailure(errorCode, description ? description : errorMessage);
+			ReleaseObjectiveCObject(commandObject);
 			return failure;
 		}
 		if (status == MTLCommandBufferStatusCompleted)
 		{
-			ReleaseObjectiveCObject(allocation.m_presentCommandBufferObject);
+			ReleaseObjectiveCObject(commandObject);
 			outCompleted = true;
 		}
 		return Failure::Ok();
 	}
 
+	Failure PollMacIOSurfaceReadCompletion(MacIOSurfaceAllocation& allocation, bool& outCompleted)
+	{
+		return PollMacCommandCompletion(allocation.m_presentCommandBufferObject, outCompleted, 1035, "macOS IOSurface presentation failed");
+	}
+
+	Failure PollMacIOSurfaceCopyCompletion(MacIOSurfaceAllocation& allocation, bool& outCompleted)
+	{
+		return PollMacCommandCompletion(allocation.m_copyCommandBufferObject, outCompleted, 1033, "macOS producer GPU copy failed");
+	}
+
 	Failure UploadMacRendererBytesToProducerTexture(MacIOSurfaceAllocation& allocation, const void* bytes, uint32_t bytesPerRow, MacNativeBridgeRendererFrameInfo& outFrameInfo)
 	{
 		outFrameInfo = {};
+		if (allocation.m_copyCommandBufferObject != 0) return WriteProducerFailure(1036, "macOS IOSurface copy completion has not been consumed");
 		bool readCompleted = false;
 		auto result = PollMacIOSurfaceReadCompletion(allocation, readCompleted);
 		if (!result.IsOk()) return result;
@@ -373,6 +384,7 @@ namespace Sailor::EditorRemote
 	Failure CopyMacRendererIntermediateToProducerTexture(MacIOSurfaceAllocation& allocation, uintptr_t sourceTextureObject, MacNativeBridgeRendererFrameInfo& outFrameInfo, uintptr_t sharedEventObject, uint64_t sharedEventValue)
 	{
 		outFrameInfo = {};
+		if (allocation.m_copyCommandBufferObject != 0) return WriteProducerFailure(1036, "macOS IOSurface copy completion has not been consumed");
 		@autoreleasepool
 		{
 			bool readCompleted = false;
@@ -428,13 +440,8 @@ namespace Sailor::EditorRemote
 
 			[blitEncoder copyFromTexture:sourceTexture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(width, height, 1) toTexture:destinationTexture destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
 			[blitEncoder endEncoding];
+			allocation.m_copyCommandBufferObject = RetainObjectiveCObject(commandBuffer);
 			[commandBuffer commit];
-			[commandBuffer waitUntilCompleted];
-			if (commandBuffer.status != MTLCommandBufferStatusCompleted)
-			{
-				const char* description = commandBuffer.error.localizedDescription.UTF8String;
-				return WriteProducerFailure(1033, description ? description : "macOS producer GPU copy failed");
-			}
 
 			outFrameInfo.m_rendererTextureToken = NextRendererTextureToken();
 			outFrameInfo.m_producerCopyToken = NextProducerCopyToken();
@@ -559,6 +566,7 @@ namespace Sailor::EditorRemote
 
 	MacIOSurfaceAllocation::~MacIOSurfaceAllocation()
 	{
+		ReleaseObjectiveCObject(m_copyCommandBufferObject);
 		ReleaseObjectiveCObject(m_presentCommandBufferObject);
 		ReleaseObjectiveCObject(m_rendererIntermediateTextureObject);
 		ReleaseObjectiveCObject(m_producerTextureObject);
@@ -806,6 +814,7 @@ namespace Sailor::EditorRemote
 		{
 			if (allocation)
 			{
+				if (allocation->m_copyCommandBufferObject != 0) return WriteProducerFailure(1036, "macOS IOSurface copy completion has not been consumed");
 				bool readCompleted = false;
 				auto result = PollMacIOSurfaceReadCompletion(*allocation, readCompleted);
 				if (!result.IsOk()) return result;
@@ -934,6 +943,12 @@ namespace Sailor::EditorRemote
 	}
 
 	Failure PollMacIOSurfaceReadCompletion(MacIOSurfaceAllocation&, bool& outCompleted)
+	{
+		outCompleted = true;
+		return Failure::Ok();
+	}
+
+	Failure PollMacIOSurfaceCopyCompletion(MacIOSurfaceAllocation&, bool& outCompleted)
 	{
 		outCompleted = true;
 		return Failure::Ok();
