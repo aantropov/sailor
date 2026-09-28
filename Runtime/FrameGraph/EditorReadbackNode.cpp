@@ -17,6 +17,33 @@ using namespace Sailor::Framegraph;
 const char* EditorReadbackNode::m_name = "EditorReadback";
 #endif
 
+namespace
+{
+	uint32_t GetReadbackPixelSize(const RHITexturePtr& texture)
+	{
+		if (!texture || texture->GetMsaaSamples() != EMsaaSamples::Samples_1) return 0;
+		switch (texture->GetFormat())
+		{
+		case ETextureFormat::B8G8R8A8_UNORM:
+		case ETextureFormat::B8G8R8A8_SRGB:
+		case ETextureFormat::R8G8B8A8_UNORM:
+		case ETextureFormat::R8G8B8A8_SRGB: return 4;
+		case ETextureFormat::R16G16B16A16_SFLOAT: return 8;
+		default: return 0;
+		}
+	}
+}
+
+TRefPtr<EditorReadbackNode> EditorReadbackNode::Find(RHIFrameGraph& graph)
+{
+	if (auto primary = graph.GetGraphNode(GetName()).DynamicCast<EditorReadbackNode>()) return primary;
+	for (auto& node : graph.GetGraph())
+	{
+		if (auto readback = node.DynamicCast<EditorReadbackNode>()) return readback;
+	}
+	return {};
+}
+
 void EditorReadbackNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	if (!App::HasEditor() || !sceneView.m_submissionContext)
@@ -33,21 +60,34 @@ void EditorReadbackNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 	}
 
 	m_texture = GetResolvedAttachment("src");
-	if (!m_texture)
+	if (!m_resourceParams.ContainsKey("src") && frameGraph)
 	{
-		return;
+		auto resolve = [&](const std::string& name) -> RHITexturePtr
+			{
+				if (auto surface = frameGraph->GetSurface(name))
+				{
+					auto texture = surface->GetResolved() ? surface->GetResolved() : surface->GetTarget();
+					if (GetReadbackPixelSize(texture)) return texture;
+				}
+				return frameGraph->GetRenderTarget(name);
+			};
+		if (m_unresolvedResourceParams.ContainsKey("src"))
+		{
+			m_texture = resolve(m_unresolvedResourceParams["src"]);
+		}
+		else
+		{
+			// An omitted source follows the same priority as the editor viewport.
+			for (const char* name : { "EditorOutput", "Main", "BackBuffer", "Secondary" })
+			{
+				m_texture = resolve(name);
+				if (GetReadbackPixelSize(m_texture)) break;
+			}
+		}
 	}
 
-	uint32_t bytesPerPixel;
-	switch (m_texture->GetFormat())
-	{
-	case ETextureFormat::B8G8R8A8_UNORM:
-	case ETextureFormat::B8G8R8A8_SRGB:
-	case ETextureFormat::R8G8B8A8_UNORM:
-	case ETextureFormat::R8G8B8A8_SRGB: bytesPerPixel = 4; break;
-	case ETextureFormat::R16G16B16A16_SFLOAT: bytesPerPixel = 8; break;
-	default: return;
-	}
+	const uint32_t bytesPerPixel = GetReadbackPixelSize(m_texture);
+	if (!bytesPerPixel) return;
 
 	if (m_readbacks.IsEmpty()) m_readbacks.Resize(driver->GetMaxFramesInFlight() + 1u);
 	TSharedPtr<EditorReadbackFrame>* slot = nullptr;

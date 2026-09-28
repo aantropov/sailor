@@ -462,7 +462,18 @@ bool Renderer::EnsureFrameGraph()
 				"Renderer::EnsureFrameGraph: %s does not declare DepthBuffer; using the driver depth buffer for legacy project compatibility.",
 				frameGraphAssetPath);
 		}
-		m_bHasEditorReadback = m_frameGraph->GetRHI()->GetGraphNode("EditorReadback").IsValid();
+		auto graph = m_frameGraph->GetRHI();
+		auto readback = Framegraph::EditorReadbackNode::Find(*graph);
+#if defined(__APPLE__)
+		// The Mac host consumes completed CPU frames; Windows copies the image on GPU.
+		if (App::HasEditor() && !readback)
+		{
+			readback = TRefPtr<Framegraph::EditorReadbackNode>::Make();
+			readback->SetTag("EditorReadback");
+			graph->GetGraph().Add(readback);
+		}
+#endif
+		m_bHasEditorReadback = readback.IsValid();
 	}
 	else
 	{
@@ -559,7 +570,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					bHasSwapchainImage);
 			submissionBeginState->m_flightSlot = flightSlot;
 			submissionBeginState->m_bHasSwapchainImage = bHasSwapchainImage;
-			if (auto readback = rhiFrameGraph->GetGraphNode("EditorReadback").DynamicCast<Framegraph::EditorReadbackNode>())
+			if (auto readback = Framegraph::EditorReadbackNode::Find(*rhiFrameGraph))
 			{
 				QueueEditorReadback(readback->TakeCompletedFrame());
 			}
@@ -884,7 +895,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				{
 					if (auto completion = submissionBeginState->m_context->GetFrameCompletion()) completion->MarkSubmissionFailed();
 				}
-				if (auto readback = rhiFrameGraph->GetGraphNode("EditorReadback").DynamicCast<Framegraph::EditorReadbackNode>())
+				if (auto readback = Framegraph::EditorReadbackNode::Find(*rhiFrameGraph))
 				{
 					QueueEditorReadback(readback->TakeCompletedFrame());
 				}

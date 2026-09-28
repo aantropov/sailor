@@ -71,9 +71,7 @@ namespace Sailor::EditorRemote
 				return {};
 			}
 
-			const auto readbackNode = rhiFrameGraph
-				->GetGraphNode("EditorReadback")
-				.DynamicCast<Framegraph::EditorReadbackNode>();
+			const auto readbackNode = Framegraph::EditorReadbackNode::Find(*rhiFrameGraph);
 			if (readbackNode)
 			{
 				auto texture = readbackNode->GetTexture();

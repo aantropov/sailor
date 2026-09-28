@@ -1,5 +1,8 @@
 #include "Sailor.h"
 #include "Engine/Frame.h"
+#include "Engine/EngineLoop.h"
+#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
+#include "Support/TempDirectory.h"
 #include "FrameGraph/ParticlesNode.h"
 #include "FrameGraph/EditorReadbackNode.h"
 #include "Editor/EditorRuntimeBridge.h"
@@ -17,6 +20,8 @@
 #include "RHI/Fence.h"
 #include "RHI/Material.h"
 #include "RHI/Renderer.h"
+#include "RHI/RenderTarget.h"
+#include "RHI/Surface.h"
 #include "RHI/Texture.h"
 #include "Tasks/Tasks.h"
 #if defined(_WIN32)
@@ -29,6 +34,8 @@
 #include <array>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <chrono>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -118,6 +125,7 @@ namespace
 	thread_local std::array<VkResult, 2> fenceResults{};
 	thread_local uint32_t fenceStatusCalls = 0u;
 	thread_local uint32_t fenceWaitCalls = 0u;
+	thread_local uint32_t allFenceWaitCalls = 0u;
 	thread_local VkResult fenceWaitResult = VK_TIMEOUT;
 	thread_local bool captureNextFenceWait = false;
 	thread_local bool capturedFenceCompleted = false;
@@ -162,6 +170,7 @@ namespace
 	VKAPI_ATTR VkResult VKAPI_CALL NativeFenceWait(VkDevice device, uint32_t count, const VkFence* fences,
 		VkBool32 all, uint64_t timeout)
 	{
+		++allFenceWaitCalls;
 		if (count == 1u && captureNextFenceWait)
 		{
 			if (waitsBeforeCapture > 0u)
@@ -1670,6 +1679,188 @@ namespace
 		return result;
 	}
 
+#if defined(__APPLE__)
+	void WriteEditorReadbackGraph(const std::filesystem::path& path, size_t firstTarget,
+		glm::ivec2 extent, bool authored = false, bool surface = false, bool unsupportedFirst = false, bool multiple = false)
+	{
+		constexpr const char* names[] = { "EditorOutput", "Main", "BackBuffer", "Secondary" };
+		constexpr const char* colors[] = { "1, 0, 0, 1", "0, 1, 0, 1", "0, 0, 1, 1", "1, 1, 1, 1" };
+		std::ofstream graph(path);
+		graph << "renderTargets:\n";
+		for (size_t i = firstTarget; i < std::size(names); ++i)
+		{
+			graph << "- name: " << names[i] << "\n  format: " << (unsupportedFirst && i == 0 ? "R32_SFLOAT" : "B8G8R8A8_UNORM") <<
+				"\n  width: " << extent.x <<
+				"\n  height: " << extent.y << "\n  bIsSurface: " << (surface ? "true" : "false") << '\n';
+		}
+		graph << "frame:\n";
+		for (size_t i = firstTarget; i < std::size(names); ++i)
+		{
+			graph << "- name: Clear\n  vec4:\n  - clearColor: [" << colors[i] <<
+				"]\n  renderTargets:\n  - target: " << names[i] << '\n';
+		}
+		if (authored)
+			graph << "- name: EditorReadback\n  tag: CaptureForInspector\n  renderTargets:\n  - src: Secondary\n";
+		if (multiple)
+			graph << "- name: EditorReadback\n  renderTargets:\n  - src: Main\n";
+		graph.close();
+		Require(static_cast<bool>(graph), "temporary editor graph must be written");
+	}
+
+	void TestEditorReadbackGraph(const std::filesystem::path& path)
+	{
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		auto world = App::GetSubmodule<EngineLoop>()->CreateEmptyWorld("Readback graph", static_cast<uint8_t>(EWorldBehaviourBit::EcsTickable));
+		uint64_t tick = 0;
+		auto pushFrame = [&]()
+			{
+				Sailor::FrameState frame(world.GetRawPtr(), static_cast<int64_t>(++tick * 16u), {}, { 32, 24 });
+				world->Tick(frame);
+				Require(renderer->PushFrame(frame), "actual renderer must accept the readback graph frame");
+				scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+				scheduler->ProcessTasksOnMainThread();
+			};
+		EditorReadbackFramePtr previousGeneration;
+		for (size_t scenario = 0; scenario < 10; ++scenario)
+		{
+			const size_t firstTarget = scenario < 4 ? scenario : 0;
+			const bool authored = scenario == 4 || scenario == 9;
+			const bool multiple = scenario == 9;
+			const bool surface = scenario == 5;
+			const glm::ivec2 extent = scenario == 6 ? glm::ivec2(1280, 720) : scenario == 7 ? glm::ivec2(1920, 1080) :
+				scenario < 4 ? glm::ivec2(32, 24) : glm::ivec2(67, 39);
+			WriteEditorReadbackGraph(path, firstTarget, extent, authored, surface, scenario == 8, multiple);
+			renderer->RefreshFrameGraph();
+			Require(renderer->EnsureFrameGraph() && renderer->HasEditorReadback(),
+				"an editor graph without an authored readback must receive an asynchronous producer");
+			auto graph = renderer->GetFrameGraph()->GetRHI();
+			size_t producers = 0;
+			TRefPtr<Framegraph::EditorReadbackNode> node;
+			for (auto& candidate : graph->GetGraph())
+				if (auto capture = candidate.DynamicCast<Framegraph::EditorReadbackNode>()) { node = capture; ++producers; }
+			Require(producers == (multiple ? 2u : 1u) && (multiple || !authored || node->GetTag() == "CaptureForInspector"),
+				"authored capture tags must be preserved without adding a duplicate producer");
+			Require(renderer->EnsureFrameGraph() && graph == renderer->GetFrameGraph()->GetRHI(),
+				"repeated EnsureFrameGraph must preserve the active producer and graph");
+			if (surface)
+				Require(graph->GetSurface("EditorOutput")->NeedsResolve() &&
+					graph->GetSurface("EditorOutput")->GetTarget()->GetMsaaSamples() == EMsaaSamples::Samples_4,
+					"surface coverage must exercise actual multisampling, not two single-sample aliases");
+			if (previousGeneration)
+			{
+				OnRender([&]() { renderer->QueueEditorReadback(previousGeneration); });
+				scheduler->ProcessTasksOnMainThread();
+				Require(!renderer->GetEditorReadback(), "a previous graph generation must not republish after replacement");
+			}
+			for (uint32_t frame = 0; frame < 12u && !renderer->GetEditorReadback(); ++frame) pushFrame();
+			EditorRemote::MacRendererFrameSource source;
+			Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.m_readback &&
+				source.m_readback->m_extent == extent, "actual Render-to-Main publication must expose completed pixels at the current size");
+			constexpr uint32_t expected[] = { 0xffff0000u, 0xff00ff00u, 0xff0000ffu, 0xffffffffu };
+			const uint32_t color = expected[multiple || scenario == 8 ? 1 : authored ? 3 : firstTarget];
+			for (int y = 0; y < extent.y; ++y)
+				for (int x = 0; x < extent.x; ++x)
+					Require(std::memcmp(source.GetCpuBytes() + y * source.m_bytesPerRow + x * 4, &color, sizeof(color)) == 0,
+						"capture must preserve actual pixels and source priority, including resolved surfaces");
+			const auto retained = source;
+			{
+				auto device = VulkanApi::GetInstance()->GetMainDevice();
+				FenceDispatchOverride fences(*device);
+				SubmitOverride submits(device->GetGraphicsQueue(), VK_ERROR_OUT_OF_HOST_MEMORY);
+				const auto beforeSubmits = submitCalls;
+				const auto beforeWaits = allFenceWaitCalls;
+				const auto start = std::chrono::steady_clock::now();
+				for (uint32_t i = 0; i < 1000u; ++i)
+					Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.m_readback == retained.m_readback,
+						"repeated Main acquisition must retain the same immutable completed frame");
+				const auto microseconds = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+				Require(submitCalls == beforeSubmits && allFenceWaitCalls == beforeWaits,
+					"Main frame acquisition must neither submit commands nor wait for a GPU fence");
+				std::cout << "Readback graph scenario " << scenario << ": 1000 Main acquisitions " << microseconds << " us\n";
+			}
+			CheckReadbackUpload(source);
+			if (scenario == 0 || scenario == 5 || scenario == 6)
+			{
+				EditorReadbackStats before, after;
+				OnRender([&]()
+					{
+						before = node->GetStats();
+						if (scenario == 0)
+							for (const char* name : { "EditorOutput", "Main", "BackBuffer", "Secondary" }) graph->SetRenderTarget(name, {});
+						else if (scenario == 5) node->SetRHIResource("src", graph->GetSurface("Main")->GetTarget());
+						else node->SetRHIResource_Unresolved("src", "LateOutput");
+					});
+				// Existing pending captures may still finish; no new capture may be recorded.
+				for (uint32_t frame = 0; frame < 4; ++frame) pushFrame();
+				const auto last = renderer->GetEditorReadback();
+				pushFrame();
+				OnRender([&]() { after = node->GetStats(); });
+				Require(last && renderer->GetEditorReadback() == last &&
+					after.m_recordedReadbackBytes == before.m_recordedReadbackBytes,
+					"missing or unresolved sources and raw MSAA images must retain the last completed image without copying");
+				if (scenario == 6)
+				{
+					OnRender([&]() { graph->SetRenderTarget("LateOutput", graph->GetRenderTarget("Secondary")); });
+					for (uint32_t frame = 0; frame < 12 && renderer->GetEditorReadback() == last; ++frame) pushFrame();
+					Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.m_readback != last,
+						"a per-frame source must become readable when its resource is installed");
+					const uint32_t white = 0xffffffffu;
+					Require(std::memcmp(source.GetCpuBytes(), &white, sizeof(white)) == 0,
+						"explicit late source must win over the automatic EditorOutput fallback");
+				}
+			}
+			previousGeneration = source.m_readback;
+		}
+	}
+
+	int RunEditorReadbackGraphGpu(int argc, const char** argv)
+	{
+		Tests::TempDirectory workspace("editor-readback-graph");
+		std::filesystem::create_directories(workspace.Path("Content"));
+		std::string enginePath = std::filesystem::current_path().string();
+		for (int i = 1; i + 1 < argc; ++i)
+			if (std::string_view(argv[i]) == "--workspace") enginePath = argv[i + 1];
+		YAML::Node manifest;
+		manifest["manifestVersion"] = 1;
+		manifest["workspaceId"] = "00000000-0000-0000-0000-000000000105";
+		manifest["name"] = "Readback graph test";
+		manifest["enginePath"] = enginePath;
+		manifest["engineReferenceKind"] = "source";
+		manifest["contentPath"] = "Content";
+		manifest["sourcePath"] = "Source";
+		manifest["generatedProjectPath"] = "Generated";
+		manifest["cachePath"] = "Cache";
+		manifest["buildPath"] = "Cache/Build";
+		manifest["logicOutputPath"] = "Binaries";
+		manifest["logicModuleName"] = "ReadbackGraphTest";
+		std::ofstream(workspace.Path("workspace.sailor")) << manifest;
+		auto graphics = YAML::LoadFile((std::filesystem::path(enginePath) / "ProjectSettings.yaml").string());
+		graphics["graphics"]["defaultQuality"] = "High";
+		graphics["graphics"]["presets"]["High"]["msaaSamples"] = 4;
+		std::ofstream(workspace.Path("ProjectSettings.yaml")) << graphics;
+		const auto graphPath = workspace.Path("Content/EditorRenderer.renderer");
+		WriteEditorReadbackGraph(graphPath, 0, { 32, 24 });
+		const std::string workspacePath = workspace.Get().string();
+		std::vector<const char*> arguments(argv, argv + argc);
+		arguments.insert(arguments.end(), { "--workspace", workspacePath.c_str(), "--new-world", "--editor", "--port", "0" });
+		App::Initialize(arguments.data(), static_cast<int>(arguments.size()));
+		int result = 1;
+		try
+		{
+			Require(App::IsRendererInitialized(), "editor graph test requires an initialized renderer");
+			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			TestEditorReadbackGraph(graphPath);
+			std::cout << "Native editor readback graph test passed\n";
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		App::Stop();
+		if (!App::Shutdown()) result = 1;
+		return result;
+	}
+#endif
+
 	int RunFenceGpu(int argc, const char** argv, std::string_view mode)
 	{
 		std::vector<const char*> arguments(argv, argv + argc);
@@ -1788,6 +1979,11 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
+#if defined(__APPLE__)
+		if (mode == "--gpu-editor-readback-graph") return RunEditorReadbackGraphGpu(argc, argv);
+#else
+		if (mode == "--gpu-editor-readback-graph") return 77;
+#endif
 #if defined(_WIN32)
 		if (mode == "--gpu-windows-shared" || mode == "--gpu-windows-shared-lost") return RunFenceGpu(argc, argv, mode);
 #else

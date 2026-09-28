@@ -3,20 +3,15 @@
 
 #include "Sailor.h"
 #include "AssetRegistry/AssetRegistry.h"
-#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Core/Reflection.h"
 #include "ECS/ECS.h"
 #include "ECS/GlobalIlluminationECS.h"
 #include "Engine/World.h"
 #include "Engine/InstanceId.h"
-#include "FrameGraph/EditorReadbackNode.h"
-#include "FrameGraph/RHIFrameGraph.h"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "Platform/Win32/Input.h"
 #include "RHI/Buffer.h"
 #include "RHI/Renderer.h"
-#include "RHI/RenderTarget.h"
-#include "RHI/Surface.h"
 #include "Submodules/Editor.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
 #if defined(_WIN32)
@@ -49,193 +44,6 @@ namespace
 
 	constexpr ViewportId kPrimaryEditorViewportId = 1;
 
-	std::optional<PixelFormat> ToRemotePixelFormat(RHI::EFormat format)
-	{
-		switch (format)
-		{
-		case RHI::EFormat::R8G8B8A8_UNORM:
-		case RHI::EFormat::R8G8B8A8_SRGB:
-			return PixelFormat::R8G8B8A8_UNorm;
-		case RHI::EFormat::B8G8R8A8_UNORM:
-		case RHI::EFormat::B8G8R8A8_SRGB:
-			return PixelFormat::B8G8R8A8_UNorm;
-		case RHI::EFormat::R16G16B16A16_SFLOAT:
-			return PixelFormat::R16G16B16A16_Float;
-		default:
-			return std::nullopt;
-		}
-	}
-
-	EditorReadbackFramePtr ReadbackRendererTarget(const RHI::RHIRenderTargetPtr& renderTarget, PixelFormat pixelFormat)
-	{
-		auto& driver = RHI::Renderer::GetDriver();
-		auto* commands = RHI::Renderer::GetDriverCommands();
-		if (!driver || !commands || !renderTarget)
-		{
-			return nullptr;
-		}
-
-		const uint32_t srcBytesPerPixel = pixelFormat == PixelFormat::R16G16B16A16_Float ? 8u : 4u;
-		const glm::ivec2 extent = renderTarget->GetExtent();
-		const uint32_t srcBytesPerRow = static_cast<uint32_t>(extent.x) * srcBytesPerPixel;
-		auto readbackBuffer = driver->CreateBuffer(static_cast<size_t>(srcBytesPerRow) * extent.y,
-			EBufferUsageBit::BufferTransferDst_Bit, EMemoryPropertyBit::HostCoherent | EMemoryPropertyBit::HostVisible);
-		if (!readbackBuffer) return nullptr;
-
-		auto cmd = driver->CreateCommandList(false, ECommandListQueue::Graphics);
-		commands->BeginCommandList(cmd, true);
-		commands->ImageMemoryBarrier(cmd, renderTarget, renderTarget->GetFormat(), renderTarget->GetDefaultLayout(), EImageLayout::TransferSrcOptimal);
-		commands->CopyImageToBuffer(cmd, renderTarget, readbackBuffer);
-		commands->MemoryBarrier(cmd, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
-			static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
-		commands->ImageMemoryBarrier(cmd, renderTarget, renderTarget->GetFormat(), EImageLayout::TransferSrcOptimal, renderTarget->GetDefaultLayout());
-		commands->EndCommandList(cmd);
-		if (!driver->SubmitCommandList_Immediate(cmd))
-		{
-			SAILOR_LOG_ERROR("EditorRuntimeBridge: viewport readback did not complete.");
-			return nullptr;
-		}
-		auto frame = TSharedPtr<EditorReadbackFrame>::Make();
-		frame->m_buffer = std::move(readbackBuffer);
-		frame->m_extent = extent;
-		frame->m_bytesPerRow = srcBytesPerRow;
-		frame->m_format = renderTarget->GetFormat();
-		if (!frame->PrepareBgraPixels()) return {};
-		return frame;
-	}
-
-	bool TryFillRendererFrameSourceFromTarget(const char* debugName, const RHI::RHIRenderTargetPtr& renderTarget, MacRendererFrameSource& outSource)
-	{
-		if (!renderTarget)
-		{
-			return false;
-		}
-
-#if defined(SAILOR_BUILD_WITH_VULKAN)
-		if (!renderTarget->m_vulkan.m_image || !renderTarget->m_vulkan.m_imageView)
-		{
-			return false;
-		}
-#endif
-
-		const auto extent = renderTarget->GetExtent();
-		if (extent.x <= 0 || extent.y <= 0)
-		{
-			return false;
-		}
-
-		const auto pixelFormat = ToRemotePixelFormat(renderTarget->GetFormat());
-		if (!pixelFormat.has_value())
-		{
-			return false;
-		}
-
-		outSource.m_sourceObject = reinterpret_cast<uintptr_t>(renderTarget.GetRawPtr());
-		outSource.m_sourceToken = renderTarget.GetHash();
-		outSource.m_width = static_cast<uint32_t>(extent.x);
-		outSource.m_height = static_cast<uint32_t>(extent.y);
-		outSource.m_pixelFormat = *pixelFormat;
-		outSource.m_debugName = debugName;
-
-		auto readback = ReadbackRendererTarget(renderTarget, *pixelFormat);
-		if (readback)
-		{
-			outSource.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
-			outSource.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
-			outSource.m_bytesPerRow = readback->GetBgraBytesPerRow();
-			outSource.m_readback = std::move(readback);
-			return true;
-		}
-
-		return false;
-	}
-
-	bool TryFillRendererFrameSourceFromSurface(const char* debugName, const RHI::RHISurfacePtr& surface, MacRendererFrameSource& outSource)
-	{
-		if (!surface)
-		{
-			return false;
-		}
-
-		auto renderTarget = surface->GetResolved();
-		if (!renderTarget)
-		{
-			renderTarget = surface->GetTarget();
-		}
-
-		return TryFillRendererFrameSourceFromTarget(debugName, renderTarget, outSource);
-	}
-
-	bool TryAcquireFrameGraphFrameSource(MacRendererFrameSource& outSource, std::string* outSummary = nullptr)
-	{
-		auto* renderer = App::GetSubmodule<RHI::Renderer>();
-		if (renderer && renderer->HasEditorReadback())
-		{
-			const bool available = EditorRuntime::TryAcquireEditorReadbackFrameSource(outSource);
-			if (outSummary) *outSummary = available ? "editorReadback=1 available=1" : "editorReadback=1 available=0";
-			return available;
-		}
-
-		outSource = MacRendererFrameSource{};
-		FrameGraphPtr frameGraph{};
-		if (renderer)
-		{
-			frameGraph = renderer->GetFrameGraph();
-		}
-		auto rhiFrameGraph = frameGraph ? frameGraph->GetRHI() : nullptr;
-
-		struct Candidate
-		{
-			const char* m_name;
-			const char* m_surfaceName;
-		};
-
-		constexpr Candidate candidates[] =
-		{
-			{ "Renderer.SceneView.EditorOutput", "EditorOutput" },
-			{ "Renderer.SceneView.Main", "Main" },
-			{ "Renderer.SceneView.BackBuffer", "BackBuffer" },
-			{ "Renderer.SceneView.Secondary", "Secondary" }
-		};
-
-		const char* selectedResource = nullptr;
-		for (const auto& candidate : candidates)
-		{
-			auto surface = rhiFrameGraph ? rhiFrameGraph->GetSurface(candidate.m_surfaceName) : nullptr;
-			if (TryFillRendererFrameSourceFromSurface(candidate.m_name, surface, outSource))
-			{
-				selectedResource = candidate.m_surfaceName;
-				break;
-			}
-
-			auto renderTarget = rhiFrameGraph ? rhiFrameGraph->GetRenderTarget(candidate.m_surfaceName) : nullptr;
-			if (TryFillRendererFrameSourceFromTarget(candidate.m_name, renderTarget, outSource))
-			{
-				selectedResource = candidate.m_surfaceName;
-				break;
-			}
-		}
-
-		const bool acquired = selectedResource != nullptr;
-
-		if (outSummary)
-		{
-			std::ostringstream ss;
-			ss << "renderer=" << (renderer ? 1 : 0)
-				<< " frameGraph=" << (frameGraph ? 1 : 0)
-				<< " available=" << (acquired ? 1 : 0);
-			if (acquired)
-			{
-				ss << " surface=" << selectedResource
-					<< " srcSize=" << outSource.m_width << "x" << outSource.m_height
-					<< " srcPitch=" << outSource.m_bytesPerRow;
-			}
-			*outSummary = ss.str();
-		}
-
-		return acquired;
-	}
-
 	class SailorRendererFrameSourceProvider final : public IMacRendererFrameSourceProvider
 	{
 	public:
@@ -244,12 +52,8 @@ namespace
 			(void)state;
 			(void)nextFrameIndex;
 
-			if (TryAcquireFrameGraphFrameSource(outSource, &m_lastProbeSummary))
-			{
-				return Failure::Ok();
-			}
-
-			outSource = {};
+			const bool available = EditorRuntime::TryAcquireEditorReadbackFrameSource(outSource);
+			m_lastProbeSummary = available ? "editorReadback=1 available=1" : "editorReadback=1 available=0";
 			return Failure::Ok();
 		}
 
