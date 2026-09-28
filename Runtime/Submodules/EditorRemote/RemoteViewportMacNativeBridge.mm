@@ -12,6 +12,8 @@
 #include "../../../External/renderdoc/renderdoc/driver/vulkan/official/vulkan.h"
 #include <algorithm>
 #include <dlfcn.h>
+#include "RHI/Fence.h"
+#include "RHI/Texture.h"
 #endif
 
 namespace Sailor::EditorRemote
@@ -57,12 +59,6 @@ namespace Sailor::EditorRemote
 			return ++s_token;
 		}
 
-		uint64_t NextCrossApiAcquireValue()
-		{
-			static uint64_t s_value = 0;
-			return ++s_value;
-		}
-
 		uintptr_t RetainObjectiveCObject(id object)
 		{
 			if (object == nil)
@@ -98,12 +94,6 @@ namespace Sailor::EditorRemote
 				result = fn();
 			});
 			return result;
-		}
-
-		bool& MacVulkanMetalInteropTestMode()
-		{
-			static bool s_enabled = false;
-			return s_enabled;
 		}
 
 		id<MTLTexture> AcquireIOSurfaceSourceTexture(id<MTLDevice> device, const MacIOSurfaceHandle& surfaceHandle, const MacNativeLayerBinding& binding)
@@ -373,86 +363,26 @@ namespace Sailor::EditorRemote
 		}
 	}
 
-	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t vulkanDeviceHandle, uintptr_t vulkanSemaphoreHandle, uintptr_t& outSharedEventObject, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited)
-	{
-		outSharedEventObject = 0;
-		outAcquireValue = 0;
-		outSyncKind = CrossApiSyncKind::None;
-		outCpuWaited = false;
-		if (vulkanDeviceHandle == 0)
-		{
-			return WriteProducerFailure(1026, "macOS Vulkan->Metal sync requires a live Vulkan device");
-		}
-
-		if (MacVulkanMetalInteropTestMode() && vulkanSemaphoreHandle != 0)
-		{
-			outSharedEventObject = 0x1;
-			outAcquireValue = 1;
-			outSyncKind = CrossApiSyncKind::MetalSharedEvent;
-			outCpuWaited = false;
-			return Failure::Ok();
-		}
-
-		const auto device = static_cast<VkDevice>(reinterpret_cast<VkDevice_T*>(vulkanDeviceHandle));
-		auto getDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(dlsym(RTLD_DEFAULT, "vkGetDeviceProcAddr"));
-		auto waitIdle = reinterpret_cast<PFN_vkDeviceWaitIdle>(dlsym(RTLD_DEFAULT, "vkDeviceWaitIdle"));
-		constexpr bool kEnableBinarySemaphoreSharedEventInterop = false;
-		if (kEnableBinarySemaphoreSharedEventInterop && getDeviceProcAddr != nullptr && vulkanSemaphoreHandle != 0)
-		{
-			auto exportMetalObjects = reinterpret_cast<PFN_vkExportMetalObjectsEXT>(getDeviceProcAddr(device, "vkExportMetalObjectsEXT"));
-			if (exportMetalObjects != nullptr)
-			{
-				VkExportMetalSharedEventInfoEXT sharedEventInfo{ VK_STRUCTURE_TYPE_EXPORT_METAL_SHARED_EVENT_INFO_EXT };
-				sharedEventInfo.semaphore = static_cast<VkSemaphore>(reinterpret_cast<VkSemaphore_T*>(vulkanSemaphoreHandle));
-
-				VkExportMetalObjectsInfoEXT exportInfo{ VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECTS_INFO_EXT };
-				exportInfo.pNext = &sharedEventInfo;
-				exportMetalObjects(device, &exportInfo);
-				if (sharedEventInfo.mtlSharedEvent != nil)
-				{
-					CFRetain((__bridge CFTypeRef)sharedEventInfo.mtlSharedEvent);
-					outSharedEventObject = reinterpret_cast<uintptr_t>((__bridge void*)sharedEventInfo.mtlSharedEvent);
-					outAcquireValue = 1;
-					outSyncKind = CrossApiSyncKind::MetalSharedEvent;
-					outCpuWaited = false;
-					return Failure::Ok();
-				}
-			}
-		}
-
-		if (waitIdle == nullptr)
-		{
-			return Failure::FromDomain(ErrorDomain::Capability, 1027, "macOS Vulkan->Metal sync requires vkDeviceWaitIdle from the live Vulkan loader");
-		}
-
-		const VkResult result = waitIdle(device);
-		if (result != VK_SUCCESS)
-		{
-			return Failure::FromDomain(ErrorDomain::Session, 1028, "macOS Vulkan->Metal sync failed to idle the Vulkan device before Metal consumption");
-		}
-
-		outAcquireValue = NextCrossApiAcquireValue();
-		outSyncKind = CrossApiSyncKind::CpuDeviceIdle;
-		outCpuWaited = true;
-		return Failure::Ok();
-	}
-
-	void SetMacVulkanMetalInteropTestMode(bool enabled)
-	{
-		MacVulkanMetalInteropTestMode() = enabled;
-	}
-
-	Failure ExportMacMetalTextureFromVulkanRenderTarget(uintptr_t vulkanDeviceHandle, uintptr_t vulkanImageHandle, uintptr_t vulkanImageViewHandle, PixelFormat pixelFormat, uintptr_t& outTextureObject)
+	Failure ExportMacMetalTextureFromVulkanRenderTarget(const RHI::RHITexture& texture, const RHI::RHIFence& completion, uintptr_t& outTextureObject)
 	{
 		outTextureObject = 0;
-		if (vulkanDeviceHandle == 0 || vulkanImageHandle == 0 || pixelFormat != PixelFormat::B8G8R8A8_UNorm)
+		const auto status = completion.GetStatus();
+		if (status == RHI::EFenceStatus::Failed)
 		{
-			return WriteProducerFailure(1022, "macOS Vulkan->Metal export requires a BGRA8 Vulkan render target");
+			return WriteProducerFailure(1028, "macOS Vulkan->Metal export cannot consume a failed renderer submission");
+		}
+		if (status == RHI::EFenceStatus::Pending) return Failure::Ok();
+
+		const auto vulkanDeviceHandle = texture.GetNativeDeviceHandle();
+		const auto vulkanImageHandle = texture.GetNativeImageHandle();
+		if (vulkanDeviceHandle == 0 || vulkanImageHandle == 0 || texture.GetFormat() != RHI::ETextureFormat::B8G8R8A8_UNORM ||
+			texture.GetMsaaSamples() != RHI::EMsaaSamples::Samples_1)
+		{
+			return WriteProducerFailure(1022, "macOS Vulkan->Metal export requires a resolved BGRA8 Vulkan render target");
 		}
 
 		const auto device = static_cast<VkDevice>(reinterpret_cast<VkDevice_T*>(vulkanDeviceHandle));
 		const auto image = static_cast<VkImage>(reinterpret_cast<VkImage_T*>(vulkanImageHandle));
-		const auto imageView = static_cast<VkImageView>(reinterpret_cast<VkImageView_T*>(vulkanImageViewHandle));
 		auto getDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(dlsym(RTLD_DEFAULT, "vkGetDeviceProcAddr"));
 		if (getDeviceProcAddr == nullptr)
 		{
@@ -467,7 +397,6 @@ namespace Sailor::EditorRemote
 
 		VkExportMetalTextureInfoEXT textureInfo{ VK_STRUCTURE_TYPE_EXPORT_METAL_TEXTURE_INFO_EXT };
 		textureInfo.image = image;
-		textureInfo.imageView = imageView;
 		textureInfo.plane = VK_IMAGE_ASPECT_COLOR_BIT;
 
 		VkExportMetalObjectsInfoEXT exportInfo{ VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECTS_INFO_EXT };
@@ -871,20 +800,7 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t, uintptr_t, uintptr_t& outSharedEventObject, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited)
-	{
-		outSharedEventObject = 0;
-		outAcquireValue = 0;
-		outSyncKind = CrossApiSyncKind::None;
-		outCpuWaited = false;
-		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS Vulkan->Metal sync is unavailable on this platform");
-	}
-
-	void SetMacVulkanMetalInteropTestMode(bool)
-	{
-	}
-
-	Failure ExportMacMetalTextureFromVulkanRenderTarget(uintptr_t, uintptr_t, uintptr_t, PixelFormat, uintptr_t& outTextureObject)
+	Failure ExportMacMetalTextureFromVulkanRenderTarget(const RHI::RHITexture&, const RHI::RHIFence&, uintptr_t& outTextureObject)
 	{
 		outTextureObject = 0;
 		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS Vulkan->Metal export is unavailable on this platform");

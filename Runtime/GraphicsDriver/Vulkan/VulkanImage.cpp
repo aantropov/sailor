@@ -3,6 +3,9 @@
 #include "VulkanImage.h"
 #include "VulkanDevice.h"
 #include "VulkanDeviceMemory.h"
+#if defined(__APPLE__)
+#include <vulkan/vulkan_metal.h>
+#endif
 
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
@@ -74,19 +77,22 @@ void VulkanImage::Compile()
 		return;
 	}
 
-       VkImageCreateInfo info = {};
-       info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-       VkExternalMemoryImageCreateInfo externalInfo{};
-       if (m_useExternalMemory)
-       {
-               externalInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-               externalInfo.handleTypes = m_externalHandleType;
-               info.pNext = &externalInfo;
-       }
-       else
-       {
-               info.pNext = nullptr;
-       }
+	VkImageCreateInfo info{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+	VkExternalMemoryImageCreateInfo externalInfo{ VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO };
+	if (m_useExternalMemory)
+	{
+		externalInfo.handleTypes = m_externalHandleType;
+		info.pNext = &externalInfo;
+	}
+#if defined(__APPLE__)
+	VkExportMetalObjectCreateInfoEXT metalInfo{ VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECT_CREATE_INFO_EXT };
+	if (m_device->IsMetalObjectsSupported())
+	{
+		metalInfo.exportObjectType = VK_EXPORT_METAL_OBJECT_TYPE_METAL_TEXTURE_BIT_EXT;
+		metalInfo.pNext = info.pNext;
+		info.pNext = &metalInfo;
+	}
+#endif
 	info.flags = m_flags;
 	info.imageType = m_imageType;
 	info.extent = m_extent;

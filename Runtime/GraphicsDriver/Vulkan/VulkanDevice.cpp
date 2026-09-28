@@ -631,6 +631,11 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		return supportedDeviceExtensions.Contains(std::string(extensionName));
 	};
 
+#if defined(__APPLE__)
+	m_bSupportsMetalObjects = hasDeviceExtension(VK_EXT_METAL_OBJECTS_EXTENSION_NAME);
+	if (m_bSupportsMetalObjects) deviceExtensions.Add(VK_EXT_METAL_OBJECTS_EXTENSION_NAME);
+#endif
+
 	VkPhysicalDeviceFeatures2 supportedFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	VkPhysicalDeviceVulkan11Features supportedCore11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	VkPhysicalDeviceVulkan12Features supportedCore12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };

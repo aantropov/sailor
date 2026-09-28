@@ -6,6 +6,8 @@
 #include "Memory/UniquePtr.hpp"
 #include "RemoteViewportFoundation.h"
 
+namespace Sailor::RHI { class RHITexture; class RHIFence; }
+
 namespace Sailor::EditorRemote
 {
 	struct MacIOSurfaceAllocation;
@@ -171,9 +173,8 @@ namespace Sailor::EditorRemote
 	Failure UploadMacRendererBytesToProducerTexture(MacIOSurfaceAllocation& allocation, const void* bytes, uint32_t bytesPerRow, MacNativeBridgeRendererFrameInfo& outFrameInfo);
 	// Submission only; consume copy completion before reading or reusing the surface.
 	Failure CopyMacRendererIntermediateToProducerTexture(MacIOSurfaceAllocation& allocation, uintptr_t sourceTextureObject, MacNativeBridgeRendererFrameInfo& outFrameInfo, uintptr_t sharedEventObject = 0, uint64_t sharedEventValue = 0);
-	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t vulkanDeviceHandle, uintptr_t vulkanSemaphoreHandle, uintptr_t& outSharedEventObject, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited);
-	void SetMacVulkanMetalInteropTestMode(bool enabled);
-	Failure ExportMacMetalTextureFromVulkanRenderTarget(uintptr_t vulkanDeviceHandle, uintptr_t vulkanImageHandle, uintptr_t vulkanImageViewHandle, PixelFormat pixelFormat, uintptr_t& outTextureObject);
+	// A null export is not ready yet. Keep the source unchanged and alive until its Metal copy completes.
+	Failure ExportMacMetalTextureFromVulkanRenderTarget(const RHI::RHITexture& texture, const RHI::RHIFence& completion, uintptr_t& outTextureObject);
 	void ReleaseMacRendererIntermediateTexture(uintptr_t& inOutTextureObject);
 	void ReleaseMacExportedTexture(uintptr_t& inOutTextureObject);
 

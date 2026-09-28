@@ -44,6 +44,19 @@
 #include <utility>
 #include <vector>
 
+#if defined(__APPLE__)
+#include <dlfcn.h>
+
+namespace { std::atomic<uint32_t> deviceIdleCalls{ 0 }; }
+
+extern "C" VKAPI_ATTR VkResult VKAPI_CALL vkDeviceWaitIdle(VkDevice device)
+{
+	static auto nativeWait = reinterpret_cast<PFN_vkDeviceWaitIdle>(dlsym(RTLD_NEXT, "vkDeviceWaitIdle"));
+	++deviceIdleCalls;
+	return nativeWait ? nativeWait(device) : VK_ERROR_INITIALIZATION_FAILED;
+}
+#endif
+
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
@@ -507,6 +520,64 @@ namespace
 	}
 
 #if defined(__APPLE__)
+	void TestMetalTextureExport()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		Require(device->IsMetalObjectsSupported(), "native texture export test requires VK_EXT_metal_objects");
+		const auto beforeControl = deviceIdleCalls.load();
+		auto waitIdle = reinterpret_cast<PFN_vkDeviceWaitIdle>(dlsym(RTLD_DEFAULT, "vkDeviceWaitIdle"));
+		Require(waitIdle && waitIdle(*device) == VK_SUCCESS && deviceIdleCalls == beforeControl + 1u,
+			"native idle observer must see the real dynamically resolved Vulkan call");
+		const auto idleCalls = deviceIdleCalls.load();
+		for (const auto extent : { glm::ivec2(64, 48), glm::ivec2(129, 73), glm::ivec2(1280, 720), glm::ivec2(3840, 2160) })
+		{
+			const uint32_t color = 0xff432100u | static_cast<uint32_t>(extent.x & 0xff);
+			uint32_t flight;
+			bool hasImage = false;
+			Require(driver.BeginRenderSubmission(flight, hasImage), "native texture export needs an actual renderer flight");
+			auto nativeFence = device->GetCurrentFrameFence();
+			auto completion = RHIFencePtr::Make();
+			auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+			driver.BeginCommandList(command, true);
+			auto texture = driver.CreateRenderTarget(command, extent, 1, ETextureFormat::B8G8R8A8_UNORM);
+			Require(texture.IsValid(), "native texture export must allocate an actual GPU render target");
+			driver.ImageMemoryBarrier(command, texture, EImageLayout::TransferDstOptimal);
+			driver.ClearImage(command, texture, glm::vec4(0x43 / 255.0f, 0x21 / 255.0f, (color & 0xffu) / 255.0f, 1.0f));
+			driver.ImageMemoryBarrier(command, texture, EImageLayout::General);
+			driver.EndCommandList(command);
+			uintptr_t exported = 0;
+			Require(EditorRemote::ExportMacMetalTextureFromVulkanRenderTarget(*texture, *completion, exported).IsOk() && exported == 0,
+				"unsubmitted renderer frame must not export its image");
+			const auto submission = hasImage ? driver.PresentFrame(Sailor::FrameState{}, { command }, {}, completion) :
+				driver.SubmitFrameWithoutPresent({ command }, {}, completion);
+			Require(submission.m_bSubmitted && nativeFence->Wait(5000000000ull) == VK_SUCCESS,
+				"native texture fixture must finish the actual renderer submission");
+			{
+				FenceDispatchOverride dispatch(*device);
+				observedFences[0] = *nativeFence;
+				const auto waits = allFenceWaitCalls;
+				for (VkResult status : { VK_NOT_READY, VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+				{
+					fenceResults[0] = status;
+					Require(EditorRemote::ExportMacMetalTextureFromVulkanRenderTarget(*texture, *completion, exported).IsOk() && exported == 0,
+						"an unavailable renderer completion must defer export without guessing synchronization");
+				}
+				Require(allFenceWaitCalls == waits, "export must only poll the frame completion, never wait for a fence");
+			}
+			const auto begin = std::chrono::steady_clock::now();
+			Require(EditorRemote::ExportMacMetalTextureFromVulkanRenderTarget(*texture, *completion, exported).IsOk() && exported != 0,
+				"completed renderer frame must export its real Metal texture");
+			const auto elapsed = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - begin).count();
+			try { Tests::CheckMacVulkanTexturePresentation(exported, extent.x, extent.y, color); }
+			catch (...) { EditorRemote::ReleaseMacExportedTexture(exported); throw; }
+			EditorRemote::ReleaseMacExportedTexture(exported);
+			Require(deviceIdleCalls == idleCalls, "native texture export must not idle the Vulkan device");
+			std::cout << "Native Vulkan texture " << extent.x << 'x' << extent.y << ": export " << elapsed << " us, 8 GPU-only presentations\n";
+		}
+		std::cout << "Native texture export device-idle calls: " << deviceIdleCalls - idleCalls << '\n';
+	}
+
 	void CheckReadbackUpload(const EditorRemote::MacRendererFrameSource& source)
 	{
 		using namespace EditorRemote;
@@ -1917,7 +1988,7 @@ namespace
 	int RunFenceGpu(int argc, const char** argv, std::string_view mode)
 	{
 		std::vector<const char*> arguments(argv, argv + argc);
-		const bool editorReadback = mode.starts_with("--gpu-editor-readback");
+		const bool editorReadback = mode.starts_with("--gpu-editor-readback") || mode == "--gpu-metal-export";
 		if (editorReadback) arguments.insert(arguments.end(), { "--editor", "--port", "0" });
 		App::Initialize(arguments.data(), static_cast<int>(arguments.size()));
 		int result = 1;
@@ -1926,6 +1997,9 @@ namespace
 			Require(App::IsRendererInitialized(), "fence test requires an initialized renderer");
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 			if (mode == "--gpu-editor-readback") TestEditorReadback();
+#if defined(__APPLE__)
+			else if (mode == "--gpu-metal-export") OnRender([]() { TestMetalTextureExport(); });
+#endif
 			else if (editorReadback) TestEditorReadbackRefusal(mode == "--gpu-editor-readback-lost");
 			else OnRender([&]()
 				{
@@ -2034,8 +2108,9 @@ int main(int argc, const char** argv)
 		const std::string_view mode(argv[i]);
 #if defined(__APPLE__)
 		if (mode == "--gpu-editor-readback-graph") return RunEditorReadbackGraphGpu(argc, argv);
+		if (mode == "--gpu-metal-export") return RunFenceGpu(argc, argv, mode);
 #else
-		if (mode == "--gpu-editor-readback-graph") return 77;
+		if (mode == "--gpu-editor-readback-graph" || mode == "--gpu-metal-export") return 77;
 #endif
 #if defined(_WIN32)
 		if (mode == "--gpu-windows-shared" || mode == "--gpu-windows-shared-lost") return RunFenceGpu(argc, argv, mode);

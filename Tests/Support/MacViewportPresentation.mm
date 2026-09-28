@@ -86,6 +86,76 @@ namespace Sailor::Tests
 {
 	using namespace EditorRemote;
 
+	void CheckMacVulkanTexturePresentation(uintptr_t texture, uint32_t width, uint32_t height, uint32_t expectedPixel)
+	{
+		auto require = [](bool value, const char* message)
+			{
+				if (!value) throw std::runtime_error(message);
+			};
+		@autoreleasepool
+		{
+			class Source final : public IMacRendererFrameSourceProvider
+			{
+			public:
+				MacRendererFrameSource m_frame;
+				Failure AcquireFrameSource(const MacViewportSurfaceState&, FrameIndex, MacRendererFrameSource& out) override
+				{
+					out = m_frame;
+					return Failure::Ok();
+				}
+			} input;
+			input.m_frame.m_kind = MacRendererFrameSourceKind::RendererOwnedMetalTexture;
+			input.m_frame.m_textureObject = texture;
+			input.m_frame.m_width = width;
+			input.m_frame.m_height = height;
+			input.m_frame.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+			MacLoopbackIOSurfaceProvider provider(&input);
+			MacLoopbackViewportPresenter presenter;
+			ViewportDescriptor viewport;
+			viewport.m_viewportId = 204;
+			viewport.m_width = width;
+			viewport.m_height = height;
+			viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+			viewport.m_colorSpace = ColorSpace::Srgb;
+			viewport.m_presentMode = PresentMode::Mailbox;
+			MacViewportLoopbackBinding binding(viewport, provider, presenter);
+			ReadbackPresentationLayer* layer = [ReadbackPresentationLayer layer];
+			presenter.BindHostHandle(viewport.m_viewportId,
+				{ MacNativeHostHandleKind::CAMetalLayer, reinterpret_cast<uintptr_t>(layer) });
+			require(binding.Create().IsOk(), "native Vulkan export needs an actual viewport binding");
+			auto allocation = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 1)->m_nativeAllocation;
+			const auto queue = allocation->m_producerCommandQueueObject;
+			for (uint32_t i = 0; i < 8; ++i)
+			{
+				require(binding.PumpFrame().IsOk(), "an exported Vulkan texture must start an asynchronous Metal copy");
+				[(id<MTLCommandBuffer>)allocation->m_copyCommandBufferObject waitUntilCompleted];
+				if (binding.GetRuntimeSession().GetLastPublishedFrameIndex() == i)
+					require(binding.PumpFrame().IsOk(), "completed Vulkan texture copy must become presentable");
+				id<MTLCommandBuffer> presented = (id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject;
+				[presented waitUntilCompleted];
+				require(presented && presented.status == MTLCommandBufferStatusCompleted &&
+					binding.GetRuntimeSession().GetLastPublishedFrameIndex() == i + 1u,
+					"native Vulkan texture must complete a real presentation without a CPU readback payload");
+				require(allocation->m_cpuUploadedBytes == 0 && allocation->m_producerCommandQueueObject == queue,
+					"native texture transfer must reuse its queue without CPU uploads");
+			}
+			const auto native = presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding.GetRawPtr();
+			id<MTLBuffer> pixel = [[(id<MTLDevice>)native->m_deviceObject newBufferWithLength:256 options:MTLResourceStorageModeShared] autorelease];
+			id<MTLCommandBuffer> read = [(id<MTLCommandQueue>)native->m_commandQueueObject commandBuffer];
+			id<MTLBlitCommandEncoder> blit = [read blitCommandEncoder];
+			require(pixel && blit && layer->m_lastDrawable, "native Vulkan presentation needs actual drawable evidence");
+			[blit copyFromTexture:layer->m_lastDrawable.texture sourceSlice:0 sourceLevel:0
+				sourceOrigin:MTLOriginMake(width / 2u, height / 2u, 0) sourceSize:MTLSizeMake(1, 1, 1)
+				toBuffer:pixel destinationOffset:0 destinationBytesPerRow:256 destinationBytesPerImage:256];
+			[blit endEncoding];
+			[read commit];
+			[read waitUntilCompleted];
+			require(read.status == MTLCommandBufferStatusCompleted && std::memcmp(pixel.contents, &expectedPixel, 4) == 0,
+				"presented drawable must match the actual exported Vulkan image");
+			require(binding.Destroy().IsOk(), "native Vulkan export viewport must release after copy and presentation completion");
+		}
+	}
+
 	void CheckMacReadbackPresentation(const MacRendererFrameSource& source)
 	{
 		auto require = [](bool value, const char* message)

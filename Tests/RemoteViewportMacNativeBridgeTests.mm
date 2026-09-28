@@ -21,6 +21,8 @@
 
 #include "Submodules/EditorRemote/RemoteViewportMacNativeBridge.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
+#include "RHI/Fence.h"
+#include "RHI/Texture.h"
 #include "Memory/SharedPtr.hpp"
 #include "Support/MacViewportTestSource.h"
 
@@ -380,20 +382,18 @@ namespace
 		Require(!usedDedicatedSemaphore, "selection helper should not report dedicated usage for non-target exports");
 	}
 
-	void TestSynchronizeMacVulkanRenderTargetPrefersMetalSharedEventWhenSemaphoreExportSeamExists()
+	void TestUnfinishedRendererSubmissionDoesNotExportMetalTexture()
 	{
-		SetMacVulkanMetalInteropTestMode(true);
-		uintptr_t sharedEventObject = 0;
-		uint64_t acquireValue = 0;
-		CrossApiSyncKind syncKind = CrossApiSyncKind::None;
-		bool cpuWaited = true;
-		auto result = SynchronizeMacVulkanRenderTargetForMetalExport(0x1000ull, 0x2000ull, sharedEventObject, acquireValue, syncKind, cpuWaited);
-		SetMacVulkanMetalInteropTestMode(false);
-		Require(result.IsOk(), "sync selection test should succeed when the metal-object export seam is declared available");
-		Require(syncKind == CrossApiSyncKind::MetalSharedEvent, "sync selection test should prefer Metal shared-event sync over CPU device-idle fallback");
-		Require(acquireValue == 1ull, "sync selection test should materialize a concrete shared-event wait value");
-		Require(sharedEventObject != 0, "sync selection test should materialize a concrete shared-event object token");
-		Require(!cpuWaited, "sync selection test should not report CPU fallback when the Metal shared-event seam is available");
+		using namespace Sailor::RHI;
+		auto texture = RHITexturePtr::Make(ETextureFiltration::Linear, ETextureClamping::Clamp, false);
+		auto completion = RHIFencePtr::Make();
+		uintptr_t exported = 0;
+		for (uint32_t i = 0; i < 100; ++i)
+			Require(ExportMacMetalTextureFromVulkanRenderTarget(*texture, *completion, exported).IsOk() && exported == 0,
+				"an unsubmitted frame must defer native export without requiring a Vulkan device");
+		completion->MarkSubmissionFailed();
+		Require(ExportMacMetalTextureFromVulkanRenderTarget(*texture, *completion, exported).m_nativeCode == 1028 && exported == 0,
+			"a failed renderer submission must never export a texture as completed");
 	}
 
 	void TestBridgeWaitsOnMetalSharedEventBeforeProducerCopy()
@@ -1822,7 +1822,7 @@ int main()
 		{ "NSViewBindingPublishesOnlyOnSuccess", TestNSViewBindingPublishesOnlyOnSuccess },
 		{ "GetMacRendererSourceSelectionPriorityPrefersSceneViewResolvedOutputs", TestGetMacRendererSourceSelectionPriorityPrefersSceneViewResolvedOutputs },
 		{ "SelectMacVulkanSemaphoreForMetalExportPrefersDedicatedMainResolvedSeam", TestSelectMacVulkanSemaphoreForMetalExportPrefersDedicatedMainResolvedSeam },
-		{ "SynchronizeMacVulkanRenderTargetPrefersMetalSharedEventWhenSemaphoreExportSeamExists", TestSynchronizeMacVulkanRenderTargetPrefersMetalSharedEventWhenSemaphoreExportSeamExists },
+		{ "UnfinishedRendererSubmissionDoesNotExportMetalTexture", TestUnfinishedRendererSubmissionDoesNotExportMetalTexture },
 		{ "BridgeWaitsOnMetalSharedEventBeforeProducerCopy", TestBridgeWaitsOnMetalSharedEventBeforeProducerCopy },
 		{ "BridgeBindsExistingCAMetalLayerAndPresentsDrawable", TestBridgeBindsExistingCAMetalLayerAndPresentsDrawable },
 		{ "BridgeBindsCAMetalLayerOffMainThreadWithoutWaitingForMainQueue", TestBridgeBindsCAMetalLayerOffMainThreadWithoutWaitingForMainQueue },
