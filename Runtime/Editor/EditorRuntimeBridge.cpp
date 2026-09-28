@@ -900,7 +900,7 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 	}
 	if (hostHandle.has_value())
 	{
-		binding->m_binding.GetHost().BindNativeHostHandle(viewportId, *hostHandle);
+		binding->m_presenter.BindHostHandle(viewportId, *hostHandle);
 	}
 #endif
 	if (!binding->m_created)
@@ -1204,7 +1204,7 @@ bool App::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hos
 	{
 		return true;
 	}
-	binding->m_binding.GetHost().BindNativeHostHandle(viewportId, *currentHostHandle);
+	binding->m_presenter.BindHostHandle(viewportId, *currentHostHandle);
 	return true;
 #else
 	(void)viewportId;

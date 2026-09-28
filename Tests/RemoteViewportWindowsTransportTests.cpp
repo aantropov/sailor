@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Submodules/EditorRemote/RemoteViewportWindowsTransport.h"
+#include "Support/ViewportBindingLifecycle.h"
 
 using namespace Sailor::EditorRemote;
 
@@ -205,197 +206,19 @@ namespace
 		Failure m_lastFailure = Failure::Ok();
 	};
 
-
-
 	void TestWindowsLoopbackResizeIsTransactional()
 	{
-		enum class FailurePoint { Create, PartialCreate, InvalidTransport, ExtentMismatch, Import, ImportCleanup, PartialCreateCleanup };
-		for (bool hidden : { false, true })
-		{
-			for (auto failurePoint : { FailurePoint::Create, FailurePoint::PartialCreate, FailurePoint::InvalidTransport,
-				FailurePoint::ExtentMismatch, FailurePoint::Import, FailurePoint::ImportCleanup, FailurePoint::PartialCreateCleanup })
-			{
-				FakeWindowsSharedSurfaceProvider provider;
-				FakeWindowsViewportPresenter presenter;
-				WindowsViewportLoopbackBinding binding{ MakeViewport(), provider, presenter, 7 };
-				auto& session = binding.GetRuntimeSession();
-				Require(binding.Create().IsOk() && binding.PumpFrame().IsOk() && binding.SetFocused(true).IsOk(),
-					"resize fixture must start with a presented, focused viewport");
-				Require(binding.SetVisible(!hidden).IsOk(), "fixture visibility must be applied");
-				const auto original = session.GetDescriptor();
-				const auto state = hidden ? SessionState::Paused : SessionState::Active;
-				presenter.m_onImport = [&]()
-				{
-					Require(session.GetGeneration() == 1 && session.GetDescriptor() == original &&
-						session.GetState() == state && session.IsReady(),
-						"candidate import must not publish a new runtime generation or discard the old ready state");
-				};
-				for (uint32_t attempt = 0; attempt < 3; ++attempt)
-				{
-					const auto failure = Failure::FromDomain(ErrorDomain::Transport, 901, "injected resize failure");
-					switch (failurePoint)
-					{
-					case FailurePoint::Create: provider.m_nextCreateFailure = failure; break;
-					case FailurePoint::PartialCreate: provider.m_nextCreatedFailure = failure; break;
-					case FailurePoint::InvalidTransport: provider.m_invalidTransport = true; break;
-					case FailurePoint::ExtentMismatch: provider.m_mismatchedExtent = true; break;
-					case FailurePoint::Import: presenter.m_nextImportFailure = failure; break;
-					case FailurePoint::ImportCleanup:
-						presenter.m_nextImportFailure = failure;
-						provider.m_nextReleaseFailure = failure;
-						break;
-					case FailurePoint::PartialCreateCleanup:
-						provider.m_nextCreatedFailure = failure;
-						provider.m_nextReleaseFailure = failure;
-						break;
-					}
-					Require(!binding.Resize(1600, 900).IsOk(), "injected resize failure must reach the caller");
-					Require(session.GetDescriptor() == original && session.GetGeneration() == 1 &&
-						session.GetState() == state && session.IsReady() && presenter.m_importGeneration == 1,
-						"failed resize must leave the original host and runtime usable");
-					const size_t expectedSurfaces = failurePoint == FailurePoint::ImportCleanup ||
-						failurePoint == FailurePoint::PartialCreateCleanup ? 2 : 1;
-					Require(binding.GetTransportBackend().GetSurfaceCount() == expectedSurfaces &&
-						provider.m_liveSurfaces.size() == expectedSurfaces,
-						"only an explicitly failed release may retain a candidate allocation");
-					Require(binding.PumpFrame().IsOk() && binding.GetTransportBackend().GetSurfaceCount() == 1 &&
-						provider.m_liveSurfaces.size() == 1 && presenter.m_presentCalls.back().m_generation == 1,
-						"pumping must retire leftovers and preserve old-generation presentation");
-				}
-				Require(binding.Resize(1600, 900).IsOk(), "resize must succeed after the failure is cleared");
-				presenter.m_onImport = {};
-				Require(session.GetGeneration() == 2 && presenter.m_importGeneration == 2 &&
-					session.GetDescriptor().m_width == 1600 && session.GetDescriptor().m_height == 900 &&
-					presenter.m_importViewport == session.GetDescriptor() && session.GetState() == state &&
-					binding.GetTransportBackend().GetSurfaceCount() == 1 && provider.m_liveSurfaces.size() == 1 &&
-					session.GetLastInput()->m_focused && session.GetLastInput()->m_generation == 2,
-					"successful import must commit matching extents, generation, focus and visibility once");
-				Require(binding.SetVisible(true).IsOk(), "resized viewport must become visible");
-				provider.m_nextExportFailure = Failure::FromDomain(ErrorDomain::Transport, 902, "export failed");
-				Require(!binding.PumpFrame().IsOk() && session.GetGeneration() == 2 && presenter.m_importGeneration == 2,
-					"export failure must not revert or leak the committed resize");
-				Require(binding.PumpFrame().IsOk() && presenter.m_presentCalls.back().m_generation == 2,
-					"the committed generation must present after export retry");
-				provider.m_nextReleaseFailure = Failure::FromDomain(ErrorDomain::Transport, 903, "release failed");
-				Require(!binding.Destroy().IsOk() && session.GetState() == SessionState::Disposed &&
-					binding.GetTransportBackend().GetSurfaceCount() == 1,
-					"failed destroy release must keep the allocation available for cleanup");
-				Require(binding.Destroy().IsOk() && binding.GetTransportBackend().GetSurfaceCount() == 0 &&
-					provider.m_liveSurfaces.empty(), "destroy retry must release every tracked allocation");
-				const auto creates = provider.m_createCalls.size();
-				Require(!binding.Resize(320, 240).IsOk() && provider.m_createCalls.size() == creates,
-					"disposed resize must not allocate another surface");
-			}
-		}
+		Sailor::Tests::TestViewportResizeIsTransactional<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
 	}
 
 	void TestWindowsLoopbackImportAndRetirementFailures()
 	{
-		for (bool releaseFails : { false, true })
-		{
-			FakeWindowsSharedSurfaceProvider provider;
-			FakeWindowsViewportPresenter presenter;
-			WindowsViewportLoopbackBinding binding{ MakeViewport(), provider, presenter, 7 };
-			auto& session = binding.GetRuntimeSession();
-			presenter.m_onImport = [&]()
-			{
-				Require(!session.IsReady() && session.GetState() == SessionState::Negotiating,
-					"initial surface allocation must not make the viewport ready before host import");
-			};
-			presenter.m_nextImportFailure = Failure::FromDomain(ErrorDomain::Session, 904, "import refused");
-			if (releaseFails) provider.m_nextReleaseFailure = Failure::FromDomain(ErrorDomain::Transport, 905, "release deferred");
-			Require(!binding.Create().IsOk() && !session.IsReady() && session.GetState() == SessionState::Recovering &&
-				binding.GetTransportBackend().GetSurfaceCount() == (releaseFails ? 1u : 0u) &&
-				provider.m_liveSurfaces.size() == (releaseFails ? 1u : 0u),
-				"failed initial import must leave no ready session and track only failed cleanup");
-			Require(binding.PumpFrame().IsOk() && session.IsReady() && session.GetConnectionEpoch() == 8 &&
-				presenter.m_importEpoch == 8 && presenter.m_presentCalls.back().m_connectionEpoch == 8 &&
-				binding.GetTransportBackend().GetSurfaceCount() == 1 && provider.m_liveSurfaces.size() == 1,
-				"initial import retry must clean leftovers before creating and presenting the new epoch");
-			Require(binding.Destroy().IsOk() && provider.m_liveSurfaces.empty(), "import retry fixture must release all surfaces");
-		}
-
-		FakeWindowsSharedSurfaceProvider provider;
-		FakeWindowsViewportPresenter presenter;
-		WindowsViewportLoopbackBinding binding{ MakeViewport(), provider, presenter };
-		auto& session = binding.GetRuntimeSession();
-		Require(binding.Create().IsOk(), "retirement fixture must create a viewport");
-		const auto failure = Failure::FromDomain(ErrorDomain::Transport, 906, "old surface release deferred");
-		provider.m_nextReleaseFailure = failure;
-		Require(!binding.Resize(1600, 900).IsOk() && session.GetGeneration() == 2 && session.IsReady() &&
-			presenter.m_importGeneration == 2 && presenter.m_importViewport == session.GetDescriptor() &&
-			binding.GetTransportBackend().GetSurfaceCount() == 2 && provider.m_liveSurfaces.size() == 2,
-			"old-surface retirement failure must retain the successfully imported new generation");
-		const auto creates = provider.m_createCalls.size();
-		for (uint32_t attempt = 0; attempt < 3; ++attempt)
-		{
-			provider.m_nextReleaseFailure = failure;
-			Require(!binding.Resize(1920, 1080).IsOk() && provider.m_createCalls.size() == creates &&
-				session.GetGeneration() == 2 && presenter.m_importGeneration == 2 && provider.m_liveSurfaces.size() == 2,
-				"repeated failed cleanup must not allocate more surfaces or change the active generation");
-		}
-		Require(binding.PumpFrame().IsOk() && presenter.m_presentCalls.back().m_generation == 2 &&
-			binding.GetTransportBackend().GetSurfaceCount() == 1 && provider.m_liveSurfaces.size() == 1,
-			"ordinary pump must retire the old surface and present the committed generation");
-		Require(binding.Resize(1920, 1080).IsOk() && session.GetGeneration() == 3 &&
-			presenter.m_importGeneration == 3 && provider.m_liveSurfaces.size() == 1,
-			"resize must resume after successful retirement");
-		Require(binding.Destroy().IsOk() && provider.m_liveSurfaces.empty(), "retirement fixture must release every surface");
+		Sailor::Tests::TestViewportImportAndRetirementFailures<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
 	}
 
 	void TestWindowsLoopbackRecoveryUsesElapsedTime()
 	{
-		constexpr uint64_t start = 3'600'000;
-		for (size_t pumpCount : { size_t{1}, size_t{2000} })
-		{
-			FakeWindowsSharedSurfaceProvider provider;
-			FakeWindowsViewportPresenter presenter;
-			WindowsViewportLoopbackBinding binding{ MakeViewport(), provider, presenter, 17 };
-			auto& session = binding.GetRuntimeSession();
-			const auto createFailure = Failure::FromDomain(ErrorDomain::Session, 2, "surface unavailable");
-			provider.m_nextCreateFailure = createFailure;
-			Require(!binding.Create(start).IsOk() && session.GetState() == SessionState::Negotiating,
-				"failed creation must retain a pending negotiation");
-			for (size_t pump = 0; pump < pumpCount; ++pump)
-			{
-				Require(!binding.PumpFrame(start + 999).IsOk() && provider.m_createCalls.size() == 1,
-					"pump frequency must not advance time or repeat surface creation");
-			}
-			provider.m_nextCreateFailure = createFailure;
-			Require(!binding.PumpFrame(start + 1000).IsOk() && session.GetConnectionEpoch() == 18 &&
-				provider.m_createCalls.size() == 2, "timeout must attempt a real recreation in a fresh epoch");
-			Require(!binding.PumpFrame(start + 1999).IsOk() && provider.m_createCalls.size() == 2,
-				"failed recreation must receive a new deadline");
-			Require(binding.PumpFrame(start + 2000).IsOk() && session.GetState() == SessionState::Active &&
-				session.GetConnectionEpoch() == 19 && presenter.m_importEpoch == 19 &&
-				presenter.m_presentCalls.size() == 1 && presenter.m_presentCalls.back().m_connectionEpoch == 19,
-				"recovery must import and present a real frame, not return a successful no-op");
-			Require(binding.GetTransportBackend().GetSurfaceCount() == 1, "retries must not accumulate surfaces");
-
-			Require(binding.SetFocused(true).IsOk() && session.MarkFailure(createFailure, start + 2100).IsOk() &&
-				binding.SetVisible(false).IsOk(), "hidden recovery must preserve desired visibility and focus");
-			provider.m_nextReleaseFailure = Failure::FromDomain(ErrorDomain::Session, 1, "release deferred");
-			Require(!binding.PumpFrame(start + 2101).IsOk() && session.GetConnectionEpoch() == 19 &&
-				binding.GetTransportBackend().GetSurfaceCount() == 1,
-				"failed release must not discard the old resource identity");
-			Require(binding.PumpFrame(start + 2102).IsOk() && session.GetState() == SessionState::Paused &&
-				session.GetConnectionEpoch() == 20 && presenter.m_presentCalls.size() == 1 &&
-				session.GetLastInput().has_value() && session.GetLastInput()->m_focused &&
-				session.GetLastInput()->m_connectionEpoch == 20,
-				"successful recreation must restore focus but not present a hidden viewport");
-			Require(binding.SetVisible(true).IsOk() && binding.PumpFrame(start + 60'000).IsOk() &&
-				presenter.m_presentCalls.size() == 2 && session.GetConnectionEpoch() == 20,
-				"ready acknowledgement must cancel the timeout and resume normal presentation");
-
-			Require(session.MarkFailure(Failure::FromDomain(ErrorDomain::Connection, 1, "disconnected"),
-				start + 61'000).IsOk(), "connection loss must remain a connection-level failure");
-			const auto creates = provider.m_createCalls.size();
-			Require(!binding.PumpFrame(start + 61'001).IsOk() && session.GetState() == SessionState::Lost &&
-				provider.m_createCalls.size() == creates, "a lost connection needs reconnection, not automatic local recreation");
-			Require(binding.Destroy().IsOk() && binding.GetTransportBackend().GetSurfaceCount() == 0 &&
-				!binding.PumpFrame(start + 70'000).IsOk() && provider.m_createCalls.size() == creates,
-				"destroy must release recovery resources and prevent resurrection");
-		}
+		Sailor::Tests::TestViewportRecoveryUsesElapsedTime<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
 	}
 
 	void TestWindowsBackendCreateResizeExportAndRelease()
@@ -483,48 +306,9 @@ namespace
 			"subsequent export must advance once");
 	}
 
-	void TestWindowsNativeHostImportPresentResetAndFailures()
+	void TestWindowsLoopbackPresentFailure()
 	{
-		FakeWindowsViewportPresenter presenter{};
-		WindowsViewportNativeHost host{ presenter };
-		auto viewport = MakeViewport(41);
-		TransportDescriptor transport{};
-		transport.m_transportType = TransportType::WinSharedHandle;
-		transport.m_syncMode = SyncMode::ExplicitFence;
-		transport.m_protocolVersion = 1;
-		transport.m_width = viewport.m_width;
-		transport.m_height = viewport.m_height;
-		transport.m_pixelFormat = viewport.m_pixelFormat;
-		transport.m_ready = true;
-		transport.m_nativeHandles = { WindowsSharedSurfaceHandle{ 0x1111ull, 0x2222ull, 0x3333ull, 99ull, viewport.m_width * 4u, 1u } };
-
-		Require(host.ImportTransport(viewport, transport, 9, 3).IsOk(), "windows host should import a valid shared-handle transport");
-		Require(presenter.m_importEpoch == 9 && presenter.m_importGeneration == 3, "presenter should observe imported epoch/generation");
-
-		FramePacket frame{};
-		frame.m_viewportId = 41;
-		frame.m_connectionEpoch = 9;
-		frame.m_generation = 3;
-		frame.m_frameIndex = 17;
-		frame.m_width = viewport.m_width;
-		frame.m_height = viewport.m_height;
-		frame.m_sync.m_requiresExplicitRelease = true;
-		Require(host.AcceptFrame(frame).IsOk(), "host should accept frames for the imported generation");
-		Require(host.PresentLatestFrame(41).IsOk(), "host should present the latest accepted frame");
-		Require(presenter.m_presentCalls.size() == 1 && presenter.m_presentCalls.front().m_frameIndex == 17, "presenter should receive the latest frame");
-
-		FramePacket staleFrame = frame;
-		staleFrame.m_generation = 2;
-		Require(!host.AcceptFrame(staleFrame).IsOk(), "host should reject stale-generation frames");
-		Require(host.GetLastFailure().m_code == ResultCode::RecreateRequired, "stale host frame should map to recreate-required session failure");
-
-		TransportDescriptor wrongTransport = transport;
-		wrongTransport.m_transportType = TransportType::MailboxCpuCopy;
-		Require(!host.ImportTransport(viewport, wrongTransport, 9, 3).IsOk(), "windows host should reject non-Windows transports");
-
-		host.ResetViewport(41);
-		Require(!host.PresentLatestFrame(41).IsOk(), "reset should drop the imported frame before the next present");
-		Require(!presenter.m_resets.empty() && presenter.m_resets.back() == 41, "reset should be forwarded to the presenter");
+		Sailor::Tests::TestViewportPresentFailure<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
 	}
 }
 
@@ -537,7 +321,7 @@ int main()
 		{ "WindowsLoopbackImportAndRetirementFailures", TestWindowsLoopbackImportAndRetirementFailures },
 		{ "WindowsBackendFailurePropagationAndOrdering", TestWindowsBackendFailurePropagationAndOrdering },
 		{ "WindowsBackendRetriesPreparedFrame", TestWindowsBackendRetriesPreparedFrame },
-		{ "WindowsNativeHostImportPresentResetAndFailures", TestWindowsNativeHostImportPresentResetAndFailures },
+		{ "WindowsLoopbackPresentFailure", TestWindowsLoopbackPresentFailure },
 	};
 
 	for (const auto& test : tests)

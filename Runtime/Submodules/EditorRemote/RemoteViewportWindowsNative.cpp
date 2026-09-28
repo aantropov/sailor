@@ -881,7 +881,7 @@ namespace Sailor::EditorRemote
 		ViewportId viewportId,
 		const FramePacket& frame)
 	{
-		if (viewportId != m_impl->m_viewportId ||
+		if (viewportId != m_impl->m_viewportId || frame.m_viewportId != viewportId ||
 			frame.m_connectionEpoch != m_impl->m_epoch ||
 			frame.m_generation != m_impl->m_generation ||
 			!m_impl->m_sharedTexture ||
