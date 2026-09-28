@@ -248,7 +248,9 @@ target_compile_features(VulkanSubmissionTests PRIVATE cxx_std_20)
 target_include_directories(VulkanSubmissionTests PRIVATE ${SAILOR_RUNTIME_DIR})
 target_link_libraries(VulkanSubmissionTests PRIVATE Sailor::Runtime)
 if(APPLE)
-    target_link_libraries(VulkanSubmissionTests PRIVATE "-framework IOSurface" "-framework CoreFoundation")
+    target_sources(VulkanSubmissionTests PRIVATE Support/MacViewportPresentation.mm)
+    target_link_libraries(VulkanSubmissionTests PRIVATE "-framework IOSurface" "-framework CoreFoundation"
+        "-framework QuartzCore" "-framework Metal")
 endif()
 # GPU scenarios are explicit command-line modes; default CTest needs no device.
 add_test(NAME VulkanSubmissionTests COMMAND VulkanSubmissionTests)

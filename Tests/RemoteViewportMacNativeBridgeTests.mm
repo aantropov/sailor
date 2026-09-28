@@ -804,6 +804,89 @@ namespace
 		}
 	};
 
+	void TestNativeSourceTextureReuse()
+	{
+		bool reimported = false;
+		for (const auto [width, height] : { std::pair{1280u, 720u}, std::pair{1920u, 1080u}, std::pair{3840u, 2160u} })
+		{
+			@autoreleasepool
+			{
+				CpuSource source;
+				MacLoopbackIOSurfaceProvider provider(&source);
+				MacLoopbackViewportPresenter presenter;
+				ViewportDescriptor viewport;
+				viewport.m_viewportId = 114;
+				viewport.m_width = width;
+				viewport.m_height = height;
+				viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+				MacViewportLoopbackBinding binding(viewport, provider, presenter);
+				presenter.BindHostHandle(viewport.m_viewportId, LayerHandle([CAMetalLayer layer]));
+				Require(binding.Create().IsOk(), "texture reuse must exercise a real native binding");
+				auto allocation = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 1)->m_nativeAllocation;
+				const auto native = presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding.GetRawPtr();
+				id<MTLTexture> first = nil;
+				double pumpUs = 0;
+				for (uint32_t i = 1; i <= 16; ++i)
+				{
+					const auto start = std::chrono::steady_clock::now();
+					const auto result = binding.PumpFrame();
+					pumpUs += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+					Require(result.IsOk(), "new CPU pixels must reach native presentation");
+					if (i == 1) first = [[(id<MTLTexture>)native->m_lastSourceTextureObject retain] autorelease];
+					reimported |= native->m_lastSourceTextureObject != reinterpret_cast<uintptr_t>(first);
+					id<MTLCommandBuffer> command = (id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject;
+					[command waitUntilCompleted];
+					Require(command.status == MTLCommandBufferStatusCompleted, "presentation must finish reading the uploaded pixels");
+					uint32_t pixel = 0;
+					[(id<MTLTexture>)native->m_lastSourceTextureObject getBytes:&pixel bytesPerRow:4
+						fromRegion:MTLRegionMake2D(width / 2, height / 2, 1, 1) mipmapLevel:0];
+					Require(pixel == i * 0x01010101u && native->m_presentToken == i,
+						"retained IOSurface texture must expose each new frame's pixels and normal present token");
+				}
+				std::cout << "Native source import " << width << 'x' << height << ": 16 new-frame pumps " << pumpUs << " us\n";
+				bool completed = false;
+				Require(PollMacIOSurfaceReadCompletion(*allocation, completed).IsOk() && completed,
+					"native reuse test must retire its final read");
+			}
+		}
+		Require(!reimported, "new pixels in an existing IOSurface must not create another Metal texture import");
+	}
+
+	void TestNativeSourceImportReplacement()
+	{
+		NativeSurface first(64, 48), second(64, 48), resized(96, 72);
+		TUniquePtr<MacNativeLayerBinding> binding;
+		CAMetalLayer* layer = [CAMetalLayer layer];
+		Require(BindMacNativeLayer(LayerHandle(layer), 64, 48, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(),
+			"replacement test requires a real native binding");
+		auto present = [&](const NativeSurface& surface)
+			{
+				FramePacket frame;
+				MacNativeBridgePresentResult result;
+				Require(PresentMacNativeLayerFrame(*binding, surface.m_transport.m_macSurfaces.front(), frame, result).IsOk(),
+					"replacement IOSurface must present through the current binding");
+				id<MTLCommandBuffer> completion = [(id<MTLCommandQueue>)binding->m_commandQueueObject commandBuffer];
+				[completion commit];
+				[completion waitUntilCompleted];
+				return [[(id<MTLTexture>)result.m_sourceTextureObject retain] autorelease];
+			};
+		id<MTLTexture> a = present(first);
+		Require(present(first) == a, "the same source and binding must reuse the native import");
+		id<MTLTexture> b = present(second);
+		Require(b != a && b.iosurface == second.m_surface && present(second) == b,
+			"another IOSurface at the same size must replace, then reuse, its native import");
+		Require(BindMacNativeLayer(LayerHandle(layer), 96, 72, PixelFormat::B8G8R8A8_UNorm, binding).IsOk() &&
+			binding->m_lastSourceTextureObject == 0, "resizing must create a binding without a stale texture import");
+		id<MTLTexture> c = present(resized);
+		Require(c != b && c.width == 96 && c.height == 72 && c.iosurface == resized.m_surface,
+			"resized import must belong to the new extent and source");
+		Require(BindMacNativeLayer(LayerHandle([CAMetalLayer layer]), 96, 72, PixelFormat::B8G8R8A8_UNorm, binding).IsOk() &&
+			binding->m_lastSourceTextureObject == 0, "host replacement must not carry an old binding's source texture");
+		id<MTLTexture> d = present(resized);
+		Require(d != c && d.device == (id<MTLDevice>)binding->m_deviceObject && present(resized) == d,
+			"the replacement host must create and then reuse its own native import");
+	}
+
 	void TestRequestedFrameEvidencePreservesPresentation()
 	{
 		CpuSource source;
@@ -1034,6 +1117,7 @@ namespace
 		probe->m_refuseCommandBuffer = false;
 		probe->m_failCompletion = true;
 		Require(binding.PumpFrame().IsOk(), "native submission may be accepted before its terminal result");
+		id<MTLTexture> firstImport = [[(id<MTLTexture>)native->m_lastSourceTextureObject retain] autorelease];
 		[(id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject waitUntilCompleted];
 		const auto priorFrame = binding.GetRuntimeSession().GetLastPublishedFrameIndex();
 		const auto result = binding.PumpFrame();
@@ -1048,6 +1132,8 @@ namespace
 			@autoreleasepool
 			{
 				Require(binding.PumpFrame().IsOk(), "presentation must recover and continue after a terminal error");
+				Require(native->m_lastSourceTextureObject == reinterpret_cast<uintptr_t>(firstImport),
+					"presentation retry and new pixels must not recreate the IOSurface texture import");
 				id<MTLCommandBuffer> command = (id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject;
 				Require(command && command.retainedReferences, "surface reader must own a resource-retaining native command");
 				ObserveNativeRelease(command, commands);
@@ -1707,6 +1793,8 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "NativeSourceTextureReuse", TestNativeSourceTextureReuse },
+		{ "NativeSourceImportReplacement", TestNativeSourceImportReplacement },
 		{ "PresentationDoesNotCapturePixelsAutomatically", TestPresentationDoesNotCapturePixelsAutomatically },
 		{ "RequestedFrameEvidencePreservesPresentation", TestRequestedFrameEvidencePreservesPresentation },
 		{ "FrameEvidenceChannelOrderAndFormat", TestFrameEvidenceChannelOrderAndFormat },

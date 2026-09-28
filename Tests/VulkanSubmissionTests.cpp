@@ -3,6 +3,9 @@
 #include "Engine/EngineLoop.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Support/TempDirectory.h"
+#if defined(__APPLE__)
+#include "Support/MacViewportPresentation.h"
+#endif
 #include "FrameGraph/ParticlesNode.h"
 #include "FrameGraph/EditorReadbackNode.h"
 #include "Editor/EditorRuntimeBridge.h"
@@ -551,6 +554,7 @@ namespace
 			"repeated export of an actual Vulkan readback must not upload its pixels again");
 		Require(provider.ReleaseSurface(state).IsOk() && provider.GetLiveAllocationCount() == 0,
 			"native readback upload fixture must release its registration");
+		Tests::CheckMacReadbackPresentation(source);
 	}
 #endif
 
@@ -1731,13 +1735,14 @@ namespace
 				scheduler->ProcessTasksOnMainThread();
 			};
 		EditorReadbackFramePtr previousGeneration;
-		for (size_t scenario = 0; scenario < 10; ++scenario)
+		for (size_t scenario = 0; scenario < 11; ++scenario)
 		{
 			const size_t firstTarget = scenario < 4 ? scenario : 0;
 			const bool authored = scenario == 4 || scenario == 9;
 			const bool multiple = scenario == 9;
 			const bool surface = scenario == 5;
-			const glm::ivec2 extent = scenario == 6 ? glm::ivec2(1280, 720) : scenario == 7 ? glm::ivec2(1920, 1080) :
+			const glm::ivec2 extent = scenario == 10 ? glm::ivec2(3840, 2160) :
+				scenario == 6 ? glm::ivec2(1280, 720) : scenario == 7 ? glm::ivec2(1920, 1080) :
 				scenario < 4 ? glm::ivec2(32, 24) : glm::ivec2(67, 39);
 			WriteEditorReadbackGraph(path, firstTarget, extent, authored, surface, scenario == 8, multiple);
 			renderer->RefreshFrameGraph();

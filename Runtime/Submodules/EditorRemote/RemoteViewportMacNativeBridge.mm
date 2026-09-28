@@ -106,7 +106,7 @@ namespace Sailor::EditorRemote
 			return s_enabled;
 		}
 
-		id<MTLTexture> CreateIOSurfaceBackedSourceTexture(id<MTLDevice> device, const MacIOSurfaceHandle& surfaceHandle, const MacNativeLayerBinding& binding)
+		id<MTLTexture> AcquireIOSurfaceSourceTexture(id<MTLDevice> device, const MacIOSurfaceHandle& surfaceHandle, const MacNativeLayerBinding& binding)
 		{
 			if (device == nil || surfaceHandle.m_surfaceObject == 0 || binding.m_width == 0 || binding.m_height == 0)
 			{
@@ -114,6 +114,13 @@ namespace Sailor::EditorRemote
 			}
 
 			IOSurfaceRef surface = reinterpret_cast<IOSurfaceRef>(surfaceHandle.m_surfaceObject);
+			id<MTLTexture> previous = (id<MTLTexture>)binding.m_lastSourceTextureObject;
+			// Device, extent and format are fixed for the lifetime of this binding.
+			if (previous.iosurface == surface && previous.iosurfacePlane == surfaceHandle.m_planeIndex)
+			{
+				return [previous retain];
+			}
+
 			MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:ToMetalPixelFormat(binding.m_pixelFormat)
 				width:binding.m_width
 				height:binding.m_height
@@ -758,7 +765,7 @@ namespace Sailor::EditorRemote
 				return MakeFailure(2115, "macOS native layer present resolved the Metal command queue to nil");
 			}
 
-			id<MTLTexture> sourceTexture = CreateIOSurfaceBackedSourceTexture(device, surfaceHandle, inOutBinding);
+			id<MTLTexture> sourceTexture = AcquireIOSurfaceSourceTexture(device, surfaceHandle, inOutBinding);
 			if (sourceTexture == nil)
 			{
 				return MakeFailure(2116, "macOS native layer present could not import the IOSurface texture");
