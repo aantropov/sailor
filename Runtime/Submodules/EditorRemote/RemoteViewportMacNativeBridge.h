@@ -56,7 +56,6 @@ namespace Sailor::EditorRemote
 		uint32_t m_height = 0;
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		bool m_hostOwnsLayer = false;
-		bool m_usesSyntheticSourceTexture = false;
 
 		bool IsValid() const
 		{
@@ -72,7 +71,6 @@ namespace Sailor::EditorRemote
 		uint64_t m_sourceTextureToken = 0;
 		bool m_usedRealCAMetalLayer = false;
 		bool m_usedMetalCommandQueue = false;
-		bool m_usedSyntheticSourceTexture = false;
 
 		bool IsValid() const
 		{
@@ -107,16 +105,6 @@ namespace Sailor::EditorRemote
 		bool m_hasVisualVariance = false;
 
 		auto operator<=>(const MacNativeSurfaceFrameEvidence&) const = default;
-	};
-
-	struct MacNativeBridgeProducerPattern
-	{
-		ViewportId m_viewportId = 0;
-		ConnectionEpoch m_epoch = 0;
-		SurfaceGeneration m_generation = 0;
-		FrameIndex m_frameIndex = 0;
-		uint32_t m_width = 0;
-		uint32_t m_height = 0;
 	};
 
 	struct MacNativeBridgeRendererFrameInfo
@@ -180,7 +168,6 @@ namespace Sailor::EditorRemote
 	Failure PollMacIOSurfaceReadCompletion(MacIOSurfaceAllocation& allocation, bool& outCompleted);
 	Failure PollMacIOSurfaceCopyCompletion(MacIOSurfaceAllocation& allocation, bool& outCompleted);
 	Failure CreateMacRendererIntermediateTexture(uintptr_t deviceObject, uint32_t width, uint32_t height, PixelFormat pixelFormat, uintptr_t& outTextureObject);
-	Failure UploadMacRendererPatternToIntermediateTexture(uintptr_t textureObject, uint32_t width, uint32_t height, const MacNativeBridgeProducerPattern& pattern);
 	Failure UploadMacRendererBytesToProducerTexture(MacIOSurfaceAllocation& allocation, const void* bytes, uint32_t bytesPerRow, MacNativeBridgeRendererFrameInfo& outFrameInfo);
 	// Submission only; consume copy completion before reading or reusing the surface.
 	Failure CopyMacRendererIntermediateToProducerTexture(MacIOSurfaceAllocation& allocation, uintptr_t sourceTextureObject, MacNativeBridgeRendererFrameInfo& outFrameInfo, uintptr_t sharedEventObject = 0, uint64_t sharedEventValue = 0);

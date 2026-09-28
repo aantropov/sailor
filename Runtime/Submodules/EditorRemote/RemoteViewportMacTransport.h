@@ -120,7 +120,6 @@ namespace Sailor::EditorRemote
 		uintptr_t m_copyCommandBufferObject = 0;
 		// Reader completion belongs to the surface, even when its host is rebound.
 		uintptr_t m_presentCommandBufferObject = 0;
-		uintptr_t m_rendererIntermediateTextureObject = 0;
 		uint64_t m_allocationToken = 0;
 		uint64_t m_lastWrittenFrameIndex = 0;
 		uint64_t m_lastRendererTextureToken = 0;
@@ -214,6 +213,7 @@ namespace Sailor::EditorRemote
 	public:
 		virtual ~IMacIOSurfaceProvider() = default;
 		virtual Failure CreateOrResizeSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, MacViewportSurfaceState& inOutState) = 0;
+		// No renderer frame leaves m_frameBegun false and is retried on the next pump.
 		virtual Failure BeginFrame(MacViewportSurfaceState& state) = 0;
 		virtual Failure PollFrameReady(MacViewportSurfaceState& state, bool& outReady) = 0;
 		virtual Failure ExportFrame(MacViewportSurfaceState& state, FramePacket& outFrame) = 0;
@@ -302,13 +302,6 @@ namespace Sailor::EditorRemote
 				m_lastFailure = producerTextureResult;
 				return producerTextureResult;
 			}
-
-			auto rendererTextureResult = CreateMacRendererIntermediateTexture(allocation->m_producerDeviceObject, allocation->m_plane.m_width, allocation->m_plane.m_height, allocation->m_pixelFormat, allocation->m_rendererIntermediateTextureObject);
-			if (!rendererTextureResult.IsOk())
-			{
-				m_lastFailure = rendererTextureResult;
-				return rendererTextureResult;
-			}
 #else
 			allocation->m_surfaceObject = allocation->m_registryId;
 			allocation->m_surfaceId = ++m_nextSurfaceId;
@@ -373,94 +366,47 @@ namespace Sailor::EditorRemote
 				return m_lastFailure;
 			}
 
-			const auto nextFrameIndex = state.m_lastExportedFrameIndex + 1;
-			MacRendererFrameSource rendererSource{};
-			bool bHasCpuPayload = false;
-			if (m_rendererFrameSourceProvider != nullptr)
+			if (!m_rendererFrameSourceProvider)
 			{
-				auto sourceResult = m_rendererFrameSourceProvider->AcquireFrameSource(state, nextFrameIndex, rendererSource);
-				if (!sourceResult.IsOk())
-				{
-					ReleaseRendererFrameSourceResources(rendererSource);
-					m_lastFailure = sourceResult;
-					return sourceResult;
-				}
+				m_lastFailure = Failure::Ok();
+				return m_lastFailure;
+			}
 
-				if (rendererSource.IsValid())
-				{
-					bHasCpuPayload = rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata &&
-						rendererSource.m_cpuBytes && !rendererSource.m_cpuBytes->empty();
-					const bool bHasCopyableSource =
-						rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture || bHasCpuPayload;
-					if (bHasCopyableSource &&
-						(rendererSource.m_width != state.m_nativeAllocation->m_plane.m_width ||
-						rendererSource.m_height != state.m_nativeAllocation->m_plane.m_height))
-					{
-						ReleaseRendererFrameSourceResources(rendererSource);
-						rendererSource = {};
-						bHasCpuPayload = false;
-					}
-					else if (bHasCpuPayload &&
-						rendererSource.m_bytesPerRow < state.m_nativeAllocation->m_plane.m_width * state.m_nativeAllocation->m_plane.m_bytesPerElement)
-					{
-						ReleaseRendererFrameSourceResources(rendererSource);
-						m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1006, "macOS renderer source row stride is smaller than the current IOSurface row");
-						return m_lastFailure;
-					}
-				}
-				else
-				{
-					ReleaseRendererFrameSourceResources(rendererSource);
-					rendererSource = {};
-				}
+			MacRendererFrameSource rendererSource{};
+			m_lastFailure = m_rendererFrameSourceProvider->AcquireFrameSource(state, state.m_lastExportedFrameIndex + 1, rendererSource);
+			if (!m_lastFailure.IsOk())
+			{
+				ReleaseRendererFrameSourceResources(rendererSource);
+				return m_lastFailure;
+			}
+
+			const bool bHasMetalTexture = rendererSource.m_textureObject != 0 &&
+				(rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture ||
+				 rendererSource.m_kind == MacRendererFrameSourceKind::SyntheticIntermediate);
+			const bool bHasCpuPayload = rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata &&
+				rendererSource.m_cpuBytes && !rendererSource.m_cpuBytes->empty();
+			if (!rendererSource.IsValid() || (!bHasMetalTexture && !bHasCpuPayload) ||
+				rendererSource.m_width != state.m_viewport.m_width || rendererSource.m_height != state.m_viewport.m_height)
+			{
+				ReleaseRendererFrameSourceResources(rendererSource);
+				return Failure::Ok();
+			}
+
+			if (bHasCpuPayload && rendererSource.m_bytesPerRow < state.m_nativeAllocation->m_plane.m_width * state.m_nativeAllocation->m_plane.m_bytesPerElement)
+			{
+				ReleaseRendererFrameSourceResources(rendererSource);
+				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1006, "macOS renderer source row stride is smaller than the current IOSurface row");
+				return m_lastFailure;
 			}
 
 			MacNativeBridgeRendererFrameInfo rendererFrameInfo{};
-			Failure copyResult = Failure::Ok();
-			uintptr_t sourceTextureObject = state.m_nativeAllocation->m_rendererIntermediateTextureObject;
-			if (rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture)
-			{
-				sourceTextureObject = rendererSource.m_textureObject;
-				copyResult = CopyMacRendererIntermediateToProducerTexture(*state.m_nativeAllocation, sourceTextureObject, rendererFrameInfo, rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue);
-			}
-			else if (bHasCpuPayload)
-			{
-				copyResult = UploadMacRendererBytesToProducerTexture(*state.m_nativeAllocation, rendererSource.m_cpuBytes->data(), rendererSource.m_bytesPerRow, rendererFrameInfo);
-			}
-			else
-			{
-				MacNativeBridgeProducerPattern pattern{};
-				pattern.m_viewportId = state.m_key.m_viewportId;
-				pattern.m_epoch = state.m_key.m_epoch;
-				pattern.m_generation = state.m_key.m_generation;
-				pattern.m_frameIndex = nextFrameIndex;
-				pattern.m_width = state.m_viewport.m_width;
-				pattern.m_height = state.m_viewport.m_height;
-				auto uploadResult = UploadMacRendererPatternToIntermediateTexture(state.m_nativeAllocation->m_rendererIntermediateTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, pattern);
-				if (!uploadResult.IsOk())
-				{
-					ReleaseRendererFrameSourceResources(rendererSource);
-					m_lastFailure = uploadResult;
-					return uploadResult;
-				}
-				if (!rendererSource.IsValid())
-				{
-					rendererSource.m_kind = MacRendererFrameSourceKind::SyntheticIntermediate;
-					rendererSource.m_textureObject = state.m_nativeAllocation->m_rendererIntermediateTextureObject;
-					rendererSource.m_sourceToken = nextFrameIndex;
-					rendererSource.m_width = state.m_viewport.m_width;
-					rendererSource.m_height = state.m_viewport.m_height;
-					rendererSource.m_pixelFormat = state.m_viewport.m_pixelFormat;
-					rendererSource.m_debugName = "SyntheticIntermediate";
-				}
-				copyResult = CopyMacRendererIntermediateToProducerTexture(*state.m_nativeAllocation, state.m_nativeAllocation->m_rendererIntermediateTextureObject, rendererFrameInfo);
-			}
+			m_lastFailure = bHasMetalTexture ?
+				CopyMacRendererIntermediateToProducerTexture(*state.m_nativeAllocation, rendererSource.m_textureObject, rendererFrameInfo,
+					rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue) :
+				UploadMacRendererBytesToProducerTexture(*state.m_nativeAllocation, rendererSource.m_cpuBytes->data(),
+					rendererSource.m_bytesPerRow, rendererFrameInfo);
 			ReleaseRendererFrameSourceResources(rendererSource);
-			if (!copyResult.IsOk())
-			{
-				m_lastFailure = copyResult;
-				return copyResult;
-			}
+			if (!m_lastFailure.IsOk()) return m_lastFailure;
 
 			state.m_pendingRendererSource = std::move(rendererSource);
 			state.m_pendingFrameInfo = rendererFrameInfo;
@@ -662,7 +608,6 @@ namespace Sailor::EditorRemote
 				return result;
 			}
 
-			state->m_frameBegun = true;
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -743,7 +688,7 @@ namespace Sailor::EditorRemote
 			m_lastFailure = state->m_nativeAllocation ? PollMacIOSurfaceReadCompletion(*state->m_nativeAllocation, readCompleted) : Failure::Ok();
 			if (!m_lastFailure.IsOk() || !readCompleted) return m_lastFailure;
 			auto result = BeginFrame(viewport, epoch, generation);
-			if (!result.IsOk()) return result;
+			if (!result.IsOk() || !state->m_frameBegun) return result;
 			m_lastFailure = m_provider.PollFrameReady(*state, outReady);
 			return m_lastFailure;
 		}

@@ -22,9 +22,11 @@
 #include "Submodules/EditorRemote/RemoteViewportMacNativeBridge.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
 #include "Memory/SharedPtr.hpp"
+#include "Support/MacViewportTestSource.h"
 
 using Sailor::TUniquePtr;
 using namespace Sailor::EditorRemote;
+using namespace Sailor::Tests;
 
 static_assert(!std::is_copy_constructible_v<MacNativeLayerBinding>);
 static_assert(!std::is_copy_assignable_v<MacNativeLayerBinding>);
@@ -438,6 +440,119 @@ namespace
 		CFRelease(surface);
 	}
 
+	void TestMissingRendererFramesPreserveLastPresentation()
+	{
+		class Source : public IMacRendererFrameSourceProvider
+		{
+		public:
+			MacRendererFrameSource m_next;
+			uint32_t m_calls = 0;
+			Failure m_failure = Failure::Ok();
+			Failure AcquireFrameSource(const MacViewportSurfaceState&, FrameIndex, MacRendererFrameSource& out) override
+			{
+				++m_calls;
+				out = m_next;
+				return m_failure;
+			}
+		} source;
+		MacLoopbackIOSurfaceProvider provider(&source);
+		MacLoopbackViewportPresenter presenter;
+		ViewportDescriptor viewport;
+		viewport.m_viewportId = 107;
+		viewport.m_width = 64;
+		viewport.m_height = 48;
+		viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		viewport.m_colorSpace = ColorSpace::Srgb;
+		viewport.m_presentMode = PresentMode::Mailbox;
+		MacViewportLoopbackBinding binding(viewport, provider, presenter);
+		presenter.BindHostHandle(viewport.m_viewportId, LayerHandle([CAMetalLayer layer]));
+		Require(binding.Create().IsOk(), "missing-frame test needs a real transport");
+		auto allocation = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 1)->m_nativeAllocation;
+		for (uint32_t i = 0; i < 100; ++i)
+		{
+			Require(binding.PumpFrame().IsOk(), "cold start without a source is not an error");
+			Require(allocation->m_copyCommandBufferObject == 0 && binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 0,
+				"cold start must not submit or publish a synthetic frame");
+		}
+		Require(source.m_calls == 100 && presenter.FindImportedState(viewport.m_viewportId)->m_presentedFrameCount == 0,
+			"missing source must remain retryable without presentation");
+		MacRendererFrameSource frame;
+		frame.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
+		frame.m_width = 64;
+		frame.m_height = 48;
+		frame.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		frame.m_bytesPerRow = 64 * 4;
+		frame.m_sourceToken = 42;
+		frame.m_cpuBytes = Sailor::TSharedPtr<std::vector<uint8_t>>::Make(64 * 48 * 4, 0x30);
+		source.m_next = frame;
+		Require(binding.PumpFrame().IsOk() && binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1,
+			"first real frame must publish without a skipped index");
+		[(id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject waitUntilCompleted];
+		const auto token = allocation->m_lastProducerCopyToken;
+		for (uint32_t mode = 0; mode < 4; ++mode)
+		{
+			source.m_next = frame;
+			if (mode == 0) source.m_next = {};
+			if (mode == 1) source.m_next.m_cpuBytes.Clear();
+			if (mode == 2) source.m_next.m_width = 32;
+			if (mode == 3)
+			{
+				source.m_next.m_kind = MacRendererFrameSourceKind::RendererOwnedMetalTexture;
+				source.m_next.m_cpuBytes.Clear();
+			}
+			for (uint32_t i = 0; i < 20; ++i) Require(binding.PumpFrame().IsOk(), "temporarily unavailable source must defer");
+			Require(binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1 && allocation->m_lastWrittenFrameIndex == 1 &&
+				allocation->m_lastProducerCopyToken == token && allocation->m_lastRendererSource.m_sourceToken == 42,
+				"missing, metadata-only, stale and texture-less sources must preserve completed provenance");
+			Require(presenter.FindImportedState(viewport.m_viewportId)->m_presentedFrameCount == 1,
+				"no-frame-yet must not re-present the old frame");
+			Require(ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 23, 11) == 0x30303030u,
+				"no-frame-yet must preserve the last real pixels");
+		}
+		frame.m_cpuBytes = Sailor::TSharedPtr<std::vector<uint8_t>>::Make(64 * 48 * 4, 0x55);
+		frame.m_sourceToken = 43;
+		source.m_next = frame;
+		Require(binding.PumpFrame().IsOk() && binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 2,
+			"source recovery must publish the next real frame");
+		Require(allocation->m_lastRendererSource.m_sourceToken == 43 &&
+			ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 23, 11) == 0x55555555u,
+			"recovery must publish the new source's pixels and provenance");
+		[(id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject waitUntilCompleted];
+		source.m_failure = Failure::FromDomain(ErrorDomain::Session, 77, "test source refused");
+		Require(binding.PumpFrame().m_nativeCode == 77 && binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 2,
+			"source failure must propagate without publishing a substitute frame");
+		source.m_failure = Failure::Ok();
+		Require(binding.PumpFrame().IsOk() && binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 3,
+			"source failure must remain retryable without skipped frame indices");
+	}
+
+	void TestInvalidIOSurfaceDoesNotPresentSyntheticPixels()
+	{
+		Sailor::TUniquePtr<MacNativeLayerBinding> binding;
+		Require(BindMacNativeLayer(LayerHandle([CAMetalLayer layer]), 64, 48, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(),
+			"invalid-import test needs a native layer");
+		FramePacket frame;
+		frame.m_width = 64;
+		frame.m_height = 48;
+		frame.m_frameIndex = 1;
+		MacNativeBridgePresentResult result;
+		Require(PresentMacNativeLayerFrame(*binding, {}, frame, result).m_nativeCode == 2116,
+			"invalid IOSurface must fail instead of creating synthetic pixels");
+		Require(!result.IsValid() && binding->m_presentToken == 0 && binding->m_lastSourceTextureObject == 0,
+			"failed import must not publish a successful native frame");
+		NativeSurface surface(64, 48);
+		Require(PresentMacNativeLayerFrame(*binding, surface.m_transport.m_macSurfaces.front(), frame, result).IsOk() && result.IsValid(),
+			"valid IOSurface must recover on the same binding");
+		const auto presentedToken = binding->m_presentToken;
+		const auto presentedSource = binding->m_lastSourceTextureObject;
+		Require(PresentMacNativeLayerFrame(*binding, {}, frame, result).m_nativeCode == 2116 && !result.IsValid(),
+			"invalid import after a good frame must still fail");
+		Require(binding->m_presentToken == presentedToken && binding->m_lastSourceTextureObject == presentedSource,
+			"failed import must preserve the prior native frame");
+		Require(PresentMacNativeLayerFrame(*binding, surface.m_transport.m_macSurfaces.front(), frame, result).IsOk() &&
+			binding->m_presentToken == presentedToken + 1, "valid retry must use the next present token");
+	}
+
 	void TestProducerCopyReturnsBeforeSourceCompletion()
 	{
 		NativeSurface surface(64, 48);
@@ -553,7 +668,6 @@ namespace
 		Require(presentResult.m_usedMetalCommandQueue, "present should exercise a real Metal command queue");
 		Require(presentResult.m_drawableObject != 0, "present should surface a real drawable handle");
 		Require(presentResult.m_sourceTextureObject != 0, "present should surface the source Metal texture used for the copy path");
-		Require(!presentResult.m_usedSyntheticSourceTexture, "bridge should import the real IOSurface into a Metal texture when a live IOSurface handle is supplied");
 		Require(binding->m_importedIOSurfaceObject == surfaceHandle.m_surfaceObject, "binding should retain the imported IOSurface object used for the Metal texture import");
 		Require(binding->m_lastSourceTextureObject == presentResult.m_sourceTextureObject, "binding should retain the last source Metal texture");
 	}
@@ -585,7 +699,8 @@ namespace
 				"all rejected binds must preserve the working queue and token");
 			FramePacket frame;
 			MacNativeBridgePresentResult present;
-			Require(PresentMacNativeLayerFrame(*binding, {}, frame, present).IsOk(), "prior binding must still present after rejected replacements");
+			NativeSurface surface(64, 48);
+			Require(PresentMacNativeLayerFrame(*binding, surface.m_transport.m_macSurfaces.front(), frame, present).IsOk(), "prior binding must still present after rejected replacements");
 		}
 	}
 
@@ -603,7 +718,8 @@ namespace
 			ObserveNativeRelease((id)binding->m_commandQueueObject, queues);
 			FramePacket frame;
 			MacNativeBridgePresentResult present;
-			Require(PresentMacNativeLayerFrame(*binding, {}, frame, present).IsOk(), "native owner must present a source texture");
+			NativeSurface surface(64, 48);
+			Require(PresentMacNativeLayerFrame(*binding, surface.m_transport.m_macSurfaces.front(), frame, present).IsOk(), "native owner must present a source texture");
 			ObserveNativeRelease((id)present.m_sourceTextureObject, textures);
 			id<MTLCommandBuffer> completion = [(id<MTLCommandQueue>)binding->m_commandQueueObject commandBuffer];
 			[completion commit];
@@ -632,9 +748,8 @@ namespace
 			viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
 			Require(provider.CreateOrResizeSurface(viewport, 1, 1, state).IsOk(), "provider must allocate native textures");
 			ObserveNativeRelease((id)state.m_nativeAllocation->m_producerTextureObject, textures);
-			ObserveNativeRelease((id)state.m_nativeAllocation->m_rendererIntermediateTextureObject, textures);
 		}
-		Require(textures->load() == 2, "provider and state destruction must release both owned native textures without manual cleanup");
+		Require(textures->load() == 1, "provider and state destruction must release the owned producer texture without manual cleanup");
 	}
 
 	class CpuSource : public IMacRendererFrameSourceProvider
@@ -700,7 +815,10 @@ namespace
 			const auto& bytes = *allocation->m_lastRendererSource.m_cpuBytes;
 			Require(!UploadMacRendererBytesToProducerTexture(*allocation, bytes.data(), viewport.m_width * 4, info).IsOk(),
 				"direct CPU upload must also reject the pending native read");
-			Require(!CopyMacRendererIntermediateToProducerTexture(*allocation, allocation->m_rendererIntermediateTextureObject, info).IsOk(),
+			uintptr_t blockedSource = 0;
+			Require(CreateMacRendererIntermediateTexture(allocation->m_producerDeviceObject, 64, 48, PixelFormat::B8G8R8A8_UNorm, blockedSource).IsOk(), "reuse check needs a source texture");
+			[(id)blockedSource autorelease];
+			Require(CopyMacRendererIntermediateToProducerTexture(*allocation, blockedSource, info).m_nativeCode == 1034,
 				"direct GPU copy must also reject the pending native read");
 			Require(!presenter.PresentFrame(viewport.m_viewportId, binding.GetRuntimeSession().GetLastFrame()).IsOk(),
 				"duplicate presentation must not replace an unfinished read");
@@ -892,7 +1010,10 @@ namespace
 					"direct export must report pending completion without discarding preparation");
 				Require(UploadMacRendererBytesToProducerTexture(*allocation, priorPixels.data(), 64 * 4, info).m_nativeCode == 1036,
 					"CPU upload must not race a submitted copy");
-				Require(CopyMacRendererIntermediateToProducerTexture(*allocation, allocation->m_rendererIntermediateTextureObject, info).m_nativeCode == 1036,
+				uintptr_t blockedSource = 0;
+				Require(CreateMacRendererIntermediateTexture(allocation->m_producerDeviceObject, 64, 48, PixelFormat::B8G8R8A8_UNorm, blockedSource).IsOk(), "pending-copy check needs a source texture");
+				[(id)blockedSource autorelease];
+				Require(CopyMacRendererIntermediateToProducerTexture(*allocation, blockedSource, info).m_nativeCode == 1036,
 					"a second direct copy must not replace outstanding work");
 				MacNativeBridgePresentResult presented;
 				const auto native = presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding.GetRawPtr();
@@ -995,7 +1116,8 @@ namespace
 		auto releases = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
 		@autoreleasepool
 		{
-			MacLoopbackIOSurfaceProvider provider;
+			MacViewportTestSource source;
+			MacLoopbackIOSurfaceProvider provider(&source);
 			MacViewportTransportBackend backend(provider);
 			ViewportDescriptor viewport;
 			viewport.m_viewportId = 102;
@@ -1043,7 +1165,10 @@ namespace
 			id<MTLSharedEvent> event = [[(id<MTLDevice>)allocation->m_producerDeviceObject newSharedEvent] autorelease];
 			MacNativeBridgeRendererFrameInfo info;
 			info.m_producerCopyToken = 99;
-			Require(!CopyMacRendererIntermediateToProducerTexture(*allocation, allocation->m_rendererIntermediateTextureObject, info,
+			uintptr_t invalidSyncSource = 0;
+			Require(CreateMacRendererIntermediateTexture(allocation->m_producerDeviceObject, 64, 48, PixelFormat::B8G8R8A8_UNorm, invalidSyncSource).IsOk(), "sync check needs a source texture");
+			[(id)invalidSyncSource autorelease];
+			Require(!CopyMacRendererIntermediateToProducerTexture(*allocation, invalidSyncSource, info,
 				reinterpret_cast<uintptr_t>(event), 0).IsOk(), "invalid native wait must fail without submission");
 			Require(info.m_producerCopyToken == 0 && !info.m_usedGpuCopyIntoProducerTexture, "failed copy must clear previous caller provenance");
 			Require(probe->m_commandBufferCount == 104, "all success and failure calls must use the same queue");
@@ -1080,7 +1205,8 @@ namespace
 			" devices=" + std::to_string(devices->load()));
 		FramePacket frame;
 		MacNativeBridgePresentResult present;
-		Require(PresentMacNativeLayerFrame(*binding, {}, frame, present).IsOk(), "original layer must still present after queue creation failure");
+		NativeSurface surface(64, 48);
+		Require(PresentMacNativeLayerFrame(*binding, surface.m_transport.m_macSurfaces.front(), frame, present).IsOk(), "original layer must still present after queue creation failure");
 	}
 
 	void TestPresenterResizeResetAndDestructionReleaseQueues()
@@ -1159,7 +1285,8 @@ namespace
 			frame.m_width = 64;
 			frame.m_height = 48;
 			Require(presenter.PresentFrame(viewport.m_viewportId, frame).IsOk(), "prior imported surface must still present after failed host replacement");
-			Require(!state->m_layerBinding->m_usesSyntheticSourceTexture, "recovered presentation must read the real imported IOSurface");
+			Require(state->m_layerBinding->m_importedIOSurfaceObject == surface.m_transport.m_macSurfaces.front().m_surfaceObject,
+				"recovered presentation must read the real imported IOSurface");
 			id<MTLCommandBuffer> completion = [(id<MTLCommandQueue>)original->m_commandQueueObject commandBuffer];
 			[completion commit];
 			[completion waitUntilCompleted];
@@ -1304,7 +1431,7 @@ namespace
 		struct BackgroundPresentState
 		{
 			TUniquePtr<MacNativeLayerBinding> m_binding;
-			MacIOSurfaceHandle m_surface{};
+			NativeSurface m_surface{ 64, 64 };
 			FramePacket m_frame{};
 			MacNativeBridgePresentResult m_presentResult{};
 			Failure m_failure{};
@@ -1327,7 +1454,7 @@ namespace
 			{
 				state->m_failure = PresentMacNativeLayerFrame(
 					*state->m_binding,
-					state->m_surface,
+					state->m_surface.m_transport.m_macSurfaces.front(),
 					state->m_frame,
 					state->m_presentResult);
 				{
@@ -1394,6 +1521,8 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "MissingRendererFramesPreserveLastPresentation", TestMissingRendererFramesPreserveLastPresentation },
+		{ "InvalidIOSurfaceDoesNotPresentSyntheticPixels", TestInvalidIOSurfaceDoesNotPresentSyntheticPixels },
 		{ "DelayedProducerCopyPublicationAndRetirement", TestDelayedProducerCopyPublicationAndRetirement },
 		{ "ProducerCopyReturnsBeforeSourceCompletion", TestProducerCopyReturnsBeforeSourceCompletion },
 		{ "LoopbackDefersWritesUntilPresentationCompletes", TestLoopbackDefersWritesUntilPresentationCompletes },

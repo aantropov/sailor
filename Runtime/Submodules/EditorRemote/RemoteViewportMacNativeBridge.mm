@@ -106,56 +106,6 @@ namespace Sailor::EditorRemote
 			return s_enabled;
 		}
 
-		id<MTLTexture> CreateSyntheticSourceTexture(id<MTLDevice> device, const FramePacket& frame, const MacNativeLayerBinding& binding)
-		{
-			if (device == nil || binding.m_width == 0 || binding.m_height == 0)
-			{
-				return nil;
-			}
-
-			MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:ToMetalPixelFormat(binding.m_pixelFormat)
-				width:binding.m_width
-				height:binding.m_height
-				mipmapped:NO];
-			descriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite | MTLTextureUsageRenderTarget;
-			descriptor.storageMode = MTLStorageModeShared;
-			id<MTLTexture> texture = [device newTextureWithDescriptor:descriptor];
-			if (texture == nil)
-			{
-				return nil;
-			}
-
-			const uint32_t bytesPerPixel = 4;
-			const uint32_t bytesPerRow = binding.m_width * bytesPerPixel;
-			const size_t byteCount = static_cast<size_t>(bytesPerRow) * static_cast<size_t>(binding.m_height);
-			NSMutableData* data = [NSMutableData dataWithLength:byteCount];
-			if (data == nil || data.length != byteCount)
-			{
-				[texture release];
-				return nil;
-			}
-
-			auto* pixels = static_cast<uint8_t*>(data.mutableBytes);
-			const uint8_t seedA = static_cast<uint8_t>((frame.m_frameIndex * 17u) & 0xffu);
-			const uint8_t seedB = static_cast<uint8_t>((frame.m_connectionEpoch * 29u) & 0xffu);
-			const uint8_t seedC = static_cast<uint8_t>((frame.m_generation * 43u) & 0xffu);
-			for (uint32_t y = 0; y < binding.m_height; y++)
-			{
-				for (uint32_t x = 0; x < binding.m_width; x++)
-				{
-					const size_t index = static_cast<size_t>(y) * bytesPerRow + static_cast<size_t>(x) * bytesPerPixel;
-					pixels[index + 0] = static_cast<uint8_t>((x + seedA) & 0xffu);
-					pixels[index + 1] = static_cast<uint8_t>((y + seedB) & 0xffu);
-					pixels[index + 2] = seedC;
-					pixels[index + 3] = 255u;
-				}
-			}
-
-			MTLRegion region = MTLRegionMake2D(0, 0, binding.m_width, binding.m_height);
-			[texture replaceRegion:region mipmapLevel:0 withBytes:data.bytes bytesPerRow:bytesPerRow];
-			return texture;
-		}
-
 		id<MTLTexture> CreateIOSurfaceBackedSourceTexture(id<MTLDevice> device, const MacIOSurfaceHandle& surfaceHandle, const MacNativeLayerBinding& binding)
 		{
 			if (device == nil || surfaceHandle.m_surfaceObject == 0 || binding.m_width == 0 || binding.m_height == 0)
@@ -270,47 +220,6 @@ namespace Sailor::EditorRemote
 		}
 
 		outTextureObject = reinterpret_cast<uintptr_t>((__bridge void*)texture);
-		return Failure::Ok();
-	}
-
-	Failure UploadMacRendererPatternToIntermediateTexture(uintptr_t textureObject, uint32_t width, uint32_t height, const MacNativeBridgeProducerPattern& pattern)
-	{
-		if (textureObject == 0 || width == 0 || height == 0)
-		{
-			return WriteProducerFailure(1012, "macOS renderer intermediate upload requires a valid Metal texture and extents");
-		}
-
-		id<MTLTexture> texture = (__bridge id<MTLTexture>)reinterpret_cast<void*>(textureObject);
-		if (texture == nil)
-		{
-			return WriteProducerFailure(1013, "macOS renderer intermediate upload resolved the Metal texture to nil");
-		}
-
-		const uint32_t bytesPerRow = width * 4u;
-		const size_t byteCount = static_cast<size_t>(bytesPerRow) * static_cast<size_t>(height);
-		NSMutableData* data = [NSMutableData dataWithLength:byteCount];
-		if (data == nil || data.length != byteCount)
-		{
-			return WriteProducerFailure(1014, "macOS renderer intermediate upload could not allocate staging bytes");
-		}
-
-		auto* pixels = static_cast<uint8_t*>(data.mutableBytes);
-		const uint8_t seedA = static_cast<uint8_t>((pattern.m_frameIndex * 17u + pattern.m_generation * 13u) & 0xffu);
-		const uint8_t seedB = static_cast<uint8_t>((pattern.m_epoch * 29u + pattern.m_viewportId * 7u) & 0xffu);
-		const uint8_t seedC = static_cast<uint8_t>((pattern.m_width + pattern.m_height + pattern.m_frameIndex * 3u) & 0xffu);
-		for (uint32_t y = 0; y < height; ++y)
-		{
-			for (uint32_t x = 0; x < width; ++x)
-			{
-				const size_t index = static_cast<size_t>(y) * bytesPerRow + static_cast<size_t>(x) * 4u;
-				pixels[index + 0] = static_cast<uint8_t>((x + seedA) & 0xffu);
-				pixels[index + 1] = static_cast<uint8_t>((y + seedB) & 0xffu);
-				pixels[index + 2] = seedC;
-				pixels[index + 3] = 255u;
-			}
-		}
-
-		[texture replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 withBytes:data.bytes bytesPerRow:bytesPerRow];
 		return Failure::Ok();
 	}
 
@@ -568,7 +477,6 @@ namespace Sailor::EditorRemote
 	{
 		ReleaseObjectiveCObject(m_copyCommandBufferObject);
 		ReleaseObjectiveCObject(m_presentCommandBufferObject);
-		ReleaseObjectiveCObject(m_rendererIntermediateTextureObject);
 		ReleaseObjectiveCObject(m_producerTextureObject);
 		ReleaseObjectiveCObject(m_producerCommandQueueObject);
 		ReleaseObjectiveCObject(m_producerDeviceObject);
@@ -843,27 +751,18 @@ namespace Sailor::EditorRemote
 				return MakeFailure(2115, "macOS native layer present resolved the Metal command queue to nil");
 			}
 
+			id<MTLTexture> sourceTexture = CreateIOSurfaceBackedSourceTexture(device, surfaceHandle, inOutBinding);
+			if (sourceTexture == nil)
+			{
+				return MakeFailure(2116, "macOS native layer present could not import the IOSurface texture");
+			}
+			[sourceTexture autorelease];
+
 			id<CAMetalDrawable> drawable = [metalLayer nextDrawable];
 			if (drawable == nil)
 			{
 				return MakeFailure(2113, "macOS native layer present could not acquire a drawable");
 			}
-
-			id<MTLTexture> sourceTexture = CreateIOSurfaceBackedSourceTexture(device, surfaceHandle, inOutBinding);
-			const bool usedSyntheticSourceTexture = sourceTexture == nil;
-			if (sourceTexture == nil)
-			{
-				sourceTexture = CreateSyntheticSourceTexture(device, frame, inOutBinding);
-			}
-			if (sourceTexture == nil)
-			{
-				return MakeFailure(2116, "macOS native layer present could not create a source Metal texture");
-			}
-
-			// Both source helpers use Metal's `new` ownership convention. Move that
-			// ownership into the local pool so early returns cannot leak a texture;
-			// the binding retains the successful frame's texture below.
-			[sourceTexture autorelease];
 
 			id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
 			if (commandBuffer == nil)
@@ -901,14 +800,12 @@ namespace Sailor::EditorRemote
 			inOutBinding.m_lastSourceTextureObject = RetainObjectiveCObject(sourceTexture);
 			inOutBinding.m_presentToken++;
 			inOutBinding.m_sourceTextureToken++;
-			inOutBinding.m_usesSyntheticSourceTexture = usedSyntheticSourceTexture;
 			outResult.m_drawableObject = inOutBinding.m_drawableObject;
 			outResult.m_sourceTextureObject = inOutBinding.m_lastSourceTextureObject;
 			outResult.m_presentToken = inOutBinding.m_presentToken;
 			outResult.m_sourceTextureToken = inOutBinding.m_sourceTextureToken;
 			outResult.m_usedRealCAMetalLayer = true;
 			outResult.m_usedMetalCommandQueue = true;
-			outResult.m_usedSyntheticSourceTexture = usedSyntheticSourceTexture;
 			return Failure::Ok();
 		}
 	}
@@ -934,11 +831,6 @@ namespace Sailor::EditorRemote
 	Failure CreateMacRendererIntermediateTexture(uintptr_t, uint32_t, uint32_t, PixelFormat, uintptr_t& outTextureObject)
 	{
 		outTextureObject = 0;
-		return Failure::Ok();
-	}
-
-	Failure UploadMacRendererPatternToIntermediateTexture(uintptr_t, uint32_t, uint32_t, const MacNativeBridgeProducerPattern&)
-	{
 		return Failure::Ok();
 	}
 

@@ -7,8 +7,10 @@
 #include <vector>
 
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
+#include "Support/MacViewportTestSource.h"
 
 using namespace Sailor::EditorRemote;
+using namespace Sailor::Tests;
 
 static_assert(std::three_way_comparable<MacRendererFrameSource>);
 static_assert(std::three_way_comparable<MacIOSurfaceAllocation>);
@@ -137,6 +139,7 @@ namespace
 				return failure;
 			}
 
+			state.m_frameBegun = true;
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -458,60 +461,79 @@ namespace
 		Require(binding.GetRuntimeSession().GetState() == SessionState::Disposed, "destroy should dispose runtime session");
 	}
 
+	void TestMissingFrameSourceProviderDoesNotPrepareFrame()
+	{
+		MacLoopbackIOSurfaceProvider provider;
+		MacViewportTransportBackend backend(provider);
+		const auto viewport = MakeViewport(87, 64, 48);
+		TransportDescriptor transport;
+		Require(backend.EnsureSurface(viewport, 1, 1, transport).IsOk(), "transport can exist before the source provider");
+		bool ready = true;
+		Require(backend.PrepareFrame(viewport, 1, 1, ready).IsOk() && !ready, "no adapter must not prepare a generated frame");
+		const auto* allocation = provider.FindAllocation({ viewport.m_viewportId, 1, 1 });
+		Require(allocation && allocation->m_lastWrittenFrameIndex == 0 && allocation->m_copyCommandBufferObject == 0,
+			"no adapter must not submit a producer copy");
+		FramePacket frame;
+		Require(!backend.ExportFrame(viewport, 1, 1, frame).IsOk(), "absent adapter cannot publish a frame");
+		Require(backend.ReleaseSurface(viewport.m_viewportId, 1, 1).IsOk(), "empty producer must release");
+	}
+
 	void TestConcreteMacLoopbackProviderRecordsRendererOwnedSourceMetadata()
 	{
 		FakeMacRendererFrameSourceProvider sourceProvider{};
-		sourceProvider.m_nextSource.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
-		sourceProvider.m_nextSource.m_sourceToken = 0x12345678ull;
-		sourceProvider.m_nextSource.m_width = 1920;
-		sourceProvider.m_nextSource.m_height = 1080;
-		sourceProvider.m_nextSource.m_pixelFormat = PixelFormat::R16G16B16A16_Float;
-		sourceProvider.m_nextSource.m_debugName = "Renderer.SceneView.Main.Resolved";
-
 		MacLoopbackIOSurfaceProvider provider{ &sourceProvider };
 		MacViewportTransportBackend backend{ provider };
-		auto viewport = MakeViewport(82, 800, 600);
+		auto viewport = MakeViewport(82, 64, 48);
 		TransportDescriptor transport{};
-		Require(backend.EnsureSurface(viewport, 32, 1, transport).IsOk(), "concrete mac provider should create transport when a renderer source provider is attached");
-		Require(backend.BeginFrame(viewport, 32, 1).IsOk(), "begin frame should tolerate metadata-only renderer source adapters and keep the IOSurface copy path alive");
-		ExportReadyFrame(backend, viewport, 32, 1);
+		Require(backend.EnsureSurface(viewport, 32, 1, transport).IsOk(), "metadata test needs a transport");
+		auto& source = sourceProvider.m_nextSource;
+		source.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
+		source.m_sourceToken = 0x12345678ull;
+		source.m_width = viewport.m_width;
+		source.m_height = viewport.m_height;
+		source.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		source.m_debugName = "Renderer.SceneView.Main.Resolved";
+		bool ready = true;
+		Require(backend.PrepareFrame(viewport, 32, 1, ready).IsOk() && !ready, "metadata without pixels must not create a frame");
+		const auto* allocation = provider.FindAllocation({ viewport.m_viewportId, 32, 1 });
+		Require(allocation && allocation->m_lastWrittenFrameIndex == 0 && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::Unknown,
+			"unavailable pixels must not acquire renderer provenance");
 
-		auto key = MacViewportSurfaceKey{ viewport.m_viewportId, 32, 1 };
-		auto* allocation = provider.FindAllocation(key);
-		Require(allocation != nullptr && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata, "provider should record the renderer-owned source kind selected by the adapter seam");
-		Require(allocation != nullptr && allocation->m_lastRendererSource.m_sourceToken == 0x12345678ull, "provider should preserve the renderer source token supplied by the adapter seam");
-		Require(allocation != nullptr && allocation->m_lastRendererSource.m_debugName == "Renderer.SceneView.Main.Resolved", "provider should preserve the resolved scene-view renderer target name supplied by the adapter seam");
-		Require(allocation != nullptr && allocation->m_lastRendererSource.m_pixelFormat == PixelFormat::R16G16B16A16_Float, "provider should preserve the renderer-owned final-color format rather than forcing backbuffer metadata");
-		Require(allocation != nullptr && allocation->m_lastRendererTextureToken == 0x12345678ull, "metadata-only renderer source should still stamp renderer-side provenance onto the exported frame path");
-		Require(sourceProvider.m_calls.size() == 1 && sourceProvider.m_calls.front().second == 1, "begin frame should query the renderer source adapter for the next frame");
-
-		Require(backend.ReleaseSurface(viewport.m_viewportId, 32, 1).IsOk(), "provider should still release surfaces after metadata-backed begin frame");
+		source.m_bytesPerRow = source.m_width * 4;
+		source.m_cpuBytes = Sailor::TSharedPtr<std::vector<uint8_t>>::Make(source.m_bytesPerRow * source.m_height, 0x44);
+		const auto frame = ExportReadyFrame(backend, viewport, 32, 1);
+		Require(frame.m_frameIndex == 1 && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata,
+			"actual pixels must publish the renderer source kind");
+		Require(allocation->m_lastRendererTextureToken == source.m_sourceToken && allocation->m_lastRendererSource.m_debugName == source.m_debugName,
+			"completed pixels must carry their own renderer provenance");
+		Require(backend.ReleaseSurface(viewport.m_viewportId, 32, 1).IsOk(), "metadata test must release the transport");
 	}
 
-	void TestConcreteMacLoopbackProviderFallsBackWhenRendererSourceIsUnavailable()
+	void TestConcreteMacLoopbackProviderDefersUnavailableRendererSource()
 	{
 		FakeMacRendererFrameSourceProvider sourceProvider{};
 		MacLoopbackIOSurfaceProvider provider{ &sourceProvider };
 		MacViewportTransportBackend backend{ provider };
 		auto viewport = MakeViewport(84, 64, 32);
 		TransportDescriptor transport{};
-		Require(backend.EnsureSurface(viewport, 35, 1, transport).IsOk(), "unavailable-source fallback should create the requested IOSurface transport");
-		Require(backend.BeginFrame(viewport, 35, 1).IsOk(), "a temporarily unavailable renderer source should fall back to the synthetic intermediate");
-		const auto frame = ExportReadyFrame(backend, viewport, 35, 1);
-
-		auto key = MacViewportSurfaceKey{ viewport.m_viewportId, 35, 1 };
-		auto* allocation = provider.FindAllocation(key);
-		Require(allocation != nullptr && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::SyntheticIntermediate, "unavailable renderer source should record the synthetic intermediate used for the transition frame");
-		Require(allocation != nullptr && allocation->m_lastRendererSource.m_width == viewport.m_width && allocation->m_lastRendererSource.m_height == viewport.m_height, "synthetic fallback should match the current IOSurface extents");
-		Require(transport.m_width == viewport.m_width && transport.m_height == viewport.m_height, "synthetic fallback should not rewrite the host viewport transport descriptor");
-
-		Require(frame.m_width == viewport.m_width && frame.m_height == viewport.m_height, "exported fallback frame should retain the requested viewport extents");
-		Require(sourceProvider.m_calls.size() == 1 && sourceProvider.m_calls.front().second == 1, "unavailable-source fallback should still probe the renderer once for the frame");
-		Require(backend.ReleaseSurface(viewport.m_viewportId, 35, 1).IsOk(), "unavailable-source fallback should release its IOSurface cleanly");
+		Require(backend.EnsureSurface(viewport, 35, 1, transport).IsOk(), "unavailable source still needs a transport");
+		for (uint32_t i = 0; i < 100; ++i)
+		{
+			bool ready = true;
+			Require(backend.PrepareFrame(viewport, 35, 1, ready).IsOk() && !ready, "missing source must defer without an error");
+		}
+		const auto* allocation = provider.FindAllocation({ viewport.m_viewportId, 35, 1 });
+		Require(allocation && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::Unknown &&
+			allocation->m_lastWrittenFrameIndex == 0 && allocation->m_copyCommandBufferObject == 0, "missing source must not submit synthetic pixels");
+		Require(sourceProvider.m_calls.size() == 100 && sourceProvider.m_calls.back().second == 1,
+			"no-frame-yet must retry without advancing the frame index");
+		FramePacket rejected;
+		Require(!backend.ExportFrame(viewport, 35, 1, rejected).IsOk(), "no-frame-yet cannot be exported");
+		Require(backend.ReleaseSurface(viewport.m_viewportId, 35, 1).IsOk(), "unavailable-source transport must release");
 	}
 
 #if defined(__APPLE__)
-	void TestConcreteMacLoopbackProviderFallsBackWhenRendererSourceExtentsAreStale()
+	void TestConcreteMacLoopbackProviderDefersStaleRendererSource()
 	{
 		FakeMacRendererFrameSourceProvider sourceProvider{};
 		MacLoopbackIOSurfaceProvider provider{ &sourceProvider };
@@ -546,17 +568,20 @@ namespace
 		sourceProvider.m_nextSource.m_debugName = "Renderer.SceneView.PreResize";
 		sourceProvider.m_nextSource.m_releaseTextureObjectAfterUse = true;
 
-		Require(backend.BeginFrame(viewport, 36, 1).IsOk(), "a copyable renderer source with stale extents should fall back to the synthetic intermediate");
-		const auto frame = ExportReadyFrame(backend, viewport, 36, 1);
+		bool ready = true;
+		Require(backend.PrepareFrame(viewport, 36, 1, ready).IsOk() && !ready, "stale extents must defer without submitting a substitute frame");
 		allocation = provider.FindAllocation(key);
-		Require(allocation != nullptr && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::SyntheticIntermediate, "stale renderer extents should record the synthetic intermediate used for the transition frame");
-		Require(allocation != nullptr && allocation->m_lastRendererSource.m_width == viewport.m_width && allocation->m_lastRendererSource.m_height == viewport.m_height, "stale-source fallback should match the current IOSurface instead of resizing it back");
+		Require(allocation != nullptr && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::Unknown && allocation->m_lastWrittenFrameIndex == 0,
+			"stale source must not publish pixels or provenance");
+		Require(allocation->m_plane.m_width == viewport.m_width && allocation->m_plane.m_height == viewport.m_height,
+			"stale source must not resize the destination back");
 		Require(allocation != nullptr && allocation->m_lastCrossApiAcquireValue == 0, "stale-source fallback should not retain rejected source synchronization metadata");
 		Require(CFGetRetainCount(reinterpret_cast<CFTypeRef>(rendererTextureObject)) == textureRetainCountBefore - 1, "stale-source fallback should release the rejected owned Metal texture");
 		Require(CFGetRetainCount(sharedEventSentinel) == sharedEventRetainCountBefore - 1, "stale-source fallback should release the rejected shared event");
 		Require(transport.m_width == viewport.m_width && transport.m_height == viewport.m_height, "stale-source fallback should preserve the host viewport transport descriptor");
 
-		Require(frame.m_width == viewport.m_width && frame.m_height == viewport.m_height, "stale-source fallback frame should retain the requested viewport extents");
+		FramePacket rejected;
+		Require(!backend.ExportFrame(viewport, 36, 1, rejected).IsOk(), "stale source must not export a frame");
 		Require(backend.ReleaseSurface(viewport.m_viewportId, 36, 1).IsOk(), "stale-source fallback should release its IOSurface cleanly");
 
 		sourceProvider.m_nextSource.m_textureObject = 0;
@@ -696,7 +721,8 @@ namespace
 
 	void TestConcreteMacLoopbackProviderAndPresenterCarryNativeMetadata()
 	{
-		MacLoopbackIOSurfaceProvider provider{};
+		MacViewportTestSource source;
+		MacLoopbackIOSurfaceProvider provider{ &source };
 		MacViewportTransportBackend backend{ provider };
 		auto viewport = MakeViewport(81, 1600, 1000);
 
@@ -707,7 +733,6 @@ namespace
 		Require(allocation != nullptr && allocation->IsValid(), "provider should retain IOSurface allocation ownership metadata");
 		Require(allocation->m_plane.m_bytesPerRow == viewport.m_width * 4u, "allocation plane layout should carry row pitch");
 		Require(allocation->m_producerTextureObject != 0, "provider should materialize a producer-side Metal texture for the IOSurface allocation");
-		Require(allocation->m_rendererIntermediateTextureObject != 0, "provider should materialize a renderer-shaped intermediate Metal texture before the IOSurface copy");
 		Require(transport.m_macSurfaces.front().m_registryId == allocation->m_registryId, "transport handle should export allocation registry id");
 		Require(transport.m_macSurfaces.front().m_surfaceObject == allocation->m_surfaceObject, "transport handle should carry the same-process IOSurface object for loopback import");
 
@@ -715,6 +740,8 @@ namespace
 		Require(backend.BeginFrame(viewport, 31, 1).IsOk(), "concrete mac provider should begin frame");
 		frame = ExportReadyFrame(backend, viewport, 31, 1);
 		allocation = provider.FindAllocation(key);
+		Require(allocation && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::SyntheticIntermediate &&
+			allocation->m_lastRendererSource.m_debugName == "InjectedTestPattern", "injected test pixels must remain identified as test data");
 		Require(allocation != nullptr && allocation->m_lastWrittenFrameIndex == 1, "completed export should record the written IOSurface frame");
 		Require(allocation != nullptr && allocation->m_lastRendererTextureToken != 0, "completed export should stamp renderer-intermediate activity");
 		Require(allocation != nullptr && allocation->m_lastProducerCopyToken != 0, "completed export should stamp GPU copy activity into the IOSurface-backed producer texture");
@@ -752,6 +779,7 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "MissingFrameSourceProviderDoesNotPrepareFrame", TestMissingFrameSourceProviderDoesNotPrepareFrame },
 		{ "PendingMacFrameIsPreparedOnlyOnce", TestPendingMacFrameIsPreparedOnlyOnce },
 		{ "MacBackendCreateResizeExportAndRelease", TestMacBackendCreateResizeExportAndRelease },
 		{ "MacBackendFailurePropagationAndOrdering", TestMacBackendFailurePropagationAndOrdering },
@@ -761,10 +789,10 @@ int main()
 		{ "MacProducerCpuUploadWritesIOSurface", TestMacProducerCpuUploadWritesIOSurface },
 		{ "ConcreteMacLoopbackProviderCopiesRendererOwnedMetalTextureIntoIOSurface", TestConcreteMacLoopbackProviderCopiesRendererOwnedMetalTextureIntoIOSurface },
 		{ "MacExportCarriesCrossApiSyncMetadataFromRendererSource", TestMacExportCarriesCrossApiSyncMetadataFromRendererSource },
-		{ "ConcreteMacLoopbackProviderFallsBackWhenRendererSourceExtentsAreStale", TestConcreteMacLoopbackProviderFallsBackWhenRendererSourceExtentsAreStale },
+		{ "ConcreteMacLoopbackProviderDefersStaleRendererSource", TestConcreteMacLoopbackProviderDefersStaleRendererSource },
 #endif
 		{ "ConcreteMacLoopbackProviderRecordsRendererOwnedSourceMetadata", TestConcreteMacLoopbackProviderRecordsRendererOwnedSourceMetadata },
-		{ "ConcreteMacLoopbackProviderFallsBackWhenRendererSourceIsUnavailable", TestConcreteMacLoopbackProviderFallsBackWhenRendererSourceIsUnavailable },
+		{ "ConcreteMacLoopbackProviderDefersUnavailableRendererSource", TestConcreteMacLoopbackProviderDefersUnavailableRendererSource },
 		{ "ConcreteMacLoopbackProviderAndPresenterCarryNativeMetadata", TestConcreteMacLoopbackProviderAndPresenterCarryNativeMetadata },
 	};
 

@@ -390,11 +390,13 @@ if(APPLE)
 
     add_executable(RemoteViewportMacTransportTests
         RemoteViewportMacTransportTests.cpp
+        Support/MacViewportTestSource.mm
         ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm
     )
 
     add_executable(RemoteViewportMacNativeBridgeTests
         RemoteViewportMacNativeBridgeTests.mm
+        Support/MacViewportTestSource.mm
         ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm
     )
 endif()
