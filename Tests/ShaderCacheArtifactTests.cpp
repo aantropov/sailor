@@ -63,6 +63,20 @@ namespace
 
 	const FixedShaderSourceStateProvider c_shaderSourceStateProvider;
 
+	class CountingShaderSourceStateProvider final : public IShaderSourceStateProvider
+	{
+	public:
+		bool Capture(const FileId& uid, ShaderSourceState& outState, std::string& outDiagnostic) const override
+		{
+			++captures;
+			const bool captured = c_shaderSourceStateProvider.Capture(uid, outState, outDiagnostic);
+			outState.m_fingerprint += revision;
+			return captured;
+		}
+		mutable uint32_t captures = 0;
+		uint64_t revision = 0;
+	};
+
 	class TempDirectory final
 	{
 	public:
@@ -706,6 +720,127 @@ namespace
 			"unknown engine metadata should not invalidate the shader cache: " + diagnostic);
 	}
 
+	void TestWarmPermutationReadsEachArtifactOnce()
+	{
+		TempDirectory directory;
+		CountingShaderSourceStateProvider source;
+		ShaderCache cache(&source);
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "warm-read fixture must initialize");
+		const FileId uid = MakeFileId("{SHADER-CACHE-SINGLE-READ}");
+		Require(PublishComplete(cache, uid, 0, 200), "warm-read graphics fixture must publish");
+		cache.SaveCache();
+		ShaderCacheTestAccess::TakeArtifactReadCount(cache);
+		source.captures = 0;
+		ShaderCache::PermutationSpirv loaded;
+		Require(cache.TryLoadPermutation(uid, 0, loaded), "both shader variants must load together");
+		Require(source.captures == 1, "a warm permutation must capture its dependencies once");
+		RequireWords(loaded.m_regular.m_vertex, Words(200), "regular vertex");
+		RequireWords(loaded.m_regular.m_fragment, Words(201), "regular fragment");
+		RequireWords(loaded.m_debug.m_vertex, Words(202), "debug vertex");
+		RequireWords(loaded.m_debug.m_fragment, Words(203), "debug fragment");
+		Require(loaded.m_regular.m_compute.IsEmpty() && loaded.m_debug.m_compute.IsEmpty(),
+			"graphics permutations must not invent a compute stage");
+		const auto reads = ShaderCacheTestAccess::TakeArtifactReadCount(cache);
+		Require(reads == 4, "one warm graphics permutation must read four artifacts once, got " + std::to_string(reads));
+
+		const TVector<uint32_t> empty;
+		Require(cache.CacheSpirv_ThreadSafe(uid, 1, empty, empty, Words(210), empty, empty, Words(211)),
+			"warm-read compute fixture must publish");
+		cache.SaveCache();
+		ShaderCacheTestAccess::TakeArtifactReadCount(cache);
+		source.captures = 0;
+		Require(cache.TryLoadPermutation(uid, 1, loaded), "compute permutations must load both variants");
+		Require(source.captures == 1, "a warm compute permutation must capture its dependencies once");
+		RequireWords(loaded.m_regular.m_compute, Words(210), "regular compute");
+		RequireWords(loaded.m_debug.m_compute, Words(211), "debug compute");
+		Require(loaded.m_regular.m_vertex.IsEmpty() && loaded.m_regular.m_fragment.IsEmpty() &&
+			loaded.m_debug.m_vertex.IsEmpty() && loaded.m_debug.m_fragment.IsEmpty(),
+			"a successful compute load must replace preceding graphics output");
+		Require(ShaderCacheTestAccess::TakeArtifactReadCount(cache) == 2,
+			"one warm compute permutation must read its two artifacts once");
+		const auto debugPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 1, ShaderCache::ComputeShaderTag, true);
+		WriteWords(debugPath, Words(999));
+		Require(!cache.TryLoadPermutation(uid, 1, loaded), "corrupt debug bytes must reject the complete permutation");
+		RequireWords(loaded.m_regular.m_compute, Words(210), "failed whole-permutation load regular output");
+		RequireWords(loaded.m_debug.m_compute, Words(211), "failed whole-permutation load debug output");
+		++source.revision;
+		ShaderCacheTestAccess::SetArtifactReadIoFailure(cache, true);
+		Require(cache.IsExpired(uid, 0) && ShaderCacheTestAccess::IsQuarantined(cache),
+			"a stale source must not hide an artifact I/O failure from expiry cleanup");
+	}
+
+	void TestReloadKeepsHealthyShaderPermutations()
+	{
+		for (int damage = 0; damage < 3; ++damage)
+		{
+			TempDirectory directory;
+			ShaderCache cache(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "partial recovery fixture must initialize");
+			const auto uid = MakeFileId("{SHADER-CACHE-PARTIAL-RECOVERY}");
+			const auto other = MakeFileId("{SHADER-CACHE-HEALTHY-NEIGHBOR}");
+			Require(PublishComplete(cache, uid, 0, 220) && PublishComplete(cache, uid, 1, 230) &&
+				PublishComplete(cache, other, 0, 240), "three independent permutations must publish");
+			cache.SaveCache();
+			const auto badPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0, ShaderCache::FragmentShaderTag, true);
+			const auto healthyPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 1, ShaderCache::VertexShaderTag, false);
+			const auto healthyGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 1);
+			const auto healthyBytes = ReadText(healthyPath);
+			if (damage == 0) std::filesystem::remove(badPath);
+			else if (damage == 1) std::filesystem::resize_file(badPath, 7);
+			else WriteWords(badPath, Words(999));
+			cache.LoadCache();
+			Require(cache.GetLastLoadResult().IsLoaded() && !cache.IsDirty(),
+				"one damaged artifact must not reset an otherwise parseable shader manifest");
+			ShaderCache::PermutationSpirv loaded;
+			Require(!cache.TryLoadPermutation(uid, 0, loaded), "only the damaged permutation must be removed");
+			Require(cache.TryLoadPermutation(uid, 1, loaded), "a healthy sibling permutation must survive reload");
+			RequireWords(loaded.m_regular.m_vertex, Words(230), "healthy sibling");
+			Require(cache.TryLoadPermutation(other, 0, loaded), "an unrelated healthy shader must survive reload");
+			RequireWords(loaded.m_regular.m_vertex, Words(240), "healthy shader");
+			Require(ShaderCacheTestAccess::GetGeneration(cache, uid, 1) == healthyGeneration && ReadText(healthyPath) == healthyBytes,
+				"recovery must retain existing healthy generations and artifact bytes");
+			cache.LoadCache();
+			Require(cache.GetLastLoadResult().IsLoaded() && cache.TryLoadPermutation(uid, 1, loaded),
+				"the pruned manifest must remain readable after another reload");
+		}
+	}
+
+	void TestPartialRecoveryRetriesFailedManifestCommit()
+	{
+		TempDirectory directory;
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "recovery commit fixture must initialize");
+		const auto bad = MakeFileId("{SHADER-CACHE-RECOVERY-BAD}");
+		const auto good = MakeFileId("{SHADER-CACHE-RECOVERY-GOOD}");
+		Require(PublishComplete(cache, bad, 0, 250) && PublishComplete(cache, good, 0, 260),
+			"recovery commit fixture must publish");
+		cache.SaveCache();
+		const auto manifest = ShaderCacheTestAccess::GetCachePath(cache);
+		const auto envelope = ReadText(manifest);
+		const auto badPath = ShaderCacheTestAccess::GetArtifactPath(cache, bad, 0, ShaderCache::VertexShaderTag, false);
+		const auto healthyPath = ShaderCacheTestAccess::GetArtifactPath(cache, good, 0, ShaderCache::VertexShaderTag, false);
+		const auto healthyBytes = ReadText(healthyPath);
+		WriteWords(badPath, Words(999));
+		const auto corruptBytes = ReadText(badPath);
+		const auto fileCount = CountRegularFiles(directory.Path("Cache"));
+		ShaderCacheTestAccess::FailNextSaveBeforeReplace(cache);
+		cache.LoadCache();
+		Require(cache.GetLastLoadResult().IsLoaded() && cache.IsDirty() && !cache.Contains(bad),
+			"failed recovery commit must leave a usable, retryable filtered cache");
+		ShaderCache::PermutationSpirv loaded;
+		Require(cache.TryLoadPermutation(good, 0, loaded), "healthy bytecode must remain usable after recovery commit failure");
+		RequireWords(loaded.m_regular.m_vertex, Words(260), "healthy bytecode after failed recovery commit");
+		Require(ReadText(manifest) == envelope && ReadText(badPath) == corruptBytes &&
+			ReadText(healthyPath) == healthyBytes && CountRegularFiles(directory.Path("Cache")) == fileCount,
+			"failed recovery commit must not collect or rewrite the old durable files");
+		cache.SaveCache();
+		Require(!cache.IsDirty() && !std::filesystem::exists(badPath) && ReadText(healthyPath) == healthyBytes,
+			"retry must commit the pruned manifest before collecting broken generations");
+		cache.LoadCache();
+		Require(!cache.Contains(bad) && cache.TryLoadPermutation(good, 0, loaded),
+			"a committed recovery must survive reload without recompiling healthy shaders");
+	}
+
 	void TestFailedGenerationPreservesDurableGeneration()
 	{
 		TempDirectory directory;
@@ -968,6 +1103,7 @@ namespace
 
 		Require(PublishComplete(cache, durableUid, 0, 60), "the durable quarantine fixture should publish");
 		cache.SaveCache(true);
+		const auto debugPath = ShaderCacheTestAccess::GetArtifactPath(cache, durableUid, 0, ShaderCache::FragmentShaderTag, true);
 		const auto cachePath = ShaderCacheTestAccess::GetCachePath(cache);
 		const auto backupPath = cacheRoot / "ShaderCache.backup.yaml";
 		std::filesystem::rename(cachePath, backupPath);
@@ -1042,6 +1178,17 @@ namespace
 
 		std::filesystem::remove(cachePath);
 		std::filesystem::rename(backupPath, cachePath);
+		WriteWords(debugPath, Words(999));
+		const auto badBytes = ReadText(debugPath);
+		cache.LoadCache();
+		Require(ShaderCacheTestAccess::IsQuarantined(cache) && cache.Contains(sessionUid) &&
+			cache.GetLastLoadResult().m_status == Workspace::EWorkspaceCacheLoadStatus::Corrupt,
+			"partial artifact recovery must not escape an existing I/O quarantine");
+		cache.SaveCache(true);
+		cache.ClearExpired();
+		Require(ReadText(cachePath) == durableEnvelope && ReadText(debugPath) == badBytes,
+			"a valid manifest with bad artifacts must stay read-only during quarantine");
+		WriteWords(debugPath, Words(63));
 		cache.LoadCache();
 		Require(cache.GetLastLoadResult().IsLoaded(),
 			"a later full successful reload should leave I/O quarantine");
@@ -1993,6 +2140,9 @@ int main()
 		TestOwnedArtifactContainment();
 		TestDebugArtifactsAreRequired();
 		TestPayloadIgnoresUnknownFields();
+		TestWarmPermutationReadsEachArtifactOnce();
+		TestReloadKeepsHealthyShaderPermutations();
+		TestPartialRecoveryRetriesFailedManifestCommit();
 		TestFailedGenerationPreservesDurableGeneration();
 		TestRemoveCommitsBeforeGarbageCollection();
 		TestExplicitInvalidationSurvivesSameTimestampReload();

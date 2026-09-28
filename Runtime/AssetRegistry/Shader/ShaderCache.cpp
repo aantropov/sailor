@@ -160,12 +160,8 @@ bool ShaderCache::CacheCompleteSpirvLocked(const FileId& uid,
 		candidate.m_permutation = permutation;
 		candidate.m_timestamp = sourceTimestamp;
 		candidate.m_sourceFingerprint = sourceFingerprint;
-		candidate.m_vertex = vertexSpirv;
-		candidate.m_fragment = fragmentSpirv;
-		candidate.m_compute = computeSpirv;
-		candidate.m_debugVertex = debugVertexSpirv;
-		candidate.m_debugFragment = debugFragmentSpirv;
-		candidate.m_debugCompute = debugComputeSpirv;
+		candidate.m_spirv.m_regular = { vertexSpirv, fragmentSpirv, computeSpirv };
+		candidate.m_spirv.m_debug = { debugVertexSpirv, debugFragmentSpirv, debugComputeSpirv };
 		if (QuarantinedEntry* existing = FindQuarantinedEntryLocked(uid, permutation))
 		{
 			*existing = std::move(candidate);
@@ -326,6 +322,13 @@ bool ShaderCache::CacheSpirvForSourceFingerprint_ThreadSafe(const FileId& uid,
 	return true;
 }
 
+bool ShaderCache::TryLoadPermutation(const FileId& uid, uint32_t permutation, PermutationSpirv& outSpirv)
+{
+	SAILOR_PROFILE_FUNCTION();
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	return TryLoadPermutationLocked(uid, permutation, outSpirv);
+}
+
 bool ShaderCache::GetSpirvCode(const FileId& uid,
 	uint32_t permutation,
 	TVector<uint32_t>& vertexSpirv,
@@ -333,75 +336,15 @@ bool ShaderCache::GetSpirvCode(const FileId& uid,
 	TVector<uint32_t>& computeSpirv,
 	bool bIsDebug)
 {
-	SAILOR_PROFILE_FUNCTION();
-
-	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	if (IsExpiredLocked(uid, permutation))
+	PermutationSpirv spirv;
+	if (!TryLoadPermutation(uid, permutation, spirv))
 	{
 		return false;
 	}
-	if (const QuarantinedEntry* quarantined = FindQuarantinedEntryLocked(uid, permutation))
-	{
-		const TVector<uint32_t>& candidateVertex = bIsDebug ? quarantined->m_debugVertex : quarantined->m_vertex;
-		const TVector<uint32_t>& candidateFragment = bIsDebug ? quarantined->m_debugFragment : quarantined->m_fragment;
-		const TVector<uint32_t>& candidateCompute = bIsDebug ? quarantined->m_debugCompute : quarantined->m_compute;
-		vertexSpirv = candidateVertex;
-		fragmentSpirv = candidateFragment;
-		computeSpirv = candidateCompute;
-		return true;
-	}
-
-	auto& entries = m_cache.m_entries[uid];
-	auto entry = std::find_if(std::cbegin(entries),
-		std::cend(entries),
-		[permutation](const ShaderCacheData::Entry& candidate) { return candidate.m_permutation == permutation; });
-	if (entry == std::cend(entries))
-	{
-		return false;
-	}
-
-	const ArtifactSet& artifacts = bIsDebug ? entry->m_debug : entry->m_regular;
-	if (!IsValidArtifactSet(artifacts, false))
-	{
-		return false;
-	}
-
-	TVector<uint32_t> candidateVertex;
-	TVector<uint32_t> candidateFragment;
-	TVector<uint32_t> candidateCompute;
-	std::string diagnostic;
-	bool ignoredIoFailure = false;
-	const std::filesystem::path ownedDirectory = bIsDebug ? GetCompiledDebugFolderLocked() : GetCompiledFolderLocked();
-	if (!ReadOwnedSpirvArtifactLocked(ownedDirectory,
-			GetArtifactPathLocked(*entry, VertexShaderTag, bIsDebug),
-			artifacts.m_vertex,
-			candidateVertex,
-			diagnostic,
-			ignoredIoFailure) ||
-		!ReadOwnedSpirvArtifactLocked(ownedDirectory,
-			GetArtifactPathLocked(*entry, FragmentShaderTag, bIsDebug),
-			artifacts.m_fragment,
-			candidateFragment,
-			diagnostic,
-			ignoredIoFailure) ||
-		!ReadOwnedSpirvArtifactLocked(ownedDirectory,
-			GetArtifactPathLocked(*entry, ComputeShaderTag, bIsDebug),
-			artifacts.m_compute,
-			candidateCompute,
-			diagnostic,
-			ignoredIoFailure))
-	{
-		if (ignoredIoFailure)
-		{
-			EnterStorageQuarantineLocked("Runtime shader artifact read failed for fileId '" + uid.ToString() +
-										 "', permutation " + std::to_string(permutation) + ": " + diagnostic);
-		}
-		return false;
-	}
-
-	vertexSpirv = std::move(candidateVertex);
-	fragmentSpirv = std::move(candidateFragment);
-	computeSpirv = std::move(candidateCompute);
+	auto& selected = bIsDebug ? spirv.m_debug : spirv.m_regular;
+	vertexSpirv = std::move(selected.m_vertex);
+	fragmentSpirv = std::move(selected.m_fragment);
+	computeSpirv = std::move(selected.m_compute);
 	return true;
 }
 
@@ -420,16 +363,27 @@ bool ShaderCache::IsExpired(const FileId& uid, uint32_t permutation)
 
 bool ShaderCache::IsExpiredLocked(const FileId& uid, uint32_t permutation)
 {
+	PermutationSpirv ignored;
+	return !TryLoadPermutationLocked(uid, permutation, ignored);
+}
+
+bool ShaderCache::TryLoadPermutationLocked(const FileId& uid, uint32_t permutation, PermutationSpirv& outSpirv)
+{
 	if (const QuarantinedEntry* quarantined = FindQuarantinedEntryLocked(uid, permutation))
 	{
 		ShaderSourceState sourceState;
 		std::string diagnostic;
-		return !CaptureSourceState(uid, sourceState, diagnostic) || quarantined->m_sourceFingerprint == 0 ||
-			   quarantined->m_sourceFingerprint != sourceState.m_fingerprint;
+		if (!CaptureSourceState(uid, sourceState, diagnostic) ||
+			quarantined->m_sourceFingerprint != sourceState.m_fingerprint)
+		{
+			return false;
+		}
+		outSpirv = quarantined->m_spirv;
+		return true;
 	}
 	if (!m_cache.m_entries.ContainsKey(uid))
 	{
-		return true;
+		return false;
 	}
 
 	const auto& entries = m_cache.m_entries[uid];
@@ -437,30 +391,36 @@ bool ShaderCache::IsExpiredLocked(const FileId& uid, uint32_t permutation)
 		[permutation](const ShaderCacheData::Entry& entry) { return entry.m_permutation == permutation; });
 	if (index == static_cast<size_t>(-1))
 	{
-		return true;
+		return false;
 	}
 
 	const ShaderCacheData::Entry& entry = entries[index];
 	if (!IsValidArtifactSet(entry.m_regular, false) || !IsValidArtifactSet(entry.m_debug, false) ||
 		!HasMatchingArtifactTopology(entry.m_regular, entry.m_debug) || !IsValidGeneration(entry.m_generation))
 	{
-		return true;
+		return false;
 	}
 
 	std::string diagnostic;
+	PermutationSpirv loaded;
 	bool bArtifactIoFailure = false;
-	if (!ValidateArtifactSetLocked(entry, entry.m_regular, false, diagnostic, bArtifactIoFailure) ||
-		!ValidateArtifactSetLocked(entry, entry.m_debug, true, diagnostic, bArtifactIoFailure))
+	if (!ReadArtifactSetLocked(entry, entry.m_regular, false, loaded.m_regular, diagnostic, bArtifactIoFailure) ||
+		!ReadArtifactSetLocked(entry, entry.m_debug, true, loaded.m_debug, diagnostic, bArtifactIoFailure))
 	{
 		if (bArtifactIoFailure)
 		{
 			EnterStorageQuarantineLocked("Runtime shader artifact validation failed for fileId '" + uid.ToString() +
 										 "', permutation " + std::to_string(permutation) + ": " + diagnostic);
 		}
-		return true;
+		return false;
 	}
 
 	ShaderSourceState sourceState;
-	return !CaptureSourceState(uid, sourceState, diagnostic) || entry.m_sourceFingerprint == 0 ||
-		   entry.m_sourceFingerprint != sourceState.m_fingerprint;
+	if (!CaptureSourceState(uid, sourceState, diagnostic) ||
+		entry.m_sourceFingerprint != sourceState.m_fingerprint)
+	{
+		return false;
+	}
+	outSpirv = std::move(loaded);
+	return true;
 }

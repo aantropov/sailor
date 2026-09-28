@@ -97,6 +97,18 @@ namespace Sailor
 			TVector<uint32_t>& computeSpirv,
 			bool bIsDebug = false);
 
+		struct SpirvSet
+		{
+			TVector<uint32_t> m_vertex, m_fragment, m_compute;
+		};
+
+		struct PermutationSpirv
+		{
+			SpirvSet m_regular, m_debug;
+		};
+
+		SAILOR_API bool TryLoadPermutation(const FileId& uid, uint32_t permutation, PermutationSpirv& outSpirv);
+
 		SAILOR_API void Remove(const FileId& uid);
 		SAILOR_API void Invalidate(const FileId& uid);
 
@@ -212,12 +224,7 @@ namespace Sailor
 			std::time_t m_timestamp{};
 			uint64_t m_sourceFingerprint = 0;
 			uint32_t m_permutation = 0;
-			TVector<uint32_t> m_vertex;
-			TVector<uint32_t> m_fragment;
-			TVector<uint32_t> m_compute;
-			TVector<uint32_t> m_debugVertex;
-			TVector<uint32_t> m_debugFragment;
-			TVector<uint32_t> m_debugCompute;
+			PermutationSpirv m_spirv;
 		};
 
 		static std::string SerializeShaderCachePayload(const ShaderCacheData& cache);
@@ -278,14 +285,16 @@ namespace Sailor
 		void EnterStorageQuarantineLocked(std::string diagnostic);
 		bool ClearOwnedCacheFilesLocked(std::string& outDiagnostic);
 		bool EnsureOwnedDirectoriesLocked(std::string& outDiagnostic);
-		bool ValidateAllArtifactsLocked(
-			const ShaderCacheData& candidate,
+		bool PruneInvalidArtifactsLocked(
+			ShaderCacheData& candidate,
+			bool& outChanged,
 			std::string& outDiagnostic,
 			bool& outIoFailure) const;
-		bool ValidateArtifactSetLocked(
+		bool ReadArtifactSetLocked(
 			const ShaderCacheData::Entry& entry,
 			const ArtifactSet& artifacts,
 			bool bIsDebug,
+			SpirvSet& outSpirv,
 			std::string& outDiagnostic,
 			bool& outIoFailure) const;
 		bool ReadOwnedSpirvArtifactLocked(
@@ -352,6 +361,7 @@ namespace Sailor
 			Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
 			std::string& outDiagnostic);
 		bool IsExpiredLocked(const FileId& uid, uint32_t permutation);
+		bool TryLoadPermutationLocked(const FileId& uid, uint32_t permutation, PermutationSpirv& outSpirv);
 
 		mutable std::mutex m_cacheMutex;
 		ShaderCacheData m_cache;
@@ -371,6 +381,7 @@ namespace Sailor
 			Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None;
 		[[maybe_unused]] bool m_bArtifactReadIoFailureForTests = false;
 		[[maybe_unused]] bool m_bArtifactSweepFailureForTests = false;
+		[[maybe_unused]] mutable uint64_t m_artifactReadsForTests = 0;
 
 		friend class ShaderCompiler;
 
@@ -419,6 +430,7 @@ namespace Sailor
 		SAILOR_API static void FailNextSaveBeforeReplace(ShaderCache& cache);
 		SAILOR_API static void SetArtifactReadIoFailure(ShaderCache& cache, bool bEnabled);
 		SAILOR_API static void FailNextArtifactSweep(ShaderCache& cache);
+		SAILOR_API static uint64_t TakeArtifactReadCount(ShaderCache& cache);
 		SAILOR_API static std::string PayloadWithUnknownFields(const ShaderCache& cache);
 		SAILOR_API static std::string PayloadWithMissingDebug(const ShaderCache& cache);
 		SAILOR_API static std::string PayloadWithMismatchedDebugTopology(const ShaderCache& cache);

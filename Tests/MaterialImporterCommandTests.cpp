@@ -164,7 +164,7 @@ namespace
 		shader["glslCommon"] = "#version 450\n";
 		if (compute)
 		{
-			shader["glslCompute"] = "layout(local_size_x = 1) in; void main() {}";
+			shader["glslCompute"] = valid ? "layout(local_size_x = 1) in; void main() {}" : "this is not valid GLSL";
 		}
 		else
 		{
@@ -198,6 +198,69 @@ void main() {
 		output.close();
 		Require(static_cast<bool>(output), "shader fixture must be written");
 		return App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+	}
+
+	void TestWarmShaderPermutation(const std::filesystem::path& workspace)
+	{
+		auto* compiler = App::GetSubmodule<ShaderCompiler>();
+		auto& cache = ShaderCompilerTestAccess::GetShaderCache(*compiler);
+		for (bool compute : { false, true })
+		{
+			const auto uid = WriteShader(workspace, compute ? "WarmCompute" : "WarmGraphics", true, compute);
+			ShaderSetPtr shader;
+			Require(compiler->LoadShader_Immediate(uid, shader) && shader && shader->IsReady(),
+				"warm shader fixture must compile and create its regular/debug RHI stages");
+			Drain();
+			auto update = [&]()
+			{
+				bool success = false;
+				auto task = Tasks::CreateTask("Rebuild cached shader RHI", [&]()
+					{
+						success = ShaderCompilerTestAccess::UpdateRHIResource(*compiler, shader, 0);
+					}, EThreadType::Render);
+				task->Run();
+				task->Wait();
+				Drain();
+				return success;
+			};
+			const uint64_t expectedReads = compute ? 2 : 4;
+			const auto generation = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
+			ShaderCacheTestAccess::TakeArtifactReadCount(cache);
+			Require(update() && shader->IsReady(), "RHI update must publish a complete shader set");
+			const auto reads = ShaderCacheTestAccess::TakeArtifactReadCount(cache);
+			Require(reads == expectedReads, "one real RHI update must read each regular/debug artifact exactly once");
+			Require(ShaderCacheTestAccess::GetGeneration(cache, uid, 0) == generation,
+				"a warm RHI update must not recompile the shader");
+			const auto damaged = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0,
+				compute ? ShaderCache::ComputeShaderTag : ShaderCache::FragmentShaderTag, true);
+			std::filesystem::resize_file(damaged, 7);
+			Require(update() && shader->IsReady(), "a broken artifact must recompile to a complete RHI set");
+			const auto repairedGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
+			Require(repairedGeneration != generation, "a broken debug artifact must rebuild the complete permutation");
+			ShaderCacheTestAccess::TakeArtifactReadCount(cache);
+			Require(update() && shader->IsReady(), "the repaired shader must remain ready on a warm update");
+			Require(ShaderCacheTestAccess::TakeArtifactReadCount(cache) == expectedReads &&
+				ShaderCacheTestAccess::GetGeneration(cache, uid, 0) == repairedGeneration,
+				"the repaired real shader must return to a one-read cache hit");
+			auto stages = [&]()
+			{
+				return std::array<RHI::RHIShaderPtr, 6>{ shader->GetVertexShaderRHI(), shader->GetFragmentShaderRHI(),
+					shader->GetComputeShaderRHI(), shader->GetDebugVertexShaderRHI(),
+					shader->GetDebugFragmentShaderRHI(), shader->GetDebugComputeShaderRHI() };
+			};
+			const auto previousStages = stages();
+			WriteShader(workspace, compute ? "WarmCompute" : "WarmGraphics", false, compute);
+			Require(!App::UpdateAsset(uid.ToString().c_str()), "an invalid shader edit must report failure");
+			Drain();
+			Require(!update() && shader->IsReady() && stages() == previousStages,
+				"a failed permutation compile must preserve every last-good RHI stage");
+			WriteShader(workspace, compute ? "WarmCompute" : "WarmGraphics", true, compute);
+			Require(App::UpdateAsset(uid.ToString().c_str()), "a repaired shader source must reload");
+			Drain();
+			Require(update() && shader->IsReady(), "RHI updates must recover after a failed source edit");
+			std::cout << "Warm " << (compute ? "compute" : "graphics") << " RHI shader: " << reads
+				<< " artifact reads; complete repair, reuse and last-good preservation passed\n";
+		}
 	}
 
 	class HoldTextureDecode
@@ -644,6 +707,7 @@ namespace Sailor::Tests
 		run("Reload ordering", [&]() { TestOrderedReload(workspace, false); });
 		run("Cold ordering", [&]() { TestOrderedReload(workspace, true); });
 		run("Shader failures", [&]() { TestShaderFailures(workspace); });
+		run("Warm shader permutation", [&]() { TestWarmShaderPermutation(workspace); });
 		run("Layout and cold parity", [&]() { TestLayoutAndColdParity(workspace); });
 		run("Live shader edit", [&]() { TestLiveShaderEdit(workspace); });
 		run("Private instance", [&]() { TestPrivateInstance(workspace); });

@@ -1338,23 +1338,28 @@ bool ShaderCompiler::GetSpirvCode(const FileId& assetFileId, const TVector<std::
 
 bool ShaderCompiler::GetSpirvCode(const FileId& assetFileId, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug)
 {
-	SAILOR_PROFILE_FUNCTION();
-
-	if (ShaderAssetInfoPtr assetInfo = dynamic_cast<ShaderAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(assetFileId)))
+	ShaderCache::PermutationSpirv spirv;
+	if (!GetSpirvPermutation(assetFileId, permutation, spirv))
 	{
-		if (auto pShader = LoadShaderAsset(assetInfo).Lock())
-		{
-			bool bCompiledSuccesfully = true;
-			if (m_shaderCache.IsExpired(assetFileId, permutation))
-			{
-				bCompiledSuccesfully = ForceCompilePermutation(assetInfo, permutation);
-			}
-
-			return m_shaderCache.GetSpirvCode(assetFileId, permutation, outVertexByteCode, outFragmentByteCode, outComputeByteCode, bIsDebug) && bCompiledSuccesfully;
-		}
+		return false;
 	}
+	auto& selected = bIsDebug ? spirv.m_debug : spirv.m_regular;
+	outVertexByteCode = std::move(selected.m_vertex);
+	outFragmentByteCode = std::move(selected.m_fragment);
+	outComputeByteCode = std::move(selected.m_compute);
+	return true;
+}
 
-	return false;
+bool ShaderCompiler::GetSpirvPermutation(const FileId& assetFileId, uint32_t permutation, ShaderCache::PermutationSpirv& outSpirv)
+{
+	SAILOR_PROFILE_FUNCTION();
+	if (m_shaderCache.TryLoadPermutation(assetFileId, permutation, outSpirv))
+	{
+		return true;
+	}
+	auto assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(assetFileId);
+	return assetInfo && ForceCompilePermutation(assetInfo, permutation) &&
+		m_shaderCache.TryLoadPermutation(assetFileId, permutation, outSpirv);
 }
 
 Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr& outShader, const TVector<string>& defines)
@@ -1462,21 +1467,10 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 	}
 	const std::string assetFilename = assetInfo->GetAssetFilepath();
 
-	RHI::ShaderByteCode debugVertexSpirv;
-	RHI::ShaderByteCode debugFragmentSpirv;
-	RHI::ShaderByteCode debugComputeFragmentSpirv;
-	if (!GetSpirvCode(pShader->GetFileId(), permutation, debugVertexSpirv, debugFragmentSpirv, debugComputeFragmentSpirv, true))
+	ShaderCache::PermutationSpirv spirv;
+	if (!GetSpirvPermutation(pShader->GetFileId(), permutation, spirv))
 	{
-		SAILOR_LOG_ERROR("UpdateRHIResource failed to get DEBUG spirv for shader %s permutation %u", pShader->GetFileId().ToString().c_str(), permutation);
-		return false;
-	}
-
-	RHI::ShaderByteCode vertexByteCode;
-	RHI::ShaderByteCode fragmentByteCode;
-	RHI::ShaderByteCode computeByteCode;
-	if (!GetSpirvCode(pShader->GetFileId(), permutation, vertexByteCode, fragmentByteCode, computeByteCode, false))
-	{
-		SAILOR_LOG_ERROR("UpdateRHIResource failed to get RELEASE spirv for shader %s permutation %u", pShader->GetFileId().ToString().c_str(), permutation);
+		SAILOR_LOG_ERROR("UpdateRHIResource failed to load SPIR-V for shader %s permutation %u", pShader->GetFileId().ToString().c_str(), permutation);
 		return false;
 	}
 
@@ -1511,32 +1505,32 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 
 	if (!createShader(
 		RHI::EShaderStage::Vertex,
-		debugVertexSpirv,
+		spirv.m_debug.m_vertex,
 		stagedDebugVertexShader,
 		"Debug Vertex") ||
 		!createShader(
 			RHI::EShaderStage::Fragment,
-			debugFragmentSpirv,
+			spirv.m_debug.m_fragment,
 			stagedDebugFragmentShader,
 			"Debug Fragment") ||
 		!createShader(
 			RHI::EShaderStage::Compute,
-			debugComputeFragmentSpirv,
+			spirv.m_debug.m_compute,
 			stagedDebugComputeShader,
 			"Debug Compute") ||
 		!createShader(
 			RHI::EShaderStage::Vertex,
-			vertexByteCode,
+			spirv.m_regular.m_vertex,
 			stagedVertexShader,
 			"Vertex") ||
 		!createShader(
 			RHI::EShaderStage::Fragment,
-			fragmentByteCode,
+			spirv.m_regular.m_fragment,
 			stagedFragmentShader,
 			"Fragment") ||
 		!createShader(
 			RHI::EShaderStage::Compute,
-			computeByteCode,
+			spirv.m_regular.m_compute,
 			stagedComputeShader,
 			"Compute"))
 	{
@@ -1608,6 +1602,16 @@ void ShaderCompiler::CollectGarbage()
 }
 
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+ShaderCache& ShaderCompilerTestAccess::GetShaderCache(ShaderCompiler& compiler)
+{
+	return compiler.m_shaderCache;
+}
+
+bool ShaderCompilerTestAccess::UpdateRHIResource(ShaderCompiler& compiler, ShaderSetPtr shader, uint32_t permutation)
+{
+	return compiler.UpdateRHIResource(shader, permutation);
+}
+
 bool ShaderCompilerTestAccess::AggregateCompileResults(const bool* results, size_t count)
 {
 	std::atomic_bool aggregate = true;

@@ -158,6 +158,7 @@ namespace Sailor
 
 		// Compile related functions
 		SAILOR_API bool ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint32_t permutation);
+		bool GetSpirvPermutation(const FileId& assetFileId, uint32_t permutation, ShaderCache::PermutationSpirv& outSpirv);
 		SAILOR_API bool GetSpirvCode(const FileId& assetFileId, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug);
 		SAILOR_API bool GetSpirvCode(const FileId& assetFileId, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug);
 		SAILOR_API static bool CompileGlslToSpirv(const std::string& filename, const std::string& source, RHI::EShaderStage shaderKind, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
@@ -281,6 +282,8 @@ namespace Sailor
 	class ShaderCompilerTestAccess final
 	{
 	public:
+		SAILOR_API static ShaderCache& GetShaderCache(ShaderCompiler& compiler);
+		SAILOR_API static bool UpdateRHIResource(ShaderCompiler& compiler, ShaderSetPtr shader, uint32_t permutation);
 		SAILOR_API static bool AggregateCompileResults(const bool* results, size_t count);
 		SAILOR_API static bool SaveCacheAndCombineResult(
 			ShaderCache& cache,

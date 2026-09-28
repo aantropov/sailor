@@ -156,25 +156,36 @@ void ShaderCache::LoadCache()
 
 	if (loadResult.IsLoaded())
 	{
-		ShaderCacheData candidate;
+		ShaderCacheData committed;
 		std::string diagnostic;
-		bool bValidArtifacts = false;
 		bool bArtifactIoFailure = false;
-		if (TryDeserializeShaderCachePayload(loadResult.m_payload, candidate, diagnostic))
+		if (TryDeserializeShaderCachePayload(loadResult.m_payload, committed, diagnostic))
 		{
-			bValidArtifacts = ValidateAllArtifactsLocked(candidate, diagnostic, bArtifactIoFailure);
-		}
-		if (bValidArtifacts)
-		{
-			m_cache = std::move(candidate);
-			m_committedCache = m_cache;
-			m_bIsDirty = false;
-			m_bPreserveStorageAfterLoadFailure = false;
-			m_bHasCommittedSnapshot = true;
-			m_quarantinedEntries.Clear();
-			m_lastSaveDiagnostic.clear();
-			m_lastLoadResult = std::move(loadResult);
-			return;
+			ShaderCacheData candidate = committed;
+			bool bRemovedInvalidArtifacts = false;
+			if (PruneInvalidArtifactsLocked(candidate, bRemovedInvalidArtifacts, diagnostic, bArtifactIoFailure) &&
+				(!bRemovedInvalidArtifacts || !m_bPreserveStorageAfterLoadFailure))
+			{
+				m_cache = std::move(candidate);
+				m_committedCache = std::move(committed);
+				m_bIsDirty = bRemovedInvalidArtifacts;
+				m_bPreserveStorageAfterLoadFailure = false;
+				m_bHasCommittedSnapshot = true;
+				m_quarantinedEntries.Clear();
+				m_lastSaveDiagnostic.clear();
+				m_lastLoadResult = std::move(loadResult);
+				if (bRemovedInvalidArtifacts)
+				{
+					m_lastLoadResult.m_diagnostic = std::move(diagnostic);
+					// Commit the pruned manifest before collecting any old generation files.
+					if (!SaveCacheLocked(false))
+					{
+						AppendDiagnostic(m_lastLoadResult.m_diagnostic, m_lastSaveDiagnostic);
+					}
+					SAILOR_LOG("Shader cache retained healthy permutations: %s", m_lastLoadResult.m_diagnostic.c_str());
+				}
+				return;
+			}
 		}
 
 		loadResult.m_status = bArtifactIoFailure ? Workspace::EWorkspaceCacheLoadStatus::IoFailure
@@ -380,18 +391,18 @@ bool ShaderCache::ClearOwnedCacheFilesLocked(std::string& outDiagnostic)
 	return bSuccess;
 }
 
-bool ShaderCache::ValidateArtifactSetLocked(const ShaderCacheData::Entry& entry,
+bool ShaderCache::ReadArtifactSetLocked(const ShaderCacheData::Entry& entry,
 	const ArtifactSet& artifacts,
 	bool bIsDebug,
+	SpirvSet& outSpirv,
 	std::string& outDiagnostic,
 	bool& outIoFailure) const
 {
-	TVector<uint32_t> ignored;
 	const std::filesystem::path ownedDirectory = bIsDebug ? GetCompiledDebugFolderLocked() : GetCompiledFolderLocked();
 	if (!ReadOwnedSpirvArtifactLocked(ownedDirectory,
 			GetArtifactPathLocked(entry, VertexShaderTag, bIsDebug),
 			artifacts.m_vertex,
-			ignored,
+			outSpirv.m_vertex,
 			outDiagnostic,
 			outIoFailure))
 	{
@@ -400,7 +411,7 @@ bool ShaderCache::ValidateArtifactSetLocked(const ShaderCacheData::Entry& entry,
 	if (!ReadOwnedSpirvArtifactLocked(ownedDirectory,
 			GetArtifactPathLocked(entry, FragmentShaderTag, bIsDebug),
 			artifacts.m_fragment,
-			ignored,
+			outSpirv.m_fragment,
 			outDiagnostic,
 			outIoFailure))
 	{
@@ -409,7 +420,7 @@ bool ShaderCache::ValidateArtifactSetLocked(const ShaderCacheData::Entry& entry,
 	return ReadOwnedSpirvArtifactLocked(ownedDirectory,
 		GetArtifactPathLocked(entry, ComputeShaderTag, bIsDebug),
 		artifacts.m_compute,
-		ignored,
+		outSpirv.m_compute,
 		outDiagnostic,
 		outIoFailure);
 }
@@ -436,28 +447,55 @@ bool ShaderCache::ReadOwnedSpirvArtifactLocked(const std::filesystem::path& owne
 	{
 		return false;
 	}
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+	if (metadata.IsPresent())
+	{
+		++m_artifactReadsForTests;
+	}
+#endif
 	return ReadSpirvArtifactInternal(artifact, metadata, outSpirv, outDiagnostic, outIoFailure);
 }
 
-bool ShaderCache::ValidateAllArtifactsLocked(const ShaderCacheData& candidate,
+bool ShaderCache::PruneInvalidArtifactsLocked(ShaderCacheData& candidate,
+	bool& outChanged,
 	std::string& outDiagnostic,
 	bool& outIoFailure) const
 {
+	outChanged = false;
+	outDiagnostic.clear();
 	outIoFailure = false;
+	TVector<FileId> emptyShaders;
 	for (const auto& fileEntries : candidate.m_entries)
 	{
-		for (const ShaderCacheData::Entry& entry : *fileEntries.m_second)
+		auto& entries = *fileEntries.m_second;
+		for (size_t index = entries.Num(); index > 0; --index)
 		{
-			if (!ValidateArtifactSetLocked(entry, entry.m_regular, false, outDiagnostic, outIoFailure) ||
-				!ValidateArtifactSetLocked(entry, entry.m_debug, true, outDiagnostic, outIoFailure))
+			const auto& entry = entries[index - 1];
+			SpirvSet ignored;
+			std::string diagnostic;
+			if (ReadArtifactSetLocked(entry, entry.m_regular, false, ignored, diagnostic, outIoFailure) &&
+				ReadArtifactSetLocked(entry, entry.m_debug, true, ignored, diagnostic, outIoFailure))
 			{
-				outDiagnostic = "Shader cache artifact validation failed for fileId '" + entry.m_fileId.ToString() +
-								"', permutation " + std::to_string(entry.m_permutation) + ": " + outDiagnostic;
+				continue;
+			}
+			AppendDiagnostic(outDiagnostic, "Invalid shader artifacts for fileId '" + entry.m_fileId.ToString() +
+				"', permutation " + std::to_string(entry.m_permutation) + ": " + diagnostic);
+			if (outIoFailure)
+			{
 				return false;
 			}
+			entries.RemoveAt(index - 1);
+			outChanged = true;
+		}
+		if (entries.IsEmpty())
+		{
+			emptyShaders.Add(fileEntries.m_first);
 		}
 	}
-	outDiagnostic.clear();
+	for (const auto& uid : emptyShaders)
+	{
+		candidate.m_entries.Remove(uid);
+	}
 	return true;
 }
 

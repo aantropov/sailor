@@ -136,6 +136,14 @@ void ShaderCacheTestAccess::FailNextArtifactSweep(ShaderCache& cache)
 	cache.m_bArtifactSweepFailureForTests = true;
 }
 
+uint64_t ShaderCacheTestAccess::TakeArtifactReadCount(ShaderCache& cache)
+{
+	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
+	const auto reads = cache.m_artifactReadsForTests;
+	cache.m_artifactReadsForTests = 0;
+	return reads;
+}
+
 std::string ShaderCacheTestAccess::PayloadWithUnknownFields(const ShaderCache& cache)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
