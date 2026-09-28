@@ -1,9 +1,12 @@
 #if defined(__APPLE__)
 
 #import <QuartzCore/CAMetalLayer.h>
+#import <QuartzCore/CATransaction.h>
 #import <Metal/Metal.h>
 #import <IOSurface/IOSurface.h>
 #import <Foundation/Foundation.h>
+#import <AppKit/AppKit.h>
+#import <objc/runtime.h>
 
 #include <chrono>
 #include <condition_variable>
@@ -16,12 +19,136 @@
 #include <utility>
 
 #include "Submodules/EditorRemote/RemoteViewportMacNativeBridge.h"
+#include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
 #include "Memory/SharedPtr.hpp"
 
+using Sailor::TUniquePtr;
 using namespace Sailor::EditorRemote;
+
+static_assert(!std::is_copy_constructible_v<MacNativeLayerBinding>);
+static_assert(!std::is_copy_assignable_v<MacNativeLayerBinding>);
+static_assert(!std::is_copy_constructible_v<MacNativePresentationState>);
+static_assert(std::is_move_assignable_v<MacNativePresentationState>);
+
+@interface NativeReleaseObserver : NSObject
+{
+@public
+	Sailor::TSharedPtr<std::atomic<uint32_t>> m_releases;
+}
+@end
+
+@implementation NativeReleaseObserver
+- (void)dealloc
+{
+	m_releases->fetch_add(1);
+	[super dealloc];
+}
+@end
+
+// Fault only queue creation; all other device operations retain native behavior.
+@interface QueueFailureDevice : NSProxy
+{
+	id<MTLDevice> m_device;
+}
+- (id)initWithDevice:(id<MTLDevice>)device;
+- (id<MTLCommandQueue>)newCommandQueue;
+@end
+
+@implementation QueueFailureDevice
+- (id)initWithDevice:(id<MTLDevice>)device
+{
+	m_device = [device retain];
+	return self;
+}
+- (id<MTLCommandQueue>)newCommandQueue { return nil; }
+- (NSMethodSignature*)methodSignatureForSelector:(SEL)selector
+{
+	return [(NSObject*)m_device methodSignatureForSelector:selector];
+}
+- (void)forwardInvocation:(NSInvocation*)invocation { [invocation invokeWithTarget:m_device]; }
+- (void)dealloc
+{
+	[m_device release];
+	[super dealloc];
+}
+@end
+
+@interface QueueFailureLayer : CAMetalLayer
+{
+@public
+	id<MTLDevice> m_failureDevice;
+	bool m_failQueue;
+}
+@end
+
+@implementation QueueFailureLayer
+- (id<MTLDevice>)device { return m_failQueue ? m_failureDevice : [super device]; }
+- (void)dealloc
+{
+	[m_failureDevice release];
+	[super dealloc];
+}
+@end
 
 namespace
 {
+	void ObserveNativeRelease(id object, const Sailor::TSharedPtr<std::atomic<uint32_t>>& releases)
+	{
+		static char key;
+		NativeReleaseObserver* observer = [[NativeReleaseObserver alloc] init];
+		observer->m_releases = releases;
+		objc_setAssociatedObject(object, &key, observer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		[observer release];
+	}
+
+	MacNativeHostHandle LayerHandle(CAMetalLayer* layer)
+	{
+		return { MacNativeHostHandleKind::CAMetalLayer, reinterpret_cast<uintptr_t>(layer) };
+	}
+
+	QueueFailureLayer* MakeQueueFailureLayer()
+	{
+		QueueFailureLayer* layer = [QueueFailureLayer layer];
+		id<MTLDevice> device = [MTLCreateSystemDefaultDevice() autorelease];
+		layer->m_failureDevice = (id<MTLDevice>)[[QueueFailureDevice alloc] initWithDevice:device];
+		layer->m_failQueue = true;
+		return layer;
+	}
+
+	struct NativeSurface
+	{
+		IOSurfaceRef m_surface;
+		TransportDescriptor m_transport;
+
+		NativeSurface(uint32_t width, uint32_t height)
+		{
+			NSDictionary* properties = @{
+				(__bridge NSString*)kIOSurfaceWidth: @(width),
+				(__bridge NSString*)kIOSurfaceHeight: @(height),
+				(__bridge NSString*)kIOSurfaceBytesPerElement: @4,
+				(__bridge NSString*)kIOSurfaceBytesPerRow: @(width * 4u),
+				(__bridge NSString*)kIOSurfacePixelFormat: @('BGRA')
+			};
+			m_surface = IOSurfaceCreate((__bridge CFDictionaryRef)properties);
+			if (!m_surface) throw std::runtime_error("native binding test requires an IOSurface");
+			MacIOSurfaceHandle handle;
+			handle.m_surfaceId = IOSurfaceGetID(m_surface);
+			handle.m_registryId = [MTLCreateSystemDefaultDevice() autorelease].registryID;
+			handle.m_surfaceObject = reinterpret_cast<uintptr_t>(m_surface);
+			handle.m_planeCount = 1;
+			handle.m_bytesPerRow = width * 4u;
+			handle.m_bytesPerElement = 4;
+			m_transport.m_transportType = TransportType::MacIOSurface;
+			m_transport.m_width = width;
+			m_transport.m_height = height;
+			m_transport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+			m_transport.m_macSurfaces.push_back(handle);
+		}
+
+		~NativeSurface() { CFRelease(m_surface); }
+		NativeSurface(const NativeSurface&) = delete;
+		NativeSurface& operator=(const NativeSurface&) = delete;
+	};
 
 	uint32_t ReadIOSurfaceBGRA8Pixel(IOSurfaceRef surface, uint32_t bytesPerRow, uint32_t x, uint32_t y)
 	{
@@ -146,13 +273,13 @@ namespace
 	{
 		CAMetalLayer* layer = [CAMetalLayer layer];
 		MacNativeHostHandle hostHandle{ MacNativeHostHandleKind::CAMetalLayer, reinterpret_cast<uintptr_t>((__bridge void*)layer) };
-		MacNativeLayerBinding binding{};
+		TUniquePtr<MacNativeLayerBinding> binding;
 		auto bindResult = BindMacNativeLayer(hostHandle, 640, 360, PixelFormat::B8G8R8A8_UNorm, binding);
 		Require(bindResult.IsOk(), "binding an existing CAMetalLayer should succeed");
-		Require(binding.IsValid(), "binding should materialize a valid CAMetalLayer state");
-		Require(binding.m_layerObject == hostHandle.m_value, "bridge should retain the exact CAMetalLayer pointer");
-		Require(binding.m_deviceObject != 0, "binding should materialize a real Metal device");
-		Require(binding.m_commandQueueObject != 0, "binding should materialize a real Metal command queue");
+		Require(binding && binding->IsValid(), "binding should materialize a valid CAMetalLayer state");
+		Require(binding->m_layerObject == hostHandle.m_value, "bridge should retain the exact CAMetalLayer pointer");
+		Require(binding->m_deviceObject != 0, "binding should materialize a real Metal device");
+		Require(binding->m_commandQueueObject != 0, "binding should materialize a real Metal command queue");
 		Require(layer.colorspace != nullptr &&
 			CFEqual(CGColorSpaceGetName(layer.colorspace), kCGColorSpaceSRGB),
 			"the editor viewport layer must present encoded pixels in the sRGB color space");
@@ -216,7 +343,7 @@ namespace
 		Require(ReadIOSurfaceBGRA8Pixel(surface, surfaceHandle.m_bytesPerRow, 0, 0) == ExpectedProducerPatternBGRA8(pattern, 0, 0), "renderer-intermediate GPU copy should populate the shared IOSurface with the deterministic BGRA pattern");
 		Require(ReadIOSurfaceBGRA8Pixel(surface, surfaceHandle.m_bytesPerRow, 23, 11) == ExpectedProducerPatternBGRA8(pattern, 23, 11), "renderer-intermediate GPU copy should populate more than the first pixel in the shared IOSurface");
 
-		auto present = PresentMacNativeLayerFrame(binding, surfaceHandle, frame, presentResult);
+		auto present = PresentMacNativeLayerFrame(*binding, surfaceHandle, frame, presentResult);
 		ReleaseMacRendererIntermediateTexture(rendererTextureObject);
 		ReleaseMacIOSurfaceProducerTexture(producerDeviceObject, producerTextureObject);
 		CFRelease(surface);
@@ -227,9 +354,224 @@ namespace
 		Require(presentResult.m_drawableObject != 0, "present should surface a real drawable handle");
 		Require(presentResult.m_sourceTextureObject != 0, "present should surface the source Metal texture used for the copy path");
 		Require(!presentResult.m_usedSyntheticSourceTexture, "bridge should import the real IOSurface into a Metal texture when a live IOSurface handle is supplied");
-		Require(binding.m_importedIOSurfaceObject == surfaceHandle.m_surfaceObject, "binding should retain the imported IOSurface object used for the Metal texture import");
-		Require(binding.m_lastSourceTextureObject == presentResult.m_sourceTextureObject, "binding should retain the last source Metal texture");
-		ResetMacNativeLayerBinding(binding);
+		Require(binding->m_importedIOSurfaceObject == surfaceHandle.m_surfaceObject, "binding should retain the imported IOSurface object used for the Metal texture import");
+		Require(binding->m_lastSourceTextureObject == presentResult.m_sourceTextureObject, "binding should retain the last source Metal texture");
+	}
+
+	void TestBindingFailurePreservesCurrentLayer()
+	{
+		@autoreleasepool
+		{
+			CAMetalLayer* layer = [CAMetalLayer layer];
+			const MacNativeHostHandle host{ MacNativeHostHandleKind::CAMetalLayer, reinterpret_cast<uintptr_t>(layer) };
+			TUniquePtr<MacNativeLayerBinding> binding;
+			Require(BindMacNativeLayer(host, 64, 48, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(), "initial native binding must succeed");
+			const auto oldLayer = binding->m_layerObject;
+			const auto oldQueue = binding->m_commandQueueObject;
+			const auto oldToken = binding->m_bindingToken;
+			Require(!BindMacNativeLayer(host, 96, 72, PixelFormat::Unknown, binding).IsOk(), "unsupported pixel format must fail");
+			Require(binding && binding->IsValid() && binding->m_layerObject == oldLayer && binding->m_commandQueueObject == oldQueue &&
+				binding->m_bindingToken == oldToken && binding->m_width == 64u && binding->m_height == 48u,
+				"failed rebind must preserve the original live native binding");
+			Require(layer.drawableSize.width == 64 && layer.drawableSize.height == 48,
+				"failed rebind must not mutate the original layer dimensions");
+			Require(!BindMacNativeLayer(host, 0, 72, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(), "zero width must fail");
+			Require(!BindMacNativeLayer(host, 96, 0, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(), "zero height must fail");
+			Require(!BindMacNativeLayer({}, 96, 72, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(), "missing host must fail");
+			auto unsupportedHost = host;
+			unsupportedHost.m_kind = static_cast<MacNativeHostHandleKind>(255);
+			Require(!BindMacNativeLayer(unsupportedHost, 96, 72, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(), "unsupported host kind must fail");
+			Require(binding->m_commandQueueObject == oldQueue && binding->m_bindingToken == oldToken,
+				"all rejected binds must preserve the working queue and token");
+			FramePacket frame;
+			MacNativeBridgePresentResult present;
+			Require(PresentMacNativeLayerFrame(*binding, {}, frame, present).IsOk(), "prior binding must still present after rejected replacements");
+		}
+	}
+
+	void TestNativeBindingReleasesOwnedObjects()
+	{
+		auto layers = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		auto queues = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		auto textures = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		TUniquePtr<MacNativeLayerBinding> binding;
+		@autoreleasepool
+		{
+			CAMetalLayer* layer = [CAMetalLayer layer];
+			ObserveNativeRelease(layer, layers);
+			Require(BindMacNativeLayer(LayerHandle(layer), 64, 48, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(), "native owner must bind");
+			ObserveNativeRelease((id)binding->m_commandQueueObject, queues);
+			FramePacket frame;
+			MacNativeBridgePresentResult present;
+			Require(PresentMacNativeLayerFrame(*binding, {}, frame, present).IsOk(), "native owner must present a source texture");
+			ObserveNativeRelease((id)present.m_sourceTextureObject, textures);
+			id<MTLCommandBuffer> completion = [(id<MTLCommandQueue>)binding->m_commandQueueObject commandBuffer];
+			[completion commit];
+			[completion waitUntilCompleted];
+		}
+		Require(layers->load() == 0 && queues->load() == 0 && textures->load() == 0,
+			"binding must own its layer, queue and last source texture beyond the native pool");
+		binding.Clear();
+		// Core Animation also owns the presented layer until its transaction drains.
+		[CATransaction flush];
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+		while (layers->load() == 0 && std::chrono::steady_clock::now() < deadline)
+		{
+			@autoreleasepool
+			{
+				[[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+			}
+		}
+		Require(layers->load() == 1 && queues->load() == 1 && textures->load() == 1,
+			"clearing the binding must release each owned native object exactly once: layers=" + std::to_string(layers->load()) +
+			" queues=" + std::to_string(queues->load()) + " textures=" + std::to_string(textures->load()));
+	}
+
+	void TestFailedQueueCreationPreservesBindingAndReleasesCandidate()
+	{
+		auto layers = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		auto devices = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		TUniquePtr<MacNativeLayerBinding> binding;
+		CAMetalLayer* originalLayer = [CAMetalLayer layer];
+		Require(BindMacNativeLayer(LayerHandle(originalLayer), 64, 48, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(), "initial layer must bind");
+		const auto original = binding.GetRawPtr();
+		@autoreleasepool
+		{
+			QueueFailureLayer* failedLayer = MakeQueueFailureLayer();
+			ObserveNativeRelease(failedLayer, layers);
+			ObserveNativeRelease(failedLayer->m_failureDevice, devices);
+			Require(!BindMacNativeLayer(LayerHandle(failedLayer), 96, 72, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(), "queue creation must report the native failure");
+			TUniquePtr<MacNativeLayerBinding> empty;
+			Require(!BindMacNativeLayer(LayerHandle(failedLayer), 96, 72, PixelFormat::B8G8R8A8_UNorm, empty).IsOk() && !empty,
+				"failed initial binding must not publish a partial native owner");
+			Require(binding.GetRawPtr() == original && binding->IsValid(), "failed candidate must not replace the active native owner");
+			Require(failedLayer.drawableSize.width != 96 && originalLayer.drawableSize.width == 64,
+				"failed preparation must not resize either layer");
+		}
+		[CATransaction flush];
+		Require(layers->load() == 1 && devices->load() == 1,
+			"failed candidate must release its layer and device ownership: layers=" + std::to_string(layers->load()) +
+			" devices=" + std::to_string(devices->load()));
+		FramePacket frame;
+		MacNativeBridgePresentResult present;
+		Require(PresentMacNativeLayerFrame(*binding, {}, frame, present).IsOk(), "original layer must still present after queue creation failure");
+	}
+
+	void TestPresenterResizeResetAndDestructionReleaseQueues()
+	{
+		auto queues = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		uint32_t created = 0;
+		CAMetalLayer* layer = [CAMetalLayer layer];
+		ViewportDescriptor viewport;
+		viewport.m_viewportId = 98;
+		const MacNativePresentationState* firstState = nullptr;
+		{
+			TUniquePtr<NativeSurface> currentSurface;
+			MacLoopbackViewportPresenter presenter;
+			presenter.BindHostHandle(viewport.m_viewportId, LayerHandle(layer));
+			for (uint32_t i = 0; i < 101; ++i)
+			{
+				@autoreleasepool
+				{
+					viewport.m_width = 64 + (i % 8) * 8;
+					viewport.m_height = 48 + (i % 5) * 8;
+					auto surface = TUniquePtr<NativeSurface>::Make(viewport.m_width, viewport.m_height);
+					Require(presenter.ImportSurface(viewport, surface->m_transport, 1, i + 1).IsOk(), "resize must import a real native surface");
+					currentSurface = std::move(surface);
+					const auto state = presenter.FindImportedState(viewport.m_viewportId);
+					Require(state && state->m_layerBinding && state->m_layerBinding->IsValid(), "resize must publish a live native binding");
+					if (!firstState) firstState = state;
+					Require(state == firstState, "resize must preserve the address of the imported presentation state");
+					Require(state->m_generation == i + 1 && layer.drawableSize.width == viewport.m_width &&
+						layer.drawableSize.height == viewport.m_height, "resize must publish the matching generation and extent");
+					ObserveNativeRelease((id)state->m_layerBinding->m_commandQueueObject, queues);
+					++created;
+				}
+				Require(queues->load() == created - 1, "resize must release the previous native queue");
+			}
+			presenter.ResetViewport(viewport.m_viewportId);
+			Require(!presenter.FindImportedState(viewport.m_viewportId) && queues->load() == created,
+				"reset must remove the state and release its native queue");
+			@autoreleasepool
+			{
+				currentSurface = TUniquePtr<NativeSurface>::Make(64, 48);
+				Require(presenter.ImportSurface(viewport, currentSurface->m_transport, 2, 1).IsOk(), "viewport must import again after reset");
+				ObserveNativeRelease((id)presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding->m_commandQueueObject, queues);
+				++created;
+			}
+		}
+		Require(queues->load() == created, "presenter destruction must release a binding without an explicit reset");
+	}
+
+	void TestPresenterFailedHostRebindRetryAndDetach()
+	{
+		auto queues = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		CAMetalLayer* layer = [CAMetalLayer layer];
+		ViewportDescriptor viewport;
+		viewport.m_viewportId = 99;
+		NativeSurface surface(64, 48);
+		MacLoopbackViewportPresenter presenter;
+		presenter.BindHostHandle(viewport.m_viewportId, LayerHandle(layer));
+		Require(presenter.ImportSurface(viewport, surface.m_transport, 1, 1).IsOk(), "initial surface import must succeed");
+		const auto state = presenter.FindImportedState(viewport.m_viewportId);
+		const auto original = state->m_layerBinding.GetRawPtr();
+		ObserveNativeRelease((id)original->m_commandQueueObject, queues);
+		QueueFailureLayer* failedLayer = MakeQueueFailureLayer();
+		presenter.BindHostHandle(viewport.m_viewportId, LayerHandle(failedLayer));
+		Require(!presenter.GetLastFailure().IsOk(), "host rebind must expose queue creation failure");
+		Require(state->m_layerBinding.GetRawPtr() == original && state->m_hostHandle == LayerHandle(layer) && queues->load() == 0,
+			"failed rebind must keep the actual host and its native owner");
+		Require(!presenter.ImportSurface(viewport, surface.m_transport, 1, 2).IsOk(), "import against the failing requested host must fail");
+		Require(state->m_generation == 1 && state->m_layerBinding.GetRawPtr() == original, "failed import must preserve the prior generation");
+		@autoreleasepool
+		{
+			FramePacket frame;
+			frame.m_viewportId = viewport.m_viewportId;
+			frame.m_connectionEpoch = 1;
+			frame.m_generation = 1;
+			frame.m_frameIndex = 1;
+			frame.m_width = 64;
+			frame.m_height = 48;
+			Require(presenter.PresentFrame(viewport.m_viewportId, frame).IsOk(), "prior imported surface must still present after failed host replacement");
+			Require(!state->m_layerBinding->m_usesSyntheticSourceTexture, "recovered presentation must read the real imported IOSurface");
+			id<MTLCommandBuffer> completion = [(id<MTLCommandQueue>)original->m_commandQueueObject commandBuffer];
+			[completion commit];
+			[completion waitUntilCompleted];
+		}
+		@autoreleasepool
+		{
+			failedLayer->m_failQueue = false;
+			presenter.BindHostHandle(viewport.m_viewportId, LayerHandle(failedLayer));
+		}
+		Require(presenter.GetLastFailure().IsOk() && state->m_hostHandle == LayerHandle(failedLayer), "retrying the same host must install its recovered native binding");
+		Require(queues->load() == 1, "successful rebind must release the previous queue");
+		ObserveNativeRelease((id)state->m_layerBinding->m_commandQueueObject, queues);
+		const auto rebound = state->m_layerBinding.GetRawPtr();
+		presenter.BindHostHandle(viewport.m_viewportId, LayerHandle(failedLayer));
+		Require(state->m_layerBinding.GetRawPtr() == rebound && queues->load() == 1, "binding the current host must not recreate its queue");
+		presenter.BindHostHandle(viewport.m_viewportId, {});
+		Require(!state->m_layerBinding && !state->m_usesRealCAMetalLayer && !state->m_hostHandle.IsValid() && queues->load() == 2,
+			"host detach must clear native ownership and host state");
+	}
+
+	void TestNSViewBindingPublishesOnlyOnSuccess()
+	{
+		NSView* view = [[[NSView alloc] initWithFrame:NSMakeRect(0, 0, 64, 48)] autorelease];
+		view.wantsLayer = YES;
+		CALayer* originalLayer = view.layer;
+		const MacNativeHostHandle host{ MacNativeHostHandleKind::NSView, reinterpret_cast<uintptr_t>(view) };
+		TUniquePtr<MacNativeLayerBinding> binding;
+		Require(!BindMacNativeLayer(host, 64, 48, PixelFormat::Unknown, binding).IsOk(), "unsupported format must fail before attaching an NSView layer");
+		Require(!binding && view.layer == originalLayer, "failed initial bind must preserve the NSView layer");
+		Require(BindMacNativeLayer(host, 64, 48, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(), "NSView binding must create and attach a Metal layer");
+		Require([view.layer isKindOfClass:[CAMetalLayer class]] && binding->m_hostObject == host.m_value &&
+			binding->m_layerObject == reinterpret_cast<uintptr_t>(view.layer), "successful binding must publish the exact attached layer");
+		CAMetalLayer* metalLayer = (CAMetalLayer*)view.layer;
+		Require(BindMacNativeLayer(host, 96, 72, PixelFormat::B8G8R8A8_UNorm, binding).IsOk(), "NSView resize must reuse its Metal layer");
+		Require(view.layer == metalLayer && metalLayer.drawableSize.width == 96 && metalLayer.drawableSize.height == 72,
+			"NSView resize must retain its attachment and publish new dimensions");
+		binding.Clear();
+		Require(view.layer == metalLayer, "releasing binding ownership must not detach the view-owned layer");
 	}
 
 	void TestBridgeBindsCAMetalLayerOffMainThreadWithoutWaitingForMainQueue()
@@ -242,7 +584,7 @@ namespace
 
 		struct BackgroundBindState
 		{
-			MacNativeLayerBinding m_binding{};
+			TUniquePtr<MacNativeLayerBinding> m_binding;
 			Failure m_failure{};
 			std::mutex m_mutex;
 			std::condition_variable m_completedCondition;
@@ -310,7 +652,7 @@ namespace
 		if (completedEventually)
 		{
 			binder.join();
-			ResetMacNativeLayerBinding(state->m_binding);
+			state->m_binding.Clear();
 		}
 		else
 		{
@@ -335,7 +677,7 @@ namespace
 
 		struct BackgroundPresentState
 		{
-			MacNativeLayerBinding m_binding{};
+			TUniquePtr<MacNativeLayerBinding> m_binding;
 			MacIOSurfaceHandle m_surface{};
 			FramePacket m_frame{};
 			MacNativeBridgePresentResult m_presentResult{};
@@ -358,7 +700,7 @@ namespace
 		std::thread presenter([state]()
 			{
 				state->m_failure = PresentMacNativeLayerFrame(
-					state->m_binding,
+					*state->m_binding,
 					state->m_surface,
 					state->m_frame,
 					state->m_presentResult);
@@ -408,7 +750,7 @@ namespace
 		if (completedEventually)
 		{
 			presenter.join();
-			ResetMacNativeLayerBinding(state->m_binding);
+			state->m_binding.Clear();
 		}
 		else
 		{
@@ -426,6 +768,12 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "BindingFailurePreservesCurrentLayer", TestBindingFailurePreservesCurrentLayer },
+		{ "NativeBindingReleasesOwnedObjects", TestNativeBindingReleasesOwnedObjects },
+		{ "FailedQueueCreationPreservesBindingAndReleasesCandidate", TestFailedQueueCreationPreservesBindingAndReleasesCandidate },
+		{ "PresenterResizeResetAndDestructionReleaseQueues", TestPresenterResizeResetAndDestructionReleaseQueues },
+		{ "PresenterFailedHostRebindRetryAndDetach", TestPresenterFailedHostRebindRetryAndDetach },
+		{ "NSViewBindingPublishesOnlyOnSuccess", TestNSViewBindingPublishesOnlyOnSuccess },
 		{ "GetMacRendererSourceSelectionPriorityPrefersSceneViewResolvedOutputs", TestGetMacRendererSourceSelectionPriorityPrefersSceneViewResolvedOutputs },
 		{ "SelectMacVulkanSemaphoreForMetalExportPrefersDedicatedMainResolvedSeam", TestSelectMacVulkanSemaphoreForMetalExportPrefersDedicatedMainResolvedSeam },
 		{ "SynchronizeMacVulkanRenderTargetPrefersMetalSharedEventWhenSemaphoreExportSeamExists", TestSynchronizeMacVulkanRenderTargetPrefersMetalSharedEventWhenSemaphoreExportSeamExists },
@@ -439,7 +787,10 @@ int main()
 	{
 		try
 		{
-			test.second();
+			@autoreleasepool
+			{
+				test.second();
+			}
 			std::cout << "[PASS] " << test.first << std::endl;
 		}
 		catch (const std::exception& e)

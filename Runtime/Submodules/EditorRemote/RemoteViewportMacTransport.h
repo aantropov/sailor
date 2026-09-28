@@ -163,7 +163,7 @@ namespace Sailor::EditorRemote
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		bool m_framebufferOnly = false;
 		MacNativeHostHandle m_hostHandle{};
-		std::optional<MacNativeLayerBinding> m_layerBinding{};
+		TUniquePtr<MacNativeLayerBinding> m_layerBinding{};
 		std::optional<MacIOSurfaceHandle> m_importedSurface{};
 		MacNativeSurfaceFrameEvidence m_lastFrameEvidence{};
 		bool m_hasFrameEvidence = false;
@@ -174,8 +174,6 @@ namespace Sailor::EditorRemote
 			return m_viewportId != 0 && m_epoch != 0 && m_generation != 0 && m_registryId != 0 && m_importToken != 0 &&
 				m_nativeLayerToken != 0 && m_width != 0 && m_height != 0 && m_pixelFormat != PixelFormat::Unknown;
 		}
-
-		auto operator<=>(const MacNativePresentationState&) const = default;
 	};
 
 	struct MacViewportSurfaceState
@@ -731,6 +729,7 @@ namespace Sailor::EditorRemote
 	public:
 		void BindHostHandle(ViewportId viewportId, const MacNativeHostHandle& hostHandle) override
 		{
+			m_lastFailure = Failure::Ok();
 			const auto currentHandle = m_hostHandles.Find(viewportId);
 			const auto currentState = m_importedStates.Find(viewportId);
 			if (currentHandle != m_hostHandles.end() &&
@@ -744,10 +743,10 @@ namespace Sailor::EditorRemote
 				const auto& state = *currentState.Value();
 				const bool bHasExpectedLayer =
 					hostHandle.IsValid()
-						? state.m_layerBinding.has_value() &&
+						? state.m_layerBinding &&
 							state.m_layerBinding->IsValid() &&
 							state.m_usesRealCAMetalLayer
-						: !state.m_layerBinding.has_value();
+						: !state.m_layerBinding;
 				if (state.m_hostHandle == hostHandle &&
 					bHasExpectedLayer)
 				{
@@ -767,8 +766,7 @@ namespace Sailor::EditorRemote
 			auto it = m_importedStates.Find(viewportId);
 			if (it != m_importedStates.end())
 			{
-				it.Value()->m_hostHandle = hostHandle;
-				RefreshNativeLayerBinding(*it.Value());
+				m_lastFailure = RefreshNativeLayerBinding(*it.Value(), hostHandle);
 			}
 		}
 
@@ -797,7 +795,7 @@ namespace Sailor::EditorRemote
 			state.m_importedSurface = handle;
 			if (auto hostIt = m_hostHandles.Find(viewport.m_viewportId); hostIt != m_hostHandles.end())
 			{
-					state.m_hostHandle = hostIt.Value();
+				state.m_hostHandle = hostIt.Value();
 			}
 			if (!state.IsValid())
 			{
@@ -805,7 +803,7 @@ namespace Sailor::EditorRemote
 				return m_lastFailure;
 			}
 
-			auto bindingResult = RefreshNativeLayerBinding(state);
+			auto bindingResult = RefreshNativeLayerBinding(state, state.m_hostHandle);
 			if (!bindingResult.IsOk())
 			{
 				m_lastFailure = bindingResult;
@@ -815,11 +813,11 @@ namespace Sailor::EditorRemote
 			auto& storedState = m_importedStates[viewport.m_viewportId];
 			if (storedState)
 			{
-				*storedState = state;
+				*storedState = std::move(state);
 			}
 			else
 			{
-				storedState = TUniquePtr<MacNativePresentationState>::Make(state);
+				storedState = TUniquePtr<MacNativePresentationState>::Make(std::move(state));
 			}
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
@@ -841,7 +839,7 @@ namespace Sailor::EditorRemote
 				return m_lastFailure;
 			}
 
-			if (state.m_layerBinding.has_value())
+			if (state.m_layerBinding)
 			{
 				MacNativeBridgePresentResult nativePresent{};
 				auto nativeResult = PresentMacNativeLayerFrame(*state.m_layerBinding, state.m_importedSurface.value_or(MacIOSurfaceHandle{}), frame, nativePresent);
@@ -880,11 +878,6 @@ namespace Sailor::EditorRemote
 
 		void ResetViewport(ViewportId viewportId) override
 		{
-			auto it = m_importedStates.Find(viewportId);
-			if (it != m_importedStates.end() && it.Value()->m_layerBinding.has_value())
-			{
-				ResetMacNativeLayerBinding(*it.Value()->m_layerBinding);
-			}
 			m_importedStates.Remove(viewportId);
 			if (m_lastPresentedFrame.has_value() && m_lastPresentedFrame->m_viewportId == viewportId)
 			{
@@ -940,28 +933,24 @@ namespace Sailor::EditorRemote
 		const std::optional<FramePacket>& GetLastPresentedFrame() const { return m_lastPresentedFrame; }
 
 	private:
-		Failure RefreshNativeLayerBinding(MacNativePresentationState& state)
+		Failure RefreshNativeLayerBinding(MacNativePresentationState& state, const MacNativeHostHandle& hostHandle)
 		{
-			if (!state.m_hostHandle.IsValid())
+			if (!hostHandle.IsValid())
 			{
-				if (state.m_layerBinding.has_value())
-				{
-					ResetMacNativeLayerBinding(*state.m_layerBinding);
-					state.m_layerBinding.reset();
-				}
+				state.m_layerBinding.Clear();
+				state.m_hostHandle = hostHandle;
 				state.m_usesRealCAMetalLayer = false;
 				return Failure::Ok();
 			}
 
-			MacNativeLayerBinding binding = state.m_layerBinding.value_or(MacNativeLayerBinding{});
-			auto result = BindMacNativeLayer(state.m_hostHandle, state.m_width, state.m_height, state.m_pixelFormat, binding);
+			auto result = BindMacNativeLayer(hostHandle, state.m_width, state.m_height, state.m_pixelFormat, state.m_layerBinding);
 			if (!result.IsOk())
 			{
 				return result;
 			}
 
-			state.m_layerBinding = binding;
-			state.m_nativeLayerToken = binding.m_bindingToken;
+			state.m_hostHandle = hostHandle;
+			state.m_nativeLayerToken = state.m_layerBinding->m_bindingToken;
 			state.m_usesRealCAMetalLayer = true;
 			return Failure::Ok();
 		}

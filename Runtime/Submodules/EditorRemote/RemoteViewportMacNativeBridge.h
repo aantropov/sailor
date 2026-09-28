@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "Memory/UniquePtr.hpp"
 #include "RemoteViewportFoundation.h"
 
 namespace Sailor::EditorRemote
@@ -29,6 +30,16 @@ namespace Sailor::EditorRemote
 
 	struct MacNativeLayerBinding
 	{
+		MacNativeLayerBinding() = default;
+#if defined(__APPLE__)
+		~MacNativeLayerBinding();
+#else
+		~MacNativeLayerBinding() = default;
+#endif
+		MacNativeLayerBinding(const MacNativeLayerBinding&) = delete;
+		MacNativeLayerBinding& operator=(const MacNativeLayerBinding&) = delete;
+
+		// Host, drawable and IOSurface handles are borrowed; the other native objects are retained.
 		uintptr_t m_hostObject = 0;
 		uintptr_t m_layerObject = 0;
 		uintptr_t m_drawableObject = 0;
@@ -49,8 +60,6 @@ namespace Sailor::EditorRemote
 		{
 			return m_bindingToken != 0 && m_layerObject != 0 && m_deviceObject != 0 && m_commandQueueObject != 0 && m_width != 0 && m_height != 0 && m_pixelFormat != PixelFormat::Unknown;
 		}
-
-		auto operator<=>(const MacNativeLayerBinding&) const = default;
 	};
 
 	struct MacNativeBridgePresentResult
@@ -177,8 +186,7 @@ namespace Sailor::EditorRemote
 	void ReleaseMacRendererIntermediateTexture(uintptr_t& inOutTextureObject);
 	void ReleaseMacExportedTexture(uintptr_t& inOutTextureObject);
 
-	Failure BindMacNativeLayer(const MacNativeHostHandle& hostHandle, uint32_t width, uint32_t height, PixelFormat pixelFormat, MacNativeLayerBinding& inOutBinding);
+	Failure BindMacNativeLayer(const MacNativeHostHandle& hostHandle, uint32_t width, uint32_t height, PixelFormat pixelFormat, TUniquePtr<MacNativeLayerBinding>& inOutBinding);
 	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding& inOutBinding, const MacIOSurfaceHandle& surfaceHandle, const FramePacket& frame, MacNativeBridgePresentResult& outResult);
 	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle& surfaceHandle, uint32_t width, uint32_t height, MacNativeSurfaceFrameEvidence& outEvidence);
-	void ResetMacNativeLayerBinding(MacNativeLayerBinding& inOutBinding);
 }

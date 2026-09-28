@@ -533,103 +533,111 @@ namespace Sailor::EditorRemote
 		}
 	}
 
-	Failure BindMacNativeLayer(const MacNativeHostHandle& hostHandle, uint32_t width, uint32_t height, PixelFormat pixelFormat, MacNativeLayerBinding& inOutBinding)
+	Failure BindMacNativeLayer(const MacNativeHostHandle& hostHandle, uint32_t width, uint32_t height, PixelFormat pixelFormat, TUniquePtr<MacNativeLayerBinding>& inOutBinding)
 	{
+		if (!hostHandle.IsValid())
+		{
+			return MakeFailure(2101, "macOS native layer binding requires a valid host handle");
+		}
+		if (width == 0 || height == 0)
+		{
+			return MakeFailure(2108, "macOS native layer binding requires a nonzero extent");
+		}
+		const auto metalPixelFormat = ToMetalPixelFormat(pixelFormat);
+		if (metalPixelFormat == MTLPixelFormatInvalid)
+		{
+			return MakeFailure(2106, "macOS native layer binding only supports BGRA8 transport");
+		}
+
 		auto bindNativeLayer = [&]() -> Failure
 		{
-			const uint64_t nextBindingToken = inOutBinding.m_bindingToken + 1;
-			ResetMacNativeLayerBinding(inOutBinding);
-
-			if (!hostHandle.IsValid())
+			@autoreleasepool
 			{
-				return MakeFailure(2101, "macOS native layer binding requires a valid host handle");
-			}
+				CAMetalLayer* metalLayer = nil;
+				NSView* view = nil;
+				bool hostOwnsLayer = false;
 
-			CAMetalLayer* metalLayer = nil;
-			NSView* view = nil;
-			bool hostOwnsLayer = false;
-
-			switch (hostHandle.m_kind)
-			{
-			case MacNativeHostHandleKind::NSView:
-				view = (__bridge NSView*)reinterpret_cast<void*>(hostHandle.m_value);
-				if (view == nil)
+				switch (hostHandle.m_kind)
 				{
-					return MakeFailure(2102, "macOS native host NSView handle resolved to nil");
+				case MacNativeHostHandleKind::NSView:
+					view = (__bridge NSView*)reinterpret_cast<void*>(hostHandle.m_value);
+					if (view == nil)
+					{
+						return MakeFailure(2102, "macOS native host NSView handle resolved to nil");
+					}
+					if ([view.layer isKindOfClass:[CAMetalLayer class]])
+					{
+						metalLayer = (CAMetalLayer*)view.layer;
+					}
+					else
+					{
+						metalLayer = [CAMetalLayer layer];
+						hostOwnsLayer = true;
+					}
+					break;
+				case MacNativeHostHandleKind::CAMetalLayer:
+					metalLayer = (__bridge CAMetalLayer*)reinterpret_cast<void*>(hostHandle.m_value);
+					if (metalLayer == nil)
+					{
+						return MakeFailure(2103, "macOS native host CAMetalLayer handle resolved to nil");
+					}
+					break;
+				default:
+					return MakeFailure(2104, "macOS native layer binding does not support the supplied host handle kind");
 				}
-				if ([view.layer isKindOfClass:[CAMetalLayer class]])
+
+				auto binding = TUniquePtr<MacNativeLayerBinding>::Make();
+				binding->m_layerObject = RetainObjectiveCObject(metalLayer);
+				id<MTLDevice> device = metalLayer.device;
+				if (device != nil)
 				{
-					metalLayer = (CAMetalLayer*)view.layer;
+					binding->m_deviceObject = RetainObjectiveCObject(device);
 				}
 				else
 				{
-					metalLayer = [CAMetalLayer layer];
-					view.wantsLayer = YES;
-					view.layer = metalLayer;
-					hostOwnsLayer = true;
+					device = MTLCreateSystemDefaultDevice();
+					if (device == nil)
+					{
+						return MakeFailure(2105, "macOS native layer binding could not create a Metal device");
+					}
+					// Create/new already transfers one retain to this binding.
+					binding->m_deviceObject = reinterpret_cast<uintptr_t>((__bridge void*)device);
 				}
-				break;
-			case MacNativeHostHandleKind::CAMetalLayer:
-				metalLayer = (__bridge CAMetalLayer*)reinterpret_cast<void*>(hostHandle.m_value);
-				if (metalLayer == nil)
-				{
-					return MakeFailure(2103, "macOS native host CAMetalLayer handle resolved to nil");
-				}
-				break;
-			default:
-				return MakeFailure(2104, "macOS native layer binding does not support the supplied host handle kind");
-			}
 
-			id<MTLDevice> device = metalLayer.device;
-			if (device == nil)
-			{
-				device = MTLCreateSystemDefaultDevice();
-				if (device == nil)
+				id<MTLCommandQueue> commandQueue = [device newCommandQueue];
+				if (commandQueue == nil)
 				{
-					return MakeFailure(2105, "macOS native layer binding could not create a Metal device");
+					return MakeFailure(2107, "macOS native layer binding could not create a Metal command queue");
 				}
+
+				binding->m_commandQueueObject = reinterpret_cast<uintptr_t>((__bridge void*)commandQueue);
+
 				metalLayer.device = device;
-			}
+				metalLayer.pixelFormat = metalPixelFormat;
+				CGColorSpaceRef srgbColorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+				metalLayer.colorspace = srgbColorSpace;
+				CGColorSpaceRelease(srgbColorSpace);
+				metalLayer.framebufferOnly = NO;
+				metalLayer.drawableSize = CGSizeMake(width, height);
+				if (view != nil)
+				{
+					metalLayer.contentsScale = view.window != nil ? view.window.backingScaleFactor : NSScreen.mainScreen.backingScaleFactor;
+					if (hostOwnsLayer)
+					{
+						view.wantsLayer = YES;
+						view.layer = metalLayer;
+					}
+				}
 
-			id<MTLCommandQueue> commandQueue = [device newCommandQueue];
-			if (commandQueue == nil)
-			{
-				return MakeFailure(2107, "macOS native layer binding could not create a Metal command queue");
+				binding->m_hostObject = hostHandle.m_kind == MacNativeHostHandleKind::NSView ? hostHandle.m_value : 0;
+				binding->m_width = width;
+				binding->m_height = height;
+				binding->m_pixelFormat = pixelFormat;
+				binding->m_hostOwnsLayer = hostOwnsLayer;
+				binding->m_bindingToken = inOutBinding ? inOutBinding->m_bindingToken + 1 : 1;
+				inOutBinding = std::move(binding);
+				return Failure::Ok();
 			}
-
-			const auto metalPixelFormat = ToMetalPixelFormat(pixelFormat);
-			if (metalPixelFormat == MTLPixelFormatInvalid)
-			{
-				return MakeFailure(2106, "macOS native layer binding only supports BGRA8 transport in this slice");
-			}
-
-			metalLayer.pixelFormat = metalPixelFormat;
-			CGColorSpaceRef srgbColorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-			metalLayer.colorspace = srgbColorSpace;
-			CGColorSpaceRelease(srgbColorSpace);
-			metalLayer.framebufferOnly = NO;
-			metalLayer.drawableSize = CGSizeMake(width, height);
-			if (view != nil)
-			{
-				metalLayer.contentsScale = view.window != nil ? view.window.backingScaleFactor : NSScreen.mainScreen.backingScaleFactor;
-			}
-
-			inOutBinding.m_hostObject = hostHandle.m_kind == MacNativeHostHandleKind::NSView ? hostHandle.m_value : 0;
-			inOutBinding.m_layerObject = RetainObjectiveCObject(metalLayer);
-			inOutBinding.m_drawableObject = 0;
-			inOutBinding.m_deviceObject = RetainObjectiveCObject(device);
-			inOutBinding.m_commandQueueObject = RetainObjectiveCObject(commandQueue);
-			inOutBinding.m_importedIOSurfaceObject = 0;
-			inOutBinding.m_lastSourceTextureObject = 0;
-			inOutBinding.m_width = width;
-			inOutBinding.m_height = height;
-			inOutBinding.m_pixelFormat = pixelFormat;
-			inOutBinding.m_hostOwnsLayer = hostOwnsLayer;
-			inOutBinding.m_bindingToken = nextBindingToken;
-			inOutBinding.m_presentToken = 0;
-			inOutBinding.m_sourceTextureToken = 0;
-			inOutBinding.m_usesSyntheticSourceTexture = false;
-			return Failure::Ok();
 		};
 
 		if (hostHandle.m_kind == MacNativeHostHandleKind::NSView)
@@ -830,13 +838,12 @@ namespace Sailor::EditorRemote
 		}
 	}
 
-	void ResetMacNativeLayerBinding(MacNativeLayerBinding& inOutBinding)
+	MacNativeLayerBinding::~MacNativeLayerBinding()
 	{
-		ReleaseObjectiveCObject(inOutBinding.m_lastSourceTextureObject);
-		ReleaseObjectiveCObject(inOutBinding.m_commandQueueObject);
-		ReleaseObjectiveCObject(inOutBinding.m_deviceObject);
-		ReleaseObjectiveCObject(inOutBinding.m_layerObject);
-		inOutBinding = {};
+		ReleaseObjectiveCObject(m_lastSourceTextureObject);
+		ReleaseObjectiveCObject(m_commandQueueObject);
+		ReleaseObjectiveCObject(m_deviceObject);
+		ReleaseObjectiveCObject(m_layerObject);
 	}
 #else
 	uint32_t GetMacIOSurfaceBytesPerRowAlignment(PixelFormat)
@@ -907,7 +914,7 @@ namespace Sailor::EditorRemote
 		inOutTextureObject = 0;
 	}
 
-	Failure BindMacNativeLayer(const MacNativeHostHandle&, uint32_t, uint32_t, PixelFormat, MacNativeLayerBinding&)
+	Failure BindMacNativeLayer(const MacNativeHostHandle&, uint32_t, uint32_t, PixelFormat, TUniquePtr<MacNativeLayerBinding>&)
 	{
 		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS native layer binding is unavailable on this platform");
 	}
@@ -920,11 +927,6 @@ namespace Sailor::EditorRemote
 	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle&, uint32_t, uint32_t, MacNativeSurfaceFrameEvidence&)
 	{
 		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS frame evidence capture is unavailable on this platform");
-	}
-
-	void ResetMacNativeLayerBinding(MacNativeLayerBinding& inOutBinding)
-	{
-		inOutBinding = {};
 	}
 #endif
 }
