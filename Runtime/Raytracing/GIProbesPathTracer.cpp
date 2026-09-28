@@ -11,6 +11,24 @@ namespace
 {
 	constexpr float ProbeBakeRayNormalBias = 0.0001f;
 	constexpr float ProbeBakeRayDirectionBias = 0.0003f;
+
+	TVector<LightProxy> GetIndirectLights(const TVector<LightProxy>& lights)
+	{
+		TVector<LightProxy> bakedLights;
+		bakedLights.Reserve(lights.Num());
+		for (const LightProxy& source : lights)
+		{
+			if (!std::isfinite(source.m_indirectLightingIntensity) ||
+				source.m_indirectLightingIntensity <= 0.0f)
+			{
+				continue;
+			}
+			LightProxy light = source;
+			light.m_intensity *= light.m_indirectLightingIntensity;
+			bakedLights.Add(std::move(light));
+		}
+		return bakedLights;
+	}
 }
 
 bool GIProbesPathTracer::Initialize(
@@ -39,31 +57,9 @@ bool GIProbesPathTracer::InitializeSnapshot(
 		settings, fallbackEnvironment, progress, warning);
 }
 
-bool GIProbesPathTracer::InitializeInternal(
-	const TVector<PathTracer::TLASInstance>& instances,
-	const TVector<MaterialPtr>& runtimeMaterials,
-	const PathTracer::MaterialSnapshots* snapshotMaterials,
-	const TVector<LightProxy>& lights,
-	const GIProbesBakeSettings& settings,
-	const glm::vec3& fallbackEnvironment,
-	const PathTracer::ScenePreparationProgressCallback& progress,
-	const PathTracer::ScenePreparationWarningCallback& warning)
+void GIProbesPathTracer::ConfigureParameters(
+	const GIProbesBakeSettings& settings, const glm::vec3& fallbackEnvironment)
 {
-	SAILOR_PROFILE_FUNCTION();
-	TVector<LightProxy> bakedLights;
-	bakedLights.Reserve(lights.Num());
-	for (const LightProxy& source : lights)
-	{
-		if (!std::isfinite(source.m_indirectLightingIntensity) ||
-			source.m_indirectLightingIntensity <= 0.0f)
-		{
-			continue;
-		}
-		LightProxy light = source;
-		light.m_intensity *= light.m_indirectLightingIntensity;
-		bakedLights.Add(std::move(light));
-	}
-
 	m_params = {};
 	m_params.m_maxBounces = settings.m_bounceCount;
 	m_params.m_numSamples = 1u;
@@ -81,6 +77,39 @@ bool GIProbesPathTracer::InitializeInternal(
 	m_params.m_bIncludeDirectLighting = settings.m_bIncludeDirectLighting;
 	m_params.m_bIncludeEnvironment = settings.m_bIncludeSky;
 	m_params.m_bIncludeEmissive = settings.m_bIncludeEmissive;
+}
+
+bool GIProbesPathTracer::InitializeLighting(
+	const GIProbesPathTracer& source,
+	const TVector<LightProxy>& lights,
+	const GIProbesBakeSettings& settings,
+	const glm::vec3& fallbackEnvironment)
+{
+	if (!source.m_bInitialized)
+	{
+		return false;
+	}
+	m_pathTracer.UsePreparedGeometry(source.m_pathTracer);
+	m_pathTracer.m_lightProxies = GetIndirectLights(lights);
+	m_pathTracer.ClearRuntimeEnvironment();
+	ConfigureParameters(settings, fallbackEnvironment);
+	m_bInitialized = true;
+	return true;
+}
+
+bool GIProbesPathTracer::InitializeInternal(
+	const TVector<PathTracer::TLASInstance>& instances,
+	const TVector<MaterialPtr>& runtimeMaterials,
+	const PathTracer::MaterialSnapshots* snapshotMaterials,
+	const TVector<LightProxy>& lights,
+	const GIProbesBakeSettings& settings,
+	const glm::vec3& fallbackEnvironment,
+	const PathTracer::ScenePreparationProgressCallback& progress,
+	const PathTracer::ScenePreparationWarningCallback& warning)
+{
+	SAILOR_PROFILE_FUNCTION();
+	const auto bakedLights = GetIndirectLights(lights);
+	ConfigureParameters(settings, fallbackEnvironment);
 	const auto reportWarning = [&warning](const std::string& diagnostic)
 	{
 		if (warning)

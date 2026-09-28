@@ -5,6 +5,7 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "Components/CameraComponent.h"
 #include "Components/MeshRendererComponent.h"
+#include "Components/SkyComponent.h"
 #include "ECS/GlobalIlluminationECS.h"
 #include "ECS/LandscapeECS.h"
 #include "ECS/LightingECS.h"
@@ -56,6 +57,26 @@ namespace Sailor
 		static uint64_t PreparationCount(const GlobalIlluminationECS& system)
 		{
 			return system.m_runtimeScenePreparationRequestId;
+		}
+
+		static GIProbesPreparedScenePtr WaitPreparation(GlobalIlluminationECS& system)
+		{
+			if (!system.m_runtimeScenePreparationTask)
+			{
+				return {};
+			}
+			system.m_runtimeScenePreparationTask->Wait();
+			return system.m_runtimeScenePreparationTask->GetResult().m_scene;
+		}
+
+		static GIProbesPreparedScenePtr PreparedScene(const GlobalIlluminationECS& system)
+		{
+			return system.m_runtimePreparedScene;
+		}
+
+		static GIProbesSceneSnapshotPtr CapturedScene(const GlobalIlluminationECS& system)
+		{
+			return system.m_runtimeSceneSnapshot;
 		}
 	};
 }
@@ -273,6 +294,116 @@ namespace
 		world.WaitReady();
 		Require(GlobalIlluminationECSTestAccess::PreparationCount(gi) == attempts + 1,
 			"a stale first preparation must recover once the scene becomes stable");
+	}
+
+	void TestLightingPreparation()
+	{
+		GIWorld world;
+		auto sky = world.Instantiate("Sky")->AddComponent<SkyComponent>();
+		auto settings = world.GI().GetWorldSettings();
+		settings.m_runtimeProbes.m_bIncludeSky = true;
+		std::string diagnostic;
+		Require(world.GI().ApplyWorldSettings(settings, diagnostic), diagnostic);
+		world.Step();
+		const auto prepared = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
+		Require(prepared && prepared->m_sampler, "the real background task must prepare the initial sky scene");
+		sky->SetSunAngle(25.0f);
+		world.Step();
+		Require(GlobalIlluminationECSTestAccess::PreparedScene(world.GI()) == prepared,
+			"a newer light state must not discard usable prepared geometry or starve the first solve");
+		world.WaitReady();
+		const auto captured = GlobalIlluminationECSTestAccess::CapturedScene(world.GI());
+		const auto firstPublication = world.GI().GetActiveSnapshot();
+		Require(prepared->m_sampler->GetLastScenePreparationStats().m_builtBlasCount > 0,
+			"the initial capture must build real frozen geometry");
+		world.GI().SetRuntimeGIProbesWorkAllowed(false);
+		world.Step(0.6f);
+		world.Step();
+		const auto relit = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
+		const auto recaptured = GlobalIlluminationECSTestAccess::CapturedScene(world.GI());
+		Require(relit && relit != prepared && relit->m_geometryHash == prepared->m_geometryHash &&
+			relit->m_lightingHash != prepared->m_lightingHash &&
+			relit->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0 &&
+			relit->m_sampler->GetLastScenePreparationStats().m_decodedTextureCount == 0,
+			"sun-only refresh must retain prepared geometry and skip BLAS and texture decoding");
+		Require(recaptured->m_instances[0].m_triangles == captured->m_instances[0].m_triangles &&
+			recaptured->m_materials[0] == captured->m_materials[0],
+			"light-only owner capture must retain frozen triangles and material snapshots");
+		sky->SetSunAngle(35.0f);
+		world.Step();
+		Require(GlobalIlluminationECSTestAccess::PreparedScene(world.GI()) == relit,
+			"continued sun movement must not discard the light-only result either");
+		const auto attempts = GlobalIlluminationECSTestAccess::PreparationCount(world.GI());
+		for (uint32_t frame = 0; frame < 8; ++frame)
+		{
+			sky->SetGiIndirectIntensity(1.0f + 0.1f * frame);
+			world.Step(0.6f);
+		}
+		Require(GlobalIlluminationECSTestAccess::PreparationCount(world.GI()) == attempts &&
+			world.GI().GetActiveSnapshot() == firstPublication,
+			"moving light must coalesce while a throttled replacement has not published");
+		world.GI().SetRuntimeGIProbesWorkAllowed(true);
+		const auto beforeRefresh = world.GI().GetRuntimeGIProbesStatus().m_publishedRevision;
+		world.WaitReady(beforeRefresh);
+		world.Step(0.6f);
+		world.Step();
+		const auto caughtUp = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
+		Require(caughtUp && caughtUp->m_lightingHash != relit->m_lightingHash &&
+			caughtUp->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0,
+			"after publishing, the next light-only preparation must catch up to the latest sky");
+		world.Step();
+		world.WaitReady();
+
+		for (auto object : world.GetGameObjects())
+		{
+			if (object->GetComponent<MeshRendererComponent>())
+			{
+				object->GetTransformComponent().SetPosition(glm::vec3(0, 0, -6));
+				break;
+			}
+		}
+		world.Step(0.6f);
+		world.Step();
+		const auto moved = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
+		Require(moved && moved->m_geometryHash != caughtUp->m_geometryHash &&
+			moved->m_sampler->GetLastScenePreparationStats().m_builtBlasCount > 0,
+			"a Static transform change must rebuild the frozen transport");
+		world.Step();
+		world.WaitReady();
+		world.m_material->SetUniform("material.baseColorFactor", glm::vec4(1, 1, 1, 0.5f));
+		world.Step(0.6f);
+		world.Step();
+		const auto alpha = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
+		Require(alpha && alpha->m_geometryHash != moved->m_geometryHash &&
+			alpha->m_sampler->GetLastScenePreparationStats().m_builtBlasCount > 0,
+			"material alpha edits must not use the light-only transport shortcut");
+		world.Step();
+		world.WaitReady();
+		Require(world.GI().RebuildRuntimeGIProbesScene(diagnostic), diagnostic);
+		world.Step();
+		const auto explicitRebuild = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
+		Require(explicitRebuild && explicitRebuild->m_sampler->GetLastScenePreparationStats().m_builtBlasCount > 0,
+			"an explicit rebuild must bypass retained geometry even with unchanged identities");
+	}
+
+	void TestCloudsDoNotInvalidateGI()
+	{
+		GIWorld world;
+		auto sky = world.Instantiate("Sky")->AddComponent<SkyComponent>();
+		GIProbesSceneCaptureRequest request;
+		GIProbesSceneRevision before, after;
+		std::string diagnostic;
+		Require(ObserveGIProbesSceneRevision(&world, request, before, diagnostic), diagnostic);
+		sky->SetCloudsDensity(0.8f);
+		sky->SetCloudsCoverage(0.2f);
+		sky->SetCloudsHorizonBlend(2.0f);
+		sky->SetSunShaftsIntensity(0.9f);
+		Require(ObserveGIProbesSceneRevision(&world, request, after, diagnostic), diagnostic);
+		Require(before == after, "clouds, fog and shafts absent from CPU clear sky must not invalidate GI");
+		sky->SetSunAngle(25.0f);
+		Require(ObserveGIProbesSceneRevision(&world, request, after, diagnostic), diagnostic);
+		Require(before.m_geometry == after.m_geometry && before.m_lighting != after.m_lighting,
+			"a changed sun must invalidate lighting without invalidating geometry");
 	}
 
 	void TestGpuLayoutUploads(const GIProbesDataPtr& data, uint64_t publishedBytes)
@@ -495,6 +626,8 @@ namespace Sailor::Tests
 		run("Changed-input recovery", [&]() { TestPreparationRecovery(false); });
 		run("Explicit recovery", [&]() { TestPreparationRecovery(true); });
 		run("Stale preparation recovery", [&]() { TestStalePreparationRecovery(); });
+		run("Lighting preparation", [&]() { TestLightingPreparation(); });
+		run("Cloud-only changes", [&]() { TestCloudsDoNotInvalidateGI(); });
 		if (data)
 		{
 			run("GI layout uploads", [&]() { TestGpuLayoutUploads(data, publishedBytes); });

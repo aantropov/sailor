@@ -78,6 +78,13 @@ namespace Sailor
 		const GIProbesSceneWarningCallback& warning = {},
 		GIProbesSceneMaterialWatch* materialWatch = nullptr);
 
+	SAILOR_SHARED_API bool CaptureGIProbesSceneLighting(
+		World* world,
+		const GIProbesSceneCaptureRequest& request,
+		GIProbesSceneSnapshot& outScene,
+		std::string& outDiagnostic,
+		const GIProbesSceneWarningCallback& warning = {});
+
 	SAILOR_SHARED_API bool ObserveGIProbesSceneRevision(
 		World* world,
 		const GIProbesSceneCaptureRequest& request,
@@ -91,5 +98,6 @@ namespace Sailor
 		GIProbesPreparedScene& outPreparedScene,
 		std::string& outDiagnostic,
 		const Raytracing::PathTracer::ScenePreparationProgressCallback& progress = {},
-		const GIProbesSceneWarningCallback& warning = {});
+		const GIProbesSceneWarningCallback& warning = {},
+		const GIProbesPreparedScene* previous = nullptr);
 }

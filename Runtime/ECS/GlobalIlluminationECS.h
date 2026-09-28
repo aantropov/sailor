@@ -192,11 +192,13 @@ namespace Sailor
 			m_runtimeScenePreparationTask{};
 		TSharedPtr<std::atomic<bool>> m_runtimeScenePreparationCancel{};
 		GIProbesSceneMaterialWatch m_runtimeSceneMaterialWatch;
+		GIProbesSceneSnapshotPtr m_runtimeSceneSnapshot;
 		GIProbesPreparedScenePtr m_runtimePreparedScene{};
 		GIProbesSceneRevision m_runtimePreparationRevision{};
 		RuntimeGIProbesQualitySettings m_runtimeObservedQuality{};
 		uint64_t m_runtimeScenePreparationRequestId = 0u;
 		uint64_t m_runtimePublishedRevision = 0u;
+		uint64_t m_runtimeStartedPublishedRevision = 0u;
 		std::string m_runtimePreparationDiagnostic{};
 		bool m_bRuntimeObservedQualityValid = false;
 		bool m_bRuntimePreviewEnabled = false;

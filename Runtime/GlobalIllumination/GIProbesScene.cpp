@@ -159,30 +159,12 @@ namespace
 		HashLightingSettings(outLightingHash, request.m_settings);
 	}
 
-	void HashSkyParameters(
-		uint64_t& hash,
-		const SkyParameters& sky) noexcept
+	void HashSkyParameters(uint64_t& hash, const SkyParameters& sky) noexcept
 	{
-		HashVec4(hash, sky.m_lightDirection);
-		HashVec4(hash, sky.m_sunIlluminance);
-		HashVec4(hash, sky.m_groundRadiance);
-		HashValue(hash, sky.m_cloudsAttenuation1);
-		HashValue(hash, sky.m_cloudsAttenuation2);
-		HashValue(hash, sky.m_cloudsDensity);
-		HashValue(hash, sky.m_cloudsCoverage);
-		HashValue(hash, sky.m_phaseInfluence1);
-		HashValue(hash, sky.m_phaseInfluence2);
-		HashValue(hash, sky.m_eccentrisy1);
-		HashValue(hash, sky.m_eccentrisy2);
-		HashValue(hash, sky.m_fog);
-		HashValue(hash, sky.m_cloudScatteringScale);
-		HashValue(hash, sky.m_ambient);
-		HashValue(hash, sky.m_scatteringSteps);
-		HashValue(hash, sky.m_scatteringDensity);
-		HashValue(hash, sky.m_scatteringIntensity);
-		HashValue(hash, sky.m_scatteringPhase);
-		HashValue(hash, sky.m_sunShaftsIntensity);
-		HashValue(hash, sky.m_sunShaftsDistance);
+		HashVec3(hash, glm::vec3(sky.m_lightDirection));
+		HashVec3(hash, glm::vec3(sky.m_sunIlluminance));
+		HashVec3(hash, glm::vec3(sky.m_groundRadiance));
+		HashValue(hash, Math::AllFinite(sky.m_groundRadiance));
 	}
 
 	void HashLightProxies(
@@ -430,6 +412,72 @@ bool GIProbesSceneMaterialWatch::HasUnchangedMaterials() const noexcept
 	return true;
 }
 
+bool Sailor::CaptureGIProbesSceneLighting(
+	World* world,
+	const GIProbesSceneCaptureRequest& request,
+	GIProbesSceneSnapshot& outScene,
+	std::string& outDiagnostic,
+	const GIProbesSceneWarningCallback& warning)
+{
+	if (!world || !Math::AllFinite(request.m_fallbackEnvironment))
+	{
+		outDiagnostic = "GI lighting capture requires a world and a finite fallback environment";
+		return false;
+	}
+	outScene.m_fallbackEnvironment = glm::max(request.m_fallbackEnvironment, glm::vec3(0.0f));
+	outScene.m_skyParameters = {};
+	outScene.m_skyIndirectIntensity = 1.0f;
+	outScene.m_bHasSkyEnvironment = false;
+	outScene.m_lights.Clear();
+
+	if (request.m_settings.m_bIncludeSky)
+	{
+		const ObservedSky sky = ResolveObservedSky(world);
+		if (sky.m_componentCount > 0u)
+		{
+			outScene.m_skyParameters = sky.m_parameters;
+			outScene.m_skyIndirectIntensity = sky.m_indirectIntensity;
+			outScene.m_bHasSkyEnvironment = true;
+		}
+		if (sky.m_componentCount > 1u)
+		{
+			ReportWarning(
+				warning,
+				"multiple SkyComponents are present; GI tracing uses '" +
+					sky.m_selectedName + "'");
+		}
+	}
+
+	uint64_t lightingHash = Fnv1aOffsetBasis;
+	HashString(lightingHash, request.m_sourceIdentity);
+	HashString(lightingHash, world->GetName());
+	HashLightingSettings(lightingHash, request.m_settings);
+
+	if (auto* lighting = world->GetECS<LightingECS>())
+	{
+		lighting->GetGlobalIlluminationBakeLightProxies(outScene.m_lights);
+	}
+	HashLightProxies(lightingHash, outScene.m_lights);
+	HashVec3(lightingHash, outScene.m_fallbackEnvironment);
+	HashValue(lightingHash, outScene.m_bHasSkyEnvironment);
+	if (outScene.m_bHasSkyEnvironment)
+	{
+		constexpr uint32_t SkyEnvironmentGeneratorVersion = 1u;
+		HashValue(lightingHash, SkyEnvironmentGeneratorVersion);
+		HashValue(lightingHash, Raytracing::ProbeBakeSkyEnvironmentWidth);
+		HashValue(lightingHash, Raytracing::ProbeBakeSkyEnvironmentHeight);
+		HashSkyParameters(lightingHash, outScene.m_skyParameters);
+		HashValue(lightingHash, outScene.m_skyIndirectIntensity);
+	}
+
+	HashMaterials(lightingHash, outScene.m_materials);
+	outScene.m_lightingHash = lightingHash;
+	outScene.m_sourceWorldHash = Fnv1aOffsetBasis;
+	HashValue(outScene.m_sourceWorldHash, outScene.m_geometryHash);
+	HashValue(outScene.m_sourceWorldHash, lightingHash);
+	return ObserveGIProbesSceneRevision(world, request, outScene.m_observedRevision, outDiagnostic);
+}
+
 bool Sailor::CaptureGIProbesScene(
 	World* world,
 	const GIProbesSceneCaptureRequest& request,
@@ -459,24 +507,6 @@ bool Sailor::CaptureGIProbesScene(
 	outScene.m_fallbackEnvironment = glm::max(
 		request.m_fallbackEnvironment,
 		glm::vec3(0.0f));
-
-	if (request.m_settings.m_bIncludeSky)
-	{
-		const ObservedSky sky = ResolveObservedSky(world);
-		if (sky.m_componentCount > 0u)
-		{
-			outScene.m_skyParameters = sky.m_parameters;
-			outScene.m_skyIndirectIntensity = sky.m_indirectIntensity;
-			outScene.m_bHasSkyEnvironment = true;
-		}
-		if (sky.m_componentCount > 1u)
-		{
-			ReportWarning(
-				warning,
-				"multiple SkyComponents are present; GI tracing uses '" +
-					sky.m_selectedName + "'");
-		}
-	}
 
 	TVector<MaterialPtr> runtimeMaterials;
 	TVector<MeshCandidate> candidates;
@@ -508,13 +538,10 @@ bool Sailor::CaptureGIProbesScene(
 			return lhs.m_instanceId < rhs.m_instanceId;
 		});
 
-	uint64_t geometryHash = 0u;
-	uint64_t lightingHash = 0u;
-	InitializeSceneHashes(
-		request,
-		world->GetName(),
-		geometryHash,
-		lightingHash);
+	uint64_t geometryHash = Fnv1aOffsetBasis;
+	HashString(geometryHash, request.m_sourceIdentity);
+	HashString(geometryHash, world->GetName());
+	HashGeometrySettings(geometryHash, request.m_settings);
 	TMap<std::string, FrozenModelGeometry> frozenModelGeometry;
 	for (MeshCandidate& candidate : candidates)
 	{
@@ -715,26 +742,8 @@ bool Sailor::CaptureGIProbesScene(
 		return false;
 	}
 
-	if (auto* lighting = world->GetECS<LightingECS>())
-	{
-		lighting->GetGlobalIlluminationBakeLightProxies(outScene.m_lights);
-	}
-	HashLightProxies(lightingHash, outScene.m_lights);
-	HashVec3(lightingHash, outScene.m_fallbackEnvironment);
-	HashValue(lightingHash, outScene.m_bHasSkyEnvironment);
-	if (outScene.m_bHasSkyEnvironment)
-	{
-		constexpr uint32_t SkyEnvironmentGeneratorVersion = 1u;
-		HashValue(lightingHash, SkyEnvironmentGeneratorVersion);
-		HashValue(lightingHash, Raytracing::ProbeBakeSkyEnvironmentWidth);
-		HashValue(lightingHash, Raytracing::ProbeBakeSkyEnvironmentHeight);
-		HashSkyParameters(lightingHash, outScene.m_skyParameters);
-		HashValue(lightingHash, outScene.m_skyIndirectIntensity);
-	}
-
 	outScene.m_materials = Raytracing::PathTracer::CaptureMaterials(runtimeMaterials);
 	HashMaterials(geometryHash, outScene.m_materials);
-	HashMaterials(lightingHash, outScene.m_materials);
 	if (materialWatch)
 	{
 		TSet<MaterialPtr> watched;
@@ -749,15 +758,7 @@ bool Sailor::CaptureGIProbesScene(
 		}
 	}
 	outScene.m_geometryHash = geometryHash;
-	outScene.m_lightingHash = lightingHash;
-	outScene.m_sourceWorldHash = Fnv1aOffsetBasis;
-	HashValue(outScene.m_sourceWorldHash, geometryHash);
-	HashValue(outScene.m_sourceWorldHash, lightingHash);
-	if (!ObserveGIProbesSceneRevision(
-			world,
-			request,
-			outScene.m_observedRevision,
-			outDiagnostic))
+	if (!CaptureGIProbesSceneLighting(world, request, outScene, outDiagnostic, warning))
 	{
 		return false;
 	}
@@ -772,7 +773,8 @@ bool Sailor::PrepareGIProbesScene(
 	GIProbesPreparedScene& outPreparedScene,
 	std::string& outDiagnostic,
 	const Raytracing::PathTracer::ScenePreparationProgressCallback& progress,
-	const GIProbesSceneWarningCallback& warning)
+	const GIProbesSceneWarningCallback& warning,
+	const GIProbesPreparedScene* previous)
 {
 	SAILOR_PROFILE_FUNCTION();
 	outPreparedScene = {};
@@ -797,14 +799,15 @@ bool Sailor::PrepareGIProbesScene(
 		{
 			return !isCancelled() && (!progress || progress(state)) && !isCancelled();
 		};
-	if (!sampler->InitializeSnapshot(
-			scene.m_instances,
-			scene.m_materials,
-			scene.m_lights,
-			effectiveSettings,
-			scene.m_fallbackEnvironment,
-			guardedProgress,
-			warning))
+	const bool bReuseGeometry = previous && previous->m_sampler &&
+		previous->m_geometryHash == scene.m_geometryHash;
+	const bool bInitialized = bReuseGeometry ?
+		sampler->InitializeLighting(*previous->m_sampler, scene.m_lights,
+			effectiveSettings, scene.m_fallbackEnvironment) :
+		sampler->InitializeSnapshot(scene.m_instances, scene.m_materials,
+			scene.m_lights, effectiveSettings, scene.m_fallbackEnvironment,
+			guardedProgress, warning);
+	if (!bInitialized)
 	{
 		outDiagnostic = isCancelled() ?
 			"GI scene preparation was cancelled while building the CPU path tracer" :

@@ -1870,7 +1870,7 @@ namespace
 	class MaterialSamplingPathTracer final : public Raytracing::PathTracer
 	{
 	public:
-		const Raytracing::Material& PreparedMaterial(size_t index) const { return m_materials[index]; }
+		const Raytracing::Material& PreparedMaterial(size_t index) const { return m_preparedMaterials->m_materials[index]; }
 		Raytracing::LightingModel::SampledData SamplePreparedMaterial(
 			size_t materialIndex,
 			glm::vec2 uv = glm::vec2(0.5f)) const
@@ -1883,14 +1883,14 @@ namespace
 			const glm::vec4& second,
 			const glm::vec4& weights)
 		{
-			m_materials.Clear();
-			m_textures.Clear();
+			m_preparedMaterials->m_materials.Clear();
+			m_preparedMaterials->m_textures.Clear();
 
 			Raytracing::Material material;
 			material.m_baseColorFactor = glm::vec4(0.5f, 1.0f, 1.0f, 1.0f);
 			material.m_layerColorIndices[0] = 0u;
 			material.m_layerColorIndices[1] = 1u;
-			m_materials.Add(material);
+			m_preparedMaterials->m_materials.Add(material);
 
 			auto addTexture = [this](const glm::vec4& color)
 			{
@@ -1898,7 +1898,7 @@ namespace
 					TSharedPtr<Raytracing::CombinedSampler2D>::Make();
 				texture->Initialize<glm::vec4>(1u, 1u, 4u);
 				texture->SetPixel(0u, 0u, color);
-				m_textures.Add(std::move(texture));
+				m_preparedMaterials->m_textures.Add(std::move(texture));
 			};
 			addTexture(first);
 			addTexture(second);
@@ -1910,19 +1910,19 @@ namespace
 			const glm::vec3& normal,
 			float normalScale)
 		{
-			m_materials.Clear();
-			m_textures.Clear();
+			m_preparedMaterials->m_materials.Clear();
+			m_preparedMaterials->m_textures.Clear();
 
 			Raytracing::Material material;
 			material.m_normalIndex = 0u;
 			material.m_normalScale = normalScale;
-			m_materials.Add(material);
+			m_preparedMaterials->m_materials.Add(material);
 
 			TSharedPtr<Raytracing::CombinedSampler2D> texture =
 				TSharedPtr<Raytracing::CombinedSampler2D>::Make();
 			texture->Initialize<glm::vec3>(1u, 1u, 3u);
 			texture->SetPixel(0u, 0u, normal);
-			m_textures.Add(std::move(texture));
+			m_preparedMaterials->m_textures.Add(std::move(texture));
 
 			return GetMaterialData(0u, glm::vec2(0.0f)).m_normal;
 		}
@@ -1931,12 +1931,12 @@ namespace
 			const glm::vec4& baseColor,
 			const glm::vec4& vertexColor)
 		{
-			m_materials.Clear();
-			m_textures.Clear();
+			m_preparedMaterials->m_materials.Clear();
+			m_preparedMaterials->m_textures.Clear();
 
 			Raytracing::Material material;
 			material.m_baseColorFactor = baseColor;
-			m_materials.Add(material);
+			m_preparedMaterials->m_materials.Add(material);
 			return GetMaterialData(
 				0u,
 				glm::vec2(0.0f),
@@ -5751,11 +5751,9 @@ components:
 			}, [](const std::string&) {}) && completedMaterialReports > 1u && completedMaterialReports <= 8u,
 			"many reused or skipped instances must poll cancellation in batches, not publish progress per instance");
 	}
-
-	void TestPathTracerCancellationDuringTexturePreparation()
+	TSharedPtr<Raytracing::PathTracer::TextureSnapshot> MakeCapturedRedTexture(
+		const std::filesystem::path& imagePath)
 	{
-		Tests::TempDirectory source("gi-cancel-texture");
-		const auto imagePath = source.Path("pixel.tga");
 		std::array<uint8_t, 21> bytes{};
 		bytes[2] = 2u;
 		bytes[12] = bytes[14] = 1u;
@@ -5765,7 +5763,7 @@ components:
 			std::ofstream output(imagePath, std::ios::binary);
 			output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
 			output.close();
-			Require(static_cast<bool>(output), "the cancellation fixture texture must be written");
+			Require(static_cast<bool>(output), "the texture fixture texture must be written");
 		}
 		TextureAssetInfo info;
 		auto metadata = info.Serialize();
@@ -5778,7 +5776,122 @@ components:
 		texture->m_fileId = textureId;
 		texture->m_sourceKey = imagePath.string();
 		Require(TextureImporter::CaptureCpuDecodeRequest(info, texture->m_decodeRequest),
-			"the cancellation fixture must capture a real nonresident texture decode request");
+			"the texture fixture must capture a real nonresident texture decode request");
+
+		return texture;
+	}
+
+	void TestGiLightingReusesPreparedTransport()
+	{
+		Tests::TempDirectory files("gi-lighting-reuse");
+		const auto imagePath = files.Path("pixel.tga");
+		auto texture = MakeCapturedRedTexture(imagePath);
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		fixture.m_instances[0].m_blas.Clear();
+		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		auto textured = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*materials[0]);
+		textured->m_samplers.Add({ "baseColorSampler", { texture } });
+		materials[0] = textured;
+		GIProbesSceneSnapshot scene;
+		scene.m_instances = fixture.m_instances;
+		scene.m_materials = materials;
+		scene.m_lights = fixture.m_lights;
+		scene.m_worldBounds = fixture.m_bounds;
+		scene.m_geometryHash = 1;
+		scene.m_lightingHash = 1;
+		scene.m_fallbackEnvironment = glm::vec3(0.125f, 0.25f, 0.5f);
+		GIProbesBakeSettings settings;
+		settings.m_bounceCount = 2;
+		settings.m_bIncludeEmissive = false;
+		GIProbesPreparedScene first, latest;
+		std::string diagnostic;
+		Require(PrepareGIProbesScene(scene, settings, nullptr, first, diagnostic), diagnostic);
+		const auto& initial = first.m_sampler->GetLastScenePreparationStats();
+		Require(initial.m_builtBlasCount == 1 && initial.m_decodedTextureCount == 1,
+			"the transport fixture must really build BLAS and decode a nonresident texture");
+		Require(std::filesystem::remove(imagePath), "remove only the owned fixture source after decoding");
+
+		const glm::vec3 origin(-20, 20, -20);
+		const glm::vec3 direction(0, -1, 0);
+		auto sample = [&](const GIProbesPreparedScene& prepared)
+		{
+			GIProbeBakeRaySample result;
+			std::string error;
+			Require(prepared.m_sampler->Sample(origin, direction, 100, 41, result, error), error);
+			return result;
+		};
+		const auto original = sample(first);
+		Require(original.m_bHit && glm::length(original.m_radiance) > 0,
+			"the reference ray must hit a lit textured surface");
+
+		std::atomic<bool> valid{ true };
+		std::atomic<uint32_t> reads{ 0 };
+		std::jthread reader([&](std::stop_token stop)
+		{
+			try
+			{
+				while (!stop.stop_requested())
+				{
+					const auto value = sample(first);
+					if (value.m_radiance != original.m_radiance || value.m_distance != original.m_distance)
+					{
+						valid.store(false);
+					}
+					++reads;
+				}
+			}
+			catch (...)
+			{
+				valid.store(false);
+			}
+		});
+		while (reads.load() == 0 && valid.load())
+		{
+			std::this_thread::yield();
+		}
+		for (uint32_t refresh = 0; refresh < 16; ++refresh)
+		{
+			const float intensity = 1.0f + static_cast<float>(refresh + 1) / 16.0f;
+			scene.m_lights[0].m_intensity = fixture.m_lights[0].m_intensity * intensity;
+			scene.m_fallbackEnvironment = glm::vec3(0.125f, 0.25f, 0.5f) * intensity;
+			++scene.m_lightingHash;
+			Require(PrepareGIProbesScene(scene, settings, nullptr, latest, diagnostic, {}, {}, &first),
+				"light refresh must not reopen the removed texture source: " + diagnostic);
+			const auto& stats = latest.m_sampler->GetLastScenePreparationStats();
+			Require(stats.m_builtBlasCount == 0 && stats.m_decodedTextureCount == 0 &&
+				stats.m_uniqueMaterialCount == 0 && stats.m_uniqueTextureCount == 0 &&
+				stats.m_textureReferenceCount == 0 && stats.m_reusedBlasCount == 1,
+				"light refresh must reuse prepared geometry and materials without rebuilding or decoding");
+			const auto value = sample(latest);
+			Require(value.m_bHit && value.m_distance == original.m_distance &&
+				glm::length(value.m_radiance - original.m_radiance * intensity) <
+					0.0001f * (1.0f + glm::length(value.m_radiance)),
+				"new light intensity must change ray radiance without changing visibility");
+		}
+		reader.request_stop();
+		reader.join();
+		Require(valid.load() && reads.load() > 0 &&
+			first.m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 1,
+			"concurrent readers and the old preparation statistics must remain unchanged");
+		const auto retained = sample(latest);
+		Require(!first.m_sampler->InitializeSnapshot({}, {}, {}, settings),
+			"reinitializing the original tracer with an empty scene must detach its geometry");
+		first = {};
+		scene = {};
+		fixture = {};
+		materials.Clear();
+		textured.Clear();
+		texture.Clear();
+		const auto afterRelease = sample(latest);
+		Require(afterRelease.m_radiance == retained.m_radiance && afterRelease.m_distance == retained.m_distance,
+			"the light generation must own transport after the original scene, materials and tracer are released");
+	}
+
+	void TestPathTracerCancellationDuringTexturePreparation()
+	{
+		Tests::TempDirectory source("gi-cancel-texture");
+		const auto imagePath = source.Path("pixel.tga");
+		auto texture = MakeCapturedRedTexture(imagePath);
 
 		auto fixture = MakeEveningLandscapeRaytracingFixture();
 		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
@@ -7841,6 +7954,7 @@ int main(int argc, char** argv)
 			TestPathTracerPreparationDeduplicationAndProgress);
 		RunTest("PathTracerCancellationBetweenBlasBuilds", TestPathTracerCancellationBetweenBlasBuilds);
 		RunTest("PathTracerCancellationDuringTexturePreparation", TestPathTracerCancellationDuringTexturePreparation);
+		RunTest("GiLightingReusesPreparedTransport", TestGiLightingReusesPreparedTransport);
 		RunTest(
 			"ProbeBakeSkipsUnavailableMeshAndMaterialInstances",
 			TestProbeBakeSkipsUnavailableMeshAndMaterialInstances);

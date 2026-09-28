@@ -175,7 +175,7 @@ namespace Sailor::Raytracing
 			PreparedRaySample& outSample) const;
 		bool ArePreparedMaterialsFullyResolved() const
 		{
-			return m_bMaterialsFullyResolved;
+			return m_preparedMaterials->m_bMaterialsFullyResolved;
 		}
 		double GetLastRaytraceTimeMs() const { return m_lastRaytraceTimeMs; }
 		const ScenePreparationStats& GetLastScenePreparationStats() const
@@ -189,6 +189,7 @@ namespace Sailor::Raytracing
 		SAILOR_SHARED_API void Run(const Params& params);
 
 	protected:
+		void UsePreparedGeometry(const PathTracer& source);
 
 		bool InitializeSceneInternal(const TVector<TLASInstance>& instances,
 			const TVector<MaterialPtr>& runtimeMaterials,
@@ -293,19 +294,29 @@ namespace Sailor::Raytracing
 			float& outPdf) const;
 
 
+		struct PreparedGeometry
+		{
+			TVector<TLASInstance> m_tlasInstances;
+			TOctree<size_t> m_tlasOctree{ glm::ivec3(0), 16536 * 16, 4 };
+			TVector<EmissiveTriangle> m_emissiveTriangles;
+			float m_totalEmissiveWeight = 0.0f;
+		};
+
+		struct PreparedMaterials
+		{
+			TVector<Material> m_materials;
+			TVector<uint8_t> m_resolvedMaterialSlots;
+			TVector<TSharedPtr<CombinedSampler2D>> m_textures;
+			TMap<std::string, uint32_t> m_textureMapping;
+			size_t m_cachedMaterialsSignature = 0;
+			uint32_t m_cachedMaterialsCount = 0;
+			bool m_bCachedMaterialsFromSnapshot = false;
+			bool m_bMaterialsFullyResolved = false;
+		};
+
+		TSharedPtr<PreparedGeometry> m_geometry = TSharedPtr<PreparedGeometry>::Make();
+		TSharedPtr<PreparedMaterials> m_preparedMaterials = TSharedPtr<PreparedMaterials>::Make();
 		TVector<LightProxy> m_lightProxies{};
-		TVector<TLASInstance> m_tlasInstances{};
-		TOctree<size_t> m_tlasOctree{ glm::ivec3(0, 0, 0), 16536 * 16, 4 };
-		TVector<Material> m_materials{};
-		TVector<uint8_t> m_resolvedMaterialSlots{};
-		TVector<EmissiveTriangle> m_emissiveTriangles{};
-		float m_totalEmissiveWeight = 0.0f;
-		TVector<TSharedPtr<CombinedSampler2D>> m_textures{};
-		TMap<std::string, uint32_t> m_textureMapping{};
-		size_t m_cachedMaterialsSignature = 0;
-		uint32_t m_cachedMaterialsCount = 0;
-		bool m_bCachedMaterialsFromSnapshot = false;
-		bool m_bMaterialsFullyResolved = false;
 		ScenePreparationStats m_lastScenePreparationStats{};
 		double m_lastRaytraceTimeMs = 0.0;
 		TVector<vec4> m_lastRenderedImageLinear{};

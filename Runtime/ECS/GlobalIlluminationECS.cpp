@@ -547,6 +547,7 @@ bool GlobalIlluminationECS::RebuildRuntimeGIProbesScene(
 			true,
 			std::memory_order_release);
 	}
+	m_runtimeSceneSnapshot.Clear();
 	m_bRuntimeSceneRebuildRequested = true;
 	m_bRuntimePreparationFailed = false;
 	m_runtimePreparationRetrySeconds = 0.0f;
@@ -699,9 +700,18 @@ void GlobalIlluminationECS::TickRuntimeProvider(float deltaTime)
 					observationDiagnostic) &&
 				revision != m_runtimePreparationRevision)
 			{
-				m_bRuntimeSceneRebuildRequested = true;
-				m_runtimePreparationDiagnostic =
-					"runtime GI contributors changed; preparing the next scene generation";
+				const auto status = m_runtimeProbes.GetStatus();
+				// Let each light generation publish once before replacing it again.
+				// Geometry changes must still invalidate the old transport immediately.
+				if (revision.m_geometry != m_runtimePreparationRevision.m_geometry ||
+					!m_runtimePreparedScene || !status.m_bEnabled ||
+					status.m_lifecycle == ERuntimeGIProbesLifecycle::Failed ||
+					status.m_publishedRevision > m_runtimeStartedPublishedRevision)
+				{
+					m_bRuntimeSceneRebuildRequested = true;
+					m_runtimePreparationDiagnostic =
+						"runtime GI contributors changed; preparing the next scene generation";
+				}
 			}
 		}
 	}
@@ -737,16 +747,25 @@ bool GlobalIlluminationECS::BeginRuntimeScenePreparation(
 	captureRequest.m_sourceIdentity = GetWorld()->GetName();
 	GIProbesSceneSnapshot snapshot;
 	TVector<std::string> warnings;
-	if (!CaptureGIProbesScene(
-			GetWorld(),
-			captureRequest,
-			snapshot,
-			outDiagnostic,
-			[&warnings](const std::string& warning)
-			{
-				warnings.Add(warning);
-			},
-			&m_runtimeSceneMaterialWatch))
+	GIProbesSceneRevision revision;
+	if (!ObserveGIProbesSceneRevision(GetWorld(), captureRequest, revision, outDiagnostic))
+	{
+		return false;
+	}
+	const bool bReuseGeometry = m_runtimeSceneSnapshot && m_runtimePreparedScene &&
+		revision.m_geometry == m_runtimeSceneSnapshot->m_observedRevision.m_geometry &&
+		revision.m_geometry == m_runtimePreparedScene->m_observedRevision.m_geometry &&
+		m_runtimeSceneMaterialWatch.HasUnchangedMaterials();
+	const auto reportWarning = [&warnings](const std::string& warning) { warnings.Add(warning); };
+	if (bReuseGeometry)
+	{
+		snapshot = *m_runtimeSceneSnapshot;
+	}
+	const bool bCaptured = bReuseGeometry ?
+		CaptureGIProbesSceneLighting(GetWorld(), captureRequest, snapshot, outDiagnostic, reportWarning) :
+		CaptureGIProbesScene(GetWorld(), captureRequest, snapshot, outDiagnostic,
+			reportWarning, &m_runtimeSceneMaterialWatch);
+	if (!bCaptured)
 	{
 		std::string observationDiagnostic;
 		ObserveGIProbesSceneRevision(
@@ -767,11 +786,13 @@ bool GlobalIlluminationECS::BeginRuntimeScenePreparation(
 	const auto cancel = m_runtimeScenePreparationCancel;
 	const auto immutableSnapshot =
 		GIProbesSceneSnapshotPtr::Make(std::move(snapshot));
+	m_runtimeSceneSnapshot = immutableSnapshot;
+	const auto previous = bReuseGeometry ? m_runtimePreparedScene : GIProbesPreparedScenePtr{};
 	const uint64_t requestId = ++m_runtimeScenePreparationRequestId;
 	m_runtimeScenePreparationTask =
 		Tasks::CreateTask<RuntimeScenePreparationResult>(
 			"GlobalIlluminationECS:Prepare Runtime GI Scene",
-			[immutableSnapshot, bakeSettings, cancel, requestId,
+			[immutableSnapshot, previous, bakeSettings, cancel, requestId,
 				captureWarningCount]()
 			{
 				RuntimeScenePreparationResult result;
@@ -788,7 +809,7 @@ bool GlobalIlluminationECS::BeginRuntimeScenePreparation(
 					[&preparationWarnings](const std::string& warning)
 					{
 						preparationWarnings.Add(warning);
-					});
+					}, previous.GetRawPtr());
 				const size_t warningCount = captureWarningCount +
 					preparationWarnings.Num();
 				if (warningCount > 0u)
@@ -831,7 +852,6 @@ void GlobalIlluminationECS::ConsumeRuntimeScenePreparation(
 	m_runtimeScenePreparationTask.Clear();
 	m_runtimeScenePreparationCancel.Clear();
 	const bool bMaterialsUnchanged = m_runtimeSceneMaterialWatch.HasUnchangedMaterials();
-	m_runtimeSceneMaterialWatch.m_materials.Clear();
 	if (result.m_requestId != m_runtimeScenePreparationRequestId)
 	{
 		return;
@@ -856,8 +876,11 @@ void GlobalIlluminationECS::ConsumeRuntimeScenePreparation(
 			observationRequest,
 			currentRevision,
 			observationDiagnostic) ||
-		currentRevision != attemptedRevision)
+		currentRevision.m_geometry != attemptedRevision.m_geometry ||
+		(!result.m_scene && currentRevision.m_lighting != attemptedRevision.m_lighting))
 	{
+		m_runtimeSceneSnapshot.Clear();
+		m_runtimeSceneMaterialWatch.m_materials.Clear();
 		m_bRuntimeSceneRebuildRequested = true;
 		m_bRuntimePreparationFailed = false;
 		m_runtimePreparationRetrySeconds = 0.1f;
@@ -918,6 +941,7 @@ bool GlobalIlluminationECS::StartRuntimeSolver(
 	{
 		return false;
 	}
+	m_runtimeStartedPublishedRevision = m_runtimeProbes.GetStatus().m_publishedRevision;
 	SetDiagnostic(outDiagnostic);
 	return true;
 }
@@ -968,10 +992,12 @@ void GlobalIlluminationECS::StopRuntimeProvider(bool bClearSnapshot)
 	m_runtimeScenePreparationTask.Clear();
 	m_runtimeScenePreparationCancel.Clear();
 	m_runtimeSceneMaterialWatch.m_materials.Clear();
+	m_runtimeSceneSnapshot.Clear();
 	m_runtimePreparedScene.Clear();
 	m_runtimePreparationRevision = {};
 	m_runtimeProbes.Disable();
 	m_runtimePublishedRevision = 0u;
+	m_runtimeStartedPublishedRevision = 0u;
 	m_bRuntimeObservedQualityValid = false;
 	m_bRuntimeSceneRebuildRequested = true;
 	m_bRuntimePreparationFailed = false;

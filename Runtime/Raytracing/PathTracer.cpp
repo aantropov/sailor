@@ -1176,6 +1176,21 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 	}
 }
 
+void PathTracer::UsePreparedGeometry(const PathTracer& source)
+{
+	m_geometry = source.m_geometry;
+	m_preparedMaterials = source.m_preparedMaterials;
+	m_bAddDefaultLightIfEmpty = source.m_bAddDefaultLightIfEmpty;
+	m_lastScenePreparationStats = source.m_lastScenePreparationStats;
+	m_lastScenePreparationStats.m_builtBlasCount = 0;
+	m_lastScenePreparationStats.m_reusedBlasCount = m_lastScenePreparationStats.m_geometryInstanceCount;
+	m_lastScenePreparationStats.m_uniqueMaterialCount = 0;
+	m_lastScenePreparationStats.m_reusedMaterialCount = m_lastScenePreparationStats.m_materialSlotCount;
+	m_lastScenePreparationStats.m_textureReferenceCount = 0;
+	m_lastScenePreparationStats.m_uniqueTextureCount = 0;
+	m_lastScenePreparationStats.m_decodedTextureCount = 0;
+}
+
 bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 	const TVector<MaterialPtr>& materials,
 	const TVector<LightProxy>& lightProxies,
@@ -1209,14 +1224,13 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 	bool bSkipUnresolvedMaterialInstances,
 	const ScenePreparationWarningCallback& warning)
 {
-	m_tlasInstances = instances;
+	// Older light generations may still be tracing the previous transport.
+	m_geometry = TSharedPtr<PreparedGeometry>::Make();
+	m_geometry->m_tlasInstances = instances;
 	m_lightProxies = lightProxies;
 	m_bAddDefaultLightIfEmpty = bAddDefaultLightIfEmpty;
-	m_tlasOctree.Clear();
-	m_emissiveTriangles.Clear();
-	m_totalEmissiveWeight = 0.0f;
 	m_lastScenePreparationStats = {};
-	m_lastScenePreparationStats.m_instanceCount = m_tlasInstances.Num();
+	m_lastScenePreparationStats.m_instanceCount = m_geometry->m_tlasInstances.Num();
 
 	auto reportGeometryProgress = [&](size_t completed) -> bool
 	{
@@ -1227,7 +1241,7 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 		ScenePreparationProgress update;
 		update.m_stage = EScenePreparationStage::Geometry;
 		update.m_completed = completed;
-		update.m_total = m_tlasInstances.Num();
+		update.m_total = m_geometry->m_tlasInstances.Num();
 		return progress(update);
 	};
 	if (!reportGeometryProgress(0u))
@@ -1236,9 +1250,9 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 	}
 
 	TMap<const TVector<Math::Triangle>*, TSharedPtr<BVH>> preparedBlas;
-	for (size_t i = 0; i < m_tlasInstances.Num(); i++)
+	for (size_t i = 0; i < m_geometry->m_tlasInstances.Num(); i++)
 	{
-		auto& instance = m_tlasInstances[i];
+		auto& instance = m_geometry->m_tlasInstances[i];
 		const auto* triangles = instance.m_triangles.GetRawPtr();
 		if (triangles && instance.m_blas &&
 			!preparedBlas.ContainsKey(triangles))
@@ -1281,7 +1295,7 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 
 		const size_t completed = i + 1u;
 		if ((completed % 64u == 0u ||
-			completed == m_tlasInstances.Num()) &&
+			completed == m_geometry->m_tlasInstances.Num()) &&
 			!reportGeometryProgress(completed))
 		{
 			return false;
@@ -1291,39 +1305,36 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 	const size_t materialCount = snapshotMaterials ? snapshotMaterials->Num() : runtimeMaterials.Num();
 	const size_t materialsSignature = snapshotMaterials ? 0u : ComputeMaterialsSignature(runtimeMaterials);
 	// Texture pixels can change without a material revision. A supplied snapshot is authoritative.
-	const bool bNeedRebuildMaterials = snapshotMaterials || m_bCachedMaterialsFromSnapshot ||
-		m_materials.Num() == 0 ||
-		m_cachedMaterialsCount != (uint32_t)materialCount ||
-		m_cachedMaterialsSignature != materialsSignature ||
-		!m_bMaterialsFullyResolved;
+	const bool bNeedRebuildMaterials = snapshotMaterials || m_preparedMaterials->m_bCachedMaterialsFromSnapshot ||
+		m_preparedMaterials->m_materials.Num() == 0 ||
+		m_preparedMaterials->m_cachedMaterialsCount != (uint32_t)materialCount ||
+		m_preparedMaterials->m_cachedMaterialsSignature != materialsSignature ||
+		!m_preparedMaterials->m_bMaterialsFullyResolved;
 
 	if (bNeedRebuildMaterials)
 	{
-		m_materials.Clear();
-		m_resolvedMaterialSlots.Clear();
-		m_textures.Clear();
-		m_textureMapping.Clear();
+		m_preparedMaterials = TSharedPtr<PreparedMaterials>::Make();
 		bool bAllTexturesResolved = true;
 		// The live/private caller keeps its existing cache key and only captures on a miss.
 		const auto captured = snapshotMaterials ? MaterialSnapshots{} : CaptureMaterials(runtimeMaterials);
 		if (!BuildRaytracingMaterials(
 				snapshotMaterials ? *snapshotMaterials : captured,
-				m_materials,
-				m_resolvedMaterialSlots,
-				m_textures,
-				m_textureMapping,
+				m_preparedMaterials->m_materials,
+				m_preparedMaterials->m_resolvedMaterialSlots,
+				m_preparedMaterials->m_textures,
+				m_preparedMaterials->m_textureMapping,
 				progress,
 				warning,
 				m_lastScenePreparationStats,
 				bAllTexturesResolved))
 		{
-			m_bMaterialsFullyResolved = false;
+			m_preparedMaterials->m_bMaterialsFullyResolved = false;
 			return false;
 		}
-		m_bMaterialsFullyResolved = bAllTexturesResolved;
-		m_cachedMaterialsSignature = materialsSignature;
-		m_cachedMaterialsCount = (uint32_t)materialCount;
-		m_bCachedMaterialsFromSnapshot = snapshotMaterials != nullptr;
+		m_preparedMaterials->m_bMaterialsFullyResolved = bAllTexturesResolved;
+		m_preparedMaterials->m_cachedMaterialsSignature = materialsSignature;
+		m_preparedMaterials->m_cachedMaterialsCount = (uint32_t)materialCount;
+		m_preparedMaterials->m_bCachedMaterialsFromSnapshot = snapshotMaterials != nullptr;
 	}
 	else
 	{
@@ -1341,11 +1352,11 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 		}
 	}
 
-	if (m_materials.Num() == 0)
+	if (m_preparedMaterials->m_materials.Num() == 0)
 	{
-		m_materials.Add(Material{});
-		m_resolvedMaterialSlots.Add(1u);
-		m_bMaterialsFullyResolved = true;
+		m_preparedMaterials->m_materials.Add(Material{});
+		m_preparedMaterials->m_resolvedMaterialSlots.Add(1u);
+		m_preparedMaterials->m_bMaterialsFullyResolved = true;
 	}
 
 	bool bHasGeometry = false;
@@ -1353,13 +1364,13 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 		referencedMaterialSlots;
 	const ScenePreparationProgress preparedMaterials{ EScenePreparationStage::Materials,
 		materialCount, materialCount };
-	for (size_t i = 0u; i < m_tlasInstances.Num(); ++i)
+	for (size_t i = 0u; i < m_geometry->m_tlasInstances.Num(); ++i)
 	{
 		if (i % 64u == 0u && progress && !progress(preparedMaterials))
 		{
 			return false;
 		}
-		const TLASInstance& instance = m_tlasInstances[i];
+		const TLASInstance& instance = m_geometry->m_tlasInstances[i];
 		if (!HasInstanceGeometry(instance))
 		{
 			if (bSkipUnresolvedMaterialInstances)
@@ -1406,8 +1417,8 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 					static_cast<int64_t>(localMaterialSlot);
 				if (globalSlot < 0 ||
 					globalSlot >= static_cast<int64_t>(
-						m_resolvedMaterialSlots.Num()) ||
-					m_resolvedMaterialSlots[static_cast<size_t>(globalSlot)] == 0u)
+						m_preparedMaterials->m_resolvedMaterialSlots.Num()) ||
+					m_preparedMaterials->m_resolvedMaterialSlots[static_cast<size_t>(globalSlot)] == 0u)
 				{
 					bSkipInstance = true;
 					unresolvedLocalSlot = localMaterialSlot;
@@ -1469,7 +1480,7 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 		const glm::ivec3 integerExtents = glm::max(
 			integerCenter - integerMin,
 			integerMax - integerCenter);
-		m_tlasOctree.Update(
+		m_geometry->m_tlasOctree.Update(
 			integerCenter,
 			glm::max(integerExtents, glm::ivec3(1)),
 			i);
@@ -1480,9 +1491,9 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 		return false;
 	}
 	m_lastScenePreparationStats.m_emissiveTriangleCount =
-		m_emissiveTriangles.Num();
+		m_geometry->m_emissiveTriangles.Num();
 	m_lastScenePreparationStats.m_emissiveSamplingWeight =
-		m_totalEmissiveWeight;
+		m_geometry->m_totalEmissiveWeight;
 
 	if (m_bAddDefaultLightIfEmpty && m_lightProxies.Num() == 0)
 	{
@@ -1890,14 +1901,14 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	m_lastRenderedImage.Clear();
 	m_lastRenderedExtent = glm::uvec2(0, 0);
 
-	if (m_tlasInstances.Num() == 0)
+	if (m_geometry->m_tlasInstances.Num() == 0)
 	{
 		SAILOR_LOG_ERROR("PathTracer scene has no TLASInstances.");
 		return false;
 	}
 
 	Math::AABB bounds{};
-	for (const auto& instance : m_tlasInstances)
+	for (const auto& instance : m_geometry->m_tlasInstances)
 	{
 		if (instance.m_worldBounds.IsValid())
 		{
@@ -2179,7 +2190,7 @@ bool PathTracer::SamplePreparedSceneVisibility(
 {
 	outSample = {};
 	const float directionLength = glm::length(direction);
-	if (m_tlasInstances.IsEmpty() ||
+	if (m_geometry->m_tlasInstances.IsEmpty() ||
 		!std::isfinite(directionLength) ||
 		directionLength <= 1e-6f ||
 		!std::isfinite(maxDistance) ||
@@ -2338,18 +2349,18 @@ bool PathTracer::IntersectSceneGeometry(const Math::Ray& worldRay,
 {
 	outHit = TLASHit{};
 
-	if (m_tlasInstances.Num() > 0)
+	if (m_geometry->m_tlasInstances.Num() > 0)
 	{
 		TLASHit bestHit{};
 		float bestDistance = maxRayLength;
 
-		m_tlasOctree.TraceRay(worldRay, maxRayLength, [&](size_t idx)
+		m_geometry->m_tlasOctree.TraceRay(worldRay, maxRayLength, [&](size_t idx)
 		{
-			if (idx >= m_tlasInstances.Num())
+			if (idx >= m_geometry->m_tlasInstances.Num())
 			{
 				return;
 			}
-			const auto& instance = m_tlasInstances[idx];
+			const auto& instance = m_geometry->m_tlasInstances[idx];
 			const Raytracing::BVH* blas = ResolveInstanceBlas(instance);
 			const TVector<Math::Triangle>* triangles =
 				ResolveInstanceTriangles(instance);
@@ -2470,7 +2481,7 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay,
 		}
 
 		const uint32_t materialIndex = ResolveMaterialIndex(candidate);
-		const Material& material = m_materials[materialIndex];
+		const Material& material = m_preparedMaterials->m_materials[materialIndex];
 		bool bAcceptHit = material.m_blendMode != BlendMode::Mask;
 		if (!bAcceptHit)
 		{
@@ -2554,7 +2565,7 @@ float PathTracer::TraceDirectLightTransmittance(
 		}
 
 		const uint32_t materialIndex = ResolveMaterialIndex(candidate);
-		const Material& material = m_materials[materialIndex];
+		const Material& material = m_preparedMaterials->m_materials[materialIndex];
 		if (material.m_blendMode != BlendMode::Blend)
 		{
 			return 0.0f;
@@ -2604,7 +2615,7 @@ float PathTracer::TraceDirectLightTransmittance(
 
 const Math::Triangle& PathTracer::GetTriangle(const TLASHit& hit) const
 {
-	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
+	const auto& instance = m_geometry->m_tlasInstances[hit.m_instanceIndex];
 	return (*ResolveInstanceTriangles(instance))[hit.m_triangleIndex];
 }
 
@@ -2622,7 +2633,7 @@ void PathTracer::GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outT
 		hit.m_hit.m_barycentricCoordinate.y * tri.m_bitangent[1] +
 		hit.m_hit.m_barycentricCoordinate.z * tri.m_bitangent[2];
 
-	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
+	const auto& instance = m_geometry->m_tlasInstances[hit.m_instanceIndex];
 	const glm::mat3 linearMatrix = glm::mat3(instance.m_worldMatrix);
 	const glm::mat3 normalMatrix = glm::mat3(glm::transpose(instance.m_inverseWorldMatrix));
 	outNormal = Math::SafeNormalize(
@@ -2682,23 +2693,23 @@ bool PathTracer::OrientShadingBasisToGeometricSurface(
 
 uint32_t PathTracer::ResolveMaterialIndex(const TLASHit& hit) const
 {
-	if (m_materials.Num() == 0)
+	if (m_preparedMaterials->m_materials.Num() == 0)
 	{
 		return 0;
 	}
 
-	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
+	const auto& instance = m_geometry->m_tlasInstances[hit.m_instanceIndex];
 	const auto& tri =
 		(*ResolveInstanceTriangles(instance))[hit.m_triangleIndex];
 	const int32_t idx = instance.m_materialBaseOffset + (int32_t)tri.m_materialIndex;
-	return (uint32_t)(std::max)(0, (std::min)(idx, (int32_t)m_materials.Num() - 1));
+	return (uint32_t)(std::max)(0, (std::min)(idx, (int32_t)m_preparedMaterials->m_materials.Num() - 1));
 }
 
 bool PathTracer::IsThickVolumeAtHit(
 	const TLASHit& hit,
 	uint32_t materialIndex) const
 {
-	const auto& material = m_materials[materialIndex];
+	const auto& material = m_preparedMaterials->m_materials[materialIndex];
 	const vec2 uv = ResolveHitTextureCoordinates(
 		GetTriangle(hit),
 		hit.m_hit);
@@ -2709,7 +2720,7 @@ bool PathTracer::IsThickVolumeAtHit(
 	if (material.HasTransmissionTexture())
 	{
 		transmission *=
-			m_textures[material.m_transmissionIndex]->Sample<vec3>(
+			m_preparedMaterials->m_textures[material.m_transmissionIndex]->Sample<vec3>(
 				uvTransformed).r;
 	}
 
@@ -2723,12 +2734,12 @@ bool PathTracer::IsThickVolumeAtHit(
 
 void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
 {
-	if (instanceIndex >= m_tlasInstances.Num())
+	if (instanceIndex >= m_geometry->m_tlasInstances.Num())
 	{
 		return;
 	}
 
-	const TLASInstance& instance = m_tlasInstances[instanceIndex];
+	const TLASInstance& instance = m_geometry->m_tlasInstances[instanceIndex];
 	const TVector<Math::Triangle>* triangles =
 		ResolveInstanceTriangles(instance);
 	if (!triangles)
@@ -2745,16 +2756,16 @@ void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
 			static_cast<int64_t>(instance.m_materialBaseOffset) +
 			static_cast<int64_t>(triangle.m_materialIndex);
 		if (materialIndex < 0 ||
-			materialIndex >= static_cast<int64_t>(m_materials.Num()) ||
+			materialIndex >= static_cast<int64_t>(m_preparedMaterials->m_materials.Num()) ||
 			materialIndex >= static_cast<int64_t>(
-				m_resolvedMaterialSlots.Num()) ||
-			m_resolvedMaterialSlots[static_cast<size_t>(materialIndex)] == 0u)
+				m_preparedMaterials->m_resolvedMaterialSlots.Num()) ||
+			m_preparedMaterials->m_resolvedMaterialSlots[static_cast<size_t>(materialIndex)] == 0u)
 		{
 			continue;
 		}
 
 		const glm::vec3 emissiveFactor = glm::max(
-			m_materials[static_cast<size_t>(materialIndex)].m_emissiveFactor,
+			m_preparedMaterials->m_materials[static_cast<size_t>(materialIndex)].m_emissiveFactor,
 			glm::vec3(0.0f));
 		const float emissivePower = glm::dot(
 			emissiveFactor,
@@ -2786,7 +2797,7 @@ void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
 		source.m_triangleIndex = triangleIndex;
 		source.m_materialIndex = static_cast<uint32_t>(materialIndex);
 
-		const Material& material = m_materials[source.m_materialIndex];
+		const Material& material = m_preparedMaterials->m_materials[source.m_materialIndex];
 		constexpr glm::vec3 WeightSamples[] = {
 			glm::vec3(1.0f / 3.0f),
 			glm::vec3(0.6f, 0.2f, 0.2f),
@@ -2822,9 +2833,9 @@ void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
 		source.m_weight = source.m_area * (std::max)(
 			sampledEmissivePower,
 			conservativeWeightFloor);
-		m_totalEmissiveWeight += source.m_weight;
-		source.m_cumulativeWeight = m_totalEmissiveWeight;
-		m_emissiveTriangles.Add(std::move(source));
+		m_geometry->m_totalEmissiveWeight += source.m_weight;
+		source.m_cumulativeWeight = m_geometry->m_totalEmissiveWeight;
+		m_geometry->m_emissiveTriangles.Add(std::move(source));
 	}
 }
 
@@ -2838,27 +2849,27 @@ vec3 PathTracer::SampleDirectEmissive(
 	const Params& params,
 	uint32_t& randomState) const
 {
-	if (m_emissiveTriangles.IsEmpty() ||
-		!std::isfinite(m_totalEmissiveWeight) ||
-		m_totalEmissiveWeight <= 0.0f)
+	if (m_geometry->m_emissiveTriangles.IsEmpty() ||
+		!std::isfinite(m_geometry->m_totalEmissiveWeight) ||
+		m_geometry->m_totalEmissiveWeight <= 0.0f)
 	{
 		return vec3(0.0f);
 	}
 
 	const float selectedWeight =
-		NextRandom01(randomState) * m_totalEmissiveWeight;
+		NextRandom01(randomState) * m_geometry->m_totalEmissiveWeight;
 	const auto selectedIt = std::lower_bound(
-		m_emissiveTriangles.begin(),
-		m_emissiveTriangles.end(),
+		m_geometry->m_emissiveTriangles.begin(),
+		m_geometry->m_emissiveTriangles.end(),
 		selectedWeight,
 		[](const EmissiveTriangle& source, float value)
 		{
 			return source.m_cumulativeWeight < value;
 		});
 	const EmissiveTriangle& source = selectedIt !=
-		m_emissiveTriangles.end() ?
+		m_geometry->m_emissiveTriangles.end() ?
 		*selectedIt :
-			m_emissiveTriangles[m_emissiveTriangles.Num() - 1u];
+			m_geometry->m_emissiveTriangles[m_geometry->m_emissiveTriangles.Num() - 1u];
 	if (source.m_instanceIndex == receiverHit.m_instanceIndex &&
 		source.m_triangleIndex == receiverHit.m_triangleIndex)
 	{
@@ -2899,7 +2910,7 @@ vec3 PathTracer::SampleDirectEmissive(
 	const float signedEmitterCosine =
 		glm::dot(emitterNormal, -direction);
 	if (!IsMaterialFaceVisible(
-			m_materials[source.m_materialIndex],
+			m_preparedMaterials->m_materials[source.m_materialIndex],
 			signedEmitterCosine >= 0.0f))
 	{
 		return vec3(0.0f);
@@ -2911,7 +2922,7 @@ vec3 PathTracer::SampleDirectEmissive(
 	}
 
 	const float selectionProbability =
-		source.m_weight / m_totalEmissiveWeight;
+		source.m_weight / m_geometry->m_totalEmissiveWeight;
 	const float solidAnglePdf =
 		selectionProbability / source.m_area *
 		distanceSquared / emitterCosine;
@@ -2921,7 +2932,7 @@ vec3 PathTracer::SampleDirectEmissive(
 	}
 
 	const Material& emitterMaterial =
-		m_materials[source.m_materialIndex];
+		m_preparedMaterials->m_materials[source.m_materialIndex];
 	const glm::vec2 uv =
 		barycentric.x * source.m_uvs[0] +
 		barycentric.y * source.m_uvs[1] +
@@ -3065,7 +3076,7 @@ vec3 PathTracer::Raytrace(
 		const vec2 uv = ResolveHitTextureCoordinates(tri, hit.m_hit);
 
 		const uint32_t materialIndex = ResolveMaterialIndex(hit);
-		const auto material = m_materials[materialIndex];
+		const auto material = m_preparedMaterials->m_materials[materialIndex];
 		const vec2 uvTransformed = (material.m_uvTransform * vec3(uv, 1));
 
 		const vec4 layerWeights =
@@ -3370,7 +3381,7 @@ vec3 PathTracer::Raytrace(
 					// their BSDF-hit estimator as well would count the same path twice.
 					const bool bAllowNextEmissiveHit =
 						bOnlySpecularRay || bTransmissionRay ||
-						m_emissiveTriangles.IsEmpty();
+						m_geometry->m_emissiveTriangles.IsEmpty();
 					const vec3 raytraced = Raytrace(
 						rayToLight,
 						bounceLimit - 1,
@@ -3451,7 +3462,7 @@ glm::vec4 PathTracer::SampleMaterialBaseColor(
 	glm::vec2 uv,
 	glm::vec4 layerWeights) const
 {
-	const auto& material = m_materials[materialIndex];
+	const auto& material = m_preparedMaterials->m_materials[materialIndex];
 	glm::vec4 baseColor = material.m_baseColorFactor;
 
 	if (material.HasLayerColorTextures())
@@ -3477,7 +3488,7 @@ glm::vec4 PathTracer::SampleMaterialBaseColor(
 				continue;
 			}
 			layeredColor += layerWeights[layer] *
-				m_textures[material.m_layerColorIndices[layer]]->Sample<vec4>(
+				m_preparedMaterials->m_textures[material.m_layerColorIndices[layer]]->Sample<vec4>(
 					uv * material.m_layerUvScale[layer]);
 			resolvedWeight += layerWeights[layer];
 		}
@@ -3491,7 +3502,7 @@ glm::vec4 PathTracer::SampleMaterialBaseColor(
 		if (material.HasBaseTexture())
 		{
 			baseColor *=
-				m_textures[material.m_baseColorIndex]->Sample<vec4>(uv);
+				m_preparedMaterials->m_textures[material.m_baseColorIndex]->Sample<vec4>(uv);
 		}
 		baseColor *= layerWeights;
 	}
@@ -3504,7 +3515,7 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 	glm::vec2 uv,
 	glm::vec4 layerWeights) const
 {
-	const auto& material = m_materials[materialIndex];
+	const auto& material = m_preparedMaterials->m_materials[materialIndex];
 
 	LightingModel::SampledData res{};
 	res.m_baseColor = SampleMaterialBaseColor(
@@ -3526,32 +3537,32 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 
 	if (material.HasEmissiveTexture())
 	{
-		res.m_emissive *= m_textures[material.m_emissiveIndex]->Sample<vec3>(uv);
+		res.m_emissive *= m_preparedMaterials->m_textures[material.m_emissiveIndex]->Sample<vec3>(uv);
 	}
 
 	if (material.HasMetallicRoughnessTexture())
 	{
-		const vec3 ormSample = m_textures[material.m_metallicRoughnessIndex]->Sample<vec3>(uv);
+		const vec3 ormSample = m_preparedMaterials->m_textures[material.m_metallicRoughnessIndex]->Sample<vec3>(uv);
 		res.m_orm = vec3(ormSample.r, res.m_orm.g * ormSample.g, res.m_orm.b * ormSample.b);
 	}
 	else
 	{
 		if (material.HasRoughnessTexture())
 		{
-			const float roughness = m_textures[material.m_roughnessIndex]->Sample<vec3>(uv).r;
+			const float roughness = m_preparedMaterials->m_textures[material.m_roughnessIndex]->Sample<vec3>(uv).r;
 			res.m_orm.y *= roughness;
 		}
 
 		if (material.HasMetallicTexture())
 		{
-			const float metallic = m_textures[material.m_metallicIndex]->Sample<vec3>(uv).r;
+			const float metallic = m_preparedMaterials->m_textures[material.m_metallicIndex]->Sample<vec3>(uv).r;
 			res.m_orm.z *= metallic;
 		}
 	}
 
 	if (material.HasNormalTexture())
 	{
-		res.m_normal = m_textures[material.m_normalIndex]->Sample<vec3>(uv);
+		res.m_normal = m_preparedMaterials->m_textures[material.m_normalIndex]->Sample<vec3>(uv);
 		res.m_normal.x *= material.m_normalScale;
 		res.m_normal.y *= material.m_normalScale;
 	}
@@ -3559,19 +3570,19 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 	if (material.HasClearcoatTexture())
 	{
 		res.m_clearcoatFactor *=
-			m_textures[material.m_clearcoatIndex]->Sample<vec3>(uv).r;
+			m_preparedMaterials->m_textures[material.m_clearcoatIndex]->Sample<vec3>(uv).r;
 	}
 
 	if (material.HasClearcoatRoughnessTexture())
 	{
 		res.m_clearcoatRoughness *=
-			m_textures[material.m_clearcoatRoughnessIndex]->Sample<vec4>(uv).g;
+			m_preparedMaterials->m_textures[material.m_clearcoatRoughnessIndex]->Sample<vec4>(uv).g;
 	}
 
 	if (material.HasClearcoatNormalTexture())
 	{
 		res.m_clearcoatNormal =
-			m_textures[material.m_clearcoatNormalIndex]->Sample<vec3>(uv);
+			m_preparedMaterials->m_textures[material.m_clearcoatNormalIndex]->Sample<vec3>(uv);
 		res.m_clearcoatNormal.x *= material.m_clearcoatNormalScale;
 		res.m_clearcoatNormal.y *= material.m_clearcoatNormalScale;
 	}
@@ -3579,13 +3590,13 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 	if (material.HasSheenColorTexture())
 	{
 		res.m_sheenColor *=
-			m_textures[material.m_sheenColorIndex]->Sample<vec3>(uv);
+			m_preparedMaterials->m_textures[material.m_sheenColorIndex]->Sample<vec3>(uv);
 	}
 
 	if (material.HasSheenRoughnessTexture())
 	{
 		res.m_sheenRoughness *=
-			m_textures[material.m_sheenRoughnessIndex]->Sample<vec4>(uv).a;
+			m_preparedMaterials->m_textures[material.m_sheenRoughnessIndex]->Sample<vec4>(uv).a;
 	}
 
 	res.m_clearcoatFactor = glm::clamp(
@@ -3607,12 +3618,12 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 
 	if (material.HasTransmissionTexture())
 	{
-		res.m_transmission *= m_textures[material.m_transmissionIndex]->Sample<vec3>(uv).r;
+		res.m_transmission *= m_preparedMaterials->m_textures[material.m_transmissionIndex]->Sample<vec3>(uv).r;
 	}
 
 	if (material.HasThicknessTexture())
 	{
-		res.m_thicknessFactor *= m_textures[material.m_thicknessIndex]->Sample<vec3>(uv).g;
+		res.m_thicknessFactor *= m_preparedMaterials->m_textures[material.m_thicknessIndex]->Sample<vec3>(uv).g;
 	}
 
 	if (material.m_blendMode == BlendMode::Mask)

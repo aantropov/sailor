@@ -221,12 +221,12 @@ namespace
 			glm::vec3& outTangent,
 			glm::vec3& outBitangent)
 		{
-			m_tlasInstances.Clear();
+			m_geometry->m_tlasInstances.Clear();
 			TLASInstance instance{};
 			instance.m_model = model;
 			instance.m_worldMatrix = worldMatrix;
 			instance.m_inverseWorldMatrix = glm::inverse(worldMatrix);
-			m_tlasInstances.Add(std::move(instance));
+			m_geometry->m_tlasInstances.Add(std::move(instance));
 
 			TLASHit hit{};
 			hit.m_instanceIndex = 0;
