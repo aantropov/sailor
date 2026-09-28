@@ -440,12 +440,16 @@ namespace
 		const HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
 			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
 			FILE_ATTRIBUTE_NORMAL, nullptr);
-		Require(file != INVALID_HANDLE_VALUE, "concurrent reader must open the current target");
+		if (file == INVALID_HANDLE_VALUE)
+		{
+			throw std::runtime_error("concurrent reader open failed, Win32 error " + std::to_string(GetLastError()));
+		}
 		std::array<char, 65536> bytes{};
 		DWORD read = 0;
 		const bool success = ReadFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &read, nullptr) != 0;
+		const DWORD readError = success ? ERROR_SUCCESS : GetLastError();
 		CloseHandle(file);
-		Require(success, "concurrent reader must finish reading its opened generation");
+		Require(success, "concurrent reader read failed, Win32 error " + std::to_string(readError));
 		return { bytes.data(), read };
 #else
 		return ReadText(path);
@@ -495,6 +499,9 @@ namespace
 			"concurrent replacement fixture must initialize");
 		std::atomic<bool> valid{ true };
 		std::atomic<uint32_t> reads{ 0 };
+		std::string readerError;
+		std::array<std::string, 4> writerErrors;
+		std::array<uint32_t, 4> completedWrites{};
 		std::latch readerStarted(1);
 		std::jthread reader([&](std::stop_token stop)
 		{
@@ -506,11 +513,19 @@ namespace
 					if (std::find(payloads.begin(), payloads.end(), value) == payloads.end())
 					{
 						valid = false;
+						if (readerError.empty())
+						{
+							readerError = "unexpected payload, bytes=" + std::to_string(value.size());
+						}
 					}
 				}
-				catch (...)
+				catch (const std::exception& error)
 				{
 					valid = false;
+					if (readerError.empty())
+					{
+						readerError = error.what();
+					}
 				}
 				if (reads.fetch_add(1) == 0)
 				{
@@ -531,6 +546,14 @@ namespace
 					if (AtomicWriteFile(target, payloads[i], writeDiagnostic) != EAtomicWriteResult::Synced)
 					{
 						valid = false;
+						if (writerErrors[i].empty())
+						{
+							writerErrors[i] = writeDiagnostic;
+						}
+					}
+					else
+					{
+						++completedWrites[i];
 					}
 				}
 			});
@@ -542,7 +565,13 @@ namespace
 		}
 		reader.request_stop();
 		reader.join();
-		Require(valid && reads > 0, "concurrent readers must see only complete old or new payloads");
+		std::string details = " reads=" + std::to_string(reads.load()) + "; reader=" + readerError;
+		for (size_t i = 0; i < writers.size(); ++i)
+		{
+			details += "; writer" + std::to_string(i) + " completed=" + std::to_string(completedWrites[i]) +
+				" error=" + writerErrors[i];
+		}
+		Require(valid && reads > 0, "concurrent readers must see only complete old or new payloads:" + details);
 		const auto final = ReadText(target);
 		Require(std::find(payloads.begin(), payloads.end(), final) != payloads.end(),
 			"the last replacement must be a complete writer payload");
