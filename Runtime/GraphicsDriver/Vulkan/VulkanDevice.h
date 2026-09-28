@@ -67,6 +67,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage);
 		SAILOR_API bool AcquireNextImage();
 		SAILOR_API uint32_t GetMaxFramesInFlight() const;
+		VulkanFencePtr GetCurrentFrameFence() const { return m_syncFences[m_currentFrame]; }
 
 		SAILOR_API VulkanImageViewPtr GetBackBuffer() const;
 		SAILOR_API VulkanImageViewPtr GetDepthBuffer() const;

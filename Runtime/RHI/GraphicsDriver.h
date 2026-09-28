@@ -95,12 +95,14 @@ namespace Sailor::RHI
 		SAILOR_API virtual uint32_t GetMaxFramesInFlight() const = 0;
 
 		SAILOR_API virtual bool AcquireNextImage() = 0;
+		// Submit the flight acquired by BeginRenderSubmission/AcquireNextImage.
+		// Optional completion is one-shot: the native flight fence may be reused.
 		SAILOR_API virtual FrameSubmissionResult PresentFrame(const Sailor::FrameState& state,
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
-			const TVector<RHISemaphorePtr>& waitSemaphores = {}) = 0;
+			const TVector<RHISemaphorePtr>& waitSemaphores = {}, RHIFencePtr completion = {}) = 0;
 		SAILOR_API virtual FrameSubmissionResult SubmitFrameWithoutPresent(
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
-			const TVector<RHISemaphorePtr>& waitSemaphores = {}) = 0;
+			const TVector<RHISemaphorePtr>& waitSemaphores = {}, RHIFencePtr completion = {}) = 0;
 
 		SAILOR_API virtual void SetDebugName(RHIResourcePtr resource, const std::string& name) = 0;
 		SAILOR_API virtual void WaitIdle() = 0;

@@ -8,11 +8,16 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 void* RHIBuffer::GetPointer()
 {
+	return const_cast<void*>(static_cast<const RHIBuffer*>(this)->GetPointer());
+}
+
+const void* RHIBuffer::GetPointer() const
+{
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 	check(m_memoryProperty & EMemoryPropertyBit::HostVisible);
 
 	auto memoryPointer = **m_vulkan.m_buffer->Get();
-	return (void*)(((uint8_t*)memoryPointer.m_deviceMemory->GetPointer()) + memoryPointer.m_offset);
+	return static_cast<const uint8_t*>(memoryPointer.m_deviceMemory->GetPointer()) + memoryPointer.m_offset;
 #else
 	return nullptr;
 #endif

@@ -943,15 +943,9 @@ void VulkanGraphicsDriver::CreateDepthStencilViews(RHI::RHIRenderTargetPtr targe
 
 bool VulkanGraphicsDriver::AcquireNextImage()
 {
-	SAILOR_PROFILE_FUNCTION();
-	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
-	{
-		return false;
-	}
-
-	const bool bRes = m_vkInstance->GetMainDevice()->AcquireNextImage();
-	RefreshSwapchainTargets();
-	return bRes;
+	uint32_t flightSlot;
+	bool hasSwapchainImage;
+	return BeginRenderSubmission(flightSlot, hasSwapchainImage) && hasSwapchainImage;
 }
 
 bool VulkanGraphicsDriver::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage)
@@ -967,6 +961,18 @@ bool VulkanGraphicsDriver::BeginRenderSubmission(uint32_t& outFlightSlot, bool& 
 	const bool bResult = m_vkInstance->GetMainDevice()->BeginRenderSubmission(
 		outFlightSlot,
 		outHasSwapchainImage);
+	if (bResult)
+	{
+		// The native wait completed this flight. Latch its observers before the
+		// same native fence is reset for another frame, including query failures.
+		const auto completed = m_vkInstance->GetMainDevice()->GetCurrentFrameFence();
+		m_lockTrackedFences.Lock();
+		for (const auto& fence : m_trackedFences)
+		{
+			if (fence->m_vulkan.m_fence == completed) fence->UpdateStatus(VK_SUCCESS);
+		}
+		m_lockTrackedFences.Unlock();
+	}
 	RefreshSwapchainTargets();
 	return bResult;
 }
@@ -983,23 +989,34 @@ uint32_t VulkanGraphicsDriver::GetMaxFramesInFlight() const
 
 RHI::FrameSubmissionResult VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers,
-	const TVector<RHI::RHISemaphorePtr>& waitSemaphores)
+	const TVector<RHI::RHISemaphorePtr>& waitSemaphores, RHI::RHIFencePtr completion)
 {
 	SAILOR_PROFILE_FUNCTION();
 	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
 	{
 		CancelGpuFrameTimeQuery();
+		if (completion) completion->MarkSubmissionFailed();
 		return {};
 	}
 
 	const TVector<VulkanCommandBufferPtr> primaryBuffers = primaryCommandBuffers.Select<VulkanCommandBufferPtr>([](const auto& lhs) { return lhs->m_vulkan.m_commandBuffer; });
 	const TVector<VulkanSemaphorePtr> vkWaitSemaphores = waitSemaphores.Select<VulkanSemaphorePtr>([](const auto& lhs) { return lhs->m_vulkan.m_semaphore; });
 
+	const auto nativeFence = m_vkInstance->GetMainDevice()->GetCurrentFrameFence();
 	const bool bPresented = m_vkInstance->GetMainDevice()->PresentFrame(
 		state,
 		primaryBuffers,
 		vkWaitSemaphores);
 	const bool bSubmitted = m_vkInstance->GetMainDevice()->WasLastFrameSubmitSuccessful();
+	if (completion)
+	{
+		if (bSubmitted)
+		{
+			completion->m_vulkan.m_fence = nativeFence;
+			TrackPendingCommandList_ThreadSafe(completion);
+		}
+		else completion->MarkSubmissionFailed();
+	}
 	if (m_gpuFrameTimeQueryPool != VK_NULL_HANDLE)
 	{
 		if (bSubmitted)
@@ -1016,21 +1033,32 @@ RHI::FrameSubmissionResult VulkanGraphicsDriver::PresentFrame(const class FrameS
 
 RHI::FrameSubmissionResult VulkanGraphicsDriver::SubmitFrameWithoutPresent(
 	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers,
-	const TVector<RHI::RHISemaphorePtr>& waitSemaphores)
+	const TVector<RHI::RHISemaphorePtr>& waitSemaphores, RHI::RHIFencePtr completion)
 {
 	SAILOR_PROFILE_FUNCTION();
 	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
 	{
 		CancelGpuFrameTimeQuery();
+		if (completion) completion->MarkSubmissionFailed();
 		return {};
 	}
 
 	const TVector<VulkanCommandBufferPtr> primaryBuffers = primaryCommandBuffers.Select<VulkanCommandBufferPtr>([](const auto& lhs) { return lhs->m_vulkan.m_commandBuffer; });
 	const TVector<VulkanSemaphorePtr> vkWaitSemaphores = waitSemaphores.Select<VulkanSemaphorePtr>([](const auto& lhs) { return lhs->m_vulkan.m_semaphore; });
 
+	const auto nativeFence = m_vkInstance->GetMainDevice()->GetCurrentFrameFence();
 	const bool bSubmitted = m_vkInstance->GetMainDevice()->SubmitFrameWithoutPresent(
 		primaryBuffers,
 		vkWaitSemaphores);
+	if (completion)
+	{
+		if (bSubmitted)
+		{
+			completion->m_vulkan.m_fence = nativeFence;
+			TrackPendingCommandList_ThreadSafe(completion);
+		}
+		else completion->MarkSubmissionFailed();
+	}
 	if (bSubmitted)
 	{
 		CommitGpuFrameTimeQuery();

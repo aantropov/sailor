@@ -90,8 +90,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual bool BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage) override;
 		SAILOR_API virtual uint32_t GetMaxFramesInFlight() const override;
 		SAILOR_API virtual bool AcquireNextImage() override;
-		SAILOR_API virtual RHI::FrameSubmissionResult PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) override;
-		SAILOR_API virtual RHI::FrameSubmissionResult SubmitFrameWithoutPresent(const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) override;
+		SAILOR_API virtual RHI::FrameSubmissionResult PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores, RHI::RHIFencePtr completion = {}) override;
+		SAILOR_API virtual RHI::FrameSubmissionResult SubmitFrameWithoutPresent(const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores, RHI::RHIFencePtr completion = {}) override;
 
 		SAILOR_API virtual void SetDebugName(RHI::RHIResourcePtr resource, const std::string& name) override;
 

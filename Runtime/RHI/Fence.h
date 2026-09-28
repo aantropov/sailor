@@ -5,6 +5,8 @@
 
 using namespace GraphicsDriver::Vulkan;
 
+namespace Sailor::GraphicsDriver::Vulkan { class VulkanGraphicsDriver; }
+
 namespace Sailor::RHI
 {
 	enum class EFenceStatus
@@ -47,6 +49,7 @@ namespace Sailor::RHI
 		SAILOR_API void MarkSubmissionFailed();
 
 	protected:
+		friend class Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver;
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		EFenceStatus UpdateStatus(VkResult result) const;
 #endif

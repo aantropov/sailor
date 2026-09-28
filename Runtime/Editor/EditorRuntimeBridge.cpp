@@ -111,49 +111,16 @@ namespace
 		return static_cast<uint8_t>(value * 255.0f + 0.5f);
 	}
 
-	TSharedPtr<std::vector<uint8_t>> TryReadbackRendererTargetToBGRA8Bytes(const RHI::RHIRenderTargetPtr& renderTarget, PixelFormat pixelFormat, uint32_t& outBytesPerRow)
+	TSharedPtr<std::vector<uint8_t>> CopyReadbackToBGRA8(const uint8_t* src, glm::ivec2 extent,
+		uint32_t srcBytesPerRow, PixelFormat pixelFormat, uint32_t& outBytesPerRow)
 	{
-		auto& driver = RHI::Renderer::GetDriver();
-		auto* commands = RHI::Renderer::GetDriverCommands();
-		if (!driver || !commands || !renderTarget)
-		{
-			return nullptr;
-		}
-
 		const uint32_t srcBytesPerPixel = pixelFormat == PixelFormat::R16G16B16A16_Float ? 8u : 4u;
-		const glm::ivec2 extent = renderTarget->GetExtent();
-		const size_t readbackSize = static_cast<size_t>(extent.x) * static_cast<size_t>(extent.y) * srcBytesPerPixel;
-		auto readbackBuffer = driver->CreateBuffer(readbackSize, RHI::EBufferUsageBit::BufferTransferDst_Bit, RHI::EMemoryPropertyBit::HostCoherent | RHI::EMemoryPropertyBit::HostVisible);
-		if (!readbackBuffer)
-		{
-			return nullptr;
-		}
-
-		auto cmd = driver->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
-		commands->BeginCommandList(cmd, true);
-		commands->ImageMemoryBarrier(cmd, renderTarget, renderTarget->GetFormat(), renderTarget->GetDefaultLayout(), RHI::EImageLayout::TransferSrcOptimal);
-		commands->CopyImageToBuffer(cmd, renderTarget, readbackBuffer);
-		commands->ImageMemoryBarrier(cmd, renderTarget, renderTarget->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, renderTarget->GetDefaultLayout());
-		commands->EndCommandList(cmd);
-
-		if (!driver->SubmitCommandList_Immediate(cmd))
-		{
-			SAILOR_LOG_ERROR("EditorRuntimeBridge: viewport readback did not complete.");
-			return nullptr;
-		}
-
-		const auto* src = reinterpret_cast<const uint8_t*>(readbackBuffer->GetPointer());
-		if (!src)
-		{
-			return nullptr;
-		}
-
 		outBytesPerRow = static_cast<uint32_t>(extent.x) * 4u;
 		auto outBytes = TSharedPtr<std::vector<uint8_t>>::Make(static_cast<size_t>(outBytesPerRow) * static_cast<size_t>(extent.y));
 		for (int y = 0; y < extent.y; ++y)
 		{
 			uint8_t* dstRow = outBytes->data() + static_cast<size_t>(y) * outBytesPerRow;
-			const uint8_t* srcRow = src + static_cast<size_t>(y) * static_cast<size_t>(extent.x) * srcBytesPerPixel;
+			const uint8_t* srcRow = src + static_cast<size_t>(y) * srcBytesPerRow;
 			for (int x = 0; x < extent.x; ++x)
 			{
 				uint8_t* dstPixel = dstRow + static_cast<size_t>(x) * 4u;
@@ -190,59 +157,37 @@ namespace
 		return outBytes;
 	}
 
-	bool TryAcquireEditorReadbackFrameSource(MacRendererFrameSource& outSource, std::string* outSummary = nullptr)
+	TSharedPtr<std::vector<uint8_t>> TryReadbackRendererTargetToBGRA8Bytes(const RHI::RHIRenderTargetPtr& renderTarget, PixelFormat pixelFormat, uint32_t& outBytesPerRow)
 	{
-		auto* renderer = App::GetSubmodule<RHI::Renderer>();
-		FrameGraphPtr frameGraph{};
-		if (renderer)
+		auto& driver = RHI::Renderer::GetDriver();
+		auto* commands = RHI::Renderer::GetDriverCommands();
+		if (!driver || !commands || !renderTarget)
 		{
-			frameGraph = renderer->GetFrameGraph();
+			return nullptr;
 		}
 
-		auto rhiFrameGraph = frameGraph ? frameGraph->GetRHI() : nullptr;
-		auto readbackNode = rhiFrameGraph ? rhiFrameGraph->GetGraphNode("EditorReadback").DynamicCast<Framegraph::EditorReadbackNode>() : nullptr;
+		const uint32_t srcBytesPerPixel = pixelFormat == PixelFormat::R16G16B16A16_Float ? 8u : 4u;
+		const glm::ivec2 extent = renderTarget->GetExtent();
+		const uint32_t srcBytesPerRow = static_cast<uint32_t>(extent.x) * srcBytesPerPixel;
+		auto readbackBuffer = driver->CreateBuffer(static_cast<size_t>(srcBytesPerRow) * extent.y,
+			EBufferUsageBit::BufferTransferDst_Bit, EMemoryPropertyBit::HostCoherent | EMemoryPropertyBit::HostVisible);
+		if (!readbackBuffer) return nullptr;
 
-		auto cpuBuffer = readbackNode ? readbackNode->GetBuffer() : RHIBufferPtr{};
-		auto texture = readbackNode ? readbackNode->GetTexture() : RHITexturePtr{};
-		const auto* src = cpuBuffer ? reinterpret_cast<const uint8_t*>(cpuBuffer->GetPointer()) : nullptr;
-
-		const bool available = readbackNode && cpuBuffer && texture && src;
-		if (available)
+		auto cmd = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(cmd, true);
+		commands->ImageMemoryBarrier(cmd, renderTarget, renderTarget->GetFormat(), renderTarget->GetDefaultLayout(), EImageLayout::TransferSrcOptimal);
+		commands->CopyImageToBuffer(cmd, renderTarget, readbackBuffer);
+		commands->MemoryBarrier(cmd, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+			static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+		commands->ImageMemoryBarrier(cmd, renderTarget, renderTarget->GetFormat(), EImageLayout::TransferSrcOptimal, renderTarget->GetDefaultLayout());
+		commands->EndCommandList(cmd);
+		if (!driver->SubmitCommandList_Immediate(cmd))
 		{
-			const auto pixelFormat = ToRemotePixelFormat(texture->GetFormat());
-			if (!pixelFormat.has_value())
-			{
-				return false;
-			}
-
-			const glm::ivec2 extent = texture->GetExtent();
-			outSource = MacRendererFrameSource{};
-			outSource.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
-			outSource.m_sourceObject = reinterpret_cast<uintptr_t>(texture.GetRawPtr());
-			outSource.m_sourceToken = texture.GetHash();
-			outSource.m_width = static_cast<uint32_t>(extent.x);
-			outSource.m_height = static_cast<uint32_t>(extent.y);
-			outSource.m_pixelFormat = *pixelFormat;
-			outSource.m_bytesPerRow = readbackNode->GetBytesPerRow();
-			outSource.m_debugName = "EditorReadback";
-			const size_t totalBytes = static_cast<size_t>(outSource.m_bytesPerRow) * static_cast<size_t>(outSource.m_height);
-			outSource.m_cpuBytes = TSharedPtr<std::vector<uint8_t>>::Make(src, src + totalBytes);
+			SAILOR_LOG_ERROR("EditorRuntimeBridge: viewport readback did not complete.");
+			return nullptr;
 		}
-
-		if (outSummary)
-		{
-			std::ostringstream ss;
-			ss << "editorReadback=" << (readbackNode ? 1 : 0)
-				<< " available=" << (available ? 1 : 0);
-			if (available)
-			{
-				ss << " srcSize=" << outSource.m_width << "x" << outSource.m_height
-					<< " srcPitch=" << outSource.m_bytesPerRow;
-			}
-			*outSummary = ss.str();
-		}
-
-		return available;
+		return CopyReadbackToBGRA8(static_cast<const uint8_t*>(readbackBuffer->GetPointer()),
+			extent, srcBytesPerRow, pixelFormat, outBytesPerRow);
 	}
 
 	bool TryFillRendererFrameSourceFromTarget(const char* debugName, const RHI::RHIRenderTargetPtr& renderTarget, MacRendererFrameSource& outSource)
@@ -282,6 +227,7 @@ namespace
 		if (cpuBytes && !cpuBytes->empty())
 		{
 			outSource.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
+			outSource.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
 			outSource.m_cpuBytes = std::move(cpuBytes);
 			return true;
 		}
@@ -307,13 +253,15 @@ namespace
 
 	bool TryAcquireFrameGraphFrameSource(MacRendererFrameSource& outSource, std::string* outSummary = nullptr)
 	{
-		if (TryAcquireEditorReadbackFrameSource(outSource, outSummary))
+		auto* renderer = App::GetSubmodule<RHI::Renderer>();
+		if (renderer && renderer->HasEditorReadback())
 		{
-			return true;
+			const bool available = EditorRuntime::TryAcquireEditorReadbackFrameSource(outSource);
+			if (outSummary) *outSummary = available ? "editorReadback=1 available=1" : "editorReadback=1 available=0";
+			return available;
 		}
 
 		outSource = MacRendererFrameSource{};
-		auto* renderer = App::GetSubmodule<RHI::Renderer>();
 		FrameGraphPtr frameGraph{};
 		if (renderer)
 		{
@@ -379,22 +327,11 @@ namespace
 		Failure AcquireFrameSource(const MacViewportSurfaceState& state, FrameIndex nextFrameIndex, MacRendererFrameSource& outSource) override
 		{
 			(void)state;
+			(void)nextFrameIndex;
 
 			if (TryAcquireFrameGraphFrameSource(outSource, &m_lastProbeSummary))
 			{
-				m_hasAcquiredRealSource = true;
 				return Failure::Ok();
-			}
-
-			const uint32_t maxAttempts = !m_hasAcquiredRealSource || nextFrameIndex <= 2 ? 2u : 1u;
-			for (uint32_t attempt = 0; attempt < maxAttempts; attempt++)
-			{
-				std::this_thread::sleep_for(std::chrono::milliseconds(8));
-				if (TryAcquireFrameGraphFrameSource(outSource, &m_lastProbeSummary))
-				{
-					m_hasAcquiredRealSource = true;
-					return Failure::Ok();
-				}
 			}
 
 			outSource = {};
@@ -405,7 +342,6 @@ namespace
 
 	private:
 		std::string m_lastProbeSummary{};
-		bool m_hasAcquiredRealSource = false;
 	};
 
 	struct RemoteViewportBinding
@@ -840,6 +776,27 @@ namespace
 	}
 }
 
+bool Sailor::EditorRuntime::TryAcquireEditorReadbackFrameSource(EditorRemote::MacRendererFrameSource& outSource)
+{
+	outSource = {};
+	const auto* renderer = App::GetSubmodule<RHI::Renderer>();
+	const auto frame = renderer ? renderer->GetEditorReadback() : EditorReadbackFramePtr{};
+	if (!frame) return false;
+	const auto pixelFormat = ToRemotePixelFormat(frame->m_format);
+	if (!pixelFormat) return false;
+
+	outSource.m_kind = EditorRemote::MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
+	outSource.m_sourceObject = reinterpret_cast<uintptr_t>(frame->m_buffer.GetRawPtr());
+	outSource.m_sourceToken = frame->m_frameIndex;
+	outSource.m_width = static_cast<uint32_t>(frame->m_extent.x);
+	outSource.m_height = static_cast<uint32_t>(frame->m_extent.y);
+	outSource.m_pixelFormat = EditorRemote::PixelFormat::B8G8R8A8_UNorm;
+	outSource.m_debugName = "EditorReadback";
+	outSource.m_cpuBytes = CopyReadbackToBGRA8(static_cast<const uint8_t*>(frame->m_buffer->GetPointer()),
+		frame->m_extent, frame->m_bytesPerRow, *pixelFormat, outSource.m_bytesPerRow);
+	return outSource.m_cpuBytes.IsValid();
+}
+
 bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 {
 	RECT rect{};
@@ -1098,6 +1055,13 @@ void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()
 				continue;
 			}
 #endif
+			const auto* renderer = App::GetSubmodule<RHI::Renderer>();
+			if (renderer && renderer->HasEditorReadback())
+			{
+				const auto frame = renderer->GetEditorReadback();
+				const auto& viewport = binding->m_binding.GetRuntimeSession().GetDescriptor();
+				if (!frame || frame->m_extent != glm::ivec2(viewport.m_width, viewport.m_height)) continue;
+			}
 			binding->Pump();
 		}
 #endif

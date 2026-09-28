@@ -27,6 +27,7 @@ namespace Sailor::RHI
 		SAILOR_API uint32_t GetOffset() const;
 		SAILOR_API size_t GetSize() const;
 		SAILOR_API void* GetPointer();
+		SAILOR_API const void* GetPointer() const;
 		SAILOR_API size_t GetCompatibilityHashCode() const;
 
 	protected:

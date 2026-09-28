@@ -3,6 +3,7 @@
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
+#include "RHI/Readback.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 
@@ -16,17 +17,22 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 
-		SAILOR_API RHI::RHIBufferPtr GetBuffer() const { return m_cpuBuffer; }
+		// Render thread only; Main receives an immutable completed record by task.
+		SAILOR_API RHI::EditorReadbackFramePtr TakeCompletedFrame();
 		SAILOR_API RHI::RHITexturePtr GetTexture() const { return m_texture; }
-		SAILOR_API uint32_t GetBytesPerRow() const { return m_bytesPerRow; }
 
 	protected:
-		RHI::RHIBufferPtr m_cpuBuffer;
+		TVector<TSharedPtr<RHI::EditorReadbackFrame>> m_readbacks;
 		RHI::RHITexturePtr m_texture;
-		uint32_t m_bytesPerRow = 0;
+		uint64_t m_nextFrameIndex = 1;
+		uint64_t m_publishedFrameIndex = 0;
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 	};
 
+#ifdef _SAILOR_IMPORT_
+	extern template class TFrameGraphNode<EditorReadbackNode>;
+#else
 	template class TFrameGraphNode<EditorReadbackNode>;
+#endif
 }

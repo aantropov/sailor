@@ -1,6 +1,9 @@
 #include "Sailor.h"
 #include "Engine/Frame.h"
 #include "FrameGraph/ParticlesNode.h"
+#include "FrameGraph/EditorReadbackNode.h"
+#include "Editor/EditorRuntimeBridge.h"
+#include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
@@ -24,6 +27,7 @@
 #include <iostream>
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <filesystem>
 #include <stdexcept>
 #include <string_view>
@@ -450,6 +454,263 @@ namespace
 		task->Wait();
 		const auto error = task->GetResult();
 		if (!error.empty()) throw std::runtime_error(error);
+	}
+
+	struct RecordedEditorReadback
+	{
+		RHICommandListPtr command;
+		RHIRenderSubmissionContextPtr context;
+		VulkanFencePtr nativeFence;
+		bool hasImage = false;
+	};
+
+	RecordedEditorReadback RecordEditorReadback(Framegraph::EditorReadbackNode& node,
+		glm::ivec2 extent, ETextureFormat format, const void* pixels, size_t size, uint64_t generation = 0u)
+	{
+		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		auto texture = driver.CreateImage_Immediate(pixels, size, glm::ivec3(extent, 1), 1u, ETextureType::Texture2D, format);
+		Require(texture.IsValid(), "editor readback needs a real initialized source texture");
+		RecordedEditorReadback result;
+		uint32_t flight;
+		Require(driver.BeginRenderSubmission(flight, result.hasImage), "editor readback must acquire its flight");
+		result.nativeFence = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentFrameFence();
+		result.context = RHIRenderSubmissionContextPtr::Make();
+		result.context->BeginSubmission(1u, flight, 0u, 0u, generation);
+		RHISceneViewSnapshot scene;
+		scene.m_submissionContext = result.context;
+		result.command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+		driver.BeginCommandList(result.command, true);
+		node.SetRHIResource("src", texture);
+		node.Process({}, {}, result.command, scene);
+		driver.EndCommandList(result.command);
+		return result;
+	}
+
+	FrameSubmissionResult SubmitEditorReadback(RecordedEditorReadback& recorded)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto completion = recorded.context->GetFrameCompletion();
+		return recorded.hasImage ? driver->PresentFrame(Sailor::FrameState{}, { recorded.command }, {}, completion) :
+			driver->SubmitFrameWithoutPresent({ recorded.command }, {}, completion);
+	}
+
+	void TestEditorReadback()
+	{
+		Require(App::HasEditor(), "the readback test must execute the actual editor node path");
+		auto node = TRefPtr<Framegraph::EditorReadbackNode>::Make();
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		std::vector<uint32_t> firstPixels(15);
+		for (uint32_t i = 0; i < firstPixels.size(); ++i) firstPixels[i] = 0xff123456u + i;
+		EditorReadbackFramePtr first;
+		OnRender([&]()
+			{
+				auto recorded = RecordEditorReadback(*node, { 5, 3 }, ETextureFormat::R8G8B8A8_UNORM,
+					firstPixels.data(), firstPixels.size() * sizeof(uint32_t));
+				const auto completion = recorded.context->GetFrameCompletion();
+				Require(completion && completion->GetStatus() == EFenceStatus::Pending && !node->TakeCompletedFrame(),
+					"recording must not publish mapped pixels before submission");
+				Require(SubmitEditorReadback(recorded).m_bSubmitted, "readback frame must submit");
+				Require(recorded.nativeFence->Wait(5000000000ull) == VK_SUCCESS, "readback native copy did not finish");
+				{
+					auto device = VulkanApi::GetInstance()->GetMainDevice();
+					FenceDispatchOverride dispatch(*device);
+					observedFences[0] = *recorded.nativeFence;
+					for (auto status : { VK_NOT_READY, VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+					{
+						fenceResults[0] = status;
+						Require(!node->TakeCompletedFrame(), "pending or failed status queries must not expose pixels");
+					}
+				}
+				first = node->TakeCompletedFrame();
+				Require(first && first->m_completion == completion && first->m_extent == glm::ivec2(5, 3) &&
+					first->m_bytesPerRow == 20u && first->m_format == ETextureFormat::R8G8B8A8_UNORM && first->m_generation == 0u,
+					"completed readback metadata must belong to the same capture");
+				Require(std::memcmp(first->m_buffer->GetPointer(), firstPixels.data(), firstPixels.size() * sizeof(uint32_t)) == 0,
+					"readback must contain the actual source pixels");
+				Require(!node->TakeCompletedFrame(), "one completion must not publish repeatedly");
+				renderer->QueueEditorReadback(first);
+			});
+		EditorRemote::MacRendererFrameSource source;
+		Require(!renderer->GetEditorReadback() && !EditorRuntime::TryAcquireEditorReadbackFrameSource(source),
+			"Render must not mutate Main's published source before the handoff task runs");
+		scheduler->ProcessTasksOnMainThread();
+		Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.m_width == 5u && source.m_height == 3u &&
+			source.m_bytesPerRow == 20u && source.m_pixelFormat == EditorRemote::PixelFormat::B8G8R8A8_UNorm &&
+			source.m_cpuBytes->size() == firstPixels.size() * sizeof(uint32_t), "bridge must consume the completed frame metadata");
+		for (size_t i = 0; i < firstPixels.size(); ++i)
+		{
+			const auto* rgba = reinterpret_cast<const uint8_t*>(&firstPixels[i]);
+			const auto* bgra = source.m_cpuBytes->data() + 4u * i;
+			Require(bgra[0] == rgba[2] && bgra[1] == rgba[1] && bgra[2] == rgba[0] && bgra[3] == rgba[3],
+				"bridge must convert RGBA to BGRA without changing alpha");
+		}
+		RecordedEditorReadback pendingResize;
+		OnRender([&]()
+			{
+				const std::vector<uint32_t> pixels(20u, 0xff331155u);
+				pendingResize = RecordEditorReadback(*node, { 5, 4 }, ETextureFormat::B8G8R8A8_UNORM,
+					pixels.data(), pixels.size() * sizeof(uint32_t));
+				Require(!node->TakeCompletedFrame(), "a recorded resize must not replace the previous completed image");
+			});
+		Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.m_width == 5u && source.m_height == 3u &&
+			renderer->GetEditorReadback() == first, "Main must keep old metadata while the resized frame is pending");
+		OnRender([&]()
+			{
+				Require(SubmitEditorReadback(pendingResize).m_bSubmitted && pendingResize.nativeFence->Wait(5000000000ull) == VK_SUCCESS,
+					"resize copy must complete before simulating delayed notification");
+				auto device = VulkanApi::GetInstance()->GetMainDevice();
+				FenceDispatchOverride dispatch(*device);
+				observedFences[0] = *pendingResize.nativeFence;
+				fenceResults[0] = VK_NOT_READY;
+				Require(!node->TakeCompletedFrame(), "delayed GPU completion must keep the resized capture unpublished");
+				const std::vector<uint32_t> newerPixels(18u, 0xff772299u);
+				auto newer = RecordEditorReadback(*node, { 6, 3 }, ETextureFormat::B8G8R8A8_UNORM,
+					newerPixels.data(), newerPixels.size() * sizeof(uint32_t));
+				Require(SubmitEditorReadback(newer).m_bSubmitted && newer.nativeFence->Wait(5000000000ull) == VK_SUCCESS,
+					"a different free slot must permit progress while completion notification is delayed");
+				auto latest = node->TakeCompletedFrame();
+				Require(latest && latest->m_extent == glm::ivec2(6, 3) &&
+					std::memcmp(latest->m_buffer->GetPointer(), newerPixels.data(), newerPixels.size() * sizeof(uint32_t)) == 0,
+					"late completion must not mix the new frame's pixels with earlier dimensions");
+				fenceResults[0] = VK_SUCCESS;
+				Require(!node->TakeCompletedFrame(), "an older delayed completion must not publish after a newer capture");
+			});
+
+		std::vector<EditorReadbackFramePtr> readers{ first };
+		const auto capture = [&](uint32_t width, uint64_t generation = 0u)
+			{
+				EditorReadbackFramePtr frame;
+				OnRender([&]()
+					{
+						const std::vector<uint32_t> pixels(width * 2u, 0xffabc000u + width);
+						auto recorded = RecordEditorReadback(*node, { width, 2 }, ETextureFormat::B8G8R8A8_UNORM,
+							pixels.data(), pixels.size() * sizeof(uint32_t), generation);
+						Require(SubmitEditorReadback(recorded).m_bSubmitted && recorded.nativeFence->Wait(5000000000ull) == VK_SUCCESS,
+							"resized readback frame must finish");
+						frame = node->TakeCompletedFrame();
+						if (frame)
+						{
+							Require(frame->m_extent == glm::ivec2(width, 2) && frame->m_bytesPerRow == width * 4u &&
+								std::memcmp(frame->m_buffer->GetPointer(), pixels.data(), pixels.size() * sizeof(uint32_t)) == 0,
+								"resize must keep extent, row stride and pixel contents together");
+							renderer->QueueEditorReadback(frame);
+						}
+						else Require(!recorded.context->GetFrameCompletion(), "full reader ring must skip recording, not overwrite a reader");
+					});
+				scheduler->ProcessTasksOnMainThread();
+				return frame;
+			};
+		const uint32_t capacity = Renderer::GetDriver()->GetMaxFramesInFlight() + 1u;
+		for (uint32_t i = 1; i < capacity; ++i)
+		{
+			auto frame = capture(7u + i);
+			Require(frame.IsValid(), "readback ring must permit outstanding readers up to its capacity");
+			for (const auto& reader : readers) Require(reader->m_buffer != frame->m_buffer, "held buffers must not be reused");
+			readers.push_back(frame);
+		}
+		Require(!capture(32u) && renderer->GetEditorReadback() == readers.back(),
+			"ring pressure must retain the previous presentation without growing buffers");
+		const auto releasedBuffer = readers[1]->m_buffer;
+		readers[1].Clear();
+		readers[1] = capture(6u);
+		Require(readers[1] && readers[1]->m_buffer == releasedBuffer, "released completed slot should reuse its allocation");
+		Require(std::memcmp(first->m_buffer->GetPointer(), firstPixels.data(), firstPixels.size() * sizeof(uint32_t)) == 0,
+			"old reader pixels must survive resizing and ring reuse");
+		const auto latest = renderer->GetEditorReadback();
+		readers[2].Clear();
+		auto otherGeneration = capture(9u, 1u);
+		Require(otherGeneration && renderer->GetEditorReadback() == latest, "stale graph generations must not publish");
+		OnRender([&]() { renderer->QueueEditorReadback(first); });
+		scheduler->ProcessTasksOnMainThread();
+		Require(renderer->GetEditorReadback() == latest, "an older capture must not replace a newer publication");
+		otherGeneration.Clear();
+		OnRender([&]()
+			{
+				const std::array<uint16_t, 8> halfPixels{ 0x3c00, 0x3800, 0, 0x3c00, 0, 0, 0x3c00, 0x3800 };
+				auto recorded = RecordEditorReadback(*node, { 1, 2 }, ETextureFormat::R16G16B16A16_SFLOAT,
+					halfPixels.data(), sizeof(halfPixels));
+				Require(SubmitEditorReadback(recorded).m_bSubmitted && recorded.nativeFence->Wait(5000000000ull) == VK_SUCCESS,
+					"half-float readback must finish");
+				auto frame = node->TakeCompletedFrame();
+				Require(frame && frame->m_bytesPerRow == 8u && frame->m_format == ETextureFormat::R16G16B16A16_SFLOAT,
+					"half-float source must use its real eight-byte pixel stride");
+				renderer->QueueEditorReadback(frame);
+			});
+		scheduler->ProcessTasksOnMainThread();
+		Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.m_bytesPerRow == 4u &&
+			*source.m_cpuBytes == std::vector<uint8_t>{ 0, 128, 255, 255, 255, 0, 0, 128 },
+			"half-float bridge conversion must preserve rows, channel order and alpha");
+		OnRender([&]() { node->Clear(); });
+		Require(std::memcmp(first->m_buffer->GetPointer(), firstPixels.data(), firstPixels.size() * sizeof(uint32_t)) == 0,
+			"clearing the graph must not invalidate a retained completed reader");
+	}
+
+	void TestEditorReadbackRefusal(bool lost)
+	{
+		Require(App::HasEditor(), "refusal test requires editor readback");
+		auto node = TRefPtr<Framegraph::EditorReadbackNode>::Make();
+		const uint32_t pixel = 0xffabcdefu;
+		OnRender([&]()
+			{
+				auto recorded = RecordEditorReadback(*node, { 1, 1 }, ETextureFormat::B8G8R8A8_UNORM, &pixel, sizeof(pixel));
+				auto completion = recorded.context->GetFrameCompletion();
+				SubmitOverride failure(VulkanApi::GetInstance()->GetMainDevice()->GetGraphicsQueue(),
+					lost ? VK_ERROR_DEVICE_LOST : VK_ERROR_OUT_OF_HOST_MEMORY);
+				Require(!SubmitEditorReadback(recorded).m_bSubmitted && completion->HasFailed() && !node->TakeCompletedFrame(),
+					"a refused native frame must fail its observer without publishing a readback");
+			});
+		EditorRemote::MacRendererFrameSource source;
+		Require(!EditorRuntime::TryAcquireEditorReadbackFrameSource(source), "bridge must not expose refused frame bytes");
+		if (lost) return;
+		App::GetSubmodule<Renderer>()->FixLostDevice();
+		OnRender([&]()
+			{
+				auto retry = RecordEditorReadback(*node, { 1, 1 }, ETextureFormat::B8G8R8A8_UNORM, &pixel, sizeof(pixel));
+				Require(SubmitEditorReadback(retry).m_bSubmitted && retry.nativeFence->Wait(5000000000ull) == VK_SUCCESS,
+					"readback must recover with a new frame completion after device repair");
+				auto frame = node->TakeCompletedFrame();
+				Require(frame && *static_cast<const uint32_t*>(frame->m_buffer->GetPointer()) == pixel,
+					"recovered readback must contain its actual pixels");
+			});
+	}
+
+	void TestFrameCompletionReuse()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		TVector<RHIFencePtr> completions;
+		for (uint32_t i = 0; i < 3u * driver->GetMaxFramesInFlight(); ++i)
+		{
+			bool hasImage;
+			uint32_t flight;
+			{
+				FenceDispatchOverride dispatch(*device);
+				observedFences[0] = *device->GetCurrentFrameFence();
+				Require(forwardFenceWait(*device, 1u, observedFences.data(), VK_TRUE, 5000000000ull) == VK_SUCCESS,
+					"real flight must finish before synthetic query failure");
+				fenceResults[0] = VK_ERROR_OUT_OF_HOST_MEMORY;
+				fenceWaitResult = VK_SUCCESS;
+				Require(driver->BeginRenderSubmission(flight, hasImage), "flight acquisition must survive a later status-query error");
+				if (i >= driver->GetMaxFramesInFlight())
+					Require(completions[i - driver->GetMaxFramesInFlight()]->GetStatus() == EFenceStatus::Finished,
+						"successful flight wait must latch old observers without relying on another status query");
+			}
+			auto frame = RecordFrame(50u + i);
+			auto completion = RHIFencePtr::Make();
+			const auto submitted = hasImage ? driver->PresentFrame(Sailor::FrameState{}, { frame.command }, {}, completion) :
+				driver->SubmitFrameWithoutPresent({ frame.command }, {}, completion);
+			Require(submitted.m_bSubmitted, "observed frame must submit actual work");
+			Require(completion->m_vulkan.m_fence->Wait(5000000000ull) == VK_SUCCESS, "observed native flight must finish");
+			CheckReadback(frame, true);
+			completions.Add(completion);
+			FenceDispatchOverride dispatch(*device);
+			observedFences[0] = *completion->m_vulkan.m_fence;
+			fenceResults[0] = VK_NOT_READY;
+			if (i >= driver->GetMaxFramesInFlight())
+				Require(completions[i - driver->GetMaxFramesInFlight()]->IsFinished(),
+					"resetting a reused native flight must not make an older observer pending again");
+		}
 	}
 
 	void TestAcceptedUploadLoss(bool waitForLoss)
@@ -1298,15 +1559,21 @@ namespace
 
 	int RunFenceGpu(int argc, const char** argv, std::string_view mode)
 	{
-		App::Initialize(argv, argc);
+		std::vector<const char*> arguments(argv, argv + argc);
+		const bool editorReadback = mode.starts_with("--gpu-editor-readback");
+		if (editorReadback) arguments.insert(arguments.end(), { "--editor", "--port", "0" });
+		App::Initialize(arguments.data(), static_cast<int>(arguments.size()));
 		int result = 1;
 		try
 		{
 			Require(App::IsRendererInitialized(), "fence test requires an initialized renderer");
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
-			OnRender([&]()
+			if (mode == "--gpu-editor-readback") TestEditorReadback();
+			else if (editorReadback) TestEditorReadbackRefusal(mode == "--gpu-editor-readback-lost");
+			else OnRender([&]()
 				{
 					if (mode == "--gpu-extended-submit") TestExtendedSubmission(false);
+					else if (mode == "--gpu-frame-completion") TestFrameCompletionReuse();
 					else if (mode == "--gpu-extended-submit-lost") TestExtendedSubmission(true);
 #if defined(_WIN32)
 					else if (mode == "--gpu-windows-shared") TestWindowsSharedSurfaceCopy(false);
@@ -1425,7 +1692,9 @@ int main(int argc, const char** argv)
 		if (mode == "--gpu-shutdown-idle") return RunShutdownGpu(argc, argv, true);
 		if (mode == "--gpu-host-shutdown-acquire") return RunShutdownGpu(argc, argv, false, true);
 		if (mode == "--gpu-host-shutdown-idle") return RunShutdownGpu(argc, argv, true, true);
-		if (mode == "--gpu-fence-poll-loss" || mode == "--gpu-fence-wait-loss" || mode == "--gpu-fence-completion" ||
+		if (mode == "--gpu-editor-readback" || mode == "--gpu-editor-readback-refused" || mode == "--gpu-editor-readback-lost" ||
+			mode == "--gpu-frame-completion" ||
+			mode == "--gpu-fence-poll-loss" || mode == "--gpu-fence-wait-loss" || mode == "--gpu-fence-completion" ||
 			mode == "--gpu-immediate" || mode == "--gpu-immediate-lost" || mode == "--gpu-immediate-binding-lost" ||
 			mode == "--gpu-immediate-buffer-create" || mode == "--gpu-immediate-buffers" ||
 			mode == "--gpu-immediate-image-create" || mode == "--gpu-immediate-image-create-lost" ||

@@ -24,6 +24,7 @@
 #include "ECS/AnimationECS.h"
 #include "ECS/PathTracerECS.h"
 #include "Settings/GraphicsSettings.h"
+#include "FrameGraph/EditorReadbackNode.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -189,6 +190,7 @@ Renderer::~Renderer()
 	// instance has already been destroyed (MoltenVK crashes in that ordering).
 	m_previousRenderFrame.Clear();
 	m_previousSceneVersionRelease.Clear();
+	m_editorReadback.Clear();
 	m_frameGraph.Clear();
 	m_cachedSceneViews.Clear();
 	m_submissionContexts.Clear();
@@ -408,6 +410,19 @@ void Renderer::RemoveSceneView(WorldPtr worldPtr)
 	m_cachedSceneViews.Remove(worldPtr);
 }
 
+void Renderer::QueueEditorReadback(EditorReadbackFramePtr frame)
+{
+	if (!frame) return;
+	Tasks::CreateTask("Publish editor readback", [this, frame = std::move(frame)]()
+		{
+			if (frame->m_generation == m_frameGraphResourceGeneration &&
+				(!m_editorReadback || frame->m_frameIndex > m_editorReadback->m_frameIndex))
+			{
+				m_editorReadback = frame;
+			}
+		}, EThreadType::Main)->Run();
+}
+
 bool Renderer::EnsureFrameGraph()
 {
 	if (m_frameGraph && !m_bFrameGraphOutdated)
@@ -421,6 +436,9 @@ bool Renderer::EnsureFrameGraph()
 	}
 
 	RefreshGpuTimings();
+	m_editorReadback.Clear();
+	m_bHasEditorReadback = false;
+	++m_frameGraphResourceGeneration;
 	m_frameGraph.Clear();
 
 	const char* frameGraphAssetPath = App::HasEditor() ? "EditorRenderer.renderer" : "DefaultRenderer.renderer";
@@ -444,7 +462,7 @@ bool Renderer::EnsureFrameGraph()
 				"Renderer::EnsureFrameGraph: %s does not declare DepthBuffer; using the driver depth buffer for legacy project compatibility.",
 				frameGraphAssetPath);
 		}
-		++m_frameGraphResourceGeneration;
+		m_bHasEditorReadback = m_frameGraph->GetRHI()->GetGraphNode("EditorReadback").IsValid();
 	}
 	else
 	{
@@ -530,8 +548,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	const uint64_t sceneRevision = rhiSceneView->m_sceneRevision;
 	auto acquireRenderSubmission = Tasks::CreateTask(
 		"Acquire render submission flight " + std::to_string(currentFrame),
-		[this, rhiSceneView, submissionId, sceneRevision,
-			frameGraphResourceGeneration, submissionBeginState]()
+		[this, rhiFrameGraph, rhiSceneView, submissionId, sceneRevision,
+			frameGraphResourceGeneration, submissionBeginState]() mutable
 		{
 			uint32_t flightSlot = 0u;
 			bool bHasSwapchainImage = false;
@@ -541,6 +559,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					bHasSwapchainImage);
 			submissionBeginState->m_flightSlot = flightSlot;
 			submissionBeginState->m_bHasSwapchainImage = bHasSwapchainImage;
+			if (auto readback = rhiFrameGraph->GetGraphNode("EditorReadback").DynamicCast<Framegraph::EditorReadbackNode>())
+			{
+				QueueEditorReadback(readback->TakeCompletedFrame());
+			}
 
 			if (submissionBeginState->m_bLifecycleReady &&
 				flightSlot < m_submissionContexts.Num())
@@ -632,6 +654,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			{
 				SAILOR_PROFILE_SCOPE("Render Frame");
 				bool bSubmissionResourcesSucceeded = false;
+				FrameSubmissionResult frameSubmission;
 				auto frameInstance = frame;
 				const bool bGpuQueriesEnabled = App::GetRenderStatsMode() ==
 					Settings::ERenderStatsMode::RenderStatsAndQueries &&
@@ -800,12 +823,12 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						}
 					}
 
-					FrameSubmissionResult frameSubmission;
 					if (bFrameSubmitsSucceeded)
 					{
+						const auto completion = submissionBeginState->m_context->GetFrameCompletion();
 						frameSubmission = bHasSwapchainImage
-							? m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate)
-							: m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate);
+							? m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate, completion)
+							: m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate, completion);
 					}
 
 					// End/Cancel can publish an invalid result for this frame even before GPU polling.
@@ -856,6 +879,14 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						m_stats.m_numBatches.store(0u, std::memory_order_relaxed);
 						m_stats.m_numInstances.store(0u, std::memory_order_relaxed);
 					}
+				}
+				if (!frameSubmission.m_bSubmitted)
+				{
+					if (auto completion = submissionBeginState->m_context->GetFrameCompletion()) completion->MarkSubmissionFailed();
+				}
+				if (auto readback = rhiFrameGraph->GetGraphNode("EditorReadback").DynamicCast<Framegraph::EditorReadbackNode>())
+				{
+					QueueEditorReadback(readback->TakeCompletedFrame());
 				}
 				if (submissionBeginState->m_bMaterialCaptureActive)
 				{

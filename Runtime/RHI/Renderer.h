@@ -17,6 +17,7 @@
 #include "Tasks/Scheduler.h"
 #include "GraphicsDriver.h"
 #include "RendererTimings.h"
+#include "Readback.h"
 #include "SceneView.h"
 
 namespace Sailor
@@ -64,6 +65,10 @@ namespace Sailor::RHI
 		SAILOR_API bool EnsureFrameGraph();
 
 		SAILOR_API FrameGraphPtr GetFrameGraph() { return m_frameGraph; }
+		// Render queues completed captures; only Main reads the published frame.
+		SAILOR_API void QueueEditorReadback(EditorReadbackFramePtr frame);
+		SAILOR_API EditorReadbackFramePtr GetEditorReadback() const { return m_editorReadback; }
+		SAILOR_API bool HasEditorReadback() const { return m_bHasEditorReadback; }
 
 		SAILOR_API static void MemoryStats();
 
@@ -92,6 +97,8 @@ namespace Sailor::RHI
 		class Win32::Window* m_pViewport;
 
 		FrameGraphPtr m_frameGraph{};
+		EditorReadbackFramePtr m_editorReadback{};
+		bool m_bHasEditorReadback = false;
 		TConcurrentMap<WorldPtr, TList<TPair<RHISceneViewPtr,bool>>, 4, ERehashPolicy::Never> m_cachedSceneViews{};
 			TUniquePtr<IGraphicsDriver> m_driverInstance{};
 			Tasks::ITaskPtr m_previousRenderFrame{};
