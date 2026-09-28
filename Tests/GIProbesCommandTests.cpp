@@ -3,6 +3,7 @@
 #include "AssetRegistry/GlobalIllumination/GIProbesImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "Components/CameraComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/SkyComponent.h"
@@ -24,7 +25,9 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <latch>
 #include <stdexcept>
 #include <thread>
 
@@ -206,6 +209,187 @@ namespace
 		Require(gi.GetActiveSnapshot() != published &&
 			gi.GetRuntimeGIProbesStatus().m_publishedRevision > completed.m_publishedRevision,
 			"the restarted solver must trace and publish a new result");
+	}
+
+	class ReloadTaskProbe final : public IAssetInfoHandlerListener
+	{
+	public:
+		ReloadTaskProbe(AssetInfo& info) : m_handler(*info.GetHandler()), m_fileId(info.GetFileId())
+		{
+			m_handler.Subscribe(this);
+		}
+		~ReloadTaskProbe()
+		{
+			m_handler.Unsubscribe(this);
+		}
+
+		void OnImportAsset(AssetInfoPtr) override {}
+		void OnUpdateAssetInfo(AssetInfoPtr info, bool bExpired) override
+		{
+			if (!bExpired || info->GetFileId() != m_fileId)
+			{
+				return;
+			}
+			++m_notifications;
+			m_bWaitedForPrevious = m_previousFinished.load();
+			auto worker = Tasks::CreateTask("Reload test: worker", []() {});
+			auto render = worker->Then([]() {}, "Reload test: render", EThreadType::Render);
+			auto rhi = render->Then([]() {}, "Reload test: RHI", EThreadType::RHI);
+			m_completion = rhi->Then([this]()
+				{
+					m_afterEntered = true;
+					m_releaseAfter.wait();
+					m_completed = true;
+				}, "Reload test: final worker", EThreadType::Worker);
+			worker->Run();
+		}
+
+		void Update()
+		{
+			std::latch entered(1), release(1);
+			auto previous = Tasks::CreateTask("Reload test: previous render reader", [&]()
+				{
+					entered.count_down();
+					release.wait();
+					m_previousFinished = true;
+				}, EThreadType::Render);
+			previous->Run();
+			entered.wait();
+			std::jthread unblock([&]()
+				{
+					std::this_thread::sleep_for(std::chrono::milliseconds(50));
+					release.count_down();
+					const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+					while (!m_afterEntered.load() && std::chrono::steady_clock::now() < deadline)
+					{
+						std::this_thread::yield();
+					}
+					std::this_thread::sleep_for(std::chrono::milliseconds(50));
+					m_releaseAfter.count_down();
+				});
+			const bool bUpdated = App::UpdateAsset(m_fileId.ToString().c_str());
+			const bool bCompletedOnReturn = m_completed.load();
+			unblock.join();
+			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(
+				{ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
+			Require(bUpdated && m_notifications == 1, "targeted update must notify the changed asset once");
+			Require(m_bWaitedForPrevious && bCompletedOnReturn,
+				"targeted update must fence previous readers and finish its cross-queue publication before returning");
+		}
+
+		uint32_t m_notifications = 0;
+
+	private:
+		IAssetInfoHandler& m_handler;
+		FileId m_fileId;
+		Tasks::ITaskPtr m_completion;
+		std::atomic<bool> m_previousFinished{ false }, m_afterEntered{ false }, m_completed{ false };
+		std::latch m_releaseAfter{ 1 };
+		bool m_bWaitedForPrevious = false;
+	};
+
+	void TestTargetedAssetCapture(const std::filesystem::path& workspace)
+	{
+		GIWorld world;
+		world.WaitReady();
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* textures = App::GetSubmodule<TextureImporter>();
+		const auto material = world.m_material;
+		auto* materialInfo = registry->GetAssetInfoPtr(material->GetFileId());
+		const auto materialPath = std::filesystem::path(materialInfo->GetAssetFilepath());
+		Require(std::filesystem::canonical(materialPath).generic_string().starts_with(
+			std::filesystem::canonical(workspace / "Content").generic_string() + "/"),
+			"reload fixture may only change its temporary workspace material");
+		const auto oldScene = GlobalIlluminationECSTestAccess::CapturedScene(world.GI());
+		const auto oldEmission = oldScene->m_materials[0]->m_parameters.m_emissiveFactor;
+
+		const auto imagePath = workspace / "Content/Reload.tga";
+		auto writeTexture = [&](uint8_t red, uint8_t blue)
+		{
+			std::array<uint8_t, 21> bytes{};
+			bytes[2] = 2;
+			bytes[12] = bytes[14] = 1;
+			bytes[16] = 24;
+			bytes[18] = blue;
+			bytes[20] = red;
+			std::ofstream output(imagePath, std::ios::binary);
+			output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+			Require(static_cast<bool>(output), "reload texture must be written");
+		};
+		writeTexture(255, 0);
+		TextureAssetInfo textureInfo;
+		auto textureMetadata = textureInfo.Serialize();
+		const auto textureId = FileId::CreateNewFileId();
+		textureMetadata["fileId"] = textureId;
+		textureMetadata["filename"] = "Reload.tga";
+		textureMetadata["bShouldKeepCpuBuffers"] = true;
+		textureMetadata["bShouldGenerateMips"] = false;
+		{
+			std::ofstream metadata(imagePath.string() + ".asset");
+			metadata << textureMetadata;
+		}
+		Require(registry->GetOrLoadFile(imagePath.string()) == textureId, "reload texture must register");
+		TexturePtr texture;
+		Require(textures->LoadTexture_Immediate(textureId, texture) && texture->HasCpuData(),
+			"reload fixture needs a fully loaded CPU/GPU texture");
+		const auto textureSlot = textures->GetTextureIndex(textureId);
+
+		auto document = YAML::LoadFile(materialPath.string());
+		auto vectors = document["uniformsVec4"].as<TMap<std::string, glm::vec4>>();
+		auto scalars = document["uniformsFloat"].as<TMap<std::string, float>>();
+		auto samplers = document["samplers"].as<TMap<std::string, FileId>>();
+		vectors["material.emissiveFactor"] = glm::vec4(7, 3, 1, 0);
+		scalars["material.alphaCutoff"] = 0.375f;
+		samplers["baseColorSampler"] = textureId;
+		document["uniformsVec4"] = vectors;
+		document["uniformsFloat"] = scalars;
+		document["samplers"] = samplers;
+		{
+			std::ofstream output(materialPath);
+			output << document;
+		}
+		{
+			ReloadTaskProbe publication(*materialInfo);
+			publication.Update();
+			const auto unchangedRevision = material->GetContentRevision();
+			Require(App::UpdateAsset(material->GetFileId().ToString().c_str()) &&
+				publication.m_notifications == 1 && material->GetContentRevision() == unchangedRevision,
+				"an unchanged targeted update must not reload or revise the material");
+		}
+		Require(App::GetSubmodule<MaterialImporter>()->GetLoadedMaterial(material->GetFileId()) == material,
+			"targeted reload must preserve material identity");
+		const auto captured = Raytracing::PathTracer::CaptureMaterials({ material });
+		const auto findTexture = [](const Raytracing::PathTracer::MaterialSnapshots& snapshots)
+		{
+			for (const auto& sampler : snapshots[0]->m_samplers)
+			{
+				if (sampler.m_first == "baseColorSampler") return sampler.m_second.m_texture;
+			}
+			return TSharedPtr<const Raytracing::PathTracer::TextureSnapshot>{};
+		};
+		const auto redTexture = findTexture(captured);
+		Require(captured[0]->m_parameters.m_emissiveFactor == glm::vec3(7, 3, 1) &&
+			captured[0]->m_parameters.m_alphaCutoff == 0.375f && redTexture && redTexture->m_data.Num() == 4 &&
+			redTexture->m_data[0] == 255 && redTexture->m_data[2] == 0,
+			"GI must capture the completed emission, alpha and sampler update together");
+		Require(oldScene->m_materials[0]->m_parameters.m_emissiveFactor == oldEmission,
+			"in-flight GI must retain its old material values across reload");
+
+		writeTexture(0, 255);
+		{
+			ReloadTaskProbe publication(*registry->GetAssetInfoPtr(textureId));
+			publication.Update();
+		}
+		const auto updated = Raytracing::PathTracer::CaptureMaterials({ material });
+		const auto blueTexture = findTexture(updated);
+		Require(textures->GetLoadedTexture(textureId) == texture && textures->GetTextureIndex(textureId) == textureSlot &&
+			blueTexture && blueTexture->m_data[0] == 0 && blueTexture->m_data[2] == 255 &&
+			redTexture->m_data[0] == 255 && redTexture->m_data[2] == 0 &&
+			updated[0]->m_contentRevision > captured[0]->m_contentRevision,
+			"texture reload must finish dependent materials, preserve object/slot identity and retain old CPU pixels");
+		Require(!App::UpdateAsset(nullptr) && !App::UpdateAsset("") &&
+			!App::UpdateAsset(FileId::CreateNewFileId().ToString().c_str()),
+			"invalid targeted updates must remain rejected");
 	}
 
 	void TestContributorMaterialRevision()
@@ -682,6 +866,7 @@ namespace Sailor::Tests
 			run("Importer retry", [&]() { TestImporterRetry(workspace, *data, false); });
 			run("Importer retry after GC", [&]() { TestImporterRetry(workspace, *data, true); });
 		}
+		run("Targeted asset capture", [&]() { TestTargetedAssetCapture(workspace); });
 		Require(failures.empty(), failures);
 		std::cout << "GI restart, preparation recovery and importer retry tests passed\n";
 	}

@@ -257,6 +257,18 @@ namespace
 		return parent;
 	}
 
+	void WaitForAssetTasks()
+	{
+		if (auto* scheduler = App::GetSubmodule<Tasks::Scheduler>())
+		{
+			scheduler->WaitIdle({
+				EThreadType::Worker,
+				EThreadType::Render,
+				EThreadType::RHI
+			});
+		}
+	}
+
 	bool ReloadAssetsOnEngineMainThread()
 	{
 		auto* assetRegistry = App::GetSubmodule<AssetRegistry>();
@@ -265,28 +277,13 @@ namespace
 			return false;
 		}
 
-		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		if (scheduler)
-		{
-			scheduler->WaitIdle({
-				EThreadType::Worker,
-				EThreadType::RHI,
-				EThreadType::Render
-			});
-		}
+		WaitForAssetTasks();
 		if (auto* shaderCompiler = App::GetSubmodule<ShaderCompiler>())
 		{
 			shaderCompiler->RecoverMissingShaderCacheStorage();
 		}
 		const bool bReloaded = assetRegistry->ScanContentFolder();
-		if (scheduler)
-		{
-			scheduler->WaitIdle({
-				EThreadType::Worker,
-				EThreadType::Render,
-				EThreadType::RHI
-			});
-		}
+		WaitForAssetTasks();
 		const bool bProcessingSucceeded = assetRegistry->CompleteScanProcessing();
 		if (bReloaded && bProcessingSucceeded)
 		{
@@ -1058,6 +1055,9 @@ bool App::UpdateAsset(const char* strFileId)
 				return false;
 			}
 
+			// Importers update live resources across these queues. Keep world capture
+			// outside the reload, just as for a full content scan.
+			WaitForAssetTasks();
 			FrameGraphAssetInfoPtr frameGraphAssetInfo =
 				assetRegistry->GetAssetInfoPtr<FrameGraphAssetInfoPtr>(fileId);
 			const bool bRefreshFrameGraph =
@@ -1066,6 +1066,7 @@ bool App::UpdateAsset(const char* strFileId)
 					frameGraphAssetInfo->IsAssetExpired() ||
 					assetRegistry->IsAssetExpired(frameGraphAssetInfo));
 			const bool bUpdated = assetRegistry->UpdateAsset(fileId);
+			WaitForAssetTasks();
 			if (bUpdated && bRefreshFrameGraph)
 			{
 				if (Renderer* renderer = GetSubmodule<Renderer>())
