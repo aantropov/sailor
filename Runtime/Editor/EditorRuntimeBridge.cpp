@@ -66,98 +66,7 @@ namespace
 		}
 	}
 
-	float HalfToFloat(uint16_t value)
-	{
-		const uint32_t sign = (static_cast<uint32_t>(value & 0x8000u)) << 16u;
-		const uint32_t exp = (value >> 10u) & 0x1fu;
-		const uint32_t mant = value & 0x03ffu;
-		uint32_t out = 0;
-		if (exp == 0)
-		{
-			if (mant == 0)
-			{
-				out = sign;
-			}
-			else
-			{
-				uint32_t normalizedMant = mant;
-				uint32_t normalizedExp = 113u;
-				while ((normalizedMant & 0x0400u) == 0)
-				{
-					normalizedMant <<= 1u;
-					normalizedExp--;
-				}
-				normalizedMant &= 0x03ffu;
-				out = sign | (normalizedExp << 23u) | (normalizedMant << 13u);
-			}
-		}
-		else if (exp == 31u)
-		{
-			out = sign | 0x7f800000u | (mant << 13u);
-		}
-		else
-		{
-			out = sign | ((exp + 112u) << 23u) | (mant << 13u);
-		}
-
-		float result = 0.0f;
-		std::memcpy(&result, &out, sizeof(float));
-		return result;
-	}
-
-	uint8_t FloatToUnorm8(float value)
-	{
-		value = std::clamp(value, 0.0f, 1.0f);
-		return static_cast<uint8_t>(value * 255.0f + 0.5f);
-	}
-
-	TSharedPtr<std::vector<uint8_t>> CopyReadbackToBGRA8(const uint8_t* src, glm::ivec2 extent,
-		uint32_t srcBytesPerRow, PixelFormat pixelFormat, uint32_t& outBytesPerRow)
-	{
-		const uint32_t srcBytesPerPixel = pixelFormat == PixelFormat::R16G16B16A16_Float ? 8u : 4u;
-		outBytesPerRow = static_cast<uint32_t>(extent.x) * 4u;
-		auto outBytes = TSharedPtr<std::vector<uint8_t>>::Make(static_cast<size_t>(outBytesPerRow) * static_cast<size_t>(extent.y));
-		for (int y = 0; y < extent.y; ++y)
-		{
-			uint8_t* dstRow = outBytes->data() + static_cast<size_t>(y) * outBytesPerRow;
-			const uint8_t* srcRow = src + static_cast<size_t>(y) * srcBytesPerRow;
-			for (int x = 0; x < extent.x; ++x)
-			{
-				uint8_t* dstPixel = dstRow + static_cast<size_t>(x) * 4u;
-				const uint8_t* srcPixel = srcRow + static_cast<size_t>(x) * srcBytesPerPixel;
-				switch (pixelFormat)
-				{
-				case PixelFormat::B8G8R8A8_UNorm:
-					dstPixel[0] = srcPixel[0];
-					dstPixel[1] = srcPixel[1];
-					dstPixel[2] = srcPixel[2];
-					dstPixel[3] = srcPixel[3];
-					break;
-				case PixelFormat::R8G8B8A8_UNorm:
-					dstPixel[0] = srcPixel[2];
-					dstPixel[1] = srcPixel[1];
-					dstPixel[2] = srcPixel[0];
-					dstPixel[3] = srcPixel[3];
-					break;
-				case PixelFormat::R16G16B16A16_Float:
-				{
-					const uint16_t* halfs = reinterpret_cast<const uint16_t*>(srcPixel);
-					dstPixel[0] = FloatToUnorm8(HalfToFloat(halfs[2]));
-					dstPixel[1] = FloatToUnorm8(HalfToFloat(halfs[1]));
-					dstPixel[2] = FloatToUnorm8(HalfToFloat(halfs[0]));
-					dstPixel[3] = FloatToUnorm8(HalfToFloat(halfs[3]));
-					break;
-				}
-				default:
-					return nullptr;
-				}
-			}
-		}
-
-		return outBytes;
-	}
-
-	TSharedPtr<std::vector<uint8_t>> TryReadbackRendererTargetToBGRA8Bytes(const RHI::RHIRenderTargetPtr& renderTarget, PixelFormat pixelFormat, uint32_t& outBytesPerRow)
+	EditorReadbackFramePtr ReadbackRendererTarget(const RHI::RHIRenderTargetPtr& renderTarget, PixelFormat pixelFormat)
 	{
 		auto& driver = RHI::Renderer::GetDriver();
 		auto* commands = RHI::Renderer::GetDriverCommands();
@@ -186,8 +95,13 @@ namespace
 			SAILOR_LOG_ERROR("EditorRuntimeBridge: viewport readback did not complete.");
 			return nullptr;
 		}
-		return CopyReadbackToBGRA8(static_cast<const uint8_t*>(readbackBuffer->GetPointer()),
-			extent, srcBytesPerRow, pixelFormat, outBytesPerRow);
+		auto frame = TSharedPtr<EditorReadbackFrame>::Make();
+		frame->m_buffer = std::move(readbackBuffer);
+		frame->m_extent = extent;
+		frame->m_bytesPerRow = srcBytesPerRow;
+		frame->m_format = renderTarget->GetFormat();
+		if (!frame->PrepareBgraPixels()) return {};
+		return frame;
 	}
 
 	bool TryFillRendererFrameSourceFromTarget(const char* debugName, const RHI::RHIRenderTargetPtr& renderTarget, MacRendererFrameSource& outSource)
@@ -223,12 +137,13 @@ namespace
 		outSource.m_pixelFormat = *pixelFormat;
 		outSource.m_debugName = debugName;
 
-		auto cpuBytes = TryReadbackRendererTargetToBGRA8Bytes(renderTarget, *pixelFormat, outSource.m_bytesPerRow);
-		if (cpuBytes && !cpuBytes->empty())
+		auto readback = ReadbackRendererTarget(renderTarget, *pixelFormat);
+		if (readback)
 		{
 			outSource.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
 			outSource.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
-			outSource.m_cpuBytes = std::move(cpuBytes);
+			outSource.m_bytesPerRow = readback->GetBgraBytesPerRow();
+			outSource.m_readback = std::move(readback);
 			return true;
 		}
 
@@ -782,8 +697,6 @@ bool Sailor::EditorRuntime::TryAcquireEditorReadbackFrameSource(EditorRemote::Ma
 	const auto* renderer = App::GetSubmodule<RHI::Renderer>();
 	const auto frame = renderer ? renderer->GetEditorReadback() : EditorReadbackFramePtr{};
 	if (!frame) return false;
-	const auto pixelFormat = ToRemotePixelFormat(frame->m_format);
-	if (!pixelFormat) return false;
 
 	outSource.m_kind = EditorRemote::MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
 	outSource.m_sourceObject = reinterpret_cast<uintptr_t>(frame->m_buffer.GetRawPtr());
@@ -792,9 +705,9 @@ bool Sailor::EditorRuntime::TryAcquireEditorReadbackFrameSource(EditorRemote::Ma
 	outSource.m_height = static_cast<uint32_t>(frame->m_extent.y);
 	outSource.m_pixelFormat = EditorRemote::PixelFormat::B8G8R8A8_UNorm;
 	outSource.m_debugName = "EditorReadback";
-	outSource.m_cpuBytes = CopyReadbackToBGRA8(static_cast<const uint8_t*>(frame->m_buffer->GetPointer()),
-		frame->m_extent, frame->m_bytesPerRow, *pixelFormat, outSource.m_bytesPerRow);
-	return outSource.m_cpuBytes.IsValid();
+	outSource.m_bytesPerRow = frame->GetBgraBytesPerRow();
+	outSource.m_readback = frame;
+	return true;
 }
 
 bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()

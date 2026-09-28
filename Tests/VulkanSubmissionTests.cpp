@@ -494,6 +494,48 @@ namespace
 			driver->SubmitFrameWithoutPresent({ recorded.command }, {}, completion);
 	}
 
+#if defined(__APPLE__)
+	void CheckReadbackUpload(const EditorRemote::MacRendererFrameSource& source)
+	{
+		using namespace EditorRemote;
+		class Source final : public IMacRendererFrameSourceProvider
+		{
+		public:
+			MacRendererFrameSource m_frame;
+			Failure AcquireFrameSource(const MacViewportSurfaceState&, FrameIndex, MacRendererFrameSource& out) override
+			{
+				out = m_frame;
+				return Failure::Ok();
+			}
+		} input;
+		input.m_frame = source;
+		MacLoopbackIOSurfaceProvider provider(&input);
+		ViewportDescriptor viewport;
+		viewport.m_viewportId = 201;
+		viewport.m_width = source.m_width;
+		viewport.m_height = source.m_height;
+		viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		viewport.m_colorSpace = ColorSpace::Srgb;
+		viewport.m_presentMode = PresentMode::Mailbox;
+		MacViewportSurfaceState state;
+		Require(provider.CreateOrResizeSurface(viewport, 1, 1, state).IsOk() && provider.BeginFrame(state).IsOk(),
+			"completed Vulkan readback must feed a real Metal IOSurface upload");
+		FramePacket packet;
+		Require(provider.ExportFrame(state, packet).IsOk() &&
+			state.m_nativeAllocation->m_lastRendererSource.m_readback == source.m_readback,
+			"native upload must accept and retain the actual completed readback owner");
+		MacNativeSurfaceFrameEvidence evidence;
+		Require(CaptureMacIOSurfaceFrameEvidence(state.m_transport.m_macSurfaces.front(), source.m_width, source.m_height,
+			PixelFormat::B8G8R8A8_UNorm, evidence).IsOk(), "uploaded IOSurface must expose its actual pixels");
+		const auto* pixel = source.GetCpuBytes() + (source.m_height / 2u) * source.m_bytesPerRow + (source.m_width / 2u) * 4u;
+		Require(evidence.m_center.m_b == pixel[0] && evidence.m_center.m_g == pixel[1] &&
+			evidence.m_center.m_r == pixel[2] && evidence.m_center.m_a == pixel[3],
+			"Metal upload must preserve normalized readback channels and alpha");
+		Require(provider.ReleaseSurface(state).IsOk() && provider.GetLiveAllocationCount() == 0,
+			"native readback upload fixture must release its registration");
+	}
+#endif
+
 	void TestEditorReadback()
 	{
 		Require(App::HasEditor(), "the readback test must execute the actual editor node path");
@@ -537,14 +579,37 @@ namespace
 		scheduler->ProcessTasksOnMainThread();
 		Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.m_width == 5u && source.m_height == 3u &&
 			source.m_bytesPerRow == 20u && source.m_pixelFormat == EditorRemote::PixelFormat::B8G8R8A8_UNorm &&
-			source.m_cpuBytes->size() == firstPixels.size() * sizeof(uint32_t), "bridge must consume the completed frame metadata");
+			source.m_readback == first && !source.m_cpuBytes, "bridge must retain the completed frame without another payload allocation");
 		for (size_t i = 0; i < firstPixels.size(); ++i)
 		{
 			const auto* rgba = reinterpret_cast<const uint8_t*>(&firstPixels[i]);
-			const auto* bgra = source.m_cpuBytes->data() + 4u * i;
+			const auto* bgra = source.GetCpuBytes() + 4u * i;
 			Require(bgra[0] == rgba[2] && bgra[1] == rgba[1] && bgra[2] == rgba[0] && bgra[3] == rgba[3],
 				"bridge must convert RGBA to BGRA without changing alpha");
 		}
+		const auto retainedSource = source;
+#if defined(__APPLE__)
+		CheckReadbackUpload(source);
+#endif
+		Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) &&
+			source.GetCpuBytes() == retainedSource.GetCpuBytes(),
+			"reacquiring the same completed frame must reuse its owned pixels");
+		EditorReadbackStats initialStats;
+		OnRender([&]() { initialStats = node->GetStats(); });
+		Require(initialStats.m_recordedReadbackBytes == 60u && initialStats.m_convertedBytes == 60u &&
+			initialStats.m_bufferAllocatedBytes == 60u && initialStats.m_conversionAllocatedBytes >= 60u,
+			"readback cost counters must describe the actual capture and one conversion");
+		for (uint32_t i = 0; i < 100; ++i)
+		{
+			Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.GetCpuBytes() == retainedSource.GetCpuBytes(),
+				"unchanged completed frames must not recopy or reallocate pixels");
+		}
+		OnRender([&]()
+			{
+				Require(node->GetStats().m_convertedBytes == initialStats.m_convertedBytes &&
+					node->GetStats().m_conversionAllocatedBytes == initialStats.m_conversionAllocatedBytes,
+					"Main acquisition must not repeat conversion or allocation");
+			});
 		RecordedEditorReadback pendingResize;
 		OnRender([&]()
 			{
@@ -602,17 +667,30 @@ namespace
 				return frame;
 			};
 		const uint32_t capacity = Renderer::GetDriver()->GetMaxFramesInFlight() + 1u;
+		EditorRemote::MacRendererFrameSource retainedBgra;
 		for (uint32_t i = 1; i < capacity; ++i)
 		{
 			auto frame = capture(7u + i);
 			Require(frame.IsValid(), "readback ring must permit outstanding readers up to its capacity");
 			for (const auto& reader : readers) Require(reader->m_buffer != frame->m_buffer, "held buffers must not be reused");
 			readers.push_back(frame);
+			if (i == 1)
+			{
+				Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(retainedBgra) && retainedBgra.m_readback == frame &&
+					!retainedBgra.m_cpuBytes && retainedBgra.GetCpuBytes() == frame->m_buffer->GetPointer(),
+					"BGRA source must borrow mapped pixels through the immutable frame owner, without copying");
+#if defined(__APPLE__)
+				CheckReadbackUpload(retainedBgra);
+#endif
+			}
 		}
 		Require(!capture(32u) && renderer->GetEditorReadback() == readers.back(),
 			"ring pressure must retain the previous presentation without growing buffers");
 		const auto releasedBuffer = readers[1]->m_buffer;
 		readers[1].Clear();
+		Require(!capture(32u) && *reinterpret_cast<const uint32_t*>(retainedBgra.GetCpuBytes()) == 0xffabc008u,
+			"a native source owner alone must prevent reuse of its readback slot");
+		retainedBgra = {};
 		readers[1] = capture(6u);
 		Require(readers[1] && readers[1]->m_buffer == releasedBuffer, "released completed slot should reuse its allocation");
 		Require(std::memcmp(first->m_buffer->GetPointer(), firstPixels.data(), firstPixels.size() * sizeof(uint32_t)) == 0,
@@ -638,12 +716,47 @@ namespace
 				renderer->QueueEditorReadback(frame);
 			});
 		scheduler->ProcessTasksOnMainThread();
+		const std::array<uint8_t, 8> expectedHalf{ 0, 128, 255, 255, 255, 0, 0, 128 };
 		Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.m_bytesPerRow == 4u &&
-			*source.m_cpuBytes == std::vector<uint8_t>{ 0, 128, 255, 255, 255, 0, 0, 128 },
+			std::memcmp(source.GetCpuBytes(), expectedHalf.data(), expectedHalf.size()) == 0,
 			"half-float bridge conversion must preserve rows, channel order and alpha");
+#if defined(__APPLE__)
+		CheckReadbackUpload(source);
+#endif
 		OnRender([&]() { node->Clear(); });
 		Require(std::memcmp(first->m_buffer->GetPointer(), firstPixels.data(), firstPixels.size() * sizeof(uint32_t)) == 0,
 			"clearing the graph must not invalidate a retained completed reader");
+		Require(std::memcmp(source.GetCpuBytes(), expectedHalf.data(), expectedHalf.size()) == 0,
+			"clearing the graph must preserve a retained converted source too");
+
+		EditorReadbackStats warmStats;
+		for (uint32_t i = 0; i < 24; ++i)
+		{
+			OnRender([&]()
+				{
+					const std::vector<uint32_t> pixels(32u * 24u, 0xff123400u + i);
+					auto recorded = RecordEditorReadback(*node, { 32, 24 }, ETextureFormat::R8G8B8A8_UNORM,
+						pixels.data(), pixels.size() * sizeof(uint32_t));
+					Require(SubmitEditorReadback(recorded).m_bSubmitted && recorded.nativeFence->Wait(5000000000ull) == VK_SUCCESS,
+						"reused conversion slot needs actual completed GPU pixels");
+					auto frame = node->TakeCompletedFrame();
+					Require(frame.IsValid(), "readback must continue while the previous source is retained");
+					renderer->QueueEditorReadback(frame);
+					if (i == 4) warmStats = node->GetStats();
+					if (i > 4)
+					{
+						const auto& stats = node->GetStats();
+						Require(stats.m_bufferAllocatedBytes == warmStats.m_bufferAllocatedBytes &&
+							stats.m_conversionAllocatedBytes == warmStats.m_conversionAllocatedBytes &&
+							stats.m_convertedBytes - warmStats.m_convertedBytes == (i - 4u) * 32u * 24u * 4u,
+							"warm ring must reuse readback and conversion allocations while converting each new frame once");
+					}
+				});
+			scheduler->ProcessTasksOnMainThread();
+			Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.GetCpuBytes()[0] == 0x12 &&
+				source.GetCpuBytes()[1] == 0x34 && source.GetCpuBytes()[2] == i && source.GetCpuBytes()[3] == 0xff,
+				"reused conversion storage must contain the new frame, not stale pixels");
+		}
 	}
 
 	void TestEditorReadbackRefusal(bool lost)

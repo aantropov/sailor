@@ -2,6 +2,7 @@
 #include "Containers/Containers.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/UniquePtr.hpp"
+#include "RHI/Readback.h"
 
 #include <algorithm>
 #include <chrono>
@@ -88,6 +89,7 @@ namespace Sailor::EditorRemote
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		CrossApiSyncKind m_crossApiSyncKind = CrossApiSyncKind::None;
 		TSharedPtr<std::vector<uint8_t>> m_cpuBytes{};
+		RHI::EditorReadbackFramePtr m_readback{};
 		std::string m_debugName{};
 		bool m_releaseTextureObjectAfterUse = false;
 		bool m_crossApiCpuWaited = false;
@@ -95,6 +97,12 @@ namespace Sailor::EditorRemote
 		bool IsValid() const
 		{
 			return m_kind != MacRendererFrameSourceKind::Unknown && m_width != 0 && m_height != 0 && m_pixelFormat != PixelFormat::Unknown;
+		}
+
+		const uint8_t* GetCpuBytes() const
+		{
+			if (m_readback) return m_readback->GetBgraPixels();
+			return m_cpuBytes && !m_cpuBytes->empty() ? m_cpuBytes->data() : nullptr;
 		}
 
 		auto operator<=>(const MacRendererFrameSource&) const = default;
@@ -389,7 +397,7 @@ namespace Sailor::EditorRemote
 				(rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture ||
 				 rendererSource.m_kind == MacRendererFrameSourceKind::SyntheticIntermediate);
 			const bool bHasCpuPayload = rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata &&
-				rendererSource.m_cpuBytes && !rendererSource.m_cpuBytes->empty();
+				rendererSource.GetCpuBytes() != nullptr;
 			if (!rendererSource.IsValid() || (!bHasMetalTexture && !bHasCpuPayload) ||
 				rendererSource.m_width != state.m_viewport.m_width || rendererSource.m_height != state.m_viewport.m_height)
 			{
@@ -408,7 +416,7 @@ namespace Sailor::EditorRemote
 			m_lastFailure = bHasMetalTexture ?
 				CopyMacRendererIntermediateToProducerTexture(*state.m_nativeAllocation, rendererSource.m_textureObject, rendererFrameInfo,
 					rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue) :
-				UploadMacRendererBytesToProducerTexture(*state.m_nativeAllocation, rendererSource.m_cpuBytes->data(),
+				UploadMacRendererBytesToProducerTexture(*state.m_nativeAllocation, rendererSource.GetCpuBytes(),
 					rendererSource.m_bytesPerRow, rendererFrameInfo);
 			ReleaseRendererFrameSourceResources(rendererSource);
 			if (!m_lastFailure.IsOk()) return m_lastFailure;

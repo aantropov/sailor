@@ -1,4 +1,6 @@
 #include "EditorReadbackNode.h"
+#include "RHI/Buffer.h"
+#include "RHI/Fence.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Surface.h"
@@ -68,6 +70,7 @@ void EditorReadbackNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 	{
 		readback.m_buffer = driver->CreateBuffer(requiredSize, EBufferUsageBit::BufferTransferDst_Bit,
 			EMemoryPropertyBit::HostCoherent | EMemoryPropertyBit::HostVisible);
+		if (readback.m_buffer) m_stats.m_bufferAllocatedBytes += requiredSize;
 	}
 	if (!readback.m_buffer)
 	{
@@ -84,6 +87,7 @@ void EditorReadbackNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(0.8f, 0.3f, 0.2f, 1.0f));
 	commands->ImageMemoryBarrier(commandList, m_texture, EImageLayout::TransferSrcOptimal);
 	commands->CopyImageToBuffer(commandList, m_texture, readback.m_buffer);
+	m_stats.m_recordedReadbackBytes += requiredSize;
 	commands->MemoryBarrier(commandList, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
 		static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
 	commands->EndDebugRegion(commandList);
@@ -91,7 +95,7 @@ void EditorReadbackNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 
 EditorReadbackFramePtr EditorReadbackNode::TakeCompletedFrame()
 {
-	EditorReadbackFramePtr latest;
+	TSharedPtr<EditorReadbackFrame> latest;
 	for (const auto& frame : m_readbacks)
 	{
 		if (frame && frame->m_frameIndex > m_publishedFrameIndex &&
@@ -101,7 +105,14 @@ EditorReadbackFramePtr EditorReadbackNode::TakeCompletedFrame()
 			latest = frame;
 		}
 	}
-	if (latest) m_publishedFrameIndex = latest->m_frameIndex;
+	if (latest)
+	{
+		const size_t capacity = latest->m_bgraPixels.Capacity();
+		if (!latest->PrepareBgraPixels()) return {};
+		if (latest->m_bgraPixels.Capacity() > capacity) m_stats.m_conversionAllocatedBytes += latest->m_bgraPixels.Capacity();
+		m_stats.m_convertedBytes += latest->m_bgraPixels.Num();
+		m_publishedFrameIndex = latest->m_frameIndex;
+	}
 	return latest;
 }
 

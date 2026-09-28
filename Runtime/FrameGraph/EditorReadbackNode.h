@@ -20,12 +20,14 @@ namespace Sailor::Framegraph
 		// Render thread only; Main receives an immutable completed record by task.
 		SAILOR_API RHI::EditorReadbackFramePtr TakeCompletedFrame();
 		SAILOR_API RHI::RHITexturePtr GetTexture() const { return m_texture; }
+		SAILOR_API const RHI::EditorReadbackStats& GetStats() const { return m_stats; }
 
 	protected:
 		TVector<TSharedPtr<RHI::EditorReadbackFrame>> m_readbacks;
 		RHI::RHITexturePtr m_texture;
 		uint64_t m_nextFrameIndex = 1;
 		uint64_t m_publishedFrameIndex = 0;
+		RHI::EditorReadbackStats m_stats;
 
 		SAILOR_SHARED_API static const char* m_name;
 	};
