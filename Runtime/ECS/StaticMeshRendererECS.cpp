@@ -436,8 +436,7 @@ void StaticMeshRendererECS::MarkDirty(GameObjectPtr owner)
 	}
 }
 
-uint64_t StaticMeshRendererECS::GetGlobalIlluminationContributorRevision()
-	const noexcept
+uint64_t StaticMeshRendererECS::GetGlobalIlluminationGeometryRevision() const noexcept
 {
 	if (!m_publishedSceneVersion ||
 		!m_publishedSceneVersion->m_sceneVersion)
@@ -447,11 +446,18 @@ uint64_t StaticMeshRendererECS::GetGlobalIlluminationContributorRevision()
 	const RHI::RHISceneVersion& version =
 		*m_publishedSceneVersion->m_sceneVersion;
 	uint64_t revision = version.m_staticRevision;
-	HashCombine(
-		revision,
-		version.m_stationaryRevision,
-		version.m_materialRevision,
-		m_giMaterialRevision);
+	HashCombine(revision, version.m_stationaryRevision);
+	return revision;
+}
+
+uint64_t StaticMeshRendererECS::GetGlobalIlluminationContributorRevision() const noexcept
+{
+	uint64_t revision = GetGlobalIlluminationGeometryRevision();
+	if (m_publishedSceneVersion && m_publishedSceneVersion->m_sceneVersion)
+	{
+		HashCombine(revision, m_publishedSceneVersion->m_sceneVersion->m_materialRevision,
+			m_giMaterialRevision);
+	}
 	return revision;
 }
 

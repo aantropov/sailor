@@ -110,7 +110,8 @@ namespace
 
 	void HashMaterials(
 		uint64_t& hash,
-		const Raytracing::PathTracer::MaterialSnapshots& materials) noexcept
+		const Raytracing::PathTracer::MaterialSnapshots& materials,
+		bool bSurfaceOnly = false) noexcept
 	{
 		for (const auto& material : materials)
 		{
@@ -118,7 +119,7 @@ namespace
 				hash,
 				material ? material->m_fileId.ToString() : std::string());
 			const uint64_t revision = material ?
-				material->m_contentRevision : 0u;
+				(bSurfaceOnly ? material->m_surfaceRevision : material->m_contentRevision) : 0u;
 			HashValue(hash, revision);
 		}
 	}
@@ -362,15 +363,13 @@ bool Sailor::ObserveGIProbesSceneRevision(
 		lighting);
 	if (const auto* meshes = world->GetECS<StaticMeshRendererECS>())
 	{
-		HashValue(
-			geometry,
-			meshes->GetGlobalIlluminationContributorRevision());
+		HashValue(geometry, meshes->GetGlobalIlluminationGeometryRevision());
+		HashValue(lighting, meshes->GetGlobalIlluminationContributorRevision());
 	}
 	if (const auto* landscape = world->GetECS<LandscapeECS>())
 	{
-		HashValue(
-			geometry,
-			landscape->GetGlobalIlluminationContributorRevision());
+		HashValue(geometry, landscape->GetGlobalIlluminationGeometryRevision());
+		HashValue(lighting, landscape->GetGlobalIlluminationContributorRevision());
 	}
 
 	TVector<Raytracing::LightProxy> lights;
@@ -401,10 +400,19 @@ bool GIProbesSceneMaterialWatch::HasUnchangedMaterials() const noexcept
 {
 	for (const auto& watched : m_materials)
 	{
-		const MaterialPtr& material = watched.m_first;
-		const uint64_t revision = material ?
-			material->GetContentRevision() : 0u;
-		if (revision != watched.m_second)
+		if (watched.m_first->GetContentRevision() != (*watched.m_second)->m_contentRevision)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+bool GIProbesSceneMaterialWatch::HasUnchangedSurfaces() const noexcept
+{
+	for (const auto& watched : m_materials)
+	{
+		if (watched.m_first->GetSurfaceRevision() != (*watched.m_second)->m_surfaceRevision)
 		{
 			return false;
 		}
@@ -490,7 +498,7 @@ bool Sailor::CaptureGIProbesScene(
 	outScene = {};
 	if (materialWatch)
 	{
-		materialWatch->m_materials.Clear();
+		*materialWatch = {};
 	}
 	outDiagnostic.clear();
 	if (!world)
@@ -742,20 +750,12 @@ bool Sailor::CaptureGIProbesScene(
 		return false;
 	}
 
-	outScene.m_materials = Raytracing::PathTracer::CaptureMaterials(runtimeMaterials);
-	HashMaterials(geometryHash, outScene.m_materials);
+	outScene.m_materials = Raytracing::PathTracer::CaptureMaterials(runtimeMaterials,
+		materialWatch ? &materialWatch->m_materials : nullptr);
+	HashMaterials(geometryHash, outScene.m_materials, true);
 	if (materialWatch)
 	{
-		TSet<MaterialPtr> watched;
-		for (size_t index = 0u; index < runtimeMaterials.Num(); ++index)
-		{
-			const auto& material = runtimeMaterials[index];
-			if (material && !watched.Contains(material))
-			{
-				watched.Insert(material);
-				materialWatch->m_materials.Add({ material, outScene.m_materials[index]->m_contentRevision });
-			}
-		}
+		materialWatch->m_slots = std::move(runtimeMaterials);
 	}
 	outScene.m_geometryHash = geometryHash;
 	if (!CaptureGIProbesSceneLighting(world, request, outScene, outDiagnostic, warning))
@@ -802,8 +802,8 @@ bool Sailor::PrepareGIProbesScene(
 	const bool bReuseGeometry = previous && previous->m_sampler &&
 		previous->m_geometryHash == scene.m_geometryHash;
 	const bool bInitialized = bReuseGeometry ?
-		sampler->InitializeLighting(*previous->m_sampler, scene.m_lights,
-			effectiveSettings, scene.m_fallbackEnvironment) :
+		sampler->InitializeLighting(*previous->m_sampler, scene.m_materials, scene.m_lights,
+			effectiveSettings, scene.m_fallbackEnvironment, guardedProgress) :
 		sampler->InitializeSnapshot(scene.m_instances, scene.m_materials,
 			scene.m_lights, effectiveSettings, scene.m_fallbackEnvironment,
 			guardedProgress, warning);

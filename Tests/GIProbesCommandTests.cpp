@@ -386,6 +386,52 @@ namespace
 			"an explicit rebuild must bypass retained geometry even with unchanged identities");
 	}
 
+	void TestEmissionPreparation()
+	{
+		GIWorld world;
+		world.m_material->SetUniform("material.emissiveFactor", glm::vec4(0));
+		world.WaitReady();
+		const auto original = GlobalIlluminationECSTestAccess::PreparedScene(world.GI());
+		const auto captured = GlobalIlluminationECSTestAccess::CapturedScene(world.GI());
+		world.m_material->SetUniform("material.emissiveFactor", glm::vec4(2, 4, 8, 0));
+		world.Step(0.6f);
+		world.Step();
+		const auto updated = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
+		const auto recaptured = GlobalIlluminationECSTestAccess::CapturedScene(world.GI());
+		Require(updated && updated->m_geometryHash == original->m_geometryHash &&
+			updated->m_lightingHash != original->m_lightingHash &&
+			updated->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0 &&
+			updated->m_sampler->GetLastScenePreparationStats().m_decodedTextureCount == 0,
+			"emission-only updates must change GI lighting without rebuilding geometry or decoding textures");
+		Require(recaptured->m_instances[0].m_triangles == captured->m_instances[0].m_triangles &&
+			recaptured->m_materials[0] != captured->m_materials[0] &&
+			recaptured->m_materials[0]->m_parameters.m_emissiveFactor == glm::vec3(2, 4, 8) &&
+			captured->m_materials[0]->m_parameters.m_emissiveFactor == glm::vec3(0),
+			"emission capture must retain geometry without mutating previous material values");
+		world.Step();
+		world.WaitReady();
+	}
+
+	void TestEmissionDuringPreparation()
+	{
+		GIWorld world;
+		world.m_material->SetUniform("material.emissiveFactor", glm::vec4(0));
+		world.Step();
+		const auto prepared = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
+		Require(prepared && prepared->m_sampler, "prepare the real initial scene before changing emission");
+		world.m_material->SetUniform("material.emissiveFactor", glm::vec4(3, 2, 1, 0));
+		world.Step();
+		Require(GlobalIlluminationECSTestAccess::PreparedScene(world.GI()) == prepared,
+			"emission changes must not discard usable geometry before its first publication");
+		world.WaitReady();
+		world.Step(0.6f);
+		world.Step();
+		const auto latest = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
+		Require(latest && latest->m_lightingHash != prepared->m_lightingHash &&
+			latest->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0,
+			"after first publication the next emission generation must catch up without rebuilding BLAS");
+	}
+
 	void TestCloudsDoNotInvalidateGI()
 	{
 		GIWorld world;
@@ -627,6 +673,8 @@ namespace Sailor::Tests
 		run("Explicit recovery", [&]() { TestPreparationRecovery(true); });
 		run("Stale preparation recovery", [&]() { TestStalePreparationRecovery(); });
 		run("Lighting preparation", [&]() { TestLightingPreparation(); });
+		run("Emission preparation", [&]() { TestEmissionPreparation(); });
+		run("Emission during preparation", [&]() { TestEmissionDuringPreparation(); });
 		run("Cloud-only changes", [&]() { TestCloudsDoNotInvalidateGI(); });
 		if (data)
 		{

@@ -999,11 +999,12 @@ namespace
 	}
 }
 
-PathTracer::MaterialSnapshots PathTracer::CaptureMaterials(const TVector<MaterialPtr>& materials)
+PathTracer::MaterialSnapshots PathTracer::CaptureMaterials(const TVector<MaterialPtr>& materials,
+	MaterialSnapshotCache* cache)
 {
 	MaterialSnapshots result;
 	result.Reserve(materials.Num());
-	TMap<const Sailor::Material*, TSharedPtr<const MaterialSnapshot>> capturedMaterials;
+	MaterialSnapshotCache capturedMaterials;
 	TMap<std::string, TSharedPtr<const TextureSnapshot>> capturedTextures;
 	auto* textureImporter = App::GetSubmodule<TextureImporter>();
 	auto* registry = App::GetSubmodule<AssetRegistry>();
@@ -1015,15 +1016,32 @@ PathTracer::MaterialSnapshots PathTracer::CaptureMaterials(const TVector<Materia
 			continue;
 		}
 		TSharedPtr<const MaterialSnapshot>* existing = nullptr;
-		if (capturedMaterials.Find(material.GetRawPtr(), existing))
+		if (capturedMaterials.Find(material, existing))
 		{
 			result.Add(*existing);
+			continue;
+		}
+
+		if (cache && cache->Find(material, existing) &&
+			(*existing)->m_surfaceRevision == material->GetSurfaceRevision())
+		{
+			auto captured = *existing;
+			if (captured->m_contentRevision != material->GetContentRevision())
+			{
+				auto changed = TSharedPtr<MaterialSnapshot>::Make(*captured);
+				changed->m_contentRevision = material->GetContentRevision();
+				changed->m_parameters = CaptureMaterialParameters(*material);
+				captured = std::move(changed);
+			}
+			result.Add(captured);
+			capturedMaterials.Add(material, std::move(captured));
 			continue;
 		}
 
 		auto snapshot = TSharedPtr<MaterialSnapshot>::Make();
 		snapshot->m_fileId = material->GetFileId();
 		snapshot->m_contentRevision = material->GetContentRevision();
+		snapshot->m_surfaceRevision = material->GetSurfaceRevision();
 		snapshot->m_parameters = CaptureMaterialParameters(*material);
 		for (const auto& sampler : material->GetSamplers())
 		{
@@ -1074,7 +1092,11 @@ PathTracer::MaterialSnapshots PathTracer::CaptureMaterials(const TVector<Materia
 			snapshot->m_samplers.Add({ sampler.m_first, std::move(binding) });
 		}
 		result.Add(snapshot);
-		capturedMaterials.Add(material.GetRawPtr(), std::move(snapshot));
+		capturedMaterials.Add(material, std::move(snapshot));
+	}
+	if (cache)
+	{
+		*cache = std::move(capturedMaterials);
 	}
 	return result;
 }
@@ -1180,6 +1202,8 @@ void PathTracer::UsePreparedGeometry(const PathTracer& source)
 {
 	m_geometry = source.m_geometry;
 	m_preparedMaterials = source.m_preparedMaterials;
+	m_emissiveTriangles = source.m_emissiveTriangles;
+	m_totalEmissiveWeight = source.m_totalEmissiveWeight;
 	m_bAddDefaultLightIfEmpty = source.m_bAddDefaultLightIfEmpty;
 	m_lastScenePreparationStats = source.m_lastScenePreparationStats;
 	m_lastScenePreparationStats.m_builtBlasCount = 0;
@@ -1189,6 +1213,46 @@ void PathTracer::UsePreparedGeometry(const PathTracer& source)
 	m_lastScenePreparationStats.m_textureReferenceCount = 0;
 	m_lastScenePreparationStats.m_uniqueTextureCount = 0;
 	m_lastScenePreparationStats.m_decodedTextureCount = 0;
+}
+
+bool PathTracer::UpdatePreparedEmission(const MaterialSnapshots& materials,
+	const ScenePreparationProgressCallback& progress)
+{
+	bool bChanged = false;
+	for (size_t index = 0; index < materials.Num(); ++index)
+	{
+		bChanged |= materials[index] && materials[index]->m_parameters.m_emissiveFactor !=
+			m_preparedMaterials->m_materials[index].m_emissiveFactor;
+	}
+	if (!bChanged)
+	{
+		return true;
+	}
+
+	// Texture pixels and acceleration structures stay shared with older readers.
+	m_preparedMaterials = TSharedPtr<PreparedMaterials>::Make(*m_preparedMaterials);
+	for (size_t index = 0; index < materials.Num(); ++index)
+	{
+		if (materials[index])
+		{
+			m_preparedMaterials->m_materials[index].m_emissiveFactor =
+				materials[index]->m_parameters.m_emissiveFactor;
+		}
+	}
+	m_emissiveTriangles = TSharedPtr<TVector<EmissiveTriangle>>::Make();
+	m_totalEmissiveWeight = 0;
+	for (size_t index = 0; index < m_geometry->m_tracedInstances.Num(); ++index)
+	{
+		if (index % 64 == 0 && progress && !progress({ EScenePreparationStage::Geometry,
+			index, m_geometry->m_tracedInstances.Num() }))
+		{
+			return false;
+		}
+		AppendEmissiveTriangles(m_geometry->m_tracedInstances[index]);
+	}
+	m_lastScenePreparationStats.m_emissiveTriangleCount = m_emissiveTriangles->Num();
+	m_lastScenePreparationStats.m_emissiveSamplingWeight = m_totalEmissiveWeight;
+	return true;
 }
 
 bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
@@ -1227,6 +1291,8 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 	// Older light generations may still be tracing the previous transport.
 	m_geometry = TSharedPtr<PreparedGeometry>::Make();
 	m_geometry->m_tlasInstances = instances;
+	m_emissiveTriangles = TSharedPtr<TVector<EmissiveTriangle>>::Make();
+	m_totalEmissiveWeight = 0;
 	m_lightProxies = lightProxies;
 	m_bAddDefaultLightIfEmpty = bAddDefaultLightIfEmpty;
 	m_lastScenePreparationStats = {};
@@ -1484,6 +1550,7 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 			integerCenter,
 			glm::max(integerExtents, glm::ivec3(1)),
 			i);
+		m_geometry->m_tracedInstances.Add(static_cast<uint32_t>(i));
 		AppendEmissiveTriangles(static_cast<uint32_t>(i));
 	}
 	if (progress && !progress(preparedMaterials))
@@ -1491,9 +1558,9 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 		return false;
 	}
 	m_lastScenePreparationStats.m_emissiveTriangleCount =
-		m_geometry->m_emissiveTriangles.Num();
+		m_emissiveTriangles->Num();
 	m_lastScenePreparationStats.m_emissiveSamplingWeight =
-		m_geometry->m_totalEmissiveWeight;
+		m_totalEmissiveWeight;
 
 	if (m_bAddDefaultLightIfEmpty && m_lightProxies.Num() == 0)
 	{
@@ -2833,9 +2900,9 @@ void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
 		source.m_weight = source.m_area * (std::max)(
 			sampledEmissivePower,
 			conservativeWeightFloor);
-		m_geometry->m_totalEmissiveWeight += source.m_weight;
-		source.m_cumulativeWeight = m_geometry->m_totalEmissiveWeight;
-		m_geometry->m_emissiveTriangles.Add(std::move(source));
+		m_totalEmissiveWeight += source.m_weight;
+		source.m_cumulativeWeight = m_totalEmissiveWeight;
+		m_emissiveTriangles->Add(std::move(source));
 	}
 }
 
@@ -2849,27 +2916,27 @@ vec3 PathTracer::SampleDirectEmissive(
 	const Params& params,
 	uint32_t& randomState) const
 {
-	if (m_geometry->m_emissiveTriangles.IsEmpty() ||
-		!std::isfinite(m_geometry->m_totalEmissiveWeight) ||
-		m_geometry->m_totalEmissiveWeight <= 0.0f)
+	if (m_emissiveTriangles->IsEmpty() ||
+		!std::isfinite(m_totalEmissiveWeight) ||
+		m_totalEmissiveWeight <= 0.0f)
 	{
 		return vec3(0.0f);
 	}
 
 	const float selectedWeight =
-		NextRandom01(randomState) * m_geometry->m_totalEmissiveWeight;
+		NextRandom01(randomState) * m_totalEmissiveWeight;
 	const auto selectedIt = std::lower_bound(
-		m_geometry->m_emissiveTriangles.begin(),
-		m_geometry->m_emissiveTriangles.end(),
+		m_emissiveTriangles->begin(),
+		m_emissiveTriangles->end(),
 		selectedWeight,
 		[](const EmissiveTriangle& source, float value)
 		{
 			return source.m_cumulativeWeight < value;
 		});
 	const EmissiveTriangle& source = selectedIt !=
-		m_geometry->m_emissiveTriangles.end() ?
+		m_emissiveTriangles->end() ?
 		*selectedIt :
-			m_geometry->m_emissiveTriangles[m_geometry->m_emissiveTriangles.Num() - 1u];
+			(*m_emissiveTriangles)[m_emissiveTriangles->Num() - 1u];
 	if (source.m_instanceIndex == receiverHit.m_instanceIndex &&
 		source.m_triangleIndex == receiverHit.m_triangleIndex)
 	{
@@ -2922,7 +2989,7 @@ vec3 PathTracer::SampleDirectEmissive(
 	}
 
 	const float selectionProbability =
-		source.m_weight / m_geometry->m_totalEmissiveWeight;
+		source.m_weight / m_totalEmissiveWeight;
 	const float solidAnglePdf =
 		selectionProbability / source.m_area *
 		distanceSquared / emitterCosine;
@@ -3381,7 +3448,7 @@ vec3 PathTracer::Raytrace(
 					// their BSDF-hit estimator as well would count the same path twice.
 					const bool bAllowNextEmissiveHit =
 						bOnlySpecularRay || bTransmissionRay ||
-						m_geometry->m_emissiveTriangles.IsEmpty();
+						m_emissiveTriangles->IsEmpty();
 					const vec3 raytraced = Raytrace(
 						rayToLight,
 						bounceLimit - 1,

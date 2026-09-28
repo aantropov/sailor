@@ -5887,6 +5887,159 @@ components:
 			"the light generation must own transport after the original scene, materials and tracer are released");
 	}
 
+	void TestGiMaterialSnapshotCache()
+	{
+		auto allocator = Memory::ObjectAllocatorPtr::Make(Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		auto material = TObjectPtr<CapturedGiTestMaterial>::Make(allocator);
+		auto texture = TObjectPtr<CpuTextureFixture>::Make(allocator, FileId::Invalid);
+		texture->SetPixel(glm::u8vec4(255, 0, 0, 255));
+		material->SetSampler("baseColorSampler", texture);
+		Raytracing::PathTracer::MaterialSnapshotCache cache;
+		const TVector<MaterialPtr> slots{ material, material, {} };
+		const auto first = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
+		Require(first[0] == first[1] && !first[2] && cache.Num() == 1,
+			"the owner cache must preserve slot order and deduplicate actual material objects");
+		const auto pixels = first[0]->m_samplers[0].m_second.m_texture;
+		const auto surfaceRevision = material->GetSurfaceRevision();
+		const auto contentRevision = material->GetContentRevision();
+		for (const char* name : { "material.emissiveFactor", "material.emissive", "material.emission" })
+		{
+			material->SetUniform(name, glm::vec4(2, 4, 8, 0));
+			const auto changed = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
+			Require(material->GetSurfaceRevision() == surfaceRevision &&
+				material->GetContentRevision() > contentRevision &&
+				changed[0] != first[0] && changed[0] == changed[1] &&
+				changed[0]->m_parameters.m_emissiveFactor == glm::vec3(2, 4, 8) &&
+				changed[0]->m_samplers[0].m_second.m_texture == pixels &&
+				first[0]->m_parameters.m_emissiveFactor == glm::vec3(0),
+				"all emissive aliases must update immutable values while retaining captured texture pixels");
+			const auto unchanged = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
+			Require(unchanged[0] == changed[0], "unchanged owner capture must reuse the material value itself");
+		}
+		material->SetUniform("material.baseColorFactor", glm::vec4(1, 1, 1, 0.25f));
+		const auto alpha = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
+		Require(material->GetSurfaceRevision() > surfaceRevision &&
+			alpha[0]->m_parameters.m_baseColorFactor.a == 0.25f &&
+			alpha[0]->m_samplers[0].m_second.m_texture != pixels,
+			"alpha changes must invalidate the retained surface capture");
+		texture->SetPixel(glm::u8vec4(0, 0, 255, 255));
+		material->SetSampler("baseColorSampler", texture);
+		const auto rebound = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
+		Require(rebound[0]->m_samplers[0].m_second.m_texture->m_data[2] == 255 &&
+			pixels->m_data[0] == 255 && pixels->m_data[2] == 0,
+			"sampler updates must capture fresh pixels without mutating a retained older snapshot");
+		auto replacement = TObjectPtr<CapturedGiTestMaterial>::Make(allocator);
+		Require(replacement->GetFileId() == material->GetFileId(), "the cache fixture uses two materials with one file id");
+		const auto replaced = Raytracing::PathTracer::CaptureMaterials({ replacement }, &cache);
+		Require(cache.Num() == 1 && cache.ContainsKey(replacement) && !cache.ContainsKey(material) &&
+			replaced[0] != rebound[0] && replaced[0]->m_samplers.IsEmpty(),
+			"the cache must follow material object identity and evict materials no longer in the capture");
+	}
+
+	void TestGiEmissionReusesPreparedTransport()
+	{
+		Tests::TempDirectory files("gi-emission-reuse");
+		const auto imagePath = files.Path("pixel.tga");
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		fixture.m_instances[0].m_blas.Clear();
+		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		auto material = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(
+			*materials[0]);
+		material->m_samplers.Add({ "baseColorSampler", { MakeCapturedRedTexture(imagePath) } });
+		material->m_parameters.m_emissiveFactor = glm::vec3(0);
+		GIProbesSceneSnapshot scene;
+		scene.m_instances = fixture.m_instances;
+		materials[0] = material;
+		scene.m_materials = materials;
+		scene.m_worldBounds = fixture.m_bounds;
+		scene.m_geometryHash = 1;
+		scene.m_lightingHash = 1;
+		GIProbesBakeSettings settings;
+		settings.m_bounceCount = 1;
+		settings.m_bIncludeDirectLighting = false;
+		settings.m_bIncludeSky = false;
+		GIProbesPreparedScene first, latest;
+		std::string diagnostic;
+		Require(PrepareGIProbesScene(scene, settings, nullptr, first, diagnostic), diagnostic);
+		Require(first.m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 1 &&
+			first.m_sampler->GetLastScenePreparationStats().m_decodedTextureCount == 1,
+			"emission fixture must build real BLAS and decode a nonresident source");
+		Require(std::filesystem::remove(imagePath), "remove only the owned source after its first decode");
+		auto sample = [&](const GIProbesPreparedScene& prepared)
+		{
+			GIProbeBakeRaySample result;
+			std::string error;
+			Require(prepared.m_sampler->Sample(glm::vec3(-20, 20, -20), glm::vec3(0, -1, 0),
+				100, 41, result, error), error);
+			Require(result.m_bHit, "emission ray must hit the surface");
+			return result;
+		};
+		const auto original = sample(first);
+		Require(original.m_radiance == glm::vec3(0), "unlit nonemissive fixture must start black");
+		std::atomic<bool> valid{ true };
+		std::atomic<uint32_t> reads{ 0 };
+		std::jthread reader([&](std::stop_token stop)
+		{
+			try
+			{
+				while (!stop.stop_requested())
+				{
+					valid.store(valid.load() && sample(first).m_radiance == original.m_radiance);
+					++reads;
+				}
+			}
+			catch (...)
+			{
+				valid.store(false);
+			}
+		});
+		while (reads.load() == 0 && valid.load())
+		{
+			std::this_thread::yield();
+		}
+		for (uint32_t update = 0; update < 8; ++update)
+		{
+			auto changed = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*material);
+			changed->m_parameters.m_emissiveFactor = glm::vec3(2, 4, 8) * static_cast<float>(update + 1);
+			changed->m_contentRevision += update + 1;
+			scene.m_materials[0] = changed;
+			++scene.m_lightingHash;
+			Require(PrepareGIProbesScene(scene, settings, nullptr, latest, diagnostic, {}, {}, &first), diagnostic);
+			const auto value = sample(latest);
+			Require(glm::length(value.m_radiance - changed->m_parameters.m_emissiveFactor) < 0.0001f &&
+				value.m_distance == original.m_distance,
+				"emission-only refresh must update numeric radiance without changing visibility");
+			const auto& stats = latest.m_sampler->GetLastScenePreparationStats();
+			Require(stats.m_builtBlasCount == 0 && stats.m_decodedTextureCount == 0 &&
+				stats.m_emissiveTriangleCount > 0 && stats.m_emissiveSamplingWeight > 0,
+				"emission refresh must rebuild emitter sampling, not BLAS or textures");
+			Require(sample(first).m_radiance == original.m_radiance &&
+				first.m_sampler->GetLastScenePreparationStats().m_emissiveTriangleCount == 0,
+				"the previous tracer and emitter distribution must stay unchanged");
+		}
+		reader.request_stop();
+		reader.join();
+		Require(valid.load() && reads.load() > 0, "old emission must remain stable under concurrent sampling");
+		std::atomic<bool> cancel{ false };
+		scene.m_materials[0] = material;
+		GIProbesPreparedScene cancelled;
+		Require(!PrepareGIProbesScene(scene, settings, &cancel, cancelled, diagnostic,
+			[&](const Raytracing::PathTracer::ScenePreparationProgress&)
+			{
+				cancel.store(true);
+				return false;
+			}, {}, &latest) && cancel.load() && !cancelled.m_sampler,
+			"emitter preparation must honour cancellation without publishing partial state");
+		const auto retained = sample(latest);
+		first = {};
+		scene = {};
+		fixture = {};
+		material.Clear();
+		materials.Clear();
+		Require(sample(latest).m_radiance == retained.m_radiance,
+			"updated emission must retain decoded textures and geometry after source release");
+	}
+
 	void TestPathTracerCancellationDuringTexturePreparation()
 	{
 		Tests::TempDirectory source("gi-cancel-texture");
@@ -7632,6 +7785,53 @@ components:
 				enabled.m_radiance.r > enabled.m_radiance.g &&
 				enabled.m_radiance.g > enabled.m_radiance.b,
 			"a small emissive triangle must illuminate a diffuse GI receiver with authored HDR color");
+
+		GIProbesSceneSnapshot scene;
+		scene.m_instances = instances;
+		auto incomplete = instances[0];
+		incomplete.m_materialBaseOffset = 1;
+		scene.m_instances.Add(std::move(incomplete));
+		scene.m_materials = Raytracing::PathTracer::CaptureMaterials(materials);
+		scene.m_worldBounds = bounds;
+		scene.m_geometryHash = 1;
+		scene.m_lightingHash = 1;
+		GIProbesBakeSettings settings;
+		settings.m_bounceCount = 1;
+		settings.m_bIncludeDirectLighting = false;
+		settings.m_bIncludeSky = false;
+		GIProbesPreparedScene lit, dark;
+		std::string diagnostic;
+		Require(PrepareGIProbesScene(scene, settings, nullptr, lit, diagnostic), diagnostic);
+		auto sampleReceiver = [&](const GIProbesPreparedScene& prepared)
+		{
+			GIProbeBakeRaySample result;
+			Require(prepared.m_sampler->Sample(glm::vec3(0, 1, 0), glm::vec3(0, -1, 0),
+				10, 155, result, diagnostic), diagnostic);
+			return result.m_radiance;
+		};
+		const auto litReceiver = sampleReceiver(lit);
+		Require(glm::length(litReceiver) > 0.1f, "the GI sampler must receive indirect emitter light");
+		Require(lit.m_sampler->GetLastScenePreparationStats().m_skippedInstanceCount == 1,
+			"one partially unresolved instance must be excluded from the traced geometry");
+		auto intensified = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*scene.m_materials[1]);
+		intensified->m_parameters.m_emissiveFactor *= 2;
+		++intensified->m_contentRevision;
+		scene.m_materials[1] = intensified;
+		++scene.m_lightingHash;
+		GIProbesPreparedScene brighter;
+		Require(PrepareGIProbesScene(scene, settings, nullptr, brighter, diagnostic, {}, {}, &lit), diagnostic);
+		Require(brighter.m_sampler->GetLastScenePreparationStats().m_emissiveTriangleCount == 1 &&
+			glm::length(sampleReceiver(brighter) - litReceiver * 2.0f) < 0.00001f,
+			"emitter refresh must not add light from an instance excluded during geometry preparation");
+		auto extinguished = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*scene.m_materials[1]);
+		extinguished->m_parameters.m_emissiveFactor = glm::vec3(0);
+		++extinguished->m_contentRevision;
+		scene.m_materials[1] = extinguished;
+		++scene.m_lightingHash;
+		Require(PrepareGIProbesScene(scene, settings, nullptr, dark, diagnostic, {}, {}, &brighter), diagnostic);
+		Require(glm::length(sampleReceiver(dark)) < 0.000001f && sampleReceiver(lit) == litReceiver &&
+			dark.m_sampler->GetLastScenePreparationStats().m_emissiveTriangleCount == 0,
+			"extinguishing an emitter must rebuild its distribution without darkening the previous receiver");
 	}
 
 	void TestAlphaCutoutTraversalMatchesRasterVisibility()
@@ -7955,6 +8155,8 @@ int main(int argc, char** argv)
 		RunTest("PathTracerCancellationBetweenBlasBuilds", TestPathTracerCancellationBetweenBlasBuilds);
 		RunTest("PathTracerCancellationDuringTexturePreparation", TestPathTracerCancellationDuringTexturePreparation);
 		RunTest("GiLightingReusesPreparedTransport", TestGiLightingReusesPreparedTransport);
+		RunTest("GiEmissionReusesPreparedTransport", TestGiEmissionReusesPreparedTransport);
+		RunTest("GiMaterialSnapshotCache", TestGiMaterialSnapshotCache);
 		RunTest(
 			"ProbeBakeSkipsUnavailableMeshAndMaterialInstances",
 			TestProbeBakeSkipsUnavailableMeshAndMaterialInstances);

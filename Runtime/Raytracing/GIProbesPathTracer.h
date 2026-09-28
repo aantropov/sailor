@@ -28,9 +28,11 @@ namespace Sailor::Raytracing
 
 		bool InitializeLighting(
 			const GIProbesPathTracer& source,
+			const PathTracer::MaterialSnapshots& materials,
 			const TVector<LightProxy>& lights,
 			const GIProbesBakeSettings& settings,
-			const glm::vec3& fallbackEnvironment = glm::vec3(0.03f));
+			const glm::vec3& fallbackEnvironment = glm::vec3(0.03f),
+			const PathTracer::ScenePreparationProgressCallback& progress = {});
 
 		void SetEnvironmentLinear(
 			const TVector<glm::vec4>& image,

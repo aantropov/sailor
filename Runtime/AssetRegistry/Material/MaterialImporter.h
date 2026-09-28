@@ -34,6 +34,7 @@ namespace Sailor
 		SAILOR_API virtual bool IsReady() const override;
 		SAILOR_API bool IsDirty() const { return m_bIsDirty.load(); }
 		SAILOR_API uint64_t GetContentRevision() const { return m_contentRevision.load(std::memory_order_acquire); }
+		SAILOR_API uint64_t GetSurfaceRevision() const { return m_surfaceRevision.load(std::memory_order_acquire); }
 		SAILOR_API uint64_t GetRenderMetadataRevision() const { return m_renderMetadataRevision.load(std::memory_order_acquire); }
 		SAILOR_API static uint64_t GetGlobalContentRevision();
 
@@ -71,13 +72,15 @@ namespace Sailor
 
 	protected:
 
-		void AdvanceContentRevision();
+		void AdvanceContentRevision(bool bSurfaceChanged = true);
 		void AdvanceRenderMetadataRevision();
 		void ForcelyUpdateUniforms();
 		void UpdateUniforms(RHI::RHICommandListPtr cmdList);
 
 		std::atomic<bool> m_bIsDirty{};
 		std::atomic<uint64_t> m_contentRevision{};
+		// Emission RGB changes lighting, but leaves the transport surface intact.
+		std::atomic<uint64_t> m_surfaceRevision{};
 		std::atomic<uint64_t> m_renderMetadataRevision{};
 
 		ShaderSetPtr m_shader{};

@@ -52,8 +52,10 @@ namespace Sailor
 	// Owner-thread validation is separate from the values consumed by background work.
 	struct SAILOR_SHARED_API GIProbesSceneMaterialWatch final
 	{
-		TVector<TPair<MaterialPtr, uint64_t>> m_materials;
+		Raytracing::PathTracer::MaterialSnapshotCache m_materials;
+		TVector<MaterialPtr> m_slots;
 		bool HasUnchangedMaterials() const noexcept;
+		bool HasUnchangedSurfaces() const noexcept;
 	};
 
 	using GIProbesSceneSnapshotPtr = TSharedPtr<GIProbesSceneSnapshot>;

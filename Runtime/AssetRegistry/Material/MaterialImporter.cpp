@@ -52,6 +52,12 @@ namespace
 			name == "material.albedo";
 	}
 
+	bool IsEmissiveUniform(const std::string& name)
+	{
+		return name == "material.emissiveFactor" ||
+			name == "material.emissive" || name == "material.emission";
+	}
+
 	template<typename TValue>
 	void AddMaterialUniformAliasOrDefault(
 		TMap<std::string, TValue>& uniforms,
@@ -157,8 +163,12 @@ uint64_t Material::GetGlobalContentRevision()
 	return g_materialContentRevision.load(std::memory_order_acquire);
 }
 
-void Material::AdvanceContentRevision()
+void Material::AdvanceContentRevision(bool bSurfaceChanged)
 {
+	if (bSurfaceChanged)
+	{
+		m_surfaceRevision.fetch_add(1, std::memory_order_release);
+	}
 	m_contentRevision.fetch_add(1, std::memory_order_release);
 	g_materialContentRevision.fetch_add(1, std::memory_order_release);
 }
@@ -329,7 +339,7 @@ void Material::SetUniform(const std::string& name, glm::vec4 value)
 	m_uniformsVec4.Unlock(name);
 
 	m_bIsDirty = true;
-	AdvanceContentRevision();
+	AdvanceContentRevision(!IsEmissiveUniform(name));
 	if (bBaseColorMetadataUniform && currentBaseColorAlpha != resolveBaseColorAlpha())
 	{
 		AdvanceRenderMetadataRevision();

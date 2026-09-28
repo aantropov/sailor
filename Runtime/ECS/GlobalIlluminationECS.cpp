@@ -698,12 +698,14 @@ void GlobalIlluminationECS::TickRuntimeProvider(float deltaTime)
 					request,
 					revision,
 					observationDiagnostic) &&
-				revision != m_runtimePreparationRevision)
+				(revision != m_runtimePreparationRevision ||
+					!m_runtimeSceneMaterialWatch.HasUnchangedMaterials()))
 			{
 				const auto status = m_runtimeProbes.GetStatus();
 				// Let each light generation publish once before replacing it again.
 				// Geometry changes must still invalidate the old transport immediately.
 				if (revision.m_geometry != m_runtimePreparationRevision.m_geometry ||
+					!m_runtimeSceneMaterialWatch.HasUnchangedSurfaces() ||
 					!m_runtimePreparedScene || !status.m_bEnabled ||
 					status.m_lifecycle == ERuntimeGIProbesLifecycle::Failed ||
 					status.m_publishedRevision > m_runtimeStartedPublishedRevision)
@@ -755,11 +757,16 @@ bool GlobalIlluminationECS::BeginRuntimeScenePreparation(
 	const bool bReuseGeometry = m_runtimeSceneSnapshot && m_runtimePreparedScene &&
 		revision.m_geometry == m_runtimeSceneSnapshot->m_observedRevision.m_geometry &&
 		revision.m_geometry == m_runtimePreparedScene->m_observedRevision.m_geometry &&
-		m_runtimeSceneMaterialWatch.HasUnchangedMaterials();
+		m_runtimeSceneMaterialWatch.HasUnchangedSurfaces();
 	const auto reportWarning = [&warnings](const std::string& warning) { warnings.Add(warning); };
 	if (bReuseGeometry)
 	{
 		snapshot = *m_runtimeSceneSnapshot;
+		if (!m_runtimeSceneMaterialWatch.HasUnchangedMaterials())
+		{
+			snapshot.m_materials = Raytracing::PathTracer::CaptureMaterials(
+				m_runtimeSceneMaterialWatch.m_slots, &m_runtimeSceneMaterialWatch.m_materials);
+		}
 	}
 	const bool bCaptured = bReuseGeometry ?
 		CaptureGIProbesSceneLighting(GetWorld(), captureRequest, snapshot, outDiagnostic, reportWarning) :
@@ -851,7 +858,7 @@ void GlobalIlluminationECS::ConsumeRuntimeScenePreparation(
 		m_runtimeScenePreparationTask->GetResult();
 	m_runtimeScenePreparationTask.Clear();
 	m_runtimeScenePreparationCancel.Clear();
-	const bool bMaterialsUnchanged = m_runtimeSceneMaterialWatch.HasUnchangedMaterials();
+	const bool bSurfacesUnchanged = m_runtimeSceneMaterialWatch.HasUnchangedSurfaces();
 	if (result.m_requestId != m_runtimeScenePreparationRequestId)
 	{
 		return;
@@ -871,7 +878,7 @@ void GlobalIlluminationECS::ConsumeRuntimeScenePreparation(
 	// cannot yet report a material edit made this frame, so validate on the owner too.
 	const auto attemptedRevision = result.m_scene ?
 		result.m_scene->m_observedRevision : m_runtimePreparationRevision;
-	if (m_bRuntimeSceneRebuildRequested || !bMaterialsUnchanged || !ObserveGIProbesSceneRevision(
+	if (m_bRuntimeSceneRebuildRequested || !bSurfacesUnchanged || !ObserveGIProbesSceneRevision(
 			GetWorld(),
 			observationRequest,
 			currentRevision,
@@ -880,7 +887,7 @@ void GlobalIlluminationECS::ConsumeRuntimeScenePreparation(
 		(!result.m_scene && currentRevision.m_lighting != attemptedRevision.m_lighting))
 	{
 		m_runtimeSceneSnapshot.Clear();
-		m_runtimeSceneMaterialWatch.m_materials.Clear();
+		m_runtimeSceneMaterialWatch = {};
 		m_bRuntimeSceneRebuildRequested = true;
 		m_bRuntimePreparationFailed = false;
 		m_runtimePreparationRetrySeconds = 0.1f;
@@ -991,7 +998,7 @@ void GlobalIlluminationECS::StopRuntimeProvider(bool bClearSnapshot)
 	}
 	m_runtimeScenePreparationTask.Clear();
 	m_runtimeScenePreparationCancel.Clear();
-	m_runtimeSceneMaterialWatch.m_materials.Clear();
+	m_runtimeSceneMaterialWatch = {};
 	m_runtimeSceneSnapshot.Clear();
 	m_runtimePreparedScene.Clear();
 	m_runtimePreparationRevision = {};

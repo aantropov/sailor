@@ -220,6 +220,7 @@ namespace Sailor
 			std::string& outDiagnostic) const;
 		SAILOR_API uint64_t GetGlobalIlluminationContributorRevision()
 			const noexcept;
+		SAILOR_API uint64_t GetGlobalIlluminationGeometryRevision() const noexcept;
 		virtual uint32_t GetOrder() const override { return 990u; }
 
 	protected:

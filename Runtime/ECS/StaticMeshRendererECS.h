@@ -81,6 +81,7 @@ namespace Sailor
 		const RHI::RHIScenePtr& GetRHIScene() const { return m_rhiScene; }
 		SAILOR_API uint64_t GetGlobalIlluminationContributorRevision()
 			const noexcept;
+		SAILOR_API uint64_t GetGlobalIlluminationGeometryRevision() const noexcept;
 
 		virtual uint32_t GetOrder() const override { return 1000; }
 

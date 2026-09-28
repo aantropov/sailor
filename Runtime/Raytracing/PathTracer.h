@@ -132,13 +132,16 @@ namespace Sailor::Raytracing
 		{
 			FileId m_fileId{};
 			uint64_t m_contentRevision = 0u;
+			uint64_t m_surfaceRevision = 0u;
 			Material m_parameters;
 			TVector<TPair<std::string, SamplerSnapshot>> m_samplers;
 		};
 
 		using MaterialSnapshots = TVector<TSharedPtr<const MaterialSnapshot>>;
+		using MaterialSnapshotCache = TMap<MaterialPtr, TSharedPtr<const MaterialSnapshot>>;
 		// Capture on the material/texture owner before dispatching background preparation.
-		SAILOR_SHARED_API static MaterialSnapshots CaptureMaterials(const TVector<MaterialPtr>& materials);
+		SAILOR_SHARED_API static MaterialSnapshots CaptureMaterials(const TVector<MaterialPtr>& materials,
+			MaterialSnapshotCache* cache = nullptr);
 
 		static void ParseCommandLineArgs(Params& params, const char** args, int32_t num);
 
@@ -190,6 +193,8 @@ namespace Sailor::Raytracing
 
 	protected:
 		void UsePreparedGeometry(const PathTracer& source);
+		bool UpdatePreparedEmission(const MaterialSnapshots& materials,
+			const ScenePreparationProgressCallback& progress);
 
 		bool InitializeSceneInternal(const TVector<TLASInstance>& instances,
 			const TVector<MaterialPtr>& runtimeMaterials,
@@ -298,8 +303,7 @@ namespace Sailor::Raytracing
 		{
 			TVector<TLASInstance> m_tlasInstances;
 			TOctree<size_t> m_tlasOctree{ glm::ivec3(0), 16536 * 16, 4 };
-			TVector<EmissiveTriangle> m_emissiveTriangles;
-			float m_totalEmissiveWeight = 0.0f;
+			TVector<uint32_t> m_tracedInstances;
 		};
 
 		struct PreparedMaterials
@@ -316,6 +320,8 @@ namespace Sailor::Raytracing
 
 		TSharedPtr<PreparedGeometry> m_geometry = TSharedPtr<PreparedGeometry>::Make();
 		TSharedPtr<PreparedMaterials> m_preparedMaterials = TSharedPtr<PreparedMaterials>::Make();
+		TSharedPtr<TVector<EmissiveTriangle>> m_emissiveTriangles = TSharedPtr<TVector<EmissiveTriangle>>::Make();
+		float m_totalEmissiveWeight = 0.0f;
 		TVector<LightProxy> m_lightProxies{};
 		ScenePreparationStats m_lastScenePreparationStats{};
 		double m_lastRaytraceTimeMs = 0.0;

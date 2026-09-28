@@ -81,15 +81,22 @@ void GIProbesPathTracer::ConfigureParameters(
 
 bool GIProbesPathTracer::InitializeLighting(
 	const GIProbesPathTracer& source,
+	const PathTracer::MaterialSnapshots& materials,
 	const TVector<LightProxy>& lights,
 	const GIProbesBakeSettings& settings,
-	const glm::vec3& fallbackEnvironment)
+	const glm::vec3& fallbackEnvironment,
+	const PathTracer::ScenePreparationProgressCallback& progress)
 {
 	if (!source.m_bInitialized)
 	{
 		return false;
 	}
 	m_pathTracer.UsePreparedGeometry(source.m_pathTracer);
+	m_bInitialized = m_pathTracer.UpdatePreparedEmission(materials, progress);
+	if (!m_bInitialized)
+	{
+		return false;
+	}
 	m_pathTracer.m_lightProxies = GetIndirectLights(lights);
 	m_pathTracer.ClearRuntimeEnvironment();
 	ConfigureParameters(settings, fallbackEnvironment);
