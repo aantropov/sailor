@@ -45,12 +45,32 @@ void ShaderCache::Shutdown()
 	SaveCache();
 }
 
-void ShaderCache::SaveCache(bool bForcely)
+bool ShaderCache::SaveCache(bool bForcely)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	SaveCacheLocked(bForcely);
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+	void (*afterSave)(void*) = nullptr;
+	void* context = nullptr;
+#endif
+	bool saved;
+	{
+		std::lock_guard<std::mutex> lock(m_cacheMutex);
+		saved = SaveCacheLocked(bForcely);
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+		afterSave = m_afterSaveForTests;
+		context = m_afterSaveContextForTests;
+		m_afterSaveForTests = nullptr;
+		m_afterSaveContextForTests = nullptr;
+#endif
+	}
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+	if (afterSave)
+	{
+		afterSave(context);
+	}
+#endif
+	return saved;
 }
 
 bool ShaderCache::RecoverMissingStorage()
@@ -97,7 +117,7 @@ bool ShaderCache::RecoverMissingStorage()
 	loadResult.m_status = Workspace::EWorkspaceCacheLoadStatus::Missing;
 	loadResult.m_diagnostic = "Shader cache storage disappeared during the running session.";
 	ResetInvalidCacheLocked(std::move(loadResult));
-	return m_bHasCommittedSnapshot && !m_bIsDirty && !m_bPreserveStorageAfterLoadFailure;
+	return m_bHasCommittedSnapshot && !m_bIsDirty && !m_bCleanupPending && !m_bPreserveStorageAfterLoadFailure;
 }
 
 bool ShaderCache::SaveCacheLocked(bool bForcely, Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint)
@@ -106,43 +126,34 @@ bool ShaderCache::SaveCacheLocked(bool bForcely, Workspace::EWorkspaceCacheAtomi
 	{
 		return true;
 	}
-	if (!bForcely && !m_bIsDirty)
+	if (bForcely || m_bIsDirty)
 	{
-		return true;
-	}
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
-	if (failurePoint == Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None &&
-		m_nextSaveFailureForTests != Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None)
-	{
-		failurePoint = m_nextSaveFailureForTests;
-		m_nextSaveFailureForTests = Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None;
-	}
+		if (failurePoint == Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None &&
+			m_nextSaveFailureForTests != Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None)
+		{
+			failurePoint = m_nextSaveFailureForTests;
+			m_nextSaveFailureForTests = Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None;
+		}
 #endif
-
-	std::string diagnostic;
-	if (WriteCacheDataLocked(m_cache, diagnostic, failurePoint))
-	{
+		std::string diagnostic;
+		if (!WriteCacheDataLocked(m_cache, diagnostic, failurePoint))
+		{
+			m_bIsDirty = true;
+			m_lastSaveDiagnostic = std::move(diagnostic);
+			SAILOR_LOG_ERROR("Shader cache save failed: %s", m_lastSaveDiagnostic.c_str());
+			return false;
+		}
 		m_bIsDirty = false;
 		m_committedCache = m_cache;
 		m_bHasCommittedSnapshot = true;
-
-		std::string sweepDiagnostic;
-		if (SweepUnreferencedArtifactsLocked(m_committedCache, sweepDiagnostic))
-		{
-			m_lastSaveDiagnostic.clear();
-			return true;
-		}
-
-		m_bIsDirty = true;
-		m_lastSaveDiagnostic = std::move(sweepDiagnostic);
-		SAILOR_LOG_ERROR("Shader cache post-commit cleanup failed: %s", m_lastSaveDiagnostic.c_str());
-		return false;
+		m_bCleanupPending = true;
 	}
-
-	m_bIsDirty = true;
-	m_lastSaveDiagnostic = std::move(diagnostic);
-	SAILOR_LOG_ERROR("Shader cache save failed: %s", m_lastSaveDiagnostic.c_str());
-	return false;
+	if (m_bCleanupPending)
+	{
+		CleanupArtifactsLocked();
+	}
+	return true;
 }
 
 void ShaderCache::LoadCache()
@@ -169,6 +180,7 @@ void ShaderCache::LoadCache()
 				m_cache = std::move(candidate);
 				m_committedCache = std::move(committed);
 				m_bIsDirty = bRemovedInvalidArtifacts;
+				m_bCleanupPending = true;
 				m_bPreserveStorageAfterLoadFailure = false;
 				m_bHasCommittedSnapshot = true;
 				m_quarantinedEntries.Clear();
@@ -198,6 +210,7 @@ void ShaderCache::LoadCache()
 		m_cache.m_entries.Clear();
 		m_committedCache.m_entries.Clear();
 		m_bIsDirty = false;
+		m_bCleanupPending = false;
 		m_bHasCommittedSnapshot = false;
 		m_lastSaveDiagnostic.clear();
 		m_lastLoadResult = std::move(loadResult);
@@ -212,6 +225,7 @@ void ShaderCache::LoadCache()
 		m_cache.m_entries.Clear();
 		m_committedCache.m_entries.Clear();
 		m_bIsDirty = false;
+		m_bCleanupPending = false;
 		m_bPreserveStorageAfterLoadFailure = true;
 		m_bHasCommittedSnapshot = false;
 		m_lastSaveDiagnostic.clear();
@@ -238,7 +252,14 @@ bool ShaderCache::WriteCacheDataLocked(const ShaderCacheData& cache,
 		return false;
 	}
 
-	return Workspace::AtomicReplaceWorkspaceCacheText(GetCacheFilepathLocked(), envelope, outDiagnostic, failurePoint);
+	const bool saved = Workspace::AtomicReplaceWorkspaceCacheText(GetCacheFilepathLocked(), envelope, outDiagnostic, failurePoint);
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+	if (saved)
+	{
+		++m_manifestWritesForTests;
+	}
+#endif
+	return saved;
 }
 
 bool ShaderCache::WriteCacheLocked(std::string& outDiagnostic)
@@ -263,6 +284,7 @@ bool ShaderCache::CommitCandidateLocked(ShaderCacheData candidate,
 	m_committedCache = m_cache;
 	m_bHasCommittedSnapshot = true;
 	m_bIsDirty = false;
+	m_bCleanupPending = true;
 	m_lastSaveDiagnostic.clear();
 	return true;
 }
@@ -281,12 +303,15 @@ void ShaderCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult lo
 	const bool bFilesReset = ClearOwnedCacheFilesLocked(resetDiagnostic);
 	std::string writeDiagnostic;
 	const bool bEnvelopeWritten = WriteCacheLocked(writeDiagnostic);
+	m_bIsDirty = !bEnvelopeWritten;
+	m_bHasCommittedSnapshot = bEnvelopeWritten;
+	m_bCleanupPending = !bFilesReset;
+	if (bEnvelopeWritten)
+	{
+		m_committedCache = m_cache;
+	}
 	if (bFilesReset && bEnvelopeWritten)
 	{
-		m_bIsDirty = false;
-		m_bPreserveStorageAfterLoadFailure = false;
-		m_committedCache = m_cache;
-		m_bHasCommittedSnapshot = true;
 		m_lastSaveDiagnostic.clear();
 		AppendDiagnostic(m_lastLoadResult.m_diagnostic,
 			"The shader cache and owned artifact directories were reset to an empty current envelope.");
@@ -296,9 +321,6 @@ void ShaderCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult lo
 		return;
 	}
 
-	m_bIsDirty = true;
-	m_bPreserveStorageAfterLoadFailure = false;
-	m_bHasCommittedSnapshot = false;
 	m_lastSaveDiagnostic.clear();
 	AppendDiagnostic(m_lastSaveDiagnostic, resetDiagnostic);
 	AppendDiagnostic(m_lastSaveDiagnostic, writeDiagnostic);
@@ -313,6 +335,7 @@ void ShaderCache::EnterStorageQuarantineLocked(std::string diagnostic)
 	m_cache.m_entries.Clear();
 	m_committedCache.m_entries.Clear();
 	m_bIsDirty = false;
+	m_bCleanupPending = false;
 	m_bPreserveStorageAfterLoadFailure = true;
 	m_bHasCommittedSnapshot = false;
 	m_lastSaveDiagnostic.clear();
@@ -376,6 +399,14 @@ bool ShaderCache::EnsureOwnedDirectoriesLocked(std::string& outDiagnostic)
 bool ShaderCache::ClearOwnedCacheFilesLocked(std::string& outDiagnostic)
 {
 	outDiagnostic.clear();
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+	if (m_bArtifactCleanupFailureForTests)
+	{
+		m_bArtifactCleanupFailureForTests = false;
+		outDiagnostic = "Injected shader artifact cleanup failure for lifecycle validation.";
+		return false;
+	}
+#endif
 	bool bSuccess = true;
 	bSuccess &= RemovePath(m_cacheRoot, GetCacheFilepathLocked(), false, outDiagnostic);
 	bSuccess &= RemovePath(m_cacheRoot, GetPrecompiledFolderLocked(), true, outDiagnostic);

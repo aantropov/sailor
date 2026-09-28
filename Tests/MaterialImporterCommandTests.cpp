@@ -237,6 +237,25 @@ void main() {
 			Require(update() && shader->IsReady(), "a broken artifact must recompile to a complete RHI set");
 			const auto repairedGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
 			Require(repairedGeneration != generation, "a broken debug artifact must rebuild the complete permutation");
+			ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
+			Require(ShaderCompilerTestAccess::SaveCacheAndCombineResult(cache, true) &&
+				!cache.IsDirty() && cache.NeedsMaintenance() && shader->IsReady(),
+				"a deferred artifact cleanup must not invalidate successful native shader compilation");
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+			if (compute)
+			{
+				auto retry = compiler->CompileAllPermutations(uid);
+				Require(static_cast<bool>(retry), "an unchanged shader must schedule pending cache maintenance");
+				retry->Wait();
+				Require(retry->GetResult(), "cleanup-only compiler retry must succeed without recompilation");
+			}
+			else
+			{
+				Require(cache.SaveCache(), "graphics cache maintenance must retry deferred cleanup");
+			}
+			Require(!cache.NeedsMaintenance() && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0 &&
+				ShaderCacheTestAccess::GetGeneration(cache, uid, 0) == repairedGeneration,
+				"native cleanup-only retry must reuse the compiled generation without rewriting metadata");
 			ShaderCacheTestAccess::TakeArtifactReadCount(cache);
 			Require(update() && shader->IsReady(), "the repaired shader must remain ready on a warm update");
 			Require(ShaderCacheTestAccess::TakeArtifactReadCount(cache) == expectedReads &&
@@ -259,7 +278,7 @@ void main() {
 			Drain();
 			Require(update() && shader->IsReady(), "RHI updates must recover after a failed source edit");
 			std::cout << "Warm " << (compute ? "compute" : "graphics") << " RHI shader: " << reads
-				<< " artifact reads; complete repair, reuse and last-good preservation passed\n";
+				<< " artifact reads; repair, reuse, deferred cleanup and last-good preservation passed\n";
 		}
 	}
 

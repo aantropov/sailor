@@ -15,9 +15,9 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(const ShaderCacheData& commit
 {
 	outDiagnostic.clear();
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
-	if (m_bArtifactSweepFailureForTests)
+	if (m_bArtifactCleanupFailureForTests)
 	{
-		m_bArtifactSweepFailureForTests = false;
+		m_bArtifactCleanupFailureForTests = false;
 		outDiagnostic = "Injected shader artifact sweep failure for lifecycle validation.";
 		return false;
 	}
@@ -101,6 +101,21 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(const ShaderCacheData& commit
 	return bSuccess;
 }
 
+void ShaderCache::CleanupArtifactsLocked()
+{
+	std::string diagnostic;
+	m_bCleanupPending = !SweepUnreferencedArtifactsLocked(m_committedCache, diagnostic);
+	if (m_bCleanupPending)
+	{
+		m_lastSaveDiagnostic = std::move(diagnostic);
+		SAILOR_LOG_ERROR("Shader cache artifact cleanup deferred: %s", m_lastSaveDiagnostic.c_str());
+	}
+	else
+	{
+		m_lastSaveDiagnostic.clear();
+	}
+}
+
 bool ShaderCache::RemoveLocked(const FileId& uid,
 	Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
 	std::string& outDiagnostic)
@@ -129,13 +144,7 @@ bool ShaderCache::RemoveLocked(const FileId& uid,
 	{
 		return false;
 	}
-	std::string sweepDiagnostic;
-	if (!SweepUnreferencedArtifactsLocked(m_committedCache, sweepDiagnostic))
-	{
-		m_bIsDirty = true;
-		AppendDiagnostic(outDiagnostic, sweepDiagnostic);
-		return false;
-	}
+	CleanupArtifactsLocked();
 	outDiagnostic.clear();
 	return true;
 }
@@ -176,7 +185,6 @@ void ShaderCache::Invalidate(const FileId& uid)
 		{
 			entry.m_timestamp = 0;
 			entry.m_sourceFingerprint = 0;
-			bInvalidated = true;
 		}
 	}
 	if (!bInvalidated)
@@ -242,11 +250,7 @@ bool ShaderCache::ClearExpiredLocked(Workspace::EWorkspaceCacheAtomicWriteFailur
 			return false;
 		}
 	}
-	if (!SweepUnreferencedArtifactsLocked(m_committedCache, outDiagnostic))
-	{
-		m_bIsDirty = true;
-		return false;
-	}
+	CleanupArtifactsLocked();
 	outDiagnostic.clear();
 	return true;
 }
@@ -282,16 +286,19 @@ void ShaderCache::ClearAll()
 	const bool bCleared = ClearOwnedCacheFilesLocked(clearDiagnostic);
 	std::string writeDiagnostic;
 	const bool bEnvelopeWritten = WriteCacheLocked(writeDiagnostic);
+	m_bIsDirty = !bEnvelopeWritten;
+	m_bHasCommittedSnapshot = bEnvelopeWritten;
+	m_bCleanupPending = !bCleared;
+	if (bEnvelopeWritten)
+	{
+		m_committedCache = m_cache;
+	}
 	if (bCleared && bEnvelopeWritten)
 	{
-		m_bIsDirty = false;
-		m_committedCache = m_cache;
-		m_bHasCommittedSnapshot = true;
 		m_lastSaveDiagnostic.clear();
 	}
 	else
 	{
-		m_bIsDirty = true;
 		m_lastSaveDiagnostic.clear();
 		AppendDiagnostic(m_lastSaveDiagnostic, clearDiagnostic);
 		AppendDiagnostic(m_lastSaveDiagnostic, writeDiagnostic);
@@ -315,6 +322,12 @@ bool ShaderCache::IsDirty() const
 {
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	return m_bIsDirty;
+}
+
+bool ShaderCache::NeedsMaintenance() const
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	return m_bIsDirty || m_bCleanupPending;
 }
 
 bool ShaderCache::GetTimeStamp(const FileId& uid, time_t& outTimestamp) const

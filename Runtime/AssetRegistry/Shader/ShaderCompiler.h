@@ -172,9 +172,6 @@ namespace Sailor
 		static bool SaveShaderCacheAndCombineResult(
 			ShaderCache& cache,
 			bool bCompiledSuccessfully);
-		static bool ShouldRetryDirtyShaderCache(
-			size_t numPermutationsToCompile,
-			bool bCacheDirty) noexcept;
 		static TVector<FileId> MergeShaderDependencyCandidates(
 			const TVector<FileId>& parsedShaderIds,
 			const TVector<FileId>& loadedShaderIds);
@@ -288,9 +285,6 @@ namespace Sailor
 		SAILOR_API static bool SaveCacheAndCombineResult(
 			ShaderCache& cache,
 			bool bCompiledSuccessfully);
-		SAILOR_API static bool ShouldRetryCacheSave(
-			size_t numPermutationsToCompile,
-			bool bCacheDirty);
 		SAILOR_API static TVector<FileId> MergeShaderDependencyCandidates(
 			const TVector<FileId>& parsedShaderIds,
 			const TVector<FileId>& loadedShaderIds);

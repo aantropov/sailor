@@ -116,7 +116,8 @@ namespace Sailor
 		SAILOR_API bool IsExpired(const FileId& uid, uint32_t permutation);
 
 		SAILOR_API void LoadCache();
-		SAILOR_API void SaveCache(bool bForcely = false);
+		// Cleanup may remain pending after a successful save; quarantined storage stays session-only.
+		SAILOR_API bool SaveCache(bool bForcely = false);
 		SAILOR_API bool RecoverMissingStorage();
 
 		SAILOR_API void ClearAll();
@@ -125,6 +126,7 @@ namespace Sailor
 		SAILOR_API Workspace::WorkspaceCacheLoadResult GetLastLoadResult() const;
 		SAILOR_API std::string GetLastSaveDiagnostic() const;
 		SAILOR_API bool IsDirty() const;
+		SAILOR_API bool NeedsMaintenance() const;
 
 		SAILOR_API static uint64_t CalculateArtifactChecksum(const void* data, uint64_t size) noexcept;
 		SAILOR_API static ArtifactMetadata DescribeArtifact(const void* data, uint64_t size) noexcept;
@@ -351,6 +353,7 @@ namespace Sailor
 		bool SweepUnreferencedArtifactsLocked(
 			const ShaderCacheData& committedSnapshot,
 			std::string& outDiagnostic);
+		void CleanupArtifactsLocked();
 		QuarantinedEntry* FindQuarantinedEntryLocked(const FileId& uid, uint32_t permutation);
 		const QuarantinedEntry* FindQuarantinedEntryLocked(const FileId& uid, uint32_t permutation) const;
 		bool RemoveLocked(
@@ -370,6 +373,7 @@ namespace Sailor
 		const IShaderSourceStateProvider* m_sourceStateProvider = nullptr;
 		std::filesystem::path m_cacheRoot;
 		bool m_bIsDirty = false;
+		bool m_bCleanupPending = false;
 		bool m_bStorageReady = false;
 		bool m_bPreserveStorageAfterLoadFailure = false;
 		bool m_bHasCommittedSnapshot = false;
@@ -380,8 +384,11 @@ namespace Sailor
 		[[maybe_unused]] Workspace::EWorkspaceCacheAtomicWriteFailurePoint m_nextSaveFailureForTests =
 			Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None;
 		[[maybe_unused]] bool m_bArtifactReadIoFailureForTests = false;
-		[[maybe_unused]] bool m_bArtifactSweepFailureForTests = false;
+		[[maybe_unused]] bool m_bArtifactCleanupFailureForTests = false;
 		[[maybe_unused]] mutable uint64_t m_artifactReadsForTests = 0;
+		[[maybe_unused]] uint64_t m_manifestWritesForTests = 0;
+		[[maybe_unused]] void (*m_afterSaveForTests)(void*) = nullptr;
+		[[maybe_unused]] void* m_afterSaveContextForTests = nullptr;
 
 		friend class ShaderCompiler;
 
@@ -429,8 +436,10 @@ namespace Sailor
 			std::string& outDiagnostic);
 		SAILOR_API static void FailNextSaveBeforeReplace(ShaderCache& cache);
 		SAILOR_API static void SetArtifactReadIoFailure(ShaderCache& cache, bool bEnabled);
-		SAILOR_API static void FailNextArtifactSweep(ShaderCache& cache);
+		SAILOR_API static void FailNextArtifactCleanup(ShaderCache& cache);
 		SAILOR_API static uint64_t TakeArtifactReadCount(ShaderCache& cache);
+		SAILOR_API static uint64_t TakeManifestWriteCount(ShaderCache& cache);
+		SAILOR_API static void AfterNextSave(ShaderCache& cache, void (*callback)(void*), void* context);
 		SAILOR_API static std::string PayloadWithUnknownFields(const ShaderCache& cache);
 		SAILOR_API static std::string PayloadWithMissingDebug(const ShaderCache& cache);
 		SAILOR_API static std::string PayloadWithMismatchedDebugTopology(const ShaderCache& cache);

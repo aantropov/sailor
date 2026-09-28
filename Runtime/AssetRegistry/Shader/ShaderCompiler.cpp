@@ -485,15 +485,8 @@ bool ShaderCompiler::SaveShaderCacheAndCombineResult(
 	ShaderCache& cache,
 	bool bCompiledSuccessfully)
 {
-	cache.SaveCache();
-	return bCompiledSuccessfully && !cache.IsDirty();
-}
-
-bool ShaderCompiler::ShouldRetryDirtyShaderCache(
-	size_t numPermutationsToCompile,
-	bool bCacheDirty) noexcept
-{
-	return numPermutationsToCompile == 0 && bCacheDirty;
+	const bool bSaved = cache.SaveCache();
+	return bCompiledSuccessfully && bSaved;
 }
 
 TVector<FileId> ShaderCompiler::MergeShaderDependencyCandidates(
@@ -595,7 +588,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 		auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 		if (permutationsToCompile.IsEmpty())
 		{
-			if (ShouldRetryDirtyShaderCache(permutationsToCompile.Num(), m_shaderCache.IsDirty()))
+			if (m_shaderCache.NeedsMaintenance())
 			{
 				Tasks::TaskPtr<bool> retrySaveJob = Tasks::CreateTaskWithResult<bool>(
 					"Retry Save Shader Cache",
@@ -1627,15 +1620,6 @@ bool ShaderCompilerTestAccess::SaveCacheAndCombineResult(
 	bool bCompiledSuccessfully)
 {
 	return ShaderCompiler::SaveShaderCacheAndCombineResult(cache, bCompiledSuccessfully);
-}
-
-bool ShaderCompilerTestAccess::ShouldRetryCacheSave(
-	size_t numPermutationsToCompile,
-	bool bCacheDirty)
-{
-	return ShaderCompiler::ShouldRetryDirtyShaderCache(
-		numPermutationsToCompile,
-		bCacheDirty);
 }
 
 TVector<FileId> ShaderCompilerTestAccess::MergeShaderDependencyCandidates(

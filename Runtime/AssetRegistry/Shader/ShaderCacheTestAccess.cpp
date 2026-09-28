@@ -130,10 +130,10 @@ void ShaderCacheTestAccess::SetArtifactReadIoFailure(ShaderCache& cache, bool bE
 	cache.m_bArtifactReadIoFailureForTests = bEnabled;
 }
 
-void ShaderCacheTestAccess::FailNextArtifactSweep(ShaderCache& cache)
+void ShaderCacheTestAccess::FailNextArtifactCleanup(ShaderCache& cache)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	cache.m_bArtifactSweepFailureForTests = true;
+	cache.m_bArtifactCleanupFailureForTests = true;
 }
 
 uint64_t ShaderCacheTestAccess::TakeArtifactReadCount(ShaderCache& cache)
@@ -142,6 +142,21 @@ uint64_t ShaderCacheTestAccess::TakeArtifactReadCount(ShaderCache& cache)
 	const auto reads = cache.m_artifactReadsForTests;
 	cache.m_artifactReadsForTests = 0;
 	return reads;
+}
+
+uint64_t ShaderCacheTestAccess::TakeManifestWriteCount(ShaderCache& cache)
+{
+	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
+	const auto writes = cache.m_manifestWritesForTests;
+	cache.m_manifestWritesForTests = 0;
+	return writes;
+}
+
+void ShaderCacheTestAccess::AfterNextSave(ShaderCache& cache, void (*callback)(void*), void* context)
+{
+	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
+	cache.m_afterSaveForTests = callback;
+	cache.m_afterSaveContextForTests = context;
 }
 
 std::string ShaderCacheTestAccess::PayloadWithUnknownFields(const ShaderCache& cache)

@@ -23,8 +23,10 @@
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <latch>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <spirv_reflect.h>
 #include <yaml-cpp/yaml.h>
 
@@ -841,6 +843,123 @@ namespace
 			"a committed recovery must survive reload without recompiling healthy shaders");
 	}
 
+	void TestSaveResultSurvivesAnotherPublisher()
+	{
+		TempDirectory directory;
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "concurrent save fixture must initialize");
+		const auto uid = MakeFileId("{SHADER-CACHE-CONCURRENT-COMMIT}");
+		Require(PublishComplete(cache, uid, 0, 300), "the first generation must stage");
+		const auto committedGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
+		struct Handoff
+		{
+			std::latch saved{ 1 };
+			std::latch published{ 1 };
+		} handoff;
+		bool published = false;
+		std::jthread writer([&]()
+			{
+				handoff.saved.wait();
+				published = PublishComplete(cache, uid, 0, 310);
+				handoff.published.count_down();
+			});
+		ShaderCacheTestAccess::AfterNextSave(cache, [](void* context)
+			{
+				auto& handoff = *static_cast<Handoff*>(context);
+				handoff.saved.count_down();
+				handoff.published.wait();
+			}, &handoff);
+		const bool saved = ShaderCompilerTestAccess::SaveCacheAndCombineResult(cache, true);
+		writer.join();
+		Require(published && cache.IsDirty(), "the second publisher must stage after the first commit");
+		Require(saved, "a completed cache commit must not become a compile failure when another publisher makes it dirty");
+		ShaderCache reloaded(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(reloaded, directory.Path("Cache")), "durable save fixture must reopen");
+		reloaded.LoadCache();
+		Require(ShaderCacheTestAccess::GetGeneration(reloaded, uid, 0) == committedGeneration,
+			"the first commit must be durable while the second publication remains pending");
+		Require(cache.SaveCache() && !cache.IsDirty(), "the next save must commit the second publisher independently");
+	}
+
+	void TestCommittedShaderSurvivesCleanupFailure()
+	{
+		TempDirectory directory;
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "deferred cleanup fixture must initialize");
+		const auto uid = MakeFileId("{SHADER-CACHE-DEFERRED-CLEANUP}");
+		Require(PublishComplete(cache, uid, 0, 320) && cache.SaveCache(), "the original generation must commit");
+		const auto oldPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0, ShaderCache::VertexShaderTag, false);
+		Require(PublishComplete(cache, uid, 0, 330), "the replacement generation must stage");
+		const auto newGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
+		ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
+		Require(ShaderCompilerTestAccess::SaveCacheAndCombineResult(cache, true),
+			"artifact cleanup failure after commit must not report shader compilation failure");
+		Require(!cache.IsDirty() && cache.NeedsMaintenance() && std::filesystem::exists(oldPath),
+			"only cleanup must remain pending after a successful metadata commit");
+		ShaderCache reloaded(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(reloaded, directory.Path("Cache")), "cleanup fixture must reopen");
+		reloaded.LoadCache();
+		Require(ShaderCacheTestAccess::GetGeneration(reloaded, uid, 0) == newGeneration,
+			"the new generation must already be durable despite pending garbage collection");
+		const auto manifest = ShaderCacheTestAccess::GetCachePath(cache);
+		const auto envelope = ReadText(manifest);
+		const auto timestamp = std::filesystem::last_write_time(manifest);
+		ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
+		Require(cache.SaveCache() && !cache.IsDirty() && cache.NeedsMaintenance() && std::filesystem::exists(oldPath),
+			"repeated cleanup failure must preserve the successful commit and keep only cleanup pending");
+		Require(cache.SaveCache() && !cache.NeedsMaintenance() && !std::filesystem::exists(oldPath),
+			"the next save must retry deferred cleanup without recompiling");
+		Require(ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0 && ReadText(manifest) == envelope &&
+			std::filesystem::last_write_time(manifest) == timestamp,
+			"cleanup-only retry must not rewrite the committed manifest");
+	}
+
+	void TestResetSeparatesCommitFromArtifactCleanup()
+	{
+		for (int reset = 0; reset < 3; ++reset)
+		{
+			TempDirectory directory;
+			ShaderCache cache(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "reset fixture must initialize");
+			const auto uid = MakeFileId("{SHADER-CACHE-RESET-CLEANUP}");
+			Require(PublishComplete(cache, uid, 0, 340) && cache.SaveCache(), "reset fixture must commit");
+			const auto artifact = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0, ShaderCache::VertexShaderTag, false);
+			const auto manifest = ShaderCacheTestAccess::GetCachePath(cache);
+			ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
+			if (reset == 0)
+			{
+				cache.ClearAll();
+			}
+			else if (reset == 1)
+			{
+				std::string diagnostic;
+				Require(Workspace::AtomicReplaceWorkspaceCacheText(manifest, "invalid: [", diagnostic),
+					"reset fixture must invalidate its manifest");
+				cache.LoadCache();
+			}
+			else
+			{
+				Require(std::filesystem::remove(directory.Path("Cache/PrecompiledShaders")),
+					"reset fixture must remove its empty precompiled directory");
+				Require(!cache.RecoverMissingStorage(), "storage recovery is incomplete until owned directories are restored");
+			}
+			Require(!cache.Contains(uid) && !cache.IsDirty() && cache.NeedsMaintenance() && std::filesystem::exists(artifact),
+				"reset must distinguish the committed empty manifest from pending artifact cleanup");
+			ShaderCache reloaded(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(reloaded, directory.Path("Cache")), "reset manifest must reopen");
+			reloaded.LoadCache();
+			Require(reloaded.GetLastLoadResult().IsLoaded() && !reloaded.Contains(uid),
+				"the empty reset manifest must already be durable");
+			const auto envelope = ReadText(manifest);
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+			Require(cache.SaveCache() && !cache.NeedsMaintenance() && !std::filesystem::exists(artifact),
+				"reset must retry artifact cleanup independently");
+			Require(ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0 && ReadText(manifest) == envelope,
+				"reset cleanup retry must not republish the empty manifest");
+		}
+	}
+
 	void TestFailedGenerationPreservesDurableGeneration()
 	{
 		TempDirectory directory;
@@ -883,6 +1002,8 @@ namespace
 				diagnostic),
 			"an injected artifact replacement failure should reject the new generation");
 		Require(!diagnostic.empty(), "failed generation publication should report a diagnostic");
+		Require(!cache.IsDirty() && cache.NeedsMaintenance(),
+			"a failed artifact write must schedule orphan cleanup without changing the committed manifest");
 
 		Require(ShaderCacheTestAccess::GetGeneration(cache, uid, 3) == durableGeneration,
 			"failed generation publication must retain the durable generation metadata");
@@ -937,13 +1058,15 @@ namespace
 		Require(ReadText(cachePath) == durableEnvelope,
 			"failed remove must preserve the durable envelope");
 
-		ShaderCacheTestAccess::FailNextArtifactSweep(cache);
+		ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
 		cache.Remove(uid);
-		Require(!cache.Contains(uid) && cache.IsDirty(),
-			"remove should retain retryable dirty state when post-commit cleanup fails");
+		Require(!cache.Contains(uid) && !cache.IsDirty() && cache.NeedsMaintenance(),
+			"remove must commit the new manifest even when artifact cleanup remains pending");
 		Require(std::filesystem::exists(artifactPath),
 			"failed post-commit cleanup should retain the now-unreferenced artifact");
-		cache.SaveCache();
+		ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		Require(cache.SaveCache() && !cache.NeedsMaintenance() && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0,
+			"remove cleanup retry must not rewrite the committed manifest");
 		Require(!cache.IsDirty() && !std::filesystem::exists(artifactPath),
 			"save retry should garbage-collect removed artifacts after the committed metadata");
 	}
@@ -1080,12 +1203,14 @@ namespace
 			ShaderCache::VertexShaderTag,
 			false);
 		WriteWords(cleanupArtifactPath, Words(600));
-		ShaderCacheTestAccess::FailNextArtifactSweep(cache);
+		ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
 		cache.ClearExpired();
-		Require(!cache.Contains(cleanupUid) && cache.IsDirty() &&
+		Require(!cache.Contains(cleanupUid) && !cache.IsDirty() && cache.NeedsMaintenance() &&
 			std::filesystem::exists(cleanupArtifactPath),
-			"expired cleanup should remain dirty when post-commit artifact sweeping fails");
-		cache.SaveCache();
+			"expired metadata must be committed while artifact cleanup remains pending");
+		ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		Require(cache.SaveCache() && !cache.NeedsMaintenance() && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0,
+			"expiry cleanup retry must not rewrite its committed manifest");
 		Require(!cache.IsDirty() && !std::filesystem::exists(cleanupArtifactPath),
 			"save retry should finish expired artifact sweeping after metadata commit");
 		Require(cache.Contains(uid), "successful expired cleanup should retain unrelated healed metadata");
@@ -1339,11 +1464,6 @@ namespace
 		Require(
 			!ShaderCompilerTestAccess::AggregateCompileResults(oneFailed, std::size(oneFailed)),
 			"one failed permutation should fail the aggregate compile result");
-		Require(ShaderCompilerTestAccess::ShouldRetryCacheSave(0, true),
-			"current bytecode with dirty metadata should select the save-only retry branch");
-		Require(!ShaderCompilerTestAccess::ShouldRetryCacheSave(0, false) &&
-			!ShaderCompilerTestAccess::ShouldRetryCacheSave(1, true),
-			"save-only retry should require both no compilation work and dirty metadata");
 		Require(ShaderCompilerTestAccess::ExerciseFailedLoadEvictionAndRetry(),
 			"failed shader load eviction should permit a second permutation load attempt");
 		Require(ShaderCompilerTestAccess::ExercisePromiseGarbageCollection(),
@@ -2143,6 +2263,9 @@ int main()
 		TestWarmPermutationReadsEachArtifactOnce();
 		TestReloadKeepsHealthyShaderPermutations();
 		TestPartialRecoveryRetriesFailedManifestCommit();
+		TestSaveResultSurvivesAnotherPublisher();
+		TestCommittedShaderSurvivesCleanupFailure();
+		TestResetSeparatesCommitFromArtifactCleanup();
 		TestFailedGenerationPreservesDurableGeneration();
 		TestRemoveCommitsBeforeGarbageCollection();
 		TestExplicitInvalidationSurvivesSameTimestampReload();

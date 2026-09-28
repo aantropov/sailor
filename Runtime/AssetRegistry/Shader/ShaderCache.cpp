@@ -183,6 +183,7 @@ bool ShaderCache::CacheCompleteSpirvLocked(const FileId& uid,
 	{
 		return false;
 	}
+	m_bCleanupPending = true;
 	int32_t artifactIndex = 0;
 	if (!WriteSpirvSetLocked(uid,
 			permutation,
