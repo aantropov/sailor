@@ -2,6 +2,7 @@
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "Containers/Concepts.h"
+#include "Containers/Hash.h"
 #include "RHI/VertexDescription.h"
 #include "Sailor.h"
 #include "Workspace/WorkspaceCacheContract.h"
@@ -31,6 +32,7 @@ namespace
 		uint32_t m_meshCount = 0u;
 		uint32_t m_lodLevel = 0u;
 		int64_t m_sourceModificationTime = 0;
+		uint64_t m_sourceGeometryHash = 0u;
 		float m_unitScale = 1.0f;
 		float m_reductionFactor = 0.5f;
 		uint32_t m_bBatchByMaterial = 0u;
@@ -42,6 +44,30 @@ namespace
 		uint64_t m_vertexCount = 0u;
 		uint64_t m_indexCount = 0u;
 	};
+
+	uint64_t GetSourceGeometryHash(const TVector<ModelImporter::MeshContext>& meshes)
+	{
+		uint64_t hash = Fnv1aOffsetBasis;
+		HashValue(hash, static_cast<uint64_t>(meshes.Num()));
+		for (const auto& mesh : meshes)
+		{
+			HashValues(hash, static_cast<uint64_t>(mesh.outVertices.Num()), static_cast<uint64_t>(mesh.outIndices.Num()));
+			for (const auto& vertex : mesh.outVertices)
+			{
+				// Hash imported values, not vertex/GLM padding or a newer on-disk buffer.
+				HashValues(hash, vertex.m_position.x, vertex.m_position.y, vertex.m_position.z,
+					vertex.m_normal.x, vertex.m_normal.y, vertex.m_normal.z,
+					vertex.m_tangent.x, vertex.m_tangent.y, vertex.m_tangent.z,
+					vertex.m_bitangent.x, vertex.m_bitangent.y, vertex.m_bitangent.z,
+					vertex.m_texcoord.x, vertex.m_texcoord.y,
+					vertex.m_color.x, vertex.m_color.y, vertex.m_color.z, vertex.m_color.w,
+					vertex.m_boneIds.x, vertex.m_boneIds.y, vertex.m_boneIds.z, vertex.m_boneIds.w,
+					vertex.m_boneWeights.x, vertex.m_boneWeights.y, vertex.m_boneWeights.z, vertex.m_boneWeights.w);
+			}
+			HashBytes(hash, mesh.outIndices.GetData(), mesh.outIndices.Num() * sizeof(uint32_t));
+		}
+		return hash;
+	}
 
 	template <IsTriviallyCopyable Type> void Append(std::string& bytes, const Type& value)
 	{
@@ -121,7 +147,8 @@ bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 		header.m_unitScale != assetInfo.GetUnitScale() ||
 		header.m_reductionFactor != assetInfo.GetLodReductionFactor() ||
 		header.m_bBatchByMaterial != static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial()) ||
-		header.m_bFlipTexcoordY != static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY()))
+		header.m_bFlipTexcoordY != static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY()) ||
+		header.m_sourceGeometryHash != GetSourceGeometryHash(meshes))
 	{
 		return false;
 	}
@@ -187,6 +214,7 @@ void Sailor::ModelLodCache::Save(const ModelAssetInfo& assetInfo,
 	header.m_meshCount = static_cast<uint32_t>(meshes.Num());
 	header.m_lodLevel = lodLevel;
 	header.m_sourceModificationTime = sourceRevision.m_modificationTimeNanoseconds;
+	header.m_sourceGeometryHash = GetSourceGeometryHash(meshes);
 	header.m_unitScale = assetInfo.GetUnitScale();
 	header.m_reductionFactor = assetInfo.GetLodReductionFactor();
 	header.m_bBatchByMaterial = static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial());

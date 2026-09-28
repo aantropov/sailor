@@ -1301,6 +1301,138 @@ namespace
 		RequireLodsEqual(loaded, retained);
 	}
 
+	void TestModelLodCacheGeometryInvalidation()
+	{
+		ModelCacheWorkspace workspace;
+		ModelAssetInfo info;
+		auto metadata = info.Serialize();
+		metadata["fileId"] = "01234567-89ab-cdef-0123-456789abcdef";
+		info.Deserialize(metadata);
+		const FileRevision revision{ 123456789, true };
+		const auto source = MakeLodCacheMeshes();
+		ModelLodCache::Save(info, revision, 1, source);
+		using Meshes = TVector<ModelImporter::MeshContext>;
+		const std::function<void(Meshes&)> changes[]{
+			[](Meshes& meshes) { meshes[1].outVertices[0].m_position.x += 3.0f; },
+			[](Meshes& meshes) { meshes[1].outVertices[0].m_normal.y += 0.25f; },
+			[](Meshes& meshes) { meshes[1].outVertices[0].m_tangent.z += 0.25f; },
+			[](Meshes& meshes) { meshes[1].outVertices[0].m_bitangent.x += 0.25f; },
+			[](Meshes& meshes) { meshes[1].outVertices[0].m_texcoord.y += 0.25f; },
+			[](Meshes& meshes) { meshes[1].outVertices[0].m_color.w += 0.25f; },
+			[](Meshes& meshes) { meshes[1].outVertices[0].m_boneIds.w += 1; },
+			[](Meshes& meshes) { meshes[1].outVertices[0].m_boneWeights.w += 0.25f; },
+			[](Meshes& meshes) { std::swap(meshes[1].outIndices[0], meshes[1].outIndices[1]); },
+			[](Meshes& meshes) { meshes[1].outVertices.Add(meshes[0].outVertices[0]); },
+			[](Meshes& meshes) { meshes[1].outIndices.AddRange(meshes[0].outIndices); },
+			[](Meshes& meshes) { std::swap(meshes[0], meshes[1]); }
+		};
+		for (const auto& change : changes)
+		{
+			auto changed = source;
+			change(changed);
+			for (auto& mesh : changed) mesh.lods[0].m_vertices[0].m_position.z = 100.0f;
+			const auto retained = changed;
+			Require(!ModelLodCache::Load(info, revision, 1, changed),
+				"changed geometry with the same root timestamp must not reuse an older LOD");
+			RequireLodsEqual(changed, retained);
+		}
+
+		auto loaded = source;
+		loaded[0].materialIndex = 3;
+		loaded[0].materialSlot = 7;
+		loaded[0].sourceMeshIndex = 9;
+		for (auto& mesh : loaded) mesh.lods[0] = {};
+		Require(ModelLodCache::Load(info, revision, 1, loaded),
+			"non-geometric mesh metadata must not invalidate an unchanged LOD");
+		RequireLodsEqual(loaded, source);
+		for (auto& mesh : loaded)
+		{
+			for (auto& vertex : mesh.outVertices)
+			{
+				const auto value = vertex;
+				std::memset(&vertex, 0xcd, sizeof(vertex));
+				const auto copy = [](auto& to, const auto& from)
+				{
+					for (int i = 0; i < from.length(); ++i) to[i] = from[i];
+				};
+				copy(vertex.m_position, value.m_position);
+				copy(vertex.m_normal, value.m_normal);
+				copy(vertex.m_tangent, value.m_tangent);
+				copy(vertex.m_bitangent, value.m_bitangent);
+				copy(vertex.m_texcoord, value.m_texcoord);
+				copy(vertex.m_color, value.m_color);
+				copy(vertex.m_boneIds, value.m_boneIds);
+				copy(vertex.m_boneWeights, value.m_boneWeights);
+			}
+		}
+		Require(ModelLodCache::Load(info, revision, 1, loaded),
+			"source geometry identity must not depend on vertex or vector padding");
+		RequireLodsEqual(loaded, source);
+
+		// A file may be replaced after parsing. Save must describe the parsed input,
+		// even if the caller observed a newer source timestamp before writing it.
+		const FileRevision newerRevision{ revision.m_modificationTimeNanoseconds + 1, true };
+		ModelLodCache::Save(info, newerRevision, 1, source);
+		auto newer = source;
+		newer[0].outVertices[0].m_position.x += 20.0f;
+		Require(!ModelLodCache::Load(info, newerRevision, 1, newer),
+			"an old parsed snapshot must not be accepted as newer imported geometry");
+	}
+
+	void TestModelLodCacheRegeneratesTimestampOnlyHeader()
+	{
+		ModelCacheWorkspace workspace;
+		ModelAssetInfo info;
+		auto metadata = info.Serialize();
+		metadata["fileId"] = "01234567-89ab-cdef-0123-456789abcdef";
+		info.Deserialize(metadata);
+		const FileRevision revision{ 123456789, true };
+		auto meshes = MakeLodCacheMeshes();
+		ModelLodCache::Save(info, revision, 1, meshes);
+		const auto path = workspace.Context().GetCache() / "Lods" / ModelImporter::GetLodCacheFilename(info.GetFileId(), 1);
+		struct TimestampOnlyHeader
+		{
+			std::array<char, 8> m_magic{ 'S', 'A', 'I', 'L', 'L', 'O', 'D', '\0' };
+			uint32_t m_headerSize = sizeof(TimestampOnlyHeader);
+			uint32_t m_version = 1;
+			uint32_t m_vertexStride = sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
+			uint32_t m_meshCount = 2;
+			uint32_t m_lodLevel = 1;
+			int64_t m_sourceModificationTime = 123456789;
+			float m_unitScale = 1.0f;
+			float m_reductionFactor = 0.5f;
+			uint32_t m_bBatchByMaterial = 1;
+			uint32_t m_bFlipTexcoordY = 0;
+		};
+		const TimestampOnlyHeader header{};
+		{
+			std::ofstream output(path, std::ios::binary | std::ios::trunc);
+			output.write(reinterpret_cast<const char*>(&header), sizeof(header));
+			for (const auto& mesh : meshes)
+			{
+				const auto& lod = mesh.lods[0];
+				const uint64_t counts[]{ lod.m_vertices.Num(), lod.m_indices.Num() };
+				output.write(reinterpret_cast<const char*>(counts), sizeof(counts));
+				output.write(reinterpret_cast<const char*>(lod.m_vertices.GetData()),
+					static_cast<std::streamsize>(lod.m_vertices.Num() * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4)));
+				output.write(reinterpret_cast<const char*>(lod.m_indices.GetData()),
+					static_cast<std::streamsize>(lod.m_indices.Num() * sizeof(uint32_t)));
+			}
+		}
+		meshes[0].lods[0].m_vertices[0].m_position.z = 100.0f;
+		const auto retained = meshes;
+		Require(!ModelLodCache::Load(info, revision, 1, meshes),
+			"a timestamp-only version-one cache must regenerate, not bypass geometry identity");
+		RequireLodsEqual(meshes, retained);
+		ModelImporter::GenerateLods(meshes, 2, info.GetLodReductionFactor());
+		ModelLodCache::Save(info, revision, 1, meshes);
+		auto loaded = meshes;
+		loaded[0].lods[0] = {};
+		Require(ModelLodCache::Load(info, revision, 1, loaded),
+			"regeneration must produce a readable geometry-aware version-one cache");
+		RequireLodsEqual(loaded, meshes);
+	}
+
 	void TestModelLodCacheUsesCurrentProject()
 	{
 		ModelCacheWorkspace firstProject;
@@ -2653,6 +2785,8 @@ int main()
 		{ "ModelLodMetadataDefaultsAndRoundTrip", TestModelLodMetadataDefaultsAndRoundTrip },
 		{ "ModelLodGenerationAndCacheNaming", TestModelLodGenerationAndCacheNaming },
 		{ "ModelLodCacheRoundTripAndInvalidation", TestModelLodCacheRoundTripAndInvalidation },
+		{ "ModelLodCacheGeometryInvalidation", TestModelLodCacheGeometryInvalidation },
+		{ "ModelLodCacheRegeneratesTimestampOnlyHeader", TestModelLodCacheRegeneratesTimestampOnlyHeader },
 		{ "ModelLodCacheUsesCurrentProject", TestModelLodCacheUsesCurrentProject },
 		{ "ModelLodCacheWithoutProject", TestModelLodCacheWithoutProject },
 		{ "ModelLodCacheRegeneratesExpandedHeader", TestModelLodCacheRegeneratesExpandedHeader },
