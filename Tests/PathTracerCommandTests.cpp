@@ -40,6 +40,11 @@
 using namespace Sailor;
 using namespace Sailor::Raytracing;
 
+namespace Sailor::Tests
+{
+	void RunGIProbesCommandTests(const std::filesystem::path& workspace);
+}
+
 namespace
 {
 	void Require(bool condition, const char* message)
@@ -64,6 +69,36 @@ namespace
 		manifest["logicOutputPath"] = "Binaries";
 		manifest["logicModuleName"] = "PathTracerCommandTest";
 		std::ofstream(workspace.Path("workspace.sailor")) << manifest;
+		YAML::Node settings = YAML::LoadFile((std::filesystem::path(enginePath) / "ProjectSettings.yaml").string());
+		settings["settingsVersion"] = 1;
+		settings["graphics"]["defaultQuality"] = "High";
+		for (const char* preset : { "Ultra", "High", "Medium", "Low", "VeryLow" })
+		{
+			auto profile = settings["graphics"]["presets"][preset];
+			profile["enableGlobalIllumination"] = true;
+			profile["maxGiProbeStatesPerSnapshot"] = 2;
+			auto gi = profile["runtimeGIProbes"];
+			gi["version"] = 1;
+			gi["maxActiveProbes"] = 8;
+			gi["initialSamplesPerProbe"] = 16;
+			gi["targetSamplesPerProbe"] = 16;
+			gi["workerCount"] = 1;
+			gi["cpuDutyFraction"] = 1;
+			gi["cpuBudgetMilliseconds"] = 4;
+			gi["maxPublicationsPerSecond"] = 60;
+		}
+		std::ofstream(workspace.Path("ProjectSettings.yaml")) << settings;
+		const std::array<const char*, 2> probeNames{ "Retry.probes", "RetryAfterGc.probes" };
+		for (uint32_t i = 0; i < probeNames.size(); ++i)
+		{
+			const auto path = std::filesystem::path("Content") / probeNames[i];
+			std::ofstream(workspace.Path(path)) << "incomplete probe payload";
+			YAML::Node probes;
+			probes["assetInfoType"] = "Sailor::GIProbesAssetInfo";
+			probes["fileId"] = "{00000000-0000-0000-0000-000000000" + std::to_string(125 + i) + "}";
+			probes["filename"] = probeNames[i];
+			std::ofstream(workspace.Path(path.string() + ".asset")) << probes;
+		}
 
 		const std::array<float, 24> vertices{
 			-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0,
@@ -857,6 +892,7 @@ namespace Sailor::Tests
 					Require(pixels[x + y * width].a == 255, "CLI instance bounds must retain all four quadrants of the model");
 			TestPreparedParity(workspace, pixels);
 			TestHdrCompositing();
+			RunGIProbesCommandTests(workspace.Get());
 			std::cout << "PathTracer CLI/prepared pixel parity test passed\n";
 			result = 0;
 		}

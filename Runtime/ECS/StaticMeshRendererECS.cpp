@@ -8,6 +8,7 @@
 #include "Components/AnimatorComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Core/StringHash.h"
+#include "GlobalIllumination/GISettings.h"
 #include "Settings/GraphicsSettings.h"
 
 #include <algorithm>
@@ -327,6 +328,7 @@ void StaticMeshRendererECS::BeginPlay()
 {
 	m_rhiScene = RHI::RHIScenePtr::Make();
 	m_lastMaterialContentRevision = Material::GetGlobalContentRevision();
+	m_giMaterialRevision = 0;
 	PublishSceneVersion();
 }
 
@@ -448,7 +450,8 @@ uint64_t StaticMeshRendererECS::GetGlobalIlluminationContributorRevision()
 	HashCombine(
 		revision,
 		version.m_stationaryRevision,
-		version.m_materialRevision);
+		version.m_materialRevision,
+		m_giMaterialRevision);
 	return revision;
 }
 
@@ -850,6 +853,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	bool bShadowCastersChanged = false;
 	bool bSceneRecordsChanged = false;
 	bool bMaterialVersionsPending = false;
+	bool bGIMaterialsChanged = false;
 	const bool bPreviousHasCustomDepthShadowCasters =
 		m_bHasCustomDepthShadowCasters;
 	uint8_t spatialChangeMask = 0u;
@@ -891,6 +895,8 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				}
 				if (update.m_state == EPreparedProxyState::MaterialVersionOnly)
 				{
+					const auto owner = data.m_owner.StaticCast<GameObject>();
+					bGIMaterialsChanged |= IsGlobalIlluminationBakeContributor(owner->GetMobilityType());
 					cacheMaterialRevisions();
 					continue;
 				}
@@ -1065,6 +1071,11 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	{
 		m_lastMaterialContentRevision = materialContentRevision;
 	}
+	if (bGIMaterialsChanged)
+	{
+		// Uniform-only edits leave the RHI scene intact but still invalidate GI.
+		++m_giMaterialRevision;
+	}
 
 	if (bShadowCastersChanged)
 	{
@@ -1096,6 +1107,7 @@ void StaticMeshRendererECS::EndPlay()
 	m_sceneVersionRevision = 0ull;
 	m_spatialRevision = 0ull;
 	m_shadowCastersRevision = 0ull;
+	m_giMaterialRevision = 0;
 	m_preparedBatchesScratch.Clear();
 	m_prepareTasksScratch.Clear();
 	m_bHasCustomDepthShadowCasters = false;

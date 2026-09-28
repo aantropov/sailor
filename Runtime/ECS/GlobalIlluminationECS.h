@@ -154,7 +154,8 @@ namespace Sailor
 			const glm::vec3& priorityPosition);
 		bool StartRuntimeSolver(
 			const glm::vec3& priorityPosition,
-			std::string& outDiagnostic);
+			std::string& outDiagnostic,
+			bool bReuseExistingProbes = true);
 		SAILOR_API RuntimeGIProbesQualitySettings ResolveRuntimeQualitySettings() const noexcept;
 		void PublishRuntimeSnapshotIfNeeded();
 		void StopRuntimeProvider(bool bClearSnapshot);
@@ -192,6 +193,7 @@ namespace Sailor
 		TSharedPtr<std::atomic<bool>> m_runtimeScenePreparationCancel{};
 		GIProbesSceneMaterialWatch m_runtimeSceneMaterialWatch;
 		GIProbesPreparedScenePtr m_runtimePreparedScene{};
+		GIProbesSceneRevision m_runtimePreparationRevision{};
 		RuntimeGIProbesQualitySettings m_runtimeObservedQuality{};
 		uint64_t m_runtimeScenePreparationRequestId = 0u;
 		uint64_t m_runtimePublishedRevision = 0u;
