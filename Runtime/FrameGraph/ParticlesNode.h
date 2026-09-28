@@ -106,7 +106,7 @@ namespace Sailor::Framegraph
 			uint32_t m_numInstances = 0;
 			ShaderSetPtr m_pComputeShader{};
 
-			static const char* m_name;
+			SAILOR_SHARED_API static const char* m_name;
 		};
 	}
 
