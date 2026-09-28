@@ -54,7 +54,7 @@ namespace Sailor::EditorRemote
 		const std::optional<InputPacket>& GetLastForwardedInput() const { return m_lastForwardedInput; }
 		const SessionDiagnostics& GetDiagnostics() const { return m_diagnostics; }
 
-		Failure Create()
+		Failure Create(uint64_t nowMs = GetMonotonicTimeMs())
 		{
 			RefreshDiagnostics();
 			auto validation = m_desiredViewport.Validate();
@@ -73,12 +73,12 @@ namespace Sailor::EditorRemote
 			}
 
 			m_hasIssuedCreate = true;
-			ArmTransportReadyTimeout(0);
+			ArmTransportReadyTimeout(nowMs);
 			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "CreateRequested");
 			return SendViewportCommand(CommandType::CreateViewport, m_desiredViewport);
 		}
 
-		Failure Resize(uint32_t width, uint32_t height)
+		Failure Resize(uint32_t width, uint32_t height, uint64_t nowMs = GetMonotonicTimeMs())
 		{
 			m_desiredViewport.m_width = width;
 			m_desiredViewport.m_height = height;
@@ -92,7 +92,7 @@ namespace Sailor::EditorRemote
 			m_lastPresentedFrameIndex = 0;
 			m_lastFrame.reset();
 			++m_diagnostics.m_resizeCount;
-			ArmTransportReadyTimeout(0);
+			ArmTransportReadyTimeout(nowMs);
 			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "ResizeRequested");
 
 			auto transition = m_state.TransitionTo(SessionState::Resizing);
@@ -204,23 +204,20 @@ namespace Sailor::EditorRemote
 			}
 		}
 
-		Failure HandleDisconnect(ConnectionEpoch nextEpoch)
+		Failure HandleDisconnect(ConnectionEpoch nextEpoch, uint64_t nowMs = GetMonotonicTimeMs())
 		{
+			if (m_state.GetState() == SessionState::Disposed) return Failure::Ok();
 			++m_recoveryAttemptCount;
 			m_connectionEpoch = nextEpoch;
 			m_guards.BeginNewConnectionEpoch(nextEpoch);
 			m_transportType = TransportType::Unknown;
 			m_transportReadyTimeout.Reset();
-			ArmReconnectTimeout(0);
+			ArmReconnectTimeout(nowMs);
 			m_lastPresentedFrameIndex = 0;
 			m_lastFrame.reset();
 			m_host.ResetViewport(m_desiredViewport.m_viewportId);
 
 			auto state = m_state.GetState();
-			if (state == SessionState::Disposed)
-			{
-				return Failure::Ok();
-			}
 			if (state == SessionState::Created)
 			{
 				return m_state.TransitionTo(SessionState::Lost);
@@ -232,14 +229,14 @@ namespace Sailor::EditorRemote
 			return Failure::Ok();
 		}
 
-		Failure ReplayDesiredState()
+		Failure ReplayDesiredState(uint64_t nowMs = GetMonotonicTimeMs())
 		{
 			if (m_state.GetState() == SessionState::Disposed)
 			{
 				return Failure::Ok();
 			}
 
-			auto createResult = Create();
+			auto createResult = Create(nowMs);
 			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "ReplayDesiredState");
 			if (!createResult.IsOk())
 			{

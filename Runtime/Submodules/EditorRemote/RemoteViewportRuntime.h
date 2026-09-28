@@ -73,11 +73,13 @@ namespace Sailor::EditorRemote
 		const SessionDiagnostics& GetDiagnostics() const { return m_diagnostics; }
 		const FramePacket& GetLastFrame() const { return m_lastFrame; }
 
-		Failure BeginNegotiation()
+		Failure BeginNegotiation(uint64_t nowMs = GetMonotonicTimeMs())
 		{
-			ArmTransportReadyTimeout(0);
+			auto result = m_state.TransitionTo(SessionState::Negotiating);
+			if (!result.IsOk()) return result;
+			ArmTransportReadyTimeout(nowMs);
 			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "BeginNegotiation");
-			return m_state.TransitionTo(SessionState::Negotiating);
+			return Failure::Ok();
 		}
 
 		Failure EnsureBackendTransport(IViewportTransportBackend& backend)
@@ -117,6 +119,7 @@ namespace Sailor::EditorRemote
 			}
 
 			m_transportReadyTimeout.Reset();
+			m_reconnectTimeout.Reset();
 			m_transportType = transport.m_transportType;
 			auto transition = m_state.TransitionTo(SessionState::Ready);
 			if (!transition.IsOk())
@@ -129,7 +132,7 @@ namespace Sailor::EditorRemote
 			return result;
 		}
 
-		Failure HandleResize(const ViewportDescriptor& descriptor)
+		Failure HandleResize(const ViewportDescriptor& descriptor, uint64_t nowMs = GetMonotonicTimeMs())
 		{
 			auto validation = descriptor.Validate();
 			if (!validation.IsOk())
@@ -154,7 +157,7 @@ namespace Sailor::EditorRemote
 			}
 			m_lastPublishedFrameIndex = 0;
 			++m_diagnostics.m_resizeCount;
-			ArmTransportReadyTimeout(0);
+			ArmTransportReadyTimeout(nowMs);
 			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "ResizeRequested");
 			return Failure::Ok();
 		}
@@ -235,28 +238,35 @@ namespace Sailor::EditorRemote
 		Failure SetVisible(bool visible)
 		{
 			m_visible = visible;
-			if (m_state.GetState() == SessionState::Disposed)
+			if (m_state.GetState() == SessionState::Disposed || !IsReady())
 			{
 				return Failure::Ok();
 			}
 			return m_state.TransitionTo(visible ? SessionState::Active : SessionState::Paused);
 		}
 
-		Failure MarkFailure(const Failure& failure)
+		Failure MarkFailure(const Failure& failure, uint64_t nowMs = GetMonotonicTimeMs())
 		{
 			m_failure = failure;
+			m_transportReadyTimeout.Reset();
+			{
+				std::lock_guard lock(m_inputMutex);
+				m_guards.ResetTransportReady();
+			}
 			if (failure.m_scope == FailureScope::Connection)
 			{
 				++m_recoveryAttemptCount;
-				ArmReconnectTimeout(0);
+				ArmReconnectTimeout(nowMs);
 			}
 			RecordDiagnostic(DiagnosticCategory::Failure, failure.m_scope == FailureScope::Session ? DiagnosticSeverity::Warning : DiagnosticSeverity::Error, "SessionMarkedFailed", failure);
 			auto nextState = failure.m_scope == FailureScope::Session ? SessionState::Recovering : SessionState::Lost;
 			return m_state.TransitionTo(nextState);
 		}
 
-		Failure Recreate(ConnectionEpoch epoch)
+		Failure Recreate(ConnectionEpoch epoch, uint64_t nowMs = GetMonotonicTimeMs())
 		{
+			auto transition = m_state.TransitionTo(SessionState::Negotiating);
+			if (!transition.IsOk()) return transition;
 			++m_recoveryAttemptCount;
 			{
 				std::lock_guard lock(m_inputMutex);
@@ -265,12 +275,12 @@ namespace Sailor::EditorRemote
 				m_inputDisposed = false;
 			}
 			m_transportType = TransportType::Unknown;
-			m_transportReadyTimeout.Reset();
+			ArmTransportReadyTimeout(nowMs);
 			m_reconnectTimeout.Reset();
 			m_lastPublishedFrameIndex = 0;
 			m_failure = Failure::Ok();
 			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "Recreate");
-			return m_state.TransitionTo(SessionState::Negotiating);
+			return Failure::Ok();
 		}
 
 		Failure ReleaseBackendTransport(IViewportTransportBackend& backend)

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <functional>
 #include <future>
 #include <iostream>
@@ -508,12 +509,25 @@ namespace
 		facade.ReleaseSession(44);
 		Require(renderBridge.m_released.size() == 1 && renderBridge.m_released.front() == 44, "facade should release viewport binding explicitly");
 	}
+	void TestRemoteViewportUsesMonotonicOrigin()
+	{
+		const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count());
+		RemoteViewportSession session{ MakeViewport() };
+		Require(session.BeginNegotiation().IsOk(), "negotiation must start on the live clock");
+		Require(session.TickTimeouts(nowMs).IsOk() && session.GetState() == SessionState::Negotiating,
+			"a new negotiation must not expire at the current monotonic clock origin");
+	}
+
 	void TestRemoteViewportReconnectTimeoutBackoffAndDiagnostics()
 	{
 		auto viewport = MakeViewport(77, 1024, 768);
 		RemoteViewportSession session{ viewport, 5 };
-		Require(session.BeginNegotiation().IsOk(), "negotiation should arm transport timeout");
-		Require(session.TickTimeouts(1000).IsOk(), "timeout transition should be accepted");
+		constexpr uint64_t start = 60'000;
+		Require(session.BeginNegotiation(start).IsOk(), "negotiation should arm transport timeout");
+		Require(session.TickTimeouts(start + 999).IsOk() && session.GetState() == SessionState::Negotiating,
+			"transport timeout must be relative to negotiation, not zero");
+		Require(session.TickTimeouts(start + 1000).IsOk(), "timeout transition should be accepted");
 		Require(session.GetState() == SessionState::Recovering, "transport ready timeout should enter recovering");
 		Require(session.GetDiagnostics().m_lastCategory == DiagnosticCategory::Timeout, "diagnostics should classify transport timeout");
 		Require(session.GetDiagnostics().m_lastFailure.has_value() && session.GetDiagnostics().m_lastFailure->m_scope == FailureScope::Session, "transport timeout should be session-scoped");
@@ -523,10 +537,47 @@ namespace
 		Require(backoff1.m_delayMs == 100 && backoff2.m_delayMs == 200, "reconnect backoff should be bounded exponential");
 
 		Failure disconnect = Failure::FromDomain(ErrorDomain::Connection, 9, "connection dropped");
-		Require(session.MarkFailure(disconnect).IsOk(), "connection failure should be accepted");
-		Require(session.TickTimeouts(5000).IsOk(), "reconnect timeout transition should be accepted");
+		constexpr uint64_t reconnect = start + 3'600'000;
+		Require(session.MarkFailure(disconnect, reconnect).IsOk(), "connection failure should be accepted");
+		Require(session.TickTimeouts(reconnect + 4999).IsOk() && session.GetFailure() == disconnect,
+			"connection failure must keep its full reconnect interval after a long session");
+		Require(session.TickTimeouts(reconnect + 5000).IsOk(), "reconnect timeout transition should be accepted");
 		Require(session.GetState() == SessionState::Lost, "reconnect timeout should enter lost");
 		Require(session.GetDiagnostics().m_lastFailure.has_value() && session.GetDiagnostics().m_lastFailure->m_scope == FailureScope::Connection, "diagnostics should retain connection-scoped timeout failure");
+	}
+
+	void TestRemoteViewportRearmsResizeAndRecoveryTimeouts()
+	{
+		constexpr uint64_t start = 60'000;
+		constexpr uint64_t resize = start + 3'600'000;
+		auto viewport = MakeViewport();
+		RemoteViewportSession session{ viewport };
+		Require(session.BeginNegotiation(start).IsOk() && session.MarkTransportReady(MakeTransport(viewport)).IsOk(),
+			"initial session must be ready");
+		viewport.m_width += 100;
+		Require(session.HandleResize(viewport, resize).IsOk(), "late resize must start a fresh deadline");
+		for (size_t pump = 0; pump < 2000; ++pump)
+		{
+			Require(session.TickTimeouts(resize + 999).IsOk() && session.GetState() == SessionState::Resizing,
+				"repeated pumps cannot expire a deadline before elapsed time");
+		}
+		Require(session.TickTimeouts(resize + 1000).IsOk() && session.GetState() == SessionState::Recovering,
+			"resize must expire at its elapsed-time deadline");
+		Require(session.Recreate(2, resize + 2000).IsOk(), "recreation must negotiate a new epoch");
+		Require(session.TickTimeouts(resize + 2999).IsOk() && session.GetState() == SessionState::Negotiating,
+			"recreation must not inherit the expired resize deadline");
+		Require(session.TickTimeouts(resize + 3000).IsOk() && session.GetState() == SessionState::Recovering,
+			"recreation must arm another deadline, not wait forever");
+		Require(session.Recreate(3, resize + 4000).IsOk() && session.SetVisible(false).IsOk() &&
+			session.MarkTransportReady(MakeTransport(viewport)).IsOk(), "recovery must preserve hidden state");
+		Require(session.TickTimeouts(resize + 60'000).IsOk() && session.GetState() == SessionState::Paused,
+			"successful ready must cancel its pending deadline");
+		Require(session.HandleResize(viewport, resize + 70'000).IsOk() && session.Destroy().IsOk(),
+			"destroy must cancel a pending resize");
+		Require(session.TickTimeouts(resize + 80'000).IsOk() && session.GetState() == SessionState::Disposed,
+			"a destroyed session must not time out or recreate");
+		Require(!session.Recreate(4, resize + 90'000).IsOk() && session.GetConnectionEpoch() == 3,
+			"recreate must not mutate a disposed session");
 	}
 
 	void TestRemoteViewportFrameFloodKeepsLatestFrameAndStableCounters()
@@ -614,7 +665,9 @@ int main()
 		{ "EditorBridgeServerNegotiationRoutingAndDisconnect", TestEditorBridgeServerNegotiationRoutingAndDisconnect },
 		{ "EditorBridgeServerConnectionAddressStability", TestEditorBridgeServerConnectionAddressStability },
 		{ "EditorRenderFacadeBoundary", TestEditorRenderFacadeBoundary },
+		{ "RemoteViewportUsesMonotonicOrigin", TestRemoteViewportUsesMonotonicOrigin },
 		{ "RemoteViewportReconnectTimeoutBackoffAndDiagnostics", TestRemoteViewportReconnectTimeoutBackoffAndDiagnostics },
+		{ "RemoteViewportRearmsResizeAndRecoveryTimeouts", TestRemoteViewportRearmsResizeAndRecoveryTimeouts },
 		{ "RemoteViewportFrameFloodKeepsLatestFrameAndStableCounters", TestRemoteViewportFrameFloodKeepsLatestFrameAndStableCounters },
 		{ "RemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState", TestRemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState },
 		{ "GlobalInputResetClearsLifecycleState", TestGlobalInputResetClearsLifecycleState },

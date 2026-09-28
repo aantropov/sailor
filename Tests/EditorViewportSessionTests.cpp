@@ -207,18 +207,56 @@ namespace
 		RecordingHost host{};
 		EditorViewportSession session{ MakeViewport(), client, host };
 
-		Require(session.Create().IsOk(), "create should arm transport timeout");
-		Require(session.TickTimeouts(1000).IsOk(), "transport timeout should be handled");
+		constexpr uint64_t start = 60'000;
+		Require(session.Create(start).IsOk(), "create should arm transport timeout");
+		Require(session.TickTimeouts(start + 999).IsOk() && session.GetState() == SessionState::Negotiating,
+			"creation must keep its full interval at a nonzero clock origin");
+		Require(session.TickTimeouts(start + 1000).IsOk(), "transport timeout should be handled");
 		Require(session.GetState() == SessionState::Recovering, "transport timeout should enter recovering state");
 		Require(session.GetDiagnostics().m_lastCategory == DiagnosticCategory::Timeout, "diagnostics should mark transport timeout");
 
-		Require(session.HandleDisconnect(3).IsOk(), "disconnect should start reconnect flow");
+		constexpr uint64_t reconnect = start + 3'600'000;
+		Require(session.HandleDisconnect(3, reconnect).IsOk(), "disconnect should start reconnect flow");
 		auto backoff1 = session.ScheduleReconnectAttempt();
 		auto backoff2 = session.ScheduleReconnectAttempt();
 		Require(backoff1.m_delayMs == 100 && backoff2.m_delayMs == 200, "editor reconnect backoff should double between attempts");
-		Require(session.TickTimeouts(5000).IsOk(), "reconnect timeout should be handled");
+		Require(session.TickTimeouts(reconnect + 4999).IsOk() && session.GetState() == SessionState::Recovering,
+			"disconnect must use the current event time, not a zero-origin deadline");
+		Require(session.TickTimeouts(reconnect + 5000).IsOk(), "reconnect timeout should be handled");
 		Require(session.GetState() == SessionState::Lost, "reconnect timeout should promote editor session to lost");
 		Require(session.GetDiagnostics().m_lastFailure.has_value() && session.GetDiagnostics().m_lastFailure->m_scope == FailureScope::Connection, "diagnostics should retain connection-scoped timeout");
+	}
+
+	void TestEditorViewportSessionLateResizeAndReplayDeadlines()
+	{
+		RemoteViewportHarness harness{ MakeViewport() };
+		HarnessBackedClient client{ harness };
+		RecordingHost host{};
+		EditorViewportSession session{ MakeViewport(), client, host };
+		constexpr uint64_t start = 60'000;
+		constexpr uint64_t resize = start + 3'600'000;
+		Require(session.Create(start).IsOk(), "editor session must create");
+		DrainHarnessEvents(harness, session);
+		Require(session.Resize(1600, 900, resize).IsOk(), "late editor resize must succeed");
+		for (size_t pump = 0; pump < 2000; ++pump)
+		{
+			Require(session.TickTimeouts(resize + 999).IsOk() && session.GetState() == SessionState::Resizing,
+				"editor deadlines must not depend on pump count");
+		}
+		DrainHarnessEvents(harness, session);
+		Require(session.TickTimeouts(resize + 10'000).IsOk() && session.GetState() == SessionState::Active,
+			"ready acknowledgement must cancel the resize timeout");
+		Require(session.HandleDisconnect(2, resize + 20'000).IsOk(), "disconnect must arm a fresh deadline");
+		Require(session.ReplayDesiredState(resize + 21'000).IsOk(), "replay must use its own event time");
+		Require(session.TickTimeouts(resize + 21'999).IsOk() && session.GetState() == SessionState::Negotiating,
+			"replayed negotiation must not expire immediately");
+		DrainHarnessEvents(harness, session);
+		Require(session.TickTimeouts(resize + 30'000).IsOk() && session.GetState() == SessionState::Active,
+			"successful replay must cancel both negotiation and reconnect deadlines");
+		Require(session.Destroy().IsOk() && session.HandleDisconnect(3, resize + 40'000).IsOk(),
+			"late disconnect must be harmless after destruction");
+		Require(session.TickTimeouts(resize + 50'000).IsOk() && session.GetState() == SessionState::Disposed &&
+			session.GetConnectionEpoch() == 2, "destroyed sessions must not arm deadlines or change epoch");
 	}
 
 	void TestEditorViewportSessionResizeStormRejectsStaleFramesAndEndsOnLatestGeneration()
@@ -328,6 +366,7 @@ int main()
 		{ "EditorViewportSessionResizeDropsStaleGenerationFrames", TestEditorViewportSessionResizeDropsStaleGenerationFrames },
 		{ "EditorViewportSessionReconnectReplaysDesiredStateAndFocus", TestEditorViewportSessionReconnectReplaysDesiredStateAndFocus },
 		{ "EditorViewportSessionDiagnosticsAndTimeouts", TestEditorViewportSessionDiagnosticsAndTimeouts },
+		{ "EditorViewportSessionLateResizeAndReplayDeadlines", TestEditorViewportSessionLateResizeAndReplayDeadlines },
 		{ "EditorViewportSessionResizeStormRejectsStaleFramesAndEndsOnLatestGeneration", TestEditorViewportSessionResizeStormRejectsStaleFramesAndEndsOnLatestGeneration },
 		{ "EditorViewportSessionReconnectLoopReplaysStateWithoutGhostFrames", TestEditorViewportSessionReconnectLoopReplaysStateWithoutGhostFrames },
 		{ "EditorViewportSessionFrameFloodPresentsLatestFrameWithoutStateDrift", TestEditorViewportSessionFrameFloodPresentsLatestFrameWithoutStateDrift },

@@ -424,6 +424,62 @@ namespace
 		Require(!presenter.m_resets.empty() && presenter.m_resets.back() == 61, "reset should be forwarded to the presenter");
 	}
 
+
+	void TestMacLoopbackRecoveryUsesElapsedTime()
+	{
+		constexpr uint64_t start = 3'600'000;
+		for (size_t pumpCount : { size_t{1}, size_t{2000} })
+		{
+			FakeMacIOSurfaceProvider provider;
+			FakeMacViewportPresenter presenter;
+			MacViewportLoopbackBinding binding{ MakeViewport(), provider, presenter, 17 };
+			auto& session = binding.GetRuntimeSession();
+			const auto createFailure = Failure::FromDomain(ErrorDomain::Session, 2, "surface unavailable");
+			provider.m_nextCreateFailure = createFailure;
+			Require(!binding.Create(start).IsOk() && session.GetState() == SessionState::Negotiating,
+				"failed creation must retain a pending negotiation");
+			for (size_t pump = 0; pump < pumpCount; ++pump)
+			{
+				Require(!binding.PumpFrame(start + 999).IsOk() && provider.m_createCalls.size() == 1,
+					"pump frequency must not advance time or repeat surface creation");
+			}
+			provider.m_nextCreateFailure = createFailure;
+			Require(!binding.PumpFrame(start + 1000).IsOk() && session.GetConnectionEpoch() == 18 &&
+				provider.m_createCalls.size() == 2, "timeout must attempt a real recreation in a fresh epoch");
+			Require(!binding.PumpFrame(start + 1999).IsOk() && provider.m_createCalls.size() == 2,
+				"failed recreation must receive a new deadline");
+			Require(binding.PumpFrame(start + 2000).IsOk() && session.GetState() == SessionState::Active &&
+				session.GetConnectionEpoch() == 19 && presenter.m_importEpoch == 19 &&
+				presenter.m_presentCalls.size() == 1 && presenter.m_presentCalls.back().m_connectionEpoch == 19,
+				"recovery must import and present a real frame, not return a successful no-op");
+			Require(binding.GetTransportBackend().GetSurfaceCount() == 1, "retries must not accumulate surfaces");
+
+			Require(binding.SetFocused(true).IsOk() && session.MarkFailure(createFailure, start + 2100).IsOk() &&
+				binding.SetVisible(false).IsOk(), "hidden recovery must preserve desired visibility and focus");
+			provider.m_nextReleaseFailure = Failure::FromDomain(ErrorDomain::Session, 1, "release deferred");
+			Require(!binding.PumpFrame(start + 2101).IsOk() && session.GetConnectionEpoch() == 19 &&
+				binding.GetTransportBackend().GetSurfaceCount() == 1,
+				"failed release must not discard the old resource identity");
+			Require(binding.PumpFrame(start + 2102).IsOk() && session.GetState() == SessionState::Paused &&
+				session.GetConnectionEpoch() == 20 && presenter.m_presentCalls.size() == 1 &&
+				session.GetLastInput().has_value() && session.GetLastInput()->m_focused &&
+				session.GetLastInput()->m_connectionEpoch == 20,
+				"successful recreation must restore focus but not present a hidden viewport");
+			Require(binding.SetVisible(true).IsOk() && binding.PumpFrame(start + 60'000).IsOk() &&
+				presenter.m_presentCalls.size() == 2 && session.GetConnectionEpoch() == 20,
+				"ready acknowledgement must cancel the timeout and resume normal presentation");
+
+			Require(session.MarkFailure(Failure::FromDomain(ErrorDomain::Connection, 1, "disconnected"),
+				start + 61'000).IsOk(), "connection loss must remain a connection-level failure");
+			const auto creates = provider.m_createCalls.size();
+			Require(!binding.PumpFrame(start + 61'001).IsOk() && session.GetState() == SessionState::Lost &&
+				provider.m_createCalls.size() == creates, "a lost connection needs reconnection, not automatic local recreation");
+			Require(binding.Destroy().IsOk() && binding.GetTransportBackend().GetSurfaceCount() == 0 &&
+				!binding.PumpFrame(start + 70'000).IsOk() && provider.m_createCalls.size() == creates,
+				"destroy must release recovery resources and prevent resurrection");
+		}
+	}
+
 	void TestMacLoopbackBindingCreateResizeVisibilityAndDestroy()
 	{
 		FakeMacIOSurfaceProvider provider{};
@@ -877,6 +933,7 @@ int main()
 		{ "MacBackendFailurePropagationAndOrdering", TestMacBackendFailurePropagationAndOrdering },
 		{ "MacNativeHostImportPresentResetAndFailures", TestMacNativeHostImportPresentResetAndFailures },
 		{ "MacLoopbackBindingCreateResizeVisibilityAndDestroy", TestMacLoopbackBindingCreateResizeVisibilityAndDestroy },
+		{ "MacLoopbackRecoveryUsesElapsedTime", TestMacLoopbackRecoveryUsesElapsedTime },
 #if defined(__APPLE__)
 		{ "RepeatedReadbacksReuseUploadedPixels", TestRepeatedReadbacksReuseUploadedPixels },
 		{ "ReadbackReuseInvalidationAndMutableSources", TestReadbackReuseInvalidationAndMutableSources },

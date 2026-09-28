@@ -1136,9 +1136,9 @@ namespace Sailor::EditorRemote
 		MacViewportNativeHost& GetHost() { return m_host; }
 		const MacViewportNativeHost& GetHost() const { return m_host; }
 
-		Failure Create()
+		Failure Create(uint64_t nowMs = GetMonotonicTimeMs())
 		{
-			auto result = m_runtimeSession.BeginNegotiation();
+			auto result = m_runtimeSession.BeginNegotiation(nowMs);
 			if (!result.IsOk())
 			{
 				return result;
@@ -1150,14 +1150,14 @@ namespace Sailor::EditorRemote
 			return EnsureTransportImported();
 		}
 
-		Failure Resize(uint32_t width, uint32_t height)
+		Failure Resize(uint32_t width, uint32_t height, uint64_t nowMs = GetMonotonicTimeMs())
 		{
 			const auto previousEpoch = m_runtimeSession.GetConnectionEpoch();
 			const auto previousGeneration = m_runtimeSession.GetGeneration();
 			auto descriptor = m_runtimeSession.GetDescriptor();
 			descriptor.m_width = std::max(width, 1u);
 			descriptor.m_height = std::max(height, 1u);
-			auto result = m_runtimeSession.HandleResize(descriptor);
+			auto result = m_runtimeSession.HandleResize(descriptor, nowMs);
 			if (!result.IsOk())
 			{
 				return result;
@@ -1191,15 +1191,27 @@ namespace Sailor::EditorRemote
 			return m_runtimeSession.HandleInput(input);
 		}
 
-		Failure PumpFrame()
+		Failure PumpFrame(uint64_t nowMs = GetMonotonicTimeMs())
 		{
 			if (!m_created)
 			{
 				return Failure::FromDomain(ErrorDomain::Session, 1, "macOS loopback binding must be created before pumping frames");
 			}
+			auto timeout = m_runtimeSession.TickTimeouts(nowMs);
+			if (!timeout.IsOk()) return timeout;
+			if (m_runtimeSession.GetState() == SessionState::Recovering)
+			{
+				m_host.ResetViewport(m_runtimeSession.GetViewportId());
+				auto result = m_runtimeSession.ReleaseBackendTransport(m_transportBackend);
+				if (!result.IsOk()) return result;
+				result = m_runtimeSession.Recreate(m_runtimeSession.GetConnectionEpoch() + 1, nowMs);
+				if (!result.IsOk()) return result;
+				result = EnsureTransportImported();
+				if (!result.IsOk()) return result;
+			}
 			if (m_runtimeSession.GetState() != SessionState::Active)
 			{
-				return Failure::Ok();
+				return m_runtimeSession.GetFailure();
 			}
 
 			bool ready = false;

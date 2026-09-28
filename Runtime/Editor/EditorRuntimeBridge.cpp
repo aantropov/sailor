@@ -80,7 +80,6 @@ namespace
 		std::atomic_bool m_created = false;
 		std::atomic_bool m_visible = true;
 		bool m_focused = false;
-		uint64_t m_nowMs = 0;
 		Failure m_lastPumpFailure = Failure::Ok();
 #if defined(_WIN32)
 		std::atomic_bool m_pumpScheduled = false;
@@ -114,7 +113,6 @@ namespace
 			{
 				m_lastPumpFailure = Failure::Ok();
 			}
-			m_binding.GetRuntimeSession().TickTimeouts(++m_nowMs);
 		}
 
 		void SetVisible(bool value)

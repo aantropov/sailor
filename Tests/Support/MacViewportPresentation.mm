@@ -356,23 +356,37 @@ namespace Sailor::Tests
 				" us, warm max " << maxPumpUs << " us, nextDrawable mean " << drawableUs / repeats <<
 				" us, GPU mean " << gpuUs / repeats << " us\n";
 
-			id<MTLDevice> device = (id<MTLDevice>)native->m_deviceObject;
-			id<MTLBuffer> pixel = [[device newBufferWithLength:256 options:MTLResourceStorageModeShared] autorelease];
-			id<MTLCommandBuffer> read = [(id<MTLCommandQueue>)native->m_commandQueueObject commandBuffer];
-			id<MTLBlitCommandEncoder> blit = [read blitCommandEncoder];
-			require(pixel && blit && layer->m_lastDrawable, "presented-pixel evidence needs real native readback resources");
-			[blit copyFromTexture:layer->m_lastDrawable.texture sourceSlice:0 sourceLevel:0
-				sourceOrigin:MTLOriginMake(source.m_width / 2u, source.m_height / 2u, 0) sourceSize:MTLSizeMake(1, 1, 1)
-				toBuffer:pixel destinationOffset:0 destinationBytesPerRow:256 destinationBytesPerImage:256];
-			[blit endEncoding];
-			[read commit];
-			[read waitUntilCompleted];
-			const auto* expected = source.GetCpuBytes() + (source.m_height / 2u) * source.m_bytesPerRow + (source.m_width / 2u) * 4u;
-			require(read.status == MTLCommandBufferStatusCompleted && std::memcmp(pixel.contents, expected, 4) == 0,
-				"the actual presented drawable must contain the Vulkan readback's channels and alpha");
+			auto checkPresentedPixel = [&](const auto* nativeBinding)
+			{
+				id<MTLDevice> device = (id<MTLDevice>)nativeBinding->m_deviceObject;
+				id<MTLBuffer> pixel = [[device newBufferWithLength:256 options:MTLResourceStorageModeShared] autorelease];
+				id<MTLCommandBuffer> read = [(id<MTLCommandQueue>)nativeBinding->m_commandQueueObject commandBuffer];
+				id<MTLBlitCommandEncoder> blit = [read blitCommandEncoder];
+				require(pixel && blit && layer->m_lastDrawable, "presented-pixel evidence needs real native readback resources");
+				[blit copyFromTexture:layer->m_lastDrawable.texture sourceSlice:0 sourceLevel:0
+					sourceOrigin:MTLOriginMake(source.m_width / 2u, source.m_height / 2u, 0) sourceSize:MTLSizeMake(1, 1, 1)
+					toBuffer:pixel destinationOffset:0 destinationBytesPerRow:256 destinationBytesPerImage:256];
+				[blit endEncoding];
+				[read commit];
+				[read waitUntilCompleted];
+				const auto* expected = source.GetCpuBytes() + (source.m_height / 2u) * source.m_bytesPerRow + (source.m_width / 2u) * 4u;
+				require(read.status == MTLCommandBufferStatusCompleted && std::memcmp(pixel.contents, expected, 4) == 0,
+					"the actual presented drawable must contain the Vulkan readback's channels and alpha");
+			};
+			checkPresentedPixel(native);
 			require(binding.GetRuntimeSession().GetLastPublishedFrameIndex() == repeats + 1u && native->m_presentToken == repeats + 1u,
 				"texture reuse must preserve normal export and native presentation");
 			require(reused, "repeated presentation of an actual Vulkan readback must reuse its IOSurface texture import");
+
+			allocation.Clear();
+			require(binding.GetRuntimeSession().MarkFailure(Failure::FromDomain(ErrorDomain::Session, 2, "recreate native viewport")).IsOk() &&
+				binding.PumpFrame().IsOk(), "a real native viewport must recover through its ordinary pump");
+			const auto* recovered = presenter.FindImportedState(viewport.m_viewportId);
+			require(recovered && recovered->m_epoch == 2 && recovered->m_layerBinding &&
+				binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1 && provider.GetLiveAllocationCount() == 1 &&
+				binding.GetTransportBackend().GetSurfaceCount() == 1,
+				"recovery must replace the native surface and present the first frame of the new epoch");
+			checkPresentedPixel(recovered->m_layerBinding.GetRawPtr());
 			binding.Destroy();
 			require(provider.GetLiveAllocationCount() == 0, "readback presentation fixture must release its native registration");
 		}
