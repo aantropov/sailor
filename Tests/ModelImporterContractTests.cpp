@@ -56,35 +56,23 @@ namespace Sailor
 	class ModelImporterTestAccess
 	{
 	public:
-		static bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& registry)
+		static bool GenerateAnimationAssets(ModelImporter& importer, ModelAssetInfoPtr assetInfo)
 		{
 			bool bChanged = false;
-			return ModelImporter::GenerateAnimationAssets(assetInfo, registry, bChanged);
+			return importer.GenerateAnimationAssets(assetInfo, bChanged);
 		}
 
-		static bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& registry, bool& outChanged)
+		static bool GenerateAnimationAssets(ModelImporter& importer, ModelAssetInfoPtr assetInfo, bool& outChanged)
 		{
-			return ModelImporter::GenerateAnimationAssets(assetInfo, registry, outChanged);
-		}
-
-		static Tasks::TaskPtr<ModelPtr> LoadModel(ModelImporter& importer, ModelAssetInfoPtr assetInfo,
-			Tasks::Scheduler& scheduler, ModelPtr& outModel)
-		{
-			return importer.LoadModel(assetInfo->GetFileId(), assetInfo, scheduler, outModel);
-		}
-
-		static bool LoadModelImmediate(ModelImporter& importer, ModelAssetInfoPtr assetInfo,
-			Tasks::Scheduler& scheduler, ModelPtr& outModel)
-		{
-			return importer.LoadModel_Immediate(assetInfo->GetFileId(), assetInfo, scheduler, outModel);
+			return importer.GenerateAnimationAssets(assetInfo, outChanged);
 		}
 
 		static ModelPtr CacheCompletedModel(ModelImporter& importer, const FileId& id,
-			const RHI::RHIMeshPtr& mesh, Tasks::Scheduler& scheduler)
+			const RHI::RHIMeshPtr& mesh)
 		{
 			auto model = ModelPtr::Make(importer.m_allocator, id, TVector<RHI::RHIMeshPtr>{ mesh });
 			model->Flush();
-			importer.m_promises.At_Lock(id) = Tasks::TaskPtr<ModelPtr>::Make(model, &scheduler);
+			importer.m_promises.At_Lock(id) = Tasks::TaskPtr<ModelPtr>::Make(model, importer.m_scheduler);
 			importer.m_loadedModels.At_Lock(id) = model;
 			importer.m_loadedModels.Unlock(id);
 			importer.m_promises.Unlock(id);
@@ -631,35 +619,38 @@ namespace
 		CreateAnimationTestModel(sourcePath);
 		WriteAnimationFixtureText(sourcePath, "{ incomplete glTF");
 		AnimationRegistryFixture fixture(workspace.Context());
-		auto info = fixture.LoadModel("Broken.gltf");
-		ModelImporter importer(&fixture.m_modelHandler);
+		const FileId modelId = fixture.m_registry.GetOrLoadFile("Broken.gltf");
+		Require(static_cast<bool>(modelId), "the broken model fixture must register its metadata before importing geometry");
+		TUniquePtr<ModelImporter> importerLifetime;
 		// The scheduler drains Main callbacks before importer/metadata teardown, including on failure.
 		Tasks::Scheduler scheduler;
 		scheduler.Initialize();
+		importerLifetime = TUniquePtr<ModelImporter>::Make(&fixture.m_modelHandler, &scheduler, &fixture.m_registry);
+		auto& importer = *importerLifetime;
 
 		ModelPtr firstModel;
-		auto first = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, firstModel);
+		auto first = importer.LoadModel(modelId, firstModel);
 		Require(first && WaitForModelTask(scheduler, first),
 			"the real Worker/RHI chain must finish a failed model import");
 		Require(!first->GetResult() && firstModel && !firstModel->IsStructurallyReady(),
 			"failed parsing must return an empty result instead of its pending placeholder");
 
 		ModelPtr retryModel;
-		auto retry = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, retryModel);
+		auto retry = importer.LoadModel(modelId, retryModel);
 		Require(retry && retry != first && retryModel != firstModel,
 			"the same FileId must start a fresh attempt after failure without waiting for garbage collection");
 		Require(WaitForModelTask(scheduler, retry) && !retry->GetResult(),
 			"the retry must execute its own failed import and publish its own result");
 
 		ModelPtr immediateModel = firstModel;
-		Require(!ModelImporterTestAccess::LoadModelImmediate(importer, info.GetRawPtr(), scheduler, immediateModel) &&
+		Require(!importer.LoadModel_Immediate(modelId, immediateModel) &&
 			!immediateModel,
 			"immediate loading must replace the output with the empty task result on failure");
 		scheduler.ProcessTasksOnMainThread();
 		importer.CollectGarbage();
-		Require(!ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) &&
-			!ModelImporterTestAccess::GetCachedModel(importer, info->GetFileId()) &&
-			!ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId()),
+		Require(!ModelImporterTestAccess::GetPromise(importer, modelId) &&
+			!ModelImporterTestAccess::GetCachedModel(importer, modelId) &&
+			!ModelImporterTestAccess::GetMaterialMigration(importer, modelId),
 			"garbage collection must retire the failed model and its finished tasks");
 		Require(firstModel && retryModel && !firstModel->IsStructurallyReady() && !retryModel->IsStructurallyReady(),
 			"retiring a failed cache entry must not force-destroy a caller's retained placeholder");
@@ -672,10 +663,13 @@ namespace
 		CreateAnimationTestModel(sourcePath);
 		WriteAnimationFixtureText(sourcePath, "{ incomplete glTF");
 		AnimationRegistryFixture fixture(workspace.Context());
-		auto info = fixture.LoadModel("Pending.gltf");
-		ModelImporter importer(&fixture.m_modelHandler);
+		const FileId modelId = fixture.m_registry.GetOrLoadFile("Pending.gltf");
+		Require(static_cast<bool>(modelId), "the pending model fixture must register its metadata before importing geometry");
+		TUniquePtr<ModelImporter> importerLifetime;
 		Tasks::Scheduler scheduler;
 		scheduler.AttachCurrentThreadAsMainThread();
+		importerLifetime = TUniquePtr<ModelImporter>::Make(&fixture.m_modelHandler, &scheduler, &fixture.m_registry);
+		auto& importer = *importerLifetime;
 
 		// Drain the real task queues explicitly to keep both attempts' Main callbacks pending.
 		auto finishImport = [&]()
@@ -691,31 +685,31 @@ namespace
 		};
 
 		ModelPtr firstModel;
-		auto first = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, firstModel);
+		auto first = importer.LoadModel(modelId, firstModel);
 		ModelPtr duplicateModel;
-		auto duplicate = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, duplicateModel);
+		auto duplicate = importer.LoadModel(modelId, duplicateModel);
 		Require(first && !first->IsFinished() && duplicate == first && duplicateModel == firstModel,
 			"pending duplicate requests must share one task and one model placeholder");
 		finishImport();
 		Require(first->IsFinished() && !first->GetResult(), "the queued import must publish failure");
-		const auto oldMigration = ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId());
+		const auto oldMigration = ModelImporterTestAccess::GetMaterialMigration(importer, modelId);
 
 		ModelPtr retryModel;
-		auto retry = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, retryModel);
-		const auto retryMigration = ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId());
+		auto retry = importer.LoadModel(modelId, retryModel);
+		const auto retryMigration = ModelImporterTestAccess::GetMaterialMigration(importer, modelId);
 		Require(retry && retry != first && retryMigration && retryMigration != oldMigration,
 			"a retry must retain its own load and material migration tasks");
 		Tasks::ITaskPtr readyMain;
 		Require(scheduler.TryFetchNextAvailiableTask(readyMain, EThreadType::Main) && readyMain == oldMigration,
 			"the previous attempt's Main callback must still be available independently of the retry");
 		readyMain->Execute();
-		Require(ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId()) == retryMigration,
+		Require(ModelImporterTestAccess::GetMaterialMigration(importer, modelId) == retryMigration,
 			"an old Main callback must not erase the retry's migration tracking");
 		importer.CollectGarbage();
-		Require(ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) == retry &&
-			ModelImporterTestAccess::GetCachedModel(importer, info->GetFileId()) == retryModel,
+		Require(ModelImporterTestAccess::GetPromise(importer, modelId) == retry &&
+			ModelImporterTestAccess::GetCachedModel(importer, modelId) == retryModel,
 			"collection of old work must preserve a replacement attempt that is still pending");
-		duplicate = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, duplicateModel);
+		duplicate = importer.LoadModel(modelId, duplicateModel);
 		Require(duplicate == retry && duplicateModel == retryModel,
 			"a pending retry must remain the sole shared attempt after collection");
 
@@ -723,8 +717,8 @@ namespace
 		Require(retry->IsFinished() && !retry->GetResult(), "the retry must finish through the same task chain");
 		scheduler.ProcessTasksOnMainThread();
 		importer.CollectGarbage();
-		Require(!ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) &&
-			!ModelImporterTestAccess::GetMaterialMigration(importer, info->GetFileId()),
+		Require(!ModelImporterTestAccess::GetPromise(importer, modelId) &&
+			!ModelImporterTestAccess::GetMaterialMigration(importer, modelId),
 			"finished load and migration tasks must be collectible");
 	}
 
@@ -733,25 +727,28 @@ namespace
 		ModelCacheWorkspace workspace;
 		CreateAnimationTestModel(workspace.Context().GetContent() / "Cached.gltf");
 		AnimationRegistryFixture fixture(workspace.Context());
-		auto info = fixture.LoadModel("Cached.gltf");
-		ModelImporter importer(&fixture.m_modelHandler);
+		const FileId modelId = fixture.m_registry.GetOrLoadFile("Cached.gltf");
+		Require(static_cast<bool>(modelId), "the cached model fixture must register its metadata");
+		TUniquePtr<ModelImporter> importerLifetime;
 		Tasks::Scheduler scheduler;
 		scheduler.AttachCurrentThreadAsMainThread();
+		importerLifetime = TUniquePtr<ModelImporter>::Make(&fixture.m_modelHandler, &scheduler, &fixture.m_registry);
+		auto& importer = *importerLifetime;
 		auto mesh = TRefPtr<ControllableMesh>::Make();
-		auto model = ModelImporterTestAccess::CacheCompletedModel(importer, info->GetFileId(), mesh, scheduler);
+		auto model = ModelImporterTestAccess::CacheCompletedModel(importer, modelId, mesh);
 		Require(model->IsStructurallyReady() && !model->IsReady(),
 			"the cached fixture must have complete structure and an unfinished GPU upload");
 		const uint32_t readinessChecks = mesh->GetNumIsReadyCalls();
 		ModelPtr immediateModel;
-		Require(ModelImporterTestAccess::LoadModelImmediate(importer, info.GetRawPtr(), scheduler, immediateModel) &&
+		Require(importer.LoadModel_Immediate(modelId, immediateModel) &&
 			immediateModel == model && mesh->GetNumIsReadyCalls() == readinessChecks,
 			"successful immediate loading must use structural completion without polling GPU readiness");
 		importer.CollectGarbage();
-		Require(!ModelImporterTestAccess::GetPromise(importer, info->GetFileId()) &&
-			ModelImporterTestAccess::GetCachedModel(importer, info->GetFileId()) == model,
+		Require(!ModelImporterTestAccess::GetPromise(importer, modelId) &&
+			ModelImporterTestAccess::GetCachedModel(importer, modelId) == model,
 			"retiring a successful promise must retain the cached model");
 		ModelPtr loadedModel;
-		auto cached = ModelImporterTestAccess::LoadModel(importer, info.GetRawPtr(), scheduler, loadedModel);
+		auto cached = importer.LoadModel(modelId, loadedModel);
 		Require(cached && cached->IsFinished() && cached->GetResult() == model && loadedModel == model,
 			"a successful cache hit must return the same model after its original promise is collected");
 	}
@@ -762,9 +759,10 @@ namespace
 		const auto sourcePath = workspace.Context().GetContent() / "Ship.gltf";
 		CreateAnimationTestModel(sourcePath);
 		AnimationRegistryFixture fixture(workspace.Context());
+		ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
 		auto model = fixture.LoadModel("Ship.gltf");
 		const FileId modelId = model->GetFileId();
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry),
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr()),
 			"the initial two clips must be generated");
 		const auto ids = model->GetAnimations();
 		Require(ids.Num() == 2 && ids[0] && ids[1] && ids[0] != ids[1], "generated clips need distinct identities");
@@ -777,7 +775,7 @@ namespace
 		const auto externalPath = workspace.Context().GetContent() / "Crew.animset";
 		WriteAnimationFixtureText(externalPath, YAML::Dump(externalSet.Serialize()));
 		Require(std::filesystem::remove(secondPath), "only the second sidecar should be removed");
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry),
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr()),
 			"a missing sidecar must be repaired even while its AssetInfo is still loaded");
 		Require(model->GetFileId() == modelId && model->GetAnimations() == ids &&
 			ReadAnimationFixtureText(firstPath) == firstText && std::filesystem::last_write_time(firstPath) == firstTime,
@@ -791,11 +789,11 @@ namespace
 			"an external AnimationSet must continue resolving its original clip FileId");
 		const auto secondTime = std::filesystem::last_write_time(secondPath);
 		bool bChanged = true;
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry, bChanged) && !bChanged &&
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr(), bChanged) && !bChanged &&
 			std::filesystem::last_write_time(firstPath) == firstTime && std::filesystem::last_write_time(secondPath) == secondTime,
 			"a repeated repair must report no change and must not rewrite either sidecar");
 		WriteAnimatedGltf(sourcePath, 3);
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) &&
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr()) &&
 			model->GetAnimations().Num() == 3 && model->GetAnimations()[0] == ids[0] && model->GetAnimations()[1] == ids[1] &&
 			fixture.m_registry.GetAssetInfoPtr(model->GetAnimations()[2]) != nullptr,
 			"a newly added source clip must not replace existing clip identities");
@@ -807,11 +805,12 @@ namespace
 		const auto content = workspace.Context().GetContent();
 		CreateAnimationTestModel(content / "Ship.gltf");
 		AnimationRegistryFixture fixture(workspace.Context());
+		ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
 		auto model = fixture.LoadModel("Ship.gltf");
 		const auto firstPath = content / "Ship.gltf_animation_0.anim.asset";
 		const auto blockedPath = content / "Ship.gltf_animation_1.anim.asset";
 		WriteAnimationFixtureText(blockedPath / "keep.txt", "user-owned destination");
-		Require(!ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) && model->GetAnimations().IsEmpty(),
+		Require(!ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr()) && model->GetAnimations().IsEmpty(),
 			"a later publication failure must not publish a partial model animation list");
 		const std::string firstText = ReadAnimationFixtureText(firstPath);
 		const FileId firstId = YAML::Load(firstText)["fileId"].as<FileId>();
@@ -820,11 +819,11 @@ namespace
 			"completed metadata must be registered while a conflicting destination stays untouched");
 		Require(std::filesystem::remove(blockedPath / "keep.txt") && std::filesystem::remove(blockedPath),
 			"the fixture should remove only its own output obstruction");
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) &&
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr()) &&
 			model->GetAnimations().Num() == 2 && model->GetAnimations()[0] == firstId && ReadAnimationFixtureText(firstPath) == firstText,
 			"retry must retain the completed first clip instead of creating another identity");
 		bool bChanged = true;
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry, bChanged) && !bChanged,
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr(), bChanged) && !bChanged,
 			"a completed retry must become a no-op");
 	}
 
@@ -844,16 +843,17 @@ namespace
 			GeneratedModelAssetMetadata::CreateAnimation(secondId, "Ship.gltf", 1, 0)));
 		AnimationRegistryFixture fixture(workspace.Context());
 		fixture.Scan();
+		ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
 		auto model = fixture.LoadModel("Models/Ship.gltf");
 		bool bChanged = true;
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry, bChanged) && !bChanged,
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr(), bChanged) && !bChanged,
 			"a matching custom sidecar must count as the existing clip");
 		Require(std::filesystem::remove(secondPath) &&
-			ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) &&
+			ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr()) &&
 			ReadAnimationFixtureText(customPath) == customText && model->GetAnimations()[0] == firstId,
 			"repairing another clip must leave custom metadata and its FileId untouched");
 		Require(std::filesystem::remove(customPath) &&
-			ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry),
+			ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr()),
 			"a missing registered custom sidecar must be recreated at its original path");
 		const auto repaired = YAML::LoadFile(customPath.string());
 		Require(repaired["fileId"].as<FileId>() == firstId && repaired["filename"].as<std::string>() == "Models/Ship.gltf" &&
@@ -870,13 +870,14 @@ namespace
 			CreateAnimationTestModel(content / "Ship.gltf");
 			CreateAnimationTestModel(content / "Other.gltf");
 			AnimationRegistryFixture fixture(workspace.Context());
+			ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
 			auto model = fixture.LoadModel("Ship.gltf");
 			const auto path = content / "Ship.gltf_animation_0.anim.asset";
 			const auto metadata = GeneratedModelAssetMetadata::CreateAnimation(FileId::CreateNewFileId(),
 				conflict == 0 ? "Other.gltf" : "Ship.gltf", conflict == 1 ? 1 : 0, conflict == 2 ? 1 : 0);
 			const std::string text = conflict == 3 ? "fileId: [unfinished" : YAML::Dump(metadata);
 			WriteAnimationFixtureText(path, text);
-			Require(!ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) &&
+			Require(!ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr()) &&
 				model->GetAnimations().IsEmpty() && ReadAnimationFixtureText(path) == text,
 				"different model, clip, skin or malformed authored metadata must remain untouched");
 		}
@@ -895,12 +896,13 @@ namespace
 		const auto path = content / "Ship.gltf_animation_0.anim.asset";
 		WriteAnimationFixtureText(path, text);
 		AnimationRegistryFixture fixture(workspace.Context());
+		ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
 		auto model = fixture.LoadModel("Ship.gltf");
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry) &&
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr()) &&
 			model->GetAnimations() == TVector<FileId>{ fileId } && fixture.m_registry.GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId) &&
 			ReadAnimationFixtureText(path) == text, "existing metadata without a type must register its original animation identity unchanged");
 		bool bChanged = true;
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(model.GetRawPtr(), fixture.m_registry, bChanged) && !bChanged &&
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, model.GetRawPtr(), bChanged) && !bChanged &&
 			ReadAnimationFixtureText(path) == text, "refresh of untyped animation metadata must use the registry handler and remain a no-op");
 	}
 
@@ -914,10 +916,11 @@ namespace
 		TVector<FileId> ownIds, foreignIds;
 		{
 			AnimationRegistryFixture fixture(workspace.Context());
+			ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
 			auto own = fixture.LoadModel("Ship.gltf");
 			auto foreign = fixture.LoadModel("Other.gltf");
-			Require(ModelImporterTestAccess::GenerateAnimationAssets(own.GetRawPtr(), fixture.m_registry) &&
-				ModelImporterTestAccess::GenerateAnimationAssets(foreign.GetRawPtr(), fixture.m_registry), "both fixture models must generate clips");
+			Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, own.GetRawPtr()) &&
+				ModelImporterTestAccess::GenerateAnimationAssets(importer, foreign.GetRawPtr()), "both fixture models must generate clips");
 			ownIds = own->GetAnimations();
 			foreignIds = foreign->GetAnimations();
 			Require(own->SaveMetaFile(), "the first model fixture must persist its animation identities");
@@ -926,6 +929,7 @@ namespace
 		}
 		AnimationRegistryFixture fixture(workspace.Context());
 		fixture.Scan();
+		ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
 		const auto ownPath = content / "Ship.gltf_animation_1.anim.asset";
 		const auto foreignPath = content / "Other.gltf_animation_0.anim.asset";
 		const std::string foreignText = ReadAnimationFixtureText(foreignPath);
@@ -933,11 +937,11 @@ namespace
 		Require(fixture.m_registry.GetAssetInfoPtr(ownIds[1]) == nullptr && fixture.m_registry.GetAssetInfoPtr(foreignIds[0]) == nullptr,
 			"missing lazy sidecars must be unmaterializable while their registered ownership remains");
 		auto own = fixture.LoadModel("Ship.gltf");
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(own.GetRawPtr(), fixture.m_registry) && own->GetAnimations() == ownIds &&
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, own.GetRawPtr()) && own->GetAnimations() == ownIds &&
 			fixture.m_registry.GetAssetInfoPtr(ownIds[1]) != nullptr, "repair must reuse its own lazy FileId and publish a live AssetInfo immediately");
 		CreateAnimationTestModel(content / "New.gltf", { foreignIds[0] });
 		auto newModel = fixture.LoadModel("New.gltf");
-		Require(ModelImporterTestAccess::GenerateAnimationAssets(newModel.GetRawPtr(), fixture.m_registry) &&
+		Require(ModelImporterTestAccess::GenerateAnimationAssets(importer, newModel.GetRawPtr()) &&
 			newModel->GetAnimations()[0] != foreignIds[0] && fixture.m_registry.GetAssetInfoPtr(foreignIds[0]) == nullptr,
 			"an unmaterializable foreign lazy FileId must never be reassigned to a new model");
 		CreateAnimationTestModel(content / "Copied.gltf", { foreignIds[0] });
@@ -949,7 +953,7 @@ namespace
 			const std::string copiedText = YAML::Dump(GeneratedModelAssetMetadata::CreateAnimation(
 				foreignIds[0], referencedSource, 0, 0));
 			WriteAnimationFixtureText(copiedPath, copiedText);
-			Require(!ModelImporterTestAccess::GenerateAnimationAssets(copiedModel.GetRawPtr(), fixture.m_registry) &&
+			Require(!ModelImporterTestAccess::GenerateAnimationAssets(importer, copiedModel.GetRawPtr()) &&
 				copiedModel->GetAnimations() == copiedIds && ReadAnimationFixtureText(copiedPath) == copiedText &&
 				fixture.m_registry.GetAssetInfoPtr(foreignIds[0]) == nullptr,
 				"existing copied metadata must not steal a lazy ID from another source or sidecar path");
@@ -967,7 +971,7 @@ namespace
 		const auto sourcePath = workspace.Context().GetContent() / "Ship.gltf";
 		CreateAnimationTestModel(sourcePath, {}, false);
 		AnimationRegistryFixture fixture(workspace.Context());
-		ModelImporter importer(&fixture.m_modelHandler, &fixture.m_registry);
+		ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
 		auto model = fixture.LoadModel("Ship.gltf");
 		fixture.m_modelHandler.NotifyImportAsset(model.GetRawPtr());
 		const auto ids = model->GetAnimations();
@@ -1035,7 +1039,7 @@ namespace
 
 			{
 				AnimationRegistryFixture fixture(workspace.Context());
-				ModelImporter importer(&fixture.m_modelHandler, &fixture.m_registry);
+				ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
 				fixture.Scan();
 				auto* model = fixture.m_registry.GetAssetInfoPtr<ModelAssetInfoPtr>(modelId);
 				Require(model && model->GetAnimations().Num() == 2, "initial scan must process the real model callback");
@@ -1073,7 +1077,7 @@ namespace
 			{
 				LazyAnimationLoadingScope restartedLoading(retry == ERetry::RestartLazyScan);
 				AnimationRegistryFixture fixture(workspace.Context());
-				ModelImporter importer(&fixture.m_modelHandler, &fixture.m_registry);
+				ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
 				if (retry == ERetry::RestartLazyScan)
 				{
 					fixture.Scan();
@@ -1120,7 +1124,7 @@ namespace
 		ModelAssetInfoHandler modelHandler(&registry);
 		BlockingAnimationHandler animationHandler;
 		Require(registry.RegisterAssetInfoHandler({ "anim" }, &animationHandler), "the fixture must register its animation handler");
-		ModelImporter importer(&modelHandler, &registry);
+		ModelImporter importer(&modelHandler, nullptr, &registry);
 		TUniquePtr<ModelAssetInfo> model(static_cast<ModelAssetInfoPtr>(modelHandler.LoadAssetInfo(
 			metadataPath.string(), "Ship.gltf.asset", EAssetMountKind::Workspace, true, false, false)));
 		Require(static_cast<bool>(model), "the fixture primary metadata must load");

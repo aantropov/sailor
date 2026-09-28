@@ -610,7 +610,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		s_pInstance->AddSubmodule(TSubmodule<Editor>::Make(params.m_editorHwnd, params.m_editorPort, s_pInstance->m_pMainWindow.GetRawPtr()));
 	}
 
-	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
+	auto scheduler = s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make());
+	scheduler->Initialize();
 	s_pInstance->AddSubmodule(TSubmodule<AudioSystem>::Make(params.m_bForceNullAudioDevice));
 	s_pInstance->AddSubmodule(TSubmodule<Physics::JoltRuntime>::Make());
 	auto renderer = s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(
@@ -643,7 +644,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	s_pInstance->AddSubmodule(TSubmodule<TextureImporter>::Make(textureInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler, scheduler, assetRegistry));
 	s_pInstance->AddSubmodule(TSubmodule<AnimationImporter>::Make(animationInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<AnimationControllerImporter>::Make(animationControllerInfoHandler, animationSetInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<AudioImporter>::Make(audioInfoHandler));

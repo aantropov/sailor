@@ -19,7 +19,8 @@
 
 using namespace Sailor;
 
-ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler, AssetRegistry* assetRegistry) :
+ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler, Tasks::Scheduler* scheduler, AssetRegistry* assetRegistry) :
+	m_scheduler(scheduler),
 	m_assetRegistry(assetRegistry)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -81,7 +82,7 @@ bool ModelImporter::UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWas
 		return true;
 	}
 
-	AssetRegistry& assetRegistry = *(m_assetRegistry ? m_assetRegistry : App::GetSubmodule<AssetRegistry>());
+	AssetRegistry& assetRegistry = *m_assetRegistry;
 	auto areGeneratedAssetsValid = [&assetRegistry](const TVector<FileId>& fileIds, bool bRequireUniqueFileIds)
 	{
 		TSet<FileId> uniqueFileIds;
@@ -140,7 +141,7 @@ bool ModelImporter::UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWas
 	bool bAnimationsChanged = false;
 	if (bSucceeded && bGenerateAnimations)
 	{
-		bSucceeded = GenerateAnimationAssets(assetInfo, assetRegistry, bAnimationsChanged);
+		bSucceeded = GenerateAnimationAssets(assetInfo, bAnimationsChanged);
 	}
 	if (bSucceeded && (previousMaterials != assetInfo->GetDefaultMaterials() || bAnimationsChanged))
 	{
@@ -200,14 +201,8 @@ void ModelImporter::PopulateModelSceneHierarchy(Model& model, TVector<GltfImport
 
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
 {
-	return LoadModel(uid, App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid),
-		*App::GetSubmodule<Tasks::Scheduler>(), outModel);
-}
-
-Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelAssetInfoPtr pAssetInfo,
-	Tasks::Scheduler& scheduler, ModelPtr& outModel)
-{
 	SAILOR_PROFILE_FUNCTION();
+	ModelAssetInfoPtr pAssetInfo = m_assetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(uid);
 
 	// Check promises first
 	auto& promise = m_promises.At_Lock(uid, nullptr);
@@ -240,7 +235,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelAssetInfoPtr 
 		else
 		{
 			outModel = loadedModel;
-			auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel, &scheduler);
+			auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel, m_scheduler);
 
 			m_loadedModels.Unlock(uid);
 			m_promises.Unlock(uid);
@@ -272,7 +267,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelAssetInfoPtr 
 			bool m_bShouldGenerateBLAS = false;
 		};
 
-		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>(scheduler, "Load model",
+		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>(*m_scheduler, "Load model",
 			[pAssetInfo, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
@@ -461,16 +456,9 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelAssetInfoPtr 
 
 bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 {
-	return LoadModel_Immediate(uid, App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid),
-		*App::GetSubmodule<Tasks::Scheduler>(), outModel);
-}
-
-bool ModelImporter::LoadModel_Immediate(FileId uid, ModelAssetInfoPtr assetInfo,
-	Tasks::Scheduler& scheduler, ModelPtr& outModel)
-{
 	SAILOR_PROFILE_FUNCTION();
 
-	auto task = LoadModel(uid, assetInfo, scheduler, outModel);
+	auto task = LoadModel(uid, outModel);
 	if (!task)
 	{
 		outModel = nullptr;
@@ -486,10 +474,10 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<Mat
 {
 	outMaterials.Clear();
 
-	if (ModelAssetInfoPtr modelInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
+	if (ModelAssetInfoPtr modelInfo = m_assetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		Tasks::TaskPtr<bool> loadingFinished =
-			Tasks::CreateTaskWithResult<bool>("Load Default Materials", []() { return true; });
+			Tasks::CreateTask<bool>(*m_scheduler, "Load Default Materials", []() { return true; });
 		const TVector<FileId>& defaultMaterials = modelInfo->GetDefaultMaterials();
 		outMaterials.Resize(defaultMaterials.Num());
 
@@ -514,11 +502,11 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<Mat
 			}
 		}
 
-		App::GetSubmodule<Tasks::Scheduler>()->Run(loadingFinished);
+		m_scheduler->Run(loadingFinished);
 		return loadingFinished;
 	}
 
-	return Tasks::TaskPtr<bool>::Make(false);
+	return Tasks::TaskPtr<bool>::Make(false, m_scheduler);
 }
 
 bool ModelImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)

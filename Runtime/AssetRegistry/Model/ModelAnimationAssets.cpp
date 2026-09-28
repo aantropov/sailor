@@ -14,10 +14,11 @@
 
 using namespace Sailor;
 
-bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& assetRegistry, bool& outChanged)
+bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& outChanged)
 {
 	SAILOR_PROFILE_FUNCTION();
 	outChanged = false;
+	AssetRegistry& assetRegistry = *m_assetRegistry;
 
 	tinygltf::Model gltfModel;
 	std::string err, warn;

@@ -39,11 +39,7 @@ FileId ModelImporter::CreateTextureAsset(const std::string& filepath,
 	RHI::ETextureFiltration filtration,
 	bool bShouldKeepCpuBuffers)
 {
-	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-	if (assetRegistry == nullptr)
-	{
-		return FileId::Invalid;
-	}
+	AssetRegistry* assetRegistry = m_assetRegistry;
 
 	std::error_code statusError;
 	const std::filesystem::file_status metadataStatus = std::filesystem::symlink_status(filepath, statusError);
@@ -165,7 +161,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		}
 
 		std::filesystem::path materialNamePath;
-		if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
+		if (!m_assetRegistry->ResolveWorkspaceContentPathForWrite(
 				texturesFolder + assetInfo->GetAssetFilename() + "_material_" + std::to_string(i), materialNamePath))
 		{
 			SAILOR_LOG_ERROR("Cannot resolve generated material output for %s.", assetInfo->GetAssetFilepath().c_str());
@@ -517,7 +513,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			RHI::EFillMode::Fill,
 			StringHash::Runtime(data.m_renderQueue).GetHash());
 
-		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard_glTF.shader");
+		data.m_shader = m_assetRegistry->GetOrLoadFile("Shaders/Standard_glTF.shader");
 		for (const auto& sampler : data.m_samplers)
 		{
 			if (sampler.m_second == nullptr || !*sampler.m_second)
@@ -530,7 +526,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	}
 
 	std::filesystem::path materialsFolder;
-	if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
+	if (!m_assetRegistry->ResolveWorkspaceContentPathForWrite(
 			texturesFolder + "materials", materialsFolder))
 	{
 		SAILOR_LOG_ERROR("Cannot resolve generated materials folder for %s.", assetInfo->GetAssetFilepath().c_str());
@@ -653,11 +649,7 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInf
 		return false;
 	}
 
-	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-	if (assetRegistry == nullptr)
-	{
-		return false;
-	}
+	AssetRegistry* assetRegistry = m_assetRegistry;
 
 	const std::string relativeFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
 	std::filesystem::path materialsFolder;
@@ -815,7 +807,7 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInf
 			generatedProperties["uniformsVec4"]["material.attenuationColor"] =
 				glm::vec4(transmission.m_attenuationColor, 1.0f);
 
-			auto addGeneratedSampler = [assetInfo,
+			auto addGeneratedSampler = [this, assetInfo,
 										   assetRegistry,
 										   materialIndex,
 										   &relativeFolder,
@@ -851,7 +843,7 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInf
 						return;
 					}
 
-					textureFileId = ModelImporter::CreateTextureAsset(generatedTexturePath.string(),
+					textureFileId = CreateTextureAsset(generatedTexturePath.string(),
 						assetInfo->GetAssetFilename(),
 						static_cast<uint32_t>(textureIndex),
 						true,

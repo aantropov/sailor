@@ -237,7 +237,8 @@ namespace Sailor
 			}
 		};
 
-		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler, AssetRegistry* assetRegistry = nullptr);
+		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler, Tasks::Scheduler* scheduler,
+			AssetRegistry* assetRegistry);
 		SAILOR_API virtual ~ModelImporter() override;
 
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
@@ -258,7 +259,7 @@ namespace Sailor
 		bool UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo);
 		bool UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo, const tinygltf::Model& gltfModel);
 		bool UpdateGeneratedMaterialPropertiesOnDemand(ModelAssetInfoPtr assetInfo, const tinygltf::Model& gltfModel);
-		static FileId CreateTextureAsset(const std::string& filepath,
+		FileId CreateTextureAsset(const std::string& filepath,
 			const std::string& sourceFilename,
 			uint32_t sourceTextureIndex,
 			bool bShouldGenerateMips = true,
@@ -266,7 +267,7 @@ namespace Sailor
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Repeat,
 			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 			bool bShouldKeepCpuBuffers = false);
-		SAILOR_API static bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, AssetRegistry& assetRegistry, bool& outChanged);
+		SAILOR_API bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& outChanged);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo,
 			TVector<MeshContext>& outParsedMeshes,
 			Math::AABB& outBoundsAabb,
@@ -290,7 +291,7 @@ namespace Sailor
 			const std::string& outputPath,
 			uint64_t requestGeneration,
 			const FileRevision& sourceRevision);
-		static void GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo);
+		void GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;
@@ -301,11 +302,8 @@ namespace Sailor
 
 	private:
 		bool UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWasExpired);
-		SAILOR_API Tasks::TaskPtr<ModelPtr> LoadModel(FileId uid, ModelAssetInfoPtr assetInfo,
-			Tasks::Scheduler& scheduler, ModelPtr& outModel);
-		SAILOR_API bool LoadModel_Immediate(FileId uid, ModelAssetInfoPtr assetInfo,
-			Tasks::Scheduler& scheduler, ModelPtr& outModel);
-		AssetRegistry* m_assetRegistry = nullptr;
+		Tasks::Scheduler* const m_scheduler;
+		AssetRegistry* const m_assetRegistry;
 
 		friend class ModelImporterTestAccess;
 	};

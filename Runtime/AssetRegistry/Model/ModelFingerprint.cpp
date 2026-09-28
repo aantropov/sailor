@@ -186,7 +186,7 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 	}
 
 	const std::string assetFilepath = modelAssetInfo->GetAssetFilepath();
-	if (App::GetSubmodule<Tasks::Scheduler>() == nullptr)
+	if (m_scheduler == nullptr)
 	{
 		SAILOR_LOG_ERROR("Cannot schedule model fingerprint without a task scheduler: %s", assetFilepath.c_str());
 		return;
@@ -220,6 +220,7 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 	}
 
 	Tasks::CreateTask(
+		*m_scheduler,
 		"Generate model fingerprint",
 		[fileId, assetFilepath, unitScale, bShouldBatchByMaterial, bFlipTexcoordY, outputPath, request]()
 		{
