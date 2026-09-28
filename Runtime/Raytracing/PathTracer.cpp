@@ -2246,7 +2246,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	pLoadModelTask->Wait();
 	pModel = pLoadModelTask->GetResult();
-	if (!pModel || !pModel->IsReady() || !pModel->HasCpuMeshes())
+	if (!pModel || !pModel->IsStructurallyReady() || !pModel->HasCpuMeshes())
 	{
 		SAILOR_LOG_ERROR("Path tracer requires CPU model buffers. Enable bShouldKeepCpuBuffers for model: %s", params.m_pathToModel.string().c_str());
 		return;
