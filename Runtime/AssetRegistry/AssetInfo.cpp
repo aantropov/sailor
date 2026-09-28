@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetInfo.h"
+#include "Platform/AtomicFile.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/AssetScanSourceRevisionCache.h"
 #include <filesystem>
@@ -7,7 +8,6 @@
 #include "Core/Reflection.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
-#include "Workspace/WorkspaceCacheContract.h"
 #include "YamlExceptionBoundary.h"
 #include <cerrno>
 #include <cstdio>
@@ -127,7 +127,7 @@ bool AssetInfo::SaveMetaFile()
 	std::string contents, diagnostic;
 	if (!External::GuardYamlExceptions(
 		[this, &contents]() { contents = YAML::Dump(Serialize()); }, diagnostic) ||
-		!Workspace::AtomicReplaceWorkspaceCacheText(filepath, contents, diagnostic))
+		!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(filepath, contents, diagnostic)))
 	{
 		SAILOR_LOG_ERROR("Cannot save asset metadata '%s': %s", filepath.c_str(), diagnostic.c_str());
 		return false;

@@ -1,10 +1,10 @@
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "Platform/AtomicFile.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Model/GeneratedModelAssetMetadata.h"
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "Core/Utils.h"
-#include "Workspace/WorkspaceCacheContract.h"
 
 #include <filesystem>
 #include <sstream>
@@ -123,8 +123,8 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& o
 
 			const std::string text = serialized.str();
 			std::string diagnostic;
-			if (!Workspace::AtomicReplaceWorkspaceCacheBinary(outputPath, text.data(), text.size(), diagnostic,
-				Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None, Workspace::EWorkspaceCacheAtomicWriteMode::FailIfExists))
+			if (!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(outputPath, text.data(), text.size(), diagnostic,
+				Platform::EAtomicWriteMode::FailIfExists)))
 			{
 				SAILOR_LOG_ERROR("Cannot create animation metadata '%s': %s", outputPath.string().c_str(), diagnostic.c_str());
 				return false;

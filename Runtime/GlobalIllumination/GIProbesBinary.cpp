@@ -1,7 +1,7 @@
 #include "GlobalIllumination/GIProbesBinary.h"
+#include "Platform/AtomicFile.h"
 
 #include "Containers/Hash.h"
-#include "Workspace/WorkspaceCacheContract.h"
 
 #include <algorithm>
 #include <array>
@@ -628,13 +628,12 @@ bool GIProbesBinary::SaveAtomic(
 	{
 		return false;
 	}
-	return Workspace::AtomicReplaceWorkspaceCacheBinary(
+	return Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
 		path,
 		bytes.GetData(),
 		bytes.Num(),
 		outDiagnostic,
-		Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None,
 		bOverwrite ?
-			Workspace::EWorkspaceCacheAtomicWriteMode::ReplaceExisting :
-			Workspace::EWorkspaceCacheAtomicWriteMode::FailIfExists);
+			Platform::EAtomicWriteMode::ReplaceExisting :
+			Platform::EAtomicWriteMode::FailIfExists));
 }

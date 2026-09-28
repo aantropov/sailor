@@ -1,19 +1,30 @@
 #include "Workspace/WorkspaceCacheContract.h"
 #include "Workspace/WorkspaceContext.h"
+#include "Platform/AtomicFile.h"
+#include "Platform/AtomicFileTestAccess.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <latch>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <yaml-cpp/yaml.h>
 
+#if defined(_WIN32)
+#include <Windows.h>
+#endif
+
 using namespace Sailor::Workspace;
+using namespace Sailor::Platform;
 
 namespace
 {
@@ -195,7 +206,7 @@ namespace
 
 		std::string diagnostic;
 		Require(
-			AtomicReplaceWorkspaceCacheText(cachePath, envelope, diagnostic),
+			AtomicWriteFile(cachePath, envelope, diagnostic) == EAtomicWriteResult::Synced,
 			"cache envelope should be atomically writable: " + diagnostic);
 		const WorkspaceCacheLoadResult loaded = LoadWorkspaceCacheEnvelope(cachePath, identity);
 		RequireStatus(loaded, EWorkspaceCacheLoadStatus::Loaded, "written cache should load");
@@ -337,52 +348,207 @@ namespace
 			"non-scalar envelope payload should be corrupt");
 	}
 
+	void RequireNoTemporaryFiles(const std::filesystem::path& directory)
+	{
+		for (const auto& entry : std::filesystem::directory_iterator(directory))
+		{
+			Require(entry.path().extension() != ".tmp", "atomic write must clean its temporary file");
+		}
+	}
+
 	void TestAtomicReplacementAndInjectedFailure()
 	{
 		TempDirectory directory("atomic");
-		const std::filesystem::path target = directory.Path("Cache/AssetCache.yaml");
+		const auto target = directory.Path("Cache/AssetCache.yaml");
 		std::string diagnostic;
-		Require(
-			AtomicReplaceWorkspaceCacheText(target, "old-cache", diagnostic),
-			"initial atomic write should succeed: " + diagnostic);
-		Require(ReadText(target) == "old-cache", "initial cache contents should be complete");
+		Require(AtomicWriteFile(target, "old-cache", diagnostic) == EAtomicWriteResult::Synced,
+			"initial atomic write must sync: " + diagnostic);
+		Require(ReadText(target) == "old-cache", "initial target must contain complete bytes");
 
-		Require(
-			!AtomicReplaceWorkspaceCacheText(
-				target,
-				"new-cache-that-must-not-appear",
-				diagnostic,
-				EWorkspaceCacheAtomicWriteFailurePoint::BeforeReplace),
-			"injected pre-replace failure should be reported");
-		Require(diagnostic.find("Injected") != std::string::npos,
-			"injected failure should have a targeted diagnostic");
-		Require(ReadText(target) == "old-cache",
-			"failed replacement must preserve the complete previous target");
-
-		for (const auto& entry : std::filesystem::directory_iterator(target.parent_path()))
-		{
-			Require(entry.path().extension() != ".tmp",
-				"failed replacement must clean its same-directory temporary file");
-		}
+		const std::string replacement = "new-cache-that-must-not-appear";
+		Require(AtomicWriteFileForTests(target, replacement.data(), replacement.size(), diagnostic,
+			EAtomicWriteFailurePoint::BeforePublish) == EAtomicWriteResult::NotPublished,
+			"pre-publish failure must report no publication");
+		Require(ReadText(target) == "old-cache", "pre-publish failure must preserve the previous target");
+		RequireNoTemporaryFiles(target.parent_path());
 
 		const uint8_t binary[] = { 0, 1, 2, 3, 4, 5, 255 };
-		Require(
-			AtomicReplaceWorkspaceCacheBinary(target, binary, sizeof(binary), diagnostic),
-			"binary atomic replacement should succeed: " + diagnostic);
-		std::ifstream input(target, std::ios::binary);
-		const std::string actual{
-			std::istreambuf_iterator<char>(input),
-			std::istreambuf_iterator<char>() };
-		Require(actual.size() == sizeof(binary), "binary atomic replacement should preserve exact size");
-		Require(std::equal(actual.begin(), actual.end(), reinterpret_cast<const char*>(binary)),
-			"binary atomic replacement should preserve exact bytes");
-
-		for (const auto& entry : std::filesystem::directory_iterator(target.parent_path()))
-		{
-			Require(entry.path().extension() != ".tmp",
-				"successful replacement must not leave a temporary file");
-		}
+		Require(AtomicWriteFile(target, binary, sizeof(binary), diagnostic) == EAtomicWriteResult::Synced,
+			"binary replacement must sync: " + diagnostic);
+		const auto actual = ReadText(target);
+		Require(actual.size() == sizeof(binary) &&
+			std::equal(actual.begin(), actual.end(), reinterpret_cast<const char*>(binary)),
+			"binary replacement must preserve exact bytes");
+		Require(AtomicWriteFile(target, nullptr, 0, diagnostic) == EAtomicWriteResult::Synced &&
+			ReadText(target).empty(), "empty files must publish without a data pointer");
+		Require(AtomicWriteFile(target, nullptr, 1, diagnostic) == EAtomicWriteResult::NotPublished &&
+			ReadText(target).empty(), "invalid input must not replace the current target");
+		RequireNoTemporaryFiles(target.parent_path());
 	}
+
+	void TestPostPublishResult()
+	{
+		for (const auto mode : { EAtomicWriteMode::ReplaceExisting, EAtomicWriteMode::FailIfExists })
+		{
+			TempDirectory directory("post-publish");
+			const auto target = directory.Path("output.bin");
+			std::string diagnostic;
+			if (mode == EAtomicWriteMode::ReplaceExisting)
+			{
+				Require(AtomicWriteFile(target, "previous", diagnostic) == EAtomicWriteResult::Synced,
+					"post-publish fixture must initialize");
+			}
+			const std::string data = "published despite the sync failure";
+			const auto result = AtomicWriteFileForTests(target, data.data(), data.size(), diagnostic,
+				EAtomicWriteFailurePoint::DirectorySync, mode);
+			Require(ReadText(target) == data, "a post-publish failure must leave the complete new target visible");
+			Require(result == EAtomicWriteResult::Published,
+				"directory sync failure must report Published, not NotPublished or Synced");
+			Require(!IsAtomicWriteComplete(result), "a real sync failure must not acknowledge completed persistence");
+			Require(!diagnostic.empty(), "unconfirmed sync must report a diagnostic");
+			RequireNoTemporaryFiles(directory.Get());
+
+			Require(AtomicWriteFile(target, "do not overwrite", diagnostic, EAtomicWriteMode::FailIfExists) ==
+				EAtomicWriteResult::NotPublished && ReadText(target) == data,
+				"exclusive retry must never overwrite an already published target");
+			Require(AtomicWriteFile(target, data, diagnostic) == EAtomicWriteResult::Synced,
+				"replace retry must complete pending synchronization");
+			RequireNoTemporaryFiles(directory.Get());
+		}
+#if !defined(_WIN32)
+		TempDirectory directory("link-cleanup");
+		const auto target = directory.Path("output.bin");
+		std::string diagnostic;
+		const std::string data = "exclusive publication";
+		Require(AtomicWriteFileForTests(target, data.data(), data.size(), diagnostic,
+			EAtomicWriteFailurePoint::TemporaryCleanup, EAtomicWriteMode::FailIfExists) == EAtomicWriteResult::Synced,
+			"temporary-link cleanup failure must not skip directory sync or undo publication");
+		Require(ReadText(target) == data, "cleanup failure must preserve the complete published target");
+		RequireNoTemporaryFiles(directory.Get());
+		const auto unsupported = AtomicWriteFileForTests(target, data.data(), data.size(), diagnostic,
+			EAtomicWriteFailurePoint::DirectorySyncUnsupported);
+		Require(unsupported == EAtomicWriteResult::DirectorySyncUnsupported && IsAtomicWriteComplete(unsupported),
+			"unsupported directory sync must retain best-effort success without claiming a synced directory");
+		Require(ReadText(target) == data, "best-effort publication must retain the complete target");
+		RequireNoTemporaryFiles(directory.Get());
+#endif
+	}
+
+	std::string ReadWhileReplacing(const std::filesystem::path& path)
+	{
+#if defined(_WIN32)
+		const HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL, nullptr);
+		Require(file != INVALID_HANDLE_VALUE, "concurrent reader must open the current target");
+		std::array<char, 65536> bytes{};
+		DWORD read = 0;
+		const bool success = ReadFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &read, nullptr) != 0;
+		CloseHandle(file);
+		Require(success, "concurrent reader must finish reading its opened generation");
+		return { bytes.data(), read };
+#else
+		return ReadText(path);
+#endif
+	}
+
+	void TestConcurrentPublication()
+	{
+		TempDirectory directory("concurrent");
+		const auto exclusive = directory.Path("exclusive.bin");
+		const std::array<std::string, 4> payloads = {
+			std::string(16381, 'A'), std::string(24577, 'B'),
+			std::string(32769, 'C'), std::string(49151, 'D') };
+		std::array<EAtomicWriteResult, 4> results{};
+		std::array<std::jthread, 4> writers;
+		std::latch start(1);
+		for (size_t i = 0; i < writers.size(); ++i)
+		{
+			writers[i] = std::jthread([&, i]()
+			{
+				start.wait();
+				std::string diagnostic;
+				results[i] = AtomicWriteFile(exclusive, payloads[i], diagnostic, EAtomicWriteMode::FailIfExists);
+			});
+		}
+		start.count_down();
+		for (auto& writer : writers)
+		{
+			writer.join();
+		}
+		size_t published = 0;
+		for (size_t i = 0; i < results.size(); ++i)
+		{
+			if (results[i] != EAtomicWriteResult::NotPublished)
+			{
+				++published;
+				Require(results[i] == EAtomicWriteResult::Synced && ReadText(exclusive) == payloads[i],
+					"exclusive winner must publish and sync exactly its payload");
+			}
+		}
+		Require(published == 1, "exactly one competing exclusive writer must publish");
+		RequireNoTemporaryFiles(directory.Get());
+
+		const auto target = directory.Path("replace.bin");
+		std::string diagnostic;
+		Require(AtomicWriteFile(target, payloads[0], diagnostic) == EAtomicWriteResult::Synced,
+			"concurrent replacement fixture must initialize");
+		std::atomic<bool> valid{ true };
+		std::atomic<uint32_t> reads{ 0 };
+		std::latch readerStarted(1);
+		std::jthread reader([&](std::stop_token stop)
+		{
+			while (!stop.stop_requested())
+			{
+				try
+				{
+					const auto value = ReadWhileReplacing(target);
+					if (std::find(payloads.begin(), payloads.end(), value) == payloads.end())
+					{
+						valid = false;
+					}
+				}
+				catch (...)
+				{
+					valid = false;
+				}
+				if (reads.fetch_add(1) == 0)
+				{
+					readerStarted.count_down();
+				}
+			}
+		});
+		readerStarted.wait();
+		std::latch replaceStart(1);
+		for (size_t i = 0; i < writers.size(); ++i)
+		{
+			writers[i] = std::jthread([&, i]()
+			{
+				replaceStart.wait();
+				for (int attempt = 0; attempt < 8; ++attempt)
+				{
+					std::string writeDiagnostic;
+					if (AtomicWriteFile(target, payloads[i], writeDiagnostic) != EAtomicWriteResult::Synced)
+					{
+						valid = false;
+					}
+				}
+			});
+		}
+		replaceStart.count_down();
+		for (auto& writer : writers)
+		{
+			writer.join();
+		}
+		reader.request_stop();
+		reader.join();
+		Require(valid && reads > 0, "concurrent readers must see only complete old or new payloads");
+		const auto final = ReadText(target);
+		Require(std::find(payloads.begin(), payloads.end(), final) != payloads.end(),
+			"the last replacement must be a complete writer payload");
+		RequireNoTemporaryFiles(directory.Get());
+	}
+
 }
 
 int main()
@@ -395,6 +561,8 @@ int main()
 		TestUnsupportedVersions();
 		TestCorruptEnvelopes();
 		TestAtomicReplacementAndInjectedFailure();
+		TestPostPublishResult();
+		TestConcurrentPublication();
 		std::cout << "[PASS] Workspace cache contract" << std::endl;
 		return 0;
 	}

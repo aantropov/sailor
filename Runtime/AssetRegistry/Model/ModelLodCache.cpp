@@ -1,11 +1,11 @@
 #include "AssetRegistry/Model/ModelLodCache.h"
+#include "Platform/AtomicFile.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "Containers/Concepts.h"
 #include "Containers/Hash.h"
 #include "RHI/VertexDescription.h"
 #include "Sailor.h"
-#include "Workspace/WorkspaceCacheContract.h"
 
 #include <algorithm>
 #include <array>
@@ -242,7 +242,7 @@ void Sailor::ModelLodCache::Save(const ModelAssetInfo& assetInfo,
 
 	const std::filesystem::path path = GetPath(assetInfo.GetFileId(), lodLevel);
 	std::string diagnostic;
-	if (!path.empty() && !Workspace::AtomicReplaceWorkspaceCacheBinary(path, bytes.data(), bytes.size(), diagnostic))
+	if (!path.empty() && !Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(path, bytes.data(), bytes.size(), diagnostic)))
 	{
 		SAILOR_LOG("Cannot save model LOD cache %s: %s", path.string().c_str(), diagnostic.c_str());
 	}

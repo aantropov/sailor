@@ -326,7 +326,9 @@ if(meshoptimizer_FOUND)
 endif()
 
 if(SAILOR_BUILD_TESTS)
-  target_compile_definitions(SailorLib PUBLIC $<BUILD_INTERFACE:SAILOR_SHADER_CACHE_TEST_HOOKS>)
+  target_compile_definitions(SailorLib PUBLIC
+    $<BUILD_INTERFACE:SAILOR_SHADER_CACHE_TEST_HOOKS>
+    $<BUILD_INTERFACE:SAILOR_FILE_IO_TEST_HOOKS>)
 endif()
 
 target_compile_definitions(SailorLib INTERFACE _SAILOR_IMPORT_)

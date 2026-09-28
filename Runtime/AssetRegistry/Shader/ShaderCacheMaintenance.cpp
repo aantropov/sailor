@@ -117,7 +117,6 @@ void ShaderCache::CleanupArtifactsLocked()
 }
 
 bool ShaderCache::RemoveLocked(const FileId& uid,
-	Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
 	std::string& outDiagnostic)
 {
 	for (size_t index = m_quarantinedEntries.Num(); index > 0; --index)
@@ -140,7 +139,7 @@ bool ShaderCache::RemoveLocked(const FileId& uid,
 
 	ShaderCacheData candidate = m_cache;
 	candidate.m_entries.Remove(uid);
-	if (!CommitCandidateLocked(std::move(candidate), outDiagnostic, failurePoint))
+	if (!CommitCandidateLocked(std::move(candidate), outDiagnostic))
 	{
 		return false;
 	}
@@ -155,7 +154,7 @@ void ShaderCache::Remove(const FileId& uid)
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	std::string diagnostic;
-	if (!RemoveLocked(uid, Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None, diagnostic))
+	if (!RemoveLocked(uid, diagnostic))
 	{
 		m_lastSaveDiagnostic = std::move(diagnostic);
 		SAILOR_LOG_ERROR("Shader cache remove failed: %s", m_lastSaveDiagnostic.c_str());
@@ -201,8 +200,7 @@ void ShaderCache::Invalidate(const FileId& uid)
 	}
 }
 
-bool ShaderCache::ClearExpiredLocked(Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
-	std::string& outDiagnostic)
+bool ShaderCache::ClearExpiredLocked(std::string& outDiagnostic)
 {
 	if (m_bPreserveStorageAfterLoadFailure)
 	{
@@ -245,7 +243,7 @@ bool ShaderCache::ClearExpiredLocked(Workspace::EWorkspaceCacheAtomicWriteFailur
 
 	if (m_bIsDirty || expired.Num() != 0 || !m_bHasCommittedSnapshot)
 	{
-		if (!CommitCandidateLocked(std::move(candidate), outDiagnostic, failurePoint))
+		if (!CommitCandidateLocked(std::move(candidate), outDiagnostic))
 		{
 			return false;
 		}
@@ -266,7 +264,7 @@ void ShaderCache::ClearExpired()
 		return;
 	}
 	std::string diagnostic;
-	if (!ClearExpiredLocked(Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None, diagnostic))
+	if (!ClearExpiredLocked(diagnostic))
 	{
 		m_lastSaveDiagnostic = std::move(diagnostic);
 		SAILOR_LOG_ERROR("Shader cache cleanup failed: %s", m_lastSaveDiagnostic.c_str());
@@ -285,7 +283,7 @@ void ShaderCache::ClearAll()
 	std::string clearDiagnostic;
 	const bool bCleared = ClearOwnedCacheFilesLocked(clearDiagnostic);
 	std::string writeDiagnostic;
-	const bool bEnvelopeWritten = WriteCacheLocked(writeDiagnostic);
+	const bool bEnvelopeWritten = Platform::IsAtomicWriteComplete(WriteCacheLocked(writeDiagnostic));
 	m_bIsDirty = !bEnvelopeWritten;
 	m_bHasCommittedSnapshot = bEnvelopeWritten;
 	m_bCleanupPending = !bCleared;

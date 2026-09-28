@@ -109,19 +109,27 @@ bool ShaderCacheTestAccess::PublishWithArtifactFailure(ShaderCache& cache,
 bool ShaderCacheTestAccess::RemoveWithEnvelopeFailure(ShaderCache& cache, const FileId& uid, std::string& outDiagnostic)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	return cache.RemoveLocked(uid, Workspace::EWorkspaceCacheAtomicWriteFailurePoint::BeforeReplace, outDiagnostic);
+	cache.m_bSaveFailureForTests = true;
+	return cache.RemoveLocked(uid, outDiagnostic);
 }
 
 bool ShaderCacheTestAccess::ClearExpiredWithEnvelopeFailure(ShaderCache& cache, std::string& outDiagnostic)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	return cache.ClearExpiredLocked(Workspace::EWorkspaceCacheAtomicWriteFailurePoint::BeforeReplace, outDiagnostic);
+	cache.m_bSaveFailureForTests = true;
+	return cache.ClearExpiredLocked(outDiagnostic);
 }
 
 void ShaderCacheTestAccess::FailNextSaveBeforeReplace(ShaderCache& cache)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	cache.m_nextSaveFailureForTests = Workspace::EWorkspaceCacheAtomicWriteFailurePoint::BeforeReplace;
+	cache.m_bSaveFailureForTests = true;
+}
+
+void ShaderCacheTestAccess::FailNextSaveAfterPublish(ShaderCache& cache)
+{
+	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
+	cache.m_bSaveSyncFailureForTests = true;
 }
 
 void ShaderCacheTestAccess::SetArtifactReadIoFailure(ShaderCache& cache, bool bEnabled)

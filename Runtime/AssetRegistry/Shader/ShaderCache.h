@@ -6,6 +6,7 @@
 #include "Containers/Vector.h"
 #include "Core/YamlSerializable.h"
 #include "Sailor.h"
+#include "Platform/AtomicFile.h"
 #include "Workspace/WorkspaceCacheContract.h"
 
 #include <cstdint>
@@ -116,7 +117,7 @@ namespace Sailor
 		SAILOR_API bool IsExpired(const FileId& uid, uint32_t permutation);
 
 		SAILOR_API void LoadCache();
-		// Cleanup may remain pending after a successful save; quarantined storage stays session-only.
+		// Persistent saves use platform sync support; cleanup may remain pending. Quarantine stays session-only.
 		SAILOR_API bool SaveCache(bool bForcely = false);
 		SAILOR_API bool RecoverMissingStorage();
 
@@ -268,21 +269,12 @@ namespace Sailor
 			const std::string& shaderKind,
 			bool bIsDebug) const;
 
-		bool WriteCacheDataLocked(
+		Platform::EAtomicWriteResult WriteCacheDataLocked(
 			const ShaderCacheData& cache,
-			std::string& outDiagnostic,
-			Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint =
-				Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None);
-		bool WriteCacheLocked(std::string& outDiagnostic);
-		bool SaveCacheLocked(
-			bool bForcely,
-			Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint =
-				Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None);
-		bool CommitCandidateLocked(
-			ShaderCacheData candidate,
-			std::string& outDiagnostic,
-			Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint =
-				Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None);
+			std::string& outDiagnostic);
+		Platform::EAtomicWriteResult WriteCacheLocked(std::string& outDiagnostic);
+		bool SaveCacheLocked(bool bForcely);
+		bool CommitCandidateLocked(ShaderCacheData candidate, std::string& outDiagnostic);
 		void ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loadResult);
 		void EnterStorageQuarantineLocked(std::string diagnostic);
 		bool ClearOwnedCacheFilesLocked(std::string& outDiagnostic);
@@ -356,13 +348,8 @@ namespace Sailor
 		void CleanupArtifactsLocked();
 		QuarantinedEntry* FindQuarantinedEntryLocked(const FileId& uid, uint32_t permutation);
 		const QuarantinedEntry* FindQuarantinedEntryLocked(const FileId& uid, uint32_t permutation) const;
-		bool RemoveLocked(
-			const FileId& uid,
-			Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
-			std::string& outDiagnostic);
-		bool ClearExpiredLocked(
-			Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
-			std::string& outDiagnostic);
+		bool RemoveLocked(const FileId& uid, std::string& outDiagnostic);
+		bool ClearExpiredLocked(std::string& outDiagnostic);
 		bool IsExpiredLocked(const FileId& uid, uint32_t permutation);
 		bool TryLoadPermutationLocked(const FileId& uid, uint32_t permutation, PermutationSpirv& outSpirv);
 
@@ -381,8 +368,8 @@ namespace Sailor
 		Workspace::WorkspaceCacheLoadResult m_lastLoadResult{};
 		std::string m_lastSaveDiagnostic;
 		[[maybe_unused]] std::optional<Workspace::WorkspaceCacheIdentity> m_identityOverride;
-		[[maybe_unused]] Workspace::EWorkspaceCacheAtomicWriteFailurePoint m_nextSaveFailureForTests =
-			Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None;
+		[[maybe_unused]] bool m_bSaveFailureForTests = false;
+		[[maybe_unused]] bool m_bSaveSyncFailureForTests = false;
 		[[maybe_unused]] bool m_bArtifactReadIoFailureForTests = false;
 		[[maybe_unused]] bool m_bArtifactCleanupFailureForTests = false;
 		[[maybe_unused]] mutable uint64_t m_artifactReadsForTests = 0;
@@ -435,6 +422,7 @@ namespace Sailor
 			ShaderCache& cache,
 			std::string& outDiagnostic);
 		SAILOR_API static void FailNextSaveBeforeReplace(ShaderCache& cache);
+		SAILOR_API static void FailNextSaveAfterPublish(ShaderCache& cache);
 		SAILOR_API static void SetArtifactReadIoFailure(ShaderCache& cache, bool bEnabled);
 		SAILOR_API static void FailNextArtifactCleanup(ShaderCache& cache);
 		SAILOR_API static uint64_t TakeArtifactReadCount(ShaderCache& cache);

@@ -1,4 +1,5 @@
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "Platform/AtomicFile.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -105,7 +106,7 @@ FileId ModelImporter::CreateTextureAsset(const std::string& filepath,
 	}
 
 	std::string diagnostic;
-	if (!Workspace::AtomicReplaceWorkspaceCacheText(std::filesystem::path(filepath), serialized.str(), diagnostic))
+	if (!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(std::filesystem::path(filepath), serialized.str(), diagnostic)))
 	{
 		SAILOR_LOG_ERROR("Cannot save generated texture metadata '%s': %s", filepath.c_str(), diagnostic.c_str());
 		return {};
@@ -910,8 +911,8 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInf
 
 		std::string serializedMaterial;
 		if (!External::TryDumpYaml(materialDocument, serializedMaterial, diagnostic) ||
-			!Workspace::AtomicReplaceWorkspaceCacheText(
-				materialInfo->GetAssetFilepath(), serializedMaterial, diagnostic))
+			!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
+				materialInfo->GetAssetFilepath(), serializedMaterial, diagnostic)))
 		{
 			SAILOR_LOG_ERROR(
 				"Cannot save migrated material '%s': %s", materialInfo->GetAssetFilepath().c_str(), diagnostic.c_str());

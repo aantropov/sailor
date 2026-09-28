@@ -3,6 +3,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCacheInternal.h"
 #include "Sailor.h"
+#include "Platform/AtomicFileTestAccess.h"
 
 #include <filesystem>
 #include <iomanip>
@@ -11,6 +12,7 @@
 
 using namespace Sailor;
 using namespace Sailor::ShaderCacheInternal;
+using Sailor::Platform::EAtomicWriteResult;
 
 void ShaderCache::Initialize()
 {
@@ -120,7 +122,7 @@ bool ShaderCache::RecoverMissingStorage()
 	return m_bHasCommittedSnapshot && !m_bIsDirty && !m_bCleanupPending && !m_bPreserveStorageAfterLoadFailure;
 }
 
-bool ShaderCache::SaveCacheLocked(bool bForcely, Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint)
+bool ShaderCache::SaveCacheLocked(bool bForcely)
 {
 	if (m_bPreserveStorageAfterLoadFailure)
 	{
@@ -128,16 +130,8 @@ bool ShaderCache::SaveCacheLocked(bool bForcely, Workspace::EWorkspaceCacheAtomi
 	}
 	if (bForcely || m_bIsDirty)
 	{
-#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
-		if (failurePoint == Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None &&
-			m_nextSaveFailureForTests != Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None)
-		{
-			failurePoint = m_nextSaveFailureForTests;
-			m_nextSaveFailureForTests = Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None;
-		}
-#endif
 		std::string diagnostic;
-		if (!WriteCacheDataLocked(m_cache, diagnostic, failurePoint))
+		if (!Platform::IsAtomicWriteComplete(WriteCacheDataLocked(m_cache, diagnostic)))
 		{
 			m_bIsDirty = true;
 			m_lastSaveDiagnostic = std::move(diagnostic);
@@ -240,51 +234,69 @@ void ShaderCache::LoadCache()
 	ResetInvalidCacheLocked(std::move(loadResult));
 }
 
-bool ShaderCache::WriteCacheDataLocked(const ShaderCacheData& cache,
-	std::string& outDiagnostic,
-	Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint)
+EAtomicWriteResult ShaderCache::WriteCacheDataLocked(const ShaderCacheData& cache, std::string& outDiagnostic)
 {
 	std::string envelope;
 	const auto identity = GetExpectedIdentityLocked();
 	if (!Workspace::SerializeWorkspaceCacheEnvelope(
 			identity, SerializeShaderCachePayload(cache), envelope, outDiagnostic))
 	{
-		return false;
+		return EAtomicWriteResult::NotPublished;
 	}
 
-	const bool saved = Workspace::AtomicReplaceWorkspaceCacheText(GetCacheFilepathLocked(), envelope, outDiagnostic, failurePoint);
+	EAtomicWriteResult result;
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
-	if (saved)
+	if (m_bSaveFailureForTests || m_bSaveSyncFailureForTests)
+	{
+		const auto failure = m_bSaveFailureForTests ? Platform::EAtomicWriteFailurePoint::BeforePublish :
+			Platform::EAtomicWriteFailurePoint::DirectorySync;
+		m_bSaveFailureForTests = false;
+		m_bSaveSyncFailureForTests = false;
+		result = Platform::AtomicWriteFileForTests(
+			GetCacheFilepathLocked(), envelope.data(), envelope.size(), outDiagnostic, failure);
+	}
+	else
+#endif
+	{
+		result = Platform::AtomicWriteFile(GetCacheFilepathLocked(), envelope, outDiagnostic);
+	}
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+	if (result != EAtomicWriteResult::NotPublished)
 	{
 		++m_manifestWritesForTests;
 	}
 #endif
-	return saved;
+	return result;
 }
 
-bool ShaderCache::WriteCacheLocked(std::string& outDiagnostic)
+EAtomicWriteResult ShaderCache::WriteCacheLocked(std::string& outDiagnostic)
 {
 	return WriteCacheDataLocked(m_cache, outDiagnostic);
 }
 
-bool ShaderCache::CommitCandidateLocked(ShaderCacheData candidate,
-	std::string& outDiagnostic,
-	Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint)
+bool ShaderCache::CommitCandidateLocked(ShaderCacheData candidate, std::string& outDiagnostic)
 {
 	if (m_bPreserveStorageAfterLoadFailure)
 	{
 		outDiagnostic = "Shader cache storage is quarantined after an I/O failure; persistent mutation is disabled.";
 		return false;
 	}
-	if (!WriteCacheDataLocked(candidate, outDiagnostic, failurePoint))
+	const auto result = WriteCacheDataLocked(candidate, outDiagnostic);
+	if (result == EAtomicWriteResult::NotPublished)
 	{
 		return false;
 	}
+
+	// The target already changed even when directory sync failed. Retry before collecting old artifacts.
 	m_cache = std::move(candidate);
+	m_bIsDirty = !Platform::IsAtomicWriteComplete(result);
+	m_bCleanupPending = true;
+	if (m_bIsDirty)
+	{
+		return false;
+	}
 	m_committedCache = m_cache;
 	m_bHasCommittedSnapshot = true;
-	m_bIsDirty = false;
-	m_bCleanupPending = true;
 	m_lastSaveDiagnostic.clear();
 	return true;
 }
@@ -302,7 +314,7 @@ void ShaderCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult lo
 	std::string resetDiagnostic;
 	const bool bFilesReset = ClearOwnedCacheFilesLocked(resetDiagnostic);
 	std::string writeDiagnostic;
-	const bool bEnvelopeWritten = WriteCacheLocked(writeDiagnostic);
+	const bool bEnvelopeWritten = Platform::IsAtomicWriteComplete(WriteCacheLocked(writeDiagnostic));
 	m_bIsDirty = !bEnvelopeWritten;
 	m_bHasCommittedSnapshot = bEnvelopeWritten;
 	m_bCleanupPending = !bFilesReset;
@@ -539,7 +551,7 @@ bool ShaderCache::WriteSpirvSetLocked(const FileId& uid,
 	const ArtifactSet& metadata,
 	bool bIsDebug,
 	int32_t& artifactIndex,
-	int32_t failArtifactIndex,
+	[[maybe_unused]] int32_t failArtifactIndex,
 	std::string& outDiagnostic)
 {
 	if (!EnsureOwnedDirectoriesLocked(outDiagnostic))
@@ -573,12 +585,20 @@ bool ShaderCache::WriteSpirvSetLocked(const FileId& uid,
 			return false;
 		}
 		std::string diagnostic;
-		const auto failurePoint = artifactIndex == failArtifactIndex
-									  ? Workspace::EWorkspaceCacheAtomicWriteFailurePoint::BeforeReplace
-									  : Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None;
+		EAtomicWriteResult result;
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+		if (artifactIndex == failArtifactIndex)
+		{
+			result = Platform::AtomicWriteFileForTests(path, &spirv[0], artifact.m_byteLength,
+				diagnostic, Platform::EAtomicWriteFailurePoint::BeforePublish);
+		}
+		else
+#endif
+		{
+			result = Platform::AtomicWriteFile(path, &spirv[0], artifact.m_byteLength, diagnostic);
+		}
 		++artifactIndex;
-		if (!Workspace::AtomicReplaceWorkspaceCacheBinary(
-				path, &spirv[0], artifact.m_byteLength, diagnostic, failurePoint))
+		if (!Platform::IsAtomicWriteComplete(result))
 		{
 			outDiagnostic = "Cannot atomically write shader artifact '" + path.generic_string() + "': " + diagnostic;
 			return false;
@@ -715,7 +735,7 @@ bool ShaderCache::CachePrecompiledGlsl(const FileId& uid,
 			return false;
 		}
 		std::string writeDiagnostic;
-		if (!Workspace::AtomicReplaceWorkspaceCacheText(path, glsl, writeDiagnostic))
+		if (!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(path, glsl, writeDiagnostic)))
 		{
 			m_lastSaveDiagnostic =
 				"Cannot atomically write precompiled shader '" + path.generic_string() + "': " + writeDiagnostic;

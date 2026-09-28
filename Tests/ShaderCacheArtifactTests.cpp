@@ -1,4 +1,5 @@
 #include "AssetRegistry/Shader/ShaderCache.h"
+#include "Platform/AtomicFile.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/Shader/ShaderDependencyFingerprint.h"
 #include "AssetRegistry/Shader/ShaderYamlIncludeResolver.h"
@@ -471,11 +472,11 @@ namespace
 	{
 		std::string diagnostic;
 		Require(
-			Workspace::AtomicReplaceWorkspaceCacheBinary(
+			Platform::AtomicWriteFile(
 				path,
 				words.Num() == 0 ? nullptr : &words[0],
 				static_cast<uint64_t>(words.Num()) * sizeof(uint32_t),
-				diagnostic),
+				diagnostic) == Platform::EAtomicWriteResult::Synced,
 			"test SPIR-V should be writable: " + diagnostic);
 	}
 
@@ -502,11 +503,11 @@ namespace
 	{
 		std::string diagnostic;
 		Require(
-			Workspace::AtomicReplaceWorkspaceCacheBinary(
+			Platform::AtomicWriteFile(
 				path,
 				bytes.data(),
 				bytes.size(),
-				diagnostic),
+				diagnostic) == Platform::EAtomicWriteResult::Synced,
 			"test artifact should be writable: " + diagnostic);
 	}
 
@@ -539,11 +540,11 @@ namespace
 		const auto path = directory.Path("valid.spirv");
 		std::string writeDiagnostic;
 		Require(
-			Workspace::AtomicReplaceWorkspaceCacheBinary(
+			Platform::AtomicWriteFile(
 				path,
 				words.data(),
 				sizeof(words),
-				writeDiagnostic),
+				writeDiagnostic) == Platform::EAtomicWriteResult::Synced,
 			"valid SPIR-V fixture should be writable: " + writeDiagnostic);
 
 		TVector<uint32_t> output = SentinelOutput();
@@ -934,7 +935,7 @@ namespace
 			else if (reset == 1)
 			{
 				std::string diagnostic;
-				Require(Workspace::AtomicReplaceWorkspaceCacheText(manifest, "invalid: [", diagnostic),
+				Require(Platform::AtomicWriteFile(manifest, "invalid: [", diagnostic) == Platform::EAtomicWriteResult::Synced,
 					"reset fixture must invalidate its manifest");
 				cache.LoadCache();
 			}
@@ -957,6 +958,64 @@ namespace
 				"reset must retry artifact cleanup independently");
 			Require(ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0 && ReadText(manifest) == envelope,
 				"reset cleanup retry must not republish the empty manifest");
+		}
+	}
+
+	void TestPublishedManifestWaitsForSync()
+	{
+		for (int operation = 0; operation < 3; ++operation)
+		{
+			TempDirectory directory;
+			ShaderCache cache(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "sync fixture must initialize");
+			const auto uid = MakeFileId("{SHADER-CACHE-PUBLISHED-SYNC}");
+			const auto healthyUid = MakeFileId("{SHADER-CACHE-PUBLISHED-HEALTHY}");
+			Require(PublishComplete(cache, uid, 0, 350) && PublishComplete(cache, healthyUid, 0, 360) && cache.SaveCache(),
+				"sync fixture must commit both original generations");
+			const auto oldArtifact = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0, ShaderCache::VertexShaderTag, false);
+			const auto healthyGeneration = ShaderCacheTestAccess::GetGeneration(cache, healthyUid, 0);
+			if (operation == 0)
+			{
+				Require(PublishComplete(cache, uid, 0, 370), "sync fixture must stage a replacement");
+			}
+			else if (operation == 2)
+			{
+				WriteWords(oldArtifact, Words(999));
+			}
+			ShaderCacheTestAccess::FailNextSaveAfterPublish(cache);
+			if (operation == 0)
+			{
+				Require(!cache.SaveCache(), "save must not acknowledge unconfirmed directory sync");
+			}
+			else if (operation == 1)
+			{
+				cache.Remove(uid);
+			}
+			else
+			{
+				cache.ClearExpired();
+			}
+			Require(cache.IsDirty() && cache.NeedsMaintenance() && std::filesystem::exists(oldArtifact),
+				"post-publish sync failure must retain retry state and old artifacts");
+			Require(cache.Contains(uid) == (operation == 0) && cache.Contains(healthyUid),
+				"memory must adopt the published manifest without reverting a removal");
+			const auto publishedGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
+			const auto manifest = ShaderCacheTestAccess::GetCachePath(cache);
+			const auto publishedEnvelope = ReadText(manifest);
+			ShaderCache reloaded(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(reloaded, directory.Path("Cache")), "published fixture must reopen");
+			reloaded.LoadCache();
+			Require(reloaded.Contains(uid) == (operation == 0) &&
+				ShaderCacheTestAccess::GetGeneration(reloaded, uid, 0) == publishedGeneration &&
+				ShaderCacheTestAccess::GetGeneration(reloaded, healthyUid, 0) == healthyGeneration,
+				"reload must see the complete published candidate and unchanged healthy shader");
+			ShaderCacheTestAccess::FailNextSaveAfterPublish(cache);
+			Require(!cache.SaveCache() && cache.IsDirty() && ReadText(manifest) == publishedEnvelope &&
+				std::filesystem::exists(oldArtifact), "repeated sync failure must not revert metadata or collect artifacts");
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+			Require(cache.SaveCache() && !cache.NeedsMaintenance() && !std::filesystem::exists(oldArtifact) &&
+				ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 1 && ReadText(manifest) == publishedEnvelope,
+				"sync retry must preserve published metadata, then collect old artifacts");
 		}
 	}
 
@@ -1285,10 +1344,10 @@ namespace
 
 		std::string writeDiagnostic;
 		Require(
-			Workspace::AtomicReplaceWorkspaceCacheText(
+			Platform::AtomicWriteFile(
 				cachePath,
 				"not: [valid",
-				writeDiagnostic),
+				writeDiagnostic) == Platform::EAtomicWriteResult::Synced,
 			"a corrupt retry fixture should be writable: " + writeDiagnostic);
 		cache.LoadCache();
 		Require(
@@ -2266,6 +2325,7 @@ int main()
 		TestSaveResultSurvivesAnotherPublisher();
 		TestCommittedShaderSurvivesCleanupFailure();
 		TestResetSeparatesCommitFromArtifactCleanup();
+		TestPublishedManifestWaitsForSync();
 		TestFailedGenerationPreservesDurableGeneration();
 		TestRemoveCommitsBeforeGarbageCollection();
 		TestExplicitInvalidationSurvivesSameTimestampReload();

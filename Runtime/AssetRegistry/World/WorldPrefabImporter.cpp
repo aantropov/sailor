@@ -1,4 +1,5 @@
 #include "WorldPrefabImporter.h"
+#include "Platform/AtomicFile.h"
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "WorldPrefabAssetInfo.h"
@@ -13,7 +14,6 @@
 #include "Engine/World.h"
 #include "ECS/TransformECS.h"
 #include "Core/LogMacros.h"
-#include "Workspace/WorkspaceCacheContract.h"
 #include "YamlExceptionBoundary.h"
 
 using namespace Sailor;
@@ -1298,7 +1298,7 @@ bool WorldPrefab::SaveToFile(const std::string& path) const
 	std::string contents, diagnostic;
 	if (!External::GuardYamlExceptions(
 		[this, &contents]() { contents = YAML::Dump(Serialize()); }, diagnostic) ||
-		!Workspace::AtomicReplaceWorkspaceCacheText(path, contents, diagnostic))
+		!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(path, contents, diagnostic)))
 	{
 		SAILOR_LOG_ERROR("Cannot save world '%s': %s", path.c_str(), diagnostic.c_str());
 		return false;

@@ -256,6 +256,25 @@ void main() {
 			Require(!cache.NeedsMaintenance() && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0 &&
 				ShaderCacheTestAccess::GetGeneration(cache, uid, 0) == repairedGeneration,
 				"native cleanup-only retry must reuse the compiled generation without rewriting metadata");
+			ShaderCacheTestAccess::FailNextSaveAfterPublish(cache);
+			Require(!cache.SaveCache(true) && cache.IsDirty() && shader->IsReady(),
+				"unconfirmed manifest sync must leave the native shader usable and request persistence retry");
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+			if (compute)
+			{
+				auto retry = compiler->CompileAllPermutations(uid);
+				Require(static_cast<bool>(retry), "published metadata with pending sync must schedule maintenance");
+				retry->Wait();
+				Require(retry->GetResult(), "native persistence retry must confirm sync without recompiling");
+			}
+			else
+			{
+				Require(cache.SaveCache(), "graphics metadata must retry unconfirmed sync");
+			}
+			Require(!cache.NeedsMaintenance() && shader->IsReady() &&
+				ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 1 &&
+				ShaderCacheTestAccess::GetGeneration(cache, uid, 0) == repairedGeneration,
+				"native sync retry must commit the same compiled generation before cleanup");
 			ShaderCacheTestAccess::TakeArtifactReadCount(cache);
 			Require(update() && shader->IsReady(), "the repaired shader must remain ready on a warm update");
 			Require(ShaderCacheTestAccess::TakeArtifactReadCount(cache) == expectedReads &&
@@ -278,7 +297,7 @@ void main() {
 			Drain();
 			Require(update() && shader->IsReady(), "RHI updates must recover after a failed source edit");
 			std::cout << "Warm " << (compute ? "compute" : "graphics") << " RHI shader: " << reads
-				<< " artifact reads; repair, reuse, deferred cleanup and last-good preservation passed\n";
+				<< " artifact reads; repair, reuse, deferred cleanup, sync retry and last-good preservation passed\n";
 		}
 	}
 

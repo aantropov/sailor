@@ -1,4 +1,5 @@
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "Platform/AtomicFile.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -8,7 +9,6 @@
 #include "Core/Utils.h"
 #include "Raytracing/PathTracer.h"
 #include "RHI/Renderer.h"
-#include "Workspace/WorkspaceCacheContract.h"
 
 #include <algorithm>
 #include <cmath>
@@ -87,8 +87,8 @@ namespace
 	{
 		const std::lock_guard<std::mutex> lock(g_fingerprintRequestsMutex);
 		return IsFingerprintRequestCurrentLocked(fileId, request) &&
-			   Workspace::AtomicReplaceWorkspaceCacheBinary(
-				   outputPath, bytes.GetData(), static_cast<uint64_t>(bytes.Num()), outDiagnostic);
+			   Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
+				   outputPath, bytes.GetData(), static_cast<uint64_t>(bytes.Num()), outDiagnostic));
 	}
 
 	std::filesystem::path GetFingerprintPath(const FileId& fileId)

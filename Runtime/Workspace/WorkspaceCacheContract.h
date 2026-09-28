@@ -26,18 +26,6 @@ namespace Sailor::Workspace
 		IoFailure
 	};
 
-	enum class EWorkspaceCacheAtomicWriteFailurePoint : uint32_t
-	{
-		None,
-		BeforeReplace
-	};
-
-	enum class EWorkspaceCacheAtomicWriteMode : uint32_t
-	{
-		ReplaceExisting,
-		FailIfExists
-	};
-
 	struct SAILOR_SHARED_API WorkspaceCacheIdentity final
 	{
 		uint32_t m_cacheVersion = WorkspaceCacheFormatVersion;
@@ -95,29 +83,6 @@ namespace Sailor::Workspace
 	SAILOR_SHARED_API WorkspaceCacheLoadResult LoadWorkspaceCacheEnvelope(
 		const std::filesystem::path& path,
 		const WorkspaceCacheIdentity& expectedIdentity) noexcept;
-
-	SAILOR_SHARED_API bool AtomicReplaceWorkspaceCacheBinary(
-		const std::filesystem::path& target,
-		const void* data,
-		uint64_t size,
-		std::string& outDiagnostic,
-		EWorkspaceCacheAtomicWriteFailurePoint failurePoint =
-			EWorkspaceCacheAtomicWriteFailurePoint::None) noexcept;
-
-	SAILOR_SHARED_API bool AtomicReplaceWorkspaceCacheBinary(
-		const std::filesystem::path& target,
-		const void* data,
-		uint64_t size,
-		std::string& outDiagnostic,
-		EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
-		EWorkspaceCacheAtomicWriteMode writeMode) noexcept;
-
-	SAILOR_SHARED_API bool AtomicReplaceWorkspaceCacheText(
-		const std::filesystem::path& target,
-		const std::string& text,
-		std::string& outDiagnostic,
-		EWorkspaceCacheAtomicWriteFailurePoint failurePoint =
-			EWorkspaceCacheAtomicWriteFailurePoint::None) noexcept;
 
 #if defined(_MSC_VER)
 #pragma warning(pop)

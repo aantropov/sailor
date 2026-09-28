@@ -1,4 +1,5 @@
 #include "AssetCache.h"
+#include "Platform/AtomicFile.h"
 #include "Containers/Containers.h"
 
 #include "AssetRegistry/AssetRegistry.h"
@@ -408,10 +409,10 @@ bool AssetCache::WriteCacheLocked(std::string& outDiagnostic) noexcept
 		return false;
 	}
 
-	return Workspace::AtomicReplaceWorkspaceCacheText(
+	return Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
 		GetConfiguredAssetCacheFilepath(),
 		envelope,
-		outDiagnostic);
+		outDiagnostic));
 }
 
 std::string AssetCache::GetConfiguredAssetCacheFilepath() const
