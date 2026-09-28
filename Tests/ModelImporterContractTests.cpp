@@ -41,7 +41,7 @@ namespace
 	const Workspace::WorkspaceContext* g_cacheWorkspace = nullptr;
 }
 
-// Link the production LOD cache into this test and supply only its project lookup.
+// Link the production LOD cache into this test and supply its active workspace lookup.
 std::string Sailor::AssetRegistry::GetCacheFolder()
 {
 	if (!g_cacheWorkspace)
@@ -483,27 +483,29 @@ namespace
 	class ModelCacheWorkspace final
 	{
 	public:
-		ModelCacheWorkspace() : m_previousWorkspace(g_cacheWorkspace)
+		explicit ModelCacheWorkspace(bool withManifest = true) : m_previousWorkspace(g_cacheWorkspace)
 		{
 			m_root = std::filesystem::temp_directory_path() /
 				("sailor-model-lod-cache-" + FileId::CreateNewFileId().ToString());
 			std::filesystem::create_directories(m_root / "Content");
-			std::ofstream manifest(m_root / "workspace.sailor");
-			manifest <<
-				"manifestVersion: 1\n"
-				"workspaceId: 00000000-0000-0000-0000-000000000132\n"
-				"name: Model LOD Cache Contract\n"
-				"enginePath: .\n"
-				"engineReferenceKind: source\n"
-				"contentPath: Content\n"
-				"sourcePath: Source\n"
-				"generatedProjectPath: Generated\n"
-				"cachePath: DerivedCache\n"
-				"buildPath: DerivedCache/Build\n"
-				"logicOutputPath: Binaries\n"
-				"logicModuleName: ModelLodCacheContract\n";
-			manifest.close();
-			auto resolved = Workspace::ResolveWorkspaceContext(m_root, m_root / "workspace.sailor");
+			if (withManifest)
+			{
+				std::ofstream manifest(m_root / "workspace.sailor");
+				manifest <<
+					"manifestVersion: 1\n"
+					"workspaceId: 00000000-0000-0000-0000-000000000132\n"
+					"name: Model LOD Cache Contract\n"
+					"enginePath: .\n"
+					"engineReferenceKind: source\n"
+					"contentPath: Content\n"
+					"sourcePath: Source\n"
+					"generatedProjectPath: Generated\n"
+					"cachePath: DerivedCache\n"
+					"buildPath: DerivedCache/Build\n"
+					"logicOutputPath: Binaries\n"
+					"logicModuleName: ModelLodCacheContract\n";
+			}
+			auto resolved = Workspace::ResolveWorkspaceContext(m_root, {});
 			Require(resolved.IsSuccess(), "the model cache workspace should resolve: " + resolved.m_message);
 			m_context = std::move(resolved.m_context);
 			g_cacheWorkspace = &m_context;
@@ -1328,6 +1330,35 @@ namespace
 		Require(ModelLodCache::Load(info, revision, 1, loaded),
 			"returning to a project must use its own cache without a path argument");
 		RequireLodsEqual(loaded, firstMeshes);
+	}
+
+	void TestModelLodCacheWithoutProject()
+	{
+		ModelCacheWorkspace engine(false);
+		const auto& context = engine.Context();
+		Require(context.IsEngineMode() && context.GetManifest().empty() &&
+			context.GetCache() == context.GetEngineRoot() / "Cache",
+			"without a project the active cache must be the engine's Cache directory");
+		ModelAssetInfo info;
+		auto metadata = info.Serialize();
+		metadata["fileId"] = "01234567-89ab-cdef-0123-456789abcdef";
+		info.Deserialize(metadata);
+		const FileRevision revision{ 123456789, true };
+		const auto meshes = MakeLodCacheMeshes();
+		ModelLodCache::Save(info, revision, 1, meshes);
+		Require(std::filesystem::is_regular_file(context.GetEngineRoot() / "Cache" / "Lods" /
+			ModelImporter::GetLodCacheFilename(info.GetFileId(), 1)),
+			"engine-only LOD generation must write under Engine/Cache/Lods without a path argument");
+		auto loaded = meshes;
+		for (auto& mesh : loaded) mesh.lods[0] = {};
+		{
+			ModelCacheWorkspace project;
+			Require(!ModelLodCache::Load(info, revision, 1, loaded),
+				"opening a project must not read the engine's cached LOD with the same asset ID");
+		}
+		Require(ModelLodCache::Load(info, revision, 1, loaded),
+			"returning to engine mode must load its own LOD cache");
+		RequireLodsEqual(loaded, meshes);
 	}
 
 	void TestModelLodCacheRegeneratesExpandedHeader()
@@ -2623,6 +2654,7 @@ int main()
 		{ "ModelLodGenerationAndCacheNaming", TestModelLodGenerationAndCacheNaming },
 		{ "ModelLodCacheRoundTripAndInvalidation", TestModelLodCacheRoundTripAndInvalidation },
 		{ "ModelLodCacheUsesCurrentProject", TestModelLodCacheUsesCurrentProject },
+		{ "ModelLodCacheWithoutProject", TestModelLodCacheWithoutProject },
 		{ "ModelLodCacheRegeneratesExpandedHeader", TestModelLodCacheRegeneratesExpandedHeader },
 		{ "AnimationRepairPreservesFileIds", TestAnimationRepairPreservesFileIds },
 		{ "AnimationRepairKeepsCompletedFilesAfterFailure", TestAnimationRepairKeepsCompletedFilesAfterFailure },
