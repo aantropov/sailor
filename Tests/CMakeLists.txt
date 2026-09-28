@@ -302,6 +302,16 @@ add_executable(GlobalIlluminationContractTests
     GlobalIlluminationContractTests.cpp
 )
 
+add_executable(RuntimeGIProbesPublicationTests RuntimeGIProbesPublicationTests.cpp)
+target_compile_features(RuntimeGIProbesPublicationTests PRIVATE cxx_std_20)
+target_include_directories(RuntimeGIProbesPublicationTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(RuntimeGIProbesPublicationTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME RuntimeGIProbesPublicationTests COMMAND RuntimeGIProbesPublicationTests)
+set_tests_properties(RuntimeGIProbesPublicationTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(RuntimeGIProbesPublicationTests)
+endif()
+
 add_library(WorkspaceModuleFixture SHARED
     WorkspaceModuleFixture.cpp
 )

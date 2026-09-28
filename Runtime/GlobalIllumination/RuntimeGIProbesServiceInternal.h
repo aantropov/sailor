@@ -36,7 +36,6 @@ namespace Sailor
 			bool m_bHasTransport = false;
 			bool m_bReady = false;
 			bool m_bRefined = false;
-			bool m_bDirty = false;
 		};
 
 		struct Generation final
@@ -55,10 +54,10 @@ namespace Sailor
 			size_t m_initialCursor = 0u;
 			uint32_t m_readyCount = 0u;
 			uint32_t m_refinedCount = 0u;
-			uint32_t m_dirtyCount = 0u;
+			uint64_t m_dataRevision = 0u;
+			uint64_t m_publishedDataRevision = 0u;
 			uint64_t m_progressSampleCount = 0u;
 			bool m_bFailed = false;
-			bool m_bPublished = false;
 		};
 
 		struct Job final
@@ -72,6 +71,14 @@ namespace Sailor
 		{
 			TSharedPtr<Generation> m_generation{};
 			uint32_t m_workerCount = 0u;
+		};
+
+		struct Publication final
+		{
+			TSharedPtr<Generation> m_generation;
+			GIProbesDataPtr m_data;
+			uint64_t m_dataRevision = 0u;
+			uint64_t m_uploadBytes = 0u;
 		};
 
 		mutable std::mutex m_mutex;
@@ -103,18 +110,21 @@ namespace Sailor
 			std::string& outDiagnostic);
 		void ReuseGenerationState(Generation& next, const Generation& previous);
 
-		bool TryTakeJob(const TSharedPtr<Generation>& generation, Job& outJob);
+		SAILOR_SHARED_API bool TryTakeJob(const TSharedPtr<Generation>& generation, Job& outJob);
 		static bool HasQueuedWork(const Generation& generation) noexcept;
 		bool CanDispatchWorkLocked() const noexcept;
 		DispatchBatch GetDispatchBatch() const noexcept;
 		void WorkerBatch(TSharedPtr<Generation> generation,
 			uint32_t maximumJobCount = (std::numeric_limits<uint32_t>::max)());
 		void PumpWorkerTasks();
-		bool ExecuteJob(Job& job, std::string& outDiagnostic);
+		SAILOR_SHARED_API bool ExecuteJob(Job& job, std::string& outDiagnostic);
 
 		void FailGenerationLocked(Generation& generation, std::string diagnostic);
-		void CommitJob(const Job& job, bool bSuccess, std::string diagnostic, double elapsedMilliseconds);
+		SAILOR_SHARED_API void CommitJob(const Job& job, bool bSuccess, std::string diagnostic, double elapsedMilliseconds);
 		void UpdateStatusLocked();
+		SAILOR_SHARED_API bool CapturePublication(Publication& outPublication);
+		SAILOR_SHARED_API static std::string PreparePublication(Publication& publication);
+		SAILOR_SHARED_API void CommitPublication(Publication& publication, std::string diagnostic);
 		void PublishIfNeeded();
 	};
 }

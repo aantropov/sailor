@@ -1099,7 +1099,7 @@ public sealed class SettingsPanelView : ContentView
                     CreatePresetField("Runtime GI CPU Budget", "CPU milliseconds per 60 Hz frame, 0–100", _runtimeGICpuBudgetMilliseconds),
                     CreatePresetField("Runtime GI Publications / Second", "Snapshot publication throttle, 0–60", _runtimeGIMaxPublicationsPerSecond),
                     CreatePresetField("Runtime GI Initial Coverage", "Coverage before first publication, 0–1", _runtimeGIInitialPublicationCoverage),
-                    CreatePresetField("Runtime GI Upload Budget", "Maximum dirty bytes published per frame", _runtimeGIMaxDirtyUploadBytesPerFrame)
+                    CreatePresetField("Runtime GI Upload Budget", "Full probe-grid upload limit per flight, in bytes", _runtimeGIMaxDirtyUploadBytesPerFrame)
                 }
             };
 

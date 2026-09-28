@@ -1,7 +1,7 @@
 #include "GlobalIllumination/RuntimeGIProbesGrid.h"
 
-#include "GlobalIllumination/GIProbesData.h"
 #include "Math/Math.h"
+#include "RHI/GlobalIllumination.h"
 
 #include <algorithm>
 #include <cmath>
@@ -9,6 +9,16 @@
 
 namespace Sailor::RuntimeGIProbesInternal
 {
+	namespace
+	{
+		// Runtime GI publishes one grid brick and one lighting state.
+		constexpr uint64_t PublicationFixedBytes = sizeof(RHI::RHIGlobalIlluminationGpuHeader) +
+			sizeof(RHI::RHIGlobalIlluminationGpuBvhNode) + sizeof(RHI::RHIGlobalIlluminationGpuBrick) +
+			sizeof(RHI::RHIGlobalIlluminationGpuState);
+		constexpr uint64_t PublicationProbeBytes = sizeof(RHI::RHIGlobalIlluminationGpuProbe) +
+			sizeof(RHI::RHIGlobalIlluminationGpuCoefficients);
+	}
+
 	bool TryResolveProbeGrid(const ProbeGridBounds& bounds,
 		float spacing,
 		uint32_t capacity,
@@ -119,14 +129,18 @@ namespace Sailor::RuntimeGIProbesInternal
 
 	uint32_t ResolvePublicationLimitedCapacity(const RuntimeGIProbesQualitySettings& settings) noexcept
 	{
-		const uint64_t fixedBytes = sizeof(GIProbesData) + sizeof(GIProbeBrick);
-		if (settings.m_maxDirtyUploadBytesPerFrame <= fixedBytes)
+		if (settings.m_maxDirtyUploadBytesPerFrame <= PublicationFixedBytes)
 		{
 			return 0u;
 		}
 		const uint64_t capacityFromPublication =
-			(settings.m_maxDirtyUploadBytesPerFrame - fixedBytes) / sizeof(GIProbe);
+			(settings.m_maxDirtyUploadBytesPerFrame - PublicationFixedBytes) / PublicationProbeBytes;
 		return static_cast<uint32_t>(
 			(std::min)(static_cast<uint64_t>(settings.m_maxActiveProbes), capacityFromPublication));
+	}
+
+	uint64_t GetPublicationUploadBytes(uint32_t probeCount) noexcept
+	{
+		return PublicationFixedBytes + probeCount * PublicationProbeBytes;
 	}
 }

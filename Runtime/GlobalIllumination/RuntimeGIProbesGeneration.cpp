@@ -245,7 +245,8 @@ namespace Sailor
 		next.m_initialCursor = 0u;
 		next.m_readyCount = 0u;
 		next.m_refinedCount = 0u;
-		next.m_dirtyCount = 0u;
+		next.m_dataRevision = 0u;
+		next.m_publishedDataRevision = 0u;
 		next.m_progressSampleCount = 0u;
 		const bool bLayoutCompatible =
 			next.m_request.m_geometryGeneration == previous.m_request.m_geometryGeneration &&
@@ -298,9 +299,8 @@ namespace Sailor
 			if (probe.m_bReady)
 			{
 				next.m_data->m_probes[probeIndex] = probe.m_probe;
-				probe.m_bDirty = true;
 				++next.m_readyCount;
-				++next.m_dirtyCount;
+				++next.m_dataRevision;
 			}
 			if (probe.m_bRefined)
 			{

@@ -159,7 +159,7 @@ namespace
 		}
 	};
 
-	void TestRestart(GIProbesDataPtr& data)
+	void TestRestart(GIProbesDataPtr& data, uint64_t& publishedBytes)
 	{
 		GIWorld world;
 		world.WaitReady();
@@ -167,6 +167,7 @@ namespace
 		const auto published = gi.GetActiveSnapshot();
 		data = published->m_layout;
 		const auto completed = gi.GetRuntimeGIProbesStatus();
+		publishedBytes = completed.m_publishedBytes;
 		Require(completed.m_activeProbeCount == 8 && completed.m_readyProbeCount == 8,
 			"the ECS fixture must fully refine its eight real probes");
 		gi.SetRuntimeGIProbesWorkAllowed(false);
@@ -274,9 +275,9 @@ namespace
 			"a stale first preparation must recover once the scene becomes stable");
 	}
 
-	void TestGpuLayoutUploads(const GIProbesDataPtr& data)
+	void TestGpuLayoutUploads(const GIProbesDataPtr& data, uint64_t publishedBytes)
 	{
-		auto task = Tasks::CreateTaskWithResult<std::string>("GI layout upload validation", [data]()
+		auto task = Tasks::CreateTaskWithResult<std::string>("GI layout upload validation", [data, publishedBytes]()
 		{
 			try
 			{
@@ -382,6 +383,8 @@ namespace
 					8 * sizeof(RHIGlobalIlluminationGpuProbe);
 				const uint64_t lightingBytes = 8 * sizeof(RHIGlobalIlluminationGpuCoefficients) +
 					sizeof(RHIGlobalIlluminationGpuState) + sizeof(RHIGlobalIlluminationGpuHeader);
+				Require(publishedBytes == layoutBytes + lightingBytes,
+					"runtime publication telemetry must match the actual complete GPU upload");
 				auto olderFlight = upload(0, data, 1, layoutBytes + lightingBytes);
 				auto refined = GIProbesDataPtr::Make(*data);
 				++refined->m_lightingHash;
@@ -486,14 +489,15 @@ namespace Sailor::Tests
 			}
 		};
 		GIProbesDataPtr data;
-		run("Restart", [&]() { TestRestart(data); });
+		uint64_t publishedBytes = 0;
+		run("Restart", [&]() { TestRestart(data, publishedBytes); });
 		run("Material contributor revision", [&]() { TestContributorMaterialRevision(); });
 		run("Changed-input recovery", [&]() { TestPreparationRecovery(false); });
 		run("Explicit recovery", [&]() { TestPreparationRecovery(true); });
 		run("Stale preparation recovery", [&]() { TestStalePreparationRecovery(); });
 		if (data)
 		{
-			run("GI layout uploads", [&]() { TestGpuLayoutUploads(data); });
+			run("GI layout uploads", [&]() { TestGpuLayoutUploads(data, publishedBytes); });
 			run("Importer retry", [&]() { TestImporterRetry(workspace, *data, false); });
 			run("Importer retry after GC", [&]() { TestImporterRetry(workspace, *data, true); });
 		}
