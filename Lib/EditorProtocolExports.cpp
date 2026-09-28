@@ -13,7 +13,7 @@ namespace
 	{
 		try
 		{
-			Sailor::App::Stop();
+			Sailor::Protocol::RequestEditorEngineProtocolStop();
 		}
 		catch (...)
 		{
@@ -139,7 +139,7 @@ extern "C"
 	{
 		try
 		{
-			Sailor::App::Stop();
+			Sailor::Protocol::RequestEditorEngineProtocolStop();
 		}
 		catch (...)
 		{

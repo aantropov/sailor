@@ -147,7 +147,7 @@ namespace Sailor::Protocol
 			return m_bStartActive;
 		}
 
-		bool NoteStopRequested()
+		bool TryAcquireStop()
 		{
 			const std::lock_guard<std::mutex> lock(m_mutex);
 			if (m_bInitializationActive)
@@ -158,10 +158,10 @@ namespace Sailor::Protocol
 				m_bStopRequested = true;
 				return false;
 			}
-			if (m_state == EState::Ready ||
-				m_state == EState::ShuttingDown)
+			if (m_state == EState::Ready)
 			{
 				m_bStopRequested = true;
+				++m_numActiveOperations;
 				return true;
 			}
 			return false;

@@ -100,6 +100,7 @@ namespace Sailor::Protocol
 		const EditorEngineProtocolDependencies& dependencies);
 
 	void FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept;
+	void RequestEditorEngineProtocolStop();
 	void WaitForEditorEngineProtocolStartDrain();
 	void ResetEditorEngineProtocolLifecycle();
 	void FailEditorEngineProtocolShutdown();

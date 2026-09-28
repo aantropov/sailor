@@ -166,6 +166,18 @@ namespace
 		bool m_bSucceeded = false;
 	};
 
+	bool RequestStop(Sailor::Protocol::TEditorEngineProtocolLifecycleGate& gate,
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	{
+		if (!gate.TryAcquireStop())
+		{
+			return false;
+		}
+		const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Operation);
+		StopEngine(dependencies);
+		return true;
+	}
+
 	void DispatchRequestWithLifecycleAdmission(const ProtocolRequest& request,
 		ProtocolResponse& response,
 		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
@@ -209,15 +221,11 @@ namespace
 		}
 
 		case ProtocolRequest::kStop:
-			if (gate.NoteStopRequested())
+			if (RequestStop(gate, dependencies))
 			{
-				DispatchRequest(request, response, dependencies);
 				gate.WaitForStartDrainAndJoin();
 			}
-			else
-			{
-				SetEmptyResult(response);
-			}
+			SetEmptyResult(response);
 			return;
 
 		case ProtocolRequest::kShutdown:
@@ -377,6 +385,11 @@ int32_t Sailor::Protocol::InvokeEditorEngineProtocol(const uint8_t* requestData,
 void Sailor::Protocol::FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept
 {
 	delete[] buffer;
+}
+
+void Sailor::Protocol::RequestEditorEngineProtocolStop()
+{
+	RequestStop(GetEditorEngineProtocolLifecycleGate(), EditorEngineProtocolDependencies{});
 }
 
 void Sailor::Protocol::WaitForEditorEngineProtocolStartDrain()

@@ -2,6 +2,7 @@
 #include "EditorEngineProtocolLifecycle.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -1648,7 +1649,8 @@ namespace
 			stoppedGate.TryBeginInitialization(error),
 			"fresh gate must admit initialization");
 		stoppedGate.CompleteInitialization(true);
-		stoppedGate.NoteStopRequested();
+		Require(stoppedGate.TryAcquireStop(), "Stop must acquire an initialized session");
+		stoppedGate.ReleaseOperation();
 		Require(
 			!stoppedGate.TryBeginStart(error),
 			"Stop before Start must prevent a late Start race");
@@ -1658,7 +1660,7 @@ namespace
 			initializingGate.TryBeginInitialization(error),
 			"fresh gate must admit initialization");
 		Require(
-			!initializingGate.NoteStopRequested(),
+			!initializingGate.TryAcquireStop(),
 			"Stop during initialization must not enter partially built App state");
 		initializingGate.CompleteInitialization(true);
 		Require(
@@ -1834,6 +1836,128 @@ namespace
 				gate.CompleteInitialization(true);
 			}
 		}
+	}
+
+	void TestStopWaitsForInitializationAndSkipsClosedSessions()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		uint32_t stops = 0u;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &stops;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_stop = [](void* context) { ++*static_cast<uint32_t*>(context); };
+		auto stop = [&]()
+			{
+				TProtocolBuffer buffer;
+				Require(RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
+					c_stopCommandField), buffer, dependencies).m_success, "Stop must acknowledge its request");
+			};
+
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "Stop test must admit initialization");
+		stop();
+		stop();
+		Require(stops == 0u, "Stop must not access App while initialization owns its construction");
+		gate.CompleteInitialization(true);
+		Require(!gate.TryBeginStart(error), "Stop during initialization must prevent a late Start");
+		stop();
+		Require(stops == 1u, "Stop must reach the initialized App");
+
+		Require(gate.TryBeginShutdown(error), "Stop test must admit shutdown");
+		stop();
+		gate.WaitForShutdownDrain();
+		gate.CompleteShutdown();
+		stop();
+		Require(stops == 1u, "late Stop must not enter App during or after teardown");
+
+		PrepareInitializedLifecycle(gate);
+		Require(gate.TryBeginStart(error), "a new session must not inherit the previous Stop");
+		gate.CompleteStart();
+	}
+
+	void TestShutdownDrainsAnAdmittedStop()
+	{
+		using namespace std::chrono_literals;
+		struct TStopSource
+		{
+			std::promise<void> m_stopEntered;
+			std::promise<void> m_releaseStop;
+			std::promise<void> m_shutdownEntered;
+			std::atomic<bool> m_bStopExited{false};
+			bool m_bShutdownAfterStop = false;
+		} source;
+
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		PrepareInitializedLifecycle(gate);
+		Sailor::Protocol::EditorEngineProtocolDependencies stopDependencies{};
+		stopDependencies.m_context = &source;
+		stopDependencies.m_lifecycleGate = &gate;
+		stopDependencies.m_stop = [](void* context)
+			{
+				auto& state = *static_cast<TStopSource*>(context);
+				state.m_stopEntered.set_value();
+				state.m_releaseStop.get_future().wait();
+				state.m_bStopExited = true;
+			};
+		auto shutdownDependencies = stopDependencies;
+		shutdownDependencies.m_stop = [](void* context)
+			{
+				static_cast<TStopSource*>(context)->m_shutdownEntered.set_value();
+			};
+		shutdownDependencies.m_shutdown = [](void* context)
+			{
+				auto& state = *static_cast<TStopSource*>(context);
+				state.m_bShutdownAfterStop = state.m_bStopExited;
+				return true;
+			};
+
+		auto stop = std::async(std::launch::async, [&]()
+			{
+				TProtocolBuffer buffer;
+				return RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
+					c_stopCommandField), buffer, stopDependencies).m_success;
+			});
+		const bool bStopEntered = source.m_stopEntered.get_future().wait_for(1s) == std::future_status::ready;
+		auto shutdown = std::async(std::launch::async, [&]()
+			{
+				TProtocolBuffer buffer;
+				return RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 2u,
+					c_shutdownCommandField), buffer, shutdownDependencies).m_success;
+			});
+		const bool bShutdownEntered = source.m_shutdownEntered.get_future().wait_for(1s) == std::future_status::ready;
+		const bool bShutdownWaited = shutdown.wait_for(20ms) == std::future_status::timeout;
+		source.m_releaseStop.set_value();
+		const bool bStopped = stop.get();
+		const bool bShutdown = shutdown.get();
+		Require(bStopEntered && bShutdownEntered && bStopped && bShutdown,
+			"Stop and Shutdown must enter and complete their lifecycle callbacks");
+		Require(bShutdownWaited && source.m_bShutdownAfterStop,
+			"Shutdown must retain App until every admitted Stop callback has returned");
+	}
+
+	void TestThrowingStopReleasesItsOperation()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		PrepareInitializedLifecycle(gate);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_stop = [](void*) { throw std::runtime_error("stop failure"); };
+		bool bThrew = false;
+		try
+		{
+			TProtocolBuffer buffer;
+			RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
+				c_stopCommandField), buffer, dependencies);
+		}
+		catch (const std::runtime_error& error)
+		{
+			bThrew = std::string(error.what()) == "stop failure";
+		}
+		Require(bThrew, "Stop must propagate its exception to the transport boundary");
+		std::string error;
+		Require(gate.TryBeginShutdown(error), "a failed Stop must still allow shutdown");
+		gate.WaitForShutdownDrain();
+		gate.CompleteShutdown();
 	}
 
 	TDecodedResponse InvokeStartPromptly(
@@ -2321,6 +2445,9 @@ int main()
 		TestViewportToolShortcutEventIsTypedAndValidated();
 		TestLifecycleGateDrainsStartAndOperationsBeforeShutdown();
 		TestFailedShutdownKeepsAdmissionClosedUntilRetry();
+		TestShutdownDrainsAnAdmittedStop();
+		TestStopWaitsForInitializationAndSkipsClosedSessions();
+		TestThrowingStopReleasesItsOperation();
 		TestStartAcknowledgesBeforeWorkerExitAndStopJoins();
 		TestImmediateStopAfterStartAcknowledgementCannotBeLost();
 		TestShutdownStopsAndJoinsWorkerBeforeShutdownRoutine();
