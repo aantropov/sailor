@@ -440,6 +440,35 @@ namespace
 		CFRelease(surface);
 	}
 
+	void TestPresentationDoesNotCapturePixelsAutomatically()
+	{
+		NativeSurface surface(64, 48);
+		MacLoopbackViewportPresenter presenter;
+		ViewportDescriptor viewport;
+		viewport.m_viewportId = 108;
+		viewport.m_width = 64;
+		viewport.m_height = 48;
+		viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		presenter.BindHostHandle(viewport.m_viewportId, LayerHandle([CAMetalLayer layer]));
+		Require(presenter.ImportSurface(viewport, surface.m_transport, 1, 1).IsOk(), "sampling test needs a real IOSurface");
+		FramePacket frame;
+		frame.m_viewportId = viewport.m_viewportId;
+		frame.m_connectionEpoch = 1;
+		frame.m_generation = 1;
+		frame.m_width = 64;
+		frame.m_height = 48;
+		for (uint32_t i = 1; i <= 120; ++i)
+		{
+			frame.m_frameIndex = i;
+			Require(presenter.PresentFrame(viewport.m_viewportId, frame).IsOk(), "ordinary presentation must succeed");
+			presenter.BuildViewportSummary(viewport.m_viewportId);
+			Require(!presenter.FindImportedState(viewport.m_viewportId)->m_hasFrameEvidence,
+				"presentation and status polling must not sample pixels automatically");
+			Require(presenter.FindImportedState(viewport.m_viewportId)->m_evidenceCaptureCount == 0,
+				"ordinary frames must never call the native pixel capture helper");
+		}
+	}
+
 	void TestMissingRendererFramesPreserveLastPresentation()
 	{
 		class Source : public IMacRendererFrameSourceProvider
@@ -769,6 +798,96 @@ namespace
 		}
 	};
 
+	void TestRequestedFrameEvidencePreservesPresentation()
+	{
+		CpuSource source;
+		MacLoopbackIOSurfaceProvider provider(&source);
+		MacLoopbackViewportPresenter presenter;
+		ViewportDescriptor viewport;
+		viewport.m_viewportId = 109;
+		viewport.m_width = 64;
+		viewport.m_height = 48;
+		viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		viewport.m_colorSpace = ColorSpace::Srgb;
+		viewport.m_presentMode = PresentMode::Mailbox;
+		MacViewportLoopbackBinding binding(viewport, provider, presenter);
+		presenter.BindHostHandle(viewport.m_viewportId, LayerHandle([CAMetalLayer layer]));
+		Require(binding.Create().IsOk(), "capture needs a real loopback surface");
+		Require(presenter.CaptureFrameEvidence(viewport.m_viewportId).m_nativeCode == 2125, "cold start cannot capture a frame");
+		Require(binding.PumpFrame().IsOk(), "first real frame must present");
+		auto state = presenter.FindImportedState(viewport.m_viewportId);
+		Require(state->m_evidenceCaptureCount == 0 && presenter.CaptureFrameEvidence(viewport.m_viewportId).IsOk(),
+			"one explicit request must capture the real frame");
+		Require(state->m_evidenceCaptureCount == 1 && state->m_evidenceFrameIndex == 1 &&
+			state->m_lastFrameEvidence.m_center.m_r == 1 && state->m_lastFrameEvidence.m_sampledPixelCount == 64,
+			"requested evidence must contain the presented frame's pixels and index");
+		auto allocation = state->m_nativeAllocation;
+		[(id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject waitUntilCompleted];
+		Require(binding.PumpFrame().IsOk(), "second real frame must present");
+		for (uint32_t i = 0; i < 100; ++i) presenter.BuildViewportSummary(viewport.m_viewportId);
+		Require(state->m_evidenceCaptureCount == 1 && state->m_evidenceFrameIndex == 1 && state->m_lastPresentedFrameIndex == 2,
+			"later presentation and polling must retain the old capture's explicit frame identity");
+		Require(presenter.CaptureFrameEvidence(viewport.m_viewportId).IsOk() && state->m_evidenceCaptureCount == 2 &&
+			state->m_evidenceFrameIndex == 2 && state->m_lastFrameEvidence.m_center.m_r == 2,
+			"the next explicit request must capture the new real pixels exactly once");
+
+		auto& importedSurface = const_cast<MacNativePresentationState*>(state)->m_importedSurface;
+		const auto savedSurface = importedSurface;
+		importedSurface->m_surfaceObject = 0;
+		const auto failedCapture = presenter.CaptureFrameEvidence(viewport.m_viewportId);
+		importedSurface = savedSurface;
+		Require(failedCapture.m_nativeCode == 2120 && state->m_evidenceCaptureCount == 3 && state->m_evidenceFrameIndex == 2 &&
+			presenter.GetLastFailure().IsOk() && binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 2,
+			"native diagnostic failure must preserve prior evidence and presentation state");
+		Require(presenter.CaptureFrameEvidence(viewport.m_viewportId).IsOk() && state->m_evidenceCaptureCount == 4,
+			"failed capture must allow a later explicit retry");
+		[(id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject waitUntilCompleted];
+		Require(binding.GetTransportBackend().BeginFrame(viewport, 1, 1).IsOk(), "next CPU source must prepare");
+		Require(presenter.CaptureFrameEvidence(viewport.m_viewportId).m_nativeCode == 2126 && state->m_evidenceCaptureCount == 4,
+			"prepared CPU writes must not be sampled as the previous exported frame");
+		FramePacket unpresented;
+		Require(binding.GetTransportBackend().ExportFrame(viewport, 1, 1, unpresented).IsOk(), "prepared CPU frame must export");
+		Require(presenter.CaptureFrameEvidence(viewport.m_viewportId).m_nativeCode == 2126 && state->m_evidenceCaptureCount == 4,
+			"new producer contents must not be sampled under an older presented frame index");
+		Require(presenter.PresentFrame(viewport.m_viewportId, unpresented).IsOk() && presenter.CaptureFrameEvidence(viewport.m_viewportId).IsOk(),
+			"presenting the completed frame must make capture available again");
+		Require(state->m_evidenceFrameIndex == 3 && state->m_lastFrameEvidence.m_center.m_r == 3, "capture must use the newly presented frame");
+		const auto resized = binding.Resize(80, 56);
+		Require(resized.IsOk(), "capture test must allow resize: " + resized.m_message);
+		state = presenter.FindImportedState(viewport.m_viewportId);
+		Require(!state->m_hasFrameEvidence && state->m_evidenceCaptureCount == 0 &&
+			presenter.CaptureFrameEvidence(viewport.m_viewportId).m_nativeCode == 2125, "new generation must not inherit stale evidence");
+		Require(binding.PumpFrame().IsOk() && presenter.CaptureFrameEvidence(viewport.m_viewportId).IsOk() &&
+			state->m_generation == 2 && state->m_evidenceFrameIndex == 1 && state->m_lastFrameEvidence.m_width == 80,
+			"resize recovery must capture its own generation, dimensions and frame");
+	}
+
+	void TestFrameEvidenceChannelOrderAndFormat()
+	{
+		NativeSurface surface(4, 4);
+		Require(IOSurfaceLock(surface.m_surface, 0, nullptr) == KERN_SUCCESS, "pixel fixture must lock for writing");
+		auto pixels = static_cast<uint8_t*>(IOSurfaceGetBaseAddress(surface.m_surface));
+		for (uint32_t i = 0; i < 16; ++i)
+		{
+			pixels[i * 4] = 0x11;
+			pixels[i * 4 + 1] = 0x22;
+			pixels[i * 4 + 2] = 0x33;
+			pixels[i * 4 + 3] = 0xff;
+		}
+		IOSurfaceUnlock(surface.m_surface, 0, nullptr);
+		MacNativeSurfaceFrameEvidence evidence;
+		const auto& handle = surface.m_transport.m_macSurfaces.front();
+		Require(CaptureMacIOSurfaceFrameEvidence(handle, 4, 4, PixelFormat::B8G8R8A8_UNorm, evidence).IsOk() &&
+			evidence.m_center.m_r == 0x33 && evidence.m_center.m_b == 0x11 && evidence.m_nonBlackPixelCount == 64,
+			"BGRA capture must preserve real channel values");
+		const auto bgraChecksum = evidence.m_checksum;
+		Require(CaptureMacIOSurfaceFrameEvidence(handle, 4, 4, PixelFormat::R8G8B8A8_UNorm, evidence).IsOk() &&
+			evidence.m_center.m_r == 0x11 && evidence.m_center.m_b == 0x33 && evidence.m_checksum != bgraChecksum,
+			"RGBA capture must account for channel order in samples and checksum");
+		Require(CaptureMacIOSurfaceFrameEvidence(handle, 4, 4, PixelFormat::R16G16B16A16_Float, evidence).m_nativeCode == 2127 &&
+			!evidence.m_hasReadablePixels && evidence.m_sampledPixelCount == 0, "unsupported format must not fabricate byte-color evidence");
+	}
+
 	void TestLoopbackDefersWritesUntilPresentationCompletes()
 	{
 		CpuSource source;
@@ -1029,6 +1148,7 @@ namespace
 				Require(ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 23, 11) ==
 					ExpectedProducerPatternBGRA8(first, 23, 11), "completed copy must publish the correct source pixels");
 				RequireNativeReleases(source.m_releases, 1, "completed source texture must release exactly once");
+				Require(presenter.CaptureFrameEvidence(viewport.m_viewportId).IsOk(), "completed native copy must allow explicit capture");
 				[(id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject waitUntilCompleted];
 				source.m_waitValue = 10;
 				Require(binding.PumpFrame().IsOk() && source.m_calls == 2, "next native copy must submit independently");
@@ -1036,6 +1156,9 @@ namespace
 				id<MTLTexture> retiredTexture = [[(id<MTLTexture>)allocation->m_producerTextureObject retain] autorelease];
 				Require(source.m_gate.signaledValue == 9 && retiredCopy.status != MTLCommandBufferStatusCompleted,
 					"old generation's copy must remain pending before resize");
+				Require(presenter.CaptureFrameEvidence(viewport.m_viewportId).m_nativeCode == 2126 &&
+					presenter.FindImportedState(viewport.m_viewportId)->m_evidenceCaptureCount == 1 && source.m_gate.signaledValue == 9,
+					"explicit capture must reject pending GPU writes without sampling or waiting for their event");
 				Require(binding.Resize(80, 56).IsOk() && !allocation.IsShared(), "resize must unregister and unimport the old allocation");
 				allocation.Clear();
 				Require(source.m_releases->load() == 1, "native pending copy must retain its source after owner destruction");
@@ -1521,6 +1644,9 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "PresentationDoesNotCapturePixelsAutomatically", TestPresentationDoesNotCapturePixelsAutomatically },
+		{ "RequestedFrameEvidencePreservesPresentation", TestRequestedFrameEvidencePreservesPresentation },
+		{ "FrameEvidenceChannelOrderAndFormat", TestFrameEvidenceChannelOrderAndFormat },
 		{ "MissingRendererFramesPreserveLastPresentation", TestMissingRendererFramesPreserveLastPresentation },
 		{ "InvalidIOSurfaceDoesNotPresentSyntheticPixels", TestInvalidIOSurfaceDoesNotPresentSyntheticPixels },
 		{ "DelayedProducerCopyPublicationAndRetirement", TestDelayedProducerCopyPublicationAndRetirement },

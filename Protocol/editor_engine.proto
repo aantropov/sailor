@@ -78,13 +78,14 @@ message ProtocolRequest {
 		Empty restart_runtime_gi_probes = 74;
 		Empty rebuild_runtime_gi_probes_scene = 75;
 		RuntimeGIProbesPreviewBudgetRequest set_runtime_gi_probes_preview_budget = 76;
+		ViewportIdRequest capture_remote_viewport_frame_evidence = 77;
 	}
 
 	reserved 3 to 9;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
-	reserved 77 to 99;
+	reserved 78 to 99;
 }
 
 message ProtocolResponse {

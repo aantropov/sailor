@@ -14783,6 +14783,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kRestartRuntimeGiProbes = 74,
     kRebuildRuntimeGiProbesScene = 75,
     kSetRuntimeGiProbesPreviewBudget = 76,
+    kCaptureRemoteViewportFrameEvidence = 77,
     COMMAND_NOT_SET = 0,
   };
   static inline const ProtocolRequest* internal_default_instance() {
@@ -14944,6 +14945,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kRestartRuntimeGiProbesFieldNumber = 74,
     kRebuildRuntimeGiProbesSceneFieldNumber = 75,
     kSetRuntimeGiProbesPreviewBudgetFieldNumber = 76,
+    kCaptureRemoteViewportFrameEvidenceFieldNumber = 77,
   };
   // uint64 request_id = 2;
   void clear_request_id() ;
@@ -16219,6 +16221,25 @@ class ProtocolRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest* _internal_mutable_set_runtime_gi_probes_preview_budget();
 
   public:
+  // .sailor.editor.v1.ViewportIdRequest capture_remote_viewport_frame_evidence = 77;
+  bool has_capture_remote_viewport_frame_evidence() const;
+  private:
+  bool _internal_has_capture_remote_viewport_frame_evidence() const;
+
+  public:
+  void clear_capture_remote_viewport_frame_evidence() ;
+  const ::sailor::editor::v1::ViewportIdRequest& capture_remote_viewport_frame_evidence() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::ViewportIdRequest* release_capture_remote_viewport_frame_evidence();
+  ::sailor::editor::v1::ViewportIdRequest* mutable_capture_remote_viewport_frame_evidence();
+  void set_allocated_capture_remote_viewport_frame_evidence(::sailor::editor::v1::ViewportIdRequest* value);
+  void unsafe_arena_set_allocated_capture_remote_viewport_frame_evidence(::sailor::editor::v1::ViewportIdRequest* value);
+  ::sailor::editor::v1::ViewportIdRequest* unsafe_arena_release_capture_remote_viewport_frame_evidence();
+
+  private:
+  const ::sailor::editor::v1::ViewportIdRequest& _internal_capture_remote_viewport_frame_evidence() const;
+  ::sailor::editor::v1::ViewportIdRequest* _internal_mutable_capture_remote_viewport_frame_evidence();
+
+  public:
   void clear_command();
   CommandCase command_case() const;
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ProtocolRequest)
@@ -16290,11 +16311,12 @@ class ProtocolRequest final : public ::google::protobuf::Message
   void set_has_restart_runtime_gi_probes();
   void set_has_rebuild_runtime_gi_probes_scene();
   void set_has_set_runtime_gi_probes_preview_budget();
+  void set_has_capture_remote_viewport_frame_evidence();
   inline bool has_command() const;
   inline void clear_has_command();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 68, 66,
+      1, 69, 67,
       0, 11>
       _table_;
 
@@ -16383,6 +16405,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
       ::sailor::editor::v1::Empty* restart_runtime_gi_probes_;
       ::sailor::editor::v1::Empty* rebuild_runtime_gi_probes_scene_;
       ::sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest* set_runtime_gi_probes_preview_budget_;
+      ::sailor::editor::v1::ViewportIdRequest* capture_remote_viewport_frame_evidence_;
     } command_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::uint32_t _oneof_case_[1];
@@ -22488,6 +22511,85 @@ inline ::sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest* ProtocolReques
 inline ::sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest* ProtocolRequest::mutable_set_runtime_gi_probes_preview_budget() ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest* _msg = _internal_mutable_set_runtime_gi_probes_preview_budget();
   // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.set_runtime_gi_probes_preview_budget)
+  return _msg;
+}
+
+// .sailor.editor.v1.ViewportIdRequest capture_remote_viewport_frame_evidence = 77;
+inline bool ProtocolRequest::has_capture_remote_viewport_frame_evidence() const {
+  return command_case() == kCaptureRemoteViewportFrameEvidence;
+}
+inline bool ProtocolRequest::_internal_has_capture_remote_viewport_frame_evidence() const {
+  return command_case() == kCaptureRemoteViewportFrameEvidence;
+}
+inline void ProtocolRequest::set_has_capture_remote_viewport_frame_evidence() {
+  _impl_._oneof_case_[0] = kCaptureRemoteViewportFrameEvidence;
+}
+inline void ProtocolRequest::clear_capture_remote_viewport_frame_evidence() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kCaptureRemoteViewportFrameEvidence) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.capture_remote_viewport_frame_evidence_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.capture_remote_viewport_frame_evidence_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::ViewportIdRequest* ProtocolRequest::release_capture_remote_viewport_frame_evidence() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.capture_remote_viewport_frame_evidence)
+  if (command_case() == kCaptureRemoteViewportFrameEvidence) {
+    clear_has_command();
+    auto* temp = _impl_.command_.capture_remote_viewport_frame_evidence_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.capture_remote_viewport_frame_evidence_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::ViewportIdRequest& ProtocolRequest::_internal_capture_remote_viewport_frame_evidence() const {
+  return command_case() == kCaptureRemoteViewportFrameEvidence ? *_impl_.command_.capture_remote_viewport_frame_evidence_ : reinterpret_cast<::sailor::editor::v1::ViewportIdRequest&>(::sailor::editor::v1::_ViewportIdRequest_default_instance_);
+}
+inline const ::sailor::editor::v1::ViewportIdRequest& ProtocolRequest::capture_remote_viewport_frame_evidence() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.capture_remote_viewport_frame_evidence)
+  return _internal_capture_remote_viewport_frame_evidence();
+}
+inline ::sailor::editor::v1::ViewportIdRequest* ProtocolRequest::unsafe_arena_release_capture_remote_viewport_frame_evidence() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.capture_remote_viewport_frame_evidence)
+  if (command_case() == kCaptureRemoteViewportFrameEvidence) {
+    clear_has_command();
+    auto* temp = _impl_.command_.capture_remote_viewport_frame_evidence_;
+    _impl_.command_.capture_remote_viewport_frame_evidence_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_capture_remote_viewport_frame_evidence(::sailor::editor::v1::ViewportIdRequest* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_capture_remote_viewport_frame_evidence();
+    _impl_.command_.capture_remote_viewport_frame_evidence_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.capture_remote_viewport_frame_evidence)
+}
+inline ::sailor::editor::v1::ViewportIdRequest* ProtocolRequest::_internal_mutable_capture_remote_viewport_frame_evidence() {
+  if (command_case() != kCaptureRemoteViewportFrameEvidence) {
+    clear_command();
+    set_has_capture_remote_viewport_frame_evidence();
+    _impl_.command_.capture_remote_viewport_frame_evidence_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::ViewportIdRequest>(GetArena());
+  }
+  return _impl_.command_.capture_remote_viewport_frame_evidence_;
+}
+inline ::sailor::editor::v1::ViewportIdRequest* ProtocolRequest::mutable_capture_remote_viewport_frame_evidence() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::ViewportIdRequest* _msg = _internal_mutable_capture_remote_viewport_frame_evidence();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.capture_remote_viewport_frame_evidence)
   return _msg;
 }
 

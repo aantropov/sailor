@@ -284,6 +284,7 @@ namespace Sailor::EditorRemote
 		[destinationTexture replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 withBytes:bytes bytesPerRow:bytesPerRow];
 		outFrameInfo.m_rendererTextureToken = NextRendererTextureToken();
 		outFrameInfo.m_producerCopyToken = NextProducerCopyToken();
+		allocation.m_currentCopyToken = outFrameInfo.m_producerCopyToken;
 		outFrameInfo.m_usedRendererIntermediateTexture = false;
 		outFrameInfo.m_usedGpuCopyIntoProducerTexture = false;
 		outFrameInfo.m_usedCpuUploadIntoProducerTexture = true;
@@ -354,6 +355,7 @@ namespace Sailor::EditorRemote
 
 			outFrameInfo.m_rendererTextureToken = NextRendererTextureToken();
 			outFrameInfo.m_producerCopyToken = NextProducerCopyToken();
+			allocation.m_currentCopyToken = outFrameInfo.m_producerCopyToken;
 			outFrameInfo.m_crossApiWaitValue = sharedEventValue;
 			outFrameInfo.m_usedRendererIntermediateTexture = true;
 			outFrameInfo.m_usedGpuCopyIntoProducerTexture = true;
@@ -622,11 +624,16 @@ namespace Sailor::EditorRemote
 		return bindNativeLayer();
 	}
 
-	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle& surfaceHandle, uint32_t width, uint32_t height, MacNativeSurfaceFrameEvidence& outEvidence)
+	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle& surfaceHandle, uint32_t width, uint32_t height,
+		PixelFormat pixelFormat, MacNativeSurfaceFrameEvidence& outEvidence)
 	{
 		outEvidence = {};
 		outEvidence.m_width = width;
 		outEvidence.m_height = height;
+		if (pixelFormat != PixelFormat::B8G8R8A8_UNorm && pixelFormat != PixelFormat::R8G8B8A8_UNorm)
+		{
+			return MakeFailure(2127, "macOS frame evidence capture requires BGRA8 or RGBA8 pixels");
+		}
 		if (!surfaceHandle.IsValid() || surfaceHandle.m_surfaceObject == 0 || width == 0 || height == 0)
 		{
 			return MakeFailure(2120, "macOS frame evidence capture requires a valid IOSurface handle");
@@ -671,9 +678,9 @@ namespace Sailor::EditorRemote
 			MacNativeSurfacePixelSample sample{};
 			const size_t offset = static_cast<size_t>(y) * bytesPerRow + static_cast<size_t>(x) * 4u;
 			const uint8_t* pixel = baseAddress + offset;
-			sample.m_b = pixel[0];
+			sample.m_b = pixel[pixelFormat == PixelFormat::B8G8R8A8_UNorm ? 0 : 2];
 			sample.m_g = pixel[1];
-			sample.m_r = pixel[2];
+			sample.m_r = pixel[pixelFormat == PixelFormat::B8G8R8A8_UNorm ? 2 : 0];
 			sample.m_a = pixel[3];
 			return sample;
 		};
@@ -895,7 +902,7 @@ namespace Sailor::EditorRemote
 		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS native layer present is unavailable on this platform");
 	}
 
-	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle&, uint32_t, uint32_t, MacNativeSurfaceFrameEvidence&)
+	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle&, uint32_t, uint32_t, PixelFormat, MacNativeSurfaceFrameEvidence&)
 	{
 		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS frame evidence capture is unavailable on this platform");
 	}

@@ -965,6 +965,18 @@ namespace SailorEditor.Services
 #endif
         }
 
+        public Task<string> CaptureRemoteViewportFrameEvidenceAsync(
+            ulong viewportId,
+            CancellationToken cancellationToken = default)
+        {
+            if (State != EngineLifecycleState.Running)
+            {
+                throw new InvalidOperationException("The Engine is not running.");
+            }
+            return protocolClient.CaptureRemoteViewportFrameEvidenceAsync(
+                viewportId, cancellationToken);
+        }
+
         public string GetRemoteViewportDiagnostics(ulong viewportId)
         {
 #if WINDOWS || MACCATALYST

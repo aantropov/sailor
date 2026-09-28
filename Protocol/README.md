@@ -73,6 +73,14 @@ the component by its full `InstanceId`, execute through the regular Editor
 worker, and marshal to the Engine main thread. They never persist runtime
 parameter values into scene or controller YAML.
 
+`get_remote_viewport_diagnostics` reads counters and any previously requested
+pixel evidence; it never samples the surface. `capture_remote_viewport_frame_evidence`
+is a separate, explicit macOS diagnostic request. It samples the last presented
+IOSurface frame and returns its frame/epoch/generation with pixel statistics.
+An absent frame, pending producer copy, changed-but-unpresented surface or native
+capture error fails that request without failing the viewport session. Other
+platforms report unsupported. This command stays at protocol version 1.
+
 `create_model_instance` performs one atomic Engine-side model drop. With
 `create_hierarchy = true`, the Engine creates the asset root and the editable
 parent-before-child glTF hierarchy, applies each node's local TRS, and attaches

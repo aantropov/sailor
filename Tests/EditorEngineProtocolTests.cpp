@@ -798,6 +798,32 @@ namespace
 		return DecodeResponse(response.GetData(), response.GetSize());
 	}
 
+	void TestViewportEvidenceRequestReportsNoFrame()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "capture protocol test must initialize its lifecycle");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies;
+		dependencies.m_lifecycleGate = &gate;
+		std::string viewport;
+		AppendVarintField(viewport, 1u, 1u);
+		TProtocolBuffer buffer;
+		const auto response = RequireProtocolResponse(MakeRequest(1u, 151,
+			sailor::editor::v1::ProtocolRequest::kCaptureRemoteViewportFrameEvidence, viewport), buffer, dependencies);
+		Require(!response.m_success && response.m_requestId == 151 && response.m_resultField == 0,
+			"capture without a viewport must return a correlated request failure, not empty successful evidence");
+#if defined(__APPLE__)
+		Require(response.m_error == "Viewport does not exist.", "capture command must reach the native viewport handler");
+#else
+		Require(response.m_error == "Viewport pixel evidence is only available on macOS.", "other platforms must report unsupported capture");
+#endif
+		TProtocolBuffer diagnostics;
+		Require(RequireProtocolResponse(MakeRequest(1u, 152,
+			sailor::editor::v1::ProtocolRequest::kGetRemoteViewportDiagnostics, viewport), diagnostics, dependencies).m_success,
+			"ordinary diagnostics must remain a separate read-only query after capture failure");
+	}
+
 	void TestInvalidArgumentsResetOutputs()
 	{
 		uint8_t requestByte = 0;
@@ -2276,6 +2302,7 @@ int main()
 	try
 	{
 		TestInvalidArgumentsResetOutputs();
+		TestViewportEvidenceRequestReportsNoFrame();
 		TestOversizedAndMalformedPayloads();
 		TestCommandExceptionIsContainedByTransportBoundary();
 		TestEnvelopeValidation();

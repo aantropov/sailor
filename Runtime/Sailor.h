@@ -90,6 +90,7 @@ namespace Sailor
 		SAILOR_API static bool DestroyEditorRemoteViewport(uint64_t viewportId);
 		SAILOR_API static uint32_t GetEditorRemoteViewportState(uint64_t viewportId);
 		SAILOR_API static uint32_t GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics);
+		SAILOR_API static bool CaptureEditorRemoteViewportFrameEvidence(uint64_t viewportId, std::string& outDiagnostic);
 		SAILOR_API static bool RetryEditorRemoteViewport(uint64_t viewportId);
 		SAILOR_API static bool SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hostHandleKind, uint64_t hostHandleValue);
 		SAILOR_API static bool SetEditorRemoteViewportWindowsHost(uint64_t viewportId, void* swapChainPanelInspectable, float compositionScale);

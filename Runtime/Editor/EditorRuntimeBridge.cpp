@@ -1273,6 +1273,36 @@ uint32_t App::GetEditorRemoteViewportState(uint64_t viewportId)
 	return static_cast<uint32_t>(binding->m_binding.GetRuntimeSession().GetState());
 }
 
+bool App::CaptureEditorRemoteViewportFrameEvidence(uint64_t viewportId, std::string& outDiagnostic)
+{
+#if defined(__APPLE__)
+	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
+	auto binding = FindRemoteViewportBinding(viewportId);
+	if (!binding)
+	{
+		outDiagnostic = "Viewport does not exist.";
+		return false;
+	}
+	std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
+	if (!bindingLock.owns_lock())
+	{
+		outDiagnostic = "Viewport is busy; retry the capture.";
+		return false;
+	}
+	if (!IsCurrentRemoteViewportBinding(viewportId, binding))
+	{
+		outDiagnostic = "Viewport was replaced before capture.";
+		return false;
+	}
+	auto result = binding->m_presenter.CaptureFrameEvidence(viewportId);
+	outDiagnostic = result.IsOk() ? binding->m_presenter.BuildViewportSummary(viewportId) : result.m_message;
+	return result.IsOk();
+#else
+	outDiagnostic = "Viewport pixel evidence is only available on macOS.";
+	return false;
+#endif
+}
+
 uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics)
 {
 	if (!diagnostics)

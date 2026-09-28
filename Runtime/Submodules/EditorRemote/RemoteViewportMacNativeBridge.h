@@ -179,5 +179,6 @@ namespace Sailor::EditorRemote
 
 	Failure BindMacNativeLayer(const MacNativeHostHandle& hostHandle, uint32_t width, uint32_t height, PixelFormat pixelFormat, TUniquePtr<MacNativeLayerBinding>& inOutBinding);
 	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding& inOutBinding, const MacIOSurfaceHandle& surfaceHandle, const FramePacket& frame, MacNativeBridgePresentResult& outResult, MacIOSurfaceAllocation* allocation = nullptr);
-	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle& surfaceHandle, uint32_t width, uint32_t height, MacNativeSurfaceFrameEvidence& outEvidence);
+	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle& surfaceHandle, uint32_t width, uint32_t height,
+		PixelFormat pixelFormat, MacNativeSurfaceFrameEvidence& outEvidence);
 }

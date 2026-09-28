@@ -755,6 +755,52 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public async Task ViewportEvidence_RequiresItsOwnExplicitRequest()
+    {
+        var requests = new List<ProtocolRequest>();
+        var lanes = new List<EngineProtocolInvocationKind>();
+        using var client = CreateClient(request =>
+        {
+            requests.Add(request);
+            return Success(request, response => response.StringResult = new StringResult
+            {
+                HasValue = true,
+                Value = request.CommandCase == ProtocolRequest.CommandOneofCase.CaptureRemoteViewportFrameEvidence
+                    ? "captureFrame=7 captureGen=2"
+                    : "presentCount=7"
+            });
+        }, lanes.Add);
+
+        Assert.Equal("presentCount=7", await client.GetRemoteViewportDiagnosticsAsync(12));
+        Assert.Equal("captureFrame=7 captureGen=2", await client.CaptureRemoteViewportFrameEvidenceAsync(12));
+        Assert.Equal("presentCount=7", await client.GetRemoteViewportDiagnosticsAsync(12));
+        Assert.Equal(new[]
+        {
+            ProtocolRequest.CommandOneofCase.GetRemoteViewportDiagnostics,
+            ProtocolRequest.CommandOneofCase.CaptureRemoteViewportFrameEvidence,
+            ProtocolRequest.CommandOneofCase.GetRemoteViewportDiagnostics
+        }, requests.Select(request => request.CommandCase));
+        Assert.All(requests, request => Assert.Equal(1u, request.ProtocolVersion));
+        Assert.Equal(12ul, requests[1].CaptureRemoteViewportFrameEvidence.ViewportId);
+        Assert.All(lanes, lane => Assert.Equal(EngineProtocolInvocationKind.Interactive, lane));
+    }
+
+    [Fact]
+    public async Task ViewportEvidence_PropagatesNativeCaptureFailure()
+    {
+        using var client = CreateClient(request => new ProtocolResponse
+        {
+            ProtocolVersion = request.ProtocolVersion,
+            RequestId = request.RequestId,
+            Success = false,
+            Error = "viewport producer frame is pending presentation"
+        });
+        var error = await Assert.ThrowsAsync<EngineProtocolException>(
+            () => client.CaptureRemoteViewportFrameEvidenceAsync(1));
+        Assert.Contains("pending presentation", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ViewportInputAsync_UsesBoundedInteractiveTransportTimeout()
     {
         EngineProtocolInvocationKind? capturedKind = null;

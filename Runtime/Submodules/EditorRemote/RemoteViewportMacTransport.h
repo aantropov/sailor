@@ -124,6 +124,8 @@ namespace Sailor::EditorRemote
 		uint64_t m_lastWrittenFrameIndex = 0;
 		uint64_t m_lastRendererTextureToken = 0;
 		uint64_t m_lastProducerCopyToken = 0;
+		// Native writes can be newer than the last exported frame.
+		uint64_t m_currentCopyToken = 0;
 		uint64_t m_lastCrossApiAcquireValue = 0;
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		ColorSpace m_colorSpace = ColorSpace::Unknown;
@@ -168,6 +170,9 @@ namespace Sailor::EditorRemote
 		uint64_t m_nativeLayerToken = 0;
 		uint64_t m_currentDrawableToken = 0;
 		uint64_t m_presentedFrameCount = 0;
+		FrameIndex m_lastPresentedFrameIndex = 0;
+		FrameIndex m_evidenceFrameIndex = 0;
+		uint64_t m_evidenceCaptureCount = 0;
 		uint32_t m_width = 0;
 		uint32_t m_height = 0;
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
@@ -854,20 +859,38 @@ namespace Sailor::EditorRemote
 			}
 
 			state.m_presentedFrameCount++;
-			const bool shouldCaptureEvidence = !state.m_hasFrameEvidence || state.m_presentedFrameCount <= 3 || (state.m_presentedFrameCount % 60u) == 0u;
-			if (shouldCaptureEvidence && state.m_importedSurface.has_value())
-			{
-				MacNativeSurfaceFrameEvidence evidence{};
-				auto evidenceResult = CaptureMacIOSurfaceFrameEvidence(*state.m_importedSurface, state.m_width, state.m_height, evidence);
-				if (evidenceResult.IsOk())
-				{
-					state.m_lastFrameEvidence = evidence;
-					state.m_hasFrameEvidence = true;
-				}
-			}
+			state.m_lastPresentedFrameIndex = frame.m_frameIndex;
 			m_lastPresentedFrame = frame;
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
+		}
+
+		Failure CaptureFrameEvidence(ViewportId viewportId)
+		{
+			auto it = m_importedStates.Find(viewportId);
+			if (it == m_importedStates.end() || !it.Value()->m_importedSurface || it.Value()->m_lastPresentedFrameIndex == 0)
+			{
+				return Failure::FromDomain(ErrorDomain::Session, 2125, "macOS viewport has no presented frame to capture");
+			}
+			auto& state = *it.Value();
+			if (state.m_nativeAllocation && (state.m_nativeAllocation->m_copyCommandBufferObject != 0 ||
+				state.m_nativeAllocation->m_currentCopyToken != state.m_nativeAllocation->m_lastProducerCopyToken ||
+				state.m_nativeAllocation->m_lastWrittenFrameIndex != state.m_lastPresentedFrameIndex))
+			{
+				return Failure::FromDomain(ErrorDomain::Session, 2126, "macOS viewport producer frame is pending presentation");
+			}
+
+			MacNativeSurfaceFrameEvidence evidence;
+			++state.m_evidenceCaptureCount;
+			auto result = CaptureMacIOSurfaceFrameEvidence(*state.m_importedSurface, state.m_width, state.m_height,
+				state.m_pixelFormat, evidence);
+			if (result.IsOk())
+			{
+				state.m_lastFrameEvidence = evidence;
+				state.m_evidenceFrameIndex = state.m_lastPresentedFrameIndex;
+				state.m_hasFrameEvidence = true;
+			}
+			return result;
 		}
 
 		void ResetViewport(ViewportId viewportId) override
@@ -903,6 +926,7 @@ namespace Sailor::EditorRemote
 			ss << "nativeLayer=" << (state.m_usesRealCAMetalLayer ? 1 : 0)
 				<< " host=" << static_cast<uint32_t>(state.m_hostHandle.m_kind)
 				<< " presentCount=" << state.m_presentedFrameCount
+				<< " captureCount=" << state.m_evidenceCaptureCount
 				<< " drawableToken=" << state.m_currentDrawableToken
 				<< " size=" << state.m_width << "x" << state.m_height;
 			if (state.m_hasFrameEvidence)
@@ -910,7 +934,10 @@ namespace Sailor::EditorRemote
 				const auto& evidence = state.m_lastFrameEvidence;
 				const bool hasNonBlackEvidence = evidence.m_nonBlackPixelCount != 0;
 				const uint32_t nonBlackPct = evidence.m_sampledPixelCount != 0 ? (evidence.m_nonBlackPixelCount * 100u) / evidence.m_sampledPixelCount : 0u;
-				ss << " readable=" << (evidence.m_hasReadablePixels ? 1 : 0)
+				ss << " captureFrame=" << state.m_evidenceFrameIndex
+					<< " captureEpoch=" << state.m_epoch
+					<< " captureGen=" << state.m_generation
+					<< " readable=" << (evidence.m_hasReadablePixels ? 1 : 0)
 					<< " nonBlack=" << (hasNonBlackEvidence ? 1 : 0)
 					<< " variance=" << (evidence.m_hasVisualVariance ? 1 : 0)
 					<< " avgLuma=" << evidence.m_averageLuma

@@ -788,6 +788,20 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.GetRemoteViewportDiagnostics));
 
+    public async Task<string> CaptureRemoteViewportFrameEvidenceAsync(
+        ulong viewportId,
+        CancellationToken cancellationToken = default)
+        => ReadString(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        CaptureRemoteViewportFrameEvidence =
+                            new ViewportIdRequest { ViewportId = viewportId }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.CaptureRemoteViewportFrameEvidence));
+
     public async Task<bool> RetryRemoteViewportAsync(
         ulong viewportId,
         CancellationToken cancellationToken = default)
@@ -1525,6 +1539,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 ProtocolRequest.CommandOneofCase.DestroyRemoteViewport or
                 ProtocolRequest.CommandOneofCase.GetRemoteViewportState or
                 ProtocolRequest.CommandOneofCase.GetRemoteViewportDiagnostics or
+                ProtocolRequest.CommandOneofCase.CaptureRemoteViewportFrameEvidence or
                 ProtocolRequest.CommandOneofCase.RetryRemoteViewport or
             ProtocolRequest.CommandOneofCase.SetRemoteViewportMacHostHandle or
                 ProtocolRequest.CommandOneofCase.SendRemoteViewportInput or
