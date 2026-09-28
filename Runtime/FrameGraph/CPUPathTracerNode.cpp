@@ -177,14 +177,121 @@ namespace
 const char* CPUPathTracerNode::m_name = "CPUPathTracerNode";
 #endif
 
+CPUPathTracerNode::CameraState& CPUPathTracerNode::GetCameraState(uint32_t cameraIndex)
+{
+	auto& camera = m_cameras[cameraIndex];
+	if (!camera) camera = TUniquePtr<CameraState>::Make();
+	m_lastCameraIndex = cameraIndex;
+	return *camera;
+}
+
+bool CPUPathTracerNode::ApplyCompletedReadback(CameraState& camera,
+	const RHICubemapPtr& environment, const RHICubemapPtr& diffuseEnvironment)
+{
+	if (!camera.m_pendingReadback) return false;
+	auto& resources = *camera.m_pendingReadback;
+	const auto status = resources.m_readbackCompletion->GetStatus();
+	if (status == EFenceStatus::Pending) return false;
+
+	const bool bCurrent = status == EFenceStatus::Finished &&
+		resources.m_environment.m_source == environment &&
+		resources.m_diffuseEnvironment.m_source == diffuseEnvironment;
+	if (bCurrent)
+	{
+		camera.m_pathTracer.ClearRuntimeEnvironment();
+		auto apply = [&](const CubemapReadbackState& readback, bool bDiffuse)
+		{
+			if (!readback.m_source) return;
+			TVector<TVector<vec4>> faces;
+			faces.Resize(6);
+			const size_t facePixels = static_cast<size_t>(readback.m_extent.x) * readback.m_extent.y;
+			for (uint32_t face = 0; face < 6; ++face)
+			{
+				const auto* src = static_cast<const uint8_t*>(readback.m_faceBuffers[face]->GetPointer());
+				faces[face].Resize(facePixels);
+				for (size_t i = 0; i < facePixels; ++i)
+					faces[face][i] = DecodeR16G16B16A16_SFLOAT(src + i * 4 * sizeof(uint16_t));
+			}
+			const auto image = ConvertCubemapFacesToEquirect(faces, readback.m_extent);
+			const uvec2 extent(readback.m_extent.x * 2u, readback.m_extent.y);
+			if (bDiffuse) camera.m_pathTracer.SetRuntimeDiffuseEnvironmentLinear(image, extent);
+			else camera.m_pathTracer.SetRuntimeEnvironmentLinear(image, extent);
+		};
+		apply(resources.m_environment, false);
+		apply(resources.m_diffuseEnvironment, true);
+	}
+	else if (status == EFenceStatus::Failed)
+	{
+		camera.m_environmentSource.Clear();
+		camera.m_diffuseEnvironmentSource.Clear();
+	}
+	camera.m_pendingReadback.Clear();
+	return bCurrent;
+}
+
+void CPUPathTracerNode::QueueEnvironmentReadback(CameraState& camera, TRefPtr<SubmissionResources> resources,
+	RHICommandListPtr commandList, const RHISceneViewSnapshot& sceneView,
+	RHICubemapPtr environment, RHICubemapPtr diffuseEnvironment)
+{
+	if (!environment && !diffuseEnvironment)
+	{
+		camera.m_pendingReadback.Clear();
+		camera.m_environmentSource.Clear();
+		camera.m_diffuseEnvironmentSource.Clear();
+		camera.m_pathTracer.ClearRuntimeEnvironment();
+		return;
+	}
+	if (camera.m_pendingReadback) return;
+	if (camera.m_environmentSource == environment && camera.m_diffuseEnvironmentSource == diffuseEnvironment &&
+		sceneView.m_frame - camera.m_lastQueuedFrame < 8u)
+	{
+		return;
+	}
+
+	auto& driver = Renderer::GetDriver();
+	auto commands = Renderer::GetDriverCommands();
+	auto queue = [&](CubemapReadbackState& readback, RHICubemapPtr cubemap)
+	{
+		readback.m_source = cubemap;
+		if (!cubemap) return;
+		readback.m_mipLevel = 0;
+		auto mip = cubemap;
+		while (mip->GetExtent().x > 64)
+		{
+			auto next = cubemap->GetMipLevel(readback.m_mipLevel + 1);
+			if (!next) break;
+			++readback.m_mipLevel;
+			mip = next;
+		}
+		readback.m_extent = uvec2(mip->GetExtent());
+		readback.m_faceBuffers.Resize(6);
+		const size_t size = static_cast<size_t>(readback.m_extent.x) * readback.m_extent.y * 4 * sizeof(uint16_t);
+		for (uint32_t face = 0; face < 6; ++face)
+		{
+			auto& buffer = readback.m_faceBuffers[face];
+			if (!buffer || buffer->GetSize() != size)
+				buffer = driver->CreateBuffer(size, EBufferUsageBit::BufferTransferDst_Bit,
+					EMemoryPropertyBit::HostCoherent | EMemoryPropertyBit::HostVisible);
+			auto texture = cubemap->GetFace(face, readback.m_mipLevel);
+			commands->ImageMemoryBarrier(commandList, texture, EImageLayout::TransferSrcOptimal);
+			commands->CopyImageToBuffer(commandList, texture, buffer);
+		}
+	};
+	queue(resources->m_environment, environment);
+	queue(resources->m_diffuseEnvironment, diffuseEnvironment);
+	commands->MemoryBarrier(commandList, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+		static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+	resources->m_readbackCompletion = sceneView.m_submissionContext->GetOrCreateFrameCompletion();
+	camera.m_pendingReadback = resources;
+	camera.m_environmentSource = environment;
+	camera.m_diffuseEnvironmentSource = diffuseEnvironment;
+	camera.m_lastQueuedFrame = sceneView.m_frame;
+}
+
 void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 	ResetDrawCallStats();
-
-	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
-	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdTransfer);
 
 	auto getFloatParam = [this](const char* name, float defaultValue) -> float
 	{
@@ -192,136 +299,27 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		return m_floatParams.ContainsKey(key) ? m_floatParams[key] : defaultValue;
 	};
 
-	const bool bEnabled = getFloatParam("enabled", 0.0f) > 0.5f;
-	if (!bEnabled || IsSceneViewDebugVisualization(sceneView.m_renderMode))
+	if (getFloatParam("enabled", 0.0f) <= 0.5f || IsSceneViewDebugVisualization(sceneView.m_renderMode) ||
+		!sceneView.m_submissionContext || !sceneView.m_camera || sceneView.m_pathTracerProxies.IsEmpty())
 	{
-		commands->EndDebugRegion(commandList);
 		return;
 	}
 
-	auto queueCubemapReadback = [&](CubemapReadbackState& state, RHI::RHICubemapPtr cubemap)
-	{
-		if (!cubemap)
-		{
-			state = {};
-			return;
-		}
-
-		const uint32_t EnvUpdateIntervalFrames = 8u;
-		const uint32_t TargetEnvResolution = 64u;
-		bool bForceRefresh = false;
-
-		if (state.m_source != cubemap)
-		{
-			state = {};
-			state.m_source = cubemap;
-			state.m_faceBuffers.Resize(6);
-			bForceRefresh = true;
-		}
-
-		uint32_t mipLevel = 0u;
-		auto mipTexture = cubemap;
-		while (mipTexture && (uint32_t)mipTexture->GetExtent().x > TargetEnvResolution)
-		{
-			auto nextMip = cubemap->GetMipLevel(mipLevel + 1u);
-			if (!nextMip)
-			{
-				break;
-			}
-			++mipLevel;
-			mipTexture = nextMip;
-		}
-
-		const glm::uvec2 mipExtent((uint32_t)mipTexture->GetExtent().x, (uint32_t)mipTexture->GetExtent().y);
-		if (state.m_mipLevel != mipLevel || state.m_extent != mipExtent)
-		{
-			state.m_mipLevel = mipLevel;
-			state.m_extent = mipExtent;
-			state.m_faceBuffers.Resize(6);
-			bForceRefresh = true;
-		}
-
-		const bool bIntervalRefresh = !bForceRefresh && (sceneView.m_frame - state.m_lastQueuedFrame) >= EnvUpdateIntervalFrames;
-		if (!bForceRefresh && !bIntervalRefresh)
-		{
-			return;
-		}
-
-		const uint64_t requiredSize = (uint64_t)state.m_extent.x * (uint64_t)state.m_extent.y * 4ull * sizeof(uint16_t);
-		for (uint32_t face = 0; face < 6; ++face)
-		{
-			if (!state.m_faceBuffers[face] || state.m_faceBuffers[face]->GetSize() != requiredSize)
-			{
-				state.m_faceBuffers[face] = driver->CreateBuffer(requiredSize,
-					EBufferUsageBit::BufferTransferDst_Bit,
-					EMemoryPropertyBit::HostCoherent | EMemoryPropertyBit::HostVisible);
-			}
-
-			auto faceTexture = cubemap->GetFace(face, mipLevel);
-			commands->ImageMemoryBarrier(commandList, faceTexture, EImageLayout::TransferSrcOptimal);
-			commands->CopyImageToBuffer(commandList, faceTexture, state.m_faceBuffers[face]);
-		}
-
-		state.m_lastQueuedFrame = sceneView.m_frame;
-		state.m_bPendingGpuReadback = true;
-	};
-
-	auto applyCubemapReadback = [&](CubemapReadbackState& state, bool bDiffuse)
-	{
-		if (!state.m_bPendingGpuReadback)
-		{
-			return;
-		}
-
-		TVector<TVector<vec4>> faces;
-		faces.Resize(6);
-		const uint64_t pixelStride = 4ull * sizeof(uint16_t);
-		const uint64_t facePixels = (uint64_t)state.m_extent.x * (uint64_t)state.m_extent.y;
-		for (uint32_t face = 0; face < 6; ++face)
-		{
-			const uint8_t* src = reinterpret_cast<const uint8_t*>(state.m_faceBuffers[face]->GetPointer());
-			faces[face].Resize(facePixels);
-			for (uint64_t i = 0; i < facePixels; ++i)
-			{
-				faces[face][i] = DecodeR16G16B16A16_SFLOAT(src + i * pixelStride);
-			}
-		}
-
-		const TVector<vec4> equirect = ConvertCubemapFacesToEquirect(faces, state.m_extent);
-		const glm::uvec2 equirectExtent((uint32_t)(std::max)(1u, state.m_extent.x * 2u), (uint32_t)(std::max)(1u, state.m_extent.y));
-		if (bDiffuse)
-		{
-			m_pathTracer.SetRuntimeDiffuseEnvironmentLinear(equirect, equirectExtent);
-		}
-		else
-		{
-			m_pathTracer.SetRuntimeEnvironmentLinear(equirect, equirectExtent);
-		}
-
-		state.m_bPendingGpuReadback = false;
-	};
-
-	RHI::RHIResourcePtr colorResource = GetRHIResource("color");
-	RHI::RHISurfacePtr dstSurface = colorResource.DynamicCast<RHISurface>();
-	RHI::RHITexturePtr dst = dstSurface ? dstSurface->GetResolved() : colorResource.DynamicCast<RHI::RHITexture>();
+	auto colorResource = GetRHIResource("color");
+	const auto dstSurface = colorResource.DynamicCast<RHISurface>();
+	const auto dst = dstSurface ? dstSurface->GetResolved() : colorResource.DynamicCast<RHITexture>();
 	const bool bUseMsaaTarget = dstSurface && dstSurface->NeedsResolve();
+	if (!dst) return;
 
-	if (!dst || sceneView.m_pathTracerProxies.Num() == 0)
-	{
-		commands->EndDebugRegion(commandList);
-		return;
-	}
-
-	if (!sceneView.m_camera)
-	{
-		commands->EndDebugRegion(commandList);
-		return;
-	}
-
-	applyCubemapReadback(m_environmentReadback, false);
-	applyCubemapReadback(m_diffuseEnvironmentReadback, true);
-	queueCubemapReadback(m_environmentReadback, frameGraph->GetSampler("g_rawEnvCubemap").DynamicCast<RHICubemap>());
-	queueCubemapReadback(m_diffuseEnvironmentReadback, frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>());
+	auto& driver = Renderer::GetDriver();
+	auto commands = Renderer::GetDriverCommands();
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdTransfer);
+	auto& camera = GetCameraState(sceneView.m_cameraIndex);
+	auto resources = sceneView.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(this, sceneView.m_cameraIndex, 0);
+	const auto environment = frameGraph->GetSampler("g_rawEnvCubemap").DynamicCast<RHICubemap>();
+	const auto diffuseEnvironment = frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>();
+	ApplyCompletedReadback(camera, environment, diffuseEnvironment);
+	QueueEnvironmentReadback(camera, resources, commandList, sceneView, environment, diffuseEnvironment);
 
 	const uint32_t spp = (std::max)(1u, (uint32_t)std::lround(getFloatParam("samplesPerFrame", 1.0f)));
 	const uint32_t maxBounces = (std::max)(0u, (uint32_t)std::lround(getFloatParam("maxBounces", 2.0f)));
@@ -356,97 +354,101 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	params.m_runtimeAspectRatio = aspect;
 	params.m_runtimeHFov = 2.0f * atan(tan(verticalFov * 0.5f) * aspect);
 
-	const bool bCameraChanged = !m_bHasAccumulationState ||
-		!NearlyEqual(m_lastCameraPosition, params.m_runtimeCameraPos) ||
-		!NearlyEqual(m_lastCameraForward, params.m_runtimeCameraForward) ||
-		!NearlyEqual(m_lastCameraUp, params.m_runtimeCameraUp) ||
-		!NearlyEqual(m_lastCameraAspect, params.m_runtimeAspectRatio) ||
-		!NearlyEqual(m_lastCameraHFov, params.m_runtimeHFov);
+	const bool bCameraChanged = !camera.m_bHasAccumulationState ||
+		!NearlyEqual(camera.m_lastCameraPosition, params.m_runtimeCameraPos) ||
+		!NearlyEqual(camera.m_lastCameraForward, params.m_runtimeCameraForward) ||
+		!NearlyEqual(camera.m_lastCameraUp, params.m_runtimeCameraUp) ||
+		!NearlyEqual(camera.m_lastCameraAspect, params.m_runtimeAspectRatio) ||
+		!NearlyEqual(camera.m_lastCameraHFov, params.m_runtimeHFov);
 
 	if (bCameraChanged)
 	{
-		m_accumulatedImage.Clear();
-		m_accumulatedSamples = 0ull;
+		camera.m_accumulatedImage.Clear();
+		camera.m_accumulatedSamples = 0ull;
 	}
 
-	const bool bHasAccumulatedResult = m_extent.x > 0u && m_extent.y > 0u && m_accumulatedImage.Num() > 0;
-	const bool bReachedAccumulationLimit = maxAccumulatedSamples > 0ull && m_accumulatedSamples >= maxAccumulatedSamples;
+	const bool bHasAccumulatedResult = camera.m_extent.x > 0u && camera.m_extent.y > 0u && camera.m_accumulatedImage.Num() > 0;
+	const bool bReachedAccumulationLimit = maxAccumulatedSamples > 0ull && camera.m_accumulatedSamples >= maxAccumulatedSamples;
 	const bool bShouldRenderNewSamples = !bReachedAccumulationLimit || !bHasAccumulatedResult;
 
 	if (bShouldRenderNewSamples)
 	{
 		if (sceneView.m_pathTracerTLASInstances.Num() == 0 ||
-			!m_pathTracer.InitializeScene(sceneView.m_pathTracerTLASInstances, sceneView.m_pathTracerMaterials, sceneView.m_pathTracerLights) ||
-			!m_pathTracer.RenderPreparedScene(params))
+			!camera.m_pathTracer.InitializeScene(sceneView.m_pathTracerTLASInstances, sceneView.m_pathTracerMaterials, sceneView.m_pathTracerLights) ||
+			!camera.m_pathTracer.RenderPreparedScene(params))
 		{
 			commands->EndDebugRegion(commandList);
 			return;
 		}
 
-		const auto& image = m_pathTracer.GetLastRenderedImageLinear();
-		const glm::uvec2 imageExtent = m_pathTracer.GetLastRenderedExtent();
+		const auto& image = camera.m_pathTracer.GetLastRenderedImageLinear();
+		const glm::uvec2 imageExtent = camera.m_pathTracer.GetLastRenderedExtent();
 		if (image.Num() == 0 || imageExtent.x == 0 || imageExtent.y == 0)
 		{
 			commands->EndDebugRegion(commandList);
 			return;
 		}
 
-		AccumulateImage(image, imageExtent, spp);
+		AccumulateImage(camera, image, imageExtent, spp);
 		if (maxAccumulatedSamples > 0ull)
 		{
-			m_accumulatedSamples = (std::min)(m_accumulatedSamples, maxAccumulatedSamples);
+			camera.m_accumulatedSamples = (std::min)(camera.m_accumulatedSamples, maxAccumulatedSamples);
 		}
+	}
 
-		const size_t uploadSizeRequired = m_accumulatedImage.Num() * sizeof(vec4);
+	if (resources->m_imageRevision != camera.m_imageRevision)
+	{
+		const size_t uploadSizeRequired = camera.m_accumulatedImage.Num() * sizeof(vec4);
 
-		if (!m_uploadBuffer || m_uploadBuffer->GetSize() != uploadSizeRequired)
+		if (!resources->m_uploadBuffer || resources->m_uploadBuffer->GetSize() != uploadSizeRequired)
 		{
-			m_uploadBuffer = driver->CreateBuffer(uploadSizeRequired,
+			resources->m_uploadBuffer = driver->CreateBuffer(uploadSizeRequired,
 				EBufferUsageBit::BufferTransferSrc_Bit,
 				EMemoryPropertyBit::HostCoherent | EMemoryPropertyBit::HostVisible);
 		}
-		uint8_t* uploadPtr = reinterpret_cast<uint8_t*>(m_uploadBuffer->GetPointer());
+		uint8_t* uploadPtr = reinterpret_cast<uint8_t*>(resources->m_uploadBuffer->GetPointer());
 
-		std::memcpy(uploadPtr, m_accumulatedImage.GetData(), uploadSizeRequired);
+		std::memcpy(uploadPtr, camera.m_accumulatedImage.GetData(), uploadSizeRequired);
 
-		if (!m_runtimeTexture ||
-			(uint32_t)m_runtimeTexture->GetExtent().x != m_extent.x ||
-			(uint32_t)m_runtimeTexture->GetExtent().y != m_extent.y)
+		if (!resources->m_runtimeTexture ||
+			(uint32_t)resources->m_runtimeTexture->GetExtent().x != camera.m_extent.x ||
+			(uint32_t)resources->m_runtimeTexture->GetExtent().y != camera.m_extent.y)
 		{
-			m_runtimeTexture = driver->CreateTexture(
+			resources->m_runtimeTexture = driver->CreateTexture(
 				nullptr,
 				0,
-				glm::ivec3((int32_t)m_extent.x, (int32_t)m_extent.y, 1),
+				glm::ivec3((int32_t)camera.m_extent.x, (int32_t)camera.m_extent.y, 1),
 				1,
 				ETextureType::Texture2D,
 				ETextureFormat::R32G32B32A32_SFLOAT,
 				ETextureFiltration::Nearest,
 				ETextureClamping::Clamp,
 				ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
-			if (!m_runtimeTexture)
+			if (!resources->m_runtimeTexture)
 			{
 				commands->EndDebugRegion(commandList);
 				return;
 			}
 		}
 
-		commands->ImageMemoryBarrier(commandList, m_runtimeTexture, EImageLayout::TransferDstOptimal);
-		commands->CopyBufferToImage(commandList, m_uploadBuffer, m_runtimeTexture);
-		commands->ImageMemoryBarrier(commandList, m_runtimeTexture, EImageLayout::ShaderReadOnlyOptimal);
+		commands->ImageMemoryBarrier(commandList, resources->m_runtimeTexture, EImageLayout::TransferDstOptimal);
+		commands->CopyBufferToImage(commandList, resources->m_uploadBuffer, resources->m_runtimeTexture);
+		commands->ImageMemoryBarrier(commandList, resources->m_runtimeTexture, EImageLayout::ShaderReadOnlyOptimal);
+		resources->m_imageRevision = camera.m_imageRevision;
 	}
 
-	if (!m_runtimeTexture || m_extent.x == 0u || m_extent.y == 0u || m_accumulatedImage.Num() == 0)
+	if (!resources->m_runtimeTexture || camera.m_extent.x == 0u || camera.m_extent.y == 0u || camera.m_accumulatedImage.Num() == 0)
 	{
 		commands->EndDebugRegion(commandList);
 		return;
 	}
 
-	m_lastCameraPosition = params.m_runtimeCameraPos;
-	m_lastCameraForward = params.m_runtimeCameraForward;
-	m_lastCameraUp = params.m_runtimeCameraUp;
-	m_lastCameraAspect = params.m_runtimeAspectRatio;
-	m_lastCameraHFov = params.m_runtimeHFov;
-	m_bHasAccumulationState = true;
+	camera.m_lastCameraPosition = params.m_runtimeCameraPos;
+	camera.m_lastCameraForward = params.m_runtimeCameraForward;
+	camera.m_lastCameraUp = params.m_runtimeCameraUp;
+	camera.m_lastCameraAspect = params.m_runtimeAspectRatio;
+	camera.m_lastCameraHFov = params.m_runtimeHFov;
+	camera.m_bHasAccumulationState = true;
 
 	if (!m_pShader.IsInited())
 	{
@@ -461,13 +463,13 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		return;
 	}
 
-	if (!m_shaderBindings)
+	if (!resources->m_shaderBindings)
 	{
-		m_shaderBindings = driver->CreateShaderBindings();
-		driver->FillShadersLayout(m_shaderBindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
-		driver->AddBufferToShaderBindings(m_shaderBindings, "data", 32, 1, RHI::EShaderBindingType::UniformBuffer);
-		driver->AddSamplerToShaderBindings(m_shaderBindings, "currentSampler", m_runtimeTexture, 0);
-		m_shaderBindings->RecalculateCompatibility();
+		resources->m_shaderBindings = driver->CreateShaderBindings();
+		driver->FillShadersLayout(resources->m_shaderBindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
+		driver->AddBufferToShaderBindings(resources->m_shaderBindings, "data", 32, 1, RHI::EShaderBindingType::UniformBuffer);
+		driver->AddSamplerToShaderBindings(resources->m_shaderBindings, "currentSampler", resources->m_runtimeTexture, 0);
+		resources->m_shaderBindings->RecalculateCompatibility();
 	}
 
 	if (!m_overlayMaterial || !m_overlayMaterialMsaa)
@@ -475,8 +477,8 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		RenderState overlayState{ false, false, 0, false, ECullMode::None, EBlendMode::AlphaBlending, EFillMode::Fill, 0, false };
 		RenderState overlayMsaaState{ false, false, 0, false, ECullMode::None, EBlendMode::AlphaBlending, EFillMode::Fill, 0, true };
-		if (!m_overlayMaterial) { m_overlayMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, overlayState, m_pShader, m_shaderBindings); }
-		if (!m_overlayMaterialMsaa) { m_overlayMaterialMsaa = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, overlayMsaaState, m_pShader, m_shaderBindings); }
+		if (!m_overlayMaterial) { m_overlayMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, overlayState, m_pShader, resources->m_shaderBindings); }
+		if (!m_overlayMaterialMsaa) { m_overlayMaterialMsaa = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, overlayMsaaState, m_pShader, resources->m_shaderBindings); }
 	}
 	if (!m_overlayMaterial || !m_overlayMaterialMsaa)
 	{
@@ -484,9 +486,11 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		return;
 	}
 
-	driver->UpdateShaderBinding(m_shaderBindings, "currentSampler", m_runtimeTexture, 0);
-	commands->SetMaterialParameter(commandList, m_shaderBindings, "data.fitScaleOffset", glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
-	commands->SetMaterialParameter(commandList, m_shaderBindings, "data.blend", blend);
+	driver->UpdateShaderBinding(resources->m_shaderBindings, "currentSampler", resources->m_runtimeTexture, 0);
+	commands->SetMaterialParameter(commandList, resources->m_shaderBindings, "data.fitScaleOffset", glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
+	commands->SetMaterialParameter(commandList, resources->m_shaderBindings, "data.blend", blend);
+	commands->MemoryBarrier(commandList, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+		static_cast<EAccessFlags>(EAccessBit::UniformRead_Bit));
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
@@ -522,7 +526,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	}
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	if (commands->BindShaderBindings(commandList, bUseMsaaTarget ? m_overlayMaterialMsaa : m_overlayMaterial, { sceneView.m_frameBindings, m_shaderBindings }))
+	if (commands->BindShaderBindings(commandList, bUseMsaaTarget ? m_overlayMaterialMsaa : m_overlayMaterial, { sceneView.m_frameBindings, resources->m_shaderBindings }))
 	{
 		commands->SetViewport(commandList,
 			0.0f, 0.0f,
@@ -537,29 +541,33 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	commands->EndDebugRegion(commandList);
 }
 
-void CPUPathTracerNode::AccumulateImage(const TVector<glm::vec4>& image, glm::uvec2 extent, uint32_t samples)
+void CPUPathTracerNode::AccumulateImage(CameraState& camera, const TVector<glm::vec4>& image, glm::uvec2 extent, uint32_t samples)
 {
-	if (m_extent != extent || m_accumulatedSamples == 0ull)
+	camera.m_imageRevision = ++m_nextImageRevision;
+	if (camera.m_extent != extent || camera.m_accumulatedSamples == 0ull)
 	{
-		m_extent = extent;
-		m_accumulatedImage = image;
-		m_accumulatedSamples = samples;
+		camera.m_extent = extent;
+		camera.m_accumulatedImage = image;
+		camera.m_accumulatedSamples = samples;
 		return;
 	}
 
-	const float currentSamples = static_cast<float>(m_accumulatedSamples);
+	const float currentSamples = static_cast<float>(camera.m_accumulatedSamples);
 	const float newSamples = static_cast<float>(samples);
 	for (size_t i = 0; i < image.Num(); ++i)
 	{
-		m_accumulatedImage[i] = (m_accumulatedImage[i] * currentSamples + image[i] * newSamples) / (currentSamples + newSamples);
+		camera.m_accumulatedImage[i] = (camera.m_accumulatedImage[i] * currentSamples + image[i] * newSamples) / (currentSamples + newSamples);
 	}
-	m_accumulatedSamples += samples;
+	camera.m_accumulatedSamples += samples;
 }
 
 bool CPUPathTracerNode::GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm::uvec2& outExtent) const
 {
-	const auto& image = m_accumulatedImage;
-	const glm::uvec2 extent = m_extent;
+	const auto found = m_cameras.Find(m_lastCameraIndex);
+	if (found == m_cameras.end()) return false;
+	const auto& camera = *found.Value();
+	const auto& image = camera.m_accumulatedImage;
+	const glm::uvec2 extent = camera.m_extent;
 	if (extent.x == 0 || extent.y == 0 || image.Num() == 0)
 	{
 		return false;
@@ -581,20 +589,9 @@ bool CPUPathTracerNode::GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm
 
 void CPUPathTracerNode::Clear()
 {
-	m_extent = glm::uvec2(0u, 0u);
-	m_accumulatedImage.Clear();
-	m_accumulatedSamples = 0ull;
-	m_bHasAccumulationState = false;
-	m_lastCameraPosition = glm::vec3(0.0f);
-	m_lastCameraForward = glm::vec3(0.0f, 0.0f, -1.0f);
-	m_lastCameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
-	m_lastCameraAspect = 0.0f;
-	m_lastCameraHFov = 0.0f;
-	m_runtimeTexture.Clear();
-	m_uploadBuffer.Clear();
-	m_shaderBindings.Clear();
+	m_cameras.Clear();
+	m_lastCameraIndex = 0;
 	m_overlayMaterial.Clear();
 	m_overlayMaterialMsaa.Clear();
 	m_pShader.Clear();
-	m_pathTracer.ClearRuntimeEnvironment();
 }

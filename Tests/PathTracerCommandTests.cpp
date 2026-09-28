@@ -8,9 +8,11 @@
 #include "FrameGraph/CPUPathTracerNode.h"
 #include "RHI/Buffer.h"
 #include "RHI/CommandList.h"
+#include "RHI/Cubemap.h"
 #include "RHI/Material.h"
 #include "RHI/Mesh.h"
 #include "RHI/RenderTarget.h"
+#include "RHI/RenderSubmission.h"
 #include "RHI/SceneView.h"
 #include "RHI/Shader.h"
 #include "RHI/VertexDescription.h"
@@ -130,11 +132,14 @@ namespace
 	class ImageNode final : public Framegraph::CPUPathTracerNode
 	{
 	public:
-		using CPUPathTracerNode::m_accumulatedImage;
-		using CPUPathTracerNode::m_accumulatedSamples;
-		using CPUPathTracerNode::m_extent;
 		using CPUPathTracerNode::m_pShader;
-		using CPUPathTracerNode::m_uploadBuffer;
+		using CPUPathTracerNode::ApplyCompletedReadback;
+		CameraState& Camera(uint32_t index = 0) { return GetCameraState(index); }
+		size_t NumCameras() const { return m_cameras.Num(); }
+		TRefPtr<SubmissionResources> Resources(const RHI::RHISceneViewSnapshot& scene)
+		{
+			return scene.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(this, scene.m_cameraIndex, 0);
+		}
 	};
 
 	class ImageGraph final : public RHI::RHIFrameGraph
@@ -160,6 +165,180 @@ namespace
 			std::memcpy(m_postEffectPlane->m_indexBuffer->GetPointer(), indices, sizeof(indices));
 		}
 	};
+
+	struct RecordedComposite
+	{
+		RHI::RHICommandListPtr command;
+		RHI::RHIBufferPtr readback;
+		RHI::RHIRenderSubmissionContextPtr context;
+	};
+
+	RecordedComposite RecordComposite(ImageNode& node, RHI::RHIFrameGraphPtr graph, RHI::RHISceneViewSnapshot& scene)
+	{
+		using namespace RHI;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		RecordedComposite result;
+		result.context = scene.m_submissionContext;
+		result.command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(result.command, true);
+		auto target = driver->CreateRenderTarget(result.command, ivec2(32), 1, ETextureFormat::R16G16B16A16_SFLOAT);
+		commands->ImageMemoryBarrier(result.command, target, EImageLayout::ColorAttachmentOptimal);
+		commands->BeginRenderPass(result.command, TVector<RHITexturePtr>{ target }, nullptr, ivec4(0, 0, 32, 32),
+			ivec2(0), true, vec4(0), 0, false);
+		commands->EndRenderPass(result.command);
+		node.SetRHIResource("color", target);
+		node.Process(graph, result.command, result.command, scene);
+		result.readback = driver->CreateBuffer(32 * 32 * 8, EBufferUsageBit::BufferTransferDst_Bit,
+			EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+		commands->ImageMemoryBarrier(result.command, target, EImageLayout::TransferSrcOptimal);
+		commands->CopyImageToBuffer(result.command, target, result.readback);
+		commands->MemoryBarrier(result.command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+			static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+		commands->EndCommandList(result.command);
+		return result;
+	}
+
+	void RequireComposite(const RecordedComposite& frame, const vec3& expected)
+	{
+		const auto* pixels = static_cast<const uint32_t*>(frame.readback->GetPointer());
+		constexpr size_t center = 16 * 32 + 16;
+		const vec3 color(vec4(glm::unpackHalf2x16(pixels[2 * center]), glm::unpackHalf2x16(pixels[2 * center + 1])));
+		Require(length(color - expected) < 0.001f, "each recorded flight must retain its own image bytes");
+	}
+
+	void TestOverlappingTracerFlights(ImageNode& node, RHI::RHIFrameGraphPtr graph, RHI::RHISceneViewSnapshot& scene,
+		MaterialPtr firstMaterial, MaterialPtr secondMaterial)
+	{
+		using namespace RHI;
+		auto& driver = Renderer::GetDriver();
+		auto firstContext = RHIRenderSubmissionContextPtr::Make();
+		auto secondContext = RHIRenderSubmissionContextPtr::Make();
+		firstContext->BeginSubmission(3, 0);
+		secondContext->BeginSubmission(4, 1);
+		scene.m_cameraIndex = 0;
+		scene.m_cameraTransform.m_position.x = 0;
+		scene.m_pathTracerMaterials[0] = firstMaterial;
+		scene.m_submissionContext = firstContext;
+		auto first = RecordComposite(node, graph, scene);
+		auto firstUpload = node.Resources(scene)->m_uploadBuffer;
+		scene.m_cameraTransform.m_position.x = 0.125f;
+		scene.m_pathTracerMaterials[0] = secondMaterial;
+		scene.m_submissionContext = secondContext;
+		auto second = RecordComposite(node, graph, scene);
+		Require(node.Resources(scene)->m_uploadBuffer != firstUpload, "unretired flights must not share mutable upload storage");
+		auto firstFence = RHIFencePtr::Make();
+		auto secondFence = RHIFencePtr::Make();
+		Require(driver->SubmitCommandList(first.command, firstFence) && driver->SubmitCommandList(second.command, secondFence),
+			"both recorded flights must submit before either is awaited");
+		Require(firstFence->Wait(5000000000ull) == EFenceStatus::Finished && secondFence->Wait(5000000000ull) == EFenceStatus::Finished,
+			"both flight images must complete");
+		RequireComposite(first, vec3(2, 0.5f, 0.125f));
+		RequireComposite(second, vec3(0.25f, 2, 0.5f));
+
+		firstContext->BeginSubmission(5, 0);
+		scene.m_submissionContext = firstContext;
+		node.SetFloat("maxAccumulatedSamples", 1);
+		const auto samples = node.Camera().m_accumulatedSamples;
+		auto reused = RecordComposite(node, graph, scene);
+		Require(node.Resources(scene)->m_uploadBuffer == firstUpload && node.Camera().m_accumulatedSamples == samples,
+			"a completed flight must reuse capacity and upload the capped camera image without retracing");
+		Require(driver->SubmitCommandList_Immediate(reused.command), "the reused flight must complete");
+		RequireComposite(reused, vec3(0.25f, 2, 0.5f));
+
+		firstContext->BeginSubmission(6, 0);
+		scene.m_cameraTransform.m_position.x = 0.25f;
+		scene.m_pathTracerMaterials[0] = firstMaterial;
+		auto refused = RecordComposite(node, graph, scene);
+		firstContext->InvalidateSubmissionResources();
+		firstContext->BeginSubmission(7, 0);
+		auto retry = RecordComposite(node, graph, scene);
+		Require(driver->SubmitCommandList_Immediate(retry.command), "the refused upload must be recorded again on retry");
+		RequireComposite(retry, vec3(2, 0.5f, 0.125f));
+	}
+
+	void TestTracerEnvironmentReadback(ImageNode& node, RHI::RHIFrameGraphPtr graph, RHI::RHISceneViewSnapshot& scene)
+	{
+		using namespace RHI;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto makeCube = [&](const vec3& color)
+		{
+			auto cube = driver->CreateCubemap(ivec2(8), 1, ETextureFormat::R16G16B16A16_SFLOAT);
+			auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(command, true);
+			commands->ImageMemoryBarrier(command, cube, EImageLayout::TransferDstOptimal);
+			commands->ClearImage(command, cube, vec4(color, 1));
+			commands->ImageMemoryBarrier(command, cube, EImageLayout::ShaderReadOnlyOptimal);
+			commands->EndCommandList(command);
+			Require(driver->SubmitCommandList_Immediate(command), "the known HDR cubemap must initialize on the GPU");
+			return cube;
+		};
+		auto first = makeCube(vec3(2, 1, 0.5f));
+		auto second = makeCube(vec3(0.25f, 4, 2));
+		auto diffuse = makeCube(vec3(0.125f, 0.5f, 3));
+		auto requireEnvironment = [&](const vec3& expected)
+		{
+			PathTracer::PreparedRaySample sample;
+			PathTracer::Params params{};
+			Require(node.Camera().m_pathTracer.SamplePreparedSceneRay(vec3(10, 0, 3), vec3(0, 0, -1), 10, params, 1, sample) &&
+				!sample.m_bHit && length(sample.m_radiance - expected) < 0.001f,
+				"CPU tracing must use only the latest completed environment");
+		};
+		uint64_t submission = 8;
+		auto record = [&](RHICubemapPtr raw, RHICubemapPtr irradiance)
+		{
+			scene.m_frame += 8;
+			scene.m_submissionContext->BeginSubmission(submission++, 0);
+			graph->SetSampler("g_rawEnvCubemap", raw);
+			graph->SetSampler("g_irradianceCubemap", irradiance);
+			return RecordComposite(node, graph, scene);
+		};
+		auto complete = [&](const RecordedComposite& frame)
+		{
+			auto fence = frame.context->GetFrameCompletion();
+			Require(fence && driver->SubmitCommandList(frame.command, fence) && fence->Wait(5000000000ull) == EFenceStatus::Finished,
+				"the readback must use the recorded frame's actual GPU completion");
+		};
+
+		auto initial = record(first, diffuse);
+		for (auto& buffer : node.Camera().m_pendingReadback->m_environment.m_faceBuffers)
+		{
+			auto* bytes = static_cast<uint32_t*>(buffer->GetPointer());
+			for (size_t i = 0; i < buffer->GetSize() / sizeof(uint32_t); ++i) bytes[i] = glm::packHalf2x16(vec2(7));
+		}
+		Require(!node.ApplyCompletedReadback(node.Camera(), first, diffuse), "recording alone must not make readback available");
+		requireEnvironment(vec3(0));
+		complete(initial);
+		Require(node.ApplyCompletedReadback(node.Camera(), first, diffuse), "completed face buffers must publish together");
+		requireEnvironment(vec3(2, 1, 0.5f));
+
+		auto obsolete = record(second, diffuse);
+		Require(!node.ApplyCompletedReadback(node.Camera(), second, diffuse), "pending replacement must not replace the old environment");
+		requireEnvironment(vec3(2, 1, 0.5f));
+		complete(obsolete);
+		Require(!node.ApplyCompletedReadback(node.Camera(), first, diffuse), "a completed obsolete source must not publish");
+		requireEnvironment(vec3(2, 1, 0.5f));
+
+		auto refused = record(second, diffuse);
+		refused.context->GetFrameCompletion()->MarkSubmissionFailed();
+		Require(!node.ApplyCompletedReadback(node.Camera(), second, diffuse), "failed submission must not publish its mapped bytes");
+		requireEnvironment(vec3(2, 1, 0.5f));
+		auto retry = record(second, diffuse);
+		complete(retry);
+		Require(node.ApplyCompletedReadback(node.Camera(), second, diffuse), "a fresh readback must recover from refusal");
+		requireEnvironment(vec3(0.25f, 4, 2));
+		auto diffuseOnly = record({}, diffuse);
+		complete(diffuseOnly);
+		Require(node.ApplyCompletedReadback(node.Camera(), {}, diffuse), "removing the raw map must publish the diffuse-only environment");
+		requireEnvironment(vec3(0.125f, 0.5f, 3));
+
+		auto discarded = record(first, diffuse);
+		node.Clear();
+		complete(discarded);
+		Require(node.NumCameras() == 0 && !node.ApplyCompletedReadback(node.Camera(), first, diffuse),
+			"Clear must prevent an old GPU completion from resurrecting camera readback state");
+	}
 
 	void TestHdrCompositing()
 	{
@@ -191,6 +370,8 @@ namespace
 					material->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
 					material->SetUniform("material.emissiveFactor", vec4(2, 0.5f, 0.125f, 0));
 					RHISceneViewSnapshot scene;
+					scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+					scene.m_submissionContext->BeginSubmission(1, 0);
 					scene.m_camera = TUniquePtr<CameraData>::Make();
 					scene.m_camera->SetAspect(1);
 					scene.m_camera->SetFov(glm::degrees(0.8f));
@@ -231,18 +412,18 @@ namespace
 					commands->EndCommandList(command);
 					Require(driver->SubmitCommandList_Immediate(command), "HDR composite and readback must complete");
 					const size_t center = (side / 2u) * side + side / 2u;
-					const size_t sourceCenter = (node->m_extent.y / 2u) * node->m_extent.x + node->m_extent.x / 2u;
+					const size_t sourceCenter = (node->Camera().m_extent.y / 2u) * node->Camera().m_extent.x + node->Camera().m_extent.x / 2u;
 					const vec4 expected(2, 0.5f, 0.125f, 1);
-					Require(node->m_accumulatedImage.Num() > sourceCenter &&
-						length(node->m_accumulatedImage[sourceCenter] - expected) < 0.001f,
+					Require(node->Camera().m_accumulatedImage.Num() > sourceCenter &&
+						length(node->Camera().m_accumulatedImage[sourceCenter] - expected) < 0.001f,
 						"CPU accumulation must retain linear HDR radiance instead of clamped sRGB bytes");
 #ifdef __APPLE__
-					Require(node->m_extent == uvec2(474), "float output must preserve the macOS pixel budget rather than reduce resolution");
+					Require(node->Camera().m_extent == uvec2(474), "float output must preserve the macOS pixel budget rather than reduce resolution");
 #else
-					Require(node->m_extent == uvec2(side), "float output must preserve the requested resolution");
+					Require(node->Camera().m_extent == uvec2(side), "float output must preserve the requested resolution");
 #endif
-					Require(node->m_uploadBuffer->GetSize() == node->m_accumulatedImage.Num() * sizeof(vec4) &&
-						node->m_uploadBuffer->GetSize() > 900000u, "the HDR upload must contain full float pixels, including transfers above 900KB");
+					Require(node->Resources(scene)->m_uploadBuffer->GetSize() == node->Camera().m_accumulatedImage.Num() * sizeof(vec4) &&
+						node->Resources(scene)->m_uploadBuffer->GetSize() > 900000u, "the HDR upload must contain full float pixels, including transfers above 900KB");
 					const auto* pixels = static_cast<const uint32_t*>(readback->GetPointer());
 					auto pixel = [&](size_t i) { return vec4(glm::unpackHalf2x16(pixels[2 * i]), glm::unpackHalf2x16(pixels[2 * i + 1])); };
 					// HDR target alpha carries renderer metadata, not source coverage.
@@ -250,23 +431,71 @@ namespace
 					Require(length(vec3(pixel(0)) - vec3(0.125f, 1.5f, 4)) < 0.001f, "transparent tracer pixels must preserve the HDR background");
 					Require(node->GetDrawCallStats().m_numBatches == 1u, "HDR validation must execute the real composite draw");
 
-					node->SetFloat("blend", 0.25f);
+					for (uint32_t i = 0; i < 32; ++i)
+					{
+						const float blend = i % 2 ? 0.75f : 0.25f;
+						const vec3 expectedBlend = mix(vec3(0.125f, 1.5f, 4), vec3(expected), blend);
+						scene.m_submissionContext->BeginSubmission(i + 2, 0);
+						node->SetFloat("blend", blend);
+						command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+						commands->BeginCommandList(command, true);
+						commands->ImageMemoryBarrier(command, target, EImageLayout::ColorAttachmentOptimal);
+						commands->BeginRenderPass(command, TVector<RHITexturePtr>{ target }, nullptr, ivec4(0, 0, side, side),
+							ivec2(0), true, vec4(0.125f, 1.5f, 4, 1), 0, false);
+						commands->EndRenderPass(command);
+						node->Process(graph, command, command, scene);
+						commands->ImageMemoryBarrier(command, target, EImageLayout::TransferSrcOptimal);
+						commands->CopyImageToBuffer(command, target, readback);
+						command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+						commands->EndCommandList(command);
+						Require(driver->SubmitCommandList_Immediate(command), "partial HDR blending must complete");
+						const vec3 blended(pixel(center));
+						if (!(length(blended - expectedBlend) < 0.001f))
+							std::cerr << "HDR blend " << blend << " RGB: " << blended.r << ", " << blended.g << ", " << blended.b
+								<< "; batches: " << node->GetDrawCallStats().m_numBatches << '\n';
+						Require(length(blended - expectedBlend) < 0.001f,
+							"partial blending must mix source and background in linear HDR space");
+						Require(node->Camera().m_accumulatedSamples == 1u && node->GetDrawCallStats().m_numBatches == 1u,
+							"the sample limit must reuse the float image while still drawing the composite");
+					}
+
+					node->SetFloat("blend", 1);
+					node->SetFloat("maxAccumulatedSamples", 0);
+					scene.m_submissionContext->BeginSubmission(2, 0);
 					command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 					commands->BeginCommandList(command, true);
-					commands->ImageMemoryBarrier(command, target, EImageLayout::ColorAttachmentOptimal);
-					commands->BeginRenderPass(command, TVector<RHITexturePtr>{ target }, nullptr, ivec4(0, 0, side, side),
-						ivec2(0), true, vec4(0.125f, 1.5f, 4, 1), 0, false);
-					commands->EndRenderPass(command);
 					node->Process(graph, command, command, scene);
 					commands->ImageMemoryBarrier(command, target, EImageLayout::TransferSrcOptimal);
 					commands->CopyImageToBuffer(command, target, readback);
-					command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+					auto secondTarget = driver->CreateRenderTarget(command, ivec2(side), 1, ETextureFormat::R16G16B16A16_SFLOAT);
+					auto secondReadback = driver->CreateBuffer(side * side * 8u, EBufferUsageBit::BufferTransferDst_Bit,
+						EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+					auto secondMaterial = MaterialPtr::Make(allocator, FileId::Invalid);
+					secondMaterial->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
+					secondMaterial->SetUniform("material.emissiveFactor", vec4(0.25f, 2, 0.5f, 0));
+					scene.m_pathTracerMaterials[0] = secondMaterial;
+					scene.m_cameraIndex = 1;
+					scene.m_cameraTransform.m_position.x = 0.1f;
+					node->SetRHIResource("color", secondTarget);
+					commands->ImageMemoryBarrier(command, secondTarget, EImageLayout::ColorAttachmentOptimal);
+					commands->BeginRenderPass(command, TVector<RHITexturePtr>{ secondTarget }, nullptr, ivec4(0, 0, side, side),
+						ivec2(0), true, vec4(0), 0, false);
+					commands->EndRenderPass(command);
+					node->Process(graph, command, command, scene);
+					commands->ImageMemoryBarrier(command, secondTarget, EImageLayout::TransferSrcOptimal);
+					commands->CopyImageToBuffer(command, secondTarget, secondReadback);
+					commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+						static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
 					commands->EndCommandList(command);
-					Require(driver->SubmitCommandList_Immediate(command), "partial HDR blending must complete");
-					Require(length(vec3(pixel(center)) - vec3(0.59375f, 1.25f, 3.03125f)) < 0.001f,
-						"partial blending must mix source and background in linear HDR space");
-					Require(node->m_accumulatedSamples == 1u && node->GetDrawCallStats().m_numBatches == 1u,
-						"the sample limit must reuse the float image while still drawing the composite");
+					Require(driver->SubmitCommandList_Immediate(command), "both recorded cameras must complete together");
+					Require(length(vec3(pixel(center)) - vec3(expected)) < 0.001f,
+						"recording a second camera must not overwrite the first camera's pending upload");
+					const auto* secondPixels = static_cast<const uint32_t*>(secondReadback->GetPointer());
+					const vec4 secondColor(glm::unpackHalf2x16(secondPixels[2 * center]), glm::unpackHalf2x16(secondPixels[2 * center + 1]));
+					Require(length(vec3(secondColor) - vec3(0.25f, 2, 0.5f)) < 0.001f,
+						"the second camera must composite its own accumulated image");
+					TestOverlappingTracerFlights(*node, graph, scene, material, secondMaterial);
+					TestTracerEnvironmentReadback(*node, graph, scene);
 					return std::string{};
 				}
 				catch (const std::exception& error) { return std::string(error.what()); }

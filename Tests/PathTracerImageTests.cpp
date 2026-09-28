@@ -27,9 +27,14 @@ namespace
 	class ImageNode final : public Framegraph::CPUPathTracerNode
 	{
 	public:
-		using CPUPathTracerNode::AccumulateImage;
-		using CPUPathTracerNode::m_accumulatedImage;
-		using CPUPathTracerNode::m_accumulatedSamples;
+		using CPUPathTracerNode::ApplyCompletedReadback;
+		using CPUPathTracerNode::SubmissionResources;
+		CameraState& Camera(uint32_t index = 0) { return GetCameraState(index); }
+		size_t NumCameras() const { return m_cameras.Num(); }
+		void AccumulateImage(const TVector<vec4>& image, uvec2 extent, uint32_t samples, uint32_t cameraIndex = 0)
+		{
+			CPUPathTracerNode::AccumulateImage(Camera(cameraIndex), image, extent, samples);
+		}
 	};
 
 	void TestLinearAccumulationAndDisplayExport()
@@ -40,29 +45,65 @@ namespace
 		Require(!node.GetLastRenderedImage(display, extent), "an empty accumulator has no display image");
 		node.AccumulateImage({ vec4(8, 0.0625f, 0.25f, 1), vec4(0) }, uvec2(2, 1), 2);
 		node.AccumulateImage({ vec4(0, 0.3125f, 0.25f, 0), vec4(0, 4, 0, 0.5f) }, uvec2(2, 1), 6);
-		Require(node.m_accumulatedSamples == 8, "sample counts, not frame counts, must weight the mean");
-		RequireColor(node.m_accumulatedImage[0], vec4(2, 0.25f, 0.25f, 0.25f));
-		RequireColor(node.m_accumulatedImage[1], vec4(0, 3, 0, 0.375f));
+		Require(node.Camera().m_accumulatedSamples == 8, "sample counts, not frame counts, must weight the mean");
+		RequireColor(node.Camera().m_accumulatedImage[0], vec4(2, 0.25f, 0.25f, 0.25f));
+		RequireColor(node.Camera().m_accumulatedImage[1], vec4(0, 3, 0, 0.375f));
 		Require(node.GetLastRenderedImage(display, extent) && extent == uvec2(2, 1) && display.Num() == 2,
 			"display export must preserve dimensions");
 		Require(display[0] == u8vec4(255, 136, 136, 64) && display[1] == u8vec4(0, 255, 0, 96),
 			"only display RGB is sRGB-encoded and clamped; alpha remains linear coverage");
-		RequireColor(node.m_accumulatedImage[0], vec4(2, 0.25f, 0.25f, 0.25f));
+		RequireColor(node.Camera().m_accumulatedImage[0], vec4(2, 0.25f, 0.25f, 0.25f));
 		Require(node.GetLastRenderedImage(display, extent) && display[0] == u8vec4(255, 136, 136, 64),
 			"repeated display export must not apply another transfer function");
 
 		node.AccumulateImage({ vec4(4, 2, 3, 1), vec4(0) }, uvec2(1, 2), 3);
-		Require(node.m_accumulatedSamples == 3, "changing shape must restart accumulation even with the same pixel count");
-		RequireColor(node.m_accumulatedImage[0], vec4(4, 2, 3, 1));
+		Require(node.Camera().m_accumulatedSamples == 3, "changing shape must restart accumulation even with the same pixel count");
+		RequireColor(node.Camera().m_accumulatedImage[0], vec4(4, 2, 3, 1));
 		Require(node.GetLastRenderedImage(display, extent) && extent == uvec2(1, 2), "display extent must follow the new image");
 		node.Clear();
-		Require(node.m_accumulatedSamples == 0 && node.m_accumulatedImage.IsEmpty() && !node.GetLastRenderedImage(display, extent),
+		Require(node.Camera().m_accumulatedSamples == 0 && node.Camera().m_accumulatedImage.IsEmpty() && !node.GetLastRenderedImage(display, extent),
 			"Clear must discard accumulated radiance and display availability");
 		node.AccumulateImage({ vec4(0, 0, 0, 1) }, uvec2(1), 1);
 		node.AccumulateImage({ vec4(1) }, uvec2(1), 1);
-		RequireColor(node.m_accumulatedImage[0], vec4(0.5f, 0.5f, 0.5f, 1));
+		RequireColor(node.Camera().m_accumulatedImage[0], vec4(0.5f, 0.5f, 0.5f, 1));
 		Require(node.GetLastRenderedImage(display, extent) && display[0] == u8vec4(187, 187, 187, 255),
 			"black and white must average to linear 0.5, then encode once to sRGB 187, not average display bytes");
+	}
+
+	void TestCameraAndReadbackOwnership()
+	{
+		ImageNode node;
+		node.AccumulateImage({ vec4(2, 0, 0, 1) }, uvec2(1), 2, 0);
+		node.AccumulateImage({ vec4(0, 3, 0, 1) }, uvec2(1), 5, 1);
+		Require(node.NumCameras() == 2 && node.Camera(0).m_accumulatedSamples == 2 && node.Camera(1).m_accumulatedSamples == 5,
+			"camera accumulators must preserve their own samples");
+		RequireColor(node.Camera(0).m_accumulatedImage[0], vec4(2, 0, 0, 1));
+		RequireColor(node.Camera(1).m_accumulatedImage[0], vec4(0, 3, 0, 1));
+		TVector<u8vec4> display;
+		uvec2 extent(0);
+		Require(node.GetLastRenderedImage(display, extent) && display[0] == u8vec4(0, 255, 0, 255),
+			"the existing display API must return the last selected camera");
+
+		auto batch = TRefPtr<ImageNode::SubmissionResources>::Make();
+		batch->m_readbackCompletion = RHI::RHIFencePtr::Make();
+		node.Camera(0).m_pendingReadback = batch;
+		Require(!node.ApplyCompletedReadback(node.Camera(0), {}, {}) && node.Camera(0).m_pendingReadback == batch,
+			"unsubmitted readback must remain pending without accessing mapped bytes");
+		batch->m_readbackCompletion->MarkSubmissionFailed();
+		Require(!node.ApplyCompletedReadback(node.Camera(0), {}, {}) && !node.Camera(0).m_pendingReadback,
+			"failed readback must be discarded without decoding its buffers");
+		const auto revision = node.Camera(0).m_imageRevision;
+		batch->m_readbackCompletion = RHI::RHIFencePtr::Make();
+		node.Camera(0).m_pendingReadback = batch;
+		node.Clear();
+		Require(node.NumCameras() == 0 && !node.GetLastRenderedImage(display, extent),
+			"Clear must discard every camera and pending readback publication");
+		node.AccumulateImage({ vec4(0, 0, 4, 1) }, uvec2(1), 1);
+		Require(node.Camera().m_imageRevision > revision && !node.Camera().m_pendingReadback,
+			"a reset camera must not reuse an old flight image or readback");
+		batch->m_imageRevision = 7;
+		batch->InvalidateSubmission();
+		Require(batch->m_imageRevision == 0, "a refused submission must require another upload");
 	}
 
 	void TestPreparedLinearImage()
@@ -124,6 +165,7 @@ int main()
 	try
 	{
 		TestLinearAccumulationAndDisplayExport();
+		TestCameraAndReadbackOwnership();
 		TestPreparedLinearImage();
 		std::cout << "Path tracer linear HDR image tests passed\n";
 		return 0;
