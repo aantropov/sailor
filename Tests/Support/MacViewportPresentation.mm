@@ -9,8 +9,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <future>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 // Observe the queue created by the real App binding without replacing its work.
 @interface ViewportQueueDevice : NSProxy
@@ -153,6 +155,128 @@ namespace Sailor::Tests
 			require(read.status == MTLCommandBufferStatusCompleted && std::memcmp(pixel.contents, &expectedPixel, 4) == 0,
 				"presented drawable must match the actual exported Vulkan image");
 			require(binding.Destroy().IsOk(), "native Vulkan export viewport must release after copy and presentation completion");
+		}
+	}
+
+	void CheckMacVulkanTextureRetirement(const MacRendererFrameSource& first, uint32_t firstPixel,
+		const MacRendererFrameSource& resized, uint32_t resizedPixel, const std::function<void()>& churn)
+	{
+		auto require = [](bool value, const char* message)
+			{
+				if (!value) throw std::runtime_error(message);
+			};
+		@autoreleasepool
+		{
+			class Source final : public IMacRendererFrameSourceProvider
+			{
+			public:
+				MacRendererFrameSource m_frame;
+				id<MTLSharedEvent> m_gate = nil;
+				uint64_t m_waitValue = 1;
+				uint32_t m_calls = 0;
+				Failure AcquireFrameSource(const MacViewportSurfaceState&, FrameIndex, MacRendererFrameSource& out) override
+				{
+					++m_calls;
+					out = m_frame;
+					out.m_crossApiSharedEventObject = m_waitValue ? reinterpret_cast<uintptr_t>([m_gate retain]) : 0;
+					out.m_crossApiAcquireValue = m_waitValue;
+					out.m_crossApiSyncKind = m_waitValue ? CrossApiSyncKind::MetalSharedEvent : CrossApiSyncKind::None;
+					return Failure::Ok();
+				}
+			} input;
+			input.m_frame = first;
+			MacLoopbackIOSurfaceProvider provider(&input);
+			MacLoopbackViewportPresenter presenter;
+			ViewportDescriptor viewport;
+			viewport.m_viewportId = 205;
+			viewport.m_width = first.m_width;
+			viewport.m_height = first.m_height;
+			viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+			viewport.m_colorSpace = ColorSpace::Srgb;
+			viewport.m_presentMode = PresentMode::Mailbox;
+			MacViewportLoopbackBinding binding(viewport, provider, presenter);
+			presenter.BindHostHandle(viewport.m_viewportId,
+				{ MacNativeHostHandleKind::CAMetalLayer, reinterpret_cast<uintptr_t>([CAMetalLayer layer]) });
+			require(binding.Create().IsOk(), "Vulkan-source retirement needs an actual native viewport");
+			auto allocation = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 1)->m_nativeAllocation;
+			input.m_gate = [[(id<MTLDevice>)allocation->m_producerDeviceObject newSharedEvent] autorelease];
+			require(input.m_gate != nil, "Vulkan-source retirement needs a real GPU gate");
+			NSMutableArray<id<MTLCommandBuffer>>* copies = [NSMutableArray array];
+			std::promise<void> finished;
+			auto finish = finished.get_future();
+			std::thread watchdog([&]()
+				{
+					if (finish.wait_for(std::chrono::seconds(5)) == std::future_status::timeout)
+						input.m_gate.signaledValue = UINT64_MAX;
+				});
+			try
+			{
+				require(binding.PumpFrame().IsOk(), "Vulkan-source copy must submit without waiting for its gate");
+				id<MTLCommandBuffer> oldCopy = (id<MTLCommandBuffer>)allocation->m_copyCommandBufferObject;
+				[copies addObject:oldCopy];
+				id<MTLTexture> oldPixels = [[(id<MTLTexture>)allocation->m_producerTextureObject retain] autorelease];
+				for (uint32_t i = 0; i < 100; ++i)
+					require(binding.PumpFrame().IsOk(), "pending Vulkan-source copies must remain nonblocking");
+				require(input.m_gate.signaledValue == 0 && input.m_calls == 1 &&
+					binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 0,
+					"pending native copy must not reacquire or publish the Vulkan source");
+				require(binding.Resize(resized.m_width, resized.m_height).IsOk() && !allocation.IsShared(),
+					"resize must retire the old allocation while its copy remains pending");
+				allocation.Clear();
+				churn();
+				require(input.m_gate.signaledValue == 0 && oldCopy.status != MTLCommandBufferStatusCompleted,
+					"renderer allocation churn must proceed independently of the retired Metal copy");
+				input.m_frame = resized;
+				input.m_waitValue = 0;
+				id<MTLSharedEvent> gate = input.m_gate;
+				require(binding.PumpFrame().IsOk(), "new extent must submit its own completed Vulkan source");
+				auto replacement = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 2)->m_nativeAllocation;
+				id<MTLCommandBuffer> newCopy = (id<MTLCommandBuffer>)replacement->m_copyCommandBufferObject;
+				if (newCopy) [copies addObject:newCopy];
+				[newCopy waitUntilCompleted];
+				if (binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 0)
+					require(binding.PumpFrame().IsOk(), "new extent must publish after its own copy finishes");
+				require(binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1 && input.m_calls == 2 &&
+					gate.signaledValue == 0 && oldCopy.status != MTLCommandBufferStatusCompleted && replacement->m_cpuUploadedBytes == 0,
+					"resized presentation must not wait for, upload or publish the retired source");
+				[(id<MTLCommandBuffer>)replacement->m_presentCommandBufferObject waitUntilCompleted];
+				uint32_t pixel = 0;
+				[(id<MTLTexture>)replacement->m_producerTextureObject getBytes:&pixel bytesPerRow:4
+					fromRegion:MTLRegionMake2D(11, 7, 1, 1) mipmapLevel:0];
+				require(pixel == resizedPixel, "new viewport must contain the new Vulkan image's pixels");
+				gate.signaledValue = 1;
+				[oldCopy waitUntilCompleted];
+				[oldPixels getBytes:&pixel bytesPerRow:4 fromRegion:MTLRegionMake2D(11, 7, 1, 1) mipmapLevel:0];
+				require(oldCopy.status == MTLCommandBufferStatusCompleted && pixel == firstPixel,
+					"retired copy must retain the original Vulkan pixels across allocation churn and resize");
+				input.m_waitValue = 2;
+				require(binding.PumpFrame().IsOk(), "viewport destruction test needs another pending Vulkan-source copy");
+				id<MTLCommandBuffer> finalCopy = (id<MTLCommandBuffer>)replacement->m_copyCommandBufferObject;
+				[copies addObject:finalCopy];
+				id<MTLTexture> finalPixels = [[(id<MTLTexture>)replacement->m_producerTextureObject retain] autorelease];
+				require(binding.Destroy().IsOk() && !replacement.IsShared() && provider.GetLiveAllocationCount() == 0 &&
+					presenter.FindImportedState(viewport.m_viewportId) == nullptr,
+					"viewport shutdown must unregister and unimport its pending allocation");
+				replacement.Clear();
+				churn();
+				require(gate.signaledValue == 1 && finalCopy.status != MTLCommandBufferStatusCompleted,
+					"viewport destruction and renderer churn must not synchronously drain the native copy");
+				gate.signaledValue = 2;
+				[finalCopy waitUntilCompleted];
+				[finalPixels getBytes:&pixel bytesPerRow:4 fromRegion:MTLRegionMake2D(11, 7, 1, 1) mipmapLevel:0];
+				require(finalCopy.status == MTLCommandBufferStatusCompleted && pixel == resizedPixel,
+					"copy retired by viewport shutdown must preserve the caller-owned Vulkan image");
+			}
+			catch (...)
+			{
+				input.m_gate.signaledValue = UINT64_MAX;
+				for (id<MTLCommandBuffer> copy in copies) [copy waitUntilCompleted];
+				finished.set_value();
+				watchdog.join();
+				throw;
+			}
+			finished.set_value();
+			watchdog.join();
 		}
 	}
 

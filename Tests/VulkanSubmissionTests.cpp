@@ -520,16 +520,21 @@ namespace
 	}
 
 #if defined(__APPLE__)
+	uint32_t CheckDeviceIdleObserver(VulkanDevice& device)
+	{
+		const auto beforeControl = deviceIdleCalls.load();
+		auto waitIdle = reinterpret_cast<PFN_vkDeviceWaitIdle>(dlsym(RTLD_DEFAULT, "vkDeviceWaitIdle"));
+		Require(waitIdle && waitIdle(device) == VK_SUCCESS && deviceIdleCalls == beforeControl + 1u,
+			"native idle observer must see the real dynamically resolved Vulkan call");
+		return deviceIdleCalls.load();
+	}
+
 	void TestMetalTextureExport()
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
 		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
 		Require(device->IsMetalObjectsSupported(), "native texture export test requires VK_EXT_metal_objects");
-		const auto beforeControl = deviceIdleCalls.load();
-		auto waitIdle = reinterpret_cast<PFN_vkDeviceWaitIdle>(dlsym(RTLD_DEFAULT, "vkDeviceWaitIdle"));
-		Require(waitIdle && waitIdle(*device) == VK_SUCCESS && deviceIdleCalls == beforeControl + 1u,
-			"native idle observer must see the real dynamically resolved Vulkan call");
-		const auto idleCalls = deviceIdleCalls.load();
+		const auto idleCalls = CheckDeviceIdleObserver(*device);
 		for (const auto extent : { glm::ivec2(64, 48), glm::ivec2(129, 73), glm::ivec2(1280, 720), glm::ivec2(3840, 2160) })
 		{
 			const uint32_t color = 0xff432100u | static_cast<uint32_t>(extent.x & 0xff);
@@ -576,6 +581,63 @@ namespace
 			std::cout << "Native Vulkan texture " << extent.x << 'x' << extent.y << ": export " << elapsed << " us, 8 GPU-only presentations\n";
 		}
 		std::cout << "Native texture export device-idle calls: " << deviceIdleCalls - idleCalls << '\n';
+	}
+
+	void TestMetalTextureRetirement()
+	{
+		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		RHIFencePtr completion;
+		auto createSource = [&](glm::ivec2 extent, uint32_t color)
+			{
+				uint32_t flight;
+				bool hasImage = false;
+				Require(driver.BeginRenderSubmission(flight, hasImage), "Vulkan retirement fixture needs a renderer flight");
+				completion = RHIFencePtr::Make();
+				auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+				driver.BeginCommandList(command, true);
+				auto texture = driver.CreateRenderTarget(command, extent, 1, ETextureFormat::B8G8R8A8_UNORM);
+				driver.ImageMemoryBarrier(command, texture, EImageLayout::TransferDstOptimal);
+				driver.ClearImage(command, texture, glm::vec4((color >> 16u & 0xffu) / 255.0f,
+					(color >> 8u & 0xffu) / 255.0f, (color & 0xffu) / 255.0f, 1.0f));
+				driver.ImageMemoryBarrier(command, texture, EImageLayout::General);
+				driver.EndCommandList(command);
+				const auto submission = hasImage ? driver.PresentFrame(Sailor::FrameState{}, { command }, {}, completion) :
+					driver.SubmitFrameWithoutPresent({ command }, {}, completion);
+				Require(submission.m_bSubmitted && completion->Wait(5000000000ull) == EFenceStatus::Finished,
+					"Vulkan retirement source must finish its actual GPU clear");
+				return texture;
+			};
+		const glm::ivec2 extents[] = { {64, 48}, {80, 56} };
+		const uint32_t colors[] = { 0xff173a6cu, 0xffb25429u };
+		RHITexturePtr sources[2];
+		EditorRemote::MacRendererFrameSource frames[2];
+		const auto idleCalls = CheckDeviceIdleObserver(*VulkanApi::GetInstance()->GetMainDevice());
+		try
+		{
+			for (uint32_t i = 0; i < 2; ++i)
+			{
+				sources[i] = createSource(extents[i], colors[i]);
+				auto& frame = frames[i];
+				Require(EditorRemote::ExportMacMetalTextureFromVulkanRenderTarget(*sources[i], *completion, frame.m_textureObject).IsOk() &&
+					frame.m_textureObject != 0, "retirement fixture must export the actual completed Vulkan image");
+				frame.m_kind = EditorRemote::MacRendererFrameSourceKind::RendererOwnedMetalTexture;
+				frame.m_width = extents[i].x;
+				frame.m_height = extents[i].y;
+				frame.m_pixelFormat = EditorRemote::PixelFormat::B8G8R8A8_UNorm;
+			}
+			Tests::CheckMacVulkanTextureRetirement(frames[0], colors[0], frames[1], colors[1], [&]()
+				{
+					for (uint32_t i = 0; i < 16; ++i) createSource(extents[i % 2], 0xffccdd00u | i);
+				});
+		}
+		catch (...)
+		{
+			for (auto& frame : frames) EditorRemote::ReleaseMacExportedTexture(frame.m_textureObject);
+			throw;
+		}
+		for (auto& frame : frames) EditorRemote::ReleaseMacExportedTexture(frame.m_textureObject);
+		Require(deviceIdleCalls == idleCalls, "resize and viewport shutdown must not idle Vulkan for Metal consumption");
+		std::cout << "Vulkan-source retirement: delayed copy, resize, viewport shutdown, 32 churn submissions, device-idle calls 0\n";
 	}
 
 	void CheckReadbackUpload(const EditorRemote::MacRendererFrameSource& source)
@@ -1988,7 +2050,7 @@ namespace
 	int RunFenceGpu(int argc, const char** argv, std::string_view mode)
 	{
 		std::vector<const char*> arguments(argv, argv + argc);
-		const bool editorReadback = mode.starts_with("--gpu-editor-readback") || mode == "--gpu-metal-export";
+		const bool editorReadback = mode.starts_with("--gpu-editor-readback") || mode.starts_with("--gpu-metal-");
 		if (editorReadback) arguments.insert(arguments.end(), { "--editor", "--port", "0" });
 		App::Initialize(arguments.data(), static_cast<int>(arguments.size()));
 		int result = 1;
@@ -1999,6 +2061,7 @@ namespace
 			if (mode == "--gpu-editor-readback") TestEditorReadback();
 #if defined(__APPLE__)
 			else if (mode == "--gpu-metal-export") OnRender([]() { TestMetalTextureExport(); });
+			else if (mode == "--gpu-metal-retirement") OnRender([]() { TestMetalTextureRetirement(); });
 #endif
 			else if (editorReadback) TestEditorReadbackRefusal(mode == "--gpu-editor-readback-lost");
 			else OnRender([&]()
@@ -2108,9 +2171,9 @@ int main(int argc, const char** argv)
 		const std::string_view mode(argv[i]);
 #if defined(__APPLE__)
 		if (mode == "--gpu-editor-readback-graph") return RunEditorReadbackGraphGpu(argc, argv);
-		if (mode == "--gpu-metal-export") return RunFenceGpu(argc, argv, mode);
+		if (mode == "--gpu-metal-export" || mode == "--gpu-metal-retirement") return RunFenceGpu(argc, argv, mode);
 #else
-		if (mode == "--gpu-editor-readback-graph" || mode == "--gpu-metal-export") return 77;
+		if (mode == "--gpu-editor-readback-graph" || mode.starts_with("--gpu-metal-")) return 77;
 #endif
 #if defined(_WIN32)
 		if (mode == "--gpu-windows-shared" || mode == "--gpu-windows-shared-lost") return RunFenceGpu(argc, argv, mode);
