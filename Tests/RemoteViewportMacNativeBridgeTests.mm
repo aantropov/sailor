@@ -90,6 +90,70 @@ static_assert(std::is_move_assignable_v<MacNativePresentationState>);
 }
 @end
 
+@interface ProducerCommandBufferProbe : NSProxy
+{
+	id<MTLCommandBuffer> m_buffer;
+}
+- (id)initWithBuffer:(id<MTLCommandBuffer>)buffer;
+@end
+
+@implementation ProducerCommandBufferProbe
+- (id)initWithBuffer:(id<MTLCommandBuffer>)buffer
+{
+	m_buffer = [buffer retain];
+	return self;
+}
+- (MTLCommandBufferStatus)status { return MTLCommandBufferStatusError; }
+- (NSError*)error { return [NSError errorWithDomain:@"Sailor.ProducerCopyTest" code:71 userInfo:nil]; }
+- (BOOL)respondsToSelector:(SEL)selector { return [m_buffer respondsToSelector:selector]; }
+- (NSMethodSignature*)methodSignatureForSelector:(SEL)selector
+{
+	return [(NSObject*)m_buffer methodSignatureForSelector:selector];
+}
+- (void)forwardInvocation:(NSInvocation*)invocation { [invocation invokeWithTarget:m_buffer]; }
+- (void)dealloc
+{
+	[m_buffer release];
+	[super dealloc];
+}
+@end
+
+@interface ProducerQueueProbe : NSProxy
+{
+	id<MTLCommandQueue> m_queue;
+@public
+	uint32_t m_commandBufferCount;
+	bool m_refuseCommandBuffer;
+	bool m_failCompletion;
+}
+- (id)initWithQueue:(id<MTLCommandQueue>)queue;
+@end
+
+@implementation ProducerQueueProbe
+- (id)initWithQueue:(id<MTLCommandQueue>)queue
+{
+	m_queue = [queue retain];
+	return self;
+}
+- (id<MTLCommandBuffer>)commandBuffer
+{
+	++m_commandBufferCount;
+	if (m_refuseCommandBuffer) return nil;
+	id<MTLCommandBuffer> buffer = [m_queue commandBuffer];
+	return m_failCompletion ? (id<MTLCommandBuffer>)[[[ProducerCommandBufferProbe alloc] initWithBuffer:buffer] autorelease] : buffer;
+}
+- (NSMethodSignature*)methodSignatureForSelector:(SEL)selector
+{
+	return [(NSObject*)m_queue methodSignatureForSelector:selector];
+}
+- (void)forwardInvocation:(NSInvocation*)invocation { [invocation invokeWithTarget:m_queue]; }
+- (void)dealloc
+{
+	[m_queue release];
+	[super dealloc];
+}
+@end
+
 namespace
 {
 	void ObserveNativeRelease(id object, const Sailor::TSharedPtr<std::atomic<uint32_t>>& releases)
@@ -182,6 +246,16 @@ namespace
 		}
 	}
 
+	Sailor::TSharedPtr<MacIOSurfaceAllocation> MakeNativeProducer(IOSurfaceRef surface, uint32_t width, uint32_t height)
+	{
+		auto allocation = Sailor::TSharedPtr<MacIOSurfaceAllocation>::Make();
+		allocation->m_surfaceObject = reinterpret_cast<uintptr_t>(CFRetain(surface));
+		allocation->m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		allocation->m_plane = { 0, 1, width, height, static_cast<uint32_t>(IOSurfaceGetBytesPerRow(surface)), 4 };
+		Require(CreateMacIOSurfaceProducerTexture(*allocation).IsOk(), "test must create a native producer owner");
+		return allocation;
+	}
+
 	void TestGetMacRendererSourceSelectionPriorityPrefersSceneViewResolvedOutputs()
 	{
 		Require(GetMacRendererSourceSelectionPriority("Renderer.SceneView.Main.Resolved") < GetMacRendererSourceSelectionPriority("Renderer.Driver.BackBuffer"), "source-priority helper should prefer the final scene-view resolve over the driver backbuffer");
@@ -225,9 +299,9 @@ namespace
 
 	void TestBridgeWaitsOnMetalSharedEventBeforeProducerCopy()
 	{
-		id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+		id<MTLDevice> device = [MTLCreateSystemDefaultDevice() autorelease];
 		Require(device != nil, "shared-event test requires a real Metal device");
-		id<MTLSharedEvent> sharedEvent = [device newSharedEvent];
+		id<MTLSharedEvent> sharedEvent = [[device newSharedEvent] autorelease];
 		Require(sharedEvent != nil, "shared-event test requires a real Metal shared event");
 
 		const uint32_t width = 64;
@@ -242,16 +316,14 @@ namespace
 		IOSurfaceRef surface = IOSurfaceCreate((__bridge CFDictionaryRef)properties);
 		Require(surface != nullptr, "shared-event test requires a real IOSurface");
 
-		uintptr_t producerDeviceObject = 0;
-		uintptr_t producerTextureObject = 0;
-		Require(CreateMacIOSurfaceProducerTexture(reinterpret_cast<uintptr_t>(surface), width, height, PixelFormat::B8G8R8A8_UNorm, 0, producerDeviceObject, producerTextureObject).IsOk(), "shared-event test should create producer texture");
+		auto producer = MakeNativeProducer(surface, width, height);
 		uintptr_t rendererTextureObject = 0;
-		Require(CreateMacRendererIntermediateTexture(producerDeviceObject, width, height, PixelFormat::B8G8R8A8_UNorm, rendererTextureObject).IsOk(), "shared-event test should create renderer texture");
+		Require(CreateMacRendererIntermediateTexture(producer->m_producerDeviceObject, width, height, PixelFormat::B8G8R8A8_UNorm, rendererTextureObject).IsOk(), "shared-event test should create renderer texture");
 
 		MacNativeBridgeProducerPattern pattern{ 91, 1, 1, 1, width, height };
 		Require(UploadMacRendererPatternToIntermediateTexture(rendererTextureObject, width, height, pattern).IsOk(), "shared-event test should fill renderer texture");
 
-		id<MTLCommandQueue> signalQueue = [device newCommandQueue];
+		id<MTLCommandQueue> signalQueue = [[device newCommandQueue] autorelease];
 		Require(signalQueue != nil, "shared-event test requires a Metal command queue for signaling");
 		id<MTLCommandBuffer> signalBuffer = [signalQueue commandBuffer];
 		Require(signalBuffer != nil, "shared-event test requires a Metal command buffer for signaling");
@@ -259,13 +331,12 @@ namespace
 		[signalBuffer commit];
 
 		MacNativeBridgeRendererFrameInfo frameInfo{};
-		Require(CopyMacRendererIntermediateToProducerTexture(producerDeviceObject, rendererTextureObject, producerTextureObject, width, height, frameInfo, reinterpret_cast<uintptr_t>((__bridge void*)sharedEvent), 9ull).IsOk(), "shared-event test should copy through a Metal shared-event wait");
+		Require(CopyMacRendererIntermediateToProducerTexture(*producer, rendererTextureObject, frameInfo, reinterpret_cast<uintptr_t>((__bridge void*)sharedEvent), 9ull).IsOk(), "shared-event test should copy through a Metal shared-event wait");
 		Require(frameInfo.m_waitedOnCrossApiSharedEvent, "shared-event test should report that the producer copy waited on a Metal shared event");
 		Require(frameInfo.m_crossApiWaitValue == 9ull, "shared-event test should preserve the waited Metal shared-event value");
 		Require(ReadIOSurfaceBGRA8Pixel(surface, width * 4u, 0, 0) == ExpectedProducerPatternBGRA8(pattern, 0, 0), "shared-event test should still land the renderer pixel into the IOSurface after the wait");
 
 		ReleaseMacRendererIntermediateTexture(rendererTextureObject);
-		ReleaseMacIOSurfaceProducerTexture(producerDeviceObject, producerTextureObject);
 		CFRelease(surface);
 	}
 
@@ -313,11 +384,8 @@ namespace
 		surfaceHandle.m_bytesPerElement = 4u;
 		surfaceHandle.m_framebufferOnly = false;
 
-		uintptr_t producerDeviceObject = 0;
-		uintptr_t producerTextureObject = 0;
-		auto producerTextureResult = CreateMacIOSurfaceProducerTexture(surfaceHandle.m_surfaceObject, frame.m_width, frame.m_height, PixelFormat::B8G8R8A8_UNorm, 0, producerDeviceObject, producerTextureObject);
-		Require(producerTextureResult.IsOk(), "test should materialize a producer-side IOSurface-backed Metal texture");
-		Require(producerDeviceObject != 0 && producerTextureObject != 0, "producer-side Metal texture creation should yield live opaque Metal objects");
+		auto producer = MakeNativeProducer(surface, frame.m_width, frame.m_height);
+		Require(producer->m_producerDeviceObject != 0 && producer->m_producerTextureObject != 0, "producer-side Metal texture creation should yield live opaque Metal objects");
 
 		MacNativeBridgeProducerPattern pattern{};
 		pattern.m_viewportId = frame.m_viewportId;
@@ -327,7 +395,7 @@ namespace
 		pattern.m_width = frame.m_width;
 		pattern.m_height = frame.m_height;
 		uintptr_t rendererTextureObject = 0;
-		auto rendererTextureResult = CreateMacRendererIntermediateTexture(producerDeviceObject, frame.m_width, frame.m_height, PixelFormat::B8G8R8A8_UNorm, rendererTextureObject);
+		auto rendererTextureResult = CreateMacRendererIntermediateTexture(producer->m_producerDeviceObject, frame.m_width, frame.m_height, PixelFormat::B8G8R8A8_UNorm, rendererTextureObject);
 		Require(rendererTextureResult.IsOk(), "test should materialize a renderer-shaped intermediate Metal texture");
 		Require(rendererTextureObject != 0, "renderer-shaped intermediate Metal texture should yield a live opaque Metal object");
 
@@ -335,7 +403,7 @@ namespace
 		Require(uploadResult.IsOk(), "test should upload renderer-shaped content into the intermediate texture before the producer copy");
 
 		MacNativeBridgeRendererFrameInfo rendererFrameInfo{};
-		auto copyResult = CopyMacRendererIntermediateToProducerTexture(producerDeviceObject, rendererTextureObject, producerTextureObject, frame.m_width, frame.m_height, rendererFrameInfo);
+		auto copyResult = CopyMacRendererIntermediateToProducerTexture(*producer, rendererTextureObject, rendererFrameInfo);
 		Require(copyResult.IsOk(), "test should copy renderer-shaped output into the IOSurface-backed producer texture");
 		Require(rendererFrameInfo.m_usedRendererIntermediateTexture, "copy result should report renderer-intermediate usage");
 		Require(rendererFrameInfo.m_usedGpuCopyIntoProducerTexture, "copy result should report GPU copy into the producer texture");
@@ -345,7 +413,6 @@ namespace
 
 		auto present = PresentMacNativeLayerFrame(*binding, surfaceHandle, frame, presentResult);
 		ReleaseMacRendererIntermediateTexture(rendererTextureObject);
-		ReleaseMacIOSurfaceProducerTexture(producerDeviceObject, producerTextureObject);
 		CFRelease(surface);
 		Require(present.IsOk(), "presenting through a bound CAMetalLayer should acquire a drawable");
 		Require(presentResult.IsValid(), "present result should surface a real present token");
@@ -425,6 +492,124 @@ namespace
 		Require(layers->load() == 1 && queues->load() == 1 && textures->load() == 1,
 			"clearing the binding must release each owned native object exactly once: layers=" + std::to_string(layers->load()) +
 			" queues=" + std::to_string(queues->load()) + " textures=" + std::to_string(textures->load()));
+	}
+
+	void TestProviderDestructionReleasesNativeTextures()
+	{
+		auto textures = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		@autoreleasepool
+		{
+			MacLoopbackIOSurfaceProvider provider;
+			MacViewportSurfaceState state;
+			ViewportDescriptor viewport;
+			viewport.m_viewportId = 100;
+			viewport.m_width = 64;
+			viewport.m_height = 48;
+			viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+			Require(provider.CreateOrResizeSurface(viewport, 1, 1, state).IsOk(), "provider must allocate native textures");
+			ObserveNativeRelease((id)state.m_nativeAllocation->m_producerTextureObject, textures);
+			ObserveNativeRelease((id)state.m_nativeAllocation->m_rendererIntermediateTextureObject, textures);
+		}
+		Require(textures->load() == 2, "provider and state destruction must release both owned native textures without manual cleanup");
+	}
+
+	void TestProducerAllocationSharedLifetimeAndReplacement()
+	{
+		auto textures = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		auto queues = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		MacViewportSurfaceState retainedState;
+		@autoreleasepool
+		{
+			MacLoopbackIOSurfaceProvider provider;
+			ViewportDescriptor viewport;
+			viewport.m_viewportId = 101;
+			viewport.m_width = 64;
+			viewport.m_height = 48;
+			viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+			Require(provider.CreateOrResizeSurface(viewport, 1, 1, retainedState).IsOk(), "initial native allocation must succeed");
+			MacViewportSurfaceState oldState = retainedState;
+			auto firstOwner = retainedState.m_nativeAllocation;
+			ObserveNativeRelease((id)firstOwner->m_producerTextureObject, textures);
+			ObserveNativeRelease((id)firstOwner->m_producerCommandQueueObject, queues);
+			Require(provider.FindAllocation(retainedState.m_key) == firstOwner.GetRawPtr(), "provider and state must share the same native owner");
+			auto invalidViewport = viewport;
+			invalidViewport.m_pixelFormat = PixelFormat::Unknown;
+			Require(!provider.CreateOrResizeSurface(invalidViewport, 1, 2, retainedState).IsOk(), "unsupported allocation format must fail");
+			Require(retainedState.m_nativeAllocation == firstOwner && retainedState.m_key.m_generation == 1 &&
+				provider.GetLiveAllocationCount() == 1, "failed creation must preserve the published allocation and generation");
+			Require(provider.CreateOrResizeSurface(viewport, 1, 1, retainedState).IsOk(), "same-key replacement must create a new owner");
+			Require(retainedState.m_nativeAllocation != firstOwner && provider.GetLiveAllocationCount() == 1,
+				"same-key replacement must replace exactly one registered allocation");
+			Require(provider.ReleaseSurface(oldState).IsOk(), "retiring the replaced state must succeed");
+			Require(provider.FindAllocation(retainedState.m_key) == retainedState.m_nativeAllocation.GetRawPtr(),
+				"retiring an old owner must not unregister the same-key replacement");
+			oldState.m_nativeAllocation.Clear();
+			Require(textures->load() == 0 && queues->load() == 0, "a retained old allocation must keep its native objects alive");
+			firstOwner.Clear();
+			Require(textures->load() == 1 && queues->load() == 1, "last old owner must release both native objects");
+			ObserveNativeRelease((id)retainedState.m_nativeAllocation->m_producerTextureObject, textures);
+			ObserveNativeRelease((id)retainedState.m_nativeAllocation->m_producerCommandQueueObject, queues);
+			Require(provider.ReleaseSurface(retainedState).IsOk(), "provider must unregister the allocation");
+			Require(provider.GetLiveAllocationCount() == 0 && retainedState.m_nativeAllocation->IsValid(), "unregister must not invalidate a retained state");
+		}
+		Require(textures->load() == 1 && queues->load() == 1, "state must retain its allocation after the provider is destroyed");
+		retainedState.m_nativeAllocation.Clear();
+		Require(textures->load() == 2 && queues->load() == 2, "last state must release the replacement allocation once");
+	}
+
+	void TestProducerCopiesReuseQueueAndPropagateFailure()
+	{
+		auto releases = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		@autoreleasepool
+		{
+			MacLoopbackIOSurfaceProvider provider;
+			MacViewportTransportBackend backend(provider);
+			ViewportDescriptor viewport;
+			viewport.m_viewportId = 102;
+			viewport.m_width = 64;
+			viewport.m_height = 48;
+			viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+			TransportDescriptor transport;
+			Require(backend.EnsureSurface(viewport, 1, 1, transport).IsOk(), "copy test needs a real native surface");
+			const auto state = std::as_const(backend).FindSurface(viewport.m_viewportId, 1, 1);
+			auto allocation = state->m_nativeAllocation;
+			id<MTLCommandQueue> nativeQueue = (id<MTLCommandQueue>)allocation->m_producerCommandQueueObject;
+			ObserveNativeRelease(nativeQueue, releases);
+			ProducerQueueProbe* probe = [[ProducerQueueProbe alloc] initWithQueue:nativeQueue];
+			[nativeQueue release];
+			allocation->m_producerCommandQueueObject = reinterpret_cast<uintptr_t>(probe);
+			for (uint32_t i = 1; i <= 100; ++i)
+			{
+				Require(backend.BeginFrame(viewport, 1, 1).IsOk(), "native producer copy must succeed");
+				FramePacket frame;
+				Require(backend.ExportFrame(viewport, 1, 1, frame).IsOk() && frame.m_frameIndex == i, "completed copy must publish the matching frame index");
+				MacNativeBridgeProducerPattern pattern{ viewport.m_viewportId, 1, 1, i, viewport.m_width, viewport.m_height };
+				Require(ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 23, 11) ==
+					ExpectedProducerPatternBGRA8(pattern, 23, 11), "each native copy must write its own frame pixels");
+				Require(probe->m_commandBufferCount == i, "every copy must use the allocation-owned queue");
+			}
+			probe->m_refuseCommandBuffer = true;
+			Require(!backend.BeginFrame(viewport, 1, 1).IsOk(), "native command buffer refusal must propagate");
+			probe->m_refuseCommandBuffer = false;
+			probe->m_failCompletion = true;
+			Require(!backend.BeginFrame(viewport, 1, 1).IsOk(), "failed native terminal status must propagate after the real copy");
+			Require(allocation->m_lastWrittenFrameIndex == 100 && !state->m_frameBegun, "failed native work must not publish success metadata");
+			FramePacket rejected;
+			Require(!backend.ExportFrame(viewport, 1, 1, rejected).IsOk(), "failed copy must not export a frame");
+			probe->m_failCompletion = false;
+			Require(backend.BeginFrame(viewport, 1, 1).IsOk(), "retry must reuse the existing native queue");
+			Require(backend.ExportFrame(viewport, 1, 1, rejected).IsOk() && rejected.m_frameIndex == 101, "retry must not skip failed frame indices");
+			id<MTLSharedEvent> event = [[(id<MTLDevice>)allocation->m_producerDeviceObject newSharedEvent] autorelease];
+			MacNativeBridgeRendererFrameInfo info;
+			info.m_producerCopyToken = 99;
+			Require(!CopyMacRendererIntermediateToProducerTexture(*allocation, allocation->m_rendererIntermediateTextureObject, info,
+				reinterpret_cast<uintptr_t>(event), 0).IsOk(), "invalid native wait must fail without submission");
+			Require(info.m_producerCopyToken == 0 && !info.m_usedGpuCopyIntoProducerTexture, "failed copy must clear previous caller provenance");
+			Require(probe->m_commandBufferCount == 104, "all success and failure calls must use the same queue");
+			Require(backend.ReleaseSurface(viewport.m_viewportId, 1, 1).IsOk(), "copy test must unregister its native allocation");
+			Require(releases->load() == 0, "retained allocation must keep the producer queue alive after unregister");
+		}
+		Require(releases->load() == 1, "repeated copies and failures must release their one native queue");
 	}
 
 	void TestFailedQueueCreationPreservesBindingAndReleasesCandidate()
@@ -768,6 +953,9 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "ProviderDestructionReleasesNativeTextures", TestProviderDestructionReleasesNativeTextures },
+		{ "ProducerAllocationSharedLifetimeAndReplacement", TestProducerAllocationSharedLifetimeAndReplacement },
+		{ "ProducerCopiesReuseQueueAndPropagateFailure", TestProducerCopiesReuseQueueAndPropagateFailure },
 		{ "BindingFailurePreservesCurrentLayer", TestBindingFailurePreservesCurrentLayer },
 		{ "NativeBindingReleasesOwnedObjects", TestNativeBindingReleasesOwnedObjects },
 		{ "FailedQueueCreationPreservesBindingAndReleasesCandidate", TestFailedQueueCreationPreservesBindingAndReleasesCandidate },

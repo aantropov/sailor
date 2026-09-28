@@ -10,6 +10,7 @@ using namespace Sailor::EditorRemote;
 
 static_assert(std::three_way_comparable<MacRendererFrameSource>);
 static_assert(std::three_way_comparable<MacIOSurfaceAllocation>);
+static_assert(!std::is_copy_constructible_v<MacIOSurfaceAllocation>);
 
 namespace
 {
@@ -517,7 +518,7 @@ namespace
 		MacViewportSurfaceState state{};
 		auto viewport = MakeViewport(80, 4, 2);
 		Require(provider.CreateOrResizeSurface(viewport, 30, 1, state).IsOk(), "concrete mac provider should create a test IOSurface for CPU upload validation");
-		Require(state.m_nativeAllocation.has_value(), "cpu upload validation needs a live native allocation");
+		Require(state.m_nativeAllocation.IsValid(), "cpu upload validation needs a live native allocation");
 
 		const uint8_t pixels[] = {
 			1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255,
@@ -537,7 +538,7 @@ namespace
 		MacLoopbackIOSurfaceProvider bootstrapProvider{};
 		MacViewportSurfaceState bootstrapState{};
 		Require(bootstrapProvider.CreateOrResizeSurface(viewport, 33, 1, bootstrapState).IsOk(), "metal-source validation should create a bootstrap IOSurface allocation");
-		Require(bootstrapState.m_nativeAllocation.has_value(), "metal-source validation needs bootstrap native allocation metadata");
+		Require(bootstrapState.m_nativeAllocation.IsValid(), "metal-source validation needs bootstrap native allocation metadata");
 
 		uintptr_t rendererTextureObject = 0;
 		Require(CreateMacRendererIntermediateTexture(bootstrapState.m_nativeAllocation->m_producerDeviceObject, viewport.m_width, viewport.m_height, viewport.m_pixelFormat, rendererTextureObject).IsOk(), "metal-source validation should create a renderer-owned Metal texture");

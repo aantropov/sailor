@@ -1,4 +1,5 @@
 #include "RemoteViewportMacNativeBridge.h"
+#include "RemoteViewportMacTransport.h"
 
 #if defined(__APPLE__)
 #import <AppKit/AppKit.h>
@@ -130,6 +131,7 @@ namespace Sailor::EditorRemote
 			NSMutableData* data = [NSMutableData dataWithLength:byteCount];
 			if (data == nil || data.length != byteCount)
 			{
+				[texture release];
 				return nil;
 			}
 
@@ -188,45 +190,54 @@ namespace Sailor::EditorRemote
 		}
 
 		const NSUInteger alignment = [device minimumLinearTextureAlignmentForPixelFormat:metalPixelFormat];
+		[device release];
 		return alignment > 0 ? static_cast<uint32_t>(alignment) : 64u;
 	}
 
-	Failure CreateMacIOSurfaceProducerTexture(uintptr_t surfaceObject, uint32_t width, uint32_t height, PixelFormat pixelFormat, uint32_t planeIndex, uintptr_t& outDeviceObject, uintptr_t& outTextureObject)
+	Failure CreateMacIOSurfaceProducerTexture(MacIOSurfaceAllocation& allocation)
 	{
-		outDeviceObject = 0;
-		outTextureObject = 0;
-		if (surfaceObject == 0 || width == 0 || height == 0)
+		@autoreleasepool
 		{
-			return CreateProducerFailure(1004, "macOS producer texture creation requires a valid IOSurface allocation");
-		}
+			if (allocation.m_surfaceObject == 0 || allocation.m_plane.m_width == 0 || allocation.m_plane.m_height == 0)
+			{
+				return CreateProducerFailure(1004, "macOS producer texture creation requires a valid IOSurface allocation");
+			}
 
-		id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-		if (device == nil)
-		{
-			return CreateProducerFailure(1005, "macOS producer texture creation could not create a Metal device");
-		}
+			const auto metalPixelFormat = ToMetalPixelFormat(allocation.m_pixelFormat);
+			if (metalPixelFormat == MTLPixelFormatInvalid)
+			{
+				return CreateProducerFailure(1006, "macOS producer texture creation only supports BGRA8 transport");
+			}
 
-		const auto metalPixelFormat = ToMetalPixelFormat(pixelFormat);
-		if (metalPixelFormat == MTLPixelFormatInvalid)
-		{
-			return CreateProducerFailure(1006, "macOS producer texture creation only supports BGRA8 transport in this slice");
-		}
+			id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+			if (device == nil)
+			{
+				return CreateProducerFailure(1005, "macOS producer texture creation could not create a Metal device");
+			}
 
-		MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalPixelFormat
-			width:width
-			height:height
-			mipmapped:NO];
-		descriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite | MTLTextureUsageRenderTarget;
-		descriptor.storageMode = MTLStorageModeShared;
-		id<MTLTexture> texture = [device newTextureWithDescriptor:descriptor iosurface:reinterpret_cast<IOSurfaceRef>(surfaceObject) plane:planeIndex];
-		if (texture == nil)
-		{
-			return CreateProducerFailure(1007, "macOS producer texture creation could not create an IOSurface-backed Metal texture");
-		}
+			allocation.m_producerDeviceObject = reinterpret_cast<uintptr_t>((__bridge void*)device);
 
-		outDeviceObject = reinterpret_cast<uintptr_t>((__bridge void*)device);
-		outTextureObject = reinterpret_cast<uintptr_t>((__bridge void*)texture);
-		return Failure::Ok();
+			MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalPixelFormat
+				width:allocation.m_plane.m_width
+				height:allocation.m_plane.m_height
+				mipmapped:NO];
+			descriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite | MTLTextureUsageRenderTarget;
+			descriptor.storageMode = MTLStorageModeShared;
+			id<MTLTexture> texture = [device newTextureWithDescriptor:descriptor iosurface:reinterpret_cast<IOSurfaceRef>(allocation.m_surfaceObject) plane:allocation.m_plane.m_planeIndex];
+			if (texture == nil)
+			{
+				return CreateProducerFailure(1007, "macOS producer texture creation could not create an IOSurface-backed Metal texture");
+			}
+
+			allocation.m_producerTextureObject = reinterpret_cast<uintptr_t>((__bridge void*)texture);
+			id<MTLCommandQueue> queue = [device newCommandQueue];
+			if (queue == nil)
+			{
+				return CreateProducerFailure(1032, "macOS producer could not create its Metal command queue");
+			}
+			allocation.m_producerCommandQueueObject = reinterpret_cast<uintptr_t>((__bridge void*)queue);
+			return Failure::Ok();
+		}
 	}
 
 	Failure CreateMacRendererIntermediateTexture(uintptr_t deviceObject, uint32_t width, uint32_t height, PixelFormat pixelFormat, uintptr_t& outTextureObject)
@@ -325,70 +336,76 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	Failure CopyMacRendererIntermediateToProducerTexture(uintptr_t deviceObject, uintptr_t sourceTextureObject, uintptr_t destinationTextureObject, uint32_t width, uint32_t height, MacNativeBridgeRendererFrameInfo& outFrameInfo, uintptr_t sharedEventObject, uint64_t sharedEventValue)
+	Failure CopyMacRendererIntermediateToProducerTexture(const MacIOSurfaceAllocation& allocation, uintptr_t sourceTextureObject, MacNativeBridgeRendererFrameInfo& outFrameInfo, uintptr_t sharedEventObject, uint64_t sharedEventValue)
 	{
-		if (deviceObject == 0 || sourceTextureObject == 0 || destinationTextureObject == 0 || width == 0 || height == 0)
+		outFrameInfo = {};
+		@autoreleasepool
 		{
-			return WriteProducerFailure(1015, "macOS producer GPU copy requires valid Metal objects and extents");
-		}
-
-		id<MTLDevice> device = (__bridge id<MTLDevice>)reinterpret_cast<void*>(deviceObject);
-		id<MTLTexture> sourceTexture = (__bridge id<MTLTexture>)reinterpret_cast<void*>(sourceTextureObject);
-		id<MTLTexture> destinationTexture = (__bridge id<MTLTexture>)reinterpret_cast<void*>(destinationTextureObject);
-		if (device == nil || sourceTexture == nil || destinationTexture == nil)
-		{
-			return WriteProducerFailure(1016, "macOS producer GPU copy resolved a Metal object to nil");
-		}
-
-		id<MTLCommandQueue> commandQueue = [device newCommandQueue];
-		if (commandQueue == nil)
-		{
-			return WriteProducerFailure(1017, "macOS producer GPU copy could not create a Metal command queue");
-		}
-
-		id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
-		if (commandBuffer == nil)
-		{
-			return WriteProducerFailure(1018, "macOS producer GPU copy could not create a Metal command buffer");
-		}
-
-		if (sharedEventObject != 0)
-		{
-			id<MTLSharedEvent> sharedEvent = (__bridge id<MTLSharedEvent>)reinterpret_cast<void*>(sharedEventObject);
-			if (sharedEvent == nil)
+			const auto width = allocation.m_plane.m_width;
+			const auto height = allocation.m_plane.m_height;
+			if (allocation.m_producerCommandQueueObject == 0 || sourceTextureObject == 0 || allocation.m_producerTextureObject == 0 || width == 0 || height == 0)
 			{
-				return WriteProducerFailure(1029, "macOS producer GPU copy resolved the exported Metal shared event to nil");
+				return WriteProducerFailure(1015, "macOS producer GPU copy requires valid Metal objects and extents");
 			}
-			if (sharedEventValue == 0)
+
+			id<MTLTexture> sourceTexture = (__bridge id<MTLTexture>)reinterpret_cast<void*>(sourceTextureObject);
+			id<MTLTexture> destinationTexture = (__bridge id<MTLTexture>)reinterpret_cast<void*>(allocation.m_producerTextureObject);
+			if (sourceTexture == nil || destinationTexture == nil)
 			{
-				return WriteProducerFailure(1030, "macOS producer GPU copy requires a non-zero Metal shared-event wait value");
+				return WriteProducerFailure(1016, "macOS producer GPU copy resolved a Metal object to nil");
 			}
-			if (![commandBuffer respondsToSelector:@selector(encodeWaitForEvent:value:)])
+
+			id<MTLCommandQueue> commandQueue = (__bridge id<MTLCommandQueue>)reinterpret_cast<void*>(allocation.m_producerCommandQueueObject);
+
+			id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+			if (commandBuffer == nil)
 			{
-				return WriteProducerFailure(1031, "macOS producer GPU copy cannot encode a Metal shared-event wait on this runtime");
+				return WriteProducerFailure(1018, "macOS producer GPU copy could not create a Metal command buffer");
 			}
-			[commandBuffer encodeWaitForEvent:sharedEvent value:sharedEventValue];
+
+			if (sharedEventObject != 0)
+			{
+				id<MTLSharedEvent> sharedEvent = (__bridge id<MTLSharedEvent>)reinterpret_cast<void*>(sharedEventObject);
+				if (sharedEvent == nil)
+				{
+					return WriteProducerFailure(1029, "macOS producer GPU copy resolved the exported Metal shared event to nil");
+				}
+				if (sharedEventValue == 0)
+				{
+					return WriteProducerFailure(1030, "macOS producer GPU copy requires a non-zero Metal shared-event wait value");
+				}
+				if (![commandBuffer respondsToSelector:@selector(encodeWaitForEvent:value:)])
+				{
+					return WriteProducerFailure(1031, "macOS producer GPU copy cannot encode a Metal shared-event wait on this runtime");
+				}
+				[commandBuffer encodeWaitForEvent:sharedEvent value:sharedEventValue];
+			}
+
+			id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
+			if (blitEncoder == nil)
+			{
+				return WriteProducerFailure(1019, "macOS producer GPU copy could not create a Metal blit encoder");
+			}
+
+			[blitEncoder copyFromTexture:sourceTexture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(width, height, 1) toTexture:destinationTexture destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
+			[blitEncoder endEncoding];
+			[commandBuffer commit];
+			[commandBuffer waitUntilCompleted];
+			if (commandBuffer.status != MTLCommandBufferStatusCompleted)
+			{
+				const char* description = commandBuffer.error.localizedDescription.UTF8String;
+				return WriteProducerFailure(1033, description ? description : "macOS producer GPU copy failed");
+			}
+
+			outFrameInfo.m_rendererTextureToken = NextRendererTextureToken();
+			outFrameInfo.m_producerCopyToken = NextProducerCopyToken();
+			outFrameInfo.m_crossApiWaitValue = sharedEventValue;
+			outFrameInfo.m_usedRendererIntermediateTexture = true;
+			outFrameInfo.m_usedGpuCopyIntoProducerTexture = true;
+			outFrameInfo.m_usedCpuUploadIntoProducerTexture = false;
+			outFrameInfo.m_waitedOnCrossApiSharedEvent = sharedEventObject != 0 && sharedEventValue != 0;
+			return Failure::Ok();
 		}
-
-		id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
-		if (blitEncoder == nil)
-		{
-			return WriteProducerFailure(1019, "macOS producer GPU copy could not create a Metal blit encoder");
-		}
-
-		[blitEncoder copyFromTexture:sourceTexture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(width, height, 1) toTexture:destinationTexture destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
-		[blitEncoder endEncoding];
-		[commandBuffer commit];
-		[commandBuffer waitUntilCompleted];
-
-		outFrameInfo.m_rendererTextureToken = NextRendererTextureToken();
-		outFrameInfo.m_producerCopyToken = NextProducerCopyToken();
-		outFrameInfo.m_crossApiWaitValue = sharedEventValue;
-		outFrameInfo.m_usedRendererIntermediateTexture = true;
-		outFrameInfo.m_usedGpuCopyIntoProducerTexture = true;
-		outFrameInfo.m_usedCpuUploadIntoProducerTexture = false;
-		outFrameInfo.m_waitedOnCrossApiSharedEvent = sharedEventObject != 0 && sharedEventValue != 0;
-		return Failure::Ok();
 	}
 
 	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t vulkanDeviceHandle, uintptr_t vulkanSemaphoreHandle, uintptr_t& outSharedEventObject, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited)
@@ -501,17 +518,15 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	void ReleaseMacIOSurfaceProducerTexture(uintptr_t& inOutDeviceObject, uintptr_t& inOutTextureObject)
+	MacIOSurfaceAllocation::~MacIOSurfaceAllocation()
 	{
-		if (inOutTextureObject != 0)
+		ReleaseObjectiveCObject(m_rendererIntermediateTextureObject);
+		ReleaseObjectiveCObject(m_producerTextureObject);
+		ReleaseObjectiveCObject(m_producerCommandQueueObject);
+		ReleaseObjectiveCObject(m_producerDeviceObject);
+		if (m_surfaceObject != 0)
 		{
-			CFRelease(reinterpret_cast<CFTypeRef>(inOutTextureObject));
-			inOutTextureObject = 0;
-		}
-		if (inOutDeviceObject != 0)
-		{
-			CFRelease(reinterpret_cast<CFTypeRef>(inOutDeviceObject));
-			inOutDeviceObject = 0;
+			CFRelease(reinterpret_cast<IOSurfaceRef>(m_surfaceObject));
 		}
 	}
 
@@ -851,10 +866,8 @@ namespace Sailor::EditorRemote
 		return 64u;
 	}
 
-	Failure CreateMacIOSurfaceProducerTexture(uintptr_t, uint32_t, uint32_t, PixelFormat, uint32_t, uintptr_t& outDeviceObject, uintptr_t& outTextureObject)
+	Failure CreateMacIOSurfaceProducerTexture(MacIOSurfaceAllocation&)
 	{
-		outDeviceObject = 0;
-		outTextureObject = 0;
 		return Failure::Ok();
 	}
 
@@ -874,7 +887,7 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	Failure CopyMacRendererIntermediateToProducerTexture(uintptr_t, uintptr_t, uintptr_t, uint32_t, uint32_t, MacNativeBridgeRendererFrameInfo&, uintptr_t, uint64_t)
+	Failure CopyMacRendererIntermediateToProducerTexture(const MacIOSurfaceAllocation&, uintptr_t, MacNativeBridgeRendererFrameInfo&, uintptr_t, uint64_t)
 	{
 		return Failure::Ok();
 	}
@@ -896,12 +909,6 @@ namespace Sailor::EditorRemote
 	{
 		outTextureObject = 0;
 		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS Vulkan->Metal export is unavailable on this platform");
-	}
-
-	void ReleaseMacIOSurfaceProducerTexture(uintptr_t& inOutDeviceObject, uintptr_t& inOutTextureObject)
-	{
-		inOutDeviceObject = 0;
-		inOutTextureObject = 0;
 	}
 
 	void ReleaseMacRendererIntermediateTexture(uintptr_t& inOutTextureObject)

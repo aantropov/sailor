@@ -101,11 +101,21 @@ namespace Sailor::EditorRemote
 
 	struct MacIOSurfaceAllocation
 	{
+		MacIOSurfaceAllocation() = default;
+#if defined(__APPLE__)
+		~MacIOSurfaceAllocation();
+#else
+		~MacIOSurfaceAllocation() = default;
+#endif
+		MacIOSurfaceAllocation(const MacIOSurfaceAllocation&) = delete;
+		MacIOSurfaceAllocation& operator=(const MacIOSurfaceAllocation&) = delete;
+
 		uint32_t m_surfaceId = 0;
 		uint64_t m_registryId = 0;
 		uintptr_t m_surfaceObject = 0;
 		uintptr_t m_producerDeviceObject = 0;
 		uintptr_t m_producerTextureObject = 0;
+		uintptr_t m_producerCommandQueueObject = 0;
 		uintptr_t m_rendererIntermediateTextureObject = 0;
 		uint64_t m_allocationToken = 0;
 		uint64_t m_lastWrittenFrameIndex = 0;
@@ -184,7 +194,7 @@ namespace Sailor::EditorRemote
 		FrameIndex m_lastExportedFrameIndex = 0;
 		bool m_frameBegun = false;
 		bool m_needsHostReset = false;
-		std::optional<MacIOSurfaceAllocation> m_nativeAllocation{};
+		TSharedPtr<MacIOSurfaceAllocation> m_nativeAllocation{};
 		std::optional<MacIOSurfaceExportMetadata> m_lastExport{};
 	};
 
@@ -216,24 +226,24 @@ namespace Sailor::EditorRemote
 
 		Failure CreateOrResizeSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, MacViewportSurfaceState& inOutState) override
 		{
-			MacIOSurfaceAllocation allocation{};
-			allocation.m_registryId = (epoch << 32ull) | generation;
-			allocation.m_allocationToken = ++m_nextAllocationToken;
-			allocation.m_pixelFormat = viewport.m_pixelFormat;
-			allocation.m_colorSpace = viewport.m_colorSpace;
-			allocation.m_usageFlags = viewport.m_usageFlags;
-			allocation.m_framebufferOnly = false;
-			allocation.m_debugLabel = viewport.m_debugName;
-			allocation.m_plane.m_planeIndex = 0;
-			allocation.m_plane.m_planeCount = 1;
-			allocation.m_plane.m_width = viewport.m_width;
-			allocation.m_plane.m_height = viewport.m_height;
-			allocation.m_plane.m_bytesPerElement = 4u;
+			auto allocation = TSharedPtr<MacIOSurfaceAllocation>::Make();
+			allocation->m_registryId = (epoch << 32ull) | generation;
+			allocation->m_allocationToken = ++m_nextAllocationToken;
+			allocation->m_pixelFormat = viewport.m_pixelFormat;
+			allocation->m_colorSpace = viewport.m_colorSpace;
+			allocation->m_usageFlags = viewport.m_usageFlags;
+			allocation->m_framebufferOnly = false;
+			allocation->m_debugLabel = viewport.m_debugName;
+			allocation->m_plane.m_planeIndex = 0;
+			allocation->m_plane.m_planeCount = 1;
+			allocation->m_plane.m_width = viewport.m_width;
+			allocation->m_plane.m_height = viewport.m_height;
+			allocation->m_plane.m_bytesPerElement = 4u;
 #if defined(__APPLE__)
-			const uint32_t minimumStrideAlignment = std::max(GetMacIOSurfaceBytesPerRowAlignment(viewport.m_pixelFormat), allocation.m_plane.m_bytesPerElement);
-			allocation.m_plane.m_bytesPerRow = AlignMacIOSurfaceStride(viewport.m_width * allocation.m_plane.m_bytesPerElement, minimumStrideAlignment);
+			const uint32_t minimumStrideAlignment = std::max(GetMacIOSurfaceBytesPerRowAlignment(viewport.m_pixelFormat), allocation->m_plane.m_bytesPerElement);
+			allocation->m_plane.m_bytesPerRow = AlignMacIOSurfaceStride(viewport.m_width * allocation->m_plane.m_bytesPerElement, minimumStrideAlignment);
 #else
-			allocation.m_plane.m_bytesPerRow = viewport.m_width * allocation.m_plane.m_bytesPerElement;
+			allocation->m_plane.m_bytesPerRow = viewport.m_width * allocation->m_plane.m_bytesPerElement;
 #endif
 
 #if defined(__APPLE__)
@@ -266,9 +276,9 @@ namespace Sailor::EditorRemote
 
 			setIntProperty(kIOSurfaceWidth, static_cast<int32_t>(viewport.m_width));
 			setIntProperty(kIOSurfaceHeight, static_cast<int32_t>(viewport.m_height));
-			setIntProperty(kIOSurfaceBytesPerElement, static_cast<int32_t>(allocation.m_plane.m_bytesPerElement));
-			setIntProperty(kIOSurfaceBytesPerRow, static_cast<int32_t>(allocation.m_plane.m_bytesPerRow));
-			setIntProperty(kIOSurfaceAllocSize, static_cast<int32_t>(allocation.m_plane.m_bytesPerRow * allocation.m_plane.m_height));
+			setIntProperty(kIOSurfaceBytesPerElement, static_cast<int32_t>(allocation->m_plane.m_bytesPerElement));
+			setIntProperty(kIOSurfaceBytesPerRow, static_cast<int32_t>(allocation->m_plane.m_bytesPerRow));
+			setIntProperty(kIOSurfaceAllocSize, static_cast<int32_t>(allocation->m_plane.m_bytesPerRow * allocation->m_plane.m_height));
 			setIntProperty(kIOSurfacePixelFormat, static_cast<int32_t>('BGRA'));
 
 			IOSurfaceRef surface = IOSurfaceCreate(properties);
@@ -279,45 +289,42 @@ namespace Sailor::EditorRemote
 				return m_lastFailure;
 			}
 
-			allocation.m_surfaceObject = reinterpret_cast<uintptr_t>(surface);
-			allocation.m_surfaceId = IOSurfaceGetID(surface);
-			auto producerTextureResult = CreateMacIOSurfaceProducerTexture(allocation.m_surfaceObject, allocation.m_plane.m_width, allocation.m_plane.m_height, allocation.m_pixelFormat, allocation.m_plane.m_planeIndex, allocation.m_producerDeviceObject, allocation.m_producerTextureObject);
+			allocation->m_surfaceObject = reinterpret_cast<uintptr_t>(surface);
+			allocation->m_surfaceId = IOSurfaceGetID(surface);
+			auto producerTextureResult = CreateMacIOSurfaceProducerTexture(*allocation);
 			if (!producerTextureResult.IsOk())
 			{
-				CFRelease(surface);
 				m_lastFailure = producerTextureResult;
 				return producerTextureResult;
 			}
 
-			auto rendererTextureResult = CreateMacRendererIntermediateTexture(allocation.m_producerDeviceObject, allocation.m_plane.m_width, allocation.m_plane.m_height, allocation.m_pixelFormat, allocation.m_rendererIntermediateTextureObject);
+			auto rendererTextureResult = CreateMacRendererIntermediateTexture(allocation->m_producerDeviceObject, allocation->m_plane.m_width, allocation->m_plane.m_height, allocation->m_pixelFormat, allocation->m_rendererIntermediateTextureObject);
 			if (!rendererTextureResult.IsOk())
 			{
-				ReleaseMacIOSurfaceProducerTexture(allocation.m_producerDeviceObject, allocation.m_producerTextureObject);
-				CFRelease(surface);
 				m_lastFailure = rendererTextureResult;
 				return rendererTextureResult;
 			}
 #else
-			allocation.m_surfaceObject = allocation.m_registryId;
-			allocation.m_surfaceId = ++m_nextSurfaceId;
+			allocation->m_surfaceObject = allocation->m_registryId;
+			allocation->m_surfaceId = ++m_nextSurfaceId;
 #endif
 
 			MacIOSurfaceExportMetadata exportMetadata{};
-			exportMetadata.m_handle.m_surfaceId = allocation.m_surfaceId;
-			exportMetadata.m_handle.m_registryId = allocation.m_registryId;
-			exportMetadata.m_handle.m_surfaceObject = allocation.m_surfaceObject;
+			exportMetadata.m_handle.m_surfaceId = allocation->m_surfaceId;
+			exportMetadata.m_handle.m_registryId = allocation->m_registryId;
+			exportMetadata.m_handle.m_surfaceObject = allocation->m_surfaceObject;
 			exportMetadata.m_handle.m_sharedEventObject = 0;
-			exportMetadata.m_handle.m_planeIndex = allocation.m_plane.m_planeIndex;
-			exportMetadata.m_handle.m_planeCount = allocation.m_plane.m_planeCount;
-			exportMetadata.m_handle.m_bytesPerRow = allocation.m_plane.m_bytesPerRow;
-			exportMetadata.m_handle.m_bytesPerElement = allocation.m_plane.m_bytesPerElement;
-			exportMetadata.m_handle.m_framebufferOnly = allocation.m_framebufferOnly;
+			exportMetadata.m_handle.m_planeIndex = allocation->m_plane.m_planeIndex;
+			exportMetadata.m_handle.m_planeCount = allocation->m_plane.m_planeCount;
+			exportMetadata.m_handle.m_bytesPerRow = allocation->m_plane.m_bytesPerRow;
+			exportMetadata.m_handle.m_bytesPerElement = allocation->m_plane.m_bytesPerElement;
+			exportMetadata.m_handle.m_framebufferOnly = allocation->m_framebufferOnly;
 			exportMetadata.m_exportToken = ++m_nextExportToken;
 			exportMetadata.m_lastAcquireValue = 0;
 			exportMetadata.m_lastReleaseValue = 0;
 			exportMetadata.m_requiresHostRelease = false;
 
-			if (!allocation.IsValid() || !exportMetadata.IsValid())
+			if (!allocation->IsValid() || !exportMetadata.IsValid())
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Transport, 1001, "Failed to materialize macOS IOSurface allocation metadata");
 				return m_lastFailure;
@@ -337,14 +344,14 @@ namespace Sailor::EditorRemote
 			inOutState.m_frameBegun = false;
 			inOutState.m_nativeAllocation = allocation;
 			inOutState.m_lastExport = exportMetadata;
-			StoreAllocation(inOutState.m_key, allocation);
+			m_liveAllocations[inOutState.m_key] = std::move(allocation);
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
 
 		Failure BeginFrame(MacViewportSurfaceState& state) override
 		{
-			if (!state.m_nativeAllocation.has_value() || !state.m_nativeAllocation->IsValid())
+			if (!state.m_nativeAllocation || !state.m_nativeAllocation->IsValid())
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1002, "macOS frame begin requires a live IOSurface allocation");
 				return m_lastFailure;
@@ -398,7 +405,7 @@ namespace Sailor::EditorRemote
 			if (rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture)
 			{
 				sourceTextureObject = rendererSource.m_textureObject;
-				copyResult = CopyMacRendererIntermediateToProducerTexture(state.m_nativeAllocation->m_producerDeviceObject, sourceTextureObject, state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererFrameInfo, rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue);
+				copyResult = CopyMacRendererIntermediateToProducerTexture(*state.m_nativeAllocation, sourceTextureObject, rendererFrameInfo, rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue);
 			}
 			else if (bHasCpuPayload)
 			{
@@ -430,7 +437,7 @@ namespace Sailor::EditorRemote
 					rendererSource.m_pixelFormat = state.m_viewport.m_pixelFormat;
 					rendererSource.m_debugName = "SyntheticIntermediate";
 				}
-				copyResult = CopyMacRendererIntermediateToProducerTexture(state.m_nativeAllocation->m_producerDeviceObject, state.m_nativeAllocation->m_rendererIntermediateTextureObject, state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererFrameInfo);
+				copyResult = CopyMacRendererIntermediateToProducerTexture(*state.m_nativeAllocation, state.m_nativeAllocation->m_rendererIntermediateTextureObject, rendererFrameInfo);
 			}
 			ReleaseRendererFrameSourceResources(rendererSource);
 			if (!copyResult.IsOk())
@@ -457,14 +464,13 @@ namespace Sailor::EditorRemote
 				state.m_transport.m_macSurfaces.front().m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
 			}
 			state.m_frameBegun = true;
-			StoreAllocation(state.m_key, *state.m_nativeAllocation);
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
 
 		Failure ExportFrame(MacViewportSurfaceState& state, FramePacket& outFrame) override
 		{
-			if (!state.m_nativeAllocation.has_value() || !state.m_lastExport.has_value())
+			if (!state.m_nativeAllocation || !state.m_lastExport.has_value())
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1003, "macOS frame export requires IOSurface ownership metadata");
 				return m_lastFailure;
@@ -496,18 +502,11 @@ namespace Sailor::EditorRemote
 
 		Failure ReleaseSurface(const MacViewportSurfaceState& state) override
 		{
-#if defined(__APPLE__)
-			if (auto it = m_liveAllocations.Find(state.m_key); it != m_liveAllocations.end())
+			const auto it = m_liveAllocations.Find(state.m_key);
+			if (it != m_liveAllocations.end() && it.Value() == state.m_nativeAllocation)
 			{
-				ReleaseMacRendererIntermediateTexture(it.Value()->m_rendererIntermediateTextureObject);
-				ReleaseMacIOSurfaceProducerTexture(it.Value()->m_producerDeviceObject, it.Value()->m_producerTextureObject);
-				if (it.Value()->m_surfaceObject != 0)
-				{
-					CFRelease(reinterpret_cast<IOSurfaceRef>(it.Value()->m_surfaceObject));
-				}
+				m_liveAllocations.Remove(state.m_key);
 			}
-#endif
-			m_liveAllocations.Remove(state.m_key);
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -542,20 +541,7 @@ namespace Sailor::EditorRemote
 			}
 		}
 
-		void StoreAllocation(const MacViewportSurfaceKey& key, const MacIOSurfaceAllocation& allocation)
-		{
-			auto& storedAllocation = m_liveAllocations[key];
-			if (storedAllocation)
-			{
-				*storedAllocation = allocation;
-			}
-			else
-			{
-				storedAllocation = TUniquePtr<MacIOSurfaceAllocation>::Make(allocation);
-			}
-		}
-
-		TMap<MacViewportSurfaceKey, TUniquePtr<MacIOSurfaceAllocation>> m_liveAllocations{};
+		TMap<MacViewportSurfaceKey, TSharedPtr<MacIOSurfaceAllocation>> m_liveAllocations{};
 		IMacRendererFrameSourceProvider* m_rendererFrameSourceProvider = nullptr;
 		Failure m_lastFailure = Failure::Ok();
 		uint32_t m_nextSurfaceId = 100;
