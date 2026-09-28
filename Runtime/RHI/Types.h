@@ -570,10 +570,7 @@ namespace Sailor::RHI
 		size_t GetTag() const { return m_tag; }
 		bool SupportMultisampling() const { return m_bSupportMultisampling; }
 
-		bool operator==(const RenderState& rhs) const
-		{
-			return memcmp(this, &rhs, sizeof(RenderState)) == 0;
-		}
+		bool operator==(const RenderState&) const = default;
 
 	private:
 

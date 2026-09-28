@@ -7,6 +7,8 @@
 #include "RHI/Surface.h"
 
 #include <cstdint>
+#include <cstring>
+#include <new>
 #include <iostream>
 #include <stdexcept>
 #include <type_traits>
@@ -22,6 +24,39 @@ namespace
 		{
 			throw std::runtime_error(message);
 		}
+	}
+
+	void TestRenderStateIdentity()
+	{
+		using namespace RHI;
+		alignas(RenderState) unsigned char first[sizeof(RenderState)];
+		alignas(RenderState) unsigned char second[sizeof(RenderState)];
+		std::memset(first, 0x35, sizeof(first));
+		std::memset(second, 0xca, sizeof(second));
+		auto* a = new(first) RenderState(true, true, 0, false, ECullMode::Back,
+			EBlendMode::None, EFillMode::Fill, 7, true, EDepthCompare::GreaterOrEqual);
+		auto* b = new(second) RenderState(true, true, -0.0f, false, ECullMode::Back,
+			EBlendMode::None, EFillMode::Fill, 7, true, EDepthCompare::GreaterOrEqual);
+		Require(*a == *b && GetHash(*a) == GetHash(*b),
+			"equal render states must have equal identity and hash despite padding or signed zero");
+		const RenderState different[] = {
+			{ false, true, 0, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, 7, true, EDepthCompare::GreaterOrEqual },
+			{ true, false, 0, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, 7, true, EDepthCompare::GreaterOrEqual },
+			{ true, true, 1, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, 7, true, EDepthCompare::GreaterOrEqual },
+			{ true, true, 0, true, ECullMode::Back, EBlendMode::None, EFillMode::Fill, 7, true, EDepthCompare::GreaterOrEqual },
+			{ true, true, 0, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 7, true, EDepthCompare::GreaterOrEqual },
+			{ true, true, 0, false, ECullMode::Back, EBlendMode::Additive, EFillMode::Fill, 7, true, EDepthCompare::GreaterOrEqual },
+			{ true, true, 0, false, ECullMode::Back, EBlendMode::None, EFillMode::Line, 7, true, EDepthCompare::GreaterOrEqual },
+			{ true, true, 0, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, 8, true, EDepthCompare::GreaterOrEqual },
+			{ true, true, 0, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, 7, false, EDepthCompare::GreaterOrEqual },
+			{ true, true, 0, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, 7, true, EDepthCompare::Always }
+		};
+		for (const auto& state : different)
+		{
+			Require(!(state == *a), "every authored render-state property must participate in identity");
+		}
+		a->~RenderState();
+		b->~RenderState();
 	}
 
 	template<typename T>
@@ -357,6 +392,7 @@ int main()
 {
 	try
 	{
+		TestRenderStateIdentity();
 		TestNativeAttachmentValues();
 		TestSupportedDepthResolveModes();
 		TestDefaultClearValues();
