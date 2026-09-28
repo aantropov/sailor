@@ -201,8 +201,10 @@ namespace
 
 		RemoteViewportSession session{ MakeViewport(), 7 };
 		BlockingBackend backend;
+		TransportDescriptor transport;
 		Require(session.BeginNegotiation().IsOk(), "negotiation should succeed");
-		Require(session.EnsureBackendTransport(backend).IsOk(), "transport should become ready");
+		Require(session.EnsureBackendTransport(backend, transport).IsOk() && session.MarkTransportReady(transport).IsOk(),
+			"imported transport should become ready");
 		auto frame = std::async(std::launch::async, [&]() { return session.PublishFrameFromBackend(backend); });
 		backend.m_entered.get_future().wait();
 		auto input = std::async(std::launch::async, [&]()
@@ -251,8 +253,11 @@ namespace
 		FakeViewportTransportBackend backend{};
 
 		Require(session.BeginNegotiation().IsOk(), "backend-driven session should start negotiation");
-		Require(session.EnsureBackendTransport(backend).IsOk(), "backend should provide transport descriptor");
-		Require(session.IsReady(), "backend transport should mark session ready");
+		TransportDescriptor transport;
+		Require(session.EnsureBackendTransport(backend, transport).IsOk(), "backend should provide transport descriptor");
+		Require(!session.IsReady() && session.GetState() == SessionState::Negotiating,
+			"backend allocation alone must not acknowledge host import");
+		Require(session.MarkTransportReady(transport).IsOk() && session.IsReady(), "host acknowledgement should mark the session ready");
 		Require(backend.m_ensureCalls.size() == 1, "ensure should be invoked exactly once");
 		Require(backend.m_ensureCalls.front().m_generation == 1, "initial ensure should use generation one");
 
@@ -271,12 +276,14 @@ namespace
 		RemoteViewportSession session{ viewport, 4 };
 		FakeViewportTransportBackend backend{};
 		Require(session.BeginNegotiation().IsOk(), "negotiation should start before backend failure tests");
+		TransportDescriptor transport;
 
 		backend.m_nextEnsureFailure = Failure::FromDomain(ErrorDomain::Transport, 41, "ensure failed");
-		Require(!session.EnsureBackendTransport(backend).IsOk(), "backend ensure failure should surface");
+		Require(!session.EnsureBackendTransport(backend, transport).IsOk(), "backend ensure failure should surface");
 		Require(session.GetFailure().m_nativeCode == 41, "session should retain backend ensure failure");
 
-		Require(session.EnsureBackendTransport(backend).IsOk(), "backend ensure should recover after injected failure");
+		Require(session.EnsureBackendTransport(backend, transport).IsOk() && session.MarkTransportReady(transport).IsOk(),
+			"backend ensure and host acknowledgement should recover after injected failure");
 		backend.m_nextExportFailure = Failure::FromDomain(ErrorDomain::Transport, 42, "export failed");
 		Require(!session.PublishFrameFromBackend(backend).IsOk(), "backend export failure should surface");
 		Require(session.GetFailure().m_nativeCode == 42, "session should retain backend export failure");

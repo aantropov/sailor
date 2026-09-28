@@ -20,6 +20,7 @@
 @public
 	id<MTLDevice> m_device;
 	id<MTLCommandQueue> m_queue;
+	BOOL m_failNextQueue;
 }
 - (id)initWithDevice:(id<MTLDevice>)device;
 @end
@@ -32,6 +33,7 @@
 }
 - (id<MTLCommandQueue>)newCommandQueue
 {
+	if (std::exchange(m_failNextQueue, NO)) return nil;
 	id<MTLCommandQueue> queue = [m_device newCommandQueue];
 	[m_queue release];
 	m_queue = [queue retain];
@@ -195,8 +197,10 @@ namespace Sailor::Tests
 			viewport.m_colorSpace = ColorSpace::Srgb;
 			viewport.m_presentMode = PresentMode::Mailbox;
 			MacViewportLoopbackBinding binding(viewport, provider, presenter);
+			ReadbackPresentationLayer* layer = [ReadbackPresentationLayer layer];
+			layer->m_queueDevice = [[ViewportQueueDevice alloc] initWithDevice:[MTLCreateSystemDefaultDevice() autorelease]];
 			presenter.BindHostHandle(viewport.m_viewportId,
-				{ MacNativeHostHandleKind::CAMetalLayer, reinterpret_cast<uintptr_t>([CAMetalLayer layer]) });
+				{ MacNativeHostHandleKind::CAMetalLayer, reinterpret_cast<uintptr_t>(layer) });
 			require(binding.Create().IsOk(), "Vulkan-source retirement needs an actual native viewport");
 			auto allocation = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 1)->m_nativeAllocation;
 			input.m_gate = [[(id<MTLDevice>)allocation->m_producerDeviceObject newSharedEvent] autorelease];
@@ -220,6 +224,11 @@ namespace Sailor::Tests
 				require(input.m_gate.signaledValue == 0 && input.m_calls == 1 &&
 					binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 0,
 					"pending native copy must not reacquire or publish the Vulkan source");
+				layer->m_queueDevice->m_failNextQueue = YES;
+				require(!binding.Resize(resized.m_width, resized.m_height).IsOk() &&
+					binding.GetRuntimeSession().GetGeneration() == 1 && presenter.FindImportedState(viewport.m_viewportId)->m_generation == 1 &&
+					provider.GetLiveAllocationCount() == 1 && allocation.IsShared() && input.m_gate.signaledValue == 0,
+					"native import failure must preserve the old generation and its pending Vulkan-source copy");
 				require(binding.Resize(resized.m_width, resized.m_height).IsOk() && !allocation.IsShared(),
 					"resize must retire the old allocation while its copy remains pending");
 				allocation.Clear();
@@ -310,6 +319,7 @@ namespace Sailor::Tests
 			viewport.m_presentMode = PresentMode::Mailbox;
 			MacViewportLoopbackBinding binding(viewport, provider, presenter);
 			ReadbackPresentationLayer* layer = [ReadbackPresentationLayer layer];
+			layer->m_queueDevice = [[ViewportQueueDevice alloc] initWithDevice:[MTLCreateSystemDefaultDevice() autorelease]];
 			presenter.BindHostHandle(viewport.m_viewportId,
 				{ MacNativeHostHandleKind::CAMetalLayer, reinterpret_cast<uintptr_t>(layer) });
 			require(binding.Create().IsOk(), "actual readback presentation must create a native loopback binding");
@@ -378,7 +388,25 @@ namespace Sailor::Tests
 				"texture reuse must preserve normal export and native presentation");
 			require(reused, "repeated presentation of an actual Vulkan readback must reuse its IOSurface texture import");
 
+			for (uint32_t attempt = 0; attempt < 3; ++attempt)
+			{
+				layer->m_queueDevice->m_failNextQueue = YES;
+				require(!binding.Resize(source.m_width + 1, source.m_height + 1).IsOk() &&
+					binding.GetRuntimeSession().GetDescriptor() == viewport && binding.GetRuntimeSession().GetGeneration() == 1 &&
+					binding.GetRuntimeSession().IsReady() && presenter.FindImportedState(viewport.m_viewportId)->m_generation == 1 &&
+					presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding.GetRawPtr() == native &&
+					layer.drawableSize.width == source.m_width && layer.drawableSize.height == source.m_height &&
+					provider.GetLiveAllocationCount() == 1 && binding.GetTransportBackend().GetSurfaceCount() == 1,
+					"native queue creation failure must preserve the imported layer and release the rejected IOSurface");
+				require(binding.PumpFrame().IsOk(), "old viewport must still present after a failed native resize");
+				checkPresentedPixel(native);
+			}
 			allocation.Clear();
+			require(binding.Resize(source.m_width, source.m_height).IsOk() && binding.PumpFrame().IsOk() &&
+				binding.GetRuntimeSession().GetGeneration() == 2 && provider.GetLiveAllocationCount() == 1 &&
+				presenter.FindImportedState(viewport.m_viewportId)->m_generation == 2,
+				"native import retry must replace the generation without leaking its predecessor");
+			checkPresentedPixel(presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding.GetRawPtr());
 			require(binding.GetRuntimeSession().MarkFailure(Failure::FromDomain(ErrorDomain::Session, 2, "recreate native viewport")).IsOk() &&
 				binding.PumpFrame().IsOk(), "a real native viewport must recover through its ordinary pump");
 			const auto* recovered = presenter.FindImportedState(viewport.m_viewportId);

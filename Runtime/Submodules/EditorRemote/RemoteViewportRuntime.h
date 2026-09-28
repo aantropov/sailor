@@ -82,9 +82,8 @@ namespace Sailor::EditorRemote
 			return Failure::Ok();
 		}
 
-		Failure EnsureBackendTransport(IViewportTransportBackend& backend)
+		Failure EnsureBackendTransport(IViewportTransportBackend& backend, TransportDescriptor& transport)
 		{
-			TransportDescriptor transport{};
 			auto result = backend.EnsureSurface(m_descriptor, m_connectionEpoch, m_guards.GetGeneration(), transport);
 			if (!result.IsOk())
 			{
@@ -93,7 +92,7 @@ namespace Sailor::EditorRemote
 			}
 
 			m_failure = Failure::Ok();
-			return MarkTransportReady(transport);
+			return Failure::Ok();
 		}
 
 		Failure MarkTransportReady(const TransportDescriptor& transport)
@@ -120,6 +119,7 @@ namespace Sailor::EditorRemote
 
 			m_transportReadyTimeout.Reset();
 			m_reconnectTimeout.Reset();
+			m_failure = Failure::Ok();
 			m_transportType = transport.m_transportType;
 			auto transition = m_state.TransitionTo(SessionState::Ready);
 			if (!transition.IsOk())
@@ -132,7 +132,7 @@ namespace Sailor::EditorRemote
 			return result;
 		}
 
-		Failure HandleResize(const ViewportDescriptor& descriptor, uint64_t nowMs = GetMonotonicTimeMs())
+		Failure ValidateResize(const ViewportDescriptor& descriptor) const
 		{
 			auto validation = descriptor.Validate();
 			if (!validation.IsOk())
@@ -143,6 +143,18 @@ namespace Sailor::EditorRemote
 			{
 				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Resize descriptor viewport id mismatch");
 			}
+			if (m_state.GetState() != SessionState::Resizing &&
+				!SessionStateMachine::IsTransitionAllowed(m_state.GetState(), SessionState::Resizing))
+			{
+				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Session cannot resize in its current state");
+			}
+			return Failure::Ok();
+		}
+
+		Failure HandleResize(const ViewportDescriptor& descriptor, uint64_t nowMs = GetMonotonicTimeMs())
+		{
+			auto validation = ValidateResize(descriptor);
+			if (!validation.IsOk()) return validation;
 
 			auto transition = m_state.TransitionTo(SessionState::Resizing);
 			if (!transition.IsOk())

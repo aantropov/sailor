@@ -736,15 +736,15 @@ namespace Sailor::EditorRemote
 			return Failure::Ok();
 		}
 
-		Failure ApplyCompositionScale()
+		Failure ApplyCompositionScale(const ComPtr<IDXGISwapChain1>& target)
 		{
-			if (!m_swapChain)
+			if (!target)
 			{
 				return Failure::Ok();
 			}
 
 			ComPtr<IDXGISwapChain2> swapChain;
-			const HRESULT queryResult = m_swapChain.As(&swapChain);
+			const HRESULT queryResult = target.As(&swapChain);
 			if (FAILED(queryResult))
 			{
 				return MakeWindowsFailure(queryResult, "IDXGISwapChain2 query");
@@ -793,13 +793,13 @@ namespace Sailor::EditorRemote
 			return result;
 		}
 
-		m_impl->m_sharedTexture.Reset();
-		m_impl->m_keyedMutex.Reset();
+		ComPtr<ID3D11Texture2D> sharedTexture;
+		ComPtr<IDXGIKeyedMutex> keyedMutex;
 		const HANDLE sharedHandle = reinterpret_cast<HANDLE>(
 			transport.m_nativeHandles.front().m_sharedTextureHandle);
 		HRESULT nativeResult = m_impl->m_device->OpenSharedResource1(
 			sharedHandle,
-			IID_PPV_ARGS(&m_impl->m_sharedTexture));
+			IID_PPV_ARGS(&sharedTexture));
 		if (FAILED(nativeResult))
 		{
 			m_impl->m_lastFailure = MakeWindowsFailure(
@@ -808,7 +808,7 @@ namespace Sailor::EditorRemote
 			return m_impl->m_lastFailure;
 		}
 
-		nativeResult = m_impl->m_sharedTexture.As(&m_impl->m_keyedMutex);
+		nativeResult = sharedTexture.As(&keyedMutex);
 		if (FAILED(nativeResult))
 		{
 			m_impl->m_lastFailure = MakeWindowsFailure(
@@ -818,7 +818,7 @@ namespace Sailor::EditorRemote
 		}
 
 		D3D11_TEXTURE2D_DESC textureDescription{};
-		m_impl->m_sharedTexture->GetDesc(&textureDescription);
+		sharedTexture->GetDesc(&textureDescription);
 		if (textureDescription.Width != viewport.m_width ||
 			textureDescription.Height != viewport.m_height ||
 			textureDescription.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
@@ -842,12 +842,12 @@ namespace Sailor::EditorRemote
 		swapChainDescription.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 		swapChainDescription.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
 
-		m_impl->m_swapChain.Reset();
+		ComPtr<IDXGISwapChain1> swapChain;
 		nativeResult = m_impl->m_factory->CreateSwapChainForComposition(
 			m_impl->m_device.Get(),
 			&swapChainDescription,
 			nullptr,
-			&m_impl->m_swapChain);
+			&swapChain);
 		if (FAILED(nativeResult))
 		{
 			m_impl->m_lastFailure = MakeWindowsFailure(
@@ -856,14 +856,16 @@ namespace Sailor::EditorRemote
 			return m_impl->m_lastFailure;
 		}
 
-		result = m_impl->ApplyCompositionScale();
+		result = m_impl->ApplyCompositionScale(swapChain);
 		if (!result.IsOk())
 		{
 			m_impl->m_lastFailure = result;
-			m_impl->m_swapChain.Reset();
 			return result;
 		}
 
+		m_impl->m_sharedTexture = std::move(sharedTexture);
+		m_impl->m_keyedMutex = std::move(keyedMutex);
+		m_impl->m_swapChain = std::move(swapChain);
 		m_impl->m_attachedSwapChain.Reset();
 		m_impl->m_viewportId = viewport.m_viewportId;
 		m_impl->m_epoch = epoch;
@@ -1034,7 +1036,7 @@ namespace Sailor::EditorRemote
 			std::isfinite(compositionScale) && compositionScale > 0.0f
 				? compositionScale
 				: 1.0f;
-		m_impl->m_lastFailure = m_impl->ApplyCompositionScale();
+		m_impl->m_lastFailure = m_impl->ApplyCompositionScale(m_impl->m_swapChain);
 		if (!m_impl->m_lastFailure.IsOk())
 		{
 			return m_impl->m_lastFailure;

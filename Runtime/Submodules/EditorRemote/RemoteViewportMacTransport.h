@@ -572,7 +572,12 @@ namespace Sailor::EditorRemote
 
 		Failure EnsureSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, TransportDescriptor& outTransport) override
 		{
-			MacViewportSurfaceState state{};
+			auto release = ReleaseSurface(viewport.m_viewportId, epoch, generation);
+			if (!release.IsOk()) return release;
+			const MacViewportSurfaceKey key{ viewport.m_viewportId, epoch, generation };
+			auto& storedState = m_surfaces[key];
+			storedState = TUniquePtr<MacViewportSurfaceState>::Make();
+			auto& state = *storedState;
 			state.m_key = { viewport.m_viewportId, epoch, generation };
 			state.m_viewport = viewport;
 			state.m_transport.m_transportType = TransportType::MacIOSurface;
@@ -587,29 +592,27 @@ namespace Sailor::EditorRemote
 			auto result = m_provider.CreateOrResizeSurface(viewport, epoch, generation, state);
 			if (!result.IsOk())
 			{
-				m_lastFailure = m_provider.GetLastFailure();
+				ReleaseSurface(viewport.m_viewportId, epoch, generation);
+				m_lastFailure = result;
 				return result;
 			}
 
 			state.m_transport.m_transportType = TransportType::MacIOSurface;
 			state.m_transport.m_ready = true;
 			result = state.m_transport.Validate();
+			if (result.IsOk() && (state.m_transport.m_width != viewport.m_width ||
+				state.m_transport.m_height != viewport.m_height || state.m_transport.m_pixelFormat != viewport.m_pixelFormat))
+			{
+				result = Failure::FromDomain(ErrorDomain::Protocol, 1, "Transport does not match its viewport");
+			}
 			if (!result.IsOk())
 			{
+				ReleaseSurface(viewport.m_viewportId, epoch, generation);
 				m_lastFailure = result;
 				return result;
 			}
 
 			outTransport = state.m_transport;
-			auto& storedState = m_surfaces[state.m_key];
-			if (storedState)
-			{
-				*storedState = state;
-			}
-			else
-			{
-				storedState = TUniquePtr<MacViewportSurfaceState>::Make(state);
-			}
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -702,6 +705,21 @@ namespace Sailor::EditorRemote
 		}
 
 		size_t GetSurfaceCount() const { return m_surfaces.Num(); }
+
+		Failure ReleaseSurfaces(ViewportId viewportId, ConnectionEpoch keepEpoch = 0, SurfaceGeneration keepGeneration = 0)
+		{
+			Failure failure = Failure::Ok();
+			for (const auto& key : m_surfaces.GetKeys())
+			{
+				if (key.m_viewportId == viewportId && (key.m_epoch != keepEpoch || key.m_generation != keepGeneration))
+				{
+					auto result = ReleaseSurface(key.m_viewportId, key.m_epoch, key.m_generation);
+					if (!result.IsOk()) failure = result;
+				}
+			}
+			m_lastFailure = failure;
+			return failure;
+		}
 
 		Failure PrepareFrame(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, bool& outReady)
 		{
@@ -1152,24 +1170,31 @@ namespace Sailor::EditorRemote
 
 		Failure Resize(uint32_t width, uint32_t height, uint64_t nowMs = GetMonotonicTimeMs())
 		{
-			const auto previousEpoch = m_runtimeSession.GetConnectionEpoch();
-			const auto previousGeneration = m_runtimeSession.GetGeneration();
+			const auto epoch = m_runtimeSession.GetConnectionEpoch();
+			const auto generation = m_runtimeSession.GetGeneration();
 			auto descriptor = m_runtimeSession.GetDescriptor();
 			descriptor.m_width = std::max(width, 1u);
 			descriptor.m_height = std::max(height, 1u);
-			auto result = m_runtimeSession.HandleResize(descriptor, nowMs);
+			auto result = m_runtimeSession.ValidateResize(descriptor);
+			if (!result.IsOk()) return result;
+			result = m_transportBackend.ReleaseSurfaces(descriptor.m_viewportId, epoch, generation);
+			if (!result.IsOk()) return result;
+
+			TransportDescriptor transport;
+			result = m_transportBackend.EnsureSurface(descriptor, epoch, generation + 1, transport);
+			if (!result.IsOk()) return result;
+			result = ImportTransport(descriptor, generation + 1, transport);
 			if (!result.IsOk())
 			{
+				m_transportBackend.ReleaseSurface(descriptor.m_viewportId, epoch, generation + 1);
 				return result;
 			}
 
-			result = EnsureTransportImported();
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			return m_transportBackend.ReleaseSurface(m_runtimeSession.GetViewportId(), previousEpoch, previousGeneration);
+			// Publish the candidate only after native import succeeds.
+			m_runtimeSession.HandleResize(descriptor, nowMs);
+			result = CompleteTransportImport(transport);
+			if (!result.IsOk()) return result;
+			return m_transportBackend.ReleaseSurfaces(descriptor.m_viewportId, epoch, generation + 1);
 		}
 
 		Failure SetVisible(bool visible)
@@ -1202,11 +1227,17 @@ namespace Sailor::EditorRemote
 			if (m_runtimeSession.GetState() == SessionState::Recovering)
 			{
 				m_host.ResetViewport(m_runtimeSession.GetViewportId());
-				auto result = m_runtimeSession.ReleaseBackendTransport(m_transportBackend);
+				auto result = m_transportBackend.ReleaseSurfaces(m_runtimeSession.GetViewportId());
 				if (!result.IsOk()) return result;
 				result = m_runtimeSession.Recreate(m_runtimeSession.GetConnectionEpoch() + 1, nowMs);
 				if (!result.IsOk()) return result;
 				result = EnsureTransportImported();
+				if (!result.IsOk()) return result;
+			}
+			if (m_transportBackend.GetSurfaceCount() > 1)
+			{
+				auto result = m_transportBackend.ReleaseSurfaces(m_runtimeSession.GetViewportId(),
+					m_runtimeSession.GetConnectionEpoch(), m_runtimeSession.GetGeneration());
 				if (!result.IsOk()) return result;
 			}
 			if (m_runtimeSession.GetState() != SessionState::Active)
@@ -1243,37 +1274,56 @@ namespace Sailor::EditorRemote
 				return Failure::Ok();
 			}
 
-			auto release = m_runtimeSession.ReleaseBackendTransport(m_transportBackend);
+			auto release = m_transportBackend.ReleaseSurfaces(m_runtimeSession.GetViewportId());
 			m_host.ResetViewport(m_runtimeSession.GetDescriptor().m_viewportId);
 			auto destroy = m_runtimeSession.Destroy();
-			m_created = false;
+			m_created = !release.IsOk();
 			return !release.IsOk() ? release : destroy;
 		}
 
 	private:
 		Failure EnsureTransportImported()
 		{
-			auto result = m_runtimeSession.EnsureBackendTransport(m_transportBackend);
+			TransportDescriptor transport;
+			auto result = m_runtimeSession.EnsureBackendTransport(m_transportBackend, transport);
 			if (!result.IsOk())
 			{
 				return result;
 			}
 
+			result = ImportTransport(m_runtimeSession.GetDescriptor(), m_runtimeSession.GetGeneration(), transport);
+			if (!result.IsOk())
+			{
+				m_transportBackend.ReleaseSurface(m_runtimeSession.GetViewportId(),
+					m_runtimeSession.GetConnectionEpoch(), m_runtimeSession.GetGeneration());
+				m_runtimeSession.MarkFailure(result);
+				return result;
+			}
+			return CompleteTransportImport(transport);
+		}
+
+		Failure ImportTransport(const ViewportDescriptor& descriptor, SurfaceGeneration generation, const TransportDescriptor& transport)
+		{
 			const auto* surface = std::as_const(m_transportBackend).FindSurface(
-				m_runtimeSession.GetViewportId(),
+				descriptor.m_viewportId,
 				m_runtimeSession.GetConnectionEpoch(),
-				m_runtimeSession.GetGeneration());
+				generation);
 			if (!surface)
 			{
 				return Failure::FromDomain(ErrorDomain::Transport, 1, "macOS loopback binding could not resolve imported surface");
 			}
 
-			result = m_host.ImportTransport(
-				m_runtimeSession.GetDescriptor(),
-				surface->m_transport,
+			return m_host.ImportTransport(
+				descriptor,
+				transport,
 				m_runtimeSession.GetConnectionEpoch(),
-				m_runtimeSession.GetGeneration(),
+				generation,
 				surface->m_nativeAllocation);
+		}
+
+		Failure CompleteTransportImport(const TransportDescriptor& transport)
+		{
+			auto result = m_runtimeSession.MarkTransportReady(transport);
 			if (!result.IsOk())
 			{
 				return result;

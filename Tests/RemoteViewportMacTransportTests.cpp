@@ -124,6 +124,14 @@ namespace
 			inOutState.m_transport.m_width = viewport.m_width;
 			inOutState.m_transport.m_height = viewport.m_height;
 			inOutState.m_transport.m_pixelFormat = viewport.m_pixelFormat;
+			m_liveSurfaces.push_back(inOutState.m_key);
+			if (std::exchange(m_invalidTransport, false)) inOutState.m_transport.m_width = 0;
+			if (std::exchange(m_mismatchedExtent, false)) ++inOutState.m_transport.m_width;
+			if (!m_nextCreatedFailure.IsOk())
+			{
+				m_lastFailure = std::exchange(m_nextCreatedFailure, Failure::Ok());
+				return m_lastFailure;
+			}
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -180,6 +188,7 @@ namespace
 				return failure;
 			}
 
+			std::erase(m_liveSurfaces, state.m_key);
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -190,6 +199,10 @@ namespace
 		}
 
 		std::vector<MacViewportSurfaceKey> m_createCalls{};
+		std::vector<MacViewportSurfaceKey> m_liveSurfaces{};
+		Failure m_nextCreatedFailure = Failure::Ok();
+		bool m_invalidTransport = false;
+		bool m_mismatchedExtent = false;
 		std::vector<MacViewportSurfaceKey> m_beginCalls{};
 		std::vector<MacViewportSurfaceKey> m_exportCalls{};
 		std::vector<MacViewportSurfaceKey> m_releaseCalls{};
@@ -237,10 +250,7 @@ namespace
 
 		Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation, const Sailor::TSharedPtr<MacIOSurfaceAllocation>&) override
 		{
-			m_importViewport = viewport;
-			m_importTransport = transport;
-			m_importEpoch = epoch;
-			m_importGeneration = generation;
+			if (m_onImport) m_onImport();
 			if (!m_nextImportFailure.IsOk())
 			{
 				m_lastFailure = m_nextImportFailure;
@@ -249,6 +259,10 @@ namespace
 				return failure;
 			}
 
+			m_importViewport = viewport;
+			m_importTransport = transport;
+			m_importEpoch = epoch;
+			m_importGeneration = generation;
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -282,6 +296,7 @@ namespace
 		ViewportId m_boundViewport = 0;
 		MacNativeHostHandle m_boundHostHandle{};
 		ViewportDescriptor m_importViewport{};
+		std::function<void()> m_onImport;
 		TransportDescriptor m_importTransport{};
 		ConnectionEpoch m_importEpoch = 0;
 		SurfaceGeneration m_importGeneration = 0;
@@ -424,6 +439,143 @@ namespace
 		Require(!presenter.m_resets.empty() && presenter.m_resets.back() == 61, "reset should be forwarded to the presenter");
 	}
 
+
+
+	void TestMacLoopbackResizeIsTransactional()
+	{
+		enum class FailurePoint { Create, PartialCreate, InvalidTransport, ExtentMismatch, Import, ImportCleanup, PartialCreateCleanup };
+		for (bool hidden : { false, true })
+		{
+			for (auto failurePoint : { FailurePoint::Create, FailurePoint::PartialCreate, FailurePoint::InvalidTransport,
+				FailurePoint::ExtentMismatch, FailurePoint::Import, FailurePoint::ImportCleanup, FailurePoint::PartialCreateCleanup })
+			{
+				FakeMacIOSurfaceProvider provider;
+				FakeMacViewportPresenter presenter;
+				MacViewportLoopbackBinding binding{ MakeViewport(), provider, presenter, 7 };
+				auto& session = binding.GetRuntimeSession();
+				Require(binding.Create().IsOk() && binding.PumpFrame().IsOk() && binding.SetFocused(true).IsOk(),
+					"resize fixture must start with a presented, focused viewport");
+				Require(binding.SetVisible(!hidden).IsOk(), "fixture visibility must be applied");
+				const auto original = session.GetDescriptor();
+				const auto state = hidden ? SessionState::Paused : SessionState::Active;
+				presenter.m_onImport = [&]()
+				{
+					Require(session.GetGeneration() == 1 && session.GetDescriptor() == original &&
+						session.GetState() == state && session.IsReady(),
+						"candidate import must not publish a new runtime generation or discard the old ready state");
+				};
+				for (uint32_t attempt = 0; attempt < 3; ++attempt)
+				{
+					const auto failure = Failure::FromDomain(ErrorDomain::Transport, 901, "injected resize failure");
+					switch (failurePoint)
+					{
+					case FailurePoint::Create: provider.m_nextCreateFailure = failure; break;
+					case FailurePoint::PartialCreate: provider.m_nextCreatedFailure = failure; break;
+					case FailurePoint::InvalidTransport: provider.m_invalidTransport = true; break;
+					case FailurePoint::ExtentMismatch: provider.m_mismatchedExtent = true; break;
+					case FailurePoint::Import: presenter.m_nextImportFailure = failure; break;
+					case FailurePoint::ImportCleanup:
+						presenter.m_nextImportFailure = failure;
+						provider.m_nextReleaseFailure = failure;
+						break;
+					case FailurePoint::PartialCreateCleanup:
+						provider.m_nextCreatedFailure = failure;
+						provider.m_nextReleaseFailure = failure;
+						break;
+					}
+					Require(!binding.Resize(1600, 900).IsOk(), "injected resize failure must reach the caller");
+					Require(session.GetDescriptor() == original && session.GetGeneration() == 1 &&
+						session.GetState() == state && session.IsReady() && presenter.m_importGeneration == 1,
+						"failed resize must leave the original host and runtime usable");
+					const size_t expectedSurfaces = failurePoint == FailurePoint::ImportCleanup ||
+						failurePoint == FailurePoint::PartialCreateCleanup ? 2 : 1;
+					Require(binding.GetTransportBackend().GetSurfaceCount() == expectedSurfaces &&
+						provider.m_liveSurfaces.size() == expectedSurfaces,
+						"only an explicitly failed release may retain a candidate allocation");
+					Require(binding.PumpFrame().IsOk() && binding.GetTransportBackend().GetSurfaceCount() == 1 &&
+						provider.m_liveSurfaces.size() == 1 && presenter.m_presentCalls.back().m_generation == 1,
+						"pumping must retire leftovers and preserve old-generation presentation");
+				}
+				Require(binding.Resize(1600, 900).IsOk(), "resize must succeed after the failure is cleared");
+				presenter.m_onImport = {};
+				Require(session.GetGeneration() == 2 && presenter.m_importGeneration == 2 &&
+					session.GetDescriptor().m_width == 1600 && session.GetDescriptor().m_height == 900 &&
+					presenter.m_importViewport == session.GetDescriptor() && session.GetState() == state &&
+					binding.GetTransportBackend().GetSurfaceCount() == 1 && provider.m_liveSurfaces.size() == 1 &&
+					session.GetLastInput()->m_focused && session.GetLastInput()->m_generation == 2,
+					"successful import must commit matching extents, generation, focus and visibility once");
+				Require(binding.SetVisible(true).IsOk(), "resized viewport must become visible");
+				provider.m_nextExportFailure = Failure::FromDomain(ErrorDomain::Transport, 902, "export failed");
+				Require(!binding.PumpFrame().IsOk() && session.GetGeneration() == 2 && presenter.m_importGeneration == 2,
+					"export failure must not revert or leak the committed resize");
+				Require(binding.PumpFrame().IsOk() && presenter.m_presentCalls.back().m_generation == 2,
+					"the committed generation must present after export retry");
+				provider.m_nextReleaseFailure = Failure::FromDomain(ErrorDomain::Transport, 903, "release failed");
+				Require(!binding.Destroy().IsOk() && session.GetState() == SessionState::Disposed &&
+					binding.GetTransportBackend().GetSurfaceCount() == 1,
+					"failed destroy release must keep the allocation available for cleanup");
+				Require(binding.Destroy().IsOk() && binding.GetTransportBackend().GetSurfaceCount() == 0 &&
+					provider.m_liveSurfaces.empty(), "destroy retry must release every tracked allocation");
+				const auto creates = provider.m_createCalls.size();
+				Require(!binding.Resize(320, 240).IsOk() && provider.m_createCalls.size() == creates,
+					"disposed resize must not allocate another surface");
+			}
+		}
+	}
+
+	void TestMacLoopbackImportAndRetirementFailures()
+	{
+		for (bool releaseFails : { false, true })
+		{
+			FakeMacIOSurfaceProvider provider;
+			FakeMacViewportPresenter presenter;
+			MacViewportLoopbackBinding binding{ MakeViewport(), provider, presenter, 7 };
+			auto& session = binding.GetRuntimeSession();
+			presenter.m_onImport = [&]()
+			{
+				Require(!session.IsReady() && session.GetState() == SessionState::Negotiating,
+					"initial surface allocation must not make the viewport ready before host import");
+			};
+			presenter.m_nextImportFailure = Failure::FromDomain(ErrorDomain::Session, 904, "import refused");
+			if (releaseFails) provider.m_nextReleaseFailure = Failure::FromDomain(ErrorDomain::Transport, 905, "release deferred");
+			Require(!binding.Create().IsOk() && !session.IsReady() && session.GetState() == SessionState::Recovering &&
+				binding.GetTransportBackend().GetSurfaceCount() == (releaseFails ? 1u : 0u) &&
+				provider.m_liveSurfaces.size() == (releaseFails ? 1u : 0u),
+				"failed initial import must leave no ready session and track only failed cleanup");
+			Require(binding.PumpFrame().IsOk() && session.IsReady() && session.GetConnectionEpoch() == 8 &&
+				presenter.m_importEpoch == 8 && presenter.m_presentCalls.back().m_connectionEpoch == 8 &&
+				binding.GetTransportBackend().GetSurfaceCount() == 1 && provider.m_liveSurfaces.size() == 1,
+				"initial import retry must clean leftovers before creating and presenting the new epoch");
+			Require(binding.Destroy().IsOk() && provider.m_liveSurfaces.empty(), "import retry fixture must release all surfaces");
+		}
+
+		FakeMacIOSurfaceProvider provider;
+		FakeMacViewportPresenter presenter;
+		MacViewportLoopbackBinding binding{ MakeViewport(), provider, presenter };
+		auto& session = binding.GetRuntimeSession();
+		Require(binding.Create().IsOk(), "retirement fixture must create a viewport");
+		const auto failure = Failure::FromDomain(ErrorDomain::Transport, 906, "old surface release deferred");
+		provider.m_nextReleaseFailure = failure;
+		Require(!binding.Resize(1600, 900).IsOk() && session.GetGeneration() == 2 && session.IsReady() &&
+			presenter.m_importGeneration == 2 && presenter.m_importViewport == session.GetDescriptor() &&
+			binding.GetTransportBackend().GetSurfaceCount() == 2 && provider.m_liveSurfaces.size() == 2,
+			"old-surface retirement failure must retain the successfully imported new generation");
+		const auto creates = provider.m_createCalls.size();
+		for (uint32_t attempt = 0; attempt < 3; ++attempt)
+		{
+			provider.m_nextReleaseFailure = failure;
+			Require(!binding.Resize(1920, 1080).IsOk() && provider.m_createCalls.size() == creates &&
+				session.GetGeneration() == 2 && presenter.m_importGeneration == 2 && provider.m_liveSurfaces.size() == 2,
+				"repeated failed cleanup must not allocate more surfaces or change the active generation");
+		}
+		Require(binding.PumpFrame().IsOk() && presenter.m_presentCalls.back().m_generation == 2 &&
+			binding.GetTransportBackend().GetSurfaceCount() == 1 && provider.m_liveSurfaces.size() == 1,
+			"ordinary pump must retire the old surface and present the committed generation");
+		Require(binding.Resize(1920, 1080).IsOk() && session.GetGeneration() == 3 &&
+			presenter.m_importGeneration == 3 && provider.m_liveSurfaces.size() == 1,
+			"resize must resume after successful retirement");
+		Require(binding.Destroy().IsOk() && provider.m_liveSurfaces.empty(), "retirement fixture must release every surface");
+	}
 
 	void TestMacLoopbackRecoveryUsesElapsedTime()
 	{
@@ -934,6 +1086,8 @@ int main()
 		{ "MacNativeHostImportPresentResetAndFailures", TestMacNativeHostImportPresentResetAndFailures },
 		{ "MacLoopbackBindingCreateResizeVisibilityAndDestroy", TestMacLoopbackBindingCreateResizeVisibilityAndDestroy },
 		{ "MacLoopbackRecoveryUsesElapsedTime", TestMacLoopbackRecoveryUsesElapsedTime },
+		{ "MacLoopbackResizeIsTransactional", TestMacLoopbackResizeIsTransactional },
+		{ "MacLoopbackImportAndRetirementFailures", TestMacLoopbackImportAndRetirementFailures },
 #if defined(__APPLE__)
 		{ "RepeatedReadbacksReuseUploadedPixels", TestRepeatedReadbacksReuseUploadedPixels },
 		{ "ReadbackReuseInvalidationAndMutableSources", TestReadbackReuseInvalidationAndMutableSources },
