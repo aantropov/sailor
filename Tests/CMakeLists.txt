@@ -312,6 +312,16 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(RuntimeGIProbesPublicationTests)
 endif()
 
+add_executable(GlobalIlluminationLayoutTests GlobalIlluminationLayoutTests.cpp)
+target_compile_features(GlobalIlluminationLayoutTests PRIVATE cxx_std_20)
+target_include_directories(GlobalIlluminationLayoutTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(GlobalIlluminationLayoutTests PRIVATE Sailor::Runtime)
+add_test(NAME GlobalIlluminationLayoutTests COMMAND GlobalIlluminationLayoutTests)
+set_tests_properties(GlobalIlluminationLayoutTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(GlobalIlluminationLayoutTests)
+endif()
+
 add_library(WorkspaceModuleFixture SHARED
     WorkspaceModuleFixture.cpp
 )
