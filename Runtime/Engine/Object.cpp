@@ -26,6 +26,11 @@ void Object::TraceHotReload(ITaskPtr previousTask)
 		App::GetSubmodule<Scheduler>()->Run(hotReload);
 	}
 
+	TraceHotReloadDependents(hotReload != nullptr ? hotReload : previousTask);
+}
+
+void Object::TraceHotReloadDependents(ITaskPtr previousTask)
+{
 	TVector<ObjectPtr> dependencies;
 	m_hotReloadDeps.LockAll();
 	dependencies.Reserve(m_hotReloadDeps.Num());
@@ -37,7 +42,7 @@ void Object::TraceHotReload(ITaskPtr previousTask)
 
 	for (auto& ptr : dependencies)
 	{
-		ptr->TraceHotReload(hotReload != nullptr ? hotReload : previousTask);
+		ptr->TraceHotReload(previousTask);
 	}
 }
 

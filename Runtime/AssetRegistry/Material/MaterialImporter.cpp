@@ -705,100 +705,28 @@ void MaterialImporter::OnImportAsset(AssetInfoPtr assetInfo)
 void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
-	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
-
-	MaterialPtr material = GetLoadedMaterial(assetInfo->GetFileId());
-	if (bWasExpired && material)
+	if (!bWasExpired)
 	{
-		// We need to start load the material
-		if (auto pMaterialAsset = LoadMaterialAsset(assetInfo->GetFileId()))
-		{
-			auto updateMaterial = Tasks::CreateTask("Update Material", [=]() mutable
-				{
-					auto pMaterial = material;
-
-					pMaterial->GetShader()->RemoveHotReloadDependentObject(material);
-					for (auto& sampler : pMaterial->m_samplers)
-					{
-						if (sampler.m_second)
-						{
-							sampler.m_second->RemoveHotReloadDependentObject(material);
-						}
-					}
-					pMaterial->ClearSamplers();
-					pMaterial->ClearUniforms();
-
-					ShaderSetPtr pShader;
-					auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, ResolveForwardDefines(*pMaterialAsset));
-
-					pMaterial->SetRenderState(pMaterialAsset->GetRenderState());
-
-					pMaterial->SetShader(pShader);
-					pShader->AddHotReloadDependentObject(material);
-
-					const FileId uid = pMaterial->GetFileId();
-					const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
-
-					auto updateRHI = Tasks::CreateTask("Update material RHI resource", [=]() mutable
-						{
-							if (pMaterial->GetShader()->IsReady())
-							{
-								pMaterial->UpdateRHIResource();
-								pMaterial->ForcelyUpdateUniforms();
-								pMaterial->TraceHotReload(nullptr);
-
-								// TODO: Optimize
-								auto rhiMaterials = pMaterial->GetRHIMaterials().GetValues();
-								for (const auto& rhi : rhiMaterials)
-								{
-									RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
-								}
-							}
-						}, EThreadType::Render);
-
-					// Preload textures
-					for (const auto& sampler : pMaterialAsset->GetSamplers())
-					{
-						TexturePtr texture;
-
-						if (auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(*sampler.m_second, texture))
-						{
-							auto updateSampler = loadTextureTask->Then(
-								[=](TexturePtr pTexture) mutable
-								{
-									if (pTexture)
-									{
-										pMaterial->SetSampler(sampler.m_first, texture);
-										pTexture->AddHotReloadDependentObject(material);
-									}
-								}, "Set material texture binding", EThreadType::Render);
-
-							updateRHI->Join(updateSampler);
-						}
-					}
-
-					for (const auto& uniform : pMaterialAsset->GetUniformsVec4())
-					{
-						pMaterial->SetUniform(uniform.m_first, *uniform.m_second);
-					}
-
-					for (const auto& uniform : pMaterialAsset->GetUniformsFloat())
-					{
-						pMaterial->SetUniform(uniform.m_first, *uniform.m_second);
-					}
-
-					updateRHI->Join(pLoadShader);
-					updateRHI->Run();
-				});
-
-			if (auto promise = GetLoadPromise(assetInfo->GetFileId()))
-			{
-				updateMaterial->Join(promise);
-			}
-
-			updateMaterial->Run();
-		}
+		return;
 	}
+
+	const auto uid = assetInfo->GetFileId();
+	auto material = GetLoadedMaterial(uid);
+	if (!material)
+	{
+		return;
+	}
+	auto asset = LoadMaterialAsset(uid);
+	if (!asset)
+	{
+		return;
+	}
+
+	auto& promise = m_promises.At_Lock(uid, nullptr);
+	promise = CreateMaterialTask(material, asset, true, promise);
+	auto task = promise;
+	m_promises.Unlock(uid);
+	task->Run();
 }
 
 bool MaterialImporter::IsMaterialLoaded(FileId uid) const
@@ -869,6 +797,10 @@ bool MaterialImporter::LoadMaterial_Immediate(FileId uid, MaterialPtr& outMateri
 {
 	SAILOR_PROFILE_FUNCTION();
 	auto task = LoadMaterial(uid, outMaterial);
+	if (!task)
+	{
+		return false;
+	}
 	task->Wait();
 
 	return task->GetResult().IsValid();
@@ -888,109 +820,151 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::GetLoadPromise(FileId uid)
 	return promise;
 }
 
+Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
+	MaterialPtr material, TSharedPtr<MaterialAsset> asset, bool bHotReload,
+	const Tasks::ITaskPtr& previous)
+{
+	ShaderSetPtr shader;
+	auto loadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(
+		asset->GetShader(), shader, ResolveForwardDefines(*asset));
+	TVector<TPair<std::string, Tasks::TaskPtr<TexturePtr>>> samplers;
+	for (const auto& sampler : asset->GetSamplers())
+	{
+		if (*sampler.m_second)
+		{
+			TexturePtr texture;
+			samplers.Emplace(sampler.m_first,
+				App::GetSubmodule<TextureImporter>()->LoadTexture(*sampler.m_second, texture));
+		}
+	}
+	const std::string filename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(
+		material->GetFileId())->GetAssetFilepath();
+
+	auto publish = Tasks::CreateTask<MaterialPtr>("Publish material",
+		[material, asset, loadShader, samplers, filename, bHotReload]() mutable
+		{
+			auto shader = loadShader ? loadShader->GetResult() : ShaderSetPtr{};
+			if (!shader || !shader->IsReady())
+			{
+				SAILOR_LOG_ERROR("Cannot load material '%s': shader loading failed.", filename.c_str());
+				return MaterialPtr{};
+			}
+
+			Material prepared(material->GetFileId());
+			prepared.m_shader = shader;
+			prepared.m_renderState = asset->GetRenderState();
+			for (const auto& sampler : samplers)
+			{
+				auto texture = sampler.m_second ? sampler.m_second->GetResult() : TexturePtr{};
+				if (!texture || !texture->GetRHI())
+				{
+					SAILOR_LOG_ERROR("Cannot load material '%s': texture '%s' failed.",
+						filename.c_str(), sampler.m_first.c_str());
+					return MaterialPtr{};
+				}
+				prepared.m_samplers.Insert(sampler.m_first, texture);
+			}
+			for (const auto& uniform : asset->GetUniformsVec4())
+			{
+				prepared.m_uniformsVec4.Insert(uniform.m_first, *uniform.m_second);
+			}
+			for (const auto& uniform : asset->GetUniformsFloat())
+			{
+				prepared.m_uniformsFloat.Insert(uniform.m_first, *uniform.m_second);
+			}
+
+			prepared.UpdateRHIResourceAndUniforms();
+			if (prepared.IsDirty() || !prepared.m_commonShaderBindings)
+			{
+				SAILOR_LOG_ERROR("Cannot create material '%s'.", filename.c_str());
+				return MaterialPtr{};
+			}
+
+			// Keep the last-good values and dependencies until the replacement is built.
+			if (material->m_shader)
+			{
+				material->m_shader->RemoveHotReloadDependentObject(material);
+			}
+			for (auto& sampler : material->m_samplers)
+			{
+				sampler.m_second->RemoveHotReloadDependentObject(material);
+			}
+			material->m_shader = std::move(prepared.m_shader);
+			material->m_renderState = prepared.m_renderState;
+			material->m_samplers = std::move(prepared.m_samplers);
+			material->m_uniformsVec4 = std::move(prepared.m_uniformsVec4);
+			material->m_uniformsFloat = std::move(prepared.m_uniformsFloat);
+			material->m_commonShaderBindings = std::move(prepared.m_commonShaderBindings);
+			material->m_rhiMaterials = std::move(prepared.m_rhiMaterials);
+			material->m_bIsDirty = false;
+			material->AdvanceContentRevision();
+			material->AdvanceRenderMetadataRevision();
+
+			material->m_shader->AddHotReloadDependentObject(material);
+			for (auto& sampler : material->m_samplers)
+			{
+				sampler.m_second->AddHotReloadDependentObject(material);
+			}
+			for (const auto& entry : material->m_rhiMaterials)
+			{
+				RHI::Renderer::GetDriver()->SetDebugName(entry.m_second, filename);
+			}
+			if (bHotReload)
+			{
+				material->TraceHotReloadDependents(nullptr);
+			}
+			return material;
+		}, EThreadType::Render);
+	publish->Join(loadShader);
+	for (const auto& sampler : samplers)
+	{
+		publish->Join(sampler.m_second);
+	}
+	publish->Join(previous);
+	return publish;
+}
+
 Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialPtr& outMaterial)
 {
 	SAILOR_PROFILE_FUNCTION();
-
-	// Check promises first
 	auto& promise = m_promises.At_Lock(uid, nullptr);
-	auto& loadedMaterial = m_loadedMaterials.At_Lock(uid, MaterialPtr());
-
-	// Check loaded assets
-	if (loadedMaterial)
+	auto& material = m_loadedMaterials.At_Lock(uid, MaterialPtr{});
+	if (promise && !promise->IsFinished())
 	{
-		outMaterial = loadedMaterial;
-		auto res = promise ? promise : Tasks::TaskPtr<MaterialPtr>::Make(outMaterial);
-
+		outMaterial = material;
+		auto task = promise;
 		m_loadedMaterials.Unlock(uid);
 		m_promises.Unlock(uid);
-
-		return res;
+		return task;
 	}
-
-	// We need to start load the material
-	if (auto pMaterialAsset = LoadMaterialAsset(uid))
+	if (material && material->GetShaderBindings())
 	{
-		MaterialPtr pMaterial = MaterialPtr::Make(m_allocator, uid);
-
-		ShaderSetPtr pShader;
-		auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, ResolveForwardDefines(*pMaterialAsset));
-
-		pMaterial->SetRenderState(pMaterialAsset->GetRenderState());
-		pMaterial->SetShader(pShader);
-		pShader->AddHotReloadDependentObject(pMaterial);
-
-		const FileId uid = pMaterial->GetFileId();
-		const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
-
-		promise = Tasks::CreateTaskWithResult<MaterialPtr>("Load material RHI resource",
-			[pMaterial, assetFilename]() mutable
-			{
-				if (pMaterial->GetShader()->IsReady())
-				{
-					pMaterial->UpdateRHIResource();
-					pMaterial->ForcelyUpdateUniforms();
-
-					// TODO: Optimize
-					auto rhiMaterials = pMaterial->GetRHIMaterials().GetValues();
-					for (const auto& rhi : rhiMaterials)
-					{
-						RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
-					}
-				}
-
-				return pMaterial;
-			}, EThreadType::RHI);
-
-		// Preload textures
-		for (const auto& sampler : pMaterialAsset->GetSamplers())
-		{
-			TexturePtr pTexture;
-
-			if (auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(*sampler.m_second, pTexture))
-			{
-				auto updateSampler = loadTextureTask->Then(
-					[=](TexturePtr texture) mutable
-					{
-						if (texture)
-						{
-							pMaterial->SetSampler(sampler.m_first, texture);
-							texture->AddHotReloadDependentObject(pMaterial);
-						}
-					}, "Set material texture binding", EThreadType::Render);
-
-				promise->Join(updateSampler);
-			}
-		}
-
-		for (const auto& uniform : pMaterialAsset->GetUniformsVec4())
-		{
-			pMaterial->SetUniform(uniform.m_first, *uniform.m_second);
-		}
-
-		for (const auto& uniform : pMaterialAsset->GetUniformsFloat())
-		{
-			pMaterial->SetUniform(uniform.m_first, *uniform.m_second);
-		}
-
-		promise->Join(pLoadShader);
-
-		outMaterial = loadedMaterial = pMaterial;
-
-		promise->Run();
-
-		m_promises.Unlock(uid);
+		outMaterial = material;
+		auto task = Tasks::TaskPtr<MaterialPtr>::Make(material);
 		m_loadedMaterials.Unlock(uid);
-
-		return promise;
+		m_promises.Unlock(uid);
+		return task;
 	}
 
-	outMaterial = nullptr;
-	m_promises.Unlock(uid);
+	auto asset = LoadMaterialAsset(uid);
+	if (!asset)
+	{
+		outMaterial = nullptr;
+		m_loadedMaterials.Unlock(uid);
+		m_promises.Unlock(uid);
+		return {};
+	}
+	if (!material)
+	{
+		material = MaterialPtr::Make(m_allocator, uid);
+	}
+	promise = CreateMaterialTask(material, asset, false, promise);
+	outMaterial = material;
+	auto task = promise;
 	m_loadedMaterials.Unlock(uid);
-
-	SAILOR_LOG("Cannot find material with uid: %s", uid.ToString().c_str());
-	return Tasks::TaskPtr<MaterialPtr>();
+	m_promises.Unlock(uid);
+	task->Run();
+	return task;
 }
 
 bool MaterialImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
@@ -1003,15 +977,13 @@ bool MaterialImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImme
 		return bRes;
 	}
 
-	LoadMaterial(uid, outAsset);
+	auto task = LoadMaterial(uid, outAsset);
 	out = outAsset;
-	return true;
+	return task.IsValid();
 }
 
 void MaterialImporter::CollectGarbage()
 {
-	TVector<FileId> uidsToRemove;
-
 	m_promises.LockAll();
 	auto ids = m_promises.GetKeys();
 	m_promises.UnlockAll();
@@ -1019,18 +991,10 @@ void MaterialImporter::CollectGarbage()
 	for (const auto& id : ids)
 	{
 		auto promise = m_promises.At_Lock(id);
-
-		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
+		if (!promise || promise->IsFinished())
 		{
-			FileId uid = id;
-			uidsToRemove.Emplace(uid);
+			m_promises.ForcelyRemove(id);
 		}
-
 		m_promises.Unlock(id);
-	}
-
-	for (auto& uid : uidsToRemove)
-	{
-		m_promises.Remove(uid);
 	}
 }

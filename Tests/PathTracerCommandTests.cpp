@@ -44,6 +44,7 @@ namespace Sailor::Tests
 {
 	void RunGIProbesCommandTests(const std::filesystem::path& workspace);
 	void RunTextureImporterCommandTests(const std::filesystem::path& workspace);
+	void RunMaterialImporterCommandTests(const std::filesystem::path& workspace);
 }
 
 namespace
@@ -895,6 +896,7 @@ namespace Sailor::Tests
 			TestHdrCompositing();
 			RunGIProbesCommandTests(workspace.Get());
 			RunTextureImporterCommandTests(workspace.Get());
+			RunMaterialImporterCommandTests(workspace.Get());
 			std::cout << "PathTracer CLI/prepared pixel parity test passed\n";
 			result = 0;
 		}

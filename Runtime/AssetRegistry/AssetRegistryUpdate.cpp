@@ -21,38 +21,12 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId)
 		return false;
 	}
 
-	auto isCurrentProcessingPending = [this](AssetInfoPtr assetInfo)
-	{
-		if (assetInfo == nullptr)
-		{
-			return false;
-		}
-
-		FileRevision currentSourceRevision;
-		if (!Utils::TryGetFileRevision(assetInfo->GetAssetFilepath(), currentSourceRevision))
-		{
-			return false;
-		}
-
-		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-		auto processingState = m_assetProcessingStates.Find(assetInfo->GetFileId());
-		if (processingState == m_assetProcessingStates.end() || processingState.Value().m_bRejected)
-		{
-			return false;
-		}
-
-		const AssetProcessingToken& token = processingState.Value().m_token;
-		return token && token.m_fileId == assetInfo->GetFileId() &&
-			   PathKey(token.m_sourcePath) == PathKey(assetInfo->GetAssetFilepath()) &&
-			   token.m_sourceRevision == currentSourceRevision &&
-			   assetInfo->m_importedSourceRevision == currentSourceRevision;
-	};
-
 	struct AssetExpirationState final
 	{
 		bool m_bMetadataExpired = false;
 		bool m_bSourceExpired = false;
 		bool m_bCacheExpired = false;
+		bool m_bProcessingPending = false;
 
 		explicit operator bool() const noexcept
 		{
@@ -63,11 +37,26 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId)
 	auto getExpirationState = [this](AssetInfoPtr assetInfo)
 	{
 		AssetExpirationState result;
-		if (assetInfo != nullptr)
+		if (assetInfo == nullptr)
 		{
-			result.m_bMetadataExpired = assetInfo->IsMetaExpired();
-			result.m_bSourceExpired = assetInfo->IsAssetExpired();
-			result.m_bCacheExpired = IsAssetExpired(assetInfo);
+			return result;
+		}
+
+		result.m_bMetadataExpired = assetInfo->IsMetaExpired();
+		result.m_bSourceExpired = assetInfo->IsAssetExpired();
+		// Acknowledgement updates the cache and removes the pending token together.
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		result.m_bCacheExpired = IsAssetExpired(assetInfo);
+		auto processingState = m_assetProcessingStates.Find(assetInfo->GetFileId());
+		if (processingState != m_assetProcessingStates.end() && !processingState.Value().m_bRejected)
+		{
+			const AssetProcessingToken& token = processingState.Value().m_token;
+			FileRevision currentSourceRevision;
+			result.m_bProcessingPending = token && token.m_fileId == assetInfo->GetFileId() &&
+				PathKey(token.m_sourcePath) == PathKey(assetInfo->GetAssetFilepath()) &&
+				Utils::TryGetFileRevision(assetInfo->GetAssetFilepath(), currentSourceRevision) &&
+				token.m_sourceRevision == currentSourceRevision &&
+				assetInfo->m_importedSourceRevision == currentSourceRevision;
 		}
 		return result;
 	};
@@ -113,7 +102,7 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId)
 		}
 
 		if (!expiration.m_bMetadataExpired && !expiration.m_bSourceExpired && expiration.m_bCacheExpired &&
-			isCurrentProcessingPending(assetInfo))
+			expiration.m_bProcessingPending)
 		{
 			continue;
 		}
@@ -144,7 +133,7 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId)
 
 		const AssetExpirationState expiration = getExpirationState(assetInfo);
 		if (expiration.m_bMetadataExpired || expiration.m_bSourceExpired ||
-			(expiration.m_bCacheExpired && !isCurrentProcessingPending(assetInfo)))
+			(expiration.m_bCacheExpired && !expiration.m_bProcessingPending))
 		{
 			SAILOR_LOG_ERROR("Asset changed while its targeted update was being committed: %s",
 				assetInfo->GetAssetFilepath().c_str());

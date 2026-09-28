@@ -250,7 +250,7 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(PathTracerImageTests)
 endif()
 
-add_executable(VulkanSubmissionTests VulkanSubmissionTests.cpp PathTracerCommandTests.cpp GIProbesCommandTests.cpp TextureImporterCommandTests.cpp)
+add_executable(VulkanSubmissionTests VulkanSubmissionTests.cpp PathTracerCommandTests.cpp GIProbesCommandTests.cpp TextureImporterCommandTests.cpp MaterialImporterCommandTests.cpp)
 target_compile_features(VulkanSubmissionTests PRIVATE cxx_std_20)
 target_include_directories(VulkanSubmissionTests PRIVATE ${SAILOR_RUNTIME_DIR} ${PROJECT_SOURCE_DIR}/Lib)
 target_link_libraries(VulkanSubmissionTests PRIVATE Sailor::Runtime ixwebsocket::ixwebsocket)

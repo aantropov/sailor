@@ -161,6 +161,8 @@ namespace Sailor
 	protected:
 
 		SAILOR_API bool IsMaterialLoaded(FileId uid) const;
+		Tasks::TaskPtr<MaterialPtr> CreateMaterialTask(MaterialPtr material,
+			TSharedPtr<MaterialAsset> asset, bool bHotReload, const Tasks::ITaskPtr& previous);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<MaterialPtr>> m_promises;
 		TConcurrentMap<FileId, MaterialPtr> m_loadedMaterials;
