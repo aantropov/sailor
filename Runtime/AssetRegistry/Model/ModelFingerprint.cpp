@@ -400,10 +400,10 @@ bool ModelImporter::GenerateFingerprint(const FileId& fileId,
 
 		decodedPixels.reset();
 		TexturePtr texture = TexturePtr::Make(allocator, FileId::CreateNewFileId());
-		texture->m_decodedData = std::move(previewPixels);
 		texture->m_width = previewWidth;
 		texture->m_height = previewHeight;
 		texture->m_mipLevels = 1;
+		texture->SetDecodedData(std::move(previewPixels));
 
 		previewImages[imageIndex] = texture;
 		return texture;

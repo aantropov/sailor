@@ -891,11 +891,12 @@ namespace
 			m_width = 1;
 			m_height = 1;
 			m_mipLevels = 1u;
-			m_decodedData.Resize(4u);
+			TVector<uint8_t> data(4u);
 			for (glm::length_t component = 0; component < 4; ++component)
 			{
-				m_decodedData[component] = pixel[component];
+				data[component] = pixel[component];
 			}
+			SetDecodedData(std::move(data));
 		}
 	};
 

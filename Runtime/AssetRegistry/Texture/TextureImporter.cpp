@@ -579,53 +579,24 @@ bool TextureImporter::UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr textu
 void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
-	SAILOR_PROFILE_TEXT(inAssetInfo->GetAssetFilepath().c_str());
-
-	TexturePtr pTexture = GetLoadedTexture(inAssetInfo->GetFileId());
-	if (bWasExpired && pTexture)
+	auto* assetInfo = dynamic_cast<TextureAssetInfo*>(inAssetInfo);
+	if (!bWasExpired || !assetInfo)
 	{
-		if (TextureAssetInfoPtr assetInfo = dynamic_cast<TextureAssetInfo*>(inAssetInfo))
-		{
-			auto newPromise = Tasks::CreateTaskWithResult<bool>("Update Texture",
-				[pTexture, assetInfo, this]() mutable
-				{
-					ByteCode decodedData;
-					int32_t width;
-					int32_t height;
-					uint32_t mipLevels;
-
-					if (ImportTexture(assetInfo->GetFileId(), decodedData, width, height, mipLevels))
-					{
-						pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
-							mipLevels, RHI::ETextureType::Texture2D, assetInfo->GetFormat(), assetInfo->GetFiltration(),
-							assetInfo->GetClamping(),
-							assetInfo->ShouldSupportStorageBinding() ? TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit : TextureImporter::DefaultTextureUsage,
-							assetInfo->GetSamplerReduction());
-						pTexture->m_width = width;
-						pTexture->m_height = height;
-						pTexture->m_mipLevels = mipLevels;
-						if (assetInfo->ShouldKeepCpuBuffers())
-						{
-							pTexture->m_decodedData = std::move(decodedData);
-						}
-						else
-						{
-							pTexture->m_decodedData.Clear();
-						}
-
-						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
-
-						size_t index = m_textureSamplersIndices.At_Lock(assetInfo->GetFileId());
-						m_textureSamplersIndices.Unlock(assetInfo->GetFileId());
-
-						return UpdateTextureSamplerBinding(pTexture->m_rhiTexture, static_cast<uint32_t>(index));
-					}
-					return false;
-				}, EThreadType::RHI)->Run();
-
-			pTexture->TraceHotReload(newPromise);
-		}
+		return;
 	}
+	auto texture = GetLoadedTexture(assetInfo->GetFileId());
+	if (!texture)
+	{
+		return;
+	}
+
+	const auto uid = assetInfo->GetFileId();
+	auto& promise = m_promises.At_Lock(uid, nullptr);
+	texture->m_bCpuBuffersRequested = assetInfo->ShouldKeepCpuBuffers();
+	promise = CreateTextureTask(texture, *assetInfo, false, true, promise);
+	auto task = promise;
+	m_promises.Unlock(uid);
+	task->Run();
 }
 
 void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)
@@ -775,125 +746,167 @@ bool TextureImporter::LoadTexture_Immediate(FileId uid, TexturePtr& outTexture)
 	return task->GetResult().IsValid();
 }
 
+Tasks::TaskPtr<TexturePtr> TextureImporter::CreateTextureTask(
+	TexturePtr texture, const TextureAssetInfo& assetInfo, bool bCpuOnly, bool bHotReload,
+	const Tasks::ITaskPtr& previous)
+{
+	CpuDecodeRequest source;
+	if (!CaptureCpuDecodeRequest(assetInfo, source))
+	{
+		// A failed request still joins the preceding publication.
+		source = DescribeCpuTexture(assetInfo);
+	}
+	const auto format = assetInfo.GetFormat();
+	const auto filtration = assetInfo.GetFiltration();
+	const auto clamping = assetInfo.GetClamping();
+	const auto reduction = assetInfo.GetSamplerReduction();
+	const auto usage = assetInfo.ShouldSupportStorageBinding() ?
+		DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit : DefaultTextureUsage;
+	const bool bKeepCpu = assetInfo.ShouldKeepCpuBuffers();
+
+	struct Data
+	{
+		ByteCode m_pixels;
+		int32_t m_width = 0, m_height = 0;
+		uint32_t m_mipLevels = 1;
+		bool m_bDecoded = false;
+	};
+	auto decode = Tasks::CreateTask<TSharedPtr<Data>>("Decode texture",
+		[source, decodeTexture = m_decodeTexture]()
+		{
+			auto data = TSharedPtr<Data>::Make();
+			data->m_bDecoded = decodeTexture(source, data->m_pixels, data->m_width,
+				data->m_height, data->m_mipLevels);
+			return data;
+		}, EThreadType::Worker);
+	auto publish = decode->Then<TexturePtr>(
+		[this, texture, source, format, filtration, clamping, reduction, usage,
+			bCpuOnly, bKeepCpu, bHotReload](TSharedPtr<Data> data) mutable
+		{
+			if (!data->m_bDecoded || data->m_pixels.IsEmpty() || !HasCurrentTextureSources(source))
+			{
+				SAILOR_LOG_ERROR("Cannot load texture '%s': decoding failed or the source changed.",
+					source.m_filepath.c_str());
+				return TexturePtr{};
+			}
+
+			if (bCpuOnly)
+			{
+				if (texture->m_cpuSource != source)
+				{
+					SAILOR_LOG_ERROR("Cannot retain CPU texture '%s': reload its changed GPU source first.",
+						source.m_filepath.c_str());
+					return TexturePtr{};
+				}
+				if (!texture->HasCpuData())
+				{
+					texture->SetDecodedData(std::move(data->m_pixels));
+				}
+				return texture;
+			}
+
+			auto& driver = RHI::Renderer::GetDriver();
+			auto rhi = driver->CreateTexture(data->m_pixels.GetData(), data->m_pixels.Num(),
+				glm::vec3(data->m_width, data->m_height, 1), data->m_mipLevels,
+				RHI::ETextureType::Texture2D, format, filtration, clamping, usage, reduction);
+			if (!rhi)
+			{
+				return TexturePtr{};
+			}
+			driver->SetDebugName(rhi, source.m_filepath);
+
+			size_t index = 0;
+			m_textureSamplersIndices.TryGet(source.m_fileId, index);
+			if (IsUserTextureSamplerIndexValid(index))
+			{
+				if (!UpdateTextureSamplerBinding(rhi, static_cast<uint32_t>(index)))
+				{
+					return TexturePtr{};
+				}
+			}
+			else
+			{
+				if (!RegisterTextureSamplerBinding(rhi, index))
+				{
+					SAILOR_LOG_ERROR("Cannot register texture sampler '%s'.", source.m_filepath.c_str());
+					return TexturePtr{};
+				}
+				m_textureSamplersIndices.At_Lock(source.m_fileId) = index;
+				m_textureSamplersIndices.Unlock(source.m_fileId);
+			}
+
+			texture->m_rhiTexture = std::move(rhi);
+			texture->m_width = data->m_width;
+			texture->m_height = data->m_height;
+			texture->m_mipLevels = data->m_mipLevels;
+			texture->m_cpuSource = source;
+			texture->SetDecodedData(bKeepCpu ? std::move(data->m_pixels) : ByteCode{});
+			if (bHotReload)
+			{
+				texture->TraceHotReload(nullptr);
+			}
+			return texture;
+		}, "Publish texture", EThreadType::RHI);
+	// Decodes may overlap, but one texture's publications follow request order.
+	if (previous)
+	{
+		publish->Join(previous);
+	}
+	return publish->ToTaskWithResult();
+}
+
 Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& outTexture)
 {
 	SAILOR_PROFILE_FUNCTION();
-	TextureAssetInfoPtr pAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid);
+	auto* assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid);
+	if (!assetInfo)
+	{
+		outTexture = nullptr;
+		return {};
+	}
 
-	// Check promises first
 	auto& promise = m_promises.At_Lock(uid, nullptr);
-	auto& loadedTexture = m_loadedTextures.At_Lock(uid, TexturePtr());
-
-	// Check loaded textures
-	if (loadedTexture)
+	auto& texture = m_loadedTextures.At_Lock(uid, TexturePtr{});
+	const bool bKeepCpu = assetInfo->ShouldKeepCpuBuffers();
+	const bool bPending = promise && !promise->IsFinished();
+	bool bCpuOnly = false;
+	if (bPending)
 	{
-		const bool bNeedCpuBuffers = pAssetInfo && pAssetInfo->ShouldKeepCpuBuffers() && !loadedTexture->HasCpuData();
-		if (bNeedCpuBuffers && !promise)
+		if (!bKeepCpu || texture->m_bCpuBuffersRequested)
 		{
-			loadedTexture = nullptr;
-		}
-		else
-		{
-			outTexture = loadedTexture;
-			auto res = promise ? promise : Tasks::TaskPtr<TexturePtr>::Make(outTexture);
-
+			outTexture = texture;
+			auto task = promise;
 			m_loadedTextures.Unlock(uid);
 			m_promises.Unlock(uid);
-
-			return res;
+			return task;
 		}
+		bCpuOnly = true;
 	}
-
-	if (pAssetInfo)
+	else if (texture && texture->GetRHI())
 	{
-		SAILOR_PROFILE_TEXT(pAssetInfo->GetAssetFilepath().c_str());
-
-		TexturePtr pTexture = TexturePtr::Make(m_allocator, uid);
-
-		struct Data
+		if (!bKeepCpu || texture->HasCpuData())
 		{
-			ByteCode decodedData;
-			int32_t width;
-			int32_t height;
-			uint32_t mipLevels;
-			bool bIsImported;
-			bool bShouldKeepCpuBuffers;
-		};
-
-		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
-			[pAssetInfo]() mutable
-			{
-				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
-				pData->bIsImported = ImportTexture(pAssetInfo->GetFileId(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
-				pData->bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
-
-				if (!pData->bIsImported)
-				{
-					SAILOR_LOG("Cannot Load texture: %s, with uid: %s", pAssetInfo->GetAssetFilepath().c_str(), pAssetInfo->GetFileId().ToString().c_str());
-				}
-
-				return pData;
-			})->Then<TexturePtr>([pTexture, pAssetInfo, this](TSharedPtr<Data> pData) mutable
-				{
-					if (pData->bIsImported && pData->decodedData.Num() > 0)
-					{
-						pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&pData->decodedData[0], pData->decodedData.Num(), glm::vec3(pData->width, pData->height, 1.0f),
-							pData->mipLevels, RHI::ETextureType::Texture2D, pAssetInfo->GetFormat(), pAssetInfo->GetFiltration(),
-							pAssetInfo->GetClamping(),
-							pAssetInfo->ShouldSupportStorageBinding() ? (TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit) : TextureImporter::DefaultTextureUsage,
-							pAssetInfo->GetSamplerReduction());
-						pTexture->m_width = pData->width;
-						pTexture->m_height = pData->height;
-						pTexture->m_mipLevels = pData->mipLevels;
-						if (pData->bShouldKeepCpuBuffers)
-						{
-							pTexture->m_decodedData = std::move(pData->decodedData);
-						}
-						else
-						{
-							pTexture->m_decodedData.Clear();
-						}
-
-						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, pAssetInfo->GetAssetFilepath());
-
-						size_t index = 0;
-						if (RegisterTextureSamplerBinding(pTexture->m_rhiTexture, index))
-						{
-							m_textureSamplersIndices.At_Lock(pAssetInfo->GetFileId()) = index;
-							m_textureSamplersIndices.Unlock(pAssetInfo->GetFileId());
-						}
-						else if (index == 0)
-						{
-							SAILOR_LOG_ERROR("Cannot register texture sampler '%s': the scene texture capacity of %zu user textures is exhausted.",
-								pAssetInfo->GetAssetFilepath().c_str(),
-								MaxUserTexturesInScene);
-						}
-						else
-						{
-							SAILOR_LOG_ERROR("Cannot register texture sampler '%s' at index %zu: descriptor update failed.",
-								pAssetInfo->GetAssetFilepath().c_str(),
-								index);
-						}
-					}
-
-					return pTexture;
-				}, "Create RHI texture", EThreadType::RHI)->ToTaskWithResult();
-
-			outTexture = loadedTexture = pTexture;
-			promise->Run();
-
-			m_promises.Unlock(uid);
+			outTexture = texture;
+			auto task = Tasks::TaskPtr<TexturePtr>::Make(texture);
 			m_loadedTextures.Unlock(uid);
-
-			return promise;
+			m_promises.Unlock(uid);
+			return task;
+		}
+		bCpuOnly = true;
+	}
+	else if (!texture)
+	{
+		texture = TexturePtr::Make(m_allocator, uid);
 	}
 
-	outTexture = nullptr;
-	m_promises.Unlock(uid);
+	texture->m_bCpuBuffersRequested = bKeepCpu;
+	promise = CreateTextureTask(texture, *assetInfo, bCpuOnly, false, promise);
+	outTexture = texture;
+	auto task = promise;
 	m_loadedTextures.Unlock(uid);
-
-	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
-	return Tasks::TaskPtr<TexturePtr>();
+	m_promises.Unlock(uid);
+	task->Run();
+	return task;
 }
 
 size_t TextureImporter::GetTextureIndex(FileId uid)
@@ -922,8 +935,6 @@ bool TextureImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmed
 
 void TextureImporter::CollectGarbage()
 {
-	TVector<FileId> uidsToRemove;
-
 	m_promises.LockAll();
 	auto ids = m_promises.GetKeys();
 	m_promises.UnlockAll();
@@ -931,18 +942,10 @@ void TextureImporter::CollectGarbage()
 	for (const auto& id : ids)
 	{
 		auto promise = m_promises.At_Lock(id);
-
-		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
+		if (!promise || promise->IsFinished())
 		{
-			FileId uid = id;
-			uidsToRemove.Emplace(uid);
+			m_promises.ForcelyRemove(id);
 		}
-
 		m_promises.Unlock(id);
-	}
-
-	for (auto& uid : uidsToRemove)
-	{
-		m_promises.Remove(uid);
 	}
 }
