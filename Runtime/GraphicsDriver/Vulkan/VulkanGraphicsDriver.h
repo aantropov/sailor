@@ -159,6 +159,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, size_t vertexBuffer, const void* pIndices, size_t indexBuffer) override;
 
 		SAILOR_API virtual bool SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence = nullptr, RHI::RHISemaphorePtr signalSemaphore = nullptr, RHI::RHISemaphorePtr waitSemaphore = nullptr) override;
+		SAILOR_API bool SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence,
+			RHI::RHISemaphorePtr signalSemaphore, RHI::RHISemaphorePtr waitSemaphore, const void* submitNext);
 
 		// Shader binding set
 		SAILOR_API virtual RHI::RHIShaderBindingSetPtr CreateShaderBindings() override;

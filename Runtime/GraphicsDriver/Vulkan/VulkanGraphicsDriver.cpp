@@ -1055,6 +1055,12 @@ void VulkanGraphicsDriver::WaitIdle()
 
 bool VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence, RHI::RHISemaphorePtr signalSemaphore, RHI::RHISemaphorePtr waitSemaphore)
 {
+	return SubmitCommandList(std::move(commandList), std::move(fence), std::move(signalSemaphore), std::move(waitSemaphore), nullptr);
+}
+
+bool VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence,
+	RHI::RHISemaphorePtr signalSemaphore, RHI::RHISemaphorePtr waitSemaphore, const void* submitNext)
+{
 	SAILOR_PROFILE_FUNCTION();
 	if (!commandList ||
 		!commandList->m_vulkan.m_commandBuffer ||
@@ -1097,7 +1103,8 @@ bool VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList,
 		commandList->m_vulkan.m_commandBuffer,
 		fence ? fence->m_vulkan.m_fence : nullptr,
 		signal,
-		wait);
+		wait,
+		submitNext);
 	if (!bSubmitted)
 	{
 		SAILOR_LOG_ERROR("VulkanGraphicsDriver::SubmitCommandList: vkQueueSubmit failed.");

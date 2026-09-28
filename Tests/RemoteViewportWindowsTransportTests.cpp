@@ -247,6 +247,34 @@ namespace
 		Require(backend.GetLastFailure().m_nativeCode == 903, "backend should retain provider release failure");
 	}
 
+	void TestWindowsBackendRetriesPreparedFrame()
+	{
+		FakeWindowsSharedSurfaceProvider provider;
+		WindowsViewportTransportBackend backend(provider);
+		const auto viewport = MakeViewport(33);
+		TransportDescriptor transport;
+		Require(backend.EnsureSurface(viewport, 5, 1, transport).IsOk(), "retry fixture must create a surface");
+		provider.m_nextBeginFailure = Failure::FromDomain(ErrorDomain::Transport, 904, "copy pending");
+		Require(!backend.BeginFrame(viewport, 5, 1).IsOk(), "pending copy must fail begin");
+		FramePacket frame;
+		Require(!backend.ExportFrame(viewport, 5, 1, frame).IsOk() && provider.m_exportCalls.empty(),
+			"an incomplete begin must not reach the provider export");
+		Require(backend.BeginFrame(viewport, 5, 1).IsOk(), "begin must retry the pending provider copy");
+		Require(backend.BeginFrame(viewport, 5, 1).IsOk() && provider.m_beginCalls.size() == 2u,
+			"a prepared frame must not begin another provider copy before export");
+		provider.m_nextExportFailure = Failure::FromDomain(ErrorDomain::Transport, 905, "export failed");
+		Require(!backend.ExportFrame(viewport, 5, 1, frame).IsOk(), "export failure must reach the caller");
+		Require(backend.BeginFrame(viewport, 5, 1).IsOk() && provider.m_beginCalls.size() == 2u,
+			"retry after export failure must reuse the prepared frame");
+		Require(backend.ExportFrame(viewport, 5, 1, frame).IsOk() && frame.m_frameIndex == 1u,
+			"only successful export may advance the frame index");
+		Require(!backend.ExportFrame(viewport, 5, 1, frame).IsOk(), "one begin permits only one successful export");
+		Require(backend.BeginFrame(viewport, 5, 1).IsOk() && provider.m_beginCalls.size() == 3u,
+			"the next frame must begin a fresh provider copy");
+		Require(backend.ExportFrame(viewport, 5, 1, frame).IsOk() && frame.m_frameIndex == 2u,
+			"subsequent export must advance once");
+	}
+
 	void TestWindowsNativeHostImportPresentResetAndFailures()
 	{
 		FakeWindowsViewportPresenter presenter{};
@@ -297,6 +325,7 @@ int main()
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "WindowsBackendCreateResizeExportAndRelease", TestWindowsBackendCreateResizeExportAndRelease },
 		{ "WindowsBackendFailurePropagationAndOrdering", TestWindowsBackendFailurePropagationAndOrdering },
+		{ "WindowsBackendRetriesPreparedFrame", TestWindowsBackendRetriesPreparedFrame },
 		{ "WindowsNativeHostImportPresentResetAndFailures", TestWindowsNativeHostImportPresentResetAndFailures },
 	};
 

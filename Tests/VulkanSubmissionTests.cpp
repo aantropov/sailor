@@ -16,6 +16,10 @@
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
 #include "Tasks/Tasks.h"
+#if defined(_WIN32)
+#include <Windows.h>
+#include "Submodules/EditorRemote/RemoteViewportWindowsNative.h"
+#endif
 
 #include <iostream>
 #include <algorithm>
@@ -94,6 +98,7 @@ namespace
 	thread_local uint32_t submitCalls = 0u;
 	thread_local uint32_t lastSubmitCount = 0u;
 	thread_local uint32_t lastCommandCount = 0u;
+	thread_local const void* lastSubmitNext = nullptr;
 	thread_local bool rejectNativeSubmit = false;
 	thread_local bool submitBeforeFailure = false;
 	thread_local uint32_t submitsBeforeFailure = 0u;
@@ -217,6 +222,7 @@ namespace
 		{
 			StubSubmit(queue, count, info, fence);
 			lastCommandCount = count ? info[0].commandBufferCount : 0u;
+			lastSubmitNext = count ? info[0].pNext : nullptr;
 			lastWait = count && info[0].waitSemaphoreCount ? info[0].pWaitSemaphores[info[0].waitSemaphoreCount - 1u] : VK_NULL_HANDLE;
 			lastSignal = count && info[0].signalSemaphoreCount ? info[0].pSignalSemaphores[0] : VK_NULL_HANDLE;
 			if (nextResult != VK_SUCCESS && !submitBeforeFailure) return nextResult;
@@ -632,6 +638,150 @@ namespace
 			}
 		}
 	}
+
+	void TestExtendedSubmission(bool lost)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = static_cast<VulkanGraphicsDriver&>(*Renderer::GetDriver());
+		VkProtectedSubmitInfo extension{ VK_STRUCTURE_TYPE_PROTECTED_SUBMIT_INFO };
+		extension.protectedSubmit = VK_FALSE;
+		for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			auto frame = RecordFrame(2251u);
+			auto fence = RHIFencePtr::Make();
+			if (!lost)
+			{
+				{
+					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+					const bool submitted = driver.SubmitCommandList(frame.command, fence, {}, {}, &extension);
+					Require(!submitted, "extended submission must report native refusal");
+					Require(lastSubmitNext == &extension, "refused submission must forward its native extension chain");
+					Require(fence->HasFailed() && frame.command.NumRefs() == 1u,
+						"extended submit refusal must fail its fence and release the command");
+				}
+				CheckReadback(frame, false);
+				fence = RHIFencePtr::Make();
+			}
+			{
+				SubmitOverride observe(VulkanSubmissionTestAccess::UploadQueue(*device), VK_SUCCESS);
+				FenceDispatchOverride dispatch(*device);
+				fenceResults = { VK_NOT_READY, VK_NOT_READY };
+				fenceWaitResult = lost ? VK_ERROR_DEVICE_LOST : error;
+				captureNextFenceWait = true;
+				capturedFenceCompleted = false;
+				Require(driver.SubmitCommandList(frame.command, fence, {}, {}, &extension) && lastSubmitNext == &extension,
+					"extended submission must preserve its native extension chain");
+				Require(fence->Wait() == (lost ? EFenceStatus::Failed : EFenceStatus::Pending) && capturedFenceCompleted,
+					"extended fence must report actual wait failure after the real test copy finishes");
+				driver.TrackResources_ThreadSafe();
+				Require(frame.command.NumRefs() == (lost ? 1u : 2u),
+					"extended work must share ordinary command retention and terminal-loss cleanup");
+				if (!lost)
+				{
+					driver.TrackResources_ThreadSafe();
+					Require(frame.command.NumRefs() == 2u, "pending extended submission must survive collection");
+					fenceResults[0] = VK_SUCCESS;
+					driver.TrackResources_ThreadSafe();
+					Require(fence->IsFinished() && frame.command.NumRefs() == 1u, "extended completion must release command ownership");
+				}
+			}
+			CheckReadback(frame, true);
+			if (lost) break;
+		}
+	}
+
+#if defined(_WIN32)
+	void TestWindowsSharedSurfaceCopy(bool lost)
+	{
+		using namespace Sailor::EditorRemote;
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver();
+		SailorWindowsSharedSurfaceProvider provider;
+		WindowsViewportTransportBackend backend(provider);
+		SailorWindowsViewportPresenter presenter;
+		ViewportDescriptor viewport;
+		viewport.m_viewportId = 96u;
+		viewport.m_width = viewport.m_height = 16u;
+		viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		viewport.m_colorSpace = ColorSpace::Srgb;
+		TransportDescriptor transport;
+		Require(backend.EnsureSurface(viewport, 1u, 1u, transport).IsOk(), "native Windows shared surface creation failed");
+		Require(presenter.ImportSurface(viewport, transport, 1u, 1u).IsOk(), "native D3D presenter import failed");
+		FrameIndex exported = 0u;
+		auto exportAndRelease = [&]()
+			{
+				FramePacket frame;
+				Require(backend.ExportFrame(viewport, 1u, 1u, frame).IsOk() && frame.m_frameIndex == ++exported &&
+					frame.m_sync.m_acquireValue == exported * 2u - 1u && frame.m_sync.m_releaseValue == exported * 2u &&
+					frame.m_sync.m_crossApiCpuWaited, "completed Windows copy must export exactly the accepted keyed-mutex frame");
+				if (exported == 1u)
+				{
+					auto unavailable = frame;
+					unavailable.m_sync.m_acquireValue += 2u;
+					const auto result = presenter.PresentFrame(viewport.m_viewportId, unavailable);
+					Require(!result.IsOk() && result.m_nativeCode == WAIT_TIMEOUT,
+						"an unavailable mutex key must report timeout without consuming the ready frame");
+				}
+				Require(presenter.PresentFrame(viewport.m_viewportId, frame).IsOk(), "D3D must acquire and release the completed frame");
+				Require(!backend.ExportFrame(viewport, 1u, 1u, frame).IsOk(), "completed copy must export only once");
+			};
+		for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			if (!lost)
+			{
+				{
+					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+					Require(!backend.BeginFrame(viewport, 1u, 1u).IsOk(), "Windows begin must report submit refusal");
+				}
+				Require(backend.BeginFrame(viewport, 1u, 1u).IsOk(), "refused Windows copy must retry successfully");
+				exportAndRelease();
+			}
+			{
+				SubmitOverride observe(VulkanSubmissionTestAccess::UploadQueue(*device), VK_SUCCESS);
+				FenceDispatchOverride dispatch(*device);
+				fenceResults = { VK_NOT_READY, VK_NOT_READY };
+				fenceWaitResult = lost ? VK_ERROR_DEVICE_LOST : error;
+				captureNextFenceWait = true;
+				capturedFenceCompleted = false;
+				Require(!backend.BeginFrame(viewport, 1u, 1u).IsOk() && capturedFenceCompleted,
+					"Windows begin must report an accepted wait failure");
+				const auto submitted = submitCalls;
+				FramePacket frame;
+				auto state = *std::as_const(backend).FindSurface(viewport.m_viewportId, 1u, 1u);
+				Require(!provider.ExportFrame(state, frame).IsOk() && !backend.ExportFrame(viewport, 1u, 1u, frame).IsOk(),
+					"neither provider nor backend may publish an incomplete Windows copy");
+				Require(!backend.BeginFrame(viewport, 1u, 1u).IsOk() && submitCalls == submitted,
+					"pending or lost Windows copy must not resubmit using its previous mutex key");
+				if (!lost)
+				{
+					fenceWaitResult = VK_SUCCESS;
+					fenceResults[0] = VK_SUCCESS;
+					Require(backend.BeginFrame(viewport, 1u, 1u).IsOk() && submitCalls == submitted,
+						"Windows retry must finish the original accepted copy");
+					exportAndRelease();
+				}
+			}
+			if (lost) break;
+		}
+		presenter.ResetViewport(viewport.m_viewportId);
+		Require(backend.ReleaseSurface(viewport.m_viewportId, 1u, 1u).IsOk(), "Windows surface release failed");
+		if (!lost)
+		{
+			Require(backend.EnsureSurface(viewport, 1u, 2u, transport).IsOk(), "replacement Windows surface creation failed");
+			FenceDispatchOverride dispatch(*device);
+			fenceResults = { VK_NOT_READY, VK_NOT_READY };
+			fenceWaitResult = VK_ERROR_OUT_OF_HOST_MEMORY;
+			captureNextFenceWait = true;
+			capturedFenceCompleted = false;
+			Require(!backend.BeginFrame(viewport, 1u, 2u).IsOk() && capturedFenceCompleted, "replacement copy must enter pending state");
+			Require(backend.ReleaseSurface(viewport.m_viewportId, 1u, 2u).IsOk(), "pending surface must be releasable");
+			Require(forwardFenceStatus(*device, observedFences[0]) == VK_SUCCESS,
+				"releasing the allocation must not destroy the tracked native fence");
+			fenceResults[0] = VK_SUCCESS;
+			driver.TrackResources_ThreadSafe();
+		}
+	}
+#endif
 
 	void TestImmediateBindingUpdate(bool lost)
 	{
@@ -1156,7 +1306,13 @@ namespace
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 			OnRender([&]()
 				{
-					if (mode == "--gpu-immediate-image-create") TestImmediateImageCreation(false);
+					if (mode == "--gpu-extended-submit") TestExtendedSubmission(false);
+					else if (mode == "--gpu-extended-submit-lost") TestExtendedSubmission(true);
+#if defined(_WIN32)
+					else if (mode == "--gpu-windows-shared") TestWindowsSharedSurfaceCopy(false);
+					else if (mode == "--gpu-windows-shared-lost") TestWindowsSharedSurfaceCopy(true);
+#endif
+					else if (mode == "--gpu-immediate-image-create") TestImmediateImageCreation(false);
 					else if (mode == "--gpu-immediate-images") TestImmediateImageContents();
 					else if (mode == "--gpu-immediate-image-create-lost") TestImmediateImageCreation(true);
 					else if (mode == "--gpu-immediate-buffer-create") TestImmediateBufferCreation();
@@ -1252,6 +1408,15 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
+#if defined(_WIN32)
+		if (mode == "--gpu-windows-shared" || mode == "--gpu-windows-shared-lost") return RunFenceGpu(argc, argv, mode);
+#else
+		if (mode == "--gpu-windows-shared" || mode == "--gpu-windows-shared-lost")
+		{
+			std::cout << "Windows shared-surface GPU tests require Windows\n";
+			return 77;
+		}
+#endif
 		if (mode == "--gpu-bootstrap-submit") return RunBootstrapGpu(argc, argv, false, false);
 		if (mode == "--gpu-bootstrap-submit-lost") return RunBootstrapGpu(argc, argv, false, true);
 		if (mode == "--gpu-bootstrap-wait") return RunBootstrapGpu(argc, argv, true, false);
@@ -1265,6 +1430,7 @@ int main(int argc, const char** argv)
 			mode == "--gpu-immediate-buffer-create" || mode == "--gpu-immediate-buffers" ||
 			mode == "--gpu-immediate-image-create" || mode == "--gpu-immediate-image-create-lost" ||
 			mode == "--gpu-immediate-images" ||
+			mode == "--gpu-extended-submit" || mode == "--gpu-extended-submit-lost" ||
 			mode == "--gpu-immediate-buffer-create-lost" || mode == "--gpu-immediate-buffer-copy-lost")
 			return RunFenceGpu(argc, argv, mode);
 		if (std::string_view(argv[i]) == "--gpu-present") return RunGpu(argc, argv, true, false);

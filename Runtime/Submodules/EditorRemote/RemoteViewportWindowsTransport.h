@@ -107,6 +107,11 @@ namespace Sailor::EditorRemote
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 2, "Missing Windows transport surface for frame begin");
 				return m_lastFailure;
 			}
+			if (state->m_frameBegun)
+			{
+				m_lastFailure = Failure::Ok();
+				return Failure::Ok();
+			}
 
 			auto result = m_provider.BeginFrame(*state);
 			if (!result.IsOk())

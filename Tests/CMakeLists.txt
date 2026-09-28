@@ -251,6 +251,9 @@ target_link_libraries(VulkanSubmissionTests PRIVATE Sailor::Runtime)
 add_test(NAME VulkanSubmissionTests COMMAND VulkanSubmissionTests)
 set_tests_properties(VulkanSubmissionTests PROPERTIES TIMEOUT 30)
 if(WIN32)
+    target_sources(VulkanSubmissionTests PRIVATE
+        ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportWindowsNative.cpp)
+    target_link_libraries(VulkanSubmissionTests PRIVATE d3d11 dxgi)
     sailor_stage_workspace_test_runtime(VulkanSubmissionTests)
 endif()
 
@@ -376,11 +379,9 @@ add_executable(AssetMountDiscoveryTests
     ${SAILOR_RUNTIME_DIR}/AssetRegistry/AssetMountDiscovery.cpp
 )
 
-if(WIN32)
-    add_executable(RemoteViewportWindowsTransportTests
-        RemoteViewportWindowsTransportTests.cpp
-    )
-endif()
+add_executable(RemoteViewportWindowsTransportTests
+    RemoteViewportWindowsTransportTests.cpp
+)
 
 if(APPLE)
     add_executable(MacWindowThreadingTests
@@ -546,10 +547,8 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(EditorEngineProtocolTests)
     sailor_stage_workspace_test_runtime(EditorEngineWebSocketServerTests)
 endif()
-if(WIN32)
-    target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
-    target_link_libraries(RemoteViewportWindowsTransportTests PRIVATE Sailor::Runtime)
-endif()
+target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
+target_link_libraries(RemoteViewportWindowsTransportTests PRIVATE Sailor::Runtime)
 if(APPLE)
     target_compile_features(MacWindowThreadingTests PRIVATE cxx_std_20)
     target_compile_features(RemoteViewportMacTransportTests PRIVATE cxx_std_20)
@@ -664,11 +663,9 @@ target_include_directories(ShaderCacheArtifactTests PRIVATE
 target_include_directories(AssetMountDiscoveryTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
-if(WIN32)
-    target_include_directories(RemoteViewportWindowsTransportTests PRIVATE
-        ${SAILOR_RUNTIME_DIR}
-    )
-endif()
+target_include_directories(RemoteViewportWindowsTransportTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
 
 if(APPLE)
     target_include_directories(MacWindowThreadingTests PRIVATE
@@ -927,12 +924,10 @@ if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR 
     )
 endif()
 
-if(WIN32)
-    add_test(
-        NAME RemoteViewportWindowsTransportTests
-        COMMAND RemoteViewportWindowsTransportTests
-    )
-endif()
+add_test(
+    NAME RemoteViewportWindowsTransportTests
+    COMMAND RemoteViewportWindowsTransportTests
+)
 
 if(APPLE)
     add_test(

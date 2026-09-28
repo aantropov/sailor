@@ -151,6 +151,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanSwapchainPtr GetSwapchain() { return m_swapchain; }
 
 		SAILOR_API uint32_t GetNumSubmittedCommandBufers() const { return m_numSubmittedCommandBuffers; }
+		bool IsDeviceLost() const { return m_bIsDeviceLost.load(); }
 
 		SAILOR_API VulkanQueuePtr GetGraphicsQueue() { return m_graphicsQueue; }
 
