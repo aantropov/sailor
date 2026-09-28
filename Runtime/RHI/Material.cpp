@@ -142,19 +142,28 @@ void RHIShaderBindingSet::RemoveShaderBinding(const std::string& binding)
 
 void RHIShaderBindingSet::UpdateLayoutShaderBinding(const ShaderLayoutBinding& layout)
 {
-	// We are able to rewrite m_binding and m_set
 	const size_t index = m_layoutBindings.FindIf([&](const auto& lhs)
 		{
-			return lhs.m_name == layout.m_name && lhs.m_type == layout.m_type && lhs.m_arrayCount == layout.m_arrayCount;
+			return lhs.m_name == layout.m_name || lhs.m_binding == layout.m_binding;
 		});
 
 	if (index != -1)
 	{
 		m_layoutBindings[index] = layout;
-		return;
+		for (size_t i = m_layoutBindings.Num(); i > index + 1;)
+		{
+			const auto& other = m_layoutBindings[--i];
+			if (other.m_name == layout.m_name || other.m_binding == layout.m_binding)
+			{
+				m_layoutBindings.RemoveAt(i);
+			}
+		}
 	}
-
-	m_layoutBindings.Add(layout);
+	else
+	{
+		m_layoutBindings.Add(layout);
+	}
+	m_bNeedsStorageBuffer = PerInstanceDataStoredInSsbo();
 }
 
 bool RHIShaderBindingSet::PerInstanceDataStoredInSsbo() const

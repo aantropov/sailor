@@ -398,7 +398,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			SAILOR_SHARED_API size_t GetHash() const;
 		};
 
-		SAILOR_API bool UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings, RHI::RHIShaderBindingPtr candidate = {});
+		SAILOR_API bool UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr& bindings, RHI::RHIShaderBinding* bindingToUpdate = nullptr);
 		SAILOR_API void RefreshSwapchainTargets();
 		void CreateDepthStencilViews(RHI::RHIRenderTargetPtr target);
 

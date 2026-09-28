@@ -1949,15 +1949,14 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 	return  RHI::RHISurfacePtr::Make(target, resolved, bNeedsResolved);
 }
 
-bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings, RHI::RHIShaderBindingPtr candidate)
+bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr& bindings, RHI::RHIShaderBinding* bindingToUpdate)
 {
 	SAILOR_PROFILE_FUNCTION();
 	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
-	TVector<RHI::ShaderLayoutBinding> layoutBindings;
-	if (candidate)
+	if (bindingToUpdate)
 	{
-		auto layout = candidate->GetLayout();
+		const auto& layout = bindingToUpdate->GetLayout();
 		const uint32_t publishedVariableDescriptorCount = bindings->GetVariableDescriptorCount();
 		if (publishedVariableDescriptorCount > 0)
 		{
@@ -1973,13 +1972,13 @@ bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 
 			if ((layout.m_bVariableDescriptorCount && !bUpdatesPublishedVariableBinding) ||
 				(!layout.m_bVariableDescriptorCount && bUpdatesPublishedVariableBinding) ||
-				(bUpdatesPublishedVariableBinding && candidate->GetTextureBindings().Num() > publishedVariableDescriptorCount))
+				(bUpdatesPublishedVariableBinding && bindingToUpdate->GetTextureBindings().Num() > publishedVariableDescriptorCount))
 			{
 				SAILOR_LOG_ERROR(
 					"Cannot change a published variable descriptor layout '%s'. allocated=%u, requested=%zu, variable=%d",
 					layout.m_name.c_str(),
 					publishedVariableDescriptorCount,
-					candidate->GetTextureBindings().Num(),
+					bindingToUpdate->GetTextureBindings().Num(),
 					layout.m_bVariableDescriptorCount ? 1 : 0);
 				return false;
 			}
@@ -1987,30 +1986,12 @@ bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 			// Keep the published capacity coherent with lock-free dispatch snapshots.
 			if (bUpdatesPublishedVariableBinding)
 			{
-				layout.m_arrayCount = publishedVariableDescriptorCount;
-				candidate->m_vulkan.m_descriptorSetLayout.descriptorCount = publishedVariableDescriptorCount;
+				auto variableLayout = layout;
+				variableLayout.m_arrayCount = publishedVariableDescriptorCount;
+				bindingToUpdate->SetLayout(variableLayout);
+				bindingToUpdate->m_vulkan.m_descriptorSetLayout.descriptorCount = publishedVariableDescriptorCount;
 			}
 		}
-		candidate->SetLayout(layout);
-		layoutBindings = bindings->GetLayoutBindings();
-		layoutBindings.RemoveAll([&layout](const RHI::ShaderLayoutBinding& bindingLayout)
-			{
-				return bindingLayout.m_name == layout.m_name || bindingLayout.m_binding == layout.m_binding;
-			});
-		layoutBindings.Add(std::move(layout));
-	}
-
-	TVector<RHI::RHIShaderBindingPtr> prospectiveBindings;
-	for (const auto& entry : bindings->GetShaderBindings())
-	{
-		if (!candidate || entry.m_first != candidate->GetLayout().m_name)
-		{
-			prospectiveBindings.Add(entry.m_second);
-		}
-	}
-	if (candidate)
-	{
-		prospectiveBindings.Add(candidate);
 	}
 
 	auto device = m_vkInstance->GetMainDevice();
@@ -2019,17 +2000,17 @@ bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 	int32_t variableDescriptorBinding = -1;
 	uint32_t variableDescriptorCount = 0;
 
-	for (const auto& binding : prospectiveBindings)
+	const auto appendDescriptors = [&](const RHI::RHIShaderBinding& binding)
 	{
-		const auto& layout = binding->GetLayout();
+		const auto& layout = binding.GetLayout();
 		const bool bVariableSampler = layout.m_bVariableDescriptorCount &&
 			layout.m_type == RHI::EShaderBindingType::CombinedImageSampler;
-		if (binding->IsBind() || bVariableSampler)
+		if (binding.IsBind() || bVariableSampler)
 		{
-			if (binding->GetTextureBindings().Num() > 0 || bVariableSampler)
+			if (binding.GetTextureBindings().Num() > 0 || bVariableSampler)
 			{
 				uint32_t index = 0;
-				for (auto& texture : binding->GetTextureBindings())
+				for (auto& texture : binding.GetTextureBindings())
 				{
 					if (!texture)
 					{
@@ -2039,20 +2020,20 @@ bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 					if (!texture->m_vulkan.m_imageView)
 					{
 						SAILOR_LOG_ERROR("Cannot prepare texture binding '%s' (binding=%u, idx=%u): imageView is unavailable.",
-							layout.m_name.c_str(), binding->m_vulkan.m_descriptorSetLayout.binding, index);
+							layout.m_name.c_str(), binding.m_vulkan.m_descriptorSetLayout.binding, index);
 						return false;
 					}
 
 					if (layout.m_type == RHI::EShaderBindingType::CombinedImageSampler)
 					{
-						auto descr = VulkanDescriptorCombinedImagePtr::Make(binding->m_vulkan.m_descriptorSetLayout.binding, index,
+						auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_vulkan.m_descriptorSetLayout.binding, index,
 							device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps(), texture->GetSamplerReduction()),
 							texture->m_vulkan.m_imageView);
 						descriptors.Add(descr);
 					}
 					else if (layout.m_type == RHI::EShaderBindingType::StorageImage)
 					{
-						auto descr = VulkanDescriptorStorageImagePtr::Make(binding->m_vulkan.m_descriptorSetLayout.binding, index, texture->m_vulkan.m_imageView);
+						auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_vulkan.m_descriptorSetLayout.binding, index, texture->m_vulkan.m_imageView);
 						descriptors.Add(descr);
 					}
 					index++;
@@ -2060,10 +2041,10 @@ bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 
 				if (layout.m_bVariableDescriptorCount)
 				{
-					variableDescriptorBinding = static_cast<int32_t>(binding->m_vulkan.m_descriptorSetLayout.binding);
+					variableDescriptorBinding = static_cast<int32_t>(binding.m_vulkan.m_descriptorSetLayout.binding);
 					const uint32_t plannedTextureSlots = (std::max)(1u, layout.m_arrayCount);
 #ifdef _DEBUG
-					const uint32_t actualTextureSlots = static_cast<uint32_t>(binding->GetTextureBindings().Num());
+					const uint32_t actualTextureSlots = static_cast<uint32_t>(binding.GetTextureBindings().Num());
 					if (actualTextureSlots > plannedTextureSlots)
 					{
 						check(false);
@@ -2075,25 +2056,33 @@ bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 					variableDescriptorCount = std::max(variableDescriptorCount, plannedTextureSlots);
 				}
 
-				descriptionSetLayouts.Add(binding->m_vulkan.m_descriptorSetLayout);
+				descriptionSetLayouts.Add(binding.m_vulkan.m_descriptorSetLayout);
 			}
-			else if (binding->m_vulkan.m_valueBinding)
+			else if (binding.m_vulkan.m_valueBinding)
 			{
 				const auto type = layout.m_type;
-				const bool bBindWithoutOffset = (type == RHI::EShaderBindingType::StorageBuffer && !binding->m_vulkan.m_bBindSsboWithOffset);
+				const bool bBindWithoutOffset = (type == RHI::EShaderBindingType::StorageBuffer && !binding.m_vulkan.m_bBindSsboWithOffset);
 
-				const auto valueBinding = *(binding->m_vulkan.m_valueBinding->Get());
-				auto descr = VulkanDescriptorBufferPtr::Make(binding->m_vulkan.m_descriptorSetLayout.binding, 0,
-					binding->m_vulkan.m_valueBinding,
+				const auto valueBinding = *(binding.m_vulkan.m_valueBinding->Get());
+				auto descr = VulkanDescriptorBufferPtr::Make(binding.m_vulkan.m_descriptorSetLayout.binding, 0,
+					binding.m_vulkan.m_valueBinding,
 					bBindWithoutOffset ? 0 : valueBinding.m_offset,
 					valueBinding.m_size,
 					type);
 
 				descriptors.Add(descr);
-				descriptionSetLayouts.Add(binding->m_vulkan.m_descriptorSetLayout);
+				descriptionSetLayouts.Add(binding.m_vulkan.m_descriptorSetLayout);
 			}
 		}
+		return true;
+	};
+
+	for (const auto& entry : bindings->GetShaderBindings())
+	{
+		if (bindingToUpdate && entry.m_first == bindingToUpdate->GetLayout().m_name) continue;
+		if (!appendDescriptors(*entry.m_second)) return false;
 	}
+	if (bindingToUpdate && !appendDescriptors(*bindingToUpdate)) return false;
 
 	// Should we just update descriptor set instead of recreation?
 	// VK_KHR_descriptor_update_template
@@ -2109,13 +2098,13 @@ bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 		return false;
 	}
 
-	if (candidate)
+	if (bindingToUpdate)
 	{
-		auto& binding = bindings->GetOrAddShaderBinding(candidate->GetLayout().m_name);
-		binding->m_vulkan = candidate->m_vulkan;
-		binding->SetLayout(candidate->GetLayout());
-		binding->SetTextureBindings(candidate->GetTextureBindings());
-		bindings->SetLayoutShaderBindings(std::move(layoutBindings));
+		auto& binding = bindings->GetOrAddShaderBinding(bindingToUpdate->GetLayout().m_name);
+		binding->m_vulkan = bindingToUpdate->m_vulkan;
+		binding->SetLayout(bindingToUpdate->GetLayout());
+		binding->SetTextureBindings(bindingToUpdate->GetTextureBindings());
+		bindings->UpdateLayoutShaderBinding(bindingToUpdate->GetLayout());
 		bindings->RecalculateCompatibility();
 	}
 	bindings->m_vulkan.m_descriptorSet = descriptorSet;
@@ -2490,19 +2479,19 @@ RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CloneMaterialShaderBindings(
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, const std::string& name, uint32_t shaderBinding)
 {
 	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
-	auto pBinding = RHI::RHIShaderBindingPtr::Make();
+	RHI::RHIShaderBinding updatedBinding;
 
-	pBinding->m_vulkan = binding->m_vulkan;
-	pBinding->m_vulkan.m_descriptorSetLayout.binding = shaderBinding;
-	pBinding->SetTextureBindings(binding->GetTextureBindings());
+	updatedBinding.m_vulkan = binding->m_vulkan;
+	updatedBinding.m_vulkan.m_descriptorSetLayout.binding = shaderBinding;
+	updatedBinding.SetTextureBindings(binding->GetTextureBindings());
 
 	RHI::ShaderLayoutBinding layout = binding->GetLayout();
 	layout.m_binding = shaderBinding;
 	layout.m_name = name;
 
-	pBinding->SetLayout(layout);
+	updatedBinding.SetLayout(layout);
 
-	if (!UpdateDescriptorSet(pShaderBindings, pBinding))
+	if (!UpdateDescriptorSet(pShaderBindings, &updatedBinding))
 	{
 		return nullptr;
 	}
@@ -2516,11 +2505,11 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	SAILOR_PROFILE_FUNCTION();
 	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
-	RHI::RHIShaderBindingPtr binding = RHI::RHIShaderBindingPtr::Make();
+	RHI::RHIShaderBinding binding;
 
-	binding->m_vulkan.m_valueBinding = buffer->m_vulkan.m_buffer;
-	binding->m_vulkan.m_storageInstanceIndex = 0;
-	binding->m_vulkan.m_bBindSsboWithOffset = true;
+	binding.m_vulkan.m_valueBinding = buffer->m_vulkan.m_buffer;
+	binding.m_vulkan.m_storageInstanceIndex = 0;
+	binding.m_vulkan.m_bBindSsboWithOffset = true;
 
 	// Reuse reflected layout metadata for this binding.
 	const auto& layouts = pShaderBindings->GetLayoutBindings();
@@ -2536,17 +2525,17 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 		layout.m_type = bindingType;
 		layout.m_paddedSize = (uint32_t)buffer->GetSize();
 
-		binding->SetLayout(layout);
+		binding.SetLayout(layout);
 	}
 	else
 	{
 		auto layout = layouts[index];
 		layout.m_name = name;
-		binding->SetLayout(layout);
+		binding.SetLayout(layout);
 	}
 
-	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(shaderBinding, (VkDescriptorType)bindingType);
-	if (!UpdateDescriptorSet(pShaderBindings, binding))
+	binding.m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(shaderBinding, (VkDescriptorType)bindingType);
+	if (!UpdateDescriptorSet(pShaderBindings, &binding))
 	{
 		return nullptr;
 	}
@@ -2562,7 +2551,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::RHIShaderBindingPtr binding = RHI::RHIShaderBindingPtr::Make();
+	RHI::RHIShaderBinding binding;
 
 	TSharedPtr<VulkanBufferAllocator> allocator = GetGeneralSsboAllocator();
 
@@ -2572,12 +2561,12 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 		SsboLayout::ResolveSsboOffsetAlignment(paddedSize, device->GetMinSsboOffsetAlignment()) : paddedSize;
 
 	auto vulkanBufferMemoryPtr = allocator->Allocate(paddedSize * numElements, alignment);
-	binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(vulkanBufferMemoryPtr, allocator);
+	binding.m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(vulkanBufferMemoryPtr, allocator);
 
-	check((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % paddedSize == 0);
+	check((*(binding.m_vulkan.m_valueBinding->Get())).m_offset % paddedSize == 0);
 
-	binding->m_vulkan.m_storageInstanceIndex = bBindSsboWithOffset ? 0 : (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / paddedSize);
-	binding->m_vulkan.m_bBindSsboWithOffset = bBindSsboWithOffset;
+	binding.m_vulkan.m_storageInstanceIndex = bBindSsboWithOffset ? 0 : (uint32_t)((*(binding.m_vulkan.m_valueBinding->Get())).m_offset / paddedSize);
+	binding.m_vulkan.m_bBindSsboWithOffset = bBindSsboWithOffset;
 
 	// Reuse reflected layout metadata for this binding.
 	const auto& layouts = pShaderBindings->GetLayoutBindings();
@@ -2592,17 +2581,17 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 		layout.m_type = RHI::EShaderBindingType::StorageBuffer;
 		layout.m_paddedSize = (uint32_t)paddedSize;
 
-		binding->SetLayout(layout);
+		binding.SetLayout(layout);
 	}
 	else
 	{
 		auto layout = layouts[index];
 		layout.m_name = name;
-		binding->SetLayout(layout);
+		binding.SetLayout(layout);
 	}
 
-	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(shaderBinding, (VkDescriptorType)RHI::EShaderBindingType::StorageBuffer);
-	if (!UpdateDescriptorSet(pShaderBindings, binding))
+	binding.m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(shaderBinding, (VkDescriptorType)RHI::EShaderBindingType::StorageBuffer);
+	if (!UpdateDescriptorSet(pShaderBindings, &binding))
 	{
 		return nullptr;
 	}
@@ -2617,7 +2606,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::RHIShaderBindingPtr binding = RHI::RHIShaderBindingPtr::Make();
+	RHI::RHIShaderBinding binding;
 	TSharedPtr<VulkanBufferAllocator> allocator;
 
 	// TODO: rewrite strictly according to std430
@@ -2627,13 +2616,13 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	{
 		allocator = GetGeneralSsboAllocator();
 
-		binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(paddedSize, paddedSize), allocator);
-		binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding->Get()).m_offset / paddedSize);
+		binding.m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(paddedSize, paddedSize), allocator);
+		binding.m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding.m_vulkan.m_valueBinding->Get()).m_offset / paddedSize);
 	}
 	else
 	{
 		allocator = GetUniformBufferAllocator(name);
-		binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(size, device->GetMinUboOffsetAlignment()), allocator);
+		binding.m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(size, device->GetMinUboOffsetAlignment()), allocator);
 	}
 
 	// First try to find in existed layouts
@@ -2649,17 +2638,17 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 		layout.m_type = bufferType;
 		layout.m_paddedSize = (uint32_t)paddedSize;
 
-		binding->SetLayout(layout);
+		binding.SetLayout(layout);
 	}
 	else
 	{
 		auto layout = layouts[index];
 		layout.m_name = name;
-		binding->SetLayout(layout);
+		binding.SetLayout(layout);
 	}
 
-	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(shaderBinding, (VkDescriptorType)bufferType);
-	if (!UpdateDescriptorSet(pShaderBindings, binding))
+	binding.m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(shaderBinding, (VkDescriptorType)bufferType);
+	if (!UpdateDescriptorSet(pShaderBindings, &binding))
 	{
 		return nullptr;
 	}
@@ -2678,7 +2667,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 	SAILOR_PROFILE_FUNCTION();
 	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
-	RHI::RHIShaderBindingPtr binding = RHI::RHIShaderBindingPtr::Make();
+	RHI::RHIShaderBinding binding;
 
 	RHI::ShaderLayoutBinding layout;
 	layout.m_binding = shaderBinding;
@@ -2687,12 +2676,12 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 	layout.m_bVariableDescriptorCount = bVariableDescriptorCount;
 	layout.m_arrayCount = layout.m_bVariableDescriptorCount ? std::max(1u, variableDescriptorUpperBound) : static_cast<uint32_t>(array.Num());
 
-	binding->SetLayout(layout);
-	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type,
+	binding.SetLayout(layout);
+	binding.m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type,
 		layout.m_bVariableDescriptorCount ? glm::max(1u, layout.m_arrayCount) : layout.m_arrayCount);
-	binding->SetTextureBindings(array);
+	binding.SetTextureBindings(array);
 
-	if (!UpdateDescriptorSet(pShaderBindings, binding))
+	if (!UpdateDescriptorSet(pShaderBindings, &binding))
 	{
 		return nullptr;
 	}
@@ -2711,7 +2700,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(R
 	SAILOR_PROFILE_FUNCTION();
 	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
-	RHI::RHIShaderBindingPtr binding = RHI::RHIShaderBindingPtr::Make();
+	RHI::RHIShaderBinding binding;
 
 	RHI::ShaderLayoutBinding layout;
 	layout.m_binding = shaderBinding;
@@ -2719,11 +2708,11 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(R
 	layout.m_type = RHI::EShaderBindingType::StorageImage;
 	layout.m_arrayCount = (uint32_t)array.Num();
 
-	binding->SetLayout(layout);
-	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type, layout.m_arrayCount);
-	binding->SetTextureBindings(array);
+	binding.SetLayout(layout);
+	binding.m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type, layout.m_arrayCount);
+	binding.SetTextureBindings(array);
 
-	if (!UpdateDescriptorSet(pShaderBindings, binding))
+	if (!UpdateDescriptorSet(pShaderBindings, &binding))
 	{
 		return nullptr;
 	}
@@ -2816,11 +2805,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 		// Descriptor sets may already be referenced by recorded or submitted command
 		// buffers. Keep them immutable and allocate a new set for every texture update;
 		// the command buffer dependency keeps the previous set and its resources alive.
-		const auto previousTextures = currentTextures;
-		auto textures = previousTextures;
-		const auto previousDescriptorLayout = textureBinding->m_vulkan.m_descriptorSetLayout;
-		const auto previousLayout = textureBinding->GetLayout();
-		const auto previousLayoutBindings = bindings->GetLayoutBindings();
+		auto textures = currentTextures;
 		const uint32_t newSize = std::max<uint32_t>(dstArrayElement + 1, static_cast<uint32_t>(textures.Num()));
 		if (textures.Num() != newSize)
 		{
@@ -2840,26 +2825,18 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 		{
 			fallbackLayout.m_arrayCount = static_cast<uint32_t>(textures.Num());
 		}
-		textureBinding->SetTextureBindings(textures);
+		RHI::RHIShaderBinding updatedBinding;
+		updatedBinding.m_vulkan = textureBinding->m_vulkan;
+		updatedBinding.SetTextureBindings(textures);
+		updatedBinding.SetLayout(fallbackLayout);
 		if (!fallbackLayout.m_bVariableDescriptorCount)
 		{
-			textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(
+			updatedBinding.m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(
 				fallbackLayout.m_binding,
 				(VkDescriptorType)fallbackLayout.m_type,
 				fallbackLayout.m_arrayCount);
-			textureBinding->SetLayout(fallbackLayout);
-			bindings->UpdateLayoutShaderBinding(fallbackLayout);
 		}
-		if (!UpdateDescriptorSet(bindings))
-		{
-			textureBinding->SetTextureBindings(previousTextures);
-			if (!fallbackLayout.m_bVariableDescriptorCount)
-			{
-				textureBinding->m_vulkan.m_descriptorSetLayout = previousDescriptorLayout;
-				textureBinding->SetLayout(previousLayout);
-				bindings->SetLayoutShaderBindings(previousLayoutBindings);
-			}
-		}
+		UpdateDescriptorSet(bindings, &updatedBinding);
 
 		return;
 	}

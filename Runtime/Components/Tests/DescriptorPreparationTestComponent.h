@@ -16,6 +16,7 @@ namespace Sailor
 		struct ValidationResult
 		{
 			std::string m_error;
+			std::string m_updateTimings;
 			bool m_bVariableDescriptorsTested = false;
 			bool m_bSparsePublicationTested = false;
 		};

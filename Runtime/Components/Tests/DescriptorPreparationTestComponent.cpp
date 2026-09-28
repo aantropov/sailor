@@ -13,7 +13,9 @@
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
+#include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <format>
 
@@ -29,6 +31,57 @@ namespace
 		Values{ 101u, 307u, 0xc001d00du, 0x5a6b7c8du },
 		Values{ 53u, 79u, 0x87654321u, 0xabcddcbau }
 	};
+
+	std::string MeasureBindingUpdates(std::string& timings)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto relocated = driver->CreateShaderBindings();
+		ShaderLayoutBinding reflected;
+		reflected.m_name = "reflected";
+		reflected.m_binding = 1u;
+		reflected.m_type = EShaderBindingType::CombinedImageSampler;
+		relocated->SetLayoutShaderBindings({ reflected });
+		auto texture = driver->GetDefaultTexture();
+		auto originalSampler = driver->AddSamplerToShaderBindings(relocated, "sampler", texture, 0u);
+		if (!originalSampler || driver->AddSamplerToShaderBindings(relocated, "sampler", texture, 1u) != originalSampler ||
+			relocated->GetLayoutBindings().Num() != 1u || relocated->GetLayoutBindings()[0].m_binding != 1u ||
+			relocated->GetLayoutBindings()[0].m_name != "sampler")
+			return "moving a sampler into a reflected slot left duplicate layout entries";
+
+		auto bindings = driver->CreateShaderBindings();
+		for (uint32_t slot = 0; slot < 24; ++slot)
+			if (!driver->AddSamplerToShaderBindings(bindings, std::format("slot{}", slot), texture, slot))
+				return "binding update benchmark could not prepare its 24-slot set";
+		const auto original = bindings->GetOrAddShaderBinding("slot7");
+		const auto source = bindings->GetOrAddShaderBinding("slot8");
+		std::array<double, 2> medians{};
+		for (uint32_t kind = 0; kind < medians.size(); ++kind)
+		{
+			std::array<double, 17> samples{};
+			const auto revision = bindings->GetDescriptorRevision();
+			for (auto& sample : samples)
+			{
+				const auto start = std::chrono::steady_clock::now();
+				for (uint32_t i = 0; i < 256; ++i)
+				{
+					const auto updated = kind == 0 ?
+						driver->AddSamplerToShaderBindings(bindings, "slot7", texture, 7) :
+						driver->AddShaderBinding(bindings, source, "slot7", 7);
+					if (updated != original) return "repeated update replaced the published binding identity";
+				}
+				sample = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count() / 256;
+			}
+			if (bindings->GetDescriptorRevision() != revision + samples.size() * 256 ||
+				bindings->GetLayoutBindings().Num() != 24 || bindings->GetShaderBindings().Num() != 24 ||
+				!bindings->m_vulkan.m_descriptorSet || !bindings->m_vulkan.m_descriptorSet->IsCompiled())
+				return "repeated updates did not preserve one complete descriptor generation per call";
+			std::sort(samples.begin() + 1, samples.end());
+			medians[kind] = (samples[8] + samples[9]) / 2;
+		}
+		timings = std::format("24 slots, 16 x 256 warmed updates: AddSampler median {:.3f} us/call; AddShaderBinding median {:.3f} us/call. CPU-only descriptor preparation, not frame time.",
+			medians[0], medians[1]);
+		return {};
+	}
 
 	std::string ValidateLayoutOrder()
 	{
@@ -1114,6 +1167,7 @@ void DescriptorPreparationTestComponent::Tick(float)
 		if (!m_validation->IsFinished()) return;
 		const auto& result = m_validation->GetResult();
 		if (!result.m_error.empty()) { MarkFailed(result.m_error); return; }
+		AddJournalEvent("DescriptorUpdateTimings", result.m_updateTimings);
 		AddJournalEvent("DescriptorLayoutOrder",
 			"Opposite input orders compare equally; direct UBO/SSBO A/B/A uses the original reflected pipeline and exact native sets; extra-binding sets still require projection");
 		AddJournalEvent("ManagedUploadRetention",
@@ -1193,6 +1247,7 @@ void DescriptorPreparationTestComponent::Tick(float)
 				if (result.m_error.empty()) result.m_error = ValidateBufferPublication(publication[0], publication[4]);
 				if (result.m_error.empty()) result.m_error = ValidateVariablePublication(publication[3],
 					result.m_bVariableDescriptorsTested, result.m_bSparsePublicationTested);
+				if (result.m_error.empty()) result.m_error = MeasureBindingUpdates(result.m_updateTimings);
 				return result;
 			}, EThreadType::Render);
 		m_validation->Run();
