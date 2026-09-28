@@ -11,6 +11,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <functional>
+#include <future>
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
@@ -78,11 +79,13 @@ static_assert(std::is_move_assignable_v<MacNativePresentationState>);
 @public
 	id<MTLDevice> m_failureDevice;
 	bool m_failQueue;
+	bool m_refuseDrawable;
 }
 @end
 
 @implementation QueueFailureLayer
 - (id<MTLDevice>)device { return m_failQueue ? m_failureDevice : [super device]; }
+- (id<CAMetalDrawable>)nextDrawable { return m_refuseDrawable ? nil : [super nextDrawable]; }
 - (void)dealloc
 {
 	[m_failureDevice release];
@@ -103,7 +106,11 @@ static_assert(std::is_move_assignable_v<MacNativePresentationState>);
 	m_buffer = [buffer retain];
 	return self;
 }
-- (MTLCommandBufferStatus)status { return MTLCommandBufferStatusError; }
+- (MTLCommandBufferStatus)status
+{
+	const auto status = m_buffer.status;
+	return status == MTLCommandBufferStatusCompleted ? MTLCommandBufferStatusError : status;
+}
 - (NSError*)error { return [NSError errorWithDomain:@"Sailor.ProducerCopyTest" code:71 userInfo:nil]; }
 - (BOOL)respondsToSelector:(SEL)selector { return [m_buffer respondsToSelector:selector]; }
 - (NSMethodSignature*)methodSignatureForSelector:(SEL)selector
@@ -149,6 +156,74 @@ static_assert(std::is_move_assignable_v<MacNativePresentationState>);
 - (void)forwardInvocation:(NSInvocation*)invocation { [invocation invokeWithTarget:m_queue]; }
 - (void)dealloc
 {
+	[m_queue release];
+	[super dealloc];
+}
+@end
+
+@interface DelayedReadQueue : NSProxy
+{
+	id<MTLCommandQueue> m_queue;
+	id<MTLTexture> m_source;
+@public
+	id<MTLSharedEvent> m_gate;
+	id<MTLBuffer> m_pixel;
+	id<MTLCommandBuffer> m_read;
+	uint64_t m_waitValue;
+	uint32_t m_commandCount;
+}
+- (id)initWithQueue:(id<MTLCommandQueue>)queue source:(id<MTLTexture>)source;
+- (void)prepareNextReadWithSource:(id<MTLTexture>)source;
+@end
+
+@implementation DelayedReadQueue
+- (id)initWithQueue:(id<MTLCommandQueue>)queue source:(id<MTLTexture>)source
+{
+	m_queue = [queue retain];
+	m_source = [source retain];
+	m_gate = [queue.device newSharedEvent];
+	m_pixel = [queue.device newBufferWithLength:256 options:MTLResourceStorageModeShared];
+	m_waitValue = 1;
+	return self;
+}
+- (void)prepareNextReadWithSource:(id<MTLTexture>)source
+{
+	[m_read release];
+	m_read = nil;
+	[m_source release];
+	m_source = [source retain];
+	++m_waitValue;
+}
+- (id<MTLCommandBuffer>)commandBuffer
+{
+	++m_commandCount;
+	id<MTLCommandBuffer> buffer = [m_queue commandBuffer];
+	if (m_read == nil)
+	{
+		m_read = [buffer retain];
+		[buffer encodeWaitForEvent:m_gate value:m_waitValue];
+		id<MTLBlitCommandEncoder> encoder = [buffer blitCommandEncoder];
+		[encoder copyFromTexture:m_source sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
+			sourceSize:MTLSizeMake(1, 1, 1) toBuffer:m_pixel destinationOffset:0 destinationBytesPerRow:256 destinationBytesPerImage:256];
+		[encoder endEncoding];
+		[m_source release];
+		m_source = nil;
+	}
+	return buffer;
+}
+- (NSMethodSignature*)methodSignatureForSelector:(SEL)selector
+{
+	return [(NSObject*)m_queue methodSignatureForSelector:selector];
+}
+- (void)forwardInvocation:(NSInvocation*)invocation { [invocation invokeWithTarget:m_queue]; }
+- (void)dealloc
+{
+	m_gate.signaledValue = UINT64_MAX;
+	[m_read waitUntilCompleted];
+	[m_read release];
+	[m_pixel release];
+	[m_gate release];
+	[m_source release];
 	[m_queue release];
 	[super dealloc];
 }
@@ -244,6 +319,21 @@ namespace
 		{
 			throw std::runtime_error(message);
 		}
+	}
+
+	void RequireNativeReleases(const Sailor::TSharedPtr<std::atomic<uint32_t>>& releases, uint32_t expected, const std::string& message)
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+		while (releases->load() < expected && std::chrono::steady_clock::now() < deadline)
+		{
+			@autoreleasepool
+			{
+				[CATransaction flush];
+				[[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.001]];
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		Require(releases->load() == expected, message + ": " + std::to_string(releases->load()));
 	}
 
 	Sailor::TSharedPtr<MacIOSurfaceAllocation> MakeNativeProducer(IOSurfaceRef surface, uint32_t width, uint32_t height)
@@ -479,19 +569,10 @@ namespace
 		Require(layers->load() == 0 && queues->load() == 0 && textures->load() == 0,
 			"binding must own its layer, queue and last source texture beyond the native pool");
 		binding.Clear();
-		// Core Animation also owns the presented layer until its transaction drains.
-		[CATransaction flush];
-		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-		while (layers->load() == 0 && std::chrono::steady_clock::now() < deadline)
-		{
-			@autoreleasepool
-			{
-				[[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
-			}
-		}
-		Require(layers->load() == 1 && queues->load() == 1 && textures->load() == 1,
-			"clearing the binding must release each owned native object exactly once: layers=" + std::to_string(layers->load()) +
-			" queues=" + std::to_string(queues->load()) + " textures=" + std::to_string(textures->load()));
+		// Metal and Core Animation retire their references independently.
+		RequireNativeReleases(layers, 1, "clearing the binding must release its layer exactly once");
+		RequireNativeReleases(queues, 1, "clearing the binding must release its queue exactly once");
+		RequireNativeReleases(textures, 1, "clearing the binding must release its source texture exactly once");
 	}
 
 	void TestProviderDestructionReleasesNativeTextures()
@@ -511,6 +592,183 @@ namespace
 			ObserveNativeRelease((id)state.m_nativeAllocation->m_rendererIntermediateTextureObject, textures);
 		}
 		Require(textures->load() == 2, "provider and state destruction must release both owned native textures without manual cleanup");
+	}
+
+	void TestLoopbackDefersWritesUntilPresentationCompletes()
+	{
+		class CpuSource : public IMacRendererFrameSourceProvider
+		{
+		public:
+			uint32_t m_calls = 0;
+			Failure AcquireFrameSource(const MacViewportSurfaceState& state, FrameIndex frameIndex, MacRendererFrameSource& out) override
+			{
+				++m_calls;
+				out.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
+				out.m_width = state.m_viewport.m_width;
+				out.m_height = state.m_viewport.m_height;
+				out.m_pixelFormat = state.m_viewport.m_pixelFormat;
+				out.m_bytesPerRow = out.m_width * 4;
+				out.m_cpuBytes = Sailor::TSharedPtr<std::vector<uint8_t>>::Make(out.m_bytesPerRow * out.m_height, static_cast<uint8_t>(frameIndex));
+				return Failure::Ok();
+			}
+		} source;
+		MacLoopbackIOSurfaceProvider provider(&source);
+		MacLoopbackViewportPresenter presenter;
+		ViewportDescriptor viewport;
+		viewport.m_viewportId = 103;
+		viewport.m_width = 64;
+		viewport.m_height = 48;
+		viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		viewport.m_colorSpace = ColorSpace::Srgb;
+		viewport.m_presentMode = PresentMode::Mailbox;
+		MacViewportLoopbackBinding binding(viewport, provider, presenter);
+		presenter.BindHostHandle(viewport.m_viewportId, LayerHandle([CAMetalLayer layer]));
+		Require(binding.Create().IsOk(), "delayed read needs a real loopback surface and host");
+		const auto surface = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 1);
+		auto allocation = surface->m_nativeAllocation;
+		const auto native = presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding.GetRawPtr();
+		id<MTLCommandQueue> queue = (id<MTLCommandQueue>)native->m_commandQueueObject;
+		DelayedReadQueue* probe = [[[DelayedReadQueue alloc] initWithQueue:queue source:(id<MTLTexture>)allocation->m_producerTextureObject] autorelease];
+		[queue release];
+		native->m_commandQueueObject = reinterpret_cast<uintptr_t>([probe retain]);
+		Require(probe->m_gate && probe->m_pixel, "delayed read needs native event and readback storage");
+
+		std::promise<void> finished;
+		auto finish = finished.get_future();
+		std::thread watchdog([&]()
+		{
+			if (finish.wait_for(std::chrono::seconds(5)) == std::future_status::timeout)
+			{
+				probe->m_gate.signaledValue = UINT64_MAX;
+			}
+		});
+		try
+		{
+			Require(binding.PumpFrame().IsOk(), "first upload and delayed native read must submit");
+			Require(probe->m_read && probe->m_gate.signaledValue == 0 && probe->m_read.status != MTLCommandBufferStatusCompleted,
+				"native presenter read must still be blocked on the test event");
+			Require(binding.PumpFrame().IsOk(), "pending reader should defer the next pump without a failure");
+			Require(binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1 && source.m_calls == 1,
+				"pending native read must prevent a new upload and frame publication");
+			Require(!binding.GetTransportBackend().BeginFrame(viewport, 1, 1).IsOk(), "direct producer begin must also reject early reuse");
+			MacNativeBridgeRendererFrameInfo info;
+			const auto& bytes = *allocation->m_lastRendererSource.m_cpuBytes;
+			Require(!UploadMacRendererBytesToProducerTexture(*allocation, bytes.data(), viewport.m_width * 4, info).IsOk(),
+				"direct CPU upload must also reject the pending native read");
+			Require(!CopyMacRendererIntermediateToProducerTexture(*allocation, allocation->m_rendererIntermediateTextureObject, info).IsOk(),
+				"direct GPU copy must also reject the pending native read");
+			Require(!presenter.PresentFrame(viewport.m_viewportId, binding.GetRuntimeSession().GetLastFrame()).IsOk(),
+				"duplicate presentation must not replace an unfinished read");
+			for (uint32_t i = 0; i < 100; ++i)
+			{
+				Require(binding.PumpFrame().IsOk(), "pending pumps must remain nonblocking and successful");
+			}
+			Require(source.m_calls == 1 && probe->m_commandCount == 1, "pending pumps must not acquire frames or accumulate Metal work");
+			Require(ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 0, 0) == 0x01010101u,
+				"pending GPU reader must retain the original frame pixels");
+			presenter.BindHostHandle(viewport.m_viewportId, LayerHandle([CAMetalLayer layer]));
+			Require(binding.PumpFrame().IsOk() && source.m_calls == 1, "host rebind must not lose the surface's pending read");
+			presenter.BindHostHandle(viewport.m_viewportId, {});
+			Require(binding.PumpFrame().IsOk() && source.m_calls == 1, "host detach must not permit early surface reuse");
+			probe->m_gate.signaledValue = 1;
+			[probe->m_read waitUntilCompleted];
+			Require(probe->m_read.status == MTLCommandBufferStatusCompleted && *(const uint32_t*)probe->m_pixel.contents == 0x01010101u,
+				"the actual delayed GPU read must observe its original frame");
+			Require(binding.PumpFrame().IsOk() && binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 2 && source.m_calls == 2,
+				"completed read must permit exactly the next frame");
+			Require(ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 0, 0) == 0x02020202u,
+				"reuse after native completion must write the new frame");
+
+			presenter.BindHostHandle(viewport.m_viewportId, LayerHandle([CAMetalLayer layer]));
+			const auto rebound = presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding.GetRawPtr();
+			[(id)rebound->m_commandQueueObject release];
+			rebound->m_commandQueueObject = reinterpret_cast<uintptr_t>([probe retain]);
+			[probe prepareNextReadWithSource:(id<MTLTexture>)allocation->m_producerTextureObject];
+			auto sourceReleases = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+			Require(binding.PumpFrame().IsOk(), "another native read must submit before resizing");
+			ObserveNativeRelease((id)rebound->m_lastSourceTextureObject, sourceReleases);
+			Require(probe->m_gate.signaledValue == 1 && probe->m_read.status != MTLCommandBufferStatusCompleted,
+				"resize test must keep the old generation's actual GPU read pending");
+			Require(binding.Resize(80, 56).IsOk(), "resize must import a separate allocation while the old read is pending");
+			Require(!allocation.IsShared(), "new generation must not keep the old C++ allocation registered or imported");
+			allocation.Clear();
+			Require(sourceReleases->load() == 0, "in-flight Metal command must retain its actual source texture after allocation and binding destruction");
+			Require(binding.PumpFrame().IsOk() && binding.GetRuntimeSession().GetGeneration() == 2 &&
+				binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1, "new allocation must progress independently of the retired reader");
+			probe->m_gate.signaledValue = 2;
+			[probe->m_read waitUntilCompleted];
+			Require(probe->m_read.status == MTLCommandBufferStatusCompleted && *(const uint32_t*)probe->m_pixel.contents == 0x03030303u,
+				"retired generation's delayed GPU read must preserve its own frame");
+			[probe->m_read release];
+			probe->m_read = nil;
+			RequireNativeReleases(sourceReleases, 1, "completed retired command must release its native source texture once");
+		}
+		catch (...)
+		{
+			probe->m_gate.signaledValue = UINT64_MAX;
+			finished.set_value();
+			watchdog.join();
+			throw;
+		}
+		finished.set_value();
+		watchdog.join();
+	}
+
+	void TestPresentFailuresAndCompletedReadRetention()
+	{
+		MacLoopbackIOSurfaceProvider provider;
+		MacLoopbackViewportPresenter presenter;
+		ViewportDescriptor viewport;
+		viewport.m_viewportId = 104;
+		viewport.m_width = 64;
+		viewport.m_height = 48;
+		viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		viewport.m_colorSpace = ColorSpace::Srgb;
+		viewport.m_presentMode = PresentMode::Mailbox;
+		MacViewportLoopbackBinding binding(viewport, provider, presenter);
+		QueueFailureLayer* layer = [QueueFailureLayer layer];
+		presenter.BindHostHandle(viewport.m_viewportId, LayerHandle(layer));
+		Require(binding.Create().IsOk(), "present failure test requires a real loopback surface");
+		auto allocation = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 1)->m_nativeAllocation;
+		const auto native = presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding.GetRawPtr();
+		id<MTLCommandQueue> queue = (id<MTLCommandQueue>)native->m_commandQueueObject;
+		ProducerQueueProbe* probe = [[[ProducerQueueProbe alloc] initWithQueue:queue] autorelease];
+		[queue release];
+		native->m_commandQueueObject = reinterpret_cast<uintptr_t>([probe retain]);
+		layer->m_refuseDrawable = true;
+		Require(!binding.PumpFrame().IsOk() && allocation->m_presentCommandBufferObject == 0, "drawable refusal must not reserve a surface reader");
+		layer->m_refuseDrawable = false;
+		probe->m_refuseCommandBuffer = true;
+		Require(!binding.PumpFrame().IsOk() && allocation->m_presentCommandBufferObject == 0, "command refusal must leave the surface reusable");
+		probe->m_refuseCommandBuffer = false;
+		probe->m_failCompletion = true;
+		Require(binding.PumpFrame().IsOk(), "native submission may be accepted before its terminal result");
+		[(id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject waitUntilCompleted];
+		const auto priorFrame = binding.GetRuntimeSession().GetLastPublishedFrameIndex();
+		const auto result = binding.PumpFrame();
+		Require(!result.IsOk() && result.m_nativeCode == 1035 && allocation->m_presentCommandBufferObject == 0,
+			"terminal presentation failure must surface and retire its native command");
+		Require(binding.GetRuntimeSession().GetLastPublishedFrameIndex() == priorFrame && allocation->m_lastWrittenFrameIndex == priorFrame,
+			"failed read completion must not upload or publish another frame");
+		probe->m_failCompletion = false;
+		auto commands = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		for (uint32_t i = 0; i < 100; ++i)
+		{
+			@autoreleasepool
+			{
+				Require(binding.PumpFrame().IsOk(), "presentation must recover and continue after a terminal error");
+				id<MTLCommandBuffer> command = (id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject;
+				Require(command && command.retainedReferences, "surface reader must own a resource-retaining native command");
+				ObserveNativeRelease(command, commands);
+				[command waitUntilCompleted];
+			}
+			RequireNativeReleases(commands, i, "allocation must retain only its latest native read command");
+		}
+		bool completed = false;
+		Require(PollMacIOSurfaceReadCompletion(*allocation, completed).IsOk() && completed,
+			"final completed read must release the last retained native command");
+		RequireNativeReleases(commands, 100, "all completed native read commands must be released");
+		Require(probe->m_commandBufferCount == 102, "refusal, terminal error and successful frames must not create extra native work");
 	}
 
 	void TestProducerAllocationSharedLifetimeAndReplacement()
@@ -609,7 +867,7 @@ namespace
 			Require(backend.ReleaseSurface(viewport.m_viewportId, 1, 1).IsOk(), "copy test must unregister its native allocation");
 			Require(releases->load() == 0, "retained allocation must keep the producer queue alive after unregister");
 		}
-		Require(releases->load() == 1, "repeated copies and failures must release their one native queue");
+		RequireNativeReleases(releases, 1, "repeated copies and failures must release their one native queue");
 	}
 
 	void TestFailedQueueCreationPreservesBindingAndReleasesCandidate()
@@ -729,7 +987,7 @@ namespace
 			presenter.BindHostHandle(viewport.m_viewportId, LayerHandle(failedLayer));
 		}
 		Require(presenter.GetLastFailure().IsOk() && state->m_hostHandle == LayerHandle(failedLayer), "retrying the same host must install its recovered native binding");
-		Require(queues->load() == 1, "successful rebind must release the previous queue");
+		RequireNativeReleases(queues, 1, "successful rebind must release the previous queue");
 		ObserveNativeRelease((id)state->m_layerBinding->m_commandQueueObject, queues);
 		const auto rebound = state->m_layerBinding.GetRawPtr();
 		presenter.BindHostHandle(viewport.m_viewportId, LayerHandle(failedLayer));
@@ -953,6 +1211,8 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "LoopbackDefersWritesUntilPresentationCompletes", TestLoopbackDefersWritesUntilPresentationCompletes },
+		{ "PresentFailuresAndCompletedReadRetention", TestPresentFailuresAndCompletedReadRetention },
 		{ "ProviderDestructionReleasesNativeTextures", TestProviderDestructionReleasesNativeTextures },
 		{ "ProducerAllocationSharedLifetimeAndReplacement", TestProducerAllocationSharedLifetimeAndReplacement },
 		{ "ProducerCopiesReuseQueueAndPropagateFailure", TestProducerCopiesReuseQueueAndPropagateFailure },

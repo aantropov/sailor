@@ -314,8 +314,42 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	Failure UploadMacRendererBytesToProducerTexture(uintptr_t destinationTextureObject, uint32_t width, uint32_t height, const void* bytes, uint32_t bytesPerRow, MacNativeBridgeRendererFrameInfo& outFrameInfo)
+	Failure PollMacIOSurfaceReadCompletion(MacIOSurfaceAllocation& allocation, bool& outCompleted)
 	{
+		outCompleted = allocation.m_presentCommandBufferObject == 0;
+		if (outCompleted)
+		{
+			return Failure::Ok();
+		}
+
+		id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)reinterpret_cast<void*>(allocation.m_presentCommandBufferObject);
+		const auto status = command.status;
+		if (status == MTLCommandBufferStatusError)
+		{
+			const char* description = command.error.localizedDescription.UTF8String;
+			auto failure = WriteProducerFailure(1035, description ? description : "macOS IOSurface presentation failed");
+			ReleaseObjectiveCObject(allocation.m_presentCommandBufferObject);
+			return failure;
+		}
+		if (status == MTLCommandBufferStatusCompleted)
+		{
+			ReleaseObjectiveCObject(allocation.m_presentCommandBufferObject);
+			outCompleted = true;
+		}
+		return Failure::Ok();
+	}
+
+	Failure UploadMacRendererBytesToProducerTexture(MacIOSurfaceAllocation& allocation, const void* bytes, uint32_t bytesPerRow, MacNativeBridgeRendererFrameInfo& outFrameInfo)
+	{
+		outFrameInfo = {};
+		bool readCompleted = false;
+		auto result = PollMacIOSurfaceReadCompletion(allocation, readCompleted);
+		if (!result.IsOk()) return result;
+		if (!readCompleted) return WriteProducerFailure(1034, "macOS IOSurface is still being read by the presenter");
+
+		const auto destinationTextureObject = allocation.m_producerTextureObject;
+		const auto width = allocation.m_plane.m_width;
+		const auto height = allocation.m_plane.m_height;
 		if (destinationTextureObject == 0 || width == 0 || height == 0 || bytes == nullptr || bytesPerRow == 0)
 		{
 			return WriteProducerFailure(1020, "macOS producer CPU upload requires a valid Metal texture and source bytes");
@@ -336,11 +370,16 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	Failure CopyMacRendererIntermediateToProducerTexture(const MacIOSurfaceAllocation& allocation, uintptr_t sourceTextureObject, MacNativeBridgeRendererFrameInfo& outFrameInfo, uintptr_t sharedEventObject, uint64_t sharedEventValue)
+	Failure CopyMacRendererIntermediateToProducerTexture(MacIOSurfaceAllocation& allocation, uintptr_t sourceTextureObject, MacNativeBridgeRendererFrameInfo& outFrameInfo, uintptr_t sharedEventObject, uint64_t sharedEventValue)
 	{
 		outFrameInfo = {};
 		@autoreleasepool
 		{
+			bool readCompleted = false;
+			auto result = PollMacIOSurfaceReadCompletion(allocation, readCompleted);
+			if (!result.IsOk()) return result;
+			if (!readCompleted) return WriteProducerFailure(1034, "macOS IOSurface is still being read by the presenter");
+
 			const auto width = allocation.m_plane.m_width;
 			const auto height = allocation.m_plane.m_height;
 			if (allocation.m_producerCommandQueueObject == 0 || sourceTextureObject == 0 || allocation.m_producerTextureObject == 0 || width == 0 || height == 0)
@@ -520,6 +559,7 @@ namespace Sailor::EditorRemote
 
 	MacIOSurfaceAllocation::~MacIOSurfaceAllocation()
 	{
+		ReleaseObjectiveCObject(m_presentCommandBufferObject);
 		ReleaseObjectiveCObject(m_rendererIntermediateTextureObject);
 		ReleaseObjectiveCObject(m_producerTextureObject);
 		ReleaseObjectiveCObject(m_producerCommandQueueObject);
@@ -759,10 +799,18 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding& inOutBinding, const MacIOSurfaceHandle& surfaceHandle, const FramePacket& frame, MacNativeBridgePresentResult& outResult)
+	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding& inOutBinding, const MacIOSurfaceHandle& surfaceHandle, const FramePacket& frame, MacNativeBridgePresentResult& outResult, MacIOSurfaceAllocation* allocation)
 	{
+		outResult = {};
 		@autoreleasepool
 		{
+			if (allocation)
+			{
+				bool readCompleted = false;
+				auto result = PollMacIOSurfaceReadCompletion(*allocation, readCompleted);
+				if (!result.IsOk()) return result;
+				if (!readCompleted) return WriteProducerFailure(1034, "macOS IOSurface is still being read by the presenter");
+			}
 			if (!inOutBinding.IsValid())
 			{
 				return MakeFailure(2111, "macOS native layer present requires a valid CAMetalLayer binding");
@@ -832,8 +880,11 @@ namespace Sailor::EditorRemote
 			destinationOrigin:MTLOriginMake(0, 0, 0)];
 			[blitEncoder endEncoding];
 			[commandBuffer presentDrawable:drawable];
+			if (allocation)
+			{
+				allocation->m_presentCommandBufferObject = RetainObjectiveCObject(commandBuffer);
+			}
 			[commandBuffer commit];
-			[commandBuffer waitUntilScheduled];
 
 			inOutBinding.m_drawableObject = reinterpret_cast<uintptr_t>((__bridge void*)drawable);
 			inOutBinding.m_importedIOSurfaceObject = surfaceHandle.m_surfaceObject;
@@ -882,12 +933,18 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	Failure UploadMacRendererBytesToProducerTexture(uintptr_t, uint32_t, uint32_t, const void*, uint32_t, MacNativeBridgeRendererFrameInfo&)
+	Failure PollMacIOSurfaceReadCompletion(MacIOSurfaceAllocation&, bool& outCompleted)
+	{
+		outCompleted = true;
+		return Failure::Ok();
+	}
+
+	Failure UploadMacRendererBytesToProducerTexture(MacIOSurfaceAllocation&, const void*, uint32_t, MacNativeBridgeRendererFrameInfo&)
 	{
 		return Failure::Ok();
 	}
 
-	Failure CopyMacRendererIntermediateToProducerTexture(const MacIOSurfaceAllocation&, uintptr_t, MacNativeBridgeRendererFrameInfo&, uintptr_t, uint64_t)
+	Failure CopyMacRendererIntermediateToProducerTexture(MacIOSurfaceAllocation&, uintptr_t, MacNativeBridgeRendererFrameInfo&, uintptr_t, uint64_t)
 	{
 		return Failure::Ok();
 	}
@@ -926,7 +983,7 @@ namespace Sailor::EditorRemote
 		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS native layer binding is unavailable on this platform");
 	}
 
-	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding&, const MacIOSurfaceHandle&, const FramePacket&, MacNativeBridgePresentResult&)
+	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding&, const MacIOSurfaceHandle&, const FramePacket&, MacNativeBridgePresentResult&, MacIOSurfaceAllocation*)
 	{
 		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS native layer present is unavailable on this platform");
 	}

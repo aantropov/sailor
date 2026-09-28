@@ -206,7 +206,7 @@ namespace
 			m_boundHostHandle = hostHandle;
 		}
 
-		Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation) override
+		Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation, const Sailor::TSharedPtr<MacIOSurfaceAllocation>&) override
 		{
 			m_importViewport = viewport;
 			m_importTransport = transport;
@@ -525,7 +525,7 @@ namespace
 			13, 14, 15, 255, 16, 17, 18, 255, 19, 20, 21, 255, 22, 23, 24, 255
 		};
 		MacNativeBridgeRendererFrameInfo frameInfo{};
-		Require(UploadMacRendererBytesToProducerTexture(state.m_nativeAllocation->m_producerTextureObject, viewport.m_width, viewport.m_height, pixels, viewport.m_width * 4u, frameInfo).IsOk(), "cpu upload helper should write bytes into the IOSurface-backed producer texture");
+		Require(UploadMacRendererBytesToProducerTexture(*state.m_nativeAllocation, pixels, viewport.m_width * 4u, frameInfo).IsOk(), "cpu upload helper should write bytes into the IOSurface-backed producer texture");
 		Require(frameInfo.m_producerCopyToken != 0 && frameInfo.m_usedCpuUploadIntoProducerTexture, "cpu upload helper should stamp producer-copy provenance");
 		Require(ReadIOSurfaceBGRA8Pixel(state.m_nativeAllocation->m_surfaceObject, state.m_nativeAllocation->m_plane.m_bytesPerRow, 0, 0) == 0xff030201u, "cpu upload helper should preserve the first BGRA pixel in the shared IOSurface");
 		Require(ReadIOSurfaceBGRA8Pixel(state.m_nativeAllocation->m_surfaceObject, state.m_nativeAllocation->m_plane.m_bytesPerRow, 3, 1) == 0xff181716u, "cpu upload helper should preserve later BGRA pixels in the shared IOSurface");
@@ -669,16 +669,19 @@ namespace
 		Require(ReadIOSurfaceBGRA8Pixel(allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 17, 9) == ExpectedProducerPatternBGRA8(viewport.m_viewportId, 31, 1, 1, viewport.m_width, viewport.m_height, 17, 9), "renderer-intermediate copy should vary per pixel and remain addressable from the shared IOSurface");
 #endif
 		Require(backend.ExportFrame(viewport, 31, 1, frame).IsOk(), "concrete mac provider should export frame");
-		Require(frame.m_sync.m_acquireValue != 0 && frame.m_sync.m_acquireValue == frame.m_sync.m_releaseValue, "exported frame should carry explicit fence metadata");
+		Require(transport.m_syncMode == SyncMode::Implicit && frame.m_sync.m_acquireValue == 0 && frame.m_sync.m_releaseValue == 0,
+			"internally synchronized loopback must not advertise fictitious exported fences");
 		Require(frame.m_sync.m_crossApiSyncKind == CrossApiSyncKind::None, "synthetic intermediate path should not claim Vulkan->Metal sync metadata");
 		Require(frame.m_sync.m_crossApiAcquireValue == 0 && !frame.m_sync.m_crossApiCpuWaited, "synthetic intermediate path should leave cross-API sync metadata empty");
 
 		MacLoopbackViewportPresenter presenter{};
 		MacViewportNativeHost host{ presenter };
-		Require(host.ImportTransport(viewport, transport, 31, 1).IsOk(), "concrete presenter should import concrete mac transport");
+		const auto nativeAllocation = std::as_const(backend).FindSurface(viewport.m_viewportId, 31, 1)->m_nativeAllocation;
+		Require(host.ImportTransport(viewport, transport, 31, 1, nativeAllocation).IsOk(), "concrete presenter should import concrete mac transport");
 		auto* nativeState = presenter.FindImportedState(viewport.m_viewportId);
 		Require(nativeState != nullptr && nativeState->IsValid(), "presenter should materialize native presentation state");
 		Require(nativeState->m_registryId == allocation->m_registryId, "presenter should keep imported IOSurface registry id");
+		Require(nativeState->m_nativeAllocation == nativeAllocation, "loopback import must retain the producer allocation");
 
 		Require(host.AcceptFrame(frame).IsOk(), "host should accept frame exported from concrete provider");
 		Require(host.PresentLatestFrame(viewport.m_viewportId).IsOk(), "host should present frame through concrete presenter");

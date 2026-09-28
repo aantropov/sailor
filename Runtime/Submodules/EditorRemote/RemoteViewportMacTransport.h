@@ -4,6 +4,7 @@
 #include "Memory/UniquePtr.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -116,6 +117,8 @@ namespace Sailor::EditorRemote
 		uintptr_t m_producerDeviceObject = 0;
 		uintptr_t m_producerTextureObject = 0;
 		uintptr_t m_producerCommandQueueObject = 0;
+		// Reader completion belongs to the surface, even when its host is rebound.
+		uintptr_t m_presentCommandBufferObject = 0;
 		uintptr_t m_rendererIntermediateTextureObject = 0;
 		uint64_t m_allocationToken = 0;
 		uint64_t m_lastWrittenFrameIndex = 0;
@@ -142,12 +145,9 @@ namespace Sailor::EditorRemote
 	{
 		MacIOSurfaceHandle m_handle{};
 		uint64_t m_exportToken = 0;
-		uint64_t m_lastAcquireValue = 0;
-		uint64_t m_lastReleaseValue = 0;
 		uint64_t m_lastCrossApiAcquireValue = 0;
 		uintptr_t m_sharedEventObject = 0;
 		CrossApiSyncKind m_crossApiSyncKind = CrossApiSyncKind::None;
-		bool m_requiresHostRelease = false;
 		bool m_crossApiCpuWaited = false;
 
 		bool IsValid() const
@@ -174,6 +174,7 @@ namespace Sailor::EditorRemote
 		bool m_framebufferOnly = false;
 		MacNativeHostHandle m_hostHandle{};
 		TUniquePtr<MacNativeLayerBinding> m_layerBinding{};
+		TSharedPtr<MacIOSurfaceAllocation> m_nativeAllocation{};
 		std::optional<MacIOSurfaceHandle> m_importedSurface{};
 		MacNativeSurfaceFrameEvidence m_lastFrameEvidence{};
 		bool m_hasFrameEvidence = false;
@@ -320,9 +321,6 @@ namespace Sailor::EditorRemote
 			exportMetadata.m_handle.m_bytesPerElement = allocation->m_plane.m_bytesPerElement;
 			exportMetadata.m_handle.m_framebufferOnly = allocation->m_framebufferOnly;
 			exportMetadata.m_exportToken = ++m_nextExportToken;
-			exportMetadata.m_lastAcquireValue = 0;
-			exportMetadata.m_lastReleaseValue = 0;
-			exportMetadata.m_requiresHostRelease = false;
 
 			if (!allocation->IsValid() || !exportMetadata.IsValid())
 			{
@@ -333,7 +331,7 @@ namespace Sailor::EditorRemote
 			inOutState.m_key = { viewport.m_viewportId, epoch, generation };
 			inOutState.m_viewport = viewport;
 			inOutState.m_transport.m_transportType = TransportType::MacIOSurface;
-			inOutState.m_transport.m_syncMode = SyncMode::ExplicitFence;
+			inOutState.m_transport.m_syncMode = SyncMode::Implicit;
 			inOutState.m_transport.m_protocolVersion = 1;
 			inOutState.m_transport.m_width = viewport.m_width;
 			inOutState.m_transport.m_height = viewport.m_height;
@@ -354,6 +352,15 @@ namespace Sailor::EditorRemote
 			if (!state.m_nativeAllocation || !state.m_nativeAllocation->IsValid())
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1002, "macOS frame begin requires a live IOSurface allocation");
+				return m_lastFailure;
+			}
+
+			bool readCompleted = false;
+			m_lastFailure = PollMacIOSurfaceReadCompletion(*state.m_nativeAllocation, readCompleted);
+			if (!m_lastFailure.IsOk()) return m_lastFailure;
+			if (!readCompleted)
+			{
+				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1034, "macOS IOSurface is still being read by the presenter");
 				return m_lastFailure;
 			}
 
@@ -409,7 +416,7 @@ namespace Sailor::EditorRemote
 			}
 			else if (bHasCpuPayload)
 			{
-				copyResult = UploadMacRendererBytesToProducerTexture(state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererSource.m_cpuBytes->data(), rendererSource.m_bytesPerRow, rendererFrameInfo);
+				copyResult = UploadMacRendererBytesToProducerTexture(*state.m_nativeAllocation, rendererSource.m_cpuBytes->data(), rendererSource.m_bytesPerRow, rendererFrameInfo);
 			}
 			else
 			{
@@ -478,9 +485,6 @@ namespace Sailor::EditorRemote
 
 			auto& exportMetadata = *state.m_lastExport;
 			const auto frameIndex = ++state.m_lastExportedFrameIndex;
-			const uint64_t timelineValue = ++m_nextTimelineValue;
-			exportMetadata.m_lastAcquireValue = timelineValue;
-			exportMetadata.m_lastReleaseValue = timelineValue;
 
 			outFrame.m_viewportId = state.m_key.m_viewportId;
 			outFrame.m_connectionEpoch = state.m_key.m_epoch;
@@ -488,12 +492,12 @@ namespace Sailor::EditorRemote
 			outFrame.m_frameIndex = frameIndex;
 			outFrame.m_width = state.m_viewport.m_width;
 			outFrame.m_height = state.m_viewport.m_height;
-			outFrame.m_timestampNs = timelineValue;
-			outFrame.m_sync.m_acquireValue = exportMetadata.m_lastAcquireValue;
-			outFrame.m_sync.m_releaseValue = exportMetadata.m_lastReleaseValue;
+			outFrame.m_timestampNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+			outFrame.m_sync.m_acquireValue = 0;
+			outFrame.m_sync.m_releaseValue = 0;
 			outFrame.m_sync.m_crossApiAcquireValue = exportMetadata.m_lastCrossApiAcquireValue;
 			outFrame.m_sync.m_crossApiSyncKind = exportMetadata.m_crossApiSyncKind;
-			outFrame.m_sync.m_requiresExplicitRelease = exportMetadata.m_requiresHostRelease;
+			outFrame.m_sync.m_requiresExplicitRelease = false;
 			outFrame.m_sync.m_crossApiCpuWaited = exportMetadata.m_crossApiCpuWaited;
 			state.m_frameBegun = false;
 			m_lastFailure = Failure::Ok();
@@ -547,7 +551,6 @@ namespace Sailor::EditorRemote
 		uint32_t m_nextSurfaceId = 100;
 		uint64_t m_nextAllocationToken = 0;
 		uint64_t m_nextExportToken = 0;
-		uint64_t m_nextTimelineValue = 0;
 	};
 
 	class MacViewportTransportBackend : public IViewportTransportBackend
@@ -686,6 +689,20 @@ namespace Sailor::EditorRemote
 
 		size_t GetSurfaceCount() const { return m_surfaces.Num(); }
 
+		Failure PollFrameReadCompletion(ViewportId viewportId, ConnectionEpoch epoch, SurfaceGeneration generation, bool& outCompleted)
+		{
+			outCompleted = false;
+			auto* state = FindSurface(viewportId, epoch, generation);
+			if (!state)
+			{
+				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 2, "Missing macOS transport surface for frame begin");
+				return m_lastFailure;
+			}
+			outCompleted = true;
+			m_lastFailure = state->m_nativeAllocation ? PollMacIOSurfaceReadCompletion(*state->m_nativeAllocation, outCompleted) : Failure::Ok();
+			return m_lastFailure;
+		}
+
 	private:
 		MacViewportSurfaceState* FindSurface(ViewportId viewportId, ConnectionEpoch epoch, SurfaceGeneration generation)
 		{
@@ -704,7 +721,7 @@ namespace Sailor::EditorRemote
 	public:
 		virtual ~IMacViewportPresenter() = default;
 		virtual void BindHostHandle(ViewportId viewportId, const MacNativeHostHandle& hostHandle) = 0;
-		virtual Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation) = 0;
+		virtual Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation, const TSharedPtr<MacIOSurfaceAllocation>& allocation = {}) = 0;
 		virtual Failure PresentFrame(ViewportId viewportId, const FramePacket& frame) = 0;
 		virtual void ResetViewport(ViewportId viewportId) = 0;
 		virtual Failure GetLastFailure() const = 0;
@@ -756,7 +773,7 @@ namespace Sailor::EditorRemote
 			}
 		}
 
-		Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation) override
+		Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation, const TSharedPtr<MacIOSurfaceAllocation>& allocation = {}) override
 		{
 			if (transport.m_transportType != TransportType::MacIOSurface || transport.m_macSurfaces.empty())
 			{
@@ -779,6 +796,7 @@ namespace Sailor::EditorRemote
 			state.m_pixelFormat = transport.m_pixelFormat;
 			state.m_framebufferOnly = handle.m_framebufferOnly;
 			state.m_importedSurface = handle;
+			state.m_nativeAllocation = allocation;
 			if (auto hostIt = m_hostHandles.Find(viewport.m_viewportId); hostIt != m_hostHandles.end())
 			{
 				state.m_hostHandle = hostIt.Value();
@@ -828,7 +846,7 @@ namespace Sailor::EditorRemote
 			if (state.m_layerBinding)
 			{
 				MacNativeBridgePresentResult nativePresent{};
-				auto nativeResult = PresentMacNativeLayerFrame(*state.m_layerBinding, state.m_importedSurface.value_or(MacIOSurfaceHandle{}), frame, nativePresent);
+				auto nativeResult = PresentMacNativeLayerFrame(*state.m_layerBinding, state.m_importedSurface.value_or(MacIOSurfaceHandle{}), frame, nativePresent, state.m_nativeAllocation.GetRawPtr());
 				if (!nativeResult.IsOk())
 				{
 					m_lastFailure = nativeResult;
@@ -965,6 +983,11 @@ namespace Sailor::EditorRemote
 
 		Failure ImportTransport(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation) override
 		{
+			return ImportTransport(viewport, transport, epoch, generation, {});
+		}
+
+		Failure ImportTransport(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation, const TSharedPtr<MacIOSurfaceAllocation>& allocation)
+		{
 			if (transport.m_transportType != TransportType::MacIOSurface)
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Capability, 1, "macOS host supports MacIOSurface transport only");
@@ -978,7 +1001,7 @@ namespace Sailor::EditorRemote
 				return validation;
 			}
 
-			auto result = m_presenter.ImportSurface(viewport, transport, epoch, generation);
+			auto result = m_presenter.ImportSurface(viewport, transport, epoch, generation, allocation);
 			if (!result.IsOk())
 			{
 				m_lastFailure = m_presenter.GetLastFailure();
@@ -1139,7 +1162,14 @@ namespace Sailor::EditorRemote
 				return Failure::Ok();
 			}
 
-			auto result = m_runtimeSession.PublishFrameFromBackend(m_transportBackend);
+			bool readCompleted = false;
+			auto result = m_transportBackend.PollFrameReadCompletion(m_runtimeSession.GetViewportId(), m_runtimeSession.GetConnectionEpoch(), m_runtimeSession.GetGeneration(), readCompleted);
+			if (!result.IsOk() || !readCompleted)
+			{
+				return result;
+			}
+
+			result = m_runtimeSession.PublishFrameFromBackend(m_transportBackend);
 			if (!result.IsOk())
 			{
 				return result;
@@ -1190,7 +1220,8 @@ namespace Sailor::EditorRemote
 				m_runtimeSession.GetDescriptor(),
 				surface->m_transport,
 				m_runtimeSession.GetConnectionEpoch(),
-				m_runtimeSession.GetGeneration());
+				m_runtimeSession.GetGeneration(),
+				surface->m_nativeAllocation);
 			if (!result.IsOk())
 			{
 				return result;
