@@ -2,6 +2,8 @@
 #import <Metal/Metal.h>
 
 #include "MacViewportPresentation.h"
+#include "Sailor.h"
+#include "Editor/EditorRuntimeBridge.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
 
 #include <algorithm>
@@ -10,16 +12,58 @@
 #include <iostream>
 #include <stdexcept>
 
+// Observe the queue created by the real App binding without replacing its work.
+@interface ViewportQueueDevice : NSProxy
+{
+@public
+	id<MTLDevice> m_device;
+	id<MTLCommandQueue> m_queue;
+}
+- (id)initWithDevice:(id<MTLDevice>)device;
+@end
+
+@implementation ViewportQueueDevice
+- (id)initWithDevice:(id<MTLDevice>)device
+{
+	m_device = [device retain];
+	return self;
+}
+- (id<MTLCommandQueue>)newCommandQueue
+{
+	id<MTLCommandQueue> queue = [m_device newCommandQueue];
+	[m_queue release];
+	m_queue = [queue retain];
+	return queue;
+}
+- (NSMethodSignature*)methodSignatureForSelector:(SEL)selector
+{
+	return [(NSObject*)m_device methodSignatureForSelector:selector];
+}
+- (void)forwardInvocation:(NSInvocation*)invocation { [invocation invokeWithTarget:m_device]; }
+- (void)dealloc
+{
+	[m_queue release];
+	[m_device release];
+	[super dealloc];
+}
+@end
+
 // Keep the actual presented drawable alive long enough to inspect the blit.
 @interface ReadbackPresentationLayer : CAMetalLayer
 {
 @public
 	id<CAMetalDrawable> m_lastDrawable;
 	double m_drawableCpuUs;
+	ViewportQueueDevice* m_queueDevice;
 }
 @end
 
 @implementation ReadbackPresentationLayer
+- (id<MTLDevice>)device { return m_queueDevice ? (id<MTLDevice>)m_queueDevice : [super device]; }
+- (void)setDevice:(id<MTLDevice>)device
+{
+	[super setDevice:m_queueDevice && device == (id<MTLDevice>)m_queueDevice ? m_queueDevice->m_device : device];
+}
 - (id<CAMetalDrawable>)nextDrawable
 {
 	[m_lastDrawable release];
@@ -33,6 +77,7 @@
 - (void)dealloc
 {
 	[m_lastDrawable release];
+	[m_queueDevice release];
 	[super dealloc];
 }
 @end
@@ -136,6 +181,97 @@ namespace Sailor::Tests
 			require(reused, "repeated presentation of an actual Vulkan readback must reuse its IOSurface texture import");
 			binding.Destroy();
 			require(provider.GetLiveAllocationCount() == 0, "readback presentation fixture must release its native registration");
+		}
+	}
+
+	void CheckMacAppViewportPump(const MacRendererFrameSource& initial,
+		const std::function<MacRendererFrameSource()>& captureNextFrame)
+	{
+		auto require = [](bool value, const char* message)
+			{
+				if (!value) throw std::runtime_error(message);
+			};
+		@autoreleasepool
+		{
+			constexpr uint64_t viewportId = 203;
+			ReadbackPresentationLayer* layer = [ReadbackPresentationLayer layer];
+			layer->m_queueDevice = [[ViewportQueueDevice alloc] initWithDevice:[MTLCreateSystemDefaultDevice() autorelease]];
+			try
+			{
+				require(App::SetEditorRemoteViewportMacHostHandle(viewportId, static_cast<uint32_t>(MacNativeHostHandleKind::CAMetalLayer),
+					reinterpret_cast<uint64_t>(layer)) &&
+					App::UpsertEditorRemoteViewport(viewportId, 0, 0, initial.m_width, initial.m_height, true, false),
+					"actual App must create its native viewport at the applied render size");
+				require(layer->m_queueDevice->m_queue != nil, "actual App binding must create a native presentation queue");
+				auto source = initial;
+				double captureUs = 0, pumpUs = 0, drawableUs = 0, completeUs = 0, maxPumpUs = 0, repeatPumpUs = 0;
+				constexpr uint32_t frames = 24;
+				constexpr uint32_t repeats = 4;
+				for (uint32_t i = 0; i < frames + repeats; ++i)
+				{
+					const auto begin = std::chrono::steady_clock::now();
+					if (i != 0 && i < frames) source = captureNextFrame();
+					const auto captured = std::chrono::steady_clock::now();
+					EditorRuntime::PumpEditorRemoteViewportsOnEngineThread();
+					const auto submitted = std::chrono::steady_clock::now();
+					id<MTLCommandQueue> queue = layer->m_queueDevice->m_queue;
+					id<MTLCommandBuffer> completion = [queue commandBuffer];
+					[completion commit];
+					[completion waitUntilCompleted];
+					const auto completed = std::chrono::steady_clock::now();
+					require(completion.status == MTLCommandBufferStatusCompleted && layer->m_lastDrawable,
+						"App native presentation must submit and finish before inspecting its drawable");
+					const auto cpu = std::chrono::duration<double, std::micro>(submitted - captured).count();
+					if (i != 0 && i < frames)
+					{
+						captureUs += std::chrono::duration<double, std::micro>(captured - begin).count();
+						pumpUs += cpu;
+						maxPumpUs = std::max(maxPumpUs, cpu);
+						drawableUs += layer->m_drawableCpuUs;
+						completeUs += std::chrono::duration<double, std::micro>(completed - begin).count();
+					}
+					else if (i >= frames) repeatPumpUs += cpu;
+					id<MTLBuffer> pixel = [[layer->m_queueDevice->m_device newBufferWithLength:256 options:MTLResourceStorageModeShared] autorelease];
+					id<MTLCommandBuffer> read = [queue commandBuffer];
+					id<MTLBlitCommandEncoder> blit = [read blitCommandEncoder];
+					require(pixel && blit, "actual App drawable verification requires native readback resources");
+					[blit copyFromTexture:layer->m_lastDrawable.texture sourceSlice:0 sourceLevel:0
+						sourceOrigin:MTLOriginMake(source.m_width / 2u, source.m_height / 2u, 0) sourceSize:MTLSizeMake(1, 1, 1)
+						toBuffer:pixel destinationOffset:0 destinationBytesPerRow:256 destinationBytesPerImage:256];
+					[blit endEncoding];
+					[read commit];
+					[read waitUntilCompleted];
+					const auto* expected = source.GetCpuBytes() + (source.m_height / 2u) * source.m_bytesPerRow + (source.m_width / 2u) * 4u;
+					require(read.status == MTLCommandBufferStatusCompleted && std::memcmp(pixel.contents, expected, 4) == 0,
+						"actual App drawable must follow each new Vulkan capture, not the prior native image");
+				}
+				std::cout << "App viewport " << initial.m_width << 'x' << initial.m_height << ": " << frames - 1 <<
+					" new frames, capture/publication mean " << captureUs / (frames - 1) <<
+					" us, Main pump mean " << pumpUs / (frames - 1) << " us, max " << maxPumpUs <<
+					" us, nextDrawable mean " << drawableUs / (frames - 1) <<
+					" us, capture-to-queue-completion mean " << completeUs / (frames - 1) <<
+					" us, repeated-frame Main pump mean " << repeatPumpUs / repeats << " us\n";
+				char* text = nullptr;
+				const auto length = App::GetEditorRemoteViewportDiagnostics(viewportId, &text);
+				require(text != nullptr && length != 0, "actual App viewport must expose its upload accounting");
+				const std::string diagnostics(text, length);
+				delete[] text;
+				constexpr std::string_view key = "cpuUploadedBytes=";
+				const auto offset = diagnostics.find(key);
+				require(offset != std::string::npos, "native upload bytes must be present in viewport diagnostics");
+				const auto uploaded = std::stoull(diagnostics.substr(offset + key.size()));
+				require(uploaded == static_cast<uint64_t>(frames) * initial.m_width * initial.m_height * 4u,
+					"each new App frame must upload once; repeated presentation must not upload the same pixels again");
+				std::cout << "App native upload bytes " << initial.m_width << 'x' << initial.m_height << ": " << uploaded << '\n';
+				require(App::DestroyEditorRemoteViewport(viewportId), "actual App viewport must release after its GPU work");
+				App::SetEditorRemoteViewportMacHostHandle(viewportId, 0, 0);
+			}
+			catch (...)
+			{
+				App::DestroyEditorRemoteViewport(viewportId);
+				App::SetEditorRemoteViewportMacHostHandle(viewportId, 0, 0);
+				throw;
+			}
 		}
 	}
 }

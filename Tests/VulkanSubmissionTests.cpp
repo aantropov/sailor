@@ -1745,6 +1745,12 @@ namespace
 				scenario == 6 ? glm::ivec2(1280, 720) : scenario == 7 ? glm::ivec2(1920, 1080) :
 				scenario < 4 ? glm::ivec2(32, 24) : glm::ivec2(67, 39);
 			WriteEditorReadbackGraph(path, firstTarget, extent, authored, surface, scenario == 8, multiple);
+			const bool appViewport = scenario == 6 || scenario == 7 || scenario == 10;
+			if (appViewport)
+			{
+				App::SetEditorRenderTargetSize(extent.x, extent.y);
+				Require(EditorRuntime::ApplyPendingEditorViewportOnEngineThread(), "App viewport sweep must apply each new render extent");
+			}
 			renderer->RefreshFrameGraph();
 			Require(renderer->EnsureFrameGraph() && renderer->HasEditorReadback(),
 				"an editor graph without an authored readback must receive an asynchronous producer");
@@ -1794,6 +1800,39 @@ namespace
 				std::cout << "Readback graph scenario " << scenario << ": 1000 Main acquisitions " << microseconds << " us\n";
 			}
 			CheckReadbackUpload(source);
+			if (appViewport)
+			{
+				uint32_t nextColor = 0;
+				EditorReadbackStats warm, final;
+				Tests::CheckMacAppViewportPump(source, [&]()
+					{
+						++nextColor;
+						const uint32_t expectedColor = 0xff000000u | (nextColor * 0x00010101u);
+						OnRender([&]() { graph->GetGraph()[0]->SetVec4("clearColor", glm::vec4(glm::vec3(nextColor / 255.0f), 1.0f)); });
+						EditorRemote::MacRendererFrameSource next;
+						for (uint32_t attempt = 0; attempt < 12; ++attempt)
+						{
+							pushFrame();
+							if (EditorRuntime::TryAcquireEditorReadbackFrameSource(next) &&
+								std::memcmp(next.GetCpuBytes(), &expectedColor, 4) == 0) break;
+						}
+						Require(next.m_readback && std::memcmp(next.GetCpuBytes(), &expectedColor, 4) == 0,
+							"new App-frame capture must contain the newly rendered color");
+						OnRender([&]() { final = node->GetStats(); });
+						if (nextColor == 5) warm = final;
+						if (nextColor > 5)
+							Require(final.m_bufferAllocatedBytes == warm.m_bufferAllocatedBytes &&
+								final.m_conversionAllocatedBytes == 0 && final.m_convertedBytes == 0,
+								"warm BGRA App presentation must reuse readback buffers without full-frame CPU conversion allocations");
+						return next;
+					});
+				const uint64_t payload = static_cast<uint64_t>(extent.x) * extent.y * 4u;
+				Require(final.m_recordedReadbackBytes >= 23u * payload && final.m_bufferAllocatedBytes != 0,
+					"App sweep counters must include actual new GPU readbacks and their bounded buffer allocation");
+				std::cout << "App readback bytes " << extent.x << 'x' << extent.y << ": allocated " << final.m_bufferAllocatedBytes <<
+					", recorded " << final.m_recordedReadbackBytes << ", conversion allocated " << final.m_conversionAllocatedBytes <<
+					", converted " << final.m_convertedBytes << '\n';
+			}
 			if (scenario == 0 || scenario == 5 || scenario == 6)
 			{
 				EditorReadbackStats before, after;

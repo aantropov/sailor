@@ -1082,7 +1082,8 @@ uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** dia
 				<< "' syntheticSource=" << (isSyntheticSource ? 1 : 0)
 				<< " srcSize=" << allocation->m_lastRendererSource.m_width << "x" << allocation->m_lastRendererSource.m_height
 				<< " srcPitch=" << allocation->m_lastRendererSource.m_bytesPerRow
-				<< " copyToken=" << allocation->m_lastProducerCopyToken;
+				<< " copyToken=" << allocation->m_lastProducerCopyToken
+				<< " cpuUploadedBytes=" << allocation->m_cpuUploadedBytes;
 			info.m_nativePresenterSummary += macSource.str();
 		}
 	}

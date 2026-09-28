@@ -289,6 +289,7 @@ namespace Sailor::EditorRemote
 		}
 
 		[destinationTexture replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 withBytes:bytes bytesPerRow:bytesPerRow];
+		allocation.m_cpuUploadedBytes += static_cast<uint64_t>(width) * height * allocation.m_plane.m_bytesPerElement;
 		outFrameInfo.m_rendererTextureToken = NextRendererTextureToken();
 		outFrameInfo.m_producerCopyToken = NextProducerCopyToken();
 		allocation.m_currentCopyToken = outFrameInfo.m_producerCopyToken;

@@ -134,6 +134,8 @@ namespace Sailor::EditorRemote
 		uint64_t m_lastProducerCopyToken = 0;
 		// Native writes can be newer than the last exported frame.
 		uint64_t m_currentCopyToken = 0;
+		// Uploaded pixel payload, excluding row padding.
+		uint64_t m_cpuUploadedBytes = 0;
 		uint64_t m_lastCrossApiAcquireValue = 0;
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		ColorSpace m_colorSpace = ColorSpace::Unknown;

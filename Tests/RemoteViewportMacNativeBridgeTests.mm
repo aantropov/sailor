@@ -503,7 +503,8 @@ namespace
 			Require(allocation->m_copyCommandBufferObject == 0 && binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 0,
 				"cold start must not submit or publish a synthetic frame");
 		}
-		Require(source.m_calls == 100 && presenter.FindImportedState(viewport.m_viewportId)->m_presentedFrameCount == 0,
+		Require(source.m_calls == 100 && allocation->m_cpuUploadedBytes == 0 &&
+			presenter.FindImportedState(viewport.m_viewportId)->m_presentedFrameCount == 0,
 			"missing source must remain retryable without presentation");
 		MacRendererFrameSource frame;
 		frame.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
@@ -518,6 +519,8 @@ namespace
 			"first real frame must publish without a skipped index");
 		[(id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject waitUntilCompleted];
 		const auto token = allocation->m_lastProducerCopyToken;
+		const uint64_t payload = 64u * 48u * 4u;
+		Require(allocation->m_cpuUploadedBytes == payload, "first real source must account for one native upload");
 		for (uint32_t mode = 0; mode < 4; ++mode)
 		{
 			source.m_next = frame;
@@ -531,7 +534,8 @@ namespace
 			}
 			for (uint32_t i = 0; i < 20; ++i) Require(binding.PumpFrame().IsOk(), "temporarily unavailable source must defer");
 			Require(binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1 && allocation->m_lastWrittenFrameIndex == 1 &&
-				allocation->m_lastProducerCopyToken == token && allocation->m_lastRendererSource.m_sourceToken == 42,
+				allocation->m_lastProducerCopyToken == token && allocation->m_lastRendererSource.m_sourceToken == 42 &&
+				allocation->m_cpuUploadedBytes == payload,
 				"missing, metadata-only, stale and texture-less sources must preserve completed provenance");
 			Require(presenter.FindImportedState(viewport.m_viewportId)->m_presentedFrameCount == 1,
 				"no-frame-yet must not re-present the old frame");
@@ -543,6 +547,7 @@ namespace
 		source.m_next = frame;
 		Require(binding.PumpFrame().IsOk() && binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 2,
 			"source recovery must publish the next real frame");
+		Require(allocation->m_cpuUploadedBytes == 2u * payload, "source recovery must account for only the new upload");
 		Require(allocation->m_lastRendererSource.m_sourceToken == 43 &&
 			ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 23, 11) == 0x55555555u,
 			"recovery must publish the new source's pixels and provenance");
