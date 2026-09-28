@@ -4,7 +4,9 @@
 #include "ECS/LightingECS.h"
 #include "ECS/CameraECS.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "Containers/Hash.h"
 #include "Components/MeshRendererComponent.h"
 #include "Raytracing/PathTracer.h"
 #include <algorithm>
@@ -20,6 +22,8 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 	m_pathTracerTLASInstancesCache.Clear();
 	m_pathTracerMaterialsCache.Clear();
 	m_pathTracerLightsCache.Clear();
+	uint64_t sceneRevision = Fnv1aOffsetBasis;
+	HashCombine(sceneRevision, GetWorld());
 
 	auto* pLightingEcs = GetWorld()->GetECS<LightingECS>();
 	pLightingEcs->GetLightProxies(m_pathTracerLightsCache);
@@ -116,6 +120,8 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 		instance.m_worldMatrix = data.m_worldMatrix;
 		instance.m_inverseWorldMatrix = data.m_inverseWorldMatrix;
 		instance.m_materialBaseOffset = (int32_t)m_pathTracerMaterialsCache.Num();
+		HashCombine(sceneRevision, pOwnerGameObject->GetInstanceId(), ownerTransform.GetFrameLastChange(),
+			pModel, pModel->GetBLAS(meshIndex), meshIndex, proxy.m_materials.Num());
 		if (proxy.m_materials.Num() == 0)
 		{
 			m_pathTracerMaterialsCache.Add(MaterialPtr());
@@ -125,6 +131,7 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 			for (const auto& material : proxy.m_materials)
 			{
 				m_pathTracerMaterialsCache.Add(material);
+				HashCombine(sceneRevision, material, material ? material->GetContentRevision() : 0ull);
 			}
 		}
 		m_pathTracerTLASInstancesCache.Add(std::move(instance));
@@ -140,6 +147,7 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 		}
 	}
 
+	m_pathTracerSceneRevision = sceneRevision;
 	return nullptr;
 }
 
@@ -151,4 +159,5 @@ void PathTracerECS::CopySceneView(RHI::RHISceneViewPtr& outSceneView)
 	outSceneView->m_pathTracerTLASInstances = m_pathTracerTLASInstancesCache;
 	outSceneView->m_pathTracerMaterials = m_pathTracerMaterialsCache;
 	outSceneView->m_pathTracerLights = m_pathTracerLightsCache;
+	outSceneView->m_pathTracerSceneRevision = m_pathTracerSceneRevision;
 }

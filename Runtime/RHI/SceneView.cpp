@@ -801,6 +801,7 @@ void RHISceneView::Clear()
 	m_pathTracerTLASInstances.Clear(false);
 	m_pathTracerMaterials.Clear(false);
 	m_pathTracerLights.Clear(false);
+	m_pathTracerSceneRevision = 0;
 }
 
 void RHISceneViewSnapshot::ResetForReuse()
@@ -825,6 +826,7 @@ void RHISceneViewSnapshot::ResetForReuse()
 	m_pathTracerTLASInstances.Clear(false);
 	m_pathTracerMaterials.Clear(false);
 	m_pathTracerLights.Clear(false);
+	m_pathTracerSceneRevision = 0;
 	m_totalNumLights = 0u;
 	m_shadowMapsToUpdate.Clear(false);
 	m_shadowMapsToBlit.Clear(false);
@@ -1325,6 +1327,7 @@ void RHISceneView::PrepareSnapshots()
 		res.m_pathTracerTLASInstances = m_pathTracerTLASInstances;
 		res.m_pathTracerMaterials = m_pathTracerMaterials;
 		res.m_pathTracerLights = m_pathTracerLights;
+		res.m_pathTracerSceneRevision = m_pathTracerSceneRevision;
 
 		res.m_totalNumLights = m_totalNumLights;
 		res.m_rhiLightsData = i < m_rhiLightsDataPerCamera.Num() ?

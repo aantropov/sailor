@@ -455,6 +455,7 @@ namespace Sailor::RHI
 		TVector<Sailor::Raytracing::PathTracer::TLASInstance> m_pathTracerTLASInstances{};
 		TVector<MaterialPtr> m_pathTracerMaterials{};
 		TVector<Sailor::Raytracing::LightProxy> m_pathTracerLights{};
+		uint64_t m_pathTracerSceneRevision = 0;
 
 		uint32_t m_totalNumLights = 0;
 		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate{};
@@ -536,6 +537,7 @@ namespace Sailor::RHI
 		TVector<Sailor::Raytracing::PathTracer::TLASInstance> m_pathTracerTLASInstances;
 		TVector<MaterialPtr> m_pathTracerMaterials;
 		TVector<Sailor::Raytracing::LightProxy> m_pathTracerLights;
+		uint64_t m_pathTracerSceneRevision = 0;
 
 		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui;
 		TVector<Tasks::TaskPtr<RHI::RHICommandListPtr>> m_debugDraw;

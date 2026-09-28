@@ -27,6 +27,7 @@ namespace
 	class ImageNode final : public Framegraph::CPUPathTracerNode
 	{
 	public:
+		using CPUPathTracerNode::AccumulationKey;
 		using CPUPathTracerNode::ApplyCompletedReadback;
 		using CPUPathTracerNode::SubmissionResources;
 		CameraState& Camera(uint32_t index = 0) { return GetCameraState(index); }
@@ -158,6 +159,42 @@ namespace
 		Require(tracer.GetLastRenderedExtent() == uvec2(0) && tracer.GetLastRenderedImageLinear().IsEmpty() && tracer.GetLastRenderedImage().IsEmpty(),
 			"a failed render must discard both the linear image and the display cache");
 	}
+
+	void TestAccumulationIdentity()
+	{
+		ImageNode::AccumulationKey key;
+		key.m_outputExtent = uvec2(64);
+		key.m_sceneRevision = key.m_lightingRevision = key.m_environmentHash = 1;
+		key.m_samplesPerFrame = key.m_maxBounces = 1;
+		Require(key == key, "an unchanged tracing identity must match");
+		auto differs = [&](auto edit, const char* message)
+		{
+			auto changed = key;
+			edit(changed);
+			Require(!(key == changed) && !(changed == key), message);
+		};
+		differs([](auto& k) { ++k.m_sceneRevision; }, "scene changes must invalidate accumulation");
+		differs([](auto& k) { ++k.m_lightingRevision; }, "light changes must invalidate accumulation");
+		differs([](auto& k) { ++k.m_environmentHash; }, "completed environment changes must invalidate accumulation");
+		differs([](auto& k) { ++k.m_outputExtent.x; }, "width changes must invalidate accumulation");
+		differs([](auto& k) { ++k.m_outputExtent.y; }, "height changes must invalidate accumulation");
+		differs([](auto& k) { ++k.m_samplesPerFrame; }, "sampling changes must invalidate accumulation");
+		differs([](auto& k) { ++k.m_maxBounces; }, "bounce changes must invalidate accumulation");
+		differs([](auto& k) { k.m_rayBiasBase += 0.01f; }, "base bias changes must invalidate accumulation");
+		differs([](auto& k) { k.m_rayBiasScale += 0.01f; }, "scaled bias changes must invalidate accumulation");
+		differs([](auto& k) { k.m_cameraPosition.x += 1; }, "camera motion must still invalidate accumulation");
+		differs([](auto& k) { k.m_cameraForward.x += 1; }, "camera direction must still invalidate accumulation");
+		differs([](auto& k) { k.m_cameraUp.x += 1; }, "camera roll must still invalidate accumulation");
+		differs([](auto& k) { k.m_cameraAspect += 1; }, "camera aspect must still invalidate accumulation");
+		differs([](auto& k) { k.m_cameraHFov += 1; }, "camera FOV must still invalidate accumulation");
+		auto jittered = key;
+		jittered.m_cameraPosition.x += 1e-5f;
+		Require(key == jittered, "the existing camera tolerance must be preserved");
+		RHI::RHISceneViewSnapshot snapshot;
+		snapshot.m_pathTracerSceneRevision = 7;
+		snapshot.ResetForReuse();
+		Require(snapshot.m_pathTracerSceneRevision == 0, "snapshot reuse must clear the previous tracer scene stamp");
+	}
 }
 
 int main()
@@ -167,6 +204,7 @@ int main()
 		TestLinearAccumulationAndDisplayExport();
 		TestCameraAndReadbackOwnership();
 		TestPreparedLinearImage();
+		TestAccumulationIdentity();
 		std::cout << "Path tracer linear HDR image tests passed\n";
 		return 0;
 	}

@@ -23,6 +23,25 @@ namespace Sailor::Framegraph
 		SAILOR_API bool GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm::uvec2& outExtent) const;
 
 	protected:
+		struct AccumulationKey
+		{
+			glm::vec3 m_cameraPosition{ 0.0f };
+			glm::vec3 m_cameraForward{ 0.0f, 0.0f, -1.0f };
+			glm::vec3 m_cameraUp{ 0.0f, 1.0f, 0.0f };
+			float m_cameraAspect = 0.0f;
+			float m_cameraHFov = 0.0f;
+			glm::uvec2 m_outputExtent{ 0u };
+			uint64_t m_sceneRevision = 0;
+			uint64_t m_lightingRevision = 0;
+			uint64_t m_environmentHash = 0;
+			uint32_t m_samplesPerFrame = 0;
+			uint32_t m_maxBounces = 0;
+			float m_rayBiasBase = 0.0f;
+			float m_rayBiasScale = 0.0f;
+
+			SAILOR_API bool operator==(const AccumulationKey& rhs) const;
+		};
+
 		struct CubemapReadbackState
 		{
 			RHI::RHICubemapPtr m_source{};
@@ -53,15 +72,12 @@ namespace Sailor::Framegraph
 			RHI::RHICubemapPtr m_environmentSource{};
 			RHI::RHICubemapPtr m_diffuseEnvironmentSource{};
 			uint64_t m_lastQueuedFrame = 0;
+			uint64_t m_environmentHash = 0;
 			TVector<glm::vec4> m_accumulatedImage{};
 			uint64_t m_accumulatedSamples = 0;
 			uint64_t m_imageRevision = 0;
 			glm::uvec2 m_extent{ 0u, 0u };
-			glm::vec3 m_lastCameraPosition{ 0.0f };
-			glm::vec3 m_lastCameraForward{ 0.0f, 0.0f, -1.0f };
-			glm::vec3 m_lastCameraUp{ 0.0f, 1.0f, 0.0f };
-			float m_lastCameraAspect = 0.0f;
-			float m_lastCameraHFov = 0.0f;
+			AccumulationKey m_accumulationKey{};
 			bool m_bHasAccumulationState = false;
 		};
 

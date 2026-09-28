@@ -177,6 +177,22 @@ namespace
 const char* CPUPathTracerNode::m_name = "CPUPathTracerNode";
 #endif
 
+bool CPUPathTracerNode::AccumulationKey::operator==(const AccumulationKey& rhs) const
+{
+	return NearlyEqual(m_cameraPosition, rhs.m_cameraPosition) &&
+		NearlyEqual(m_cameraForward, rhs.m_cameraForward) &&
+		NearlyEqual(m_cameraUp, rhs.m_cameraUp) &&
+		NearlyEqual(m_cameraAspect, rhs.m_cameraAspect) &&
+		NearlyEqual(m_cameraHFov, rhs.m_cameraHFov) &&
+		m_outputExtent == rhs.m_outputExtent &&
+		m_sceneRevision == rhs.m_sceneRevision &&
+		m_lightingRevision == rhs.m_lightingRevision &&
+		m_environmentHash == rhs.m_environmentHash &&
+		m_samplesPerFrame == rhs.m_samplesPerFrame &&
+		m_maxBounces == rhs.m_maxBounces &&
+		m_rayBiasBase == rhs.m_rayBiasBase && m_rayBiasScale == rhs.m_rayBiasScale;
+}
+
 CPUPathTracerNode::CameraState& CPUPathTracerNode::GetCameraState(uint32_t cameraIndex)
 {
 	auto& camera = m_cameras[cameraIndex];
@@ -198,6 +214,20 @@ bool CPUPathTracerNode::ApplyCompletedReadback(CameraState& camera,
 		resources.m_diffuseEnvironment.m_source == diffuseEnvironment;
 	if (bCurrent)
 	{
+		uint64_t contentHash = Fnv1aOffsetBasis;
+		for (const auto* readback : { &resources.m_environment, &resources.m_diffuseEnvironment })
+		{
+			HashCombine(contentHash, static_cast<bool>(readback->m_source));
+			if (!readback->m_source) continue;
+			HashCombine(contentHash, readback->m_extent.x, readback->m_extent.y);
+			for (const auto& buffer : readback->m_faceBuffers)
+				HashBytes(contentHash, buffer->GetPointer(), buffer->GetSize());
+		}
+		if (camera.m_environmentHash == contentHash)
+		{
+			camera.m_pendingReadback.Clear();
+			return true;
+		}
 		camera.m_pathTracer.ClearRuntimeEnvironment();
 		auto apply = [&](const CubemapReadbackState& readback, bool bDiffuse)
 		{
@@ -219,6 +249,7 @@ bool CPUPathTracerNode::ApplyCompletedReadback(CameraState& camera,
 		};
 		apply(resources.m_environment, false);
 		apply(resources.m_diffuseEnvironment, true);
+		camera.m_environmentHash = contentHash;
 	}
 	else if (status == EFenceStatus::Failed)
 	{
@@ -238,7 +269,11 @@ void CPUPathTracerNode::QueueEnvironmentReadback(CameraState& camera, TRefPtr<Su
 		camera.m_pendingReadback.Clear();
 		camera.m_environmentSource.Clear();
 		camera.m_diffuseEnvironmentSource.Clear();
-		camera.m_pathTracer.ClearRuntimeEnvironment();
+		if (camera.m_environmentHash != 0)
+		{
+			camera.m_pathTracer.ClearRuntimeEnvironment();
+			camera.m_environmentHash = 0;
+		}
 		return;
 	}
 	if (camera.m_pendingReadback) return;
@@ -300,7 +335,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	};
 
 	if (getFloatParam("enabled", 0.0f) <= 0.5f || IsSceneViewDebugVisualization(sceneView.m_renderMode) ||
-		!sceneView.m_submissionContext || !sceneView.m_camera || sceneView.m_pathTracerProxies.IsEmpty())
+		!sceneView.m_submissionContext || !sceneView.m_camera)
 	{
 		return;
 	}
@@ -313,8 +348,15 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 	auto& driver = Renderer::GetDriver();
 	auto commands = Renderer::GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdTransfer);
 	auto& camera = GetCameraState(sceneView.m_cameraIndex);
+	if (sceneView.m_pathTracerTLASInstances.IsEmpty())
+	{
+		camera.m_accumulatedImage.Clear();
+		camera.m_accumulatedSamples = 0;
+		camera.m_bHasAccumulationState = false;
+		return;
+	}
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdTransfer);
 	auto resources = sceneView.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(this, sceneView.m_cameraIndex, 0);
 	const auto environment = frameGraph->GetSampler("g_rawEnvCubemap").DynamicCast<RHICubemap>();
 	const auto diffuseEnvironment = frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>();
@@ -354,17 +396,25 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	params.m_runtimeAspectRatio = aspect;
 	params.m_runtimeHFov = 2.0f * atan(tan(verticalFov * 0.5f) * aspect);
 
-	const bool bCameraChanged = !camera.m_bHasAccumulationState ||
-		!NearlyEqual(camera.m_lastCameraPosition, params.m_runtimeCameraPos) ||
-		!NearlyEqual(camera.m_lastCameraForward, params.m_runtimeCameraForward) ||
-		!NearlyEqual(camera.m_lastCameraUp, params.m_runtimeCameraUp) ||
-		!NearlyEqual(camera.m_lastCameraAspect, params.m_runtimeAspectRatio) ||
-		!NearlyEqual(camera.m_lastCameraHFov, params.m_runtimeHFov);
-
-	if (bCameraChanged)
+	AccumulationKey key;
+	key.m_cameraPosition = params.m_runtimeCameraPos;
+	key.m_cameraForward = params.m_runtimeCameraForward;
+	key.m_cameraUp = params.m_runtimeCameraUp;
+	key.m_cameraAspect = params.m_runtimeAspectRatio;
+	key.m_cameraHFov = params.m_runtimeHFov;
+	key.m_outputExtent = uvec2(dst->GetExtent());
+	key.m_sceneRevision = sceneView.m_pathTracerSceneRevision;
+	key.m_lightingRevision = sceneView.m_lightingRevision;
+	key.m_environmentHash = camera.m_environmentHash;
+	key.m_samplesPerFrame = spp;
+	key.m_maxBounces = maxBounces;
+	key.m_rayBiasBase = rayBiasBase;
+	key.m_rayBiasScale = rayBiasScale;
+	if (!camera.m_bHasAccumulationState || !(camera.m_accumulationKey == key))
 	{
 		camera.m_accumulatedImage.Clear();
 		camera.m_accumulatedSamples = 0ull;
+		camera.m_bHasAccumulationState = false;
 	}
 
 	const bool bHasAccumulatedResult = camera.m_extent.x > 0u && camera.m_extent.y > 0u && camera.m_accumulatedImage.Num() > 0;
@@ -373,8 +423,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 	if (bShouldRenderNewSamples)
 	{
-		if (sceneView.m_pathTracerTLASInstances.Num() == 0 ||
-			!camera.m_pathTracer.InitializeScene(sceneView.m_pathTracerTLASInstances, sceneView.m_pathTracerMaterials, sceneView.m_pathTracerLights) ||
+		if (!camera.m_pathTracer.InitializeScene(sceneView.m_pathTracerTLASInstances, sceneView.m_pathTracerMaterials, sceneView.m_pathTracerLights) ||
 			!camera.m_pathTracer.RenderPreparedScene(params))
 		{
 			commands->EndDebugRegion(commandList);
@@ -390,6 +439,11 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		}
 
 		AccumulateImage(camera, image, imageExtent, spp);
+		if (!camera.m_bHasAccumulationState)
+		{
+			camera.m_accumulationKey = key;
+			camera.m_bHasAccumulationState = true;
+		}
 		if (maxAccumulatedSamples > 0ull)
 		{
 			camera.m_accumulatedSamples = (std::min)(camera.m_accumulatedSamples, maxAccumulatedSamples);
@@ -442,13 +496,6 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		commands->EndDebugRegion(commandList);
 		return;
 	}
-
-	camera.m_lastCameraPosition = params.m_runtimeCameraPos;
-	camera.m_lastCameraForward = params.m_runtimeCameraForward;
-	camera.m_lastCameraUp = params.m_runtimeCameraUp;
-	camera.m_lastCameraAspect = params.m_runtimeAspectRatio;
-	camera.m_lastCameraHFov = params.m_runtimeHFov;
-	camera.m_bHasAccumulationState = true;
 
 	if (!m_pShader.IsInited())
 	{

@@ -95,6 +95,7 @@ namespace Sailor
 		TVector<Raytracing::PathTracer::TLASInstance> m_pathTracerTLASInstancesCache{};
 		TVector<MaterialPtr> m_pathTracerMaterialsCache{};
 		TVector<Raytracing::LightProxy> m_pathTracerLightsCache{};
+		uint64_t m_pathTracerSceneRevision = 0;
 	};
 
 	template class ECS::TSystem<PathTracerECS, PathTracerProxyData>;

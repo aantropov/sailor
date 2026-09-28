@@ -5,6 +5,12 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "ECS/CameraECS.h"
+#include "ECS/LightingECS.h"
+#include "ECS/TransformECS.h"
+#include "Components/MeshRendererComponent.h"
+#include "Components/PathTracerProxyComponent.h"
+#include "Engine/GameObject.h"
+#include "Engine/World.h"
 #include "FrameGraph/CPUPathTracerNode.h"
 #include "RHI/Buffer.h"
 #include "RHI/CommandList.h"
@@ -28,6 +34,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using namespace Sailor;
@@ -171,25 +178,54 @@ namespace
 		RHI::RHICommandListPtr command;
 		RHI::RHIBufferPtr readback;
 		RHI::RHIRenderSubmissionContextPtr context;
+		ivec2 extent{ 32 };
 	};
 
-	RecordedComposite RecordComposite(ImageNode& node, RHI::RHIFrameGraphPtr graph, RHI::RHISceneViewSnapshot& scene)
+	class TracerWorld final : public World
+	{
+	public:
+		TracerWorld() : World("Tracer accumulation", 0, CreateEcs()) {}
+		~TracerWorld() override { Clear(); }
+		void Publish(RHI::RHISceneViewPtr view)
+		{
+			++m_currentFrame;
+			GetECS<TransformECS>()->Tick(0);
+			GetECS<PathTracerECS>()->Tick(0);
+			GetECS<PathTracerECS>()->CopySceneView(view);
+			view->PrepareSnapshots();
+		}
+
+	private:
+		static TVector<ECS::TBaseSystemPtr> CreateEcs()
+		{
+			TVector<ECS::TBaseSystemPtr> systems;
+			systems.Add(TUniquePtr<TransformECS>::Make());
+			systems.Add(TUniquePtr<StaticMeshRendererECS>::Make());
+			systems.Add(TUniquePtr<LightingECS>::Make());
+			systems.Add(TUniquePtr<PathTracerECS>::Make());
+			return systems;
+		}
+	};
+
+	RecordedComposite RecordComposite(ImageNode& node, RHI::RHIFrameGraphPtr graph, RHI::RHISceneViewSnapshot& scene,
+		ivec2 extent = ivec2(32))
 	{
 		using namespace RHI;
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
 		RecordedComposite result;
+		result.extent = extent;
 		result.context = scene.m_submissionContext;
 		result.command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 		commands->BeginCommandList(result.command, true);
-		auto target = driver->CreateRenderTarget(result.command, ivec2(32), 1, ETextureFormat::R16G16B16A16_SFLOAT);
+		auto target = driver->CreateRenderTarget(result.command, extent, 1, ETextureFormat::R16G16B16A16_SFLOAT);
 		commands->ImageMemoryBarrier(result.command, target, EImageLayout::ColorAttachmentOptimal);
-		commands->BeginRenderPass(result.command, TVector<RHITexturePtr>{ target }, nullptr, ivec4(0, 0, 32, 32),
+		commands->BeginRenderPass(result.command, TVector<RHITexturePtr>{ target }, nullptr, ivec4(0, 0, extent.x, extent.y),
 			ivec2(0), true, vec4(0), 0, false);
 		commands->EndRenderPass(result.command);
 		node.SetRHIResource("color", target);
 		node.Process(graph, result.command, result.command, scene);
-		result.readback = driver->CreateBuffer(32 * 32 * 8, EBufferUsageBit::BufferTransferDst_Bit,
+		result.readback = driver->CreateBuffer(extent.x * extent.y * 8, EBufferUsageBit::BufferTransferDst_Bit,
 			EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
 		commands->ImageMemoryBarrier(result.command, target, EImageLayout::TransferSrcOptimal);
 		commands->CopyImageToBuffer(result.command, target, result.readback);
@@ -199,12 +235,21 @@ namespace
 		return result;
 	}
 
-	void RequireComposite(const RecordedComposite& frame, const vec3& expected)
+	vec3 ReadComposite(const RecordedComposite& frame)
 	{
 		const auto* pixels = static_cast<const uint32_t*>(frame.readback->GetPointer());
-		constexpr size_t center = 16 * 32 + 16;
-		const vec3 color(vec4(glm::unpackHalf2x16(pixels[2 * center]), glm::unpackHalf2x16(pixels[2 * center + 1])));
-		Require(length(color - expected) < 0.001f, "each recorded flight must retain its own image bytes");
+		const size_t center = (frame.extent.y / 2) * frame.extent.x + frame.extent.x / 2;
+		return vec3(vec4(glm::unpackHalf2x16(pixels[2 * center]), glm::unpackHalf2x16(pixels[2 * center + 1])));
+	}
+
+	void RequireComposite(const RecordedComposite& frame, const vec3& expected,
+		const char* message = "each recorded flight must retain its own image bytes")
+	{
+		const vec3 color = ReadComposite(frame);
+		if (!(length(color - expected) < 0.001f))
+			std::cerr << "Composite RGB " << color.r << ", " << color.g << ", " << color.b
+				<< "; expected " << expected.r << ", " << expected.g << ", " << expected.b << '\n';
+		Require(length(color - expected) < 0.001f, message);
 	}
 
 	void TestOverlappingTracerFlights(ImageNode& node, RHI::RHIFrameGraphPtr graph, RHI::RHISceneViewSnapshot& scene,
@@ -302,6 +347,7 @@ namespace
 		};
 
 		auto initial = record(first, diffuse);
+		const auto beforeEnvironment = node.Camera().m_imageRevision;
 		for (auto& buffer : node.Camera().m_pendingReadback->m_environment.m_faceBuffers)
 		{
 			auto* bytes = static_cast<uint32_t*>(buffer->GetPointer());
@@ -312,8 +358,21 @@ namespace
 		complete(initial);
 		Require(node.ApplyCompletedReadback(node.Camera(), first, diffuse), "completed face buffers must publish together");
 		requireEnvironment(vec3(2, 1, 0.5f));
+		auto withEnvironment = record(first, diffuse);
+		Require(node.Camera().m_imageRevision > beforeEnvironment,
+			"completed environment content must restart a capped image");
+		complete(withEnvironment);
+		Require(node.ApplyCompletedReadback(node.Camera(), first, diffuse), "an identical refresh must complete");
+		const auto unchangedRevision = node.Camera().m_imageRevision;
+		auto unchanged = record(first, diffuse);
+		Require(node.Camera().m_imageRevision == unchangedRevision,
+			"an identical environment refresh must not restart accumulation");
+		complete(unchanged);
+		Require(node.ApplyCompletedReadback(node.Camera(), first, diffuse), "the unchanged refresh must remain readable");
 
 		auto obsolete = record(second, diffuse);
+		Require(node.Camera().m_imageRevision == unchangedRevision,
+			"pending environment content must not invalidate the last completed image");
 		Require(!node.ApplyCompletedReadback(node.Camera(), second, diffuse), "pending replacement must not replace the old environment");
 		requireEnvironment(vec3(2, 1, 0.5f));
 		complete(obsolete);
@@ -328,16 +387,173 @@ namespace
 		complete(retry);
 		Require(node.ApplyCompletedReadback(node.Camera(), second, diffuse), "a fresh readback must recover from refusal");
 		requireEnvironment(vec3(0.25f, 4, 2));
+		auto changed = record(second, diffuse);
+		Require(node.Camera().m_imageRevision > unchangedRevision, "the changed completed environment must invalidate capped samples");
+		complete(changed);
+		Require(node.ApplyCompletedReadback(node.Camera(), second, diffuse), "the replacement refresh must complete");
 		auto diffuseOnly = record({}, diffuse);
 		complete(diffuseOnly);
 		Require(node.ApplyCompletedReadback(node.Camera(), {}, diffuse), "removing the raw map must publish the diffuse-only environment");
 		requireEnvironment(vec3(0.125f, 0.5f, 3));
+		const auto beforeRemoval = node.Camera().m_imageRevision;
+		auto removed = record({}, {});
+		Require(driver->SubmitCommandList_Immediate(removed.command), "removing environment inputs must still composite");
+		Require(node.Camera().m_imageRevision > beforeRemoval, "removing the environment must invalidate the image");
+		requireEnvironment(vec3(0));
 
 		auto discarded = record(first, diffuse);
 		node.Clear();
 		complete(discarded);
 		Require(node.NumCameras() == 0 && !node.ApplyCompletedReadback(node.Camera(), first, diffuse),
 			"Clear must prevent an old GPU completion from resurrecting camera readback state");
+	}
+
+	void TestCappedSceneChanges(ModelPtr model, ShaderSetPtr shader, RHI::RHIFrameGraphPtr graph,
+		RHI::RHIShaderBindingSetPtr frameBindings)
+	{
+		using namespace RHI;
+		TracerWorld world;
+		auto object = world.Instantiate("Emissive quad");
+		auto mesh = object->AddComponent<MeshRendererComponent>();
+		mesh->GetData().SetModel(model);
+		auto material = MaterialPtr::Make(world.GetAllocator(), FileId::Invalid);
+		material->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
+		material->SetUniform("material.emissiveFactor", vec4(2, 0.5f, 0.125f, 0));
+		mesh->GetMaterials() = { material };
+		auto proxy = object->AddComponent<PathTracerProxyComponent>();
+		proxy->SetEnabled(true);
+		auto view = RHISceneViewPtr::Make();
+		view->m_world = &world;
+		view->m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+		view->m_cameras.Resize(1);
+		view->m_cameras[0].SetAspect(1);
+		view->m_cameras[0].SetFov(glm::degrees(0.8f));
+		view->m_cameraTransforms.Resize(1);
+		view->m_cameraTransforms[0].m_position = vec4(0, 0, 3, 1);
+		view->m_shadowMapsToUpdate.Resize(1);
+		view->m_shadowMapsToBlit.Resize(1);
+		view->m_shadowIndices.Resize(1);
+		view->m_shadowAtlasTiles.Resize(1);
+		view->m_shadowMatrices.Resize(1);
+		auto node = TRefPtr<ImageNode>::Make();
+		node->m_pShader = shader;
+		node->SetFloat("enabled", 1);
+		node->SetFloat("maxBounces", 1);
+		node->SetFloat("samplesPerFrame", 2);
+		node->SetFloat("maxAccumulatedSamples", 2);
+		uint64_t submission = 100;
+		ivec2 extent(32);
+		LightProxy sun;
+		sun.m_type = ELightType::Directional;
+		sun.m_direction = vec3(0, 0, -1);
+		sun.m_intensity = vec3(0);
+		auto draw = [&]()
+		{
+			view->m_submissionContext->BeginSubmission(submission++, 0);
+			world.Publish(view);
+			auto& scene = view->m_snapshots[0];
+			scene.m_frameBindings = frameBindings;
+			scene.m_pathTracerLights = { sun };
+			auto frame = RecordComposite(*node, graph, scene, extent);
+			Require(Renderer::GetDriver()->SubmitCommandList_Immediate(frame.command), "the capped image must complete");
+			return frame;
+		};
+		RequireComposite(draw(), vec3(2, 0.5f, 0.125f));
+		Require(view->m_snapshots[0].m_pathTracerTLASInstances.Num() == 1, "the real ECS must publish the fixture model");
+		const auto revision = node->Camera().m_imageRevision;
+		RequireComposite(draw(), vec3(2, 0.5f, 0.125f));
+		Require(node->Camera().m_imageRevision == revision, "unchanged input must preserve capped accumulation");
+		material->SetUniform("material.emissiveFactor", vec4(0.25f, 2, 0.5f, 0));
+		RequireComposite(draw(), vec3(0.25f, 2, 0.5f), "the ECS material edit must replace a capped image");
+		Require(node->Camera().m_imageRevision > revision && node->Camera().m_accumulatedSamples == 2,
+			"editing a material must restart capped accumulation without moving the camera");
+
+		auto unchanged = node->Camera().m_imageRevision;
+		auto unrelated = MaterialPtr::Make(world.GetAllocator(), FileId::Invalid);
+		unrelated->SetUniform("material.emissiveFactor", vec4(5));
+		RequireComposite(draw(), vec3(0.25f, 2, 0.5f));
+		Require(node->Camera().m_imageRevision == unchanged, "an unrelated material must not reset the traced scene");
+		auto replacement = MaterialPtr::Make(world.GetAllocator(), FileId::Invalid);
+		replacement->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
+		replacement->SetUniform("material.emissiveFactor", vec4(0));
+		replacement->SetUniform("material.emissiveFactor", vec4(4, 1, 0.5f, 0));
+		Require(replacement->GetContentRevision() == material->GetContentRevision(),
+			"replacement fixture must distinguish material identity, not only its revision number");
+		mesh->GetMaterials()[0] = replacement;
+		RequireComposite(draw(), vec3(4, 1, 0.5f));
+		Require(node->Camera().m_accumulatedSamples == 2, "material replacement must not mix old radiance");
+
+		node->SetFloat("maxAccumulatedSamples", 6);
+		RequireComposite(draw(), vec3(4, 1, 0.5f));
+		Require(node->Camera().m_accumulatedSamples == 4, "raising the stopping budget must resume valid accumulation");
+		replacement->SetUniform("material.emissiveFactor", vec4(1, 3, 0.25f, 0));
+		RequireComposite(draw(), vec3(1, 3, 0.25f));
+		Require(node->Camera().m_accumulatedSamples == 2, "a pre-limit edit must discard old samples, not average scene states");
+		node->SetFloat("maxAccumulatedSamples", 2);
+		unchanged = node->Camera().m_imageRevision;
+		extent = ivec2(64);
+		RequireComposite(draw(), vec3(1, 3, 0.25f));
+		Require(node->Camera().m_extent == uvec2(64) && node->Camera().m_imageRevision > unchanged,
+			"same-aspect output resize must restart a capped image");
+
+		object->GetTransformComponent().SetPosition(vec3(5, 0, 0));
+		RequireComposite(draw(), vec3(0));
+		object->GetTransformComponent().SetPosition(vec3(0));
+		RequireComposite(draw(), vec3(1, 3, 0.25f));
+		proxy->SetEnabled(false);
+		RequireComposite(draw(), vec3(0));
+		TVector<u8vec4> display;
+		uvec2 displayExtent;
+		Require(!node->GetLastRenderedImage(display, displayExtent), "removing the last tracer must discard stale display output");
+		proxy->SetEnabled(true);
+		RequireComposite(draw(), vec3(1, 3, 0.25f));
+		auto otherObject = world.Instantiate("Other tracer subset");
+		otherObject->GetTransformComponent().SetPosition(vec3(5, 0, 0));
+		auto otherMesh = otherObject->AddComponent<MeshRendererComponent>();
+		otherMesh->GetData().SetModel(model);
+		otherMesh->GetMaterials() = { replacement };
+		auto otherProxy = otherObject->AddComponent<PathTracerProxyComponent>();
+		otherProxy->SetEnabled(true);
+		proxy->SetEnabled(false);
+		RequireComposite(draw(), vec3(0));
+		Require(view->m_snapshots[0].m_pathTracerTLASInstances.Num() == 1,
+			"replacing the active tracer subset must keep the same instance count");
+		otherProxy->SetEnabled(false);
+		proxy->SetEnabled(true);
+		RequireComposite(draw(), vec3(1, 3, 0.25f));
+
+		node->SetFloat("maxAccumulatedSamples", 1);
+		for (const auto& setting : std::array<std::pair<const char*, float>, 4>{ {
+			{ "samplesPerFrame", 1 }, { "maxBounces", 2 }, { "rayBiasBase", 0.01f }, { "rayBiasScale", 0.001f } } })
+		{
+			unchanged = node->Camera().m_imageRevision;
+			node->SetFloat(setting.first, setting.second);
+			RequireComposite(draw(), vec3(1, 3, 0.25f));
+			Require(node->Camera().m_imageRevision > unchanged && node->Camera().m_accumulatedSamples == 1,
+				"a tracing setting change must restart accumulation before checking the cap");
+		}
+		unchanged = node->Camera().m_imageRevision;
+		RequireComposite(draw(), vec3(1, 3, 0.25f));
+		Require(node->Camera().m_imageRevision == unchanged, "unchanged settings must preserve the result");
+		view->m_cameraTransforms[0].m_position.x += 6e-5f;
+		RequireComposite(draw(), vec3(1, 3, 0.25f));
+		Require(node->Camera().m_imageRevision == unchanged, "sub-tolerance camera jitter must preserve the image");
+		view->m_cameraTransforms[0].m_position.x += 6e-5f;
+		RequireComposite(draw(), vec3(1, 3, 0.25f));
+		Require(node->Camera().m_imageRevision > unchanged,
+			"slow camera drift must be compared with the accumulated view, not the previous frame");
+		replacement->SetUniform("material.baseColorFactor", vec4(0.5f, 0.5f, 0.5f, 1));
+		replacement->SetUniform("material.emissiveFactor", vec4(0));
+		RequireComposite(draw(), vec3(0));
+		unchanged = node->Camera().m_imageRevision;
+		sun.m_intensity = vec3(3);
+		++view->m_lightingRevision;
+		const auto lit = draw();
+		Require(length(ReadComposite(lit)) > 0.05f && node->Camera().m_imageRevision > unchanged,
+			"a new lighting revision must illuminate the capped image without a camera edit");
+		sun.m_intensity = vec3(0);
+		++view->m_lightingRevision;
+		RequireComposite(draw(), vec3(0));
 	}
 
 	void TestHdrCompositing()
@@ -495,6 +711,7 @@ namespace
 					Require(length(vec3(secondColor) - vec3(0.25f, 2, 0.5f)) < 0.001f,
 						"the second camera must composite its own accumulated image");
 					TestOverlappingTracerFlights(*node, graph, scene, material, secondMaterial);
+					TestCappedSceneChanges(model, shader, graph, scene.m_frameBindings);
 					TestTracerEnvironmentReadback(*node, graph, scene);
 					return std::string{};
 				}
