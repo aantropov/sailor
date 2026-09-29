@@ -2,6 +2,7 @@
 #include "AssetRegistry/AssetScanSourceRevisionCache.h"
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
+#include "AssetRegistry/Audio/AudioAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
@@ -155,6 +156,13 @@ namespace
 		int32_t m_testValue = 0;
 		bool m_bThrowOnSerialize = false;
 		std::function<void()> m_onDeserialize;
+
+	protected:
+		void CopyMetadata(const AssetInfo& source) override
+		{
+			AssetInfo::CopyMetadata(source);
+			m_testValue = static_cast<const TestAssetInfo&>(source).m_testValue;
+		}
 	};
 
 	class RecordingAssetListener final : public IAssetInfoHandlerListener
@@ -220,11 +228,14 @@ namespace
 
 		mutable uint32_t m_numLoads = 0;
 		mutable std::function<void()> m_onLoad;
+		mutable std::function<void()> m_onDeserialize;
 
 	protected:
 		AssetInfoPtr CreateAssetInfo() const override
 		{
-			return new TestAssetInfo();
+			auto* info = new TestAssetInfo();
+			info->m_onDeserialize = std::move(m_onDeserialize);
+			return info;
 		}
 
 	private:
@@ -275,6 +286,12 @@ namespace
 	private:
 		IAssetInfoHandler* m_handler = nullptr;
 		int32_t m_testValue = 0;
+
+		void CopyMetadata(const AssetInfo& source) override
+		{
+			AssetInfo::CopyMetadata(source);
+			m_testValue = static_cast<const TargetedUpdateAssetInfo&>(source).m_testValue;
+		}
 	};
 
 	class TargetedUpdateAssetInfoHandler final : public IAssetInfoHandler
@@ -1658,6 +1675,151 @@ namespace
 			"a rejected metadata reload must restore the previous live object state");
 		Require(listener.m_events.empty(),
 			"a rejected metadata reload must not notify importers");
+		bool bLiveDeserializeCalled = false;
+		info.m_onDeserialize = [&]() { bLiveDeserializeCalled = true; };
+		info.m_bThrowOnSerialize = true;
+		RewriteFileWithNewRevision(metadataPath,
+			"fileId: '{ASSET-CACHE-RELOAD-ROLLBACK}'\ntestValue: 99\nlateValue: 1\n");
+		Require(handler.ReloadAssetInfo(&info, true, false) && info.m_testValue == 99 &&
+			!bLiveDeserializeCalled && info.m_bThrowOnSerialize && info.m_onDeserialize && info.m_numMetaSaves == 0,
+			"reload must not serialize/decode the live object or replace its runtime-only state");
+		Require(listener.m_events == std::vector<std::string>{ "update:true" },
+			"the repaired metadata must publish once without a YAML snapshot of the live object");
+	}
+
+	void TestModelMetadataReloadMatchesFreshLoad()
+	{
+		TempDirectory directory("model-metadata-reload");
+		const auto context = CreateWorkspaceContext(directory);
+		AssetRegistry registry(context);
+		ModelAssetInfoHandler handler(&registry);
+		const auto source = context.GetContent() / "Ship.glb";
+		const auto metadataPath = std::filesystem::path(source.string() + ".asset");
+		WriteFile(source, "model source");
+		const FileId id = MakeFileId("{MODEL-METADATA-RELOAD}");
+		auto metadata = CreateAssetInfoMetadata<ModelAssetInfo>(id, "Ship.glb");
+		metadata["unitScale"] = 2.0f;
+		metadata["numGeneratedLods"] = 5u;
+		metadata["bGenerateLods"] = false;
+		metadata["materials"] = TVector<FileId>{ MakeFileId("{MODEL-MATERIAL}") };
+		WriteFile(metadataPath, YAML::Dump(metadata));
+		TUniquePtr<AssetInfo> owned(handler.LoadAssetInfo(metadataPath.string(), "Ships/Ship.glb.asset",
+			EAssetMountKind::Engine, false, false, false));
+		auto* live = owned.DynamicCast<ModelAssetInfo>();
+		Require(live && live->GetUnitScale() == 2.0f && !live->ShouldGenerateLods(), "load authored model metadata");
+		metadata.remove("unitScale");
+		metadata.remove("numGeneratedLods");
+		metadata.remove("bGenerateLods");
+		metadata.remove("materials");
+		metadata["folder"] = "/must-not-be-used/";
+		metadata["assetImportTime"] = -100;
+		metadata["bWritable"] = true;
+		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
+		RecordingAssetListener listener;
+		listener.m_onExpiredUpdate = [&](AssetInfoPtr updated)
+		{
+			Require(updated == live && live->GetUnitScale() == 1.0f && live->ShouldGenerateLods() &&
+				live->GetDefaultMaterials().IsEmpty(), "listeners must observe complete typed defaults at the original address");
+		};
+		handler.Subscribe(&listener);
+		Require(handler.ReloadAssetInfo(live, true, false), "full metadata reload must succeed");
+		TUniquePtr<AssetInfo> cold(handler.LoadAssetInfo(metadataPath.string(), "Ships/Ship.glb.asset",
+			EAssetMountKind::Engine, false, false, false));
+		Require(cold && YAML::Dump(live->Serialize()) == YAML::Dump(cold->Serialize()),
+			"removed model properties must reset to the same defaults as a fresh load");
+		Require(live == owned.GetRawPtr() && live->GetFileId() == id &&
+			live->GetAssetFilepath() == source.string() && live->GetMetaFilepath() == metadataPath.string() &&
+			live->GetVirtualAssetFilepath() == "Ships/Ship.glb" &&
+			live->GetMountKind() == EAssetMountKind::Engine && !live->IsWritable() &&
+			!live->IsMetaExpired() && !live->IsAssetExpired(),
+			"reload must preserve identity and runtime path/mount state instead of accepting runtime YAML keys");
+		Require(listener.m_events == std::vector<std::string>{ "update:true" },
+			"a successful full reload must notify existing listeners exactly once");
+		const auto retained = YAML::Dump(live->Serialize());
+		metadata["numGeneratedLods"] = 7u;
+		metadata["unitScale"] = "invalid";
+		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
+		Require(!handler.ReloadAssetInfo(live, true, false) && YAML::Dump(live->Serialize()) == retained &&
+			listener.m_events.size() == 1 && live->IsMetaExpired(),
+			"a late invalid property must leave every live metadata field and notification unchanged");
+		metadata.remove("unitScale");
+		metadata["fileId"] = MakeFileId("{OTHER-MODEL}");
+		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
+		Require(!handler.ReloadAssetInfo(live, true, false) && YAML::Dump(live->Serialize()) == retained,
+			"in-place metadata reload must reject a different FileId");
+		metadata["fileId"] = id;
+		WriteFile(context.GetContent() / "Other.glb", "different source");
+		metadata["filename"] = "Other.glb";
+		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
+		Require(!handler.ReloadAssetInfo(live, true, false) && YAML::Dump(live->Serialize()) == retained &&
+			live->GetAssetFilepath() == source.string() && listener.m_events.size() == 1,
+			"in-place metadata reload must not silently retarget the registered source path");
+		metadata["filename"] = "Ship.glb";
+		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
+		const auto missingSource = context.GetContent() / "Ship.hidden";
+		std::filesystem::rename(source, missingSource);
+		Require(!handler.ReloadAssetInfo(live, true, false) && YAML::Dump(live->Serialize()) == retained &&
+			live->GetVirtualAssetFilepath() == "Ships/Ship.glb" && listener.m_events.size() == 1,
+			"a missing source must reject complete parsed metadata without changing the live object");
+		std::filesystem::rename(missingSource, source);
+		Require(handler.ReloadAssetInfo(live, true, false) && live->GetNumGeneratedLods() == 7u &&
+			listener.m_events.size() == 2, "restoring the source must allow the rejected revision to retry");
+		handler.Unsubscribe(&listener);
+	}
+
+	template<typename TAssetInfo, typename THandler>
+	void TestTypedMetadataReloadDefaults(const std::string& filename, const std::string& metadataFilename,
+		const YAML::Node& authoredFields)
+	{
+		TempDirectory directory("typed-metadata-reload");
+		const auto context = CreateWorkspaceContext(directory);
+		AssetRegistry registry(context);
+		THandler handler(&registry);
+		WriteFile(context.GetContent() / filename, "source");
+		const auto path = context.GetContent() / metadataFilename;
+		const FileId id = FileId::CreateNewFileId();
+		auto metadata = CreateAssetInfoMetadata<TAssetInfo>(id, filename);
+		for (const auto& field : authoredFields) metadata[field.first.as<std::string>()] = field.second;
+		WriteFile(path, YAML::Dump(metadata));
+		TUniquePtr<AssetInfo> live(handler.LoadAssetInfo(path.string(), metadataFilename,
+			EAssetMountKind::Workspace, true, false, false));
+		Require(live && dynamic_cast<TAssetInfo*>(live.GetRawPtr()), "cold load must retain the concrete metadata type");
+		for (const auto& field : authoredFields)
+		{
+			const auto key = field.first.as<std::string>();
+			Require(YAML::Dump(live->Serialize()[key]) == YAML::Dump(field.second), "authored typed field must load: " + key);
+			metadata.remove(key);
+		}
+		RewriteFileWithNewRevision(path, YAML::Dump(metadata));
+		Require(handler.ReloadAssetInfo(live.GetRawPtr(), false, false), "typed metadata reload must succeed");
+		TUniquePtr<AssetInfo> cold(handler.LoadAssetInfo(path.string(), metadataFilename,
+			EAssetMountKind::Workspace, true, false, false));
+		Require(cold && YAML::Dump(live->Serialize()) == YAML::Dump(cold->Serialize()),
+			"all removed typed metadata properties must match a fresh load");
+		Require(live->GetFileId() == id && live->GetAssetFilename() == filename &&
+			live->GetMetaFilepath() == path.string() && live->GetVirtualAssetFilepath() == filename,
+			"secondary metadata must retain the shared source filename independently of its sidecar name");
+		if (metadataFilename != filename + ".asset")
+		{
+			metadata.remove("filename");
+			RewriteFileWithNewRevision(path, YAML::Dump(metadata));
+			Require(!handler.ReloadAssetInfo(live.GetRawPtr(), false, false) && live->GetAssetFilename() == filename,
+				"removing a secondary source binding must not silently reuse the previous filename");
+			TUniquePtr<AssetInfo> missing(handler.LoadAssetInfo(path.string(), metadataFilename,
+				EAssetMountKind::Workspace, true, false, false));
+			Require(!missing, "cold loading the same unbound secondary metadata must also fail");
+		}
+		else
+		{
+			metadata.remove("filename");
+			RewriteFileWithNewRevision(path, YAML::Dump(metadata));
+			Require(handler.ReloadAssetInfo(live.GetRawPtr(), false, false),
+				"primary metadata may still derive its source filename from the sidecar");
+			TUniquePtr<AssetInfo> implicit(handler.LoadAssetInfo(path.string(), metadataFilename,
+				EAssetMountKind::Workspace, true, false, false));
+			Require(implicit && YAML::Dump(implicit->Serialize()) == YAML::Dump(live->Serialize()),
+				"implicit primary filenames must match in cold load and reload");
+		}
 	}
 
 	void TestRawEditDispatchesExpiredUpdateWithoutImport()
@@ -1774,14 +1936,14 @@ namespace
 		info.m_testValue = 7;
 		const std::filesystem::file_time_type initialMetaTime =
 			std::filesystem::last_write_time(metadataPath);
-		info.m_onDeserialize = [&]()
+		TestAssetInfoHandler handler;
+		handler.m_onDeserialize = [&]()
 		{
 			std::filesystem::last_write_time(
 				metadataPath,
 				initialMetaTime + std::chrono::seconds(2));
 		};
 
-		TestAssetInfoHandler handler;
 		RecordingAssetListener listener;
 		handler.Subscribe(&listener);
 		Require(!handler.ReloadAssetInfo(&info, true, false),
@@ -2763,6 +2925,13 @@ int main()
 		TestImportAndUpdateCallbackContract();
 		TestImportNeverOverwritesExistingMetadata();
 		TestRejectedReloadRestoresTheLiveAsset();
+		TestModelMetadataReloadMatchesFreshLoad();
+		TestTypedMetadataReloadDefaults<TextureAssetInfo, TextureAssetInfoHandler>("Ship.glb", "Ship.color.asset",
+			YAML::Load("glbTextureIndex: 4\nbShouldGenerateMips: false\nbShouldKeepCpuBuffers: true\n"));
+		TestTypedMetadataReloadDefaults<AnimationAssetInfo, AnimationAssetInfoHandler>("Ship.glb", "Ship.crew.asset",
+			YAML::Load("animationIndex: 3\nskinIndex: 2\n"));
+		TestTypedMetadataReloadDefaults<AudioAssetInfo, AudioAssetInfoHandler>("Sea.wav", "Sea.wav.asset",
+			YAML::Load("stream: true\n"));
 		TestRawEditDispatchesExpiredUpdateWithoutImport();
 		TestMetadataEditDispatchesExpiredUpdateWithoutImport();
 		TestConcurrentMetadataEditDoesNotAdvanceTheWatermark();

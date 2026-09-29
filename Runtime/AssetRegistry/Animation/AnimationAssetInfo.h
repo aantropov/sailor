@@ -22,6 +22,7 @@ namespace Sailor
 		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
 
 	private:
+		SAILOR_API void CopyMetadata(const AssetInfo& source) override;
 		int32_t m_animationIndex = 0;
 		int32_t m_skinIndex = 0;
 	};

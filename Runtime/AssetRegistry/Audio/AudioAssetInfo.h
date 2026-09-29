@@ -19,6 +19,7 @@ namespace Sailor
 		SAILOR_API bool ShouldStream() const { return m_stream; }
 
 	private:
+		SAILOR_API void CopyMetadata(const AssetInfo& source) override;
 		bool m_stream = false;
 	};
 

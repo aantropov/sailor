@@ -15,6 +15,11 @@ void AnimationAssetInfo::Deserialize(const YAML::Node& inData)
 	DeserializeReflectedAssetInfo(*this, inData);
 }
 
+void AnimationAssetInfo::CopyMetadata(const AssetInfo& source)
+{
+	CopyReflectedAssetInfo(*this, static_cast<const AnimationAssetInfo&>(source));
+}
+
 IAssetInfoHandler* AnimationAssetInfo::GetHandler()
 {
 	return App::GetSubmodule<AnimationAssetInfoHandler>();

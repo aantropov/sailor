@@ -20,6 +20,11 @@ void ModelAssetInfo::Deserialize(const YAML::Node& outData)
 	DeserializeReflectedAssetInfo(*this, outData);
 }
 
+void ModelAssetInfo::CopyMetadata(const AssetInfo& source)
+{
+	CopyReflectedAssetInfo(*this, static_cast<const ModelAssetInfo&>(source));
+}
+
 ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)
 {
 	// TODO: Add more formats

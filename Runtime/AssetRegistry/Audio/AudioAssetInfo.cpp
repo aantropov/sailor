@@ -14,6 +14,11 @@ void AudioAssetInfo::Deserialize(const YAML::Node& inData)
 	DeserializeReflectedAssetInfo(*this, inData);
 }
 
+void AudioAssetInfo::CopyMetadata(const AssetInfo& source)
+{
+	CopyReflectedAssetInfo(*this, static_cast<const AudioAssetInfo&>(source));
+}
+
 IAssetInfoHandler* AudioAssetInfo::GetHandler()
 {
 	return App::GetSubmodule<AudioAssetInfoHandler>();

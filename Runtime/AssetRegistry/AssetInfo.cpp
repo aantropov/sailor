@@ -8,6 +8,7 @@
 #include "Core/Reflection.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "Memory/UniquePtr.hpp"
 #include "YamlExceptionBoundary.h"
 #include <cerrno>
 #include <cstdio>
@@ -113,6 +114,11 @@ YAML::Node AssetInfo::Serialize() const
 void AssetInfo::Deserialize(const YAML::Node& inData)
 {
 	DeserializeReflectedAssetInfo(*this, inData);
+}
+
+void AssetInfo::CopyMetadata(const AssetInfo& source)
+{
+	CopyReflectedAssetInfo(*this, source);
 }
 
 bool AssetInfo::SaveMetaFile()
@@ -347,16 +353,6 @@ AssetInfoPtr IAssetInfoHandler::LoadAssetInfo(
 	res->m_mountKind = mountKind;
 	res->m_bWritable = bWritable;
 
-	// Temp to pass asset filename to Reload Asset Info
-	const std::string filename = std::filesystem::path(assetInfoPath).filename().string();
-	res->m_assetFilename = filename.substr(0, filename.length() - strlen(AssetRegistry::MetaFileExtension) - 1);
-	if (!res->m_virtualMetaFilepath.empty())
-	{
-		res->m_virtualAssetFilepath = (
-			std::filesystem::path(res->m_virtualMetaFilepath).parent_path() /
-			res->m_assetFilename).generic_string();
-	}
-
 	if (!ReloadAssetInfo(res, bNotifyListeners, bUpdateAssetCache))
 	{
 		delete res;
@@ -378,156 +374,62 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 	}
 
 	const bool bHadLoadedIdentity = static_cast<bool>(assetInfo->GetFileId());
-	const FileId previousFileId = assetInfo->GetFileId();
-	const std::string previousVirtualAssetFilepath = assetInfo->m_virtualAssetFilepath;
 	const bool bWasMetaExpired = bHadLoadedIdentity && assetInfo->IsMetaExpired();
 	const bool bWasAssetExpired = bHadLoadedIdentity && assetInfo->IsAssetExpired();
-	YAML::Node previousState;
-	if (bHadLoadedIdentity)
-	{
-		std::string snapshotDiagnostic;
-		if (!External::GuardYamlExceptions(
-				[assetInfo, &previousState]()
-				{
-					previousState = assetInfo->Serialize();
-				},
-				snapshotDiagnostic))
-		{
-			SAILOR_LOG_ERROR(
-				"Cannot snapshot asset metadata before reload '%s': %s",
-				assetInfo->GetMetaFilepath().c_str(),
-				snapshotDiagnostic.c_str());
-			return false;
-		}
-	}
-
+	const std::string metadataPath = assetInfo->GetMetaFilepath();
 	const std::time_t metadataLoadTime = assetInfo->GetMetaLastModificationTime();
 	FileRevision metadataRevision;
-	if (!Utils::TryGetFileRevision(assetInfo->GetMetaFilepath(), metadataRevision))
+	if (!Utils::TryGetFileRevision(metadataPath, metadataRevision))
 	{
-		SAILOR_LOG_ERROR(
-			"Failed to capture asset metadata revision: %s",
-			assetInfo->GetMetaFilepath().c_str());
+		SAILOR_LOG_ERROR("Failed to capture asset metadata revision: %s", metadataPath.c_str());
 		return false;
 	}
 	std::string content;
-	if (!AssetRegistry::ReadAllTextFile(assetInfo->GetMetaFilepath(), content))
+	if (!AssetRegistry::ReadAllTextFile(metadataPath, content))
 	{
-		SAILOR_LOG_ERROR(
-			"Failed to read asset metadata: %s",
-			assetInfo->GetMetaFilepath().c_str());
+		SAILOR_LOG_ERROR("Failed to read asset metadata: %s", metadataPath.c_str());
 		return false;
 	}
 
-	YAML::Node meta;
-	std::string yamlDiagnostic;
-	if (!External::TryLoadYaml(content, meta, yamlDiagnostic) ||
-		!External::GuardYamlExceptions(
-			[assetInfo, &meta]()
-			{
-				assetInfo->Deserialize(meta);
-			},
-			yamlDiagnostic))
+	// A complete file starts from typed defaults, not the previous live values.
+	TUniquePtr<AssetInfo> metadata(CreateAssetInfo());
+	metadata->m_assetFilename = std::filesystem::path(metadataPath).stem().string();
+	YAML::Node document;
+	std::string diagnostic;
+	if (!External::TryLoadYaml(content, document, diagnostic) ||
+		!External::GuardYamlExceptions([&]() { metadata->Deserialize(document); }, diagnostic))
 	{
-		if (bHadLoadedIdentity)
-		{
-			std::string rollbackDiagnostic;
-			if (!External::GuardYamlExceptions(
-					[assetInfo, &previousState]()
-					{
-						assetInfo->Deserialize(previousState);
-					},
-					rollbackDiagnostic))
-			{
-				SAILOR_LOG_ERROR(
-					"Failed to restore asset metadata after a rejected reload '%s': %s",
-					assetInfo->GetMetaFilepath().c_str(),
-					rollbackDiagnostic.c_str());
-			}
-		}
-		SAILOR_LOG_ERROR(
-			"Invalid asset metadata '%s': %s",
-			assetInfo->GetMetaFilepath().c_str(),
-			yamlDiagnostic.c_str());
+		SAILOR_LOG_ERROR("Invalid asset metadata '%s': %s", metadataPath.c_str(), diagnostic.c_str());
 		return false;
 	}
 	FileRevision currentMetadataRevision;
-	if (!Utils::TryGetFileRevision(assetInfo->GetMetaFilepath(), currentMetadataRevision) ||
-		currentMetadataRevision != metadataRevision)
+	if (!Utils::TryGetFileRevision(metadataPath, currentMetadataRevision) || currentMetadataRevision != metadataRevision)
 	{
-		if (bHadLoadedIdentity)
-		{
-			std::string rollbackDiagnostic;
-			if (!External::GuardYamlExceptions(
-					[assetInfo, &previousState]()
-					{
-						assetInfo->Deserialize(previousState);
-					},
-					rollbackDiagnostic))
-			{
-				SAILOR_LOG_ERROR(
-					"Failed to restore asset metadata after a concurrent edit '%s': %s",
-					assetInfo->GetMetaFilepath().c_str(),
-					rollbackDiagnostic.c_str());
-			}
-		}
-		SAILOR_LOG_ERROR(
-			"Asset metadata changed while it was being loaded; preserving the previous live asset: %s",
-			assetInfo->GetMetaFilepath().c_str());
+		SAILOR_LOG_ERROR("Asset metadata changed while it was being loaded; preserving the previous live asset: %s",
+			metadataPath.c_str());
 		return false;
 	}
-	if (bHadLoadedIdentity && assetInfo->GetFileId() != previousFileId)
+	if (bHadLoadedIdentity && (metadata->GetFileId() != assetInfo->GetFileId() ||
+		metadata->GetAssetFilename() != assetInfo->GetAssetFilename()))
 	{
-		std::string rollbackDiagnostic;
-		if (!External::GuardYamlExceptions(
-				[assetInfo, &previousState]()
-				{
-					assetInfo->Deserialize(previousState);
-				},
-				rollbackDiagnostic))
-		{
-			SAILOR_LOG_ERROR(
-				"Failed to restore asset metadata after a FileId change '%s': %s",
-				assetInfo->GetMetaFilepath().c_str(),
-				rollbackDiagnostic.c_str());
-		}
-		SAILOR_LOG_ERROR(
-			"Asset metadata FileId cannot change during an in-place reload: %s",
-			assetInfo->GetMetaFilepath().c_str());
+		SAILOR_LOG_ERROR("Asset metadata FileId and source cannot change during an in-place reload: %s", metadataPath.c_str());
 		return false;
 	}
 
+	FileRevision sourceRevision;
+	const std::string sourceFilepath = assetInfo->m_folder + metadata->GetAssetFilename();
+	if (!TryGetSourceRevision(sourceFilepath, sourceRevision))
+	{
+		SAILOR_LOG_ERROR("Failed to capture asset source revision: %s", sourceFilepath.c_str());
+		return false;
+	}
+
+	assetInfo->CopyMetadata(*metadata);
 	if (!assetInfo->m_virtualMetaFilepath.empty())
 	{
 		assetInfo->m_virtualAssetFilepath = (
 			std::filesystem::path(assetInfo->m_virtualMetaFilepath).parent_path() /
 			assetInfo->m_assetFilename).generic_string();
-	}
-	FileRevision sourceRevision;
-	const std::string sourceFilepath = assetInfo->GetAssetFilepath();
-	if (!TryGetSourceRevision(sourceFilepath, sourceRevision))
-	{
-		if (bHadLoadedIdentity)
-		{
-			std::string rollbackDiagnostic;
-			if (!External::GuardYamlExceptions(
-					[assetInfo, &previousState]()
-					{
-						assetInfo->Deserialize(previousState);
-					},
-					rollbackDiagnostic))
-			{
-				SAILOR_LOG_ERROR(
-					"Failed to restore asset metadata after a missing source '%s': %s",
-					assetInfo->GetMetaFilepath().c_str(),
-					rollbackDiagnostic.c_str());
-			}
-			assetInfo->m_virtualAssetFilepath = previousVirtualAssetFilepath;
-		}
-		SAILOR_LOG_ERROR(
-			"Failed to capture asset source revision: %s",
-			sourceFilepath.c_str());
-		return false;
 	}
 	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
 	const bool bWasCacheExpired = assetRegistry == nullptr ||
@@ -537,10 +439,8 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 	assetInfo->m_importedSourceRevision = sourceRevision;
 	assetInfo->m_metaLoadTime = metadataLoadTime;
 	assetInfo->m_metadataRevision = metadataRevision;
-
 	assetInfo->m_bPendingUpdateNotification = true;
-	const bool bWasExpired = bWasMetaExpired || bWasAssetExpired || bWasCacheExpired;
-	assetInfo->m_bPendingWasExpired = bWasExpired;
+	assetInfo->m_bPendingWasExpired = bWasMetaExpired || bWasAssetExpired || bWasCacheExpired;
 	if (bNotifyListeners)
 	{
 		NotifyUpdateAssetInfo(assetInfo);
@@ -549,14 +449,7 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 	{
 		assetRegistry->CacheAsset(assetInfo);
 	}
-
 	return true;
-
-	/*	if (bWasAssetExpired)
-		{
-			assetInfo->SaveMetaFile();
-		}
-		*/
 }
 
 void IAssetInfoHandler::NotifyUpdateAssetInfo(AssetInfoPtr assetInfo) const

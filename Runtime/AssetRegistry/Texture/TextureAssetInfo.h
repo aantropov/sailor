@@ -30,6 +30,7 @@ namespace Sailor
 		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
 
 	private:
+		SAILOR_API void CopyMetadata(const AssetInfo& source) override;
 
 		RHI::ETextureFiltration m_filtration = RHI::ETextureFiltration::Linear;
 		RHI::ETextureClamping m_clamping = RHI::ETextureClamping::Repeat;

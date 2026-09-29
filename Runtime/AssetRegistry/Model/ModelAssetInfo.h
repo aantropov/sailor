@@ -38,6 +38,7 @@ namespace Sailor
 		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
 
 	private:
+		SAILOR_API void CopyMetadata(const AssetInfo& source) override;
 
 		TVector<FileId> m_materials;
 		TVector<FileId> m_animations;

@@ -58,6 +58,8 @@ namespace Sailor
 
 	protected:
 
+		SAILOR_API virtual void CopyMetadata(const AssetInfo& source);
+
 		std::time_t m_metaLoadTime;
 		std::time_t m_assetImportTime;
 		FileRevision m_importedSourceRevision;
@@ -202,6 +204,25 @@ namespace Sailor
 		outData["fileId"] = fileId.Serialize();
 		outData["filename"] = filename;
 		return outData;
+	}
+
+	template<typename TAssetInfo>
+	void CopyReflectedAssetInfo(TAssetInfo& destination, const TAssetInfo& source)
+	{
+		for_each(refl::reflect<TAssetInfo>().members, [&](auto member)
+			{
+				if constexpr (is_readable(member) && is_writable(member))
+				{
+					if constexpr (is_field(member))
+					{
+						member(destination) = member(source);
+					}
+					else if constexpr (refl::descriptor::is_function(member))
+					{
+						member(destination, get_reader(member)(source));
+					}
+				}
+			});
 	}
 
 	template<typename TAssetInfo>

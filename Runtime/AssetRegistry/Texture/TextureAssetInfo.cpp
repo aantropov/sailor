@@ -20,6 +20,11 @@ void TextureAssetInfo::Deserialize(const YAML::Node& outData)
 	DeserializeReflectedAssetInfo(*this, outData);
 }
 
+void TextureAssetInfo::CopyMetadata(const AssetInfo& source)
+{
+	CopyReflectedAssetInfo(*this, static_cast<const TextureAssetInfo&>(source));
+}
+
 TextureAssetInfoHandler::TextureAssetInfoHandler(AssetRegistry* assetRegistry)
 {
 	m_supportedExtensions.Emplace("png");
