@@ -369,7 +369,7 @@ namespace Sailor
 		Workspace::WorkspaceCacheLoadResult m_lastLoadResult{};
 		std::string m_lastSaveDiagnostic;
 		[[maybe_unused]] std::optional<Workspace::WorkspaceCacheIdentity> m_identityOverride;
-		[[maybe_unused]] bool m_bSaveFailureForTests = false;
+		[[maybe_unused]] std::optional<uint32_t> m_saveFailureCountdownForTests;
 		[[maybe_unused]] bool m_bSaveSyncFailureForTests = false;
 		[[maybe_unused]] bool m_bArtifactReadIoFailureForTests = false;
 		[[maybe_unused]] bool m_bArtifactCleanupFailureForTests = false;
@@ -422,7 +422,7 @@ namespace Sailor
 		SAILOR_API static bool ClearExpiredWithEnvelopeFailure(
 			ShaderCache& cache,
 			std::string& outDiagnostic);
-		SAILOR_API static void FailNextSaveBeforeReplace(ShaderCache& cache);
+		SAILOR_API static void FailNextSaveBeforeReplace(ShaderCache& cache, uint32_t writesToSkip = 0);
 		SAILOR_API static void FailNextSaveAfterPublish(ShaderCache& cache);
 		SAILOR_API static void SetArtifactReadIoFailure(ShaderCache& cache, bool bEnabled);
 		SAILOR_API static void FailNextArtifactCleanup(ShaderCache& cache);

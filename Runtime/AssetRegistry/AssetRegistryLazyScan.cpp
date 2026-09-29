@@ -183,6 +183,11 @@ bool AssetRegistry::ScanContentFolderLazy()
 			continue;
 		}
 		liveAssetIds.Insert(loaded.m_first);
+		if ((IsAssetExpired(info) || sourceRevision != info->m_importedSourceRevision ||
+			metadataRevision != info->m_metadataRevision) && !expiredAssetIds.Contains(loaded.m_first))
+		{
+			expiredAssetIds.Add(loaded.m_first);
+		}
 		indexedMetadataPaths.Insert(PathKey(info->GetMetaFilepath()));
 		if (PathKey(info->GetMetaFilepath()) == PathKey(info->GetAssetFilepath() + "." + MetaFileExtension))
 		{

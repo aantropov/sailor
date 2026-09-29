@@ -246,11 +246,16 @@ EAtomicWriteResult ShaderCache::WriteCacheDataLocked(const ShaderCacheData& cach
 
 	EAtomicWriteResult result;
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
-	if (m_bSaveFailureForTests || m_bSaveSyncFailureForTests)
+	const bool bFailSave = m_saveFailureCountdownForTests && *m_saveFailureCountdownForTests == 0;
+	if (m_saveFailureCountdownForTests && !bFailSave)
 	{
-		const auto failure = m_bSaveFailureForTests ? Platform::EAtomicWriteFailurePoint::BeforePublish :
+		--*m_saveFailureCountdownForTests;
+	}
+	if (bFailSave || m_bSaveSyncFailureForTests)
+	{
+		const auto failure = bFailSave ? Platform::EAtomicWriteFailurePoint::BeforePublish :
 			Platform::EAtomicWriteFailurePoint::DirectorySync;
-		m_bSaveFailureForTests = false;
+		m_saveFailureCountdownForTests.reset();
 		m_bSaveSyncFailureForTests = false;
 		result = Platform::AtomicWriteFileForTests(
 			GetCacheFilepathLocked(), envelope.data(), envelope.size(), outDiagnostic, failure);

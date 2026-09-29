@@ -27,6 +27,8 @@ namespace Sailor
 	{
 	public:
 		virtual ~IAssetRegistryContentListener() = default;
+		virtual void OnAssetScanStarted() {}
+		virtual Tasks::TaskPtr<bool> OnAssetScanFinished() { return Tasks::TaskPtr<bool>::Make(true); }
 		virtual Tasks::TaskPtr<bool> OnEffectiveContentChanged(
 			const std::string& virtualPath) = 0;
 	};

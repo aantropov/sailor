@@ -126,6 +126,8 @@ namespace Sailor
 
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+		SAILOR_API void OnAssetScanStarted() override;
+		SAILOR_API Tasks::TaskPtr<bool> OnAssetScanFinished() override;
 		SAILOR_API virtual Tasks::TaskPtr<bool> OnEffectiveContentChanged(
 			const std::string& virtualPath) override;
 		SAILOR_API bool RecoverMissingShaderCacheStorage();
@@ -144,6 +146,20 @@ namespace Sailor
 		TConcurrentMap<FileId, TVector<TPair<uint32_t, Tasks::TaskPtr<ShaderSetPtr>>>> m_promises;
 		TConcurrentMap<FileId, TSharedPtr<ShaderAsset>> m_shaderAssetsCache;
 		TConcurrentMap<FileId, TVector<TPair<uint32_t, ShaderSetPtr>>> m_loadedShaders;
+
+		using ShaderReloadResults = TVector<TPair<FileId, bool>>;
+		struct PendingShaderChange
+		{
+			AssetRegistry::AssetProcessingToken m_token;
+			std::string m_includePath;
+			TVector<size_t> m_shaderIndices;
+		};
+		// Scan notifications are collected on the engine main thread only.
+		TMap<FileId, PendingShaderChange> m_scanChanges;
+		TSet<std::string> m_scanChangedIncludes;
+		Tasks::TaskPtr<ShaderReloadResults> m_lastScanReload;
+		bool m_bCollectScanChanges = false;
+		bool IsCollectingScanChanges() const;
 
 		SAILOR_API void UpdateConstantsLibrary();
 
@@ -245,6 +261,7 @@ namespace Sailor
 		SAILOR_API void ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const;
 		Tasks::TaskPtr<bool> ReloadShader(ShaderAssetInfoPtr assetInfo);
 		Tasks::TaskPtr<bool> ReloadShaders(const TVector<ShaderAssetInfoPtr>& assetInfos);
+		Tasks::TaskPtr<ShaderReloadResults> ReloadShaderBatch(const TVector<ShaderAssetInfoPtr>& assetInfos);
 		Tasks::TaskPtr<bool> ReloadShadersDependingOn(AssetInfoPtr includeAssetInfo);
 		Tasks::TaskPtr<bool> ReloadShadersDependingOn(const std::string& includeVirtualPath);
 		Tasks::TaskPtr<bool> CompilePermutations(ShaderAssetInfoPtr assetInfo, const TVector<uint32_t>& permutations);

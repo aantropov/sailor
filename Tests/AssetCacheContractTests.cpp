@@ -24,6 +24,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 #include <yaml-cpp/yaml.h>
 
@@ -358,6 +359,19 @@ namespace
 
 	private:
 		std::function<void()> m_callback;
+	};
+
+	class ScanContentListener final : public IAssetRegistryContentListener
+	{
+	public:
+		void OnAssetScanStarted() override { m_onStarted(); }
+		Tasks::TaskPtr<bool> OnAssetScanFinished() override { return m_onFinished(); }
+		Tasks::TaskPtr<bool> OnEffectiveContentChanged(const std::string&) override
+		{
+			return Tasks::TaskPtr<bool>::Make(true);
+		}
+		std::function<void()> m_onStarted;
+		std::function<Tasks::TaskPtr<bool>()> m_onFinished;
 	};
 
 	void Require(bool condition, const std::string& message)
@@ -835,6 +849,107 @@ namespace
 			"the targeted update handler should register for raw assets");
 	}
 
+	void TestScanListenerBatchBoundary(bool bLazy)
+	{
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory("scan-listener-boundary");
+		const auto context = CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(context);
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+		AssetRegistry registry(context, &scheduler);
+		TargetedUpdateAssetInfoHandler handler;
+		handler.m_registry = &registry;
+		RegisterTargetedUpdateHandler(registry, handler);
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "seed listener batch fixture");
+		RecordingAssetListener assets;
+		ScanContentListener content;
+		std::vector<std::string> events;
+		AssetRegistry::AssetProcessingToken token;
+		bool bSucceed = false;
+		content.m_onStarted = [&]() { events.emplace_back("begin"); };
+		assets.m_onExpiredUpdate = [&](AssetInfoPtr info)
+		{
+			events.emplace_back("update");
+			token = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(token), "batch listener must capture the changed revision");
+		};
+		content.m_onFinished = [&]()
+		{
+			events.emplace_back("end");
+			auto task = Tasks::CreateTask<bool>(scheduler, "Finish scan listener batch", [&, captured = token, bSucceed]()
+			{
+				registry.CompleteAssetProcessing(captured, bSucceed);
+				return bSucceed;
+			});
+			task->Run();
+			return task;
+		};
+		handler.Subscribe(&assets);
+		registry.SubscribeContentChanges(&content);
+		RewriteFileWithNewRevision(context.GetContent() / "Retry.raw", "changed source");
+		for (bool succeed : { false, true })
+		{
+			bSucceed = succeed;
+			events.clear();
+			Require(registry.ScanContentFolder(), "batch listeners must not block registry publication");
+			Require(events == std::vector<std::string>{ "begin", "update", "end" },
+				"scan notifications must be enclosed by exactly one begin/end pair");
+			Require(!registry.CompleteScanProcessing(), "the scan must wait for the end-listener task");
+			Tasks::ITaskPtr task;
+			while (scheduler.TryFetchNextAvailiableTask(task, EThreadType::Worker))
+			{
+				task->Execute();
+			}
+			Require(registry.CompleteScanProcessing() == bSucceed, "end-listener failures must propagate and be retryable");
+		}
+		bool bCompletionQueued = false;
+		bool bCompleted = false;
+		bool bCompletedBeforeNextScan = false;
+		content.m_onStarted = [&]()
+		{
+			if (bCompletionQueued) bCompletedBeforeNextScan = bCompleted;
+		};
+		content.m_onFinished = [&]()
+		{
+			if (bCompletionQueued) return Tasks::TaskPtr<bool>::Make(true);
+			bCompletionQueued = true;
+			auto task = Tasks::CreateTask<bool>(scheduler, "Acknowledge previous scan", [&, captured = token]()
+			{
+				registry.CompleteAssetProcessing(captured, true);
+				bCompleted = true;
+				return true;
+			}, EThreadType::Main);
+			task->Run();
+			return task;
+		};
+		RewriteFileWithNewRevision(context.GetContent() / "Retry.raw", "next source revision");
+		Require(registry.ScanContentFolder() && !bCompleted, "leave a previous scan acknowledgement pending");
+		std::jthread pump([&](std::stop_token stop)
+		{
+			while (!stop.stop_requested())
+			{
+				Tasks::ITaskPtr task;
+				if (scheduler.TryFetchNextAvailiableTask(task, EThreadType::Worker)) task->Execute();
+				else std::this_thread::yield();
+			}
+		});
+		const bool bNextScan = registry.ScanContentFolder();
+		scheduler.ProcessTasksOnMainThread();
+		scheduler.WaitIdle(EThreadType::Worker);
+		pump.request_stop();
+		pump.join();
+		Require(bNextScan && bCompletedBeforeNextScan && registry.CompleteScanProcessing(),
+			"a new scan must finish the previous listener batch before resetting processing state");
+		const size_t eventCount = events.size();
+		bool bWorkerScan = true;
+		std::thread worker([&]() { bWorkerScan = registry.ScanContentFolder(); });
+		worker.join();
+		Require(!bWorkerScan && events.size() == eventCount, "non-owner scans must not enter main-thread listener batches");
+		registry.UnsubscribeContentChanges(&content);
+		handler.Unsubscribe(&assets);
+	}
+
 	void TestScanBatchesProcessingCheckpoints(bool bLazy, bool bAsync)
 	{
 		LazyAssetInfoLoadingScope lazyLoading(bLazy);
@@ -994,6 +1109,9 @@ namespace
 		TempDirectory directory("scan-checkpoint-failure");
 		const auto context = CreateWorkspaceContext(directory);
 		WriteTargetedUpdateFixture(context);
+		WriteFile(context.GetContent() / "Healthy.raw", "unchanged source");
+		WriteFile(context.GetContent() / "Healthy.raw.asset",
+			"fileId: '{SCAN-RETRY-HEALTHY}'\nfilename: Healthy.raw\ntestValue: 1\n");
 		TargetedUpdateAssetInfoHandler handler;
 		{
 			AssetRegistry seed(context);
@@ -1052,6 +1170,8 @@ namespace
 		const uint32_t beforeRetry = processed;
 		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "checkpoint failure must be retryable");
 		Require(processed == beforeRetry + 2, "retry must process both unacknowledged assets");
+		Require(!registry.IsAssetExpired(registry.GetAssetInfoPtr(context.GetContent().string() + "/Healthy.raw")),
+			"retry must preserve the healthy entry which keeps the lazy index active");
 		handler.Unsubscribe(&listener);
 	}
 
@@ -2619,6 +2739,7 @@ int main()
 		TestV2EnvelopeIsResetInsteadOfMigrated();
 		for (bool bLazy : { false, true })
 		{
+			TestScanListenerBatchBoundary(bLazy);
 			TestScanBatchesProcessingCheckpoints(bLazy, false);
 			TestScanBatchesProcessingCheckpoints(bLazy, true);
 			TestScanCheckpointFailureCanBeRetried(bLazy, true);

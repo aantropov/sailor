@@ -267,23 +267,29 @@ void AssetRegistry::CompleteAssetProcessing(const AssetProcessingToken& token, b
 
 bool AssetRegistry::BeginScanProcessing(const TVector<FileId>& changedAssets)
 {
-	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-	m_bScanProcessingActive = true;
-	for (const FileId& fileId : changedAssets)
 	{
-		m_assetCache.Remove(fileId);
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		m_bScanProcessingActive = true;
+		for (const FileId& fileId : changedAssets)
+		{
+			m_assetCache.Remove(fileId);
+		}
+		if (!m_assetCache.SaveCache())
+		{
+			m_bScanProcessingFailed = true;
+			SAILOR_LOG_ERROR("Cannot persist the asset scan retry checkpoint; processing was not started.");
+			return false;
+		}
+		for (const FileId& fileId : changedAssets)
+		{
+			m_scanInvalidatedAssets.Insert(fileId);
+		}
+		m_bCollectScanProcessingTasks = true;
 	}
-	if (!m_assetCache.SaveCache())
+	for (auto* listener : m_contentListeners)
 	{
-		m_bScanProcessingFailed = true;
-		SAILOR_LOG_ERROR("Cannot persist the asset scan retry checkpoint; processing was not started.");
-		return false;
+		listener->OnAssetScanStarted();
 	}
-	for (const FileId& fileId : changedAssets)
-	{
-		m_scanInvalidatedAssets.Insert(fileId);
-	}
-	m_bCollectScanProcessingTasks = true;
 	return true;
 }
 
@@ -335,6 +341,10 @@ bool AssetRegistry::CommitScanProcessing()
 
 void AssetRegistry::FinishScanProcessing()
 {
+	for (auto* listener : m_contentListeners)
+	{
+		TrackScanProcessingTask(listener->OnAssetScanFinished());
+	}
 	TVector<Tasks::TaskPtr<bool>> processingTasks;
 	{
 		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);

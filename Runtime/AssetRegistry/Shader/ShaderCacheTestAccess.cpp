@@ -109,21 +109,21 @@ bool ShaderCacheTestAccess::PublishWithArtifactFailure(ShaderCache& cache,
 bool ShaderCacheTestAccess::RemoveWithEnvelopeFailure(ShaderCache& cache, const FileId& uid, std::string& outDiagnostic)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	cache.m_bSaveFailureForTests = true;
+	cache.m_saveFailureCountdownForTests = 0;
 	return cache.RemoveLocked(uid, outDiagnostic);
 }
 
 bool ShaderCacheTestAccess::ClearExpiredWithEnvelopeFailure(ShaderCache& cache, std::string& outDiagnostic)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	cache.m_bSaveFailureForTests = true;
+	cache.m_saveFailureCountdownForTests = 0;
 	return cache.ClearExpiredLocked(outDiagnostic);
 }
 
-void ShaderCacheTestAccess::FailNextSaveBeforeReplace(ShaderCache& cache)
+void ShaderCacheTestAccess::FailNextSaveBeforeReplace(ShaderCache& cache, uint32_t writesToSkip)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	cache.m_bSaveFailureForTests = true;
+	cache.m_saveFailureCountdownForTests = writesToSkip;
 }
 
 void ShaderCacheTestAccess::FailNextSaveAfterPublish(ShaderCache& cache)

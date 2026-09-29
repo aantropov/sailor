@@ -16,6 +16,22 @@ using namespace Sailor::AssetRegistryInternal;
 bool AssetRegistry::ScanContentFolder()
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (m_scheduler != nullptr && !m_scheduler->IsMainThread())
+	{
+		SAILOR_LOG_ERROR("Asset registry scans may only be committed from the main thread.");
+		return false;
+	}
+	bool bPendingScan = false;
+	{
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		bPendingScan = m_scanProcessingTasks.ContainsIf([](const auto& task) { return task && !task->IsFinished(); });
+	}
+	if (bPendingScan)
+	{
+		// Finish the previous batch before replacing its asset infos and acknowledgement state.
+		m_scheduler->ProcessTasksOnMainThread();
+		m_scheduler->WaitIdle({EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render});
+	}
 	bool bHasLazyIndex = false;
 	if (g_bUseLazyAssetInfoLoading)
 	{
@@ -441,13 +457,6 @@ bool AssetRegistry::ScanContentFolder()
 
 	if (Tasks::Scheduler* scheduler = m_scheduler)
 	{
-		if (!scheduler->IsMainThread())
-		{
-			rollbackStaging();
-			SAILOR_LOG_ERROR("Asset registry generations may only be committed from the main thread; preserving the "
-							 "previous generation.");
-			return false;
-		}
 		scheduler->WaitIdle({EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render});
 	}
 
@@ -531,10 +540,6 @@ bool AssetRegistry::ScanContentFolder()
 				TrackScanProcessingTask(listener->OnEffectiveContentChanged(*effectiveChange.m_second));
 			}
 		}
-	}
-	{
-		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-		m_bCollectScanProcessingTasks = false;
 	}
 	TSet<FileId> liveAssetIds;
 	for (const auto& loadedAsset : m_loadedAssetInfo)

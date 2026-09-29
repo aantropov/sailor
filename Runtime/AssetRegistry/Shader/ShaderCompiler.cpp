@@ -749,41 +749,126 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 	if (bWasExpired)
 	{
-		const std::string extension = NormalizeShaderExtension(assetInfo->GetAssetFilepath());
+		OnImportAsset(assetInfo);
+	}
+}
 
-		ReplaceTabsWithSpaces(assetInfo);
+bool ShaderCompiler::IsCollectingScanChanges() const
+{
+	return App::GetSubmodule<Tasks::Scheduler>()->IsMainThread() && m_bCollectScanChanges;
+}
 
-		if (extension == "shader")
+void ShaderCompiler::OnAssetScanStarted()
+{
+	m_scanChanges.Clear();
+	m_scanChangedIncludes.Clear();
+	m_bCollectScanChanges = true;
+}
+
+Tasks::TaskPtr<bool> ShaderCompiler::OnAssetScanFinished()
+{
+	TSet<FileId> retryShaders;
+	if (m_lastScanReload)
+	{
+		for (const auto& result : m_lastScanReload->GetResult())
 		{
-			AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-			const AssetRegistry::AssetProcessingToken processingToken =
-				assetRegistry != nullptr
-				? assetRegistry->BeginAssetProcessing(assetInfo)
-				: AssetRegistry::AssetProcessingToken{};
-			if (!processingToken)
+			if (!result.m_second)
 			{
-				return;
+				retryShaders.Insert(result.m_first);
 			}
-			TrackAssetProcessing(
-				processingToken,
-				ReloadShader(dynamic_cast<ShaderAssetInfoPtr>(assetInfo)));
-		}
-		else if (extension == "glsl")
-		{
-			AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-			const AssetRegistry::AssetProcessingToken processingToken =
-				assetRegistry != nullptr
-				? assetRegistry->BeginAssetProcessing(assetInfo)
-				: AssetRegistry::AssetProcessingToken{};
-			if (!processingToken)
-			{
-				return;
-			}
-			TrackAssetProcessing(
-				processingToken,
-				ReloadShadersDependingOn(assetInfo));
 		}
 	}
+	if (m_scanChanges.IsEmpty() && m_scanChangedIncludes.IsEmpty() && retryShaders.IsEmpty())
+	{
+		m_bCollectScanChanges = false;
+		return Tasks::TaskPtr<bool>::Make(true);
+	}
+	auto* registry = App::GetSubmodule<AssetRegistry>();
+	TVector<FileId> candidates;
+	const bool bFindDependents = !m_scanChangedIncludes.IsEmpty();
+	if (bFindDependents)
+	{
+		registry->GetAllAssetInfos<ShaderAssetInfo>(candidates);
+	}
+	else
+	{
+		for (const auto& change : m_scanChanges)
+		{
+			candidates.Add(change.m_first);
+		}
+		for (const FileId& id : retryShaders)
+		{
+			if (!m_scanChanges.ContainsKey(id))
+			{
+				candidates.Add(id);
+			}
+		}
+	}
+	TVector<ShaderAssetInfoPtr> assetInfos;
+	TVector<TSharedPtr<ShaderAsset>> sources;
+	for (const FileId& id : candidates)
+	{
+		auto* info = registry->GetAssetInfoPtr<ShaderAssetInfoPtr>(id);
+		if (info == nullptr || NormalizeShaderExtension(info->GetAssetFilepath()) != "shader")
+		{
+			continue;
+		}
+		auto source = bFindDependents ? LoadShaderAsset(info).Lock() : TSharedPtr<ShaderAsset>{};
+		bool bAffected = m_scanChanges.ContainsKey(id) || retryShaders.Contains(id);
+		if (source)
+		{
+			for (const auto& include : m_scanChangedIncludes)
+			{
+				bAffected |= DoesShaderIncludePath(source->GetIncludes(), include);
+			}
+		}
+		if (bAffected)
+		{
+			assetInfos.Add(info);
+			sources.Add(std::move(source));
+		}
+	}
+	for (const auto& change : m_scanChanges)
+	{
+		for (size_t i = 0; i < assetInfos.Num(); ++i)
+		{
+			if (change.m_second->m_includePath.empty() ? assetInfos[i]->GetFileId() == change.m_first :
+				(sources[i] && DoesShaderIncludePath(sources[i]->GetIncludes(), change.m_second->m_includePath)))
+			{
+				change.m_second->m_shaderIndices.Add(i);
+			}
+		}
+	}
+	m_bCollectScanChanges = false;
+	m_scanChangedIncludes.Clear();
+	auto changes = std::move(m_scanChanges);
+	m_scanChanges.Clear();
+	auto reload = ReloadShaderBatch(assetInfos);
+	m_lastScanReload = reload;
+	auto acknowledge = [registry, reload, changes = std::move(changes)]()
+	{
+		const auto& results = reload->GetResult();
+		bool bSucceeded = !results.ContainsIf([](const auto& result) { return !result.m_second; });
+		for (const auto& change : changes)
+		{
+			bool bProcessed = !change.m_second->m_includePath.empty() || !change.m_second->m_shaderIndices.IsEmpty();
+			for (const size_t index : change.m_second->m_shaderIndices)
+			{
+				bProcessed &= results[index].m_second;
+			}
+			registry->CompleteAssetProcessing(change.m_second->m_token, bProcessed);
+			bSucceeded &= bProcessed;
+		}
+		return bSucceeded;
+	};
+	if (reload->IsFinished())
+	{
+		return Tasks::TaskPtr<bool>::Make(acknowledge());
+	}
+	auto completion = Tasks::CreateTaskWithResult<bool>("Acknowledge Shader Scan", std::move(acknowledge));
+	completion->Join(reload);
+	completion->Run();
+	return completion;
 }
 
 Tasks::TaskPtr<bool> ShaderCompiler::ReloadShader(ShaderAssetInfoPtr assetInfo)
@@ -797,21 +882,41 @@ Tasks::TaskPtr<bool> ShaderCompiler::ReloadShader(ShaderAssetInfoPtr assetInfo)
 
 Tasks::TaskPtr<bool> ShaderCompiler::ReloadShaders(const TVector<ShaderAssetInfoPtr>& assetInfos)
 {
+	auto reload = ReloadShaderBatch(assetInfos);
+	auto result = [reload]()
+	{
+		return !reload->GetResult().ContainsIf([](const auto& entry) { return !entry.m_second; });
+	};
+	if (reload->IsFinished())
+	{
+		return Tasks::TaskPtr<bool>::Make(result());
+	}
+	auto completion = Tasks::CreateTaskWithResult<bool>("Shader Reload Result", std::move(result));
+	completion->Join(reload);
+	completion->Run();
+	return completion;
+}
+
+Tasks::TaskPtr<ShaderCompiler::ShaderReloadResults> ShaderCompiler::ReloadShaderBatch(const TVector<ShaderAssetInfoPtr>& assetInfos)
+{
 	if (assetInfos.IsEmpty())
 	{
-		return Tasks::TaskPtr<bool>::Make(true);
+		return Tasks::TaskPtr<ShaderReloadResults>::Make(ShaderReloadResults{});
 	}
 
 	TVector<FileId> ids;
+	ShaderReloadResults results;
 	ids.Reserve(assetInfos.Num());
+	results.Reserve(assetInfos.Num());
 	for (ShaderAssetInfoPtr info : assetInfos)
 	{
 		ids.Add(info->GetFileId());
+		results.Add({ info->GetFileId(), false });
 		m_shaderAssetsCache.Remove(info->GetFileId());
 	}
 	if (!m_shaderCache.Invalidate(ids))
 	{
-		return Tasks::TaskPtr<bool>::Make(false);
+		return Tasks::TaskPtr<ShaderReloadResults>::Make(std::move(results));
 	}
 
 	TVector<Tasks::TaskPtr<bool>> compileTasks;
@@ -841,31 +946,26 @@ Tasks::TaskPtr<bool> ShaderCompiler::ReloadShaders(const TVector<ShaderAssetInfo
 		compileTasks.Add(CompilePermutations(info, permutations));
 	}
 
-	auto finishReload = [this, assetInfos, compileTasks]()
+	auto finishReload = [this, assetInfos, compileTasks, results = std::move(results)]() mutable
 	{
 		if (!m_shaderCache.SaveCache())
 		{
-			return false;
+			return std::move(results);
 		}
-		bool bSucceeded = true;
 		for (size_t i = 0; i < assetInfos.Num(); ++i)
 		{
 			if (compileTasks[i]->GetResult())
 			{
-				bSucceeded &= ReloadLoadedShaderResources(assetInfos[i]);
-			}
-			else
-			{
-				bSucceeded = false;
+				results[i].m_second = ReloadLoadedShaderResources(assetInfos[i]);
 			}
 		}
-		return bSucceeded;
+		return std::move(results);
 	};
 	if (!compileTasks.ContainsIf([](const Tasks::TaskPtr<bool>& task) { return !task->IsFinished(); }))
 	{
-		return Tasks::TaskPtr<bool>::Make(finishReload());
+		return Tasks::TaskPtr<ShaderReloadResults>::Make(finishReload());
 	}
-	auto completion = Tasks::CreateTaskWithResult<bool>("Commit Shader Reload", std::move(finishReload));
+	auto completion = Tasks::CreateTaskWithResult<ShaderReloadResults>("Commit Shader Reload", std::move(finishReload));
 	for (const auto& task : compileTasks)
 	{
 		completion->Join(task);
@@ -923,6 +1023,11 @@ Tasks::TaskPtr<bool> ShaderCompiler::OnEffectiveContentChanged(
 {
 	if (NormalizeShaderExtension(virtualPath) == "glsl")
 	{
+		if (IsCollectingScanChanges())
+		{
+			m_scanChangedIncludes.Insert(virtualPath);
+			return Tasks::TaskPtr<bool>::Make(true);
+		}
 		return ReloadShadersDependingOn(virtualPath);
 	}
 	return Tasks::TaskPtr<bool>::Make(true);
@@ -1220,6 +1325,21 @@ void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
 		return;
 	}
 	const std::string extension = NormalizeShaderExtension(assetInfo->GetAssetFilepath());
+	if (IsCollectingScanChanges() && (extension == "shader" || extension == "glsl"))
+	{
+		auto& change = m_scanChanges[processingToken.m_fileId];
+		change.m_token = processingToken;
+		if (extension == "glsl")
+		{
+			change.m_includePath = assetInfo->GetRelativeAssetFilepath();
+			m_scanChangedIncludes.Insert(change.m_includePath);
+		}
+		else
+		{
+			m_shaderAssetsCache.Remove(processingToken.m_fileId);
+		}
+		return;
+	}
 	Tasks::TaskPtr<bool> processingTask;
 	if (extension == "shader")
 	{

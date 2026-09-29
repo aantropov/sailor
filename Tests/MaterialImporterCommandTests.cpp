@@ -332,12 +332,14 @@ void main() {
 			Require(static_cast<bool>(output), "shared shader include must be written");
 		};
 		writeInclude("const float SharedReloadValue = 0.125;\n");
-		Require(static_cast<bool>(App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(includePath.string())),
+		const FileId includeId = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(includePath.string());
+		Require(static_cast<bool>(includeId),
 			"the shared include must be registered in the active Content mount");
 		std::array<FileId, 6> ids;
 		std::array<ShaderSetPtr, 6> shaders;
 		std::array<std::string, 6> generations;
 		std::array<RHI::RHIShaderPtr, 6> stages;
+		std::array<RHI::RHIShaderPtr, 6> debugStages;
 		for (size_t i = 0; i < ids.size(); ++i)
 		{
 			const auto name = "BatchReload" + std::to_string(i);
@@ -346,6 +348,7 @@ void main() {
 				"shared shader fixtures must compile their regular and debug RHI stages");
 			generations[i] = ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0);
 			stages[i] = shaders[i]->GetComputeShaderRHI();
+			debugStages[i] = shaders[i]->GetDebugComputeShaderRHI();
 		}
 		Drain();
 		Require(cache.SaveCache(), "the initial shared shader fixtures must commit");
@@ -381,13 +384,15 @@ void main() {
 			{
 				generations[i] = ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0);
 				stages[i] = shaders[i]->GetComputeShaderRHI();
+				debugStages[i] = shaders[i]->GetDebugComputeShaderRHI();
 			}
 		};
 		auto requirePreviousStages = [&]()
 		{
 			for (size_t i = 0; i < ids.size(); ++i)
 			{
-				Require(shaders[i]->IsReady() && shaders[i]->GetComputeShaderRHI() == stages[i],
+				Require(shaders[i]->IsReady() && shaders[i]->GetComputeShaderRHI() == stages[i] &&
+					shaders[i]->GetDebugComputeShaderRHI() == debugStages[i],
 					"a failed batch must retain all last-good RHI stages");
 			}
 		};
@@ -424,18 +429,116 @@ void main() {
 			std::filesystem::last_write_time(path, std::filesystem::last_write_time(path) + std::chrono::seconds(2));
 		}
 		registry->TakeManifestWritesForTests();
+		ShaderCacheTestAccess::TakeManifestWriteCount(cache);
 		Require(registry->ScanContentFolder(), "changed native shaders must publish the next registry generation");
 		Drain();
 		Require(registry->CompleteScanProcessing(), "native scan must join shader acknowledgements before committing");
 		const uint64_t assetWrites = registry->TakeManifestWritesForTests();
 		std::cout << "Asset registry scan: " << assetWrites << " manifest writes for 3 changed native shaders of 6\n";
 		Require(assetWrites == 2, "native shader scan must use two asset-registry checkpoints");
+		const uint64_t shaderWrites = ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		std::cout << "Shader cache scan: " << shaderWrites << " manifest writes for 3 changed native shaders of 6\n";
+		Require(shaderWrites == 2, "independent shader edits in one scan must share two shader-cache checkpoints");
 		for (size_t i = 0; i < ids.size(); ++i)
 		{
 			Require(shaders[i]->IsReady() && !registry->IsAssetExpired(registry->GetAssetInfoPtr(ids[i])),
 				"completed native shader results must have ready RHI stages and acknowledged asset revisions");
 			Require((ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0) != generations[i]) == (i < 3),
 				"the native scan must only recompile changed shader fixtures");
+		}
+
+		auto scan = [&]()
+		{
+			const bool bScanned = registry->ScanContentFolder();
+			Drain();
+			return registry->CompleteScanProcessing() && bScanned;
+		};
+		auto editShader = [&](size_t index, bool valid)
+		{
+			const auto path = workspace / "Content" / ("BatchReload" + std::to_string(index) + ".shader");
+			auto yaml = YAML::LoadFile(path.string());
+			yaml["glslCompute"] = valid ? "layout(local_size_x = 1) in; void main() {}" : "invalid GLSL";
+			std::ofstream output(path);
+			output << yaml;
+			output.close();
+			Require(static_cast<bool>(output), "scan shader edit must be written");
+			std::filesystem::last_write_time(path, std::filesystem::last_write_time(path) + std::chrono::seconds(2));
+		};
+		struct RestoreLazyLoading
+		{
+			bool m_previous = g_bUseLazyAssetInfoLoading;
+			~RestoreLazyLoading() { g_bUseLazyAssetInfoLoading = m_previous; }
+		} restoreLazyLoading;
+		for (bool lazy : { false, true })
+		{
+			g_bUseLazyAssetInfoLoading = lazy;
+			rememberStages();
+			writeInclude("const float SharedReloadValue = 0.375;\n");
+			for (size_t i = 0; i < 3; ++i) editShader(i, true);
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+			registry->TakeManifestWritesForTests();
+			Require(scan(), "overlapping include/direct changes must reload successfully");
+			Require(ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 2 && registry->TakeManifestWritesForTests() == 2,
+				"overlapping include/direct changes must share both cache checkpoints");
+			for (size_t i = 0; i < ids.size(); ++i)
+			{
+				Require((ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0) != generations[i]) == (i < 4),
+					"include/direct changes must only replace their deduplicated dependents");
+			}
+
+			rememberStages();
+			editShader(0, false);
+			editShader(4, true);
+			writeInclude("const float SharedReloadValue = 0.625;\n");
+			Require(!scan(), "one broken shader must fail the affected scan result");
+			Require(shaders[0]->IsReady() && shaders[0]->GetComputeShaderRHI() == stages[0],
+				"the broken shader must keep its last-good RHI stage");
+			Require(registry->IsAssetExpired(registry->GetAssetInfoPtr(ids[0])) &&
+				registry->IsAssetExpired(registry->GetAssetInfoPtr(includeId)) &&
+				!registry->IsAssetExpired(registry->GetAssetInfoPtr(ids[4])) &&
+				shaders[4]->GetComputeShaderRHI() != stages[4],
+				"failed source/include acknowledgements must not reject an independent successful shader");
+			rememberStages();
+			editShader(0, true);
+			Require(scan(), "repair must retry the failed source and include");
+			Require(!registry->IsAssetExpired(registry->GetAssetInfoPtr(includeId)) &&
+				ShaderCacheTestAccess::GetGeneration(cache, ids[4], 0) == generations[4],
+				"repair must not recompile the unrelated successful shader");
+
+			rememberStages();
+			for (size_t i = 0; i < 3; ++i) editShader(i, true);
+			ShaderCacheTestAccess::FailNextSaveBeforeReplace(cache);
+			Require(!scan(), "failed shader invalidation must fail the entire requested batch");
+			requirePreviousStages();
+			for (size_t i = 0; i < ids.size(); ++i)
+			{
+				Require(ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0) == generations[i],
+					"a rejected invalidation must not compile any changed shader");
+			}
+			Require(scan(), "a rejected invalidation must retry with a nonempty healthy cache");
+
+			rememberStages();
+			for (size_t i = 0; i < 3; ++i) editShader(i, true);
+			ShaderCacheTestAccess::FailNextSaveBeforeReplace(cache, 1);
+			Require(!scan(), "failed shader completion persistence must fail the batch");
+			requirePreviousStages();
+			Require(scan(), "failed completion persistence must retry without losing last-good resources");
+			rememberStages();
+			Require(std::filesystem::remove(includePath), "remove only the fixture-owned include source");
+			Require(!scan(), "removing an effective include must fail its dependent reloads");
+			requirePreviousStages();
+			Require(!scan(), "unchanged missing include must remain retryable, not turn into a successful scan");
+			writeInclude("const float SharedReloadValue = 0.875;\n");
+			Require(scan(), "restoring the effective include must recover failed dependents");
+			rememberStages();
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+			registry->TakeManifestWritesForTests();
+			Require(scan() && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0 &&
+				registry->TakeManifestWritesForTests() == 0,
+				"an unchanged scan after recovery must not repeat successful work or rewrite either manifest");
+			requirePreviousStages();
+			std::cout << "Shader scan batch: " << (lazy ? "lazy" : "eager")
+				<< " overlap, isolated failures and checkpoint retry passed\n";
 		}
 	}
 
