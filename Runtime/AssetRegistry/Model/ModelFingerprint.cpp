@@ -1,5 +1,8 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "Platform/AtomicFile.h"
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+#include "Platform/AtomicFileTestAccess.h"
+#endif
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -16,8 +19,8 @@
 #include <filesystem>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <string>
+#include <utility>
 
 #include <tiny_gltf.h>
 #include <stb_image_write.h>
@@ -31,67 +34,7 @@ namespace
 	constexpr int32_t MaxTextureDimension = 256;
 	constexpr int32_t ImageDimension = 256;
 
-	struct FingerprintRequest final
-	{
-		uint64_t m_generation = 0;
-		FileRevision m_sourceRevision{};
-
-		bool operator==(const FingerprintRequest& rhs) const noexcept
-		{
-			return m_generation == rhs.m_generation && m_sourceRevision == rhs.m_sourceRevision;
-		}
-	};
-
-	std::mutex g_fingerprintRequestsMutex;
-	uint64_t g_nextFingerprintGeneration = 0u;
-	TMap<FileId, FingerprintRequest> g_fingerprintRequests;
-
-	bool IsFingerprintRequestCurrentLocked(const FileId& fileId, const FingerprintRequest& request)
-	{
-		FingerprintRequest* current = nullptr;
-		return g_fingerprintRequests.Find(fileId, current) && current != nullptr && *current == request;
-	}
-
-	FingerprintRequest BeginFingerprintRequest(const FileId& fileId,
-		const FileRevision& sourceRevision,
-		const std::filesystem::path& outputPath,
-		std::error_code& outRemoveError)
-	{
-		const std::lock_guard<std::mutex> lock(g_fingerprintRequestsMutex);
-		const FingerprintRequest request{++g_nextFingerprintGeneration, sourceRevision};
-		g_fingerprintRequests[fileId] = request;
-		std::filesystem::remove(outputPath, outRemoveError);
-		return request;
-	}
-
-	bool IsFingerprintRequestCurrent(const FileId& fileId, const FingerprintRequest& request)
-	{
-		const std::lock_guard<std::mutex> lock(g_fingerprintRequestsMutex);
-		return IsFingerprintRequestCurrentLocked(fileId, request);
-	}
-
-	void CompleteFingerprintRequest(const FileId& fileId, const FingerprintRequest& request)
-	{
-		const std::lock_guard<std::mutex> lock(g_fingerprintRequestsMutex);
-		if (IsFingerprintRequestCurrentLocked(fileId, request))
-		{
-			g_fingerprintRequests.Remove(fileId);
-		}
-	}
-
-	bool PublishFingerprint(const FileId& fileId,
-		const FingerprintRequest& request,
-		const std::filesystem::path& outputPath,
-		const TVector<uint8_t>& bytes,
-		std::string& outDiagnostic)
-	{
-		const std::lock_guard<std::mutex> lock(g_fingerprintRequestsMutex);
-		return IsFingerprintRequestCurrentLocked(fileId, request) &&
-			   Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
-				   outputPath, bytes.GetData(), static_cast<uint64_t>(bytes.Num()), outDiagnostic));
-	}
-
-	std::filesystem::path GetFingerprintPath(const FileId& fileId)
+	std::filesystem::path GetFingerprintPath(const FileId& fileId, const std::filesystem::path& cache)
 	{
 		const std::filesystem::path filename = fileId.ToString() + ".png";
 		if (!fileId || filename != filename.filename())
@@ -99,7 +42,7 @@ namespace
 			return {};
 		}
 
-		return std::filesystem::path(AssetRegistry::GetCacheFolder()) / "Fingerprints" / filename;
+		return cache / "Fingerprints" / filename;
 	}
 
 	struct EncodedFingerprint
@@ -178,77 +121,129 @@ namespace
 	}
 }
 
-void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
+bool ModelImporter::RequestFingerprint(const FileId& fileId)
 {
-	if (!modelAssetInfo || !modelAssetInfo->GetFileId())
+	auto* model = m_assetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(fileId);
+	if (!model || !m_scheduler)
 	{
-		return;
+		return false;
 	}
 
-	const std::string assetFilepath = modelAssetInfo->GetAssetFilepath();
-	if (m_scheduler == nullptr)
+	const auto outputPath = GetFingerprintPath(fileId, m_assetRegistry->GetWorkspaceContext().GetCache());
+	FingerprintRequest request{};
+	request.m_sourcePath = model->GetAssetFilepath();
+	request.m_metadataPath = model->GetMetaFilepath();
+	request.m_unitScale = model->GetUnitScale();
+	request.m_bBatchByMaterial = model->ShouldBatchByMaterial();
+	request.m_bFlipTexcoordY = model->ShouldFlipTexcoordY();
+	if (outputPath.empty() ||
+		!Utils::TryGetFileRevision(request.m_sourcePath, request.m_sourceRevision) ||
+		!Utils::TryGetFileRevision(request.m_metadataPath, request.m_metadataRevision) || model->IsMetaExpired())
 	{
-		SAILOR_LOG_ERROR("Cannot schedule model fingerprint without a task scheduler: %s", assetFilepath.c_str());
-		return;
+		return false;
 	}
 
-	const FileId fileId = modelAssetInfo->GetFileId();
-	const std::filesystem::path outputPath = GetFingerprintPath(fileId);
-	if (outputPath.empty())
+	FingerprintRequest* previous = nullptr;
+	if (m_fingerprintRequests.Find(fileId, previous))
 	{
-		SAILOR_LOG_ERROR("Cannot generate fingerprint for invalid FileId: %s", fileId.ToString().c_str());
-		return;
-	}
-
-	const float unitScale = modelAssetInfo->GetUnitScale();
-	const bool bShouldBatchByMaterial = modelAssetInfo->ShouldBatchByMaterial();
-	const bool bFlipTexcoordY = modelAssetInfo->ShouldFlipTexcoordY();
-	FileRevision sourceRevision;
-	if (!Utils::TryGetFileRevision(assetFilepath, sourceRevision))
-	{
-		SAILOR_LOG_ERROR("Cannot capture model source revision for fingerprint: %s", assetFilepath.c_str());
-		return;
-	}
-
-	std::error_code removeError;
-	const FingerprintRequest request = BeginFingerprintRequest(fileId, sourceRevision, outputPath, removeError);
-	if (removeError)
-	{
-		SAILOR_LOG_ERROR("Cannot invalidate previous model fingerprint '%s': %s",
-			outputPath.string().c_str(),
-			removeError.message().c_str());
-	}
-
-	Tasks::CreateTask(
-		*m_scheduler,
-		"Generate model fingerprint",
-		[fileId, assetFilepath, unitScale, bShouldBatchByMaterial, bFlipTexcoordY, outputPath, request]()
+		if (previous->Matches(request) &&
+			(!previous->m_task->IsFinished() || GetFingerprintStatus(fileId) == EFingerprintStatus::Ready))
 		{
-			if (IsFingerprintRequestCurrent(fileId, request))
+			return true;
+		}
+	}
+	else
+	{
+		FileRevision outputRevision;
+		std::error_code error;
+		if (std::filesystem::is_regular_file(outputPath, error) &&
+			Utils::TryGetFileRevision(outputPath.string(), outputRevision) &&
+			outputRevision.m_modificationTimeNanoseconds >= request.m_sourceRevision.m_modificationTimeNanoseconds &&
+			outputRevision.m_modificationTimeNanoseconds >= request.m_metadataRevision.m_modificationTimeNanoseconds)
+		{
+			request.m_task = Tasks::TaskPtr<bool>::Make(true, m_scheduler);
+			m_fingerprintRequests[fileId] = std::move(request);
+			return true;
+		}
+	}
+
+	request.m_generation = ++m_nextFingerprintGeneration;
+	auto render = Tasks::CreateTask<TVector<uint8_t>>(*m_scheduler, "Render model fingerprint",
+		[fileId, request]()
+		{
+			return RenderFingerprint(fileId, request.m_sourcePath, request.m_unitScale,
+				request.m_bBatchByMaterial, request.m_bFlipTexcoordY);
+		}, EThreadType::Background);
+	auto publish = Tasks::CreateTask<bool>(*m_scheduler, "Publish model fingerprint",
+		[this, fileId, request, outputPath, render]() mutable
+		{
+			// Completed status must not retain the rendered image.
+			auto image = std::move(render);
+			FingerprintRequest* current = nullptr;
+			FileRevision sourceRevision, metadataRevision;
+			if (!m_fingerprintRequests.Find(fileId, current) || current->m_generation != request.m_generation ||
+				!Utils::TryGetFileRevision(request.m_sourcePath, sourceRevision) || sourceRevision != request.m_sourceRevision ||
+				!Utils::TryGetFileRevision(request.m_metadataPath, metadataRevision) || metadataRevision != request.m_metadataRevision)
 			{
-				GenerateFingerprint(fileId,
-					assetFilepath,
-					unitScale,
-					bShouldBatchByMaterial,
-					bFlipTexcoordY,
-					outputPath.string(),
-					request.m_generation,
-					request.m_sourceRevision);
+				return false;
 			}
-			CompleteFingerprintRequest(fileId, request);
-		},
-		EThreadType::Background)
-		->Run();
+
+			const auto& bytes = image->GetResult();
+			if (bytes.IsEmpty())
+			{
+				return false;
+			}
+			std::string diagnostic;
+			Platform::EAtomicWriteResult written;
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+			if (std::exchange(m_bFailFingerprintWriteForTests, false))
+			{
+				written = Platform::AtomicWriteFileForTests(outputPath, bytes.GetData(), bytes.Num(), diagnostic,
+					Platform::EAtomicWriteFailurePoint::BeforePublish);
+			}
+			else
+#endif
+			{
+				written = Platform::AtomicWriteFile(outputPath, bytes.GetData(), bytes.Num(), diagnostic);
+			}
+			if (!Platform::IsAtomicWriteComplete(written))
+			{
+				SAILOR_LOG_ERROR("Cannot publish model fingerprint '%s': %s", outputPath.string().c_str(), diagnostic.c_str());
+				return false;
+			}
+			return true;
+		}, EThreadType::Main);
+	publish->Join(render);
+	request.m_task = publish;
+	m_fingerprintRequests[fileId] = std::move(request);
+	render->Run();
+	publish->Run();
+	return true;
 }
 
-bool ModelImporter::GenerateFingerprint(const FileId& fileId,
+ModelImporter::EFingerprintStatus ModelImporter::GetFingerprintStatus(const FileId& fileId) const
+{
+	const auto request = m_fingerprintRequests.Find(fileId);
+	if (request == m_fingerprintRequests.end())
+	{
+		return EFingerprintStatus::Unavailable;
+	}
+	if (!request.Value().m_task->IsFinished())
+	{
+		return EFingerprintStatus::Pending;
+	}
+
+	std::error_code error;
+	return request.Value().m_task->GetResult() &&
+		std::filesystem::is_regular_file(GetFingerprintPath(fileId, m_assetRegistry->GetWorkspaceContext().GetCache()), error) ?
+		EFingerprintStatus::Ready : EFingerprintStatus::Failed;
+}
+
+TVector<uint8_t> ModelImporter::RenderFingerprint(const FileId& fileId,
 	const std::string& assetFilepath,
 	float unitScale,
 	bool bShouldBatchByMaterial,
-	bool bFlipTexcoordY,
-	const std::string& outputPath,
-	uint64_t requestGeneration,
-	const FileRevision& sourceRevision)
+	bool bFlipTexcoordY)
 {
 	TVector<MeshContext> parsedMeshes;
 	TVector<glm::mat4> inverseBind;
@@ -267,13 +262,13 @@ bool ModelImporter::GenerateFingerprint(const FileId& fileId,
 		parsedMeshes.Num() == 0 || !boundsAabb.IsValid())
 	{
 		SAILOR_LOG_ERROR("Cannot prepare model fingerprint: %s", assetFilepath.c_str());
-		return false;
+		return {};
 	}
 	TVector<GltfImporterUtils::SceneNode> sceneNodes;
 	if (!GltfImporterUtils::CollectSceneNodes(gltfModel, unitScale, sceneNodes))
 	{
 		SAILOR_LOG_ERROR("Cannot resolve model fingerprint hierarchy: %s", assetFilepath.c_str());
-		return false;
+		return {};
 	}
 
 	ObjectAllocatorPtr allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
@@ -505,7 +500,7 @@ bool ModelImporter::GenerateFingerprint(const FileId& fileId,
 	if (!model->BuildBLAS())
 	{
 		SAILOR_LOG_ERROR("Cannot build model fingerprint BLAS: %s", assetFilepath.c_str());
-		return false;
+		return {};
 	}
 
 	Raytracing::PathTracer::TLASInstance instance{};
@@ -516,7 +511,7 @@ bool ModelImporter::GenerateFingerprint(const FileId& fileId,
 	if (!pathTracer.InitializeScene(TVector<Raytracing::PathTracer::TLASInstance>{instance}, previewMaterials, {}))
 	{
 		SAILOR_LOG_ERROR("Cannot initialize model fingerprint scene: %s", assetFilepath.c_str());
-		return false;
+		return {};
 	}
 
 	const float radius = (std::max)(boundsSphere.m_radius, 0.1f);
@@ -537,7 +532,7 @@ bool ModelImporter::GenerateFingerprint(const FileId& fileId,
 	if (!pathTracer.RenderPreparedScene(params))
 	{
 		SAILOR_LOG_ERROR("Cannot render model fingerprint: %s", assetFilepath.c_str());
-		return false;
+		return {};
 	}
 
 	const glm::uvec2 extent = pathTracer.GetLastRenderedExtent();
@@ -548,7 +543,7 @@ bool ModelImporter::GenerateFingerprint(const FileId& fileId,
 		renderedImage.Num() != expectedPixelCount)
 	{
 		SAILOR_LOG_ERROR("Model fingerprint renderer returned an invalid image: %s", assetFilepath.c_str());
-		return false;
+		return {};
 	}
 
 	EncodedFingerprint encoded;
@@ -563,7 +558,7 @@ bool ModelImporter::GenerateFingerprint(const FileId& fileId,
 		!encoded.m_bValid || encoded.m_bytes.IsEmpty() || encoded.m_bytes.Num() > MaxEncodedImageBytes)
 	{
 		SAILOR_LOG_ERROR("Cannot encode model fingerprint: %s", assetFilepath.c_str());
-		return false;
+		return {};
 	}
 
 	int32_t encodedWidth = 0;
@@ -577,32 +572,8 @@ bool ModelImporter::GenerateFingerprint(const FileId& fileId,
 		encodedWidth != ImageDimension || encodedHeight != ImageDimension || encodedChannels <= 0)
 	{
 		SAILOR_LOG_ERROR("Encoded model fingerprint is invalid: %s", assetFilepath.c_str());
-		return false;
+		return {};
 	}
 
-	FileRevision currentSourceRevision;
-	if (!Utils::TryGetFileRevision(assetFilepath, currentSourceRevision) || currentSourceRevision != sourceRevision)
-	{
-		SAILOR_LOG("Discarded stale model fingerprint: %s", assetFilepath.c_str());
-		return false;
-	}
-
-	const FingerprintRequest request{requestGeneration, sourceRevision};
-	std::string diagnostic;
-	if (!PublishFingerprint(fileId, request, std::filesystem::path(outputPath), encoded.m_bytes, diagnostic))
-	{
-		if (diagnostic.empty())
-		{
-			SAILOR_LOG("Discarded superseded model fingerprint: %s", assetFilepath.c_str());
-		}
-		else
-		{
-			SAILOR_LOG_ERROR(
-				"Cannot atomically publish model fingerprint '%s': %s", outputPath.c_str(), diagnostic.c_str());
-		}
-		return false;
-	}
-
-	SAILOR_LOG("Generated model fingerprint: %s", outputPath.c_str());
-	return true;
+	return std::move(encoded.m_bytes);
 }

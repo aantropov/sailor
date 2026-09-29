@@ -584,6 +584,30 @@ bool App::PreviewEditorAudioAsset(const char* strFileId)
 		});
 }
 
+bool App::RequestModelFingerprint(const char* strFileId)
+{
+	if (!strFileId || !strFileId[0]) return false;
+	return ExecuteOnEngineMainThread<bool>(false, [value = std::string(strFileId)]()
+		{
+			auto* importer = GetSubmodule<ModelImporter>();
+			const FileId fileId(value);
+			return importer && fileId && importer->RequestFingerprint(fileId);
+		});
+}
+
+uint32_t App::GetModelFingerprintStatus(const char* strFileId)
+{
+	if (!strFileId || !strFileId[0]) return static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Unavailable);
+	return ExecuteOnEngineMainThread<uint32_t>(static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Unavailable),
+		[value = std::string(strFileId)]()
+		{
+			auto* importer = GetSubmodule<ModelImporter>();
+			const FileId fileId(value);
+			return static_cast<uint32_t>(importer && fileId ? importer->GetFingerprintStatus(fileId) :
+				ModelImporter::EFingerprintStatus::Unavailable);
+		});
+}
+
 bool App::StartEditorGIProbesBake(
 	const EditorGIProbesBakeRequest& request,
 	std::string& outDiagnostic)

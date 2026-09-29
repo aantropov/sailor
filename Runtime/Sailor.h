@@ -121,6 +121,8 @@ namespace Sailor
 		SAILOR_API static bool SetEditorSimulationEnabled(bool bEnabled);
 		SAILOR_API static bool IsEditorSimulationEnabled();
 		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
+		SAILOR_API static bool RequestModelFingerprint(const char* strFileId);
+		SAILOR_API static uint32_t GetModelFingerprintStatus(const char* strFileId);
 		SAILOR_API static bool StartEditorGIProbesBake(
 			const EditorGIProbesBakeRequest& request,
 			std::string& outDiagnostic);

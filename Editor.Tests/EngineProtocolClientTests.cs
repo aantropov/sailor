@@ -220,6 +220,94 @@ public sealed class EngineProtocolClientTests
         Assert.Equal(fileId, capturedRequest.PreviewAudioAsset.FileId);
     }
 
+    [Theory]
+    [InlineData(ModelFingerprintStatus.Ready, true)]
+    [InlineData(ModelFingerprintStatus.Failed, false)]
+    [InlineData(ModelFingerprintStatus.Unavailable, false)]
+    public async Task ModelFingerprint_WaitsForActualPublication(ModelFingerprintStatus result, bool expected)
+    {
+        const string fileId = "{89ABCDEF-0123-4567-89AB-CDEF01234567}";
+        var requests = 0;
+        var polls = 0;
+        using var client = CreateClient(request =>
+        {
+            Assert.Equal(1u, request.ProtocolVersion);
+            if (request.CommandCase == ProtocolRequest.CommandOneofCase.RequestModelFingerprint)
+            {
+                ++requests;
+                Assert.Equal(fileId, request.RequestModelFingerprint.FileId);
+                return Success(request, response => response.BoolResult = new BoolResult { Value = true });
+            }
+            Assert.Equal(ProtocolRequest.CommandOneofCase.GetModelFingerprintStatus, request.CommandCase);
+            Assert.Equal(fileId, request.GetModelFingerprintStatus.FileId);
+            return Success(request, response => response.ModelFingerprintStatusResult = new()
+            {
+                Status = ++polls == 1 ? ModelFingerprintStatus.Pending : result
+            });
+        });
+
+        Assert.Equal(expected, await client.GenerateModelFingerprintAsync(fileId));
+        Assert.Equal(1, requests);
+        Assert.Equal(2, polls);
+    }
+
+    [Fact]
+    public async Task ModelFingerprint_RetriesOnRenewedDemandWithoutChangingFileId()
+    {
+        var attempts = 0;
+        using var client = CreateClient(request =>
+        {
+            if (request.CommandCase == ProtocolRequest.CommandOneofCase.RequestModelFingerprint)
+            {
+                ++attempts;
+                return Success(request, response => response.BoolResult = new BoolResult { Value = true });
+            }
+            return Success(request, response => response.ModelFingerprintStatusResult = new()
+            {
+                Status = attempts == 1 ? ModelFingerprintStatus.Failed : ModelFingerprintStatus.Ready
+            });
+        });
+
+        Assert.False(await client.GenerateModelFingerprintAsync("model"));
+        Assert.True(await client.GenerateModelFingerprintAsync("model"));
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public async Task ModelFingerprint_RejectionDoesNotStartPolling()
+    {
+        var requests = 0;
+        using var client = CreateClient(request =>
+        {
+            ++requests;
+            Assert.Equal(ProtocolRequest.CommandOneofCase.RequestModelFingerprint, request.CommandCase);
+            return Success(request, response => response.BoolResult = new BoolResult { Value = false });
+        });
+        Assert.False(await client.GenerateModelFingerprintAsync("model"));
+        Assert.Equal(1, requests);
+    }
+
+    [Fact]
+    public async Task ModelFingerprint_CancellationStopsWaitingForPendingWork()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var polls = 0;
+        using var client = CreateClient(request =>
+        {
+            if (request.CommandCase == ProtocolRequest.CommandOneofCase.RequestModelFingerprint)
+                return Success(request, response => response.BoolResult = new BoolResult { Value = true });
+            ++polls;
+            cancellation.Cancel();
+            return Success(request, response => response.ModelFingerprintStatusResult = new()
+            {
+                Status = ModelFingerprintStatus.Pending
+            });
+        });
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            client.GenerateModelFingerprintAsync("model", cancellation.Token));
+        Assert.Equal(1, polls);
+    }
+
     [Fact]
     public async Task EditorSimulation_UsesTypedSetAndStateCommands()
     {

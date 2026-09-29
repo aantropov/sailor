@@ -269,6 +269,17 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 				response, Sailor::App::PreviewEditorAudioAsset(request.preview_audio_asset().file_id().c_str()));
 			break;
 
+		case ProtocolRequest::kRequestModelFingerprint:
+			SetBoolResult(response, Sailor::App::RequestModelFingerprint(request.request_model_fingerprint().file_id().c_str()));
+			break;
+
+		case ProtocolRequest::kGetModelFingerprintStatus:
+			SetSuccess(response);
+			response.mutable_model_fingerprint_status_result()->set_status(
+				static_cast<sailor::editor::v1::ModelFingerprintStatus>(
+					Sailor::App::GetModelFingerprintStatus(request.get_model_fingerprint_status().file_id().c_str())));
+			break;
+
 		case ProtocolRequest::kShowMainWindow:
 			Sailor::App::ShowMainWindow(request.show_main_window().show());
 			SetEmptyResult(response);

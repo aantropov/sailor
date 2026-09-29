@@ -107,6 +107,16 @@ regular asset registry, and plays it as a non-spatial one-shot voice. Starting
 another preview stops and destroys the previous preview voice. The Editor sends
 this command asynchronously through the normal WebSocket transport.
 
+`request_model_fingerprint` accepts a model FileId and queues its preview only
+on explicit consumer demand. `get_model_fingerprint_status` reports Unavailable,
+Pending, Ready or Failed without starting or retrying work. Both commands marshal
+to the Engine main thread; rendering runs on Background and does not block the
+Editor worker. A renewed request retries failure without a source edit, while
+duplicate pending requests share the same attempt. Ready means publication
+completed successfully. Failed rendering or replacement preserves the old PNG;
+a failure to confirm OS sync after replacement remains retryable, not a rollback.
+Neither command changes the model processing acknowledgement. Both remain v1.
+
 Compatibility rules:
 
 - Ordinary commands use baseline `protocol_version = 1`. Strict InstanceId

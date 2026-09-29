@@ -668,6 +668,35 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.PreviewAudioAsset));
 
+    public async Task<bool> GenerateModelFingerprintAsync(
+        string fileId,
+        CancellationToken cancellationToken = default)
+    {
+        var requestedId = ValidateString(fileId, nameof(fileId));
+        if (!ReadBool(await SendAsync(new ProtocolRequest
+            {
+                RequestModelFingerprint = new FileIdRequest { FileId = requestedId }
+            }, cancellationToken).ConfigureAwait(false), nameof(ProtocolRequest.RequestModelFingerprint)))
+        {
+            return false;
+        }
+
+        while (true)
+        {
+            var response = await SendAsync(new ProtocolRequest
+            {
+                GetModelFingerprintStatus = new FileIdRequest { FileId = requestedId }
+            }, cancellationToken).ConfigureAwait(false);
+            var status = RequireResult<ModelFingerprintStatusResult>(
+                response.ModelFingerprintStatusResult,
+                nameof(ProtocolRequest.GetModelFingerprintStatus)).Status;
+            if (status != ModelFingerprintStatus.Pending)
+                return status == ModelFingerprintStatus.Ready;
+
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     public async Task SetViewportAsync(
         uint windowPosX,
         uint windowPosY,

@@ -59,10 +59,6 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
 		UpdateGeneratedAssets(modelAssetInfo, bWasExpired);
-		if (bWasExpired)
-		{
-			GenerateFingerprintAsync(modelAssetInfo);
-		}
 	}
 }
 
@@ -71,7 +67,6 @@ void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
 		UpdateGeneratedAssets(modelAssetInfo, true);
-		GenerateFingerprintAsync(modelAssetInfo);
 	}
 }
 

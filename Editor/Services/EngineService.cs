@@ -2333,6 +2333,20 @@ namespace SailorEditor.Services
                 cancellationToken: cancellationToken);
         }
 
+        public async Task<bool> GenerateModelFingerprintAsync(
+            FileId fileId,
+            CancellationToken cancellationToken = default)
+        {
+            var generation = Volatile.Read(ref engineGeneration);
+            CancellationToken sessionToken;
+            lock (runLock)
+                sessionToken = activeSession?.PollCancellation.Token ?? default;
+            using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, sessionToken);
+            return IsInteropRunning() && IsGenerationActive(generation) &&
+                await protocolClient.GenerateModelFingerprintAsync(fileId?.Value ?? string.Empty, operation.Token)
+                    .ConfigureAwait(false) && IsGenerationActive(generation);
+        }
+
         public Task<bool> SetAnimatorFloatAsync(
             InstanceId instanceId,
             string name,

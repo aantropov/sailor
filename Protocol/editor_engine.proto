@@ -79,6 +79,8 @@ message ProtocolRequest {
 		Empty rebuild_runtime_gi_probes_scene = 75;
 		RuntimeGIProbesPreviewBudgetRequest set_runtime_gi_probes_preview_budget = 76;
 		ViewportIdRequest capture_remote_viewport_frame_evidence = 77;
+		FileIdRequest request_model_fingerprint = 100;
+		FileIdRequest get_model_fingerprint_status = 101;
 	}
 
 	reserved 3 to 9;
@@ -112,6 +114,7 @@ message ProtocolResponse {
 		EditorRenderModeResult editor_render_mode_result = 23;
 		GIProbesBakeStatusResult gi_probes_bake_status_result = 24;
 		GlobalIlluminationStateResult global_illumination_state_result = 25;
+		ModelFingerprintStatusResult model_fingerprint_status_result = 100;
 	}
 
 	reserved 6 to 9;
@@ -619,4 +622,15 @@ message RuntimeGIProbesState {
 
 message RuntimeGIProbesPreviewBudgetRequest {
 	RuntimeGIProbesPreviewBudget budget = 1;
+}
+
+enum ModelFingerprintStatus {
+	MODEL_FINGERPRINT_STATUS_UNAVAILABLE = 0;
+	MODEL_FINGERPRINT_STATUS_PENDING = 1;
+	MODEL_FINGERPRINT_STATUS_READY = 2;
+	MODEL_FINGERPRINT_STATUS_FAILED = 3;
+}
+
+message ModelFingerprintStatusResult {
+	ModelFingerprintStatus status = 1;
 }

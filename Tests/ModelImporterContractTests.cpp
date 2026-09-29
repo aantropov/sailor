@@ -25,6 +25,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -33,6 +34,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <tiny_gltf.h>
+#include <stb_image.h>
 
 using namespace Sailor;
 
@@ -56,6 +58,17 @@ namespace Sailor
 	class ModelImporterTestAccess
 	{
 	public:
+		static Tasks::TaskPtr<bool> GetFingerprintTask(const ModelImporter& importer, const FileId& id)
+		{
+			const auto request = importer.m_fingerprintRequests.Find(id);
+			return request == importer.m_fingerprintRequests.end() ? Tasks::TaskPtr<bool>{} : request.Value().m_task;
+		}
+
+		static void FailFingerprintWrite(ModelImporter& importer)
+		{
+			importer.m_bFailFingerprintWriteForTests = true;
+		}
+
 		static bool GenerateAnimationAssets(ModelImporter& importer, ModelAssetInfoPtr assetInfo)
 		{
 			bool bChanged = false;
@@ -999,6 +1012,218 @@ namespace
 		Require(model->GetAnimations().IsEmpty() && !fixture.m_registry.IsAssetExpired(model.GetRawPtr()) &&
 			YAML::LoadFile(metadataPath)["animations"].as<TVector<FileId>>().IsEmpty(),
 			"removing the last source clips is a successful metadata change, not an import failure");
+	}
+
+	void TestModelCallbacksDoNotRequestPreviews()
+	{
+		ModelCacheWorkspace workspace;
+		CreateAnimationTestModel(workspace.Context().GetContent() / "Ship.gltf", {}, false);
+		AnimationRegistryFixture fixture(workspace.Context());
+		TUniquePtr<ModelImporter> importerLifetime;
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+		importerLifetime = TUniquePtr<ModelImporter>::Make(&fixture.m_modelHandler, &scheduler, &fixture.m_registry);
+		auto model = fixture.LoadModel("Ship.gltf");
+		fixture.m_modelHandler.NotifyImportAsset(model.GetRawPtr());
+		importerLifetime->OnUpdateAssetInfo(model.GetRawPtr(), true);
+		Tasks::ITaskPtr background;
+		bool bQueuedBackgroundWork = false;
+		while (scheduler.TryFetchNextAvailiableTask(background, EThreadType::Background))
+		{
+			bQueuedBackgroundWork = true;
+			background->Execute();
+		}
+		Require(!bQueuedBackgroundWork,
+			"runtime model import/update must not enqueue preview rendering without a consumer request");
+	}
+
+	struct ModelFingerprintFixture
+	{
+		ModelCacheWorkspace m_workspace;
+		AnimationRegistryFixture m_assets;
+		FileId m_id;
+		std::filesystem::path m_source, m_output;
+		TUniquePtr<ModelImporter> m_importer;
+		Tasks::Scheduler m_scheduler;
+
+		explicit ModelFingerprintFixture(bool bProject = true) : m_workspace(bProject), m_assets(m_workspace.Context())
+		{
+			m_source = m_workspace.Context().GetContent() / "Preview.gltf";
+			WriteAnimationFixtureText(m_source, R"({"asset":{"version":"2.0"},"scene":0,
+				"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],
+				"buffers":[{"byteLength":36,"uri":"data:application/octet-stream;base64,AACAvwAAgL8AAAAAAACAPwAAgL8AAAAAAAAAAAAAgD8AAAAA"}],
+				"bufferViews":[{"buffer":0,"byteLength":36}],
+				"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[-1,-1,0],"max":[1,1,0]}],
+				"materials":[{"doubleSided":true,"pbrMetallicRoughness":{"baseColorFactor":[0.8,0.3,0.1,1]}}],
+				"meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0}]}]})");
+			m_id = FileId::CreateNewFileId();
+			auto metadata = CreateAssetInfoMetadata<ModelAssetInfo>(m_id, "Preview.gltf");
+			metadata["bShouldGenerateMaterials"] = false;
+			WriteAnimationFixtureText(m_source.string() + ".asset", YAML::Dump(metadata));
+			Require(m_assets.m_registry.GetOrLoadFile("Preview.gltf") == m_id, "the preview fixture must register its model");
+			m_output = m_workspace.Context().GetCache() / "Fingerprints" / (m_id.ToString() + ".png");
+			m_scheduler.AttachCurrentThreadAsMainThread();
+			m_importer = TUniquePtr<ModelImporter>::Make(&m_assets.m_modelHandler, &m_scheduler, &m_assets.m_registry);
+		}
+
+		void Render()
+		{
+			Tasks::ITaskPtr task;
+			Require(m_scheduler.TryFetchNextAvailiableTask(task, EThreadType::Background), "a requested preview must enqueue rendering");
+			task->Execute();
+		}
+
+		Tasks::TaskPtr<bool> Request()
+		{
+			Require(m_importer->RequestFingerprint(m_id), "the explicit preview request must be accepted");
+			return ModelImporterTestAccess::GetFingerprintTask(*m_importer, m_id);
+		}
+
+		void Finish()
+		{
+			Render();
+			m_scheduler.ProcessTasksOnMainThread();
+		}
+	};
+
+	void RequireFingerprintPng(const std::filesystem::path& path)
+	{
+		const auto bytes = ReadAnimationFixtureText(path);
+		int width = 0, height = 0, channels = 0;
+		std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(stbi_load_from_memory(
+			reinterpret_cast<const stbi_uc*>(bytes.data()), static_cast<int>(bytes.size()),
+			&width, &height, &channels, STBI_rgb_alpha), stbi_image_free);
+		Require(pixels && width == 256 && height == 256, "successful previews must contain a decodable 256x256 PNG");
+		bool bVisiblePixel = false;
+		for (int i = 0; i < width * height; ++i) bVisiblePixel |= pixels.get()[4 * i + 3] != 0;
+		Require(bVisiblePixel, "the rendered preview must contain visible model pixels");
+	}
+
+	void TestRequestedFingerprintsPublishAndReuse()
+	{
+		for (bool bProject : { true, false })
+		{
+			ModelFingerprintFixture fixture(bProject);
+			auto& importer = *fixture.m_importer;
+			using Status = ModelImporter::EFingerprintStatus;
+			Require(importer.GetFingerprintStatus(fixture.m_id) == Status::Unavailable, "querying alone must not request a preview");
+			auto first = fixture.Request();
+			Require(importer.GetFingerprintStatus(fixture.m_id) == Status::Pending && fixture.Request() == first,
+				"pending consumers must share one render/publication attempt");
+			fixture.Finish();
+			Require(first->GetResult() && importer.GetFingerprintStatus(fixture.m_id) == Status::Ready,
+				"Ready must follow successful PNG publication");
+			RequireFingerprintPng(fixture.m_output);
+			const auto outputTime = std::filesystem::last_write_time(fixture.m_output);
+			Require(fixture.Request() == first && std::filesystem::last_write_time(fixture.m_output) == outputTime,
+				"an unchanged ready preview must be reused without rewriting");
+			Tasks::ITaskPtr unwanted;
+			Require(!fixture.m_scheduler.TryFetchNextAvailiableTask(unwanted, EThreadType::Background),
+				"duplicate ready requests must not enqueue another path trace");
+			const auto sourceTime = std::filesystem::last_write_time(fixture.m_source);
+			Require(std::filesystem::remove(fixture.m_output), "remove only the fixture's generated preview");
+			Require(importer.GetFingerprintStatus(fixture.m_id) == Status::Failed && fixture.Request() != first,
+				"a missing PNG must be requestable independently of the model watermark");
+			fixture.Finish();
+			Require(importer.GetFingerprintStatus(fixture.m_id) == Status::Ready &&
+				std::filesystem::last_write_time(fixture.m_source) == sourceTime,
+				"regenerating missing output must not require or modify the source model");
+			RequireFingerprintPng(fixture.m_output);
+			ModelImporter restarted(&fixture.m_assets.m_modelHandler, &fixture.m_scheduler, &fixture.m_assets.m_registry);
+			const auto restoredTime = std::filesystem::last_write_time(fixture.m_output);
+			Require(restarted.RequestFingerprint(fixture.m_id) && restarted.GetFingerprintStatus(fixture.m_id) == Status::Ready &&
+				std::filesystem::last_write_time(fixture.m_output) == restoredTime &&
+				!fixture.m_scheduler.TryFetchNextAvailiableTask(unwanted, EThreadType::Background),
+				"a new importer must reuse a current on-disk preview without starting another render");
+			fixture.m_assets.m_modelHandler.Unsubscribe(&restarted);
+		}
+	}
+
+	void TestFailedFingerprintsKeepThePreviousImageAndRetry()
+	{
+		ModelFingerprintFixture fixture;
+		fixture.Request();
+		fixture.Finish();
+		const auto previous = ReadAnimationFixtureText(fixture.m_output);
+		const auto previousTime = std::filesystem::last_write_time(fixture.m_output);
+		auto* model = fixture.m_assets.m_registry.GetAssetInfoPtr<ModelAssetInfoPtr>(fixture.m_id);
+		auto metadata = model->Serialize();
+		metadata["unitScale"] = 2.0f;
+		model->Deserialize(metadata);
+		const auto sourceTime = std::filesystem::last_write_time(fixture.m_source);
+		ModelImporterTestAccess::FailFingerprintWrite(*fixture.m_importer);
+		auto failed = fixture.Request();
+		Require(ReadAnimationFixtureText(fixture.m_output) == previous, "requesting new output must retain the last-good PNG");
+		fixture.Finish();
+		Require(!failed->GetResult() && fixture.m_importer->GetFingerprintStatus(fixture.m_id) == ModelImporter::EFingerprintStatus::Failed &&
+			ReadAnimationFixtureText(fixture.m_output) == previous && std::filesystem::last_write_time(fixture.m_output) == previousTime,
+			"a failed atomic replacement must preserve the previous PNG and report failure");
+		auto retry = fixture.Request();
+		Require(retry != failed, "a new consumer request must retry the failed unchanged revision");
+		fixture.Finish();
+		Require(retry->GetResult() && std::filesystem::last_write_time(fixture.m_source) == sourceTime,
+			"retry must publish without requiring another source edit");
+		RequireFingerprintPng(fixture.m_output);
+		const auto retained = ReadAnimationFixtureText(fixture.m_output);
+		WriteAnimationFixtureText(fixture.m_source, "{ invalid model");
+		auto badModel = fixture.Request();
+		fixture.Finish();
+		Require(!badModel->GetResult() && ReadAnimationFixtureText(fixture.m_output) == retained,
+			"a failed model render must not remove the last-good preview");
+	}
+
+	void TestFingerprintPublicationRejectsSupersededWork()
+	{
+		ModelFingerprintFixture fixture;
+		auto old = fixture.Request();
+		fixture.Render();
+		auto* model = fixture.m_assets.m_registry.GetAssetInfoPtr<ModelAssetInfoPtr>(fixture.m_id);
+		auto metadata = model->Serialize();
+		metadata["unitScale"] = 3.0f;
+		model->Deserialize(metadata);
+		auto current = fixture.Request();
+		Require(current != old, "changed snapshot settings must supersede a pending preview even with unchanged file revisions");
+		fixture.Render();
+		Tasks::ITaskPtr first, second;
+		Require(fixture.m_scheduler.TryFetchNextAvailiableTask(first, EThreadType::Main) &&
+			fixture.m_scheduler.TryFetchNextAvailiableTask(second, EThreadType::Main), "both publications must be independently queued");
+		second->Execute();
+		Require(current->IsFinished() && current->GetResult(), "the current generation must publish successfully");
+		const auto bytes = ReadAnimationFixtureText(fixture.m_output);
+		const auto writeTime = std::filesystem::last_write_time(fixture.m_output);
+		first->Execute();
+		Require(!old->GetResult() && ReadAnimationFixtureText(fixture.m_output) == bytes &&
+			std::filesystem::last_write_time(fixture.m_output) == writeTime &&
+			fixture.m_importer->GetFingerprintStatus(fixture.m_id) == ModelImporter::EFingerprintStatus::Ready,
+			"an older completion must not replace the current image or status");
+
+		metadata["unitScale"] = 4.0f;
+		model->Deserialize(metadata);
+		auto edited = fixture.Request();
+		fixture.Render();
+		std::filesystem::last_write_time(fixture.m_source, std::filesystem::last_write_time(fixture.m_source) + std::chrono::seconds(1));
+		fixture.m_scheduler.ProcessTasksOnMainThread();
+		Require(!edited->GetResult() && ReadAnimationFixtureText(fixture.m_output) == bytes,
+			"source revision changes between render and publication must retain the prior PNG");
+		auto retry = fixture.Request();
+		fixture.Finish();
+		Require(retry->GetResult(), "a fresh request must recover from a discarded revision");
+
+		metadata["unitScale"] = 5.0f;
+		model->Deserialize(metadata);
+		auto metadataEdited = fixture.Request();
+		fixture.Render();
+		WriteAnimationFixtureText(model->GetMetaFilepath(), YAML::Dump(metadata));
+		const auto retained = ReadAnimationFixtureText(fixture.m_output);
+		fixture.m_scheduler.ProcessTasksOnMainThread();
+		Require(!metadataEdited->GetResult() && ReadAnimationFixtureText(fixture.m_output) == retained,
+			"metadata edits during rendering must discard the old preview without replacing the PNG");
+		Require(!fixture.m_importer->RequestFingerprint(fixture.m_id),
+			"a preview must not pair stale loaded settings with a newer on-disk metadata revision");
+		Require(fixture.m_assets.m_modelHandler.ReloadAssetInfo(model, false, false), "the edited metadata must reload normally");
+		auto metadataRetry = fixture.Request();
+		fixture.Finish();
+		Require(metadataRetry->GetResult(), "a new request must render the reloaded metadata snapshot");
 	}
 
 	void TestModelCallbacksRetryFailedAnimationGeneration()
@@ -2797,6 +3022,10 @@ int main()
 		{ "AnimationRepairAcceptsOmittedMetadataType", TestAnimationRepairAcceptsOmittedMetadataType },
 		{ "AnimationRepairRetainsLazyOwnership", TestAnimationRepairRetainsLazyOwnership },
 		{ "ModelCallbacksPreserveUnchangedMetadata", TestModelCallbacksPreserveUnchangedMetadata },
+		{ "ModelCallbacksDoNotRequestPreviews", TestModelCallbacksDoNotRequestPreviews },
+		{ "RequestedFingerprintsPublishAndReuse", TestRequestedFingerprintsPublishAndReuse },
+		{ "FailedFingerprintsKeepThePreviousImageAndRetry", TestFailedFingerprintsKeepThePreviousImageAndRetry },
+		{ "FingerprintPublicationRejectsSupersededWork", TestFingerprintPublicationRejectsSupersededWork },
 		{ "ModelCallbacksRetryFailedAnimationGeneration", TestModelCallbacksRetryFailedAnimationGeneration },
 		{ "ModelCallbacksRejectFailedMetadataSave", TestModelCallbacksRejectFailedMetadataSave },
 		{ "RhiMeshLodsShareBuffersAndDrawRanges", TestRhiMeshLodsShareBuffersAndDrawRanges },

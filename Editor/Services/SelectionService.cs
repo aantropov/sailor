@@ -164,7 +164,10 @@ namespace SailorEditor.Services
 
                 if (obj is AssetFile assetFile)
                 {
-                    await assetFile.LoadDependentResources().WaitAsync(requestCancellation.Token);
+                    if (assetFile is ModelFile modelFile)
+                        await modelFile.LoadDependentResources(requestCancellation.Token);
+                    else
+                        await assetFile.LoadDependentResources().WaitAsync(requestCancellation.Token);
                     if (IsCurrentRequest(requestVersion, requestEpoch, requestCancellation.Token) && ReferenceEquals(SelectedItem, obj))
                     {
                         UpdateSelection(obj, raiseInstanceAction: false, raiseAssetAction: true);

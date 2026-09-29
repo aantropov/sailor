@@ -213,6 +213,8 @@ namespace Sailor
 	class ModelImporter final : public TSubmodule<ModelImporter>, public IAssetInfoHandlerListener, public IAssetFactory
 	{
 	  public:
+		enum class EFingerprintStatus : uint32_t { Unavailable, Pending, Ready, Failed };
+
 		struct MeshContext
 		{
 			struct LodGeometry
@@ -252,6 +254,10 @@ namespace Sailor
 
 		SAILOR_API Tasks::TaskPtr<bool> LoadDefaultMaterials(FileId uid, TVector<MaterialPtr>& outMaterials);
 
+		// Main-thread preview requests are independent of model loading and processing acknowledgements.
+		SAILOR_API bool RequestFingerprint(const FileId& fileId);
+		SAILOR_API EFingerprintStatus GetFingerprintStatus(const FileId& fileId) const;
+
 		SAILOR_API virtual void CollectGarbage() override;
 
 	  protected:
@@ -283,15 +289,11 @@ namespace Sailor
 			TVector<glm::mat4>& outInverseBind,
 			tinygltf::Model* outGltfModel = nullptr);
 		static void PopulateModelSceneHierarchy(Model& model, TVector<GltfImporterUtils::SceneNode>& sourceNodes);
-		static bool GenerateFingerprint(const FileId& fileId,
+		static TVector<uint8_t> RenderFingerprint(const FileId& fileId,
 			const std::string& assetFilepath,
 			float unitScale,
 			bool bShouldBatchByMaterial,
-			bool bFlipTexcoordY,
-			const std::string& outputPath,
-			uint64_t requestGeneration,
-			const FileRevision& sourceRevision);
-		void GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo);
+			bool bFlipTexcoordY);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;
@@ -301,6 +303,29 @@ namespace Sailor
 		ObjectAllocatorPtr m_allocator;
 
 	private:
+		struct FingerprintRequest
+		{
+			uint64_t m_generation = 0;
+			FileRevision m_sourceRevision{}, m_metadataRevision{};
+			std::string m_sourcePath, m_metadataPath;
+			float m_unitScale = 1.0f;
+			bool m_bBatchByMaterial = true, m_bFlipTexcoordY = false;
+			Tasks::TaskPtr<bool> m_task;
+
+			bool Matches(const FingerprintRequest& rhs) const
+			{
+				return m_sourceRevision == rhs.m_sourceRevision && m_metadataRevision == rhs.m_metadataRevision &&
+					m_sourcePath == rhs.m_sourcePath && m_metadataPath == rhs.m_metadataPath &&
+					m_unitScale == rhs.m_unitScale && m_bBatchByMaterial == rhs.m_bBatchByMaterial &&
+					m_bFlipTexcoordY == rhs.m_bFlipTexcoordY;
+			}
+		};
+		TMap<FileId, FingerprintRequest> m_fingerprintRequests;
+		uint64_t m_nextFingerprintGeneration = 0;
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		bool m_bFailFingerprintWriteForTests = false;
+#endif
+
 		bool UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWasExpired);
 		Tasks::Scheduler* const m_scheduler;
 		AssetRegistry* const m_assetRegistry;

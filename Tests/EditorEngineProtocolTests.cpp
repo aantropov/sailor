@@ -2,6 +2,7 @@
 #include "EditorEngineProtocolLifecycle.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
+#include "AssetRegistry/Model/ModelImporter.h"
 #include "Support/TempDirectory.h"
 
 #include <atomic>
@@ -281,8 +282,8 @@ namespace
 					reinterpret_cast<const char*>(value),
 					static_cast<size_t>(length));
 			}
-			else if (fieldNumber >= 10u &&
-				fieldNumber <= c_editorRenderModeResultField)
+			else if ((fieldNumber >= 10u && fieldNumber <= c_editorRenderModeResultField) ||
+				fieldNumber == sailor::editor::v1::ProtocolResponse::kModelFingerprintStatusResultFieldNumber)
 			{
 				response.m_resultField = fieldNumber;
 				response.m_resultPayload.assign(
@@ -1283,6 +1284,39 @@ namespace
 		static_assert(
 			sailor::editor::v1::FileIdRequest::
 				kFileIdFieldNumber == 1);
+	}
+
+	void TestModelFingerprintProtocol()
+	{
+		using Status = Sailor::ModelImporter::EFingerprintStatus;
+		using namespace sailor::editor::v1;
+		static_assert(static_cast<uint32_t>(Status::Unavailable) == MODEL_FINGERPRINT_STATUS_UNAVAILABLE);
+		static_assert(static_cast<uint32_t>(Status::Pending) == MODEL_FINGERPRINT_STATUS_PENDING);
+		static_assert(static_cast<uint32_t>(Status::Ready) == MODEL_FINGERPRINT_STATUS_READY);
+		static_assert(static_cast<uint32_t>(Status::Failed) == MODEL_FINGERPRINT_STATUS_FAILED);
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "preview protocol fixture must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies;
+		dependencies.m_lifecycleGate = &gate;
+		std::string fileId;
+		AppendMessageField(fileId, FileIdRequest::kFileIdFieldNumber, "01234567-89AB-CDEF-0123-456789ABCDEF");
+		TProtocolBuffer admitted;
+		const auto response = RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 143,
+			ProtocolRequest::kRequestModelFingerprintFieldNumber, fileId), admitted, dependencies);
+		Require(response.m_success && response.m_requestId == 143 &&
+			response.m_resultField == c_boolResultField && !response.m_boolResult,
+			"an unavailable importer must refuse generation rather than report a ready image");
+		TProtocolBuffer queried;
+		const auto status = RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 144,
+			ProtocolRequest::kGetModelFingerprintStatusFieldNumber, fileId), queried, dependencies);
+		int32_t value = -1;
+		Require(status.m_success && status.m_requestId == 144 &&
+			status.m_resultField == ProtocolResponse::kModelFingerprintStatusResultFieldNumber &&
+			TryDecodeInt32Result(reinterpret_cast<const uint8_t*>(status.m_resultPayload.data()), status.m_resultPayload.size(), value) &&
+			value == MODEL_FINGERPRINT_STATUS_UNAVAILABLE,
+			"status queries must distinguish an absent request/importer from pending or ready output");
 	}
 
 	void TestEmbeddedNullIsRejected()
@@ -2480,6 +2514,7 @@ int main()
 		TestEditorStatsModeWireContract();
 		TestEditorRenderModeWireContract();
 		TestAudioPreviewWireContract();
+		TestModelFingerprintProtocol();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();
 		TestGetExitCodeRoundTripAndFree();

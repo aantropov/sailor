@@ -62,11 +62,39 @@ sealed class AssetFingerprintService(EngineService engineService)
 
         if (asset is ModelFile model)
         {
-            await model.LoadDependentResources();
+            await model.LoadDependentResources(cancellationToken);
             return model.Fingerprint;
         }
 
         return TryGetCachedPreview(asset);
+    }
+
+    public async Task<ImageSource?> LoadModelPreviewAsync(
+        ModelFile model,
+        CancellationToken cancellationToken = default)
+    {
+        var path = GetFingerprintPath(model.FileId);
+        if (path is null)
+            return null;
+
+        try
+        {
+            if (await engineService.GenerateModelFingerprintAsync(model.FileId, cancellationToken))
+            {
+                var bytes = await File.ReadAllBytesAsync(path, cancellationToken);
+                // A new source avoids reusing MAUI's file cache after atomic replacement.
+                return ImageSource.FromStream(() => new MemoryStream(bytes, writable: false));
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Could not generate model fingerprint for {model.FileId}: {exception.Message}");
+        }
+        return TryGetCachedPreview(model);
     }
 
     public async Task<ImageSource?> LoadTexturePreviewAsync(
