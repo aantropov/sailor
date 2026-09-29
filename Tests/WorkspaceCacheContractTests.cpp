@@ -456,6 +456,30 @@ namespace
 #endif
 	}
 
+	void TestReplacementWhileTargetIsOpen()
+	{
+#if defined(_WIN32)
+		TempDirectory directory("open-target");
+		const auto target = directory.Path("replace.bin");
+		std::string diagnostic;
+		Require(AtomicWriteFile(target, "previous payload", diagnostic) == EAtomicWriteResult::Synced,
+			"the open-target fixture must initialize");
+		const HANDLE reader = CreateFileW(target.c_str(), GENERIC_READ, FILE_SHARE_READ,
+			nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		Require(reader != INVALID_HANDLE_VALUE, "the fixture must hold a reader that denies replacement");
+		const auto result = AtomicWriteFile(target, "replacement payload", diagnostic);
+		CloseHandle(reader);
+		Require(result == EAtomicWriteResult::NotPublished && !diagnostic.empty() &&
+			ReadText(target) == "previous payload",
+			"a sharing conflict must leave the previous target intact and report failed publication");
+		RequireNoTemporaryFiles(directory.Get());
+		Require(AtomicWriteFile(target, "replacement payload", diagnostic) == EAtomicWriteResult::Synced &&
+			ReadText(target) == "replacement payload",
+			"replacement must succeed once the conflicting reader is closed");
+		RequireNoTemporaryFiles(directory.Get());
+#endif
+	}
+
 	void TestConcurrentPublication()
 	{
 		TempDirectory directory("concurrent");
@@ -502,6 +526,7 @@ namespace
 		std::string readerError;
 		std::array<std::string, 4> writerErrors;
 		std::array<uint32_t, 4> completedWrites{};
+		std::array<uint32_t, 4> rejectedWrites{};
 		std::latch readerStarted(1);
 		std::jthread reader([&](std::stop_token stop)
 		{
@@ -543,7 +568,16 @@ namespace
 				for (int attempt = 0; attempt < 8; ++attempt)
 				{
 					std::string writeDiagnostic;
-					if (AtomicWriteFile(target, payloads[i], writeDiagnostic) != EAtomicWriteResult::Synced)
+					const auto result = AtomicWriteFile(target, payloads[i], writeDiagnostic);
+#if defined(_WIN32)
+					// MoveFileEx may reject replacement while another reader/rename holds the target.
+					if (result == EAtomicWriteResult::NotPublished && !writeDiagnostic.empty())
+					{
+						++rejectedWrites[i];
+						continue;
+					}
+#endif
+					if (result != EAtomicWriteResult::Synced)
 					{
 						valid = false;
 						if (writerErrors[i].empty())
@@ -569,13 +603,20 @@ namespace
 		for (size_t i = 0; i < writers.size(); ++i)
 		{
 			details += "; writer" + std::to_string(i) + " completed=" + std::to_string(completedWrites[i]) +
-				" error=" + writerErrors[i];
+				" rejected=" + std::to_string(rejectedWrites[i]) + " error=" + writerErrors[i];
 		}
 		Require(valid && reads > 0, "concurrent readers must see only complete old or new payloads:" + details);
 		const auto final = ReadText(target);
 		Require(std::find(payloads.begin(), payloads.end(), final) != payloads.end(),
 			"the last replacement must be a complete writer payload");
 		RequireNoTemporaryFiles(directory.Get());
+		for (const auto& payload : payloads)
+		{
+			Require(AtomicWriteFile(target, payload, diagnostic) == EAtomicWriteResult::Synced && ReadText(target) == payload,
+				"every writer must be able to publish after contention ends: " + diagnostic);
+		}
+		RequireNoTemporaryFiles(directory.Get());
+		std::cout << "Concurrent publication:" << details << "; uncontended replacements passed\n";
 	}
 
 }
@@ -591,6 +632,7 @@ int main()
 		TestCorruptEnvelopes();
 		TestAtomicReplacementAndInjectedFailure();
 		TestPostPublishResult();
+		TestReplacementWhileTargetIsOpen();
 		TestConcurrentPublication();
 		std::cout << "[PASS] Workspace cache contract" << std::endl;
 		return 0;
