@@ -14,6 +14,7 @@
 #include <cctype>
 #include <filesystem>
 #include <sstream>
+#include <utility>
 
 using namespace Sailor;
 
@@ -409,11 +410,23 @@ bool AssetCache::WriteCacheLocked(std::string& outDiagnostic) noexcept
 		return false;
 	}
 
-	return Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
+	const bool bSaved = Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
 		GetConfiguredAssetCacheFilepath(),
 		envelope,
 		outDiagnostic));
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+	m_manifestWriteCount += bSaved;
+#endif
+	return bSaved;
 }
+
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+uint64_t AssetCache::TakeManifestWriteCountForTests()
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	return std::exchange(m_manifestWriteCount, 0);
+}
+#endif
 
 std::string AssetCache::GetConfiguredAssetCacheFilepath() const
 {

@@ -41,6 +41,10 @@ namespace Sailor
 		SAILOR_API std::string GetLastSaveDiagnostic() const;
 		SAILOR_API bool IsDirty() const;
 
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		SAILOR_API uint64_t TakeManifestWriteCountForTests();
+#endif
+
 	protected:
 
 		class AssetCacheData final : IYamlSerializable
@@ -138,6 +142,10 @@ namespace Sailor
 		bool m_bPreserveStorageAfterLoadFailure = false;
 		Workspace::WorkspaceCacheLoadResult m_lastLoadResult{};
 		std::string m_lastSaveDiagnostic;
+
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		uint64_t m_manifestWriteCount = 0;
+#endif
 
 		friend class AssetRegistry;
 	};

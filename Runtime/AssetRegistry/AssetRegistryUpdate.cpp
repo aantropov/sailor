@@ -141,7 +141,8 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId)
 		}
 	}
 
-	const bool bCacheSaved = !bReloadedAny || m_assetCache.SaveCache();
+	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+	const bool bCacheSaved = !bReloadedAny || m_bCollectScanProcessingTasks || m_assetCache.SaveCache();
 	return bSucceeded && bCacheSaved;
 }
 

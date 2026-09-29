@@ -230,6 +230,10 @@ namespace Sailor
 			const Tasks::TaskPtr<bool>& processingTask);
 		SAILOR_API bool CompleteScanProcessing();
 
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		uint64_t TakeManifestWritesForTests() { return m_assetCache.TakeManifestWriteCountForTests(); }
+#endif
+
 		template<typename T>
 		TObjectPtr<T> LoadAssetFromFile(const FileId& id, bool bImmediate = true)
 		{
@@ -251,6 +255,9 @@ namespace Sailor
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
 		bool ScanContentFolderLazy();
+		bool BeginScanProcessing(const TVector<FileId>& changedAssets);
+		void FinishScanProcessing();
+		bool CommitScanProcessing();
 		AssetInfoPtr MaterializeLazyAssetInfo(FileId uid) const;
 		void GetLazyAssetInfoIds(
 			const std::string& assetInfoType,
@@ -295,10 +302,12 @@ namespace Sailor
 			std::string m_metadataFilename;
 			std::string m_assetInfoType;
 			bool m_bRejected = false;
+			FileRevision m_completedMetadataRevision{};
 		};
 		std::mutex m_assetProcessingMutex;
 		TMap<FileId, AssetProcessingState> m_assetProcessingStates;
 		TVector<Tasks::TaskPtr<bool>> m_scanProcessingTasks;
+		TSet<FileId> m_scanInvalidatedAssets;
 		bool m_bCollectScanProcessingTasks = false;
 		bool m_bScanProcessingActive = false;
 		bool m_bScanProcessingFailed = false;

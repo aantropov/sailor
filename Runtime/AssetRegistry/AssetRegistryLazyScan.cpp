@@ -18,8 +18,8 @@ bool AssetRegistry::ScanContentFolderLazy()
 	{
 		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 		m_scanProcessingTasks.Clear();
-		m_bCollectScanProcessingTasks = true;
-		m_bScanProcessingActive = true;
+		m_bCollectScanProcessingTasks = false;
+		m_bScanProcessingActive = false;
 		m_bScanProcessingFailed = false;
 	}
 
@@ -243,6 +243,10 @@ bool AssetRegistry::ScanContentFolderLazy()
 		}
 	}
 
+	if (!BeginScanProcessing(expiredAssetIds))
+	{
+		return false;
+	}
 	bool bSucceeded = true;
 	TSet<std::string> handledEffectiveContentChanges;
 	for (const FileId& expiredAssetId : expiredAssetIds)
@@ -406,10 +410,6 @@ bool AssetRegistry::ScanContentFolderLazy()
 		}
 	}
 	m_assetCache.Prune(liveAssetIds);
-	m_assetCache.SaveCache();
-	{
-		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-		m_bCollectScanProcessingTasks = false;
-	}
+	FinishScanProcessing();
 	return bSucceeded;
 }

@@ -412,6 +412,31 @@ void main() {
 		requirePreviousStages();
 		Require(reloadInclude(), "repaired shader batch must recover from a failed completion commit");
 		std::cout << "Shared include reload: invalidation, compile, commit failures and last-good recovery passed\n";
+
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		Require(registry->ScanContentFolder(), "seed the complete registry scan before measuring reload writes");
+		Drain();
+		Require(registry->CompleteScanProcessing(), "initial native scan must finish its acknowledgements");
+		rememberStages();
+		for (size_t i = 0; i < 3; ++i)
+		{
+			const auto path = workspace / "Content" / ("BatchReload" + std::to_string(i) + ".shader");
+			std::filesystem::last_write_time(path, std::filesystem::last_write_time(path) + std::chrono::seconds(2));
+		}
+		registry->TakeManifestWritesForTests();
+		Require(registry->ScanContentFolder(), "changed native shaders must publish the next registry generation");
+		Drain();
+		Require(registry->CompleteScanProcessing(), "native scan must join shader acknowledgements before committing");
+		const uint64_t assetWrites = registry->TakeManifestWritesForTests();
+		std::cout << "Asset registry scan: " << assetWrites << " manifest writes for 3 changed native shaders of 6\n";
+		Require(assetWrites == 2, "native shader scan must use two asset-registry checkpoints");
+		for (size_t i = 0; i < ids.size(); ++i)
+		{
+			Require(shaders[i]->IsReady() && !registry->IsAssetExpired(registry->GetAssetInfoPtr(ids[i])),
+				"completed native shader results must have ready RHI stages and acknowledged asset revisions");
+			Require((ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0) != generations[i]) == (i < 3),
+				"the native scan must only recompile changed shader fixtures");
+		}
 	}
 
 	class HoldTextureDecode

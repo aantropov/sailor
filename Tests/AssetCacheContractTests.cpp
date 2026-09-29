@@ -269,6 +269,8 @@ namespace
 			return m_testValue;
 		}
 
+		void SetPendingExpiration(bool bExpired) { m_bPendingWasExpired = bExpired; }
+
 	private:
 		IAssetInfoHandler* m_handler = nullptr;
 		int32_t m_testValue = 0;
@@ -281,6 +283,21 @@ namespace
 		{
 			outDefaultYaml = YAML::Node(YAML::NodeType::Map);
 		}
+
+		AssetInfoPtr LoadAssetInfo(const std::string& path, const std::string& virtualPath,
+			EAssetMountKind kind, bool bWritable, bool bNotify, bool bCache) const override
+		{
+			auto* info = static_cast<TargetedUpdateAssetInfo*>(
+				IAssetInfoHandler::LoadAssetInfo(path, virtualPath, kind, bWritable, bNotify, bCache));
+			if (info != nullptr && m_registry != nullptr)
+			{
+				// Standalone registry fixtures do not install an App singleton.
+				info->SetPendingExpiration(m_registry->IsAssetExpired(info));
+			}
+			return info;
+		}
+
+		AssetRegistry* m_registry = nullptr;
 
 	protected:
 		AssetInfoPtr CreateAssetInfo() const override
@@ -816,6 +833,226 @@ namespace
 		Require(
 			registry.RegisterAssetInfoHandler(extensions, &handler),
 			"the targeted update handler should register for raw assets");
+	}
+
+	void TestScanBatchesProcessingCheckpoints(bool bLazy, bool bAsync)
+	{
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory(bLazy ? "lazy-processing-batch" : "eager-processing-batch");
+		const auto context = CreateWorkspaceContext(directory);
+		std::vector<FileId> ids;
+		std::vector<std::filesystem::path> paths;
+		for (uint32_t i = 0; i < 8; ++i)
+		{
+			ids.push_back(MakeFileId("{SCAN-BATCH-" + std::to_string(i) + "}"));
+			paths.push_back(context.GetContent() / ("Ship" + std::to_string(i) + ".raw"));
+			WriteFile(paths.back(), "source-v1");
+			WriteFile(paths.back().string() + ".asset",
+				"fileId: '" + ids.back().ToString() + "'\nfilename: " +
+				paths.back().filename().string() + "\ntestValue: 1\n");
+		}
+		TargetedUpdateAssetInfoHandler handler;
+		{
+			AssetRegistry seed(context);
+			RegisterTargetedUpdateHandler(seed, handler);
+			Require(seed.ScanContentFolder() && seed.CompleteScanProcessing(), "seed all scan watermarks");
+		}
+		for (uint32_t i = 0; i < 3; ++i)
+		{
+			RewriteFileWithNewRevision(paths[i], "source-v2");
+		}
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
+		AssetRegistry registry(context, bAsync ? &scheduler : nullptr);
+		handler.m_registry = &registry;
+		RegisterTargetedUpdateHandler(registry, handler);
+		RecordingTargetedUpdateListener listener;
+		uint32_t processed = 0;
+		bool bRetryCheckpointVisible = true;
+		listener.m_onUpdate = [&](AssetInfoPtr info, bool bExpired)
+		{
+			if (!bExpired)
+			{
+				return;
+			}
+			++processed;
+			AssetCache restarted;
+			restarted.Initialize(context);
+			for (uint32_t i = 0; i < ids.size(); ++i)
+			{
+				bRetryCheckpointVisible &= restarted.Contains(ids[i]) == (i >= 3);
+			}
+			auto token = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(token), "changed scan asset should start processing");
+			if (processed == 1)
+			{
+				const auto obsolete = token;
+				token = registry.BeginAssetProcessing(info);
+				registry.CompleteAssetProcessing(obsolete, true);
+			}
+			if (bAsync)
+			{
+				auto acknowledge = Tasks::CreateTask<bool>(scheduler, "Acknowledge scan fixture", [&, token]()
+				{
+					registry.CompleteAssetProcessing(token, true);
+					return true;
+				});
+				registry.TrackScanProcessingTask(acknowledge);
+				acknowledge->Run();
+			}
+			else
+			{
+				registry.CompleteAssetProcessing(token, true);
+			}
+		};
+		handler.Subscribe(&listener);
+		registry.TakeManifestWritesForTests();
+		Require(registry.ScanContentFolder(), "scan batch should publish its registry generation");
+		uint64_t writes = registry.TakeManifestWritesForTests();
+		if (bAsync)
+		{
+			Require(writes == 1 && !registry.CompleteScanProcessing(), "unfinished scan must retain its retry checkpoint");
+			Tasks::ITaskPtr task;
+			while (scheduler.TryFetchNextAvailiableTask(task, EThreadType::Worker))
+			{
+				task->Execute();
+			}
+			Require(scheduler.GetNumTasks(EThreadType::Worker) == 0, "acknowledgements must release the scan commit task");
+			writes += registry.TakeManifestWritesForTests();
+		}
+		Require(writes == 2, "three changed assets require two scan checkpoints, got " + std::to_string(writes));
+		Require(processed == 3, "only the changed assets should need processing");
+		Require(bRetryCheckpointVisible, "restart during any callback must retry every unfinished asset only");
+		AssetCache restarted;
+		restarted.Initialize(context);
+		for (const FileId& id : ids)
+		{
+			Require(restarted.Contains(id), "completed scan results must survive restart");
+		}
+		Require(registry.CompleteScanProcessing(), "scan completion should observe the already committed result");
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "unchanged scan should succeed");
+		Require(registry.TakeManifestWritesForTests() == 0 && processed == 3, "unchanged scan must not rewrite the manifest");
+		for (uint32_t i = 0; i < 3; ++i)
+		{
+			RewriteFileWithNewRevision(paths[i], "source-v3");
+		}
+		Require(registry.ScanContentFolder(), "repeat the batch with already loaded metadata");
+		if (bAsync)
+		{
+			Tasks::ITaskPtr task;
+			while (scheduler.TryFetchNextAvailiableTask(task, EThreadType::Worker))
+			{
+				task->Execute();
+			}
+		}
+		Require(registry.CompleteScanProcessing() && registry.TakeManifestWritesForTests() == 2 &&
+			processed == 6 && bRetryCheckpointVisible, "loaded assets must use the same two scan checkpoints");
+		handler.Unsubscribe(&listener);
+	}
+
+	void TestCompletedScanRevisionMustStillMatch(bool bLazy, bool bChangeMetadata)
+	{
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory("completed-scan-revision");
+		const auto context = CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(context);
+		TargetedUpdateAssetInfoHandler handler;
+		AssetRegistry registry(context);
+		handler.m_registry = &registry;
+		RegisterTargetedUpdateHandler(registry, handler);
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "seed the revision fixture");
+		RewriteFileWithNewRevision(context.GetContent() / "Retry.raw", "changed-source");
+		RecordingAssetListener listener;
+		bool bChangeAfterCompletion = true;
+		listener.m_onExpiredUpdate = [&](AssetInfoPtr info)
+		{
+			const auto token = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(token), "revision fixture should start processing");
+			registry.CompleteAssetProcessing(token, true);
+			if (bChangeAfterCompletion)
+			{
+				bChangeAfterCompletion = false;
+				const auto path = bChangeMetadata ? info->GetMetaFilepath() : info->GetAssetFilepath();
+				RewriteFileWithNewRevision(path, ReadFile(path) + "\n");
+			}
+		};
+		handler.Subscribe(&listener);
+		registry.ScanContentFolder();
+		Require(!registry.CompleteScanProcessing(),
+			"a revision changed after processing but before the checkpoint must fail completion");
+		AssetCache restarted;
+		restarted.Initialize(context);
+		Require(!restarted.Contains(MakeFileId("{ASSET-CACHE-IMPORT-CONTRACT}")),
+			"the changed result must remain unacknowledged after restart");
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "the newer revision must be retryable");
+		handler.Unsubscribe(&listener);
+	}
+
+	void TestScanCheckpointFailureCanBeRetried(bool bLazy, bool bFailBeforeWork)
+	{
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory("scan-checkpoint-failure");
+		const auto context = CreateWorkspaceContext(directory);
+		WriteTargetedUpdateFixture(context);
+		TargetedUpdateAssetInfoHandler handler;
+		{
+			AssetRegistry seed(context);
+			RegisterTargetedUpdateHandler(seed, handler);
+			Require(seed.ScanContentFolder() && seed.CompleteScanProcessing(), "seed the failed scan fixture");
+		}
+		RewriteFileWithNewRevision(context.GetContent() / "Shared.raw", "changed source");
+		const auto manifest = context.GetCache() / "AssetCache.yaml";
+		const auto saved = directory.Path("saved-manifest.yaml");
+		const auto marker = manifest / "keep";
+		auto blockManifest = [&]()
+		{
+			std::filesystem::rename(manifest, saved);
+			WriteFile(marker, "fixture-owned blocker");
+		};
+		AssetRegistry registry(context);
+		handler.m_registry = &registry;
+		RegisterTargetedUpdateHandler(registry, handler);
+		RecordingTargetedUpdateListener listener;
+		uint32_t processed = 0;
+		bool bBlockCompletion = !bFailBeforeWork;
+		listener.m_onUpdate = [&](AssetInfoPtr info, bool bExpired)
+		{
+			if (!bExpired)
+			{
+				return;
+			}
+			++processed;
+			const auto token = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(token), "processing requires a persisted retry checkpoint");
+			registry.CompleteAssetProcessing(token, true);
+			if (bBlockCompletion)
+			{
+				bBlockCompletion = false;
+				blockManifest();
+			}
+		};
+		handler.Subscribe(&listener);
+		if (bFailBeforeWork)
+		{
+			blockManifest();
+		}
+		Require(registry.ScanContentFolder() == !bFailBeforeWork, "only the pre-work failure should reject scan publication");
+		Require(!registry.CompleteScanProcessing(), "either checkpoint failure must fail the scan result");
+		Require(processed == (bFailBeforeWork ? 0u : 2u), "failed invalidation must not start any processing");
+		Require(ReadFile(marker) == "fixture-owned blocker", "cache failure must preserve the blocking file");
+		Require(std::filesystem::remove(marker) && std::filesystem::remove(manifest), "remove only fixture-owned blockers");
+		std::filesystem::rename(saved, manifest);
+		AssetCache restarted;
+		restarted.Initialize(context);
+		for (const char* id : { "{TARGETED-UPDATE-PRIMARY}", "{TARGETED-UPDATE-SECONDARY}" })
+		{
+			Require(restarted.Contains(MakeFileId(id)) == bFailBeforeWork,
+				"failed completion must retain the pre-work retry checkpoint for both assets");
+		}
+		const uint32_t beforeRetry = processed;
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "checkpoint failure must be retryable");
+		Require(processed == beforeRetry + 2, "retry must process both unacknowledged assets");
+		handler.Unsubscribe(&listener);
 	}
 
 	void TestLazyScanDefersUnchangedMetadataMaterialization()
@@ -2380,6 +2617,15 @@ int main()
 		TestEmptyPayloadRoundTrip();
 		TestPreV1PayloadIsRejected();
 		TestV2EnvelopeIsResetInsteadOfMigrated();
+		for (bool bLazy : { false, true })
+		{
+			TestScanBatchesProcessingCheckpoints(bLazy, false);
+			TestScanBatchesProcessingCheckpoints(bLazy, true);
+			TestScanCheckpointFailureCanBeRetried(bLazy, true);
+			TestScanCheckpointFailureCanBeRetried(bLazy, false);
+			TestCompletedScanRevisionMustStillMatch(bLazy, false);
+			TestCompletedScanRevisionMustStillMatch(bLazy, true);
+		}
 		TestLazyScanDefersUnchangedMetadataMaterialization();
 		TestLazyScanLoadsOnlyNewSecondaryMetadata();
 		TestScanCanonicalizesUuidMetadataIdentity();

@@ -475,6 +475,20 @@ bool AssetRegistry::ScanContentFolder()
 		return false;
 	}
 
+	TVector<FileId> changedAssets;
+	for (const PendingAssetNotification& pending : pendingNotifications)
+	{
+		if (pending.m_bImported || pending.m_assetInfo->m_bPendingWasExpired)
+		{
+			changedAssets.Add(pending.m_assetInfo->GetFileId());
+		}
+	}
+	if (!BeginScanProcessing(changedAssets))
+	{
+		rollbackStaging();
+		return false;
+	}
+
 	TMap<FileId, AssetInfoPtr> previousAssetInfos = std::move(m_loadedAssetInfo);
 	m_loadedAssetInfo = std::move(stagedAssetInfos);
 	m_fileIds = std::move(stagedFileIds);
@@ -482,11 +496,6 @@ bool AssetRegistry::ScanContentFolder()
 	m_contentMounts = discovery.m_mounts;
 	m_contentFileWinners = std::move(stagedContentWinners);
 	DeleteAssetInfos(previousAssetInfos);
-	{
-		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-		m_bCollectScanProcessingTasks = true;
-		m_bScanProcessingActive = true;
-	}
 	// Listener callbacks can change a source. Start a fresh commit snapshot so
 	// cache acknowledgements still inspect each shared source once and only record
 	// the post-callback revision when it matches the imported revision.
@@ -548,6 +557,6 @@ bool AssetRegistry::ScanContentFolder()
 		}
 	}
 	m_assetCache.Prune(liveAssetIds);
-	m_assetCache.SaveCache();
+	FinishScanProcessing();
 	return true;
 }

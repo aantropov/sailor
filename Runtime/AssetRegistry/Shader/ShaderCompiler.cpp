@@ -71,13 +71,14 @@ namespace
 		{
 			return;
 		}
-		assetRegistry->TrackScanProcessingTask(processingTask);
 		if (!token)
 		{
+			assetRegistry->TrackScanProcessingTask(processingTask);
 			return;
 		}
 		if (!processingTask)
 		{
+			assetRegistry->TrackScanProcessingTask(processingTask);
 			assetRegistry->CompleteAssetProcessing(token, false);
 			return;
 		}
@@ -96,6 +97,7 @@ namespace
 		// Join provides the synchronization boundary before GetResult(). Using a
 		// continuation here can race Task::Then's eager result handoff.
 		acknowledgementTask->Join(processingTask);
+		assetRegistry->TrackScanProcessingTask(acknowledgementTask);
 		acknowledgementTask->Run();
 	}
 }
