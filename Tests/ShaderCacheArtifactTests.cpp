@@ -723,6 +723,65 @@ namespace
 			"unknown engine metadata should not invalidate the shader cache: " + diagnostic);
 	}
 
+	void TestBatchInvalidationAndRestart()
+	{
+		TempDirectory directory;
+		const auto cacheRoot = directory.Path("Cache");
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot), "batch cache fixture must initialize");
+		std::array<FileId, 8> ids;
+		std::array<std::string, 8> generations;
+		for (size_t i = 0; i < ids.size(); ++i)
+		{
+			ids[i] = FileId::CreateNewFileId();
+			Require(PublishComplete(cache, ids[i], 0, 400 + static_cast<uint32_t>(i) * 10),
+				"batch fixture must publish complete shader generations");
+			generations[i] = ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0);
+		}
+		Require(cache.SaveCache(), "batch fixtures must commit before invalidation");
+		const TVector<FileId> changed{ ids[0], ids[2], ids[5] };
+		ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		Require(cache.Invalidate(changed) && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 1,
+			"one batch must invalidate every changed shader in one manifest replacement");
+		Require(cache.Invalidate(changed) && cache.Invalidate(changed) &&
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0,
+			"repeating a durable invalidation must not rewrite unchanged revisions");
+		{
+			ShaderCache restarted(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(restarted, cacheRoot), "restart cache must use the same storage");
+			restarted.LoadCache();
+			for (size_t i = 0; i < ids.size(); ++i)
+			{
+				Require(restarted.IsExpired(ids[i], 0) == changed.Contains(ids[i]),
+					"restart between invalidation and completion must retry only unfinished shaders");
+				Require(ShaderCacheTestAccess::GetGeneration(restarted, ids[i], 0) == generations[i],
+					"batch invalidation must preserve the last complete artifacts");
+			}
+		}
+		for (const auto& id : changed)
+		{
+			Require(PublishComplete(cache, id, 0, 500), "each changed shader must accept its replacement");
+		}
+		Require(cache.SaveCache() && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 1,
+			"the completed batch must publish all replacements in one manifest");
+		const auto committed = ReadText(ShaderCacheTestAccess::GetCachePath(cache));
+		ShaderCacheTestAccess::FailNextSaveBeforeReplace(cache);
+		Require(!cache.Invalidate(changed) && cache.IsDirty() &&
+			ReadText(ShaderCacheTestAccess::GetCachePath(cache)) == committed,
+			"a rejected invalidation must retain the committed manifest and request retry");
+		Require(cache.Invalidate(changed) && !cache.IsDirty() &&
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 1,
+			"already invalidated in-memory entries must still retry their failed checkpoint");
+		ShaderCache restarted(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(restarted, cacheRoot), "retried cache must reopen");
+		restarted.LoadCache();
+		for (const auto& id : ids)
+		{
+			Require(restarted.IsExpired(id, 0) == changed.Contains(id),
+				"a successfully retried checkpoint must survive a fresh cache instance");
+		}
+	}
+
 	void TestWarmPermutationReadsEachArtifactOnce()
 	{
 		TempDirectory directory;
@@ -2319,6 +2378,7 @@ int main()
 		TestOwnedArtifactContainment();
 		TestDebugArtifactsAreRequired();
 		TestPayloadIgnoresUnknownFields();
+		TestBatchInvalidationAndRestart();
 		TestWarmPermutationReadsEachArtifactOnce();
 		TestReloadKeepsHealthyShaderPermutations();
 		TestPartialRecoveryRetriesFailedManifestCommit();

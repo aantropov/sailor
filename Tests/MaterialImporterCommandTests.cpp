@@ -157,11 +157,13 @@ namespace
 		Require(value == expected, "GPU material color must match authored values");
 	}
 
-	FileId WriteShader(const std::filesystem::path& workspace, const char* name, bool valid = true, bool compute = false)
+	FileId WriteShader(const std::filesystem::path& workspace, const char* name, bool valid = true, bool compute = false,
+		const char* include = nullptr)
 	{
 		const auto path = workspace / "Content" / (std::string(name) + ".shader");
 		YAML::Node shader;
 		shader["glslCommon"] = "#version 450\n";
+		if (include) shader["includes"].push_back(include);
 		if (compute)
 		{
 			shader["glslCompute"] = valid ? "layout(local_size_x = 1) in; void main() {}" : "this is not valid GLSL";
@@ -296,9 +298,120 @@ void main() {
 			Require(App::UpdateAsset(uid.ToString().c_str()), "a repaired shader source must reload");
 			Drain();
 			Require(update() && shader->IsReady(), "RHI updates must recover after a failed source edit");
+			if (!compute)
+			{
+				const auto retainedGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
+				ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+				auto all = compiler->CompileAllPermutations(uid);
+				Require(static_cast<bool>(all), "remaining graphics permutations must schedule compilation");
+				all->Wait();
+				Drain();
+				Require(all->GetResult() && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 1 &&
+					ShaderCacheTestAccess::GetGeneration(cache, uid, 0) == retainedGeneration,
+					"parallel compilation must commit once after every job without recompiling a warm permutation");
+				for (uint32_t permutation = 0; permutation < 4; ++permutation)
+				{
+					Require(!cache.IsExpired(uid, permutation), "all requested permutations must survive the shared commit");
+				}
+			}
 			std::cout << "Warm " << (compute ? "compute" : "graphics") << " RHI shader: " << reads
 				<< " artifact reads; repair, reuse, deferred cleanup, sync retry and last-good preservation passed\n";
 		}
+	}
+
+	void TestSharedShaderReload(const std::filesystem::path& workspace)
+	{
+		auto* compiler = App::GetSubmodule<ShaderCompiler>();
+		auto& cache = ShaderCompilerTestAccess::GetShaderCache(*compiler);
+		const auto includePath = workspace / "Content" / "BatchReload.glsl";
+		auto writeInclude = [&](const char* source)
+		{
+			std::ofstream output(includePath);
+			output << source;
+			output.close();
+			Require(static_cast<bool>(output), "shared shader include must be written");
+		};
+		writeInclude("const float SharedReloadValue = 0.125;\n");
+		Require(static_cast<bool>(App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(includePath.string())),
+			"the shared include must be registered in the active Content mount");
+		std::array<FileId, 6> ids;
+		std::array<ShaderSetPtr, 6> shaders;
+		std::array<std::string, 6> generations;
+		std::array<RHI::RHIShaderPtr, 6> stages;
+		for (size_t i = 0; i < ids.size(); ++i)
+		{
+			const auto name = "BatchReload" + std::to_string(i);
+			ids[i] = WriteShader(workspace, name.c_str(), true, true, i < 4 ? "BatchReload.glsl" : nullptr);
+			Require(compiler->LoadShader_Immediate(ids[i], shaders[i]) && shaders[i] && shaders[i]->IsReady(),
+				"shared shader fixtures must compile their regular and debug RHI stages");
+			generations[i] = ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0);
+			stages[i] = shaders[i]->GetComputeShaderRHI();
+		}
+		Drain();
+		Require(cache.SaveCache(), "the initial shared shader fixtures must commit");
+		ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		writeInclude("const float SharedReloadValue = 0.75;\n");
+		auto reload = compiler->OnEffectiveContentChanged("BatchReload.glsl");
+		Require(static_cast<bool>(reload), "a shared include edit must schedule dependent reloads");
+		reload->Wait();
+		Drain();
+		Require(reload->GetResult(), "all dependent shaders must reload successfully");
+		const auto writes = ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		std::cout << "Shared include reload: " << writes << " manifest writes for 4 changed shaders of 6\n";
+		Require(writes == 2, "one include reload must commit one invalidation and one completed shader batch");
+		for (size_t i = 0; i < ids.size(); ++i)
+		{
+			Require(shaders[i]->IsReady(), "all shaders must retain complete regular/debug stages");
+			const bool changed = ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0) != generations[i];
+			const bool replaced = shaders[i]->GetComputeShaderRHI() != stages[i];
+			Require(changed == (i < 4) && replaced == (i < 4),
+				"only dependent shaders must recompile and publish new RHI stages");
+		}
+		auto reloadInclude = [&]()
+		{
+			auto task = compiler->OnEffectiveContentChanged("BatchReload.glsl");
+			Require(static_cast<bool>(task), "shared include reload must return its completion task");
+			task->Wait();
+			Drain();
+			return task->GetResult();
+		};
+		auto rememberStages = [&]()
+		{
+			for (size_t i = 0; i < ids.size(); ++i)
+			{
+				generations[i] = ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0);
+				stages[i] = shaders[i]->GetComputeShaderRHI();
+			}
+		};
+		auto requirePreviousStages = [&]()
+		{
+			for (size_t i = 0; i < ids.size(); ++i)
+			{
+				Require(shaders[i]->IsReady() && shaders[i]->GetComputeShaderRHI() == stages[i],
+					"a failed batch must retain all last-good RHI stages");
+			}
+		};
+		rememberStages();
+		writeInclude("const float SharedReloadValue = 0.5;\n");
+		ShaderCacheTestAccess::FailNextSaveBeforeReplace(cache);
+		Require(!reloadInclude() && cache.IsDirty(), "failed invalidation must abort shader reload and retain retry state");
+		requirePreviousStages();
+		for (size_t i = 0; i < ids.size(); ++i)
+		{
+			Require(ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0) == generations[i],
+				"compilation must not start before the invalidation checkpoint succeeds");
+		}
+		Require(reloadInclude(), "a failed invalidation must be retryable");
+		rememberStages();
+		writeInclude("this is invalid GLSL\n");
+		Require(!reloadInclude(), "failed shared include compilation must fail the batch");
+		requirePreviousStages();
+		writeInclude("const float SharedReloadValue = 0.25;\n");
+		ShaderCacheTestAccess::FailNextSaveBeforeReplace(cache);
+		Require(!reloadInclude() && cache.IsDirty(), "failed completion commit must retain persistence retry state");
+		requirePreviousStages();
+		Require(reloadInclude(), "repaired shader batch must recover from a failed completion commit");
+		std::cout << "Shared include reload: invalidation, compile, commit failures and last-good recovery passed\n";
 	}
 
 	class HoldTextureDecode
@@ -746,6 +859,7 @@ namespace Sailor::Tests
 		run("Cold ordering", [&]() { TestOrderedReload(workspace, true); });
 		run("Shader failures", [&]() { TestShaderFailures(workspace); });
 		run("Warm shader permutation", [&]() { TestWarmShaderPermutation(workspace); });
+		run("Shared shader reload", [&]() { TestSharedShaderReload(workspace); });
 		run("Layout and cold parity", [&]() { TestLayoutAndColdParity(workspace); });
 		run("Live shader edit", [&]() { TestLiveShaderEdit(workspace); });
 		run("Private instance", [&]() { TestPrivateInstance(workspace); });

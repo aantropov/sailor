@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <ctime>
-#include "Containers/ConcurrentMap.h"
+#include "Containers/Map.h"
 #include "Containers/Set.h"
 #include "AssetRegistry/FileId.h"
 #include "Core/FileRevision.h"
@@ -77,7 +77,7 @@ namespace Sailor
 					std::string& outDiagnostic) const;
 			};
 
-			TConcurrentMap<FileId, AssetCache::AssetCacheData::Entry> m_assets{};
+			TMap<FileId, Entry> m_assets;
 
 			SAILOR_API virtual YAML::Node Serialize() const override;
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;

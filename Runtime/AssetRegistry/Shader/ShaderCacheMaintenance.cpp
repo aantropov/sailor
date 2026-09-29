@@ -163,41 +163,42 @@ void ShaderCache::Remove(const FileId& uid)
 
 void ShaderCache::Invalidate(const FileId& uid)
 {
+	Invalidate(TVector<FileId>{ uid });
+}
+
+bool ShaderCache::Invalidate(const TVector<FileId>& uids)
+{
 	SAILOR_PROFILE_FUNCTION();
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	bool bInvalidated = false;
-	if (m_cache.m_entries.ContainsKey(uid))
+	for (const FileId& uid : uids)
 	{
-		for (ShaderCacheData::Entry& entry : m_cache.m_entries[uid])
+		if (auto entries = m_cache.m_entries.Find(uid); entries != m_cache.m_entries.end())
 		{
-			// Keep the last durable generation as a fallback while forcing an exact
-			// dependency comparison to reject it until a successful replacement exists.
-			entry.m_timestamp = 0;
-			entry.m_sourceFingerprint = 0;
-			bInvalidated = true;
+			for (ShaderCacheData::Entry& entry : entries.Value())
+			{
+				// Retain the last generation until its replacement has been committed.
+				m_bIsDirty |= entry.m_timestamp != 0 || entry.m_sourceFingerprint != 0;
+				entry.m_timestamp = 0;
+				entry.m_sourceFingerprint = 0;
+			}
 		}
-	}
-	for (QuarantinedEntry& entry : m_quarantinedEntries)
-	{
-		if (entry.m_fileId == uid)
+		for (QuarantinedEntry& entry : m_quarantinedEntries)
 		{
-			entry.m_timestamp = 0;
-			entry.m_sourceFingerprint = 0;
+			if (entry.m_fileId == uid)
+			{
+				entry.m_timestamp = 0;
+				entry.m_sourceFingerprint = 0;
+			}
 		}
-	}
-	if (!bInvalidated)
-	{
-		return;
 	}
 
-	m_bIsDirty = true;
 	if (!SaveCacheLocked(false))
 	{
-		SAILOR_LOG_ERROR("Shader cache invalidation could not be persisted for %s: %s",
-			uid.ToString().c_str(),
-			m_lastSaveDiagnostic.c_str());
+		SAILOR_LOG_ERROR("Shader cache invalidation could not be persisted: %s", m_lastSaveDiagnostic.c_str());
+		return false;
 	}
+	return true;
 }
 
 bool ShaderCache::ClearExpiredLocked(std::string& outDiagnostic)

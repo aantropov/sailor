@@ -10,7 +10,6 @@
 #include "ShaderYamlIncludeResolver.h"
 #include "RHI/Shader.h"
 #include "Core/Utils.h"
-#include <atomic>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -471,16 +470,6 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 	return bCompiledRegular && bCompiledDebug && bCachedComplete;
 }
 
-void ShaderCompiler::RecordCompileResult(
-	std::atomic_bool& aggregate,
-	bool bSucceeded) noexcept
-{
-	if (!bSucceeded)
-	{
-		aggregate.store(false, std::memory_order_release);
-	}
-}
-
 bool ShaderCompiler::SaveShaderCacheAndCombineResult(
 	ShaderCache& cache,
 	bool bCompiledSuccessfully)
@@ -604,10 +593,10 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
-		auto compileSucceeded = TSharedPtr<std::atomic_bool>::Make(true);
-		Tasks::TaskPtr<bool> saveCacheJob = Tasks::CreateTaskWithResult<bool>("Save Shader Cache", [=, this]()
+		auto compileTask = CompilePermutations(assetInfo, permutationsToCompile);
+		Tasks::TaskPtr<bool> saveCacheJob = Tasks::CreateTaskWithResult<bool>("Save Shader Cache", [this, assetInfo, compileTask]()
 			{
-				const bool bCompiled = compileSucceeded->load(std::memory_order_acquire);
+				const bool bCompiled = compileTask->GetResult();
 				SAILOR_LOG(
 					bCompiled ? "Shader compiled %s" : "Shader compilation failed %s",
 					assetInfo->GetAssetFilepath().c_str());
@@ -619,21 +608,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 				return bResult;
 			});
 
-		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
-		{
-			Tasks::TaskPtr<bool> job = Tasks::CreateTaskWithResult<bool>("Compile shader", [i, assetInfo, permutationsToCompile, compileSucceeded]()
-				{
-					SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
-					const bool bSucceeded = App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(
-						assetInfo,
-						permutationsToCompile[i]);
-					ShaderCompiler::RecordCompileResult(*compileSucceeded, bSucceeded);
-					return bSucceeded;
-				});
-
-			saveCacheJob->Join(job);
-			scheduler->Run(job);
-		}
+		saveCacheJob->Join(compileTask);
 		scheduler->Run(saveCacheJob);
 
 		return saveCacheJob;
@@ -644,6 +619,23 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 	}
 
 	return Tasks::TaskPtr<bool>::Make(false);
+}
+
+Tasks::TaskPtr<bool> ShaderCompiler::CompilePermutations(ShaderAssetInfoPtr assetInfo,
+	const TVector<uint32_t>& permutations)
+{
+	TVector<Tasks::TaskPtr<bool>> compileTasks;
+	compileTasks.Reserve(permutations.Num());
+	for (uint32_t permutation : permutations)
+	{
+		auto task = Tasks::CreateTaskWithResult<bool>("Compile shader", [this, assetInfo, permutation]()
+			{
+				return ForceCompilePermutation(assetInfo, permutation);
+			});
+		compileTasks.Add(task);
+		task->Run();
+	}
+	return AggregateShaderReloadTasks(compileTasks);
 }
 
 TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderAssetInfo)
@@ -798,53 +790,86 @@ Tasks::TaskPtr<bool> ShaderCompiler::ReloadShader(ShaderAssetInfoPtr assetInfo)
 	{
 		return Tasks::TaskPtr<bool>::Make(false);
 	}
+	return ReloadShaders({ assetInfo });
+}
 
-	const FileId fileId = assetInfo->GetFileId();
-	SAILOR_LOG("Updated shader info: %s", assetInfo->GetAssetFilepath().c_str());
-
-	m_shaderAssetsCache.Remove(fileId);
-	m_shaderCache.Invalidate(fileId);
-
-	if (!bShouldAutoCompileAllPermutations)
+Tasks::TaskPtr<bool> ShaderCompiler::ReloadShaders(const TVector<ShaderAssetInfoPtr>& assetInfos)
+{
+	if (assetInfos.IsEmpty())
 	{
-		return Tasks::TaskPtr<bool>::Make(
-			ReloadLoadedShaderResources(assetInfo, true));
+		return Tasks::TaskPtr<bool>::Make(true);
 	}
 
-	Tasks::TaskPtr<bool> compileTask = CompileAllPermutations(assetInfo);
-	if (!compileTask)
+	TVector<FileId> ids;
+	ids.Reserve(assetInfos.Num());
+	for (ShaderAssetInfoPtr info : assetInfos)
+	{
+		ids.Add(info->GetFileId());
+		m_shaderAssetsCache.Remove(info->GetFileId());
+	}
+	if (!m_shaderCache.Invalidate(ids))
 	{
 		return Tasks::TaskPtr<bool>::Make(false);
 	}
-	if (compileTask->IsFinished())
+
+	TVector<Tasks::TaskPtr<bool>> compileTasks;
+	compileTasks.Reserve(assetInfos.Num());
+	for (ShaderAssetInfoPtr info : assetInfos)
 	{
-		return Tasks::TaskPtr<bool>::Make(
-			compileTask->GetResult() && ReloadLoadedShaderResources(assetInfo, false));
+		if (!bShouldAutoCompileAllPermutations)
+		{
+			compileTasks.Add(Tasks::TaskPtr<bool>::Make(CompileLoadedShaderPermutations(info)));
+			continue;
+		}
+		auto shader = LoadShaderAsset(info).Lock();
+		if (!shader)
+		{
+			compileTasks.Add(Tasks::TaskPtr<bool>::Make(false));
+			continue;
+		}
+		TVector<uint32_t> permutations;
+		const uint32_t count = static_cast<uint32_t>(std::pow(2, shader->GetSupportedDefines().Num()));
+		for (uint32_t permutation = 0; permutation < count; ++permutation)
+		{
+			if (m_shaderCache.IsExpired(info->GetFileId(), permutation))
+			{
+				permutations.Add(permutation);
+			}
+		}
+		compileTasks.Add(CompilePermutations(info, permutations));
 	}
 
-	Tasks::TaskPtr<bool> updateRhiTask = Tasks::CreateTaskWithResult<bool>(
-		"Update Shader RHI",
-		[this, fileId, compileTask]()
+	auto finishReload = [this, assetInfos, compileTasks]()
+	{
+		if (!m_shaderCache.SaveCache())
 		{
-			const bool bCompiled = compileTask->GetResult();
-			if (!bCompiled)
+			return false;
+		}
+		bool bSucceeded = true;
+		for (size_t i = 0; i < assetInfos.Num(); ++i)
+		{
+			if (compileTasks[i]->GetResult())
 			{
-				return false;
+				bSucceeded &= ReloadLoadedShaderResources(assetInfos[i]);
 			}
-
-			AssetRegistry* currentRegistry = App::GetSubmodule<AssetRegistry>();
-			if (currentRegistry == nullptr)
+			else
 			{
-				return false;
+				bSucceeded = false;
 			}
-
-			ShaderAssetInfoPtr currentAssetInfo =
-				currentRegistry->GetAssetInfoPtr<ShaderAssetInfoPtr>(fileId);
-			return ReloadLoadedShaderResources(currentAssetInfo, false);
-		});
-	updateRhiTask->Join(compileTask);
-	updateRhiTask->Run();
-	return updateRhiTask;
+		}
+		return bSucceeded;
+	};
+	if (!compileTasks.ContainsIf([](const Tasks::TaskPtr<bool>& task) { return !task->IsFinished(); }))
+	{
+		return Tasks::TaskPtr<bool>::Make(finishReload());
+	}
+	auto completion = Tasks::CreateTaskWithResult<bool>("Commit Shader Reload", std::move(finishReload));
+	for (const auto& task : compileTasks)
+	{
+		completion->Join(task);
+	}
+	completion->Run();
+	return completion;
 }
 
 Tasks::TaskPtr<bool> ShaderCompiler::ReloadShadersDependingOn(AssetInfoPtr includeAssetInfo)
@@ -867,7 +892,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::ReloadShadersDependingOn(
 
 	TVector<FileId> dependencyCandidates;
 	assetRegistry->GetAllAssetInfos<ShaderAssetInfo>(dependencyCandidates);
-	TVector<Tasks::TaskPtr<bool>> reloadTasks;
+	TVector<ShaderAssetInfoPtr> dependents;
 	for (const FileId& shaderId : dependencyCandidates)
 	{
 		ShaderAssetInfoPtr shaderAssetInfo =
@@ -886,9 +911,9 @@ Tasks::TaskPtr<bool> ShaderCompiler::ReloadShadersDependingOn(
 			continue;
 		}
 
-		reloadTasks.Add(ReloadShader(shaderAssetInfo));
+		dependents.Add(shaderAssetInfo);
 	}
-	return AggregateShaderReloadTasks(reloadTasks);
+	return ReloadShaders(dependents);
 }
 
 Tasks::TaskPtr<bool> ShaderCompiler::OnEffectiveContentChanged(
@@ -901,47 +926,38 @@ Tasks::TaskPtr<bool> ShaderCompiler::OnEffectiveContentChanged(
 	return Tasks::TaskPtr<bool>::Make(true);
 }
 
-bool ShaderCompiler::ReloadLoadedShaderResources(
-	ShaderAssetInfoPtr assetInfo,
-	bool bCompileBeforeRhiUpdate)
+bool ShaderCompiler::CompileLoadedShaderPermutations(ShaderAssetInfoPtr assetInfo)
 {
-	if (assetInfo == nullptr)
-	{
-		return false;
-	}
-
 	const FileId fileId = assetInfo->GetFileId();
 	auto& loadedShaders = m_loadedShaders.At_Lock(fileId);
+	TConcurrentMapEntryUnlockGuard unlockGuard(m_loadedShaders, fileId);
 	if (loadedShaders.IsEmpty())
 	{
-		m_loadedShaders.Unlock(fileId);
 		return true;
 	}
 
-	if (bCompileBeforeRhiUpdate && !LoadShaderAsset(assetInfo).Lock())
+	if (!LoadShaderAsset(assetInfo).Lock())
 	{
-		m_loadedShaders.Unlock(fileId);
 		return false;
 	}
 
-	if (bCompileBeforeRhiUpdate)
+	bool bAllCompiled = true;
+	for (const auto& loadedShader : loadedShaders)
 	{
-		bool bAllCompiled = true;
-		for (const auto& loadedShader : loadedShaders)
+		if (m_shaderCache.IsExpired(fileId, loadedShader.m_first) &&
+			!ForceCompilePermutation(assetInfo, loadedShader.m_first))
 		{
-			if (m_shaderCache.IsExpired(fileId, loadedShader.m_first) &&
-				!ForceCompilePermutation(assetInfo, loadedShader.m_first))
-			{
-				bAllCompiled = false;
-			}
-		}
-		if (!bAllCompiled || !SaveShaderCacheAndCombineResult(m_shaderCache, true))
-		{
-			m_loadedShaders.Unlock(fileId);
-			return false;
+			bAllCompiled = false;
 		}
 	}
+	return bAllCompiled;
+}
 
+bool ShaderCompiler::ReloadLoadedShaderResources(ShaderAssetInfoPtr assetInfo)
+{
+	const FileId fileId = assetInfo->GetFileId();
+	auto& loadedShaders = m_loadedShaders.At_Lock(fileId);
+	TConcurrentMapEntryUnlockGuard unlockGuard(m_loadedShaders, fileId);
 	bool bAllReloaded = true;
 	for (auto& loadedShader : loadedShaders)
 	{
@@ -959,7 +975,6 @@ bool ShaderCompiler::ReloadLoadedShaderResources(
 			bAllReloaded = false;
 		}
 	}
-	m_loadedShaders.Unlock(fileId);
 	return bAllReloaded;
 }
 
@@ -1607,12 +1622,12 @@ bool ShaderCompilerTestAccess::UpdateRHIResource(ShaderCompiler& compiler, Shade
 
 bool ShaderCompilerTestAccess::AggregateCompileResults(const bool* results, size_t count)
 {
-	std::atomic_bool aggregate = true;
+	TVector<Tasks::TaskPtr<bool>> tasks;
 	for (size_t index = 0; index < count; ++index)
 	{
-		ShaderCompiler::RecordCompileResult(aggregate, results[index]);
+		tasks.Add(Tasks::TaskPtr<bool>::Make(results[index]));
 	}
-	return aggregate.load(std::memory_order_acquire);
+	return ShaderCompiler::AggregateShaderReloadTasks(tasks)->GetResult();
 }
 
 bool ShaderCompilerTestAccess::SaveCacheAndCombineResult(

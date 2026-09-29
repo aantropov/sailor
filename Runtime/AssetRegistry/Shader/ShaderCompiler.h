@@ -1,6 +1,5 @@
 #pragma once
 #include "Core/Defines.h"
-#include <atomic>
 #include <string>
 #include "Containers/Pair.h"
 #include "Containers/Vector.h"
@@ -168,7 +167,6 @@ namespace Sailor
 
 		SAILOR_API bool UpdateRHIResource(ShaderSetPtr shader, uint32_t permutation);
 
-		static void RecordCompileResult(std::atomic_bool& aggregate, bool bSucceeded) noexcept;
 		static bool SaveShaderCacheAndCombineResult(
 			ShaderCache& cache,
 			bool bCompiledSuccessfully);
@@ -246,11 +244,12 @@ namespace Sailor
 
 		SAILOR_API void ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const;
 		Tasks::TaskPtr<bool> ReloadShader(ShaderAssetInfoPtr assetInfo);
+		Tasks::TaskPtr<bool> ReloadShaders(const TVector<ShaderAssetInfoPtr>& assetInfos);
 		Tasks::TaskPtr<bool> ReloadShadersDependingOn(AssetInfoPtr includeAssetInfo);
 		Tasks::TaskPtr<bool> ReloadShadersDependingOn(const std::string& includeVirtualPath);
-		bool ReloadLoadedShaderResources(
-			ShaderAssetInfoPtr assetInfo,
-			bool bCompileBeforeRhiUpdate);
+		Tasks::TaskPtr<bool> CompilePermutations(ShaderAssetInfoPtr assetInfo, const TVector<uint32_t>& permutations);
+		bool CompileLoadedShaderPermutations(ShaderAssetInfoPtr assetInfo);
+		bool ReloadLoadedShaderResources(ShaderAssetInfoPtr assetInfo);
 		static Tasks::TaskPtr<bool> AggregateShaderReloadTasks(
 			const TVector<Tasks::TaskPtr<bool>>& reloadTasks);
 		static bool ReadShaderSourceBinary(

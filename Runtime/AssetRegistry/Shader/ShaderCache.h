@@ -112,6 +112,7 @@ namespace Sailor
 
 		SAILOR_API void Remove(const FileId& uid);
 		SAILOR_API void Invalidate(const FileId& uid);
+		SAILOR_API bool Invalidate(const TVector<FileId>& uids);
 
 		SAILOR_API bool Contains(const FileId& uid) const;
 		SAILOR_API bool IsExpired(const FileId& uid, uint32_t permutation);

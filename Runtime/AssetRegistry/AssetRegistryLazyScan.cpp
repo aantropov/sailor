@@ -112,7 +112,7 @@ bool AssetRegistry::ScanContentFolderLazy()
 		cachedRecords.Reserve(m_assetCache.m_cache.m_assets.Num());
 		for (const auto& cached : m_assetCache.m_cache.m_assets)
 		{
-			const AssetCache::AssetCacheData::Entry& entry = cached.m_second;
+			const AssetCache::AssetCacheData::Entry& entry = *cached.m_second;
 			cachedRecords.Emplace(cached.m_first,
 				LazyAssetInfoRecord{entry.m_sourcePath,
 					entry.m_sourceRevision,
