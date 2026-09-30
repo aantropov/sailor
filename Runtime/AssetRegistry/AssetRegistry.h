@@ -176,6 +176,10 @@ namespace Sailor
 
 		SAILOR_API bool ScanContentFolder();
 		SAILOR_API bool UpdateAsset(const FileId& fileId, bool bReimport = false);
+		SAILOR_API bool UpdateAsset(const FileId& fileId,
+			TVector<AssetInfoPtr>& outAffectedAssets, bool bReimport = false);
+		// Check the same update's assets after the importer tasks have finished.
+		SAILOR_API bool CompleteAssetUpdate(const TVector<AssetInfoPtr>& affectedAssets) const;
 		SAILOR_API const FileId& GetOrLoadFile(const std::string& filepath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>

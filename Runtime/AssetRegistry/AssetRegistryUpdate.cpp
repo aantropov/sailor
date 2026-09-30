@@ -12,7 +12,15 @@ using namespace Sailor::AssetRegistryInternal;
 
 bool AssetRegistry::UpdateAsset(const FileId& fileId, bool bReimport)
 {
+	TVector<AssetInfoPtr> affectedAssets;
+	return UpdateAsset(fileId, affectedAssets, bReimport);
+}
+
+bool AssetRegistry::UpdateAsset(const FileId& fileId,
+	TVector<AssetInfoPtr>& outAffectedAssets, bool bReimport)
+{
 	SAILOR_PROFILE_FUNCTION();
+	outAffectedAssets.Clear();
 
 	AssetInfoPtr targetAssetInfo = GetAssetInfoPtr_Internal(fileId);
 	if (targetAssetInfo == nullptr)
@@ -63,7 +71,7 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId, bool bReimport)
 
 	const std::string sharedSourcePath = PathKey(targetAssetInfo->GetAssetFilepath());
 	const FileRevision initialTargetSourceRevision = targetAssetInfo->m_importedSourceRevision;
-	TVector<AssetInfoPtr> assetsToUpdate;
+	auto& assetsToUpdate = outAffectedAssets;
 	assetsToUpdate.Add(targetAssetInfo);
 	bool bSharedSourceFamilyAdded = false;
 	auto addSharedSourceFamily = [&]()
@@ -145,6 +153,18 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId, bool bReimport)
 	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 	const bool bCacheSaved = !bReloadedAny || m_bCollectScanProcessingTasks || m_assetCache.SaveCache();
 	return bSucceeded && bCacheSaved;
+}
+
+bool AssetRegistry::CompleteAssetUpdate(const TVector<AssetInfoPtr>& affectedAssets) const
+{
+	for (const AssetInfoPtr info : affectedAssets)
+	{
+		if (info->IsMetaExpired() || info->IsAssetExpired() || IsAssetExpired(info))
+		{
+			return false;
+		}
+	}
+	return !affectedAssets.IsEmpty();
 }
 
 bool AssetRegistry::CanReuseSecondaryAssetId(const FileId& fileId,

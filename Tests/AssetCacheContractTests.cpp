@@ -2410,6 +2410,77 @@ namespace
 			"the retry must publish one new processing generation");
 	}
 
+	void TestTargetedAssetUpdateCompletion()
+	{
+		TempDirectory directory("targeted-update-completion");
+		const auto context = CreateWorkspaceContext(directory);
+		WriteTargetedUpdateFixture(context);
+		AssetRegistry registry(context);
+		TargetedUpdateAssetInfoHandler handler;
+		RegisterTargetedUpdateHandler(registry, handler);
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "seed targeted completion fixture");
+
+		const FileId primaryId = MakeFileId("{TARGETED-UPDATE-PRIMARY}");
+		const FileId secondaryId = MakeFileId("{TARGETED-UPDATE-SECONDARY}");
+		const auto primary = registry.GetAssetInfoPtr(primaryId);
+		const auto secondary = registry.GetAssetInfoPtr(secondaryId);
+		TMap<FileId, AssetRegistry::AssetProcessingToken> tokens;
+		RecordingTargetedUpdateListener listener;
+		listener.m_onUpdate = [&](AssetInfoPtr info, bool expired)
+		{
+			Require(expired, "updated fixture assets must require processing");
+			tokens[info->GetFileId()] = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(tokens[info->GetFileId()]), "targeted work must capture its source revision");
+		};
+		handler.Subscribe(&listener);
+
+		TVector<AssetInfoPtr> affectedAssets;
+		RewriteFileWithNewRevision(context.GetContent() / "Shared.raw.asset",
+			"fileId: '{TARGETED-UPDATE-PRIMARY}'\nfilename: Shared.raw\ntestValue: 11\n");
+		Require(registry.UpdateAsset(primaryId, affectedAssets) && affectedAssets.Num() == 1 &&
+			affectedAssets[0] == primary && !registry.CompleteAssetUpdate(affectedAssets),
+			"accepting a metadata update must not report its pending importer work as complete");
+		registry.CompleteAssetProcessing(tokens[primaryId], false);
+		Require(!registry.CompleteAssetUpdate(affectedAssets), "a failure after acceptance must fail update completion");
+		const auto rejected = tokens[primaryId];
+		Require(registry.UpdateAsset(primaryId, affectedAssets) && tokens[primaryId].m_generation != rejected.m_generation,
+			"a rejected targeted update must start fresh importer work on retry");
+		registry.CompleteAssetProcessing(tokens[primaryId], true);
+		Require(registry.CompleteAssetUpdate(affectedAssets), "successful retry must complete the original update scope");
+
+		RewriteFileWithNewRevision(context.GetContent() / "Shared.raw", "shared-source-v2");
+		Require(registry.UpdateAsset(primaryId, affectedAssets) && affectedAssets.Num() == 2 &&
+			affectedAssets[0] == primary && affectedAssets[1] == secondary,
+			"a source update must retain both affected AssetInfos until completion");
+		registry.CompleteAssetProcessing(tokens[primaryId], true);
+		Require(!registry.IsAssetExpired(primary) && !registry.CompleteAssetUpdate(affectedAssets),
+			"finishing the primary asset must not hide pending work for its shared-source sibling");
+		registry.CompleteAssetProcessing(tokens[secondaryId], false);
+		Require(!registry.CompleteAssetUpdate(affectedAssets), "a failed sibling must fail the whole source update");
+
+		TVector<AssetInfoPtr> metadataAssets;
+		RewriteFileWithNewRevision(context.GetContent() / "Shared.raw.asset",
+			"fileId: '{TARGETED-UPDATE-PRIMARY}'\nfilename: Shared.raw\ntestValue: 12\n");
+		Require(registry.UpdateAsset(primaryId, metadataAssets) && metadataAssets.Num() == 1,
+			"a later metadata-only update must not inherit an unrelated sibling failure");
+		registry.CompleteAssetProcessing(tokens[primaryId], true);
+		Require(registry.CompleteAssetUpdate(metadataAssets) && !registry.CompleteAssetUpdate(affectedAssets),
+			"completion must use the affected assets from its own request");
+		Require(registry.UpdateAsset(secondaryId, metadataAssets), "the failed sibling must remain retryable");
+		registry.CompleteAssetProcessing(tokens[secondaryId], true);
+		Require(registry.CompleteAssetUpdate(affectedAssets), "the shared source must become current after sibling repair");
+
+		const size_t notifications = listener.m_updatedFileIds.size();
+		Require(registry.UpdateAsset(primaryId, metadataAssets) && registry.CompleteAssetUpdate(metadataAssets) &&
+			listener.m_updatedFileIds.size() == notifications, "a current asset must still complete without another reload");
+		RewriteFileWithNewRevision(context.GetContent() / "Shared.raw", "changed after acknowledgement");
+		Require(!registry.CompleteAssetUpdate(affectedAssets), "a later source edit must not be reported as processed");
+		Require(!registry.UpdateAsset(MakeFileId("{TARGETED-UPDATE-UNKNOWN}"), affectedAssets) &&
+			affectedAssets.IsEmpty() && !registry.CompleteAssetUpdate(affectedAssets),
+			"an unknown target must clear the preceding update scope and cannot complete");
+		handler.Unsubscribe(&listener);
+	}
+
 	void TestScanSourceRevisionCacheIsPhysicalAndPerScan()
 	{
 		TempDirectory directory("scan-source-revision-cache");
@@ -2949,6 +3020,7 @@ int main()
 		TestAssetProcessingSuccessAndStaleCompletionContract();
 		TestTargetedAssetUpdateScopeAndFailureContract();
 		TestTargetedAssetUpdateCoalescesCurrentProcessing();
+		TestTargetedAssetUpdateCompletion();
 		TestScanSourceRevisionCacheIsPhysicalAndPerScan();
 		TestPostCallbackSourceMismatchInvalidatesPriorWatermark();
 		TestSourceMutationDuringStagingPreservesPreviousGeneration();

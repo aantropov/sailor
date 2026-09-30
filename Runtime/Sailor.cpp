@@ -1065,9 +1065,11 @@ bool App::UpdateAsset(const char* strFileId, bool bReimport)
 				(bReimport || frameGraphAssetInfo->IsMetaExpired() ||
 					frameGraphAssetInfo->IsAssetExpired() ||
 					assetRegistry->IsAssetExpired(frameGraphAssetInfo));
-			const bool bUpdated = assetRegistry->UpdateAsset(fileId, bReimport);
+			TVector<AssetInfoPtr> affectedAssets;
+			const bool bUpdated = assetRegistry->UpdateAsset(fileId, affectedAssets, bReimport);
 			WaitForAssetTasks();
-			if (bUpdated && bRefreshFrameGraph)
+			const bool bSucceeded = bUpdated && assetRegistry->CompleteAssetUpdate(affectedAssets);
+			if (bSucceeded && bRefreshFrameGraph)
 			{
 				if (Renderer* renderer = GetSubmodule<Renderer>())
 				{
@@ -1075,7 +1077,7 @@ bool App::UpdateAsset(const char* strFileId, bool bReimport)
 				}
 			}
 
-			return bUpdated;
+			return bSucceeded;
 		});
 }
 
