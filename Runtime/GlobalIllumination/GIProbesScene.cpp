@@ -31,6 +31,7 @@ namespace
 
 	struct FrozenModelGeometry final
 	{
+		TSharedPtr<const Model::BLASGeometry> m_modelGeometry{};
 		TSharedPtr<TVector<Math::Triangle>> m_triangles{};
 		Math::AABB m_localBounds{};
 		uint64_t m_contentHash = 0u;
@@ -260,16 +261,14 @@ namespace
 				" has no CPU raytracing geometry; enable model BLAS generation";
 			return false;
 		}
-		const auto& sourceTriangles = model->GetBLASTriangles(meshIndex);
-		if (!model->HasBLAS(meshIndex) || sourceTriangles.IsEmpty())
+		if (!model->HasBLAS(meshIndex))
 		{
 			outDiagnostic = sourceName +
 				" has an empty raytracing acceleration structure";
 			return false;
 		}
 
-		outGeometry.m_triangles =
-			TSharedPtr<TVector<Math::Triangle>>::Make(sourceTriangles);
+		outGeometry.m_modelGeometry = model->GetBLASGeometry();
 		outGeometry.m_localBounds = model->GetBoundsAABB(meshIndex);
 		if (!outGeometry.m_localBounds.IsValid())
 		{
@@ -277,22 +276,40 @@ namespace
 			return false;
 		}
 		outGeometry.m_contentHash = Fnv1aOffsetBasis;
-		HashTriangles(outGeometry.m_contentHash, outGeometry.m_triangles);
+		TMap<const Model::BLASData*, uint64_t> geometryHashes;
+		for (const auto& instance : outGeometry.m_modelGeometry->GetInstances(meshIndex))
+		{
+			const auto* data = instance.m_geometry.GetRawPtr();
+			uint64_t* hash = nullptr;
+			if (!geometryHashes.Find(data, hash))
+			{
+				uint64_t value = Fnv1aOffsetBasis;
+				HashTriangles(value, data->m_triangles);
+				hash = &geometryHashes[data];
+				*hash = value;
+			}
+			HashValue(outGeometry.m_contentHash, *hash);
+			HashMatrix(outGeometry.m_contentHash, instance.m_modelMatrix);
+		}
 		cache[cacheKey] = outGeometry;
 		return true;
 	}
 
 	bool AppendInstanceMaterials(
-		const TSharedPtr<TVector<Math::Triangle>>& triangles,
 		const TVector<MaterialPtr>& sourceMaterials,
 		TVector<MaterialPtr>& materials,
 		Raytracing::PathTracer::TLASInstance& instance,
 		std::string& outDiagnostic)
 	{
 		uint32_t requiredMaterialSlots = 1u;
-		if (triangles)
+		if (instance.m_modelGeometry)
 		{
-			for (const Math::Triangle& triangle : *triangles)
+			for (const auto& mesh : instance.m_modelGeometry->GetInstances(instance.m_meshIndex))
+				requiredMaterialSlots = (std::max)(requiredMaterialSlots, mesh.m_geometry->m_materialSlots);
+		}
+		else if (instance.m_triangles)
+		{
+			for (const Math::Triangle& triangle : *instance.m_triangles)
 			{
 				requiredMaterialSlots = (std::max)(
 					requiredMaterialSlots,
@@ -587,6 +604,7 @@ bool Sailor::CaptureGIProbesScene(
 
 		Raytracing::PathTracer::TLASInstance instance;
 		instance.m_blas.Clear();
+		instance.m_modelGeometry = geometry.m_modelGeometry;
 		instance.m_triangles = geometry.m_triangles;
 		instance.m_meshIndex = meshIndex;
 		instance.m_worldMatrix = worldMatrix;
@@ -604,7 +622,6 @@ bool Sailor::CaptureGIProbesScene(
 		TVector<MaterialPtr>& materials =
 			candidate.m_renderer->GetMaterials();
 		if (!AppendInstanceMaterials(
-				instance.m_triangles,
 				materials,
 				runtimeMaterials,
 				instance,
@@ -701,6 +718,7 @@ bool Sailor::CaptureGIProbesScene(
 
 		Raytracing::PathTracer::TLASInstance instance;
 		instance.m_blas.Clear();
+		instance.m_modelGeometry = geometry.m_modelGeometry;
 		instance.m_triangles = geometry.m_triangles;
 		instance.m_meshIndex = snapshot.m_meshIndex;
 		instance.m_worldMatrix = snapshot.m_worldMatrix;
@@ -708,7 +726,6 @@ bool Sailor::CaptureGIProbesScene(
 		instance.m_worldBounds = snapshot.m_worldBounds;
 		instance.m_debugName = sourceName;
 		if (!AppendInstanceMaterials(
-				instance.m_triangles,
 				snapshot.m_materials,
 				runtimeMaterials,
 				instance,

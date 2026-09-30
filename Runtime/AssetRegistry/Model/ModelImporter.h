@@ -86,12 +86,28 @@ namespace Sailor
 		struct BLASData
 		{
 			TSharedPtr<Raytracing::BVH> m_blas{};
-			TVector<Math::Triangle> m_triangles{};
+			TSharedPtr<TVector<Math::Triangle>> m_triangles;
+			Math::AABB m_bounds{};
+			uint32_t m_materialSlots = 1;
 
 			bool IsValid() const
 			{
-				return m_blas.IsValid() && !m_triangles.IsEmpty();
+				return m_blas && m_triangles && !m_triangles->IsEmpty();
 			}
+		};
+
+		struct BLASInstance
+		{
+			TSharedPtr<const BLASData> m_geometry;
+			glm::mat4 m_modelMatrix{ 1.0f };
+			glm::mat4 m_inverseModelMatrix{ 1.0f };
+		};
+
+		struct BLASGeometry
+		{
+			TVector<BLASInstance> m_instances;
+			TVector<TVector<BLASInstance>> m_sourceMeshes;
+			SAILOR_API const TVector<BLASInstance>& GetInstances(int32_t meshIndex = AllMeshes) const;
 		};
 
 		SAILOR_API Model(FileId uid, TVector<RHI::RHIMeshPtr> meshes = {})
@@ -168,21 +184,12 @@ namespace Sailor
 			return m_cpuMeshes.Num() > 0;
 		}
 		SAILOR_API bool BuildBLAS();
-		SAILOR_API bool HasBLAS() const
+		SAILOR_API bool HasBLAS(int32_t meshIndex = AllMeshes) const;
+		SAILOR_API const TSharedPtr<const BLASGeometry>& GetBLASGeometry() const
 		{
-			return m_blas.IsValid() && m_blasTriangles.Num() > 0;
+			return m_blasGeometry;
 		}
-		SAILOR_API bool HasBLAS(int32_t meshIndex) const;
-		SAILOR_API const TSharedPtr<Raytracing::BVH>& GetBLAS() const
-		{
-			return m_blas;
-		}
-		SAILOR_API const TSharedPtr<Raytracing::BVH>& GetBLAS(int32_t meshIndex) const;
-		SAILOR_API const TVector<Math::Triangle>& GetBLASTriangles() const
-		{
-			return m_blasTriangles;
-		}
-		SAILOR_API const TVector<Math::Triangle>& GetBLASTriangles(int32_t meshIndex) const;
+		SAILOR_API const TVector<BLASInstance>& GetBLASInstances(int32_t meshIndex = AllMeshes) const;
 
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -201,9 +208,7 @@ namespace Sailor
 		mutable std::atomic<bool> m_bGpuReady{};
 		TVector<glm::mat4> m_inverseBind;
 		TVector<MeshCpuData> m_cpuMeshes;
-		TSharedPtr<Raytracing::BVH> m_blas{};
-		TVector<Math::Triangle> m_blasTriangles{};
-		TVector<BLASData> m_sourceMeshBlases{};
+		TSharedPtr<const BLASGeometry> m_blasGeometry;
 
 		Math::AABB m_boundsAabb;
 		Math::Sphere m_boundsSphere;

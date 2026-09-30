@@ -121,7 +121,7 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 		instance.m_inverseWorldMatrix = data.m_inverseWorldMatrix;
 		instance.m_materialBaseOffset = (int32_t)m_pathTracerMaterialsCache.Num();
 		HashCombine(sceneRevision, pOwnerGameObject->GetInstanceId(), ownerTransform.GetFrameLastChange(),
-			pModel, pModel->GetBLAS(meshIndex), meshIndex, proxy.m_materials.Num());
+			pModel, pModel->GetBLASGeometry(), meshIndex, proxy.m_materials.Num());
 		if (proxy.m_materials.Num() == 0)
 		{
 			m_pathTracerMaterialsCache.Add(MaterialPtr());

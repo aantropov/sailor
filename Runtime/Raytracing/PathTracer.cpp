@@ -160,33 +160,13 @@ namespace
 	const Raytracing::BVH* ResolveInstanceBlas(
 		const PathTracer::TLASInstance& instance)
 	{
-		if (instance.m_blas)
-		{
-			return instance.m_blas.GetRawPtr();
-		}
-		if (!instance.m_model ||
-			!instance.m_model->HasBLAS(instance.m_meshIndex))
-		{
-			return nullptr;
-		}
-		return instance.m_model->GetBLAS(instance.m_meshIndex).GetRawPtr();
+		return instance.m_blas.GetRawPtr();
 	}
 
 	const TVector<Math::Triangle>* ResolveInstanceTriangles(
 		const PathTracer::TLASInstance& instance)
 	{
-		if (instance.m_triangles && !instance.m_triangles->IsEmpty())
-		{
-			return instance.m_triangles.GetRawPtr();
-		}
-		if (!instance.m_model ||
-			!instance.m_model->HasBLAS(instance.m_meshIndex))
-		{
-			return nullptr;
-		}
-		const auto& triangles =
-			instance.m_model->GetBLASTriangles(instance.m_meshIndex);
-		return triangles.IsEmpty() ? nullptr : &triangles;
+		return instance.m_triangles && !instance.m_triangles->IsEmpty() ? instance.m_triangles.GetRawPtr() : nullptr;
 	}
 
 	bool HasInstanceGeometry(const PathTracer::TLASInstance& instance)
@@ -1290,40 +1270,59 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 {
 	// Older light generations may still be tracing the previous transport.
 	m_geometry = TSharedPtr<PreparedGeometry>::Make();
-	m_geometry->m_tlasInstances = instances;
+	m_lastScenePreparationStats = {};
+	for (const auto& source : instances)
+	{
+		const auto* geometry = source.m_modelGeometry ? source.m_modelGeometry.GetRawPtr() :
+			(source.m_model ? source.m_model->GetBLASGeometry().GetRawPtr() : nullptr);
+		m_lastScenePreparationStats.m_instanceCount += geometry && !source.m_triangles ?
+			(std::max)(size_t(1), geometry->GetInstances(source.m_meshIndex).Num()) : 1;
+	}
+	auto reportGeometryProgress = [&](size_t completed) -> bool
+	{
+		return !progress || progress({ EScenePreparationStage::Geometry, completed,
+			m_lastScenePreparationStats.m_instanceCount });
+	};
+	if (!reportGeometryProgress(0u)) return false;
+	m_geometry->m_tlasInstances.Reserve(m_lastScenePreparationStats.m_instanceCount);
+	for (const auto& source : instances)
+	{
+		const auto geometry = source.m_modelGeometry ? source.m_modelGeometry :
+			(source.m_model ? source.m_model->GetBLASGeometry() : TSharedPtr<const Model::BLASGeometry>{});
+		if (!geometry || source.m_triangles || geometry->GetInstances(source.m_meshIndex).IsEmpty())
+		{
+			m_geometry->m_tlasInstances.Add(source);
+			continue;
+		}
+		for (const auto& mesh : geometry->GetInstances(source.m_meshIndex))
+		{
+			if (m_geometry->m_tlasInstances.Num() % 64u == 0u && !reportGeometryProgress(0u)) return false;
+			TLASInstance instance = source;
+			instance.m_model.Clear();
+			instance.m_modelGeometry.Clear();
+			instance.m_blas = mesh.m_geometry->m_blas;
+			instance.m_triangles = mesh.m_geometry->m_triangles;
+			instance.m_worldMatrix = source.m_worldMatrix * mesh.m_modelMatrix;
+			instance.m_inverseWorldMatrix = mesh.m_inverseModelMatrix * source.m_inverseWorldMatrix;
+			instance.m_worldBounds = mesh.m_geometry->m_bounds;
+			instance.m_worldBounds.Apply(instance.m_worldMatrix);
+			m_geometry->m_tlasInstances.Add(std::move(instance));
+		}
+	}
 	m_emissiveTriangles = TSharedPtr<TVector<EmissiveTriangle>>::Make();
 	m_totalEmissiveWeight = 0;
 	m_lightProxies = lightProxies;
 	m_bAddDefaultLightIfEmpty = bAddDefaultLightIfEmpty;
-	m_lastScenePreparationStats = {};
-	m_lastScenePreparationStats.m_instanceCount = m_geometry->m_tlasInstances.Num();
-
-	auto reportGeometryProgress = [&](size_t completed) -> bool
-	{
-		if (!progress)
-		{
-			return true;
-		}
-		ScenePreparationProgress update;
-		update.m_stage = EScenePreparationStage::Geometry;
-		update.m_completed = completed;
-		update.m_total = m_geometry->m_tlasInstances.Num();
-		return progress(update);
-	};
-	if (!reportGeometryProgress(0u))
-	{
-		return false;
-	}
 
 	TMap<const TVector<Math::Triangle>*, TSharedPtr<BVH>> preparedBlas;
 	for (size_t i = 0; i < m_geometry->m_tlasInstances.Num(); i++)
 	{
 		auto& instance = m_geometry->m_tlasInstances[i];
 		const auto* triangles = instance.m_triangles.GetRawPtr();
-		if (triangles && instance.m_blas &&
-			!preparedBlas.ContainsKey(triangles))
+		if (triangles && instance.m_blas)
 		{
-			preparedBlas.Add(triangles, instance.m_blas);
+			++m_lastScenePreparationStats.m_reusedBlasCount;
+			if (!preparedBlas.ContainsKey(triangles)) preparedBlas.Add(triangles, instance.m_blas);
 		}
 		if (!ResolveInstanceBlas(instance) && triangles &&
 			!triangles->IsEmpty() && instance.m_worldBounds.IsValid())
@@ -2345,7 +2344,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	const auto& defaultMaterials = pModelAssetInfo->GetDefaultMaterials();
 
-	if (!pModel->HasBLAS() || pModel->GetBLASTriangles().Num() == 0)
+	if (!pModel->HasBLAS())
 	{
 		SAILOR_LOG_ERROR("PathTracer requires model BLAS/TLAS-ready scene data: %s", params.m_pathToModel.string().c_str());
 		return;

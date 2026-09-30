@@ -483,6 +483,14 @@ namespace
 	void TestLightingPreparation()
 	{
 		GIWorld world;
+		auto checkDistance = [](const GIProbesPreparedScenePtr& scene, float expected)
+		{
+			GIProbeBakeRaySample sample;
+			std::string diagnostic;
+			Require(scene->m_sampler->SampleVisibility(glm::vec3(0), glm::vec3(0, 0, -1), 20, 1, sample, diagnostic), diagnostic);
+			Require(sample.m_bHit && std::abs(sample.m_distance - expected) < 1e-4f,
+				"each prepared transport must trace its own static transforms");
+		};
 		auto sky = world.Instantiate("Sky")->AddComponent<SkyComponent>();
 		auto settings = world.GI().GetWorldSettings();
 		settings.m_runtimeProbes.m_bIncludeSky = true;
@@ -498,8 +506,12 @@ namespace
 		world.WaitReady();
 		const auto captured = GlobalIlluminationECSTestAccess::CapturedScene(world.GI());
 		const auto firstPublication = world.GI().GetActiveSnapshot();
-		Require(prepared->m_sampler->GetLastScenePreparationStats().m_builtBlasCount > 0,
-			"the initial capture must build real frozen geometry");
+		Require(prepared->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0 &&
+			prepared->m_sampler->GetLastScenePreparationStats().m_reusedBlasCount == 2 &&
+			captured->m_instances[0].m_modelGeometry &&
+			captured->m_instances[0].m_modelGeometry == captured->m_instances[1].m_modelGeometry,
+			"the initial capture must share immutable model geometry and reuse its BLAS for both objects");
+		checkDistance(prepared, 2);
 		world.GI().SetRuntimeGIProbesWorkAllowed(false);
 		world.Step(0.6f);
 		world.Step();
@@ -510,9 +522,9 @@ namespace
 			relit->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0 &&
 			relit->m_sampler->GetLastScenePreparationStats().m_decodedTextureCount == 0,
 			"sun-only refresh must retain prepared geometry and skip BLAS and texture decoding");
-		Require(recaptured->m_instances[0].m_triangles == captured->m_instances[0].m_triangles &&
+		Require(recaptured->m_instances[0].m_modelGeometry == captured->m_instances[0].m_modelGeometry &&
 			recaptured->m_materials[0] == captured->m_materials[0],
-			"light-only owner capture must retain frozen triangles and material snapshots");
+			"light-only owner capture must retain frozen model geometry and material snapshots");
 		sky->SetSunAngle(35.0f);
 		world.Step();
 		Require(GlobalIlluminationECSTestAccess::PreparedScene(world.GI()) == relit,
@@ -550,8 +562,11 @@ namespace
 		world.Step();
 		const auto moved = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
 		Require(moved && moved->m_geometryHash != caughtUp->m_geometryHash &&
-			moved->m_sampler->GetLastScenePreparationStats().m_builtBlasCount > 0,
-			"a Static transform change must rebuild the frozen transport");
+			moved->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0 &&
+			moved->m_sampler->GetLastScenePreparationStats().m_reusedBlasCount == 2,
+			"a Static transform change must rebuild transport while reusing immutable model BLAS");
+		checkDistance(moved, 4);
+		checkDistance(prepared, 2);
 		world.Step();
 		world.WaitReady();
 		world.m_material->SetUniform("material.baseColorFactor", glm::vec4(1, 1, 1, 0.5f));
@@ -559,15 +574,25 @@ namespace
 		world.Step();
 		const auto alpha = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
 		Require(alpha && alpha->m_geometryHash != moved->m_geometryHash &&
-			alpha->m_sampler->GetLastScenePreparationStats().m_builtBlasCount > 0,
+			alpha->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0 &&
+			alpha->m_sampler->GetLastScenePreparationStats().m_reusedBlasCount == 2,
 			"material alpha edits must not use the light-only transport shortcut");
+		const auto alphaCapture = GlobalIlluminationECSTestAccess::CapturedScene(world.GI());
+		Require(alphaCapture->m_materials[0] != captured->m_materials[0] &&
+			alphaCapture->m_materials[0]->m_parameters.m_baseColorFactor.a == 0.5f,
+			"transport rebuilt for alpha must contain the new material snapshot");
 		world.Step();
 		world.WaitReady();
 		Require(world.GI().RebuildRuntimeGIProbesScene(diagnostic), diagnostic);
 		world.Step();
 		const auto explicitRebuild = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
-		Require(explicitRebuild && explicitRebuild->m_sampler->GetLastScenePreparationStats().m_builtBlasCount > 0,
-			"an explicit rebuild must bypass retained geometry even with unchanged identities");
+		Require(explicitRebuild && explicitRebuild != alpha && explicitRebuild->m_sampler != alpha->m_sampler &&
+			GlobalIlluminationECSTestAccess::CapturedScene(world.GI()) != alphaCapture &&
+			explicitRebuild->m_geometryHash == alpha->m_geometryHash &&
+			explicitRebuild->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0 &&
+			explicitRebuild->m_sampler->GetLastScenePreparationStats().m_reusedBlasCount == 2,
+			"explicit rebuild must recapture and prepare transport without duplicating immutable model BLAS");
+		checkDistance(explicitRebuild, 4);
 	}
 
 	void TestEmissionPreparation()
@@ -587,7 +612,8 @@ namespace
 			updated->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0 &&
 			updated->m_sampler->GetLastScenePreparationStats().m_decodedTextureCount == 0,
 			"emission-only updates must change GI lighting without rebuilding geometry or decoding textures");
-		Require(recaptured->m_instances[0].m_triangles == captured->m_instances[0].m_triangles &&
+		Require(captured->m_instances[0].m_modelGeometry &&
+			recaptured->m_instances[0].m_modelGeometry == captured->m_instances[0].m_modelGeometry &&
 			recaptured->m_materials[0] != captured->m_materials[0] &&
 			recaptured->m_materials[0]->m_parameters.m_emissiveFactor == glm::vec3(2, 4, 8) &&
 			captured->m_materials[0]->m_parameters.m_emissiveFactor == glm::vec3(0),

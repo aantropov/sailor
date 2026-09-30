@@ -40,39 +40,24 @@ const Math::AABB& Model::GetBoundsAABB(int32_t meshIndex) const
 
 bool Model::HasBLAS(int32_t meshIndex) const
 {
-	if (meshIndex == AllMeshes)
-	{
-		return HasBLAS();
-	}
-
-	return meshIndex >= 0 && static_cast<size_t>(meshIndex) < m_sourceMeshBlases.Num() &&
-		   m_sourceMeshBlases[static_cast<size_t>(meshIndex)].IsValid();
+	return !GetBLASInstances(meshIndex).IsEmpty();
 }
 
-const TSharedPtr<Raytracing::BVH>& Model::GetBLAS(int32_t meshIndex) const
+const TVector<Model::BLASInstance>& Model::BLASGeometry::GetInstances(int32_t meshIndex) const
 {
 	if (meshIndex == AllMeshes)
 	{
-		return m_blas;
+		return m_instances;
 	}
 
-	static const TSharedPtr<Raytracing::BVH> emptyBlas{};
-	return meshIndex >= 0 && static_cast<size_t>(meshIndex) < m_sourceMeshBlases.Num()
-			   ? m_sourceMeshBlases[static_cast<size_t>(meshIndex)].m_blas
-			   : emptyBlas;
+	static const TVector<BLASInstance> empty;
+	return meshIndex >= 0 && static_cast<size_t>(meshIndex) < m_sourceMeshes.Num() ? m_sourceMeshes[meshIndex] : empty;
 }
 
-const TVector<Math::Triangle>& Model::GetBLASTriangles(int32_t meshIndex) const
+const TVector<Model::BLASInstance>& Model::GetBLASInstances(int32_t meshIndex) const
 {
-	if (meshIndex == AllMeshes)
-	{
-		return m_blasTriangles;
-	}
-
-	static const TVector<Math::Triangle> emptyTriangles{};
-	return meshIndex >= 0 && static_cast<size_t>(meshIndex) < m_sourceMeshBlases.Num()
-			   ? m_sourceMeshBlases[static_cast<size_t>(meshIndex)].m_triangles
-			   : emptyTriangles;
+	static const TVector<BLASInstance> empty;
+	return m_blasGeometry ? m_blasGeometry->GetInstances(meshIndex) : empty;
 }
 
 bool Model::CollectRenderData(int32_t meshIndex,
@@ -185,7 +170,8 @@ bool Model::BuildBLASData(const TVector<RenderInstance>& blasInstances, BLASData
 		return false;
 	}
 
-	outData.m_triangles.Reserve(expectedNumTriangles);
+	outData.m_triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+	outData.m_triangles->Reserve(expectedNumTriangles);
 
 	for (const RenderInstance& instance : blasInstances)
 	{
@@ -209,7 +195,7 @@ bool Model::BuildBLASData(const TVector<RenderInstance>& blasInstances, BLASData
 			const uint32_t i2 = mesh.m_indices[i + 2];
 			if (i0 >= mesh.m_vertices.Num() || i1 >= mesh.m_vertices.Num() || i2 >= mesh.m_vertices.Num())
 			{
-				outData.m_triangles.Clear();
+				outData.m_triangles->Clear();
 				return false;
 			}
 
@@ -228,7 +214,7 @@ bool Model::BuildBLASData(const TVector<RenderInstance>& blasInstances, BLASData
 			applyInstanceTransform(v2);
 			if (!Math::AllFinite(v0.m_position) || !Math::AllFinite(v1.m_position) || !Math::AllFinite(v2.m_position))
 			{
-				outData.m_triangles.Clear();
+				outData.m_triangles->Clear();
 				return false;
 			}
 
@@ -238,7 +224,7 @@ bool Model::BuildBLASData(const TVector<RenderInstance>& blasInstances, BLASData
 			if (!Math::AllFinite(edge1) || !Math::AllFinite(edge2) || !Math::AllFinite(triangleNormal) ||
 				!std::isfinite(glm::dot(triangleNormal, triangleNormal)))
 			{
-				outData.m_triangles.Clear();
+				outData.m_triangles->Clear();
 				return false;
 			}
 
@@ -250,7 +236,7 @@ bool Model::BuildBLASData(const TVector<RenderInstance>& blasInstances, BLASData
 				!Math::AllFinite(v0.m_bitangent) || !Math::AllFinite(v1.m_bitangent) ||
 				!Math::AllFinite(v2.m_bitangent))
 			{
-				outData.m_triangles.Clear();
+				outData.m_triangles->Clear();
 				return false;
 			}
 
@@ -285,66 +271,126 @@ bool Model::BuildBLASData(const TVector<RenderInstance>& blasInstances, BLASData
 			tri.m_centroid = tri.m_vertices[0] / 3.0f + tri.m_vertices[1] / 3.0f + tri.m_vertices[2] / 3.0f;
 			if (!Math::AllFinite(tri.m_centroid))
 			{
-				outData.m_triangles.Clear();
+				outData.m_triangles->Clear();
 				return false;
 			}
 
-			outData.m_triangles.Add(tri);
+			outData.m_bounds.Extend(v0.m_position);
+			outData.m_bounds.Extend(v1.m_position);
+			outData.m_bounds.Extend(v2.m_position);
+			outData.m_materialSlots = (std::max)(outData.m_materialSlots, uint32_t(tri.m_materialIndex) + 1);
+			outData.m_triangles->Add(tri);
 		}
 	}
 
-	if (outData.m_triangles.Num() == 0)
+	if (outData.m_triangles->Num() == 0)
 	{
 		return false;
 	}
 
-	outData.m_blas = TSharedPtr<Raytracing::BVH>::Make(static_cast<uint32_t>(outData.m_triangles.Num()));
-	outData.m_blas->BuildBVH(outData.m_triangles);
+	outData.m_blas = TSharedPtr<Raytracing::BVH>::Make(static_cast<uint32_t>(outData.m_triangles->Num()));
+	outData.m_blas->BuildBVH(*outData.m_triangles);
 	return true;
 }
 
 bool Model::BuildBLAS()
 {
-	m_blas.Clear();
-	m_blasTriangles.Clear();
-	m_sourceMeshBlases.Clear();
-
-	TVector<RenderInstance> fullInstances = m_renderInstances;
-	if (fullInstances.IsEmpty())
+	m_blasGeometry.Clear();
+	auto geometry = TSharedPtr<BLASGeometry>::Make();
+	TVector<TSharedPtr<const BLASData>> meshes(m_cpuMeshes.Num());
+	for (size_t index = 0; index < m_cpuMeshes.Num(); ++index)
 	{
-		fullInstances.Reserve(m_cpuMeshes.Num());
-		for (size_t meshIndex = 0; meshIndex < m_cpuMeshes.Num(); ++meshIndex)
+		if (m_cpuMeshes[index].m_indices.IsEmpty())
 		{
-			RenderInstance instance{};
-			instance.m_renderMeshIndex = static_cast<uint32_t>(meshIndex);
-			fullInstances.Add(std::move(instance));
+			continue;
+		}
+		RenderInstance source;
+		source.m_renderMeshIndex = static_cast<uint32_t>(index);
+		auto data = TSharedPtr<BLASData>::Make();
+		if (BuildBLASData({ source }, *data))
+		{
+			meshes[index] = std::move(data);
 		}
 	}
 
-	BLASData fullBlas;
-	if (!BuildBLASData(fullInstances, fullBlas))
+	auto appendInstance = [&](const RenderInstance& source) -> bool
+	{
+		if (source.m_renderMeshIndex >= meshes.Num())
+		{
+			return false;
+		}
+		if (m_cpuMeshes[source.m_renderMeshIndex].m_indices.IsEmpty())
+		{
+			return true;
+		}
+		BLASInstance instance;
+		instance.m_geometry = meshes[source.m_renderMeshIndex];
+		if (!instance.m_geometry)
+		{
+			return false;
+		}
+		instance.m_modelMatrix = source.m_modelMatrix;
+		instance.m_inverseModelMatrix = glm::inverse(source.m_modelMatrix);
+		if (!Math::AllFinite(instance.m_inverseModelMatrix))
+		{
+			// A flattened axis can still leave a valid surface. Such geometry cannot use an inverse ray transform.
+			auto baked = TSharedPtr<BLASData>::Make();
+			if (!BuildBLASData({ source }, *baked))
+			{
+				return false;
+			}
+			instance.m_geometry = std::move(baked);
+			instance.m_modelMatrix = instance.m_inverseModelMatrix = glm::mat4(1);
+		}
+		geometry->m_instances.Add(std::move(instance));
+		return true;
+	};
+	if (m_renderInstances.IsEmpty())
+	{
+		for (size_t index = 0; index < m_cpuMeshes.Num(); ++index)
+		{
+			RenderInstance instance;
+			instance.m_renderMeshIndex = static_cast<uint32_t>(index);
+			if (!appendInstance(instance))
+			{
+				return false;
+			}
+		}
+	}
+	else
+	{
+		geometry->m_instances.Reserve(m_renderInstances.Num());
+		for (const auto& instance : m_renderInstances)
+		{
+			if (!appendInstance(instance))
+			{
+				return false;
+			}
+		}
+	}
+	if (geometry->m_instances.IsEmpty())
 	{
 		return false;
 	}
 
-	m_blas = std::move(fullBlas.m_blas);
-	m_blasTriangles = std::move(fullBlas.m_triangles);
-	m_sourceMeshBlases.Resize(m_sourceMeshes.Num());
-	for (size_t sourceMeshIndex = 0; sourceMeshIndex < m_sourceMeshes.Num(); ++sourceMeshIndex)
+	geometry->m_sourceMeshes.Resize(m_sourceMeshes.Num());
+	for (size_t index = 0; index < m_sourceMeshes.Num(); ++index)
 	{
-		TVector<RenderInstance> sourceInstances;
-		const SourceMesh& sourceMesh = m_sourceMeshes[sourceMeshIndex];
-		sourceInstances.Reserve(sourceMesh.m_renderMeshIndices.Num());
-		for (uint32_t renderMeshIndex : sourceMesh.m_renderMeshIndices)
+		auto& instances = geometry->m_sourceMeshes[index];
+		for (uint32_t renderMesh : m_sourceMeshes[index].m_renderMeshIndices)
 		{
-			RenderInstance instance{};
-			instance.m_renderMeshIndex = renderMeshIndex;
-			sourceInstances.Add(std::move(instance));
+			if (renderMesh >= meshes.Num() || (!meshes[renderMesh] && !m_cpuMeshes[renderMesh].m_indices.IsEmpty()))
+			{
+				instances.Clear();
+				break;
+			}
+			if (meshes[renderMesh])
+			{
+				instances.Add({ meshes[renderMesh] });
+			}
 		}
-
-		BuildBLASData(sourceInstances, m_sourceMeshBlases[sourceMeshIndex]);
 	}
-
+	m_blasGeometry = std::move(geometry);
 	return true;
 }
 
@@ -356,9 +402,7 @@ void Model::ProceedCpuMeshes(bool bShouldGenerateBLAS, bool bShouldKeepCpuBuffer
 	}
 	else
 	{
-		m_blas.Clear();
-		m_blasTriangles.Clear();
-		m_sourceMeshBlases.Clear();
+		m_blasGeometry.Clear();
 	}
 
 	if (!bShouldKeepCpuBuffers)

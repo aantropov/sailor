@@ -125,6 +125,14 @@ namespace
 {
 	Model::MeshCpuData MakeTriangleMesh(uint32_t thirdIndex);
 
+	size_t CountModelTriangles(const Model& model, int32_t selection = Model::AllMeshes)
+	{
+		size_t count = 0;
+		for (const auto& instance : model.GetBLASInstances(selection))
+			count += instance.m_geometry->m_triangles->Num();
+		return count;
+	}
+
 	class ControllableMesh final : public RHI::RHIMesh
 	{
 	public:
@@ -243,6 +251,8 @@ namespace
 			m_geometry->m_tlasInstances.Clear();
 			TLASInstance instance{};
 			instance.m_model = model;
+			instance.m_blas = model->GetBLASInstances()[0].m_geometry->m_blas;
+			instance.m_triangles = model->GetBLASInstances()[0].m_geometry->m_triangles;
 			instance.m_worldMatrix = worldMatrix;
 			instance.m_inverseWorldMatrix = glm::inverse(worldMatrix);
 			m_geometry->m_tlasInstances.Add(std::move(instance));
@@ -2464,11 +2474,11 @@ uniformsFloat:
 			"BLAS construction must reject a mesh with an out-of-range index");
 		Require(!model.HasBLAS(),
 			"a rejected mesh must not retain a BLAS");
-		Require(model.GetBLASTriangles().Num() == 0,
+		Require(CountModelTriangles(model) == 0,
 			"a rejected mesh must not retain triangles from earlier valid meshes");
 		Require(!model.BuildBLAS(),
 			"repeated BLAS construction on malformed geometry must remain safe");
-		Require(!model.HasBLAS() && model.GetBLASTriangles().Num() == 0,
+		Require(!model.HasBLAS() && CountModelTriangles(model) == 0,
 			"repeated rejection must preserve clean BLAS state");
 	}
 
@@ -2484,7 +2494,7 @@ uniformsFloat:
 			"BLAS construction must recover after geometry is corrected");
 		Require(model.HasBLAS(),
 			"corrected geometry must produce a BLAS");
-		Require(model.GetBLASTriangles().Num() == 2,
+		Require(CountModelTriangles(model) == 2,
 			"both corrected triangles must be included");
 	}
 
@@ -2497,15 +2507,15 @@ uniformsFloat:
 		};
 		Require(model.BuildBLAS(),
 			"an empty mesh must not prevent valid geometry from building");
-		Require(model.GetBLASTriangles().Num() == 1,
+		Require(CountModelTriangles(model) == 1,
 			"only the valid mesh must contribute a triangle");
 
 		model.GetCpuMeshes() = { Model::MeshCpuData() };
 		Require(!model.BuildBLAS(),
 			"a model containing only empty meshes must be rejected");
-		Require(!model.HasBLAS() && model.GetBLASTriangles().Num() == 0,
+		Require(!model.HasBLAS() && CountModelTriangles(model) == 0,
 			"an empty model must leave BLAS state clean");
-		Require(!model.GetBLAS().IsValid(),
+		Require(!model.GetBLASGeometry(),
 			"a failed rebuild must release the previous BLAS");
 	}
 
@@ -2517,7 +2527,7 @@ uniformsFloat:
 		model.GetCpuMeshes() = { std::move(incomplete) };
 		Require(!model.BuildBLAS(),
 			"BLAS construction must reject an incomplete triangle");
-		Require(!model.HasBLAS() && model.GetBLASTriangles().Num() == 0,
+		Require(!model.HasBLAS() && CountModelTriangles(model) == 0,
 			"an incomplete triangle must leave BLAS state clean");
 
 		Model::MeshCpuData nonFinite = MakeTriangleMesh(2);
@@ -2526,7 +2536,7 @@ uniformsFloat:
 		model.GetCpuMeshes() = { std::move(nonFinite) };
 		Require(!model.BuildBLAS(),
 			"BLAS construction must reject non-finite positions");
-		Require(!model.HasBLAS() && model.GetBLASTriangles().Num() == 0,
+		Require(!model.HasBLAS() && CountModelTriangles(model) == 0,
 			"non-finite geometry must leave BLAS state clean");
 	}
 
@@ -2545,9 +2555,9 @@ uniformsFloat:
 
 		Require(model.BuildBLAS(),
 			"finite extreme vertex frames must be sanitized safely");
-		Require(model.GetBLASTriangles().Num() == 1,
+		Require(CountModelTriangles(model) == 1,
 			"the sanitized triangle must be retained");
-		const auto& triangle = model.GetBLASTriangles()[0];
+		const auto& triangle = (*model.GetBLASInstances()[0].m_geometry->m_triangles)[0];
 		for (size_t i = 0; i < 3; ++i)
 		{
 			Require(
@@ -2590,7 +2600,7 @@ uniformsFloat:
 
 		Require(model.BuildBLAS(),
 			"finite extreme centroid ranges must not corrupt BVH binning");
-		Require(model.GetBLASTriangles().Num() == 5,
+		Require(CountModelTriangles(model) == 5,
 			"all extreme-range triangles must be retained");
 	}
 
@@ -2600,25 +2610,27 @@ uniformsFloat:
 		model.Configure();
 		Require(model.BuildBLAS(),
 			"hierarchical model geometry must build a complete BLAS");
-		Require(model.GetBLASTriangles().Num() == 3,
+		Require(CountModelTriangles(model) == 3,
 			"complete BLAS must retain repeated scene-node instances");
 		Require(model.HasBLAS(0) && model.HasBLAS(1),
 			"each source mesh must have an independently addressable BLAS");
 		Require(!model.HasBLAS(2) && !model.HasBLAS(Model::AllMeshes - 1),
 			"invalid source mesh selections must not resolve a BLAS");
-		Require(model.GetBLASTriangles(0).Num() == 1 &&
-			model.GetBLASTriangles(1).Num() == 1,
+		Require(CountModelTriangles(model, 0) == 1 &&
+			CountModelTriangles(model, 1) == 1,
 			"source BLAS data must contain geometry once, independent of scene instances");
 		RequireVec3Near(
-			model.GetBLASTriangles(0)[0].m_vertices[0],
+			(*model.GetBLASInstances(0)[0].m_geometry->m_triangles)[0].m_vertices[0],
 			glm::vec3(0.0f),
 			"source mesh BLAS must remain in node-local space");
 		RequireVec3Near(
-			model.GetBLASTriangles()[0].m_vertices[0],
+			glm::vec3(model.GetBLASInstances()[0].m_modelMatrix * glm::vec4(
+				(*model.GetBLASInstances()[0].m_geometry->m_triangles)[0].m_vertices[0], 1)),
 			glm::vec3(2.0f, 0.0f, 0.0f),
 			"complete model BLAS must apply the first node transform");
 		RequireVec3Near(
-			model.GetBLASTriangles()[1].m_vertices[0],
+			glm::vec3(model.GetBLASInstances()[1].m_modelMatrix * glm::vec4(
+				(*model.GetBLASInstances()[1].m_geometry->m_triangles)[0].m_vertices[0], 1)),
 			glm::vec3(4.0f, 0.0f, 0.0f),
 			"complete model BLAS must apply repeated-node transforms independently");
 	}

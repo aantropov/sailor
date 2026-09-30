@@ -7,6 +7,7 @@
 #include "Engine/Types.h"
 #include "Raytracing/BVH.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/Model/ModelImporter.h"
 
 #include "MaterialUtils.h"
 #include "LightingModel.h"
@@ -66,6 +67,7 @@ namespace Sailor::Raytracing
 		struct TLASInstance
 		{
 			ModelPtr m_model{};
+			TSharedPtr<const Model::BLASGeometry> m_modelGeometry{};
 			// Optional immutable geometry snapshot. GI probes baking uses it so
 			// model hot reloads cannot mutate an in-flight bake.
 			TSharedPtr<BVH> m_blas{};

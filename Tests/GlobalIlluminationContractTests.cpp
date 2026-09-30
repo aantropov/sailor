@@ -924,8 +924,14 @@ namespace
 		explicit CapturedGiTestModel(const EveningLandscapeRaytracingFixture& fixture) : Model(FileId::Invalid)
 		{
 			m_boundsAabb = fixture.m_bounds;
-			m_blasTriangles = *fixture.m_triangles;
-			m_blas = fixture.m_blas;
+			auto data = TSharedPtr<BLASData>::Make();
+			data->m_triangles = TSharedPtr<TVector<Math::Triangle>>::Make(*fixture.m_triangles);
+			data->m_blas = fixture.m_blas;
+			data->m_bounds = fixture.m_bounds;
+			data->m_materialSlots = static_cast<uint32_t>(fixture.m_materials.Num());
+			auto geometry = TSharedPtr<BLASGeometry>::Make();
+			geometry->m_instances.Add({ data });
+			m_blasGeometry = std::move(geometry);
 			m_meshes.Add(RHI::RHIMeshPtr::Make());
 			Flush();
 		}

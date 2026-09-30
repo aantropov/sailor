@@ -250,6 +250,16 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(PathTracerImageTests)
 endif()
 
+add_executable(ModelBlasInstancingTests ModelBlasInstancingTests.cpp)
+target_compile_features(ModelBlasInstancingTests PRIVATE cxx_std_20)
+target_include_directories(ModelBlasInstancingTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ModelBlasInstancingTests PRIVATE Sailor::Runtime)
+add_test(NAME ModelBlasInstancingTests COMMAND ModelBlasInstancingTests)
+set_tests_properties(ModelBlasInstancingTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ModelBlasInstancingTests)
+endif()
+
 add_executable(VulkanSubmissionTests
     VulkanSubmissionTests.cpp
     PathTracerCommandTests.cpp

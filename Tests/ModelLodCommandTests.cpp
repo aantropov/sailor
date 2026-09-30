@@ -168,7 +168,7 @@ namespace
 
 	void CheckImportedRayHits(const ModelPtr& model)
 	{
-		auto verifyHit = [&](int32_t selection, glm::vec3 point, uint32_t materialIndex)
+		auto verifyHit = [&](int32_t selection, glm::vec3 point, uint32_t materialIndex, uint32_t instanceIndex = 0)
 		{
 			ModelRayProbe tracer;
 			Raytracing::PathTracer::TLASInstance instance;
@@ -181,12 +181,12 @@ namespace
 			ModelRayProbe::TLASHit hit;
 			Require(tracer.IntersectScene(Math::Ray(point + glm::vec3(0, 0, 2), glm::vec3(0, 0, -1)), hit) &&
 				glm::length(hit.m_hit.m_point - point) < 1e-5f &&
-				hit.m_materialIndex == materialIndex && hit.m_instanceIndex == 0,
+				hit.m_materialIndex == materialIndex && hit.m_instanceIndex == instanceIndex,
 				"full and subset imports must retain the expected hit position and material");
 		};
 		verifyHit(Model::AllMeshes, { 4.25f, 0.125f, 0 }, 0);
-		verifyHit(Model::AllMeshes, { -3.75f, 0.125f, 0 }, 1);
-		verifyHit(Model::AllMeshes, { 4.25f, 3.125f, 0 }, 0);
+		verifyHit(Model::AllMeshes, { -3.75f, 0.125f, 0 }, 1, 1);
+		verifyHit(Model::AllMeshes, { 4.25f, 3.125f, 0 }, 0, 2);
 		verifyHit(1, { 0.25f, 0.125f, 0 }, 0);
 		verifyHit(2, { 0.25f, 0.125f, 0 }, 1);
 	}
