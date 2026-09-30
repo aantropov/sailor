@@ -2,6 +2,7 @@
 #include "Core/Defines.h"
 #include <string>
 #include "Containers/Pair.h"
+#include "Containers/Map.h"
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
 #include "Core/Submodule.h"
@@ -80,6 +81,8 @@ namespace Sailor
 
 		SAILOR_API __forceinline const TVector<std::string>& GetIncludes() const { return m_includes; }
 		SAILOR_API __forceinline const TVector<std::string>& GetSupportedDefines() const { return m_defines; }
+		SAILOR_API const TMap<std::string, glm::vec4>& GetDefaultUniformsVec4() const { return m_defaultUniformsVec4; }
+		SAILOR_API const TMap<std::string, float>& GetDefaultUniformsFloat() const { return m_defaultUniformsFloat; }
 
 		SAILOR_API const TVector<RHI::EFormat>& GetColorAttachments() const { return m_colorAttachments; }
 		SAILOR_API RHI::EFormat GetDepthStencilAttachment() const { return m_depthStencilAttachment; }
@@ -106,6 +109,8 @@ namespace Sailor
 
 		TVector<std::string> m_includes;
 		TVector<std::string> m_defines;
+		TMap<std::string, glm::vec4> m_defaultUniformsVec4;
+		TMap<std::string, float> m_defaultUniformsFloat;
 	};
 
 	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener,

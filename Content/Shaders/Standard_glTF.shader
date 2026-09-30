@@ -17,6 +17,16 @@ defines:
  - SUPPORT_LIGHTS_OVERFLOW
  - MOTIONS
 
+defaultUniformsVec4:
+  material.baseColorFactor: [1, 1, 1, 1]
+  material.emissiveFactor: [0, 0, 0, 0]
+defaultUniformsFloat:
+  material.roughnessFactor: 1
+  material.metallicFactor: 0
+  material.normalScale: 1
+  material.alphaCutoff: 0.5
+  material.occlusionStrength: 1
+
 glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable

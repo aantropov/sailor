@@ -1726,6 +1726,36 @@ namespace
 			"native nested GLSL include text should remain opaque to the YAML include resolver");
 	}
 
+	void TestShaderMaterialDefaults()
+	{
+		const auto content = std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		ShaderAsset shader;
+		shader.Deserialize(YAML::LoadFile((content / "Shaders/Standard_glTF.shader").string()));
+		const glm::vec4* color = nullptr;
+		Require(shader.GetDefaultUniformsVec4().Find("material.baseColorFactor", color) && *color == glm::vec4(1),
+			"the surface shader must describe a white default base color");
+		Require(shader.GetDefaultUniformsVec4().Find("material.emissiveFactor", color) && *color == glm::vec4(0),
+			"the surface shader must describe a non-emissive default");
+		const TMap<std::string, float> expected{
+			{ "material.roughnessFactor", 1.0f }, { "material.metallicFactor", 0.0f },
+			{ "material.normalScale", 1.0f }, { "material.alphaCutoff", 0.5f },
+			{ "material.occlusionStrength", 1.0f }
+		};
+		for (const auto& entry : expected)
+		{
+			const float* value = nullptr;
+			Require(shader.GetDefaultUniformsFloat().Find(entry.m_first, value) && *value == *entry.m_second,
+				"the surface shader must describe neutral textureless PBR factors");
+		}
+		const auto box = YAML::LoadFile((content / "Models/Box/materials/BoxDefault.mat").string());
+		Require(box["uniformsVec4"]["material.baseColorFactor"].as<glm::vec4>() == glm::vec4(1, 0.5f, 0.5f, 1) &&
+			box["uniformsVec4"]["material.emissiveFactor"].as<glm::vec4>() == glm::vec4(0),
+			"the authored Box material must retain its colors in canonical shader fields");
+		for (const auto& entry : expected)
+			Require(box["uniformsFloat"][entry.m_first].as<float>() == *entry.m_second,
+				"the authored Box material must not depend on runtime default injection");
+	}
+
 	RHI::ShaderByteCode CompileRuntimeShaderStage(const char* shaderPath,
 		std::initializer_list<const char*> permutationDefines, RHI::EShaderStage stage,
 		bool bIsDebug = false)
@@ -2397,6 +2427,7 @@ int main()
 		TestFailedGlslCompilationPreservesBytecode();
 		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
+		TestShaderMaterialDefaults();
 		TestCompiledPushConstantRanges();
 		TestRuntimePushConstantLayouts();
 		TestRuntimeLightingShadersCompile();

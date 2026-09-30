@@ -118,6 +118,8 @@ void ShaderAsset::Deserialize(const YAML::Node& inData)
 	DESERIALIZE_PROPERTY(inData, m_includes);
 	DESERIALIZE_PROPERTY(inData, m_colorAttachments);
 	DESERIALIZE_PROPERTY(inData, m_depthStencilAttachment);
+	DESERIALIZE_PROPERTY(inData, m_defaultUniformsVec4);
+	DESERIALIZE_PROPERTY(inData, m_defaultUniformsFloat);
 }
 
 ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)

@@ -202,6 +202,113 @@ void main() {
 		return App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
 	}
 
+	void TestMaterialCreationDefaults(const std::filesystem::path& workspace)
+	{
+		auto* importer = App::GetSubmodule<MaterialImporter>();
+		MaterialAsset::Data data;
+		data.m_shader = FileId("1A4BA353-FDA4-4F65-941F-D9FFEE4630A0");
+		const auto path = workspace / "Content" / "NeutralMaterial.mat";
+		const FileId id = importer->CreateMaterialAsset(path.string(), data);
+		const auto document = YAML::LoadFile(path.string());
+		Require(document["uniformsVec4"]["material.baseColorFactor"] &&
+			document["uniformsVec4"]["material.baseColorFactor"].as<glm::vec4>() == glm::vec4(1),
+			"material creation must persist the shader's neutral base color before any runtime load");
+		Require(document["uniformsVec4"]["material.emissiveFactor"].as<glm::vec4>() == glm::vec4(0),
+			"a new surface must not emit light by default");
+		const TMap<std::string, float> expected{
+			{ "material.roughnessFactor", 1.0f }, { "material.metallicFactor", 0.0f },
+			{ "material.normalScale", 1.0f }, { "material.alphaCutoff", 0.5f },
+			{ "material.occlusionStrength", 1.0f }
+		};
+		for (const auto& entry : expected)
+		{
+			Require(document["uniformsFloat"][entry.m_first].as<float>() == *entry.m_second,
+				"material creation must persist all neutral surface factors");
+		}
+		Require(!document["samplers"] || document["samplers"].size() == 0,
+			"a textureless material must keep the sampler-zero fallback");
+		MaterialPtr neutral;
+		Require(importer->LoadMaterial_Immediate(id, neutral) && neutral, "neutral material must load");
+		Drain();
+		const auto neutralBytes = ReadGpu(neutral->GetShaderBindings());
+		CheckGpuColor(neutral->GetShaderBindings(), neutralBytes, glm::vec4(1));
+		MaterialAsset::Data reference = data;
+		reference.m_uniformsVec4["material.baseColorFactor"] = glm::vec4(1);
+		reference.m_uniformsVec4["material.emissiveFactor"] = glm::vec4(0);
+		reference.m_uniformsFloat = expected;
+		const auto referencePath = workspace / "Content" / "ExplicitNeutral.mat";
+		std::ofstream referenceOutput(referencePath);
+		referenceOutput << MaterialAsset::Serialize(reference);
+		referenceOutput.close();
+		Require(static_cast<bool>(referenceOutput), "explicit reference material must be written");
+		const FileId referenceId = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(referencePath.string());
+		MaterialPtr referenceMaterial;
+		Require(importer->LoadMaterial_Immediate(referenceId, referenceMaterial) && referenceMaterial,
+			"an explicitly authored neutral material must load");
+		Drain();
+		Require(ReadGpu(referenceMaterial->GetShaderBindings()) == neutralBytes,
+			"shader defaults must match the complete GPU payload of an explicitly authored neutral material");
+		importer->OnUpdateAssetInfo(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(id), true);
+		Drain();
+		Require(ReadGpu(neutral->GetShaderBindings()) == neutralBytes,
+			"reloading a canonical material must preserve its complete GPU payload");
+
+		data.m_uniformsVec4["material.baseColorFactor"] = glm::vec4(0.2f, 0.4f, 0.8f, 0.35f);
+		data.m_uniformsVec4["material.emissiveFactor"] = glm::vec4(2, 3, 4, 0);
+		data.m_uniformsFloat["material.roughnessFactor"] = 0.0f;
+		data.m_uniformsFloat["material.metallicFactor"] = 0.8f;
+		data.m_uniformsFloat["material.alphaCutoff"] = 0.25f;
+		data.m_shaderDefines.Add("ALPHA_CUTOUT");
+		data.m_renderQueue = "Masked";
+		data.m_samplers["baseColorSampler"] = WriteTexture(workspace, "AuthoredBaseColor", true);
+		const auto authoredPath = workspace / "Content" / "AuthoredMaterial.mat";
+		const FileId authoredId = importer->CreateMaterialAsset(authoredPath.string(), data);
+		const auto authored = importer->LoadMaterialAsset(authoredId);
+		for (const auto& entry : data.m_uniformsVec4)
+		{
+			const glm::vec4* value = nullptr;
+			Require(authored->GetUniformsVec4().Find(entry.m_first, value) && *value == *entry.m_second,
+				"shader defaults must preserve authored colors and emission");
+		}
+		for (const auto& entry : data.m_uniformsFloat)
+		{
+			const float* value = nullptr;
+			Require(authored->GetUniformsFloat().Find(entry.m_first, value) && *value == *entry.m_second,
+				"shader defaults must preserve authored factors, including zero");
+		}
+		const FileId* sampler = nullptr;
+		Require(authored->GetSamplers().Find("baseColorSampler", sampler) &&
+			*sampler == data.m_samplers["baseColorSampler"] && authored->GetRenderQueue() == "Masked" &&
+			authored->GetShaderDefines().Contains("ALPHA_CUTOUT"),
+			"material creation must preserve the canonical texture slot and masked coverage");
+
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto shader = YAML::LoadFile(registry->GetAssetInfoPtr(data.m_shader)->GetAssetFilepath());
+		const glm::vec4 customColor(0.25f, 0.5f, 0.75f, 1);
+		shader["defaultUniformsVec4"]["material.baseColorFactor"] = customColor;
+		shader["defaultUniformsFloat"]["material.roughnessFactor"] = 0.5f;
+		const auto shaderPath = workspace / "Content" / "CustomNeutral.shader";
+		std::ofstream shaderOutput(shaderPath);
+		shaderOutput << shader;
+		shaderOutput.close();
+		Require(static_cast<bool>(shaderOutput), "custom shader description must be written");
+		MaterialAsset::Data custom;
+		custom.m_shader = registry->GetOrLoadFile(shaderPath.string());
+		custom.m_uniformsFloat["material.roughnessFactor"] = 0.0f;
+		const auto customPath = workspace / "Content" / "CustomNeutral.mat";
+		const FileId customId = importer->CreateMaterialAsset(customPath.string(), custom);
+		const auto customDocument = YAML::LoadFile(customPath.string());
+		Require(customDocument["uniformsVec4"]["material.baseColorFactor"].as<glm::vec4>() == customColor &&
+			customDocument["uniformsFloat"]["material.roughnessFactor"].as<float>() == 0.0f,
+			"shader-described defaults must work for arbitrary shader IDs without replacing authored values");
+		MaterialPtr customMaterial;
+		Require(importer->LoadMaterial_Immediate(customId, customMaterial) && customMaterial,
+			"a material created from a custom shader description must load");
+		Drain();
+		CheckGpuColor(customMaterial->GetShaderBindings(), ReadGpu(customMaterial->GetShaderBindings()), customColor);
+		std::cout << "Shader-described material defaults: persisted values, authored overrides and GPU upload passed\n";
+	}
+
 	void TestWarmShaderPermutation(const std::filesystem::path& workspace)
 	{
 		auto* compiler = App::GetSubmodule<ShaderCompiler>();
@@ -981,6 +1088,7 @@ namespace Sailor::Tests
 			try { test(); }
 			catch (const std::exception& error) { failures += std::string(name) + ": " + error.what() + '\n'; }
 		};
+		run("Material creation defaults", [&]() { TestMaterialCreationDefaults(workspace); });
 		run("Texture failure and retry", [&]() { TestFailedTextureReload(workspace); });
 		run("Cold failure and retry", [&]() { TestColdFailureRetry(workspace); });
 		run("Reload ordering", [&]() { TestOrderedReload(workspace, false); });

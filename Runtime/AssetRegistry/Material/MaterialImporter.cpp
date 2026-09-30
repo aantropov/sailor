@@ -16,7 +16,6 @@
 #include <fstream>
 #include <algorithm>
 #include <cstring>
-#include <initializer_list>
 #include <iostream>
 
 #include "RHI/Renderer.h"
@@ -32,8 +31,6 @@ using namespace Sailor;
 namespace
 {
 	std::atomic<uint64_t> g_materialContentRevision{};
-	constexpr const char* StandardGltfShaderUid =
-		"1A4BA353-FDA4-4F65-941F-D9FFEE4630A0";
 
 	TVector<std::string> ResolveForwardDefines(const MaterialAsset& material)
 	{
@@ -56,105 +53,6 @@ namespace
 	{
 		return name == "material.emissiveFactor" ||
 			name == "material.emissive" || name == "material.emission";
-	}
-
-	template<typename TValue>
-	void AddMaterialUniformAliasOrDefault(
-		TMap<std::string, TValue>& uniforms,
-		const char* canonicalName,
-		std::initializer_list<const char*> aliases,
-		const TValue& defaultValue)
-	{
-		if (uniforms.ContainsKey(canonicalName))
-		{
-			return;
-		}
-
-		for (const char* alias : aliases)
-		{
-			const TValue* value = nullptr;
-			if (uniforms.Find(alias, value) && value)
-			{
-				uniforms.Add(canonicalName, *value);
-				return;
-			}
-		}
-
-		uniforms.Add(canonicalName, defaultValue);
-	}
-
-	void AddMaterialSamplerAlias(
-		TMap<std::string, FileId>& samplers,
-		const char* canonicalName,
-		std::initializer_list<const char*> aliases)
-	{
-		if (samplers.ContainsKey(canonicalName))
-		{
-			return;
-		}
-
-		for (const char* alias : aliases)
-		{
-			const FileId* value = nullptr;
-			if (samplers.Find(alias, value) && value && *value)
-			{
-				samplers.Add(canonicalName, *value);
-				return;
-			}
-		}
-	}
-
-	void NormalizeStandardGltfMaterial(MaterialAsset::Data& data)
-	{
-		if (data.m_shader.ToString() != StandardGltfShaderUid)
-		{
-			return;
-		}
-
-		// Standard_glTF is the engine's default surface shader. Older engine
-		// materials used the Standard names below, so silently zeroing the new
-		// reflected block made otherwise valid textureless materials black and
-		// perfectly smooth. Keep the authored values and provide neutral PBR
-		// defaults for genuinely absent fields.
-		AddMaterialUniformAliasOrDefault(
-			data.m_uniformsVec4,
-			"material.baseColorFactor",
-			{ "material.albedo" },
-			glm::vec4(1.0f));
-		AddMaterialUniformAliasOrDefault(
-			data.m_uniformsVec4,
-			"material.emissiveFactor",
-			{ "material.emissive", "material.emission" },
-			glm::vec4(0.0f));
-		AddMaterialUniformAliasOrDefault(
-			data.m_uniformsFloat,
-			"material.roughnessFactor",
-			{ "material.roughness" },
-			1.0f);
-		AddMaterialUniformAliasOrDefault(
-			data.m_uniformsFloat,
-			"material.metallicFactor",
-			{ "material.metallic" },
-			0.0f);
-		AddMaterialUniformAliasOrDefault(
-			data.m_uniformsFloat,
-			"material.normalScale",
-			{},
-			1.0f);
-		AddMaterialUniformAliasOrDefault(
-			data.m_uniformsFloat,
-			"material.alphaCutoff",
-			{},
-			0.5f);
-		AddMaterialUniformAliasOrDefault(
-			data.m_uniformsFloat,
-			"material.occlusionStrength",
-			{},
-			1.0f);
-		AddMaterialSamplerAlias(
-			data.m_samplers,
-			"baseColorSampler",
-			{ "albedoSampler" });
 	}
 }
 
@@ -681,7 +579,6 @@ void MaterialAsset::Deserialize(const YAML::Node& outData)
 	::Deserialize(outData, "uniformsFloat", m_pData->m_uniformsFloat);
 	::Deserialize(outData, "shaderUid", m_pData->m_shader);
 	::Deserialize(outData, "renderQueue", renderQueue);
-	NormalizeStandardGltfMaterial(*m_pData);
 
 	m_pData->m_renderQueue = renderQueue;
 	const size_t tag = StringHash::Runtime(renderQueue).GetHash();
@@ -785,6 +682,20 @@ TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(FileId uid)
 
 const FileId& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::Data data)
 {
+	if (auto shader = App::GetSubmodule<ShaderCompiler>()->LoadShaderAsset(data.m_shader).TryLock())
+	{
+		for (const auto& entry : shader->GetDefaultUniformsVec4())
+		{
+			if (!data.m_uniformsVec4.ContainsKey(entry.m_first))
+				data.m_uniformsVec4.Add(entry.m_first, *entry.m_second);
+		}
+		for (const auto& entry : shader->GetDefaultUniformsFloat())
+		{
+			if (!data.m_uniformsFloat.ContainsKey(entry.m_first))
+				data.m_uniformsFloat.Add(entry.m_first, *entry.m_second);
+		}
+	}
+
 	MaterialAsset asset;
 	asset.m_pData = TUniquePtr<MaterialAsset::Data>::Make(std::move(data));
 

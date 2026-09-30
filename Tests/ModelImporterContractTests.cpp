@@ -1990,11 +1990,9 @@ namespace
 			"material render state tag must match the retained render queue");
 	}
 
-	void TestStandardGltfTexturelessDefaultsAndLegacyAliases()
+	void TestMaterialAssetPreservesAuthoredSchema()
 	{
-		MaterialAsset legacyMaterial;
-		legacyMaterial.Deserialize(YAML::Load(R"(
-shaderUid: 1A4BA353-FDA4-4F65-941F-D9FFEE4630A0
+		auto source = YAML::Load(R"(
 samplers:
   albedoSampler: 11111111-1111-4111-8111-111111111111
 uniformsVec4:
@@ -2003,100 +2001,29 @@ uniformsVec4:
 uniformsFloat:
   material.roughness: 0.72
   material.metallic: 0.15
-)"));
+)");
+		for (const auto* shader : { "1A4BA353-FDA4-4F65-941F-D9FFEE4630A0",
+			"E42B1499-8C0C-47E3-9584-E7BB6CD821FC", "22222222-2222-4222-8222-222222222222" })
+		{
+			source["shaderUid"] = shader;
+			MaterialAsset asset;
+			asset.Deserialize(source);
+			Require(asset.GetUniformsVec4().Num() == 2 && asset.GetUniformsFloat().Num() == 2 &&
+				asset.GetSamplers().Num() == 1, "deserialization must not add shader-specific aliases or defaults");
+			const auto saved = asset.Serialize();
+			Require(saved["uniformsVec4"]["material.albedo"].as<glm::vec4>() == glm::vec4(0.8f, 0.25f, 0.1f, 1) &&
+				saved["uniformsVec4"]["material.emission"].as<glm::vec4>() == glm::vec4(0.2f, 0.1f, 0.05f, 0) &&
+				saved["uniformsFloat"]["material.roughness"].as<float>() == 0.72f &&
+				saved["uniformsFloat"]["material.metallic"].as<float>() == 0.15f &&
+				saved["samplers"]["albedoSampler"].as<FileId>() == FileId("11111111-1111-4111-8111-111111111111"),
+				"material roundtrip must preserve the authored schema regardless of shader identity");
 
-		const glm::vec4* baseColor = nullptr;
-		const glm::vec4* emissive = nullptr;
-		const float* roughness = nullptr;
-		const float* metallic = nullptr;
-		const float* normalScale = nullptr;
-		const float* alphaCutoff = nullptr;
-		const float* occlusionStrength = nullptr;
-		const FileId* baseColorSampler = nullptr;
-		Require(
-			legacyMaterial.GetUniformsVec4().Find(
-				"material.baseColorFactor",
-				baseColor) &&
-			baseColor && *baseColor == glm::vec4(0.8f, 0.25f, 0.1f, 1.0f) &&
-			legacyMaterial.GetUniformsVec4().Find(
-				"material.emissiveFactor",
-				emissive) &&
-			emissive && *emissive == glm::vec4(0.2f, 0.1f, 0.05f, 0.0f) &&
-			legacyMaterial.GetUniformsFloat().Find(
-				"material.roughnessFactor",
-				roughness) &&
-			roughness && std::abs(*roughness - 0.72f) < 0.0001f &&
-			legacyMaterial.GetUniformsFloat().Find(
-				"material.metallicFactor",
-				metallic) &&
-			metallic && std::abs(*metallic - 0.15f) < 0.0001f,
-			"the default Standard_glTF material must preserve legacy Standard PBR values");
-		Require(
-			legacyMaterial.GetUniformsFloat().Find(
-				"material.normalScale",
-				normalScale) &&
-			normalScale && *normalScale == 1.0f &&
-			legacyMaterial.GetUniformsFloat().Find(
-				"material.alphaCutoff",
-				alphaCutoff) &&
-			alphaCutoff && *alphaCutoff == 0.5f &&
-			legacyMaterial.GetUniformsFloat().Find(
-				"material.occlusionStrength",
-				occlusionStrength) &&
-			occlusionStrength && *occlusionStrength == 1.0f,
-			"a textureless Standard_glTF material must receive neutral normal, alpha, and occlusion defaults");
-		Require(
-			legacyMaterial.GetSamplers().Find(
-				"baseColorSampler",
-				baseColorSampler) &&
-			baseColorSampler &&
-			baseColorSampler->ToString() ==
-				"11111111-1111-4111-8111-111111111111",
-			"legacy albedo textures must bind to the Standard_glTF base-color slot");
-
-		MaterialAsset texturelessMaterial;
-		texturelessMaterial.Deserialize(YAML::Load(R"(
-shaderUid: 1A4BA353-FDA4-4F65-941F-D9FFEE4630A0
-samplers: {}
-uniformsVec4: {}
-uniformsFloat: {}
-)"));
-		baseColor = nullptr;
-		emissive = nullptr;
-		roughness = nullptr;
-		metallic = nullptr;
-		Require(
-			texturelessMaterial.GetUniformsVec4().Find(
-				"material.baseColorFactor",
-				baseColor) &&
-			baseColor && *baseColor == glm::vec4(1.0f) &&
-			texturelessMaterial.GetUniformsVec4().Find(
-				"material.emissiveFactor",
-				emissive) &&
-			emissive && *emissive == glm::vec4(0.0f) &&
-			texturelessMaterial.GetUniformsFloat().Find(
-				"material.roughnessFactor",
-				roughness) &&
-			roughness && *roughness == 1.0f &&
-			texturelessMaterial.GetUniformsFloat().Find(
-				"material.metallicFactor",
-				metallic) &&
-			metallic && *metallic == 0.0f &&
-			texturelessMaterial.GetSamplers().IsEmpty(),
-			"a Standard_glTF material without authored maps must be white, rough, non-metallic, and use sampler-zero fallbacks");
-
-		MaterialAsset legacyStandardMaterial;
-		legacyStandardMaterial.Deserialize(YAML::Load(R"(
-shaderUid: E42B1499-8C0C-47E3-9584-E7BB6CD821FC
-uniformsVec4:
-  material.albedo: [0.3, 0.4, 0.5, 1.0]
-)"));
-		baseColor = nullptr;
-		Require(
-			!legacyStandardMaterial.GetUniformsVec4().Find(
-				"material.baseColorFactor",
-				baseColor),
-			"Standard_glTF compatibility defaults must not rewrite custom or legacy shader schemas");
+			YAML::Node empty;
+			empty["shaderUid"] = shader;
+			asset.Deserialize(empty);
+			Require(asset.GetUniformsVec4().IsEmpty() && asset.GetUniformsFloat().IsEmpty() && asset.GetSamplers().IsEmpty(),
+				"loading sparse material data must not invoke an asset-authoring operation");
+		}
 	}
 
 	void TestGltfTransmissionExtensionResolvesMaterialFields()
@@ -3150,7 +3077,7 @@ int main()
 		{ "RhiMeshLodsShareBuffersAndDrawRanges", TestRhiMeshLodsShareBuffersAndDrawRanges },
 		{ "GltfAlphaModesResolveRenderState", TestGltfAlphaModesResolveRenderState },
 		{ "MaterialAssetRetainsRenderQueue", TestMaterialAssetRetainsRenderQueue },
-		{ "StandardGltfTexturelessDefaultsAndLegacyAliases", TestStandardGltfTexturelessDefaultsAndLegacyAliases },
+		{ "MaterialAssetPreservesAuthoredSchema", TestMaterialAssetPreservesAuthoredSchema },
 		{ "GltfTransmissionExtensionResolvesMaterialFields", TestGltfTransmissionExtensionResolvesMaterialFields },
 		{ "GltfEmissiveStrengthResolvesMaterialRadiance", TestGltfEmissiveStrengthResolvesMaterialRadiance },
 		{ "GeneratedMaterialMergePreservesAuthoredProperties", TestGeneratedMaterialMergePreservesAuthoredProperties },
