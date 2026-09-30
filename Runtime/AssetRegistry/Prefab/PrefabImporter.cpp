@@ -18,46 +18,19 @@
 
 using namespace Sailor;
 
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
 namespace
 {
-	bool TryMergeComponentOverride(
-		const ReflectedData& base,
-		const ReflectedData& delta,
-		ReflectedData& outMerged,
-		std::string& outDiagnostic)
-	{
-		if (!base.IsValid() || !delta.IsValid() || base.GetTypeInfo() != delta.GetTypeInfo())
-		{
-			outDiagnostic = "the component override type does not match the source component";
-			return false;
-		}
-
-		YAML::Node merged = base.Serialize();
-		YAML::Node mergedProperties = merged["overrideProperties"];
-		for (const auto& property : delta.GetProperties())
-		{
-			if (property.m_first == "instanceId" || property.m_first == "fileId")
-			{
-				outDiagnostic = "component identity properties cannot be overridden";
-				return false;
-			}
-
-			mergedProperties[property.m_first] = YAML::Clone(*property.m_second);
-		}
-
-		if (!External::GuardYamlExceptions(
-				[&outMerged, &merged]()
-				{
-					outMerged.Deserialize(merged);
-				},
-				outDiagnostic))
-		{
-			return false;
-		}
-
-		return outMerged.IsValid();
-	}
+	thread_local Prefab::ValidationObserver g_validationObserver;
 }
+
+Prefab::ValidationObserver Prefab::ExchangeValidationObserverForTests(ValidationObserver observer)
+{
+	auto previous = std::move(g_validationObserver);
+	g_validationObserver = std::move(observer);
+	return previous;
+}
+#endif
 
 YAML::Node Prefab::ReflectedGameObject::Serialize() const
 {
@@ -121,8 +94,9 @@ YAML::Node Prefab::Serialize() const
 	return outData;
 }
 
-void Prefab::Deserialize(const YAML::Node& inData)
+void Prefab::ResetData()
 {
+	m_bIsReady.store(false, std::memory_order_release);
 	m_gameObjects.Clear();
 	m_components.Clear();
 	m_linkedInstanceIds.Clear();
@@ -136,7 +110,11 @@ void Prefab::Deserialize(const YAML::Node& inData)
 	m_bExpandedLinkedInstanceRecord = false;
 	m_bDetachedFromPrefabRecord = false;
 	m_bLinkedPrefabSnapshotRecord = false;
-	m_bIsReady.store(false, std::memory_order_release);
+}
+
+void Prefab::Deserialize(const YAML::Node& inData)
+{
+	ResetData();
 
 	DESERIALIZE_PROPERTY(inData, m_gameObjects);
 	DESERIALIZE_PROPERTY(inData, m_components);
@@ -176,6 +154,9 @@ void Prefab::Deserialize(const YAML::Node& inData)
 
 bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 {
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+	if (g_validationObserver) g_validationObserver(*this);
+#endif
 	outDiagnostic.clear();
 	if (m_gameObjects.IsEmpty())
 	{
@@ -489,191 +470,6 @@ void Prefab::SerializeGameObject(
 	{
 		SerializeGameObject(child, parentIndex, components, gameObjects, excludedRoots);
 	}
-}
-
-bool Prefab::ConfigureLinkedInstance(
-	const PrefabPtr& basePrefab,
-	const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
-	const InstanceId& parentInstanceId,
-	const TMap<InstanceId, YAML::Node>& gameObjectOverrides,
-	const TMap<InstanceId, ReflectedData>& componentOverrides,
-	std::string& outDiagnostic)
-{
-	outDiagnostic.clear();
-	m_bIsReady.store(false, std::memory_order_release);
-	m_gameObjects.Clear();
-	m_components.Clear();
-	m_linkedInstanceIds.Clear();
-	m_gameObjectOverrides.Clear();
-	m_componentOverrides.Clear();
-	m_detachedSupplementalInstanceIds.Clear();
-	m_linkedSnapshotSourceFileId = FileId::Invalid;
-	m_linkedParentInstanceId = InstanceId::Invalid;
-	m_detachedParentInstanceId = InstanceId::Invalid;
-	m_bLinkedInstanceRecord = false;
-	m_bExpandedLinkedInstanceRecord = false;
-	m_bDetachedFromPrefabRecord = false;
-	m_bLinkedPrefabSnapshotRecord = false;
-
-	if (basePrefab && basePrefab.GetRawPtr() == this)
-	{
-		outDiagnostic = "a linked prefab cannot use itself as its source";
-		return false;
-	}
-
-	if (!basePrefab || !basePrefab->GetFileId() || basePrefab->GetFileId() != GetFileId())
-	{
-		outDiagnostic = "the linked prefab source is missing or has a mismatched FileId";
-		return false;
-	}
-
-	if (!basePrefab->ValidateForInstantiation(outDiagnostic))
-	{
-		return false;
-	}
-
-	if (sourceToInstanceIds.Num() != basePrefab->m_gameObjects.Num())
-	{
-		outDiagnostic = "the linked prefab instance mapping does not cover every source game object";
-		return false;
-	}
-
-	TSet<InstanceId> liveInstanceIds;
-	for (const auto& gameObject : basePrefab->m_gameObjects)
-	{
-		if (!sourceToInstanceIds.ContainsKey(gameObject.m_instanceId))
-		{
-			outDiagnostic = "the linked prefab instance mapping is missing source game object " +
-				gameObject.m_instanceId.ToString();
-			return false;
-		}
-
-		const InstanceId& liveInstanceId = sourceToInstanceIds[gameObject.m_instanceId];
-		if (!liveInstanceId.IsGameObjectId() || !liveInstanceIds.Insert(liveInstanceId))
-		{
-			outDiagnostic = "the linked prefab instance mapping contains an invalid or duplicate live game object id";
-			return false;
-		}
-	}
-
-	for (const auto& mapping : sourceToInstanceIds)
-	{
-		bool bKnownSource = false;
-		for (const auto& gameObject : basePrefab->m_gameObjects)
-		{
-			if (gameObject.m_instanceId == mapping.m_first)
-			{
-				bKnownSource = true;
-				break;
-			}
-		}
-
-		if (!bKnownSource)
-		{
-			outDiagnostic = "the linked prefab instance mapping contains an unknown source game object id";
-			return false;
-		}
-	}
-
-	m_gameObjects = basePrefab->m_gameObjects;
-	m_components = basePrefab->m_components;
-
-	for (const auto& overrideEntry : gameObjectOverrides)
-	{
-		ReflectedGameObject* target = nullptr;
-		for (auto& gameObject : m_gameObjects)
-		{
-			if (gameObject.m_instanceId == overrideEntry.m_first)
-			{
-				target = &gameObject;
-				break;
-			}
-		}
-
-		if (!target || !overrideEntry.m_second || !overrideEntry.m_second->IsMap())
-		{
-			outDiagnostic = "the linked prefab contains a game object override for an unknown source id";
-			return false;
-		}
-
-		const YAML::Node& properties = *overrideEntry.m_second;
-		for (const auto& property : properties)
-		{
-			const std::string name = property.first.as<std::string>();
-			if (name != "name" && name != "mobilityType" && name != "position" && name != "rotation" && name != "scale")
-			{
-				outDiagnostic = "unsupported linked game object override property '" + name + "'";
-				return false;
-			}
-		}
-
-		if (!External::GuardYamlExceptions(
-				[&properties, target]()
-				{
-					::Deserialize(properties, "name", target->m_name);
-					::Deserialize(properties, "mobilityType", target->m_mobilityType);
-					::Deserialize(properties, "position", target->m_position);
-					::Deserialize(properties, "rotation", target->m_rotation);
-					::Deserialize(properties, "scale", target->m_scale);
-				},
-				outDiagnostic))
-		{
-			return false;
-		}
-	}
-
-	for (const auto& overrideEntry : componentOverrides)
-	{
-		uint32_t componentIndex = static_cast<uint32_t>(-1);
-		for (uint32_t index = 0; index < m_components.Num(); ++index)
-		{
-			InstanceId componentInstanceId;
-			std::string conversionDiagnostic;
-			if (!Utils::TryGetComponentInstanceId(m_components[index], componentInstanceId, conversionDiagnostic))
-			{
-				outDiagnostic = conversionDiagnostic;
-				return false;
-			}
-
-			if (componentInstanceId == overrideEntry.m_first)
-			{
-				componentIndex = index;
-				break;
-			}
-		}
-
-		if (componentIndex == static_cast<uint32_t>(-1))
-		{
-			outDiagnostic = "the linked prefab contains a component override for an unknown source id";
-			return false;
-		}
-
-		ReflectedData merged;
-		if (!TryMergeComponentOverride(
-				m_components[componentIndex],
-				*overrideEntry.m_second,
-				merged,
-				outDiagnostic))
-		{
-			return false;
-		}
-
-		m_components[componentIndex] = std::move(merged);
-	}
-
-	m_linkedInstanceIds = sourceToInstanceIds;
-	m_linkedParentInstanceId = parentInstanceId;
-	m_gameObjectOverrides = gameObjectOverrides;
-	m_componentOverrides = componentOverrides;
-	m_bLinkedInstanceRecord = true;
-
-	if (!ValidateForInstantiation(outDiagnostic))
-	{
-		return false;
-	}
-
-	m_bIsReady.store(true, std::memory_order_release);
-	return true;
 }
 
 bool Prefab::AppendDetachedSupplementalHierarchy(

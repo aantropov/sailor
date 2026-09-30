@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <string>
+#include <functional>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
 #include "Core/Submodule.h"
@@ -23,6 +24,8 @@ using namespace Sailor::Memory;
 
 namespace Sailor
 {
+	namespace PrefabInstance { struct Snapshot; }
+
 	using PrefabPtr = TObjectPtr<class Prefab>;
 
 	class Prefab : public Object, public IYamlSerializable
@@ -66,6 +69,11 @@ namespace Sailor
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 		SAILOR_API bool ValidateForInstantiation(std::string& outDiagnostic) const;
 
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		using ValidationObserver = std::function<void(const Prefab&)>;
+		SAILOR_API static ValidationObserver ExchangeValidationObserverForTests(ValidationObserver observer);
+#endif
+
 		SAILOR_API bool SaveToFile(const std::string& path) const;
 
 		static PrefabPtr FromGameObject(
@@ -97,6 +105,15 @@ namespace Sailor
 
 	protected:
 
+		void ResetData();
+		bool ConfigureLinkedInstance(
+			const PrefabInstance::Snapshot& source,
+			const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
+			const InstanceId& parentInstanceId,
+			const TMap<InstanceId, YAML::Node>& gameObjectOverrides,
+			const TMap<InstanceId, ReflectedData>& componentOverrides,
+			std::string& outDiagnostic);
+
 		void SerializeLinkedProperties(
 			YAML::Node& outData,
 			const FileId& sourceFileId) const;
@@ -126,6 +143,7 @@ namespace Sailor
 
 		friend class PrefabImporter;
 		friend class WorldPrefab;
+		friend struct PrefabInstance::Snapshot;
 
 		// We need that for object instantiation
 		friend class World;

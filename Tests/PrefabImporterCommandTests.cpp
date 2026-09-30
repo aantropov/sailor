@@ -235,14 +235,20 @@ namespace
 			}
 	}
 
-	class ObserveTextReads
+	class ObservePrefabLoading
 	{
 	public:
-		explicit ObserveTextReads(AssetRegistry::TextReadObserver observer) :
-			m_previous(AssetRegistry::ExchangeTextReadObserverForTests(std::move(observer))) {}
-		~ObserveTextReads() { AssetRegistry::ExchangeTextReadObserverForTests(std::move(m_previous)); }
+		ObservePrefabLoading(AssetRegistry::TextReadObserver reads, Prefab::ValidationObserver validations) :
+			m_reads(AssetRegistry::ExchangeTextReadObserverForTests(std::move(reads))),
+			m_validations(Prefab::ExchangeValidationObserverForTests(std::move(validations))) {}
+		~ObservePrefabLoading()
+		{
+			Prefab::ExchangeValidationObserverForTests(std::move(m_validations));
+			AssetRegistry::ExchangeTextReadObserverForTests(std::move(m_reads));
+		}
 	private:
-		AssetRegistry::TextReadObserver m_previous;
+		AssetRegistry::TextReadObserver m_reads;
+		Prefab::ValidationObserver m_validations;
 	};
 
 	class PrefabWorld final : public World
@@ -344,8 +350,9 @@ namespace
 		document["prefabs"].push_back(LinkedRecord(source, firstId, parentId, -1));
 		const auto originalDocument = YAML::Clone(document);
 		uint32_t firstReads = 0, secondReads = 0;
+		uint32_t firstValidations = 0, secondValidations = 0;
 		bool editAfterRead = true;
-		ObserveTextReads observe([&](const std::filesystem::path& path)
+		ObservePrefabLoading observe([&](const std::filesystem::path& path)
 			{
 				if (std::filesystem::equivalent(path, firstPath))
 				{
@@ -357,10 +364,16 @@ namespace
 					}
 				}
 				if (std::filesystem::equivalent(path, secondPath)) ++secondReads;
+			}, [&](const Prefab& prefab)
+			{
+				if (prefab.IsLinkedInstanceRecord()) return;
+				if (prefab.GetFileId() == firstId) ++firstValidations;
+				if (prefab.GetFileId() == secondId) ++secondValidations;
 			});
 		auto load = [&](const YAML::Node& input)
 			{
 				firstReads = secondReads = 0;
+				firstValidations = secondValidations = 0;
 				auto world = worlds->Create();
 				world->Deserialize(input);
 				if (!world->IsReady()) throw std::runtime_error(world->GetLoadDiagnostic());
@@ -369,6 +382,8 @@ namespace
 		auto verifySnapshot = [&](WorldPrefabPtr world, bool updated)
 			{
 				Require(firstReads == 1 && secondReads == 1, "a world load must read each distinct source prefab exactly once");
+				Require(firstValidations == 1 && secondValidations == 1,
+					"a world load must validate each distinct source prefab exactly once");
 				const auto result = world->Serialize();
 				Require(result["prefabs"].size() == 5, "all independent linked instances and their parent must survive");
 				for (uint32_t i = 1; i < 5; ++i)
@@ -395,6 +410,7 @@ namespace
 		auto first = load(document);
 		const auto firstImage = YAML::Clone(first->Serialize());
 		std::cout << "Linked source reads: A=" << firstReads << ", B=" << secondReads
+			<< "; validations=" << firstValidations << '/' << secondValidations
 			<< "; children=" << firstImage["prefabs"][1]["gameObjects"][1]["name"].as<std::string>()
 			<< '/' << firstImage["prefabs"][3]["gameObjects"][1]["name"].as<std::string>() << '\n';
 		verifySnapshot(first, false);
@@ -434,7 +450,50 @@ namespace
 		auto roundtrip = load(serialized);
 		verifySnapshot(roundtrip, true);
 		Require(Utils::AreYamlNodesEqual(serialized, save(roundtrip)), "save-load-save must not introduce new overrides");
-		std::cout << "Linked prefab snapshots: one real read per source, coherent edits and independent overrides passed\n";
+		auto withoutOverrides = YAML::Clone(serialized);
+		for (uint32_t i = 1; i < 5; ++i)
+		{
+			withoutOverrides["prefabs"][i].remove("gameObjectOverrides");
+			withoutOverrides["prefabs"][i].remove("componentOverrides");
+		}
+		auto derived = load(withoutOverrides);
+		verifySnapshot(derived, true);
+		Require(Utils::AreYamlNodesEqual(serialized, save(derived)),
+			"deriving absent override fields must reuse the checked source and preserve the existing save contract");
+		std::cout << "Linked prefab snapshots: one real read and validation per source, coherent edits and independent overrides passed\n";
+	}
+
+	void TestLinkedValidationBoundary()
+	{
+		auto* prefabs = App::GetSubmodule<PrefabImporter>();
+		const auto id = FileId::CreateNewFileId();
+		const auto valid = LightPrefabDocument("Validation child");
+		const auto record = LinkedRecord(valid, id, InstanceId::Invalid, -1);
+		const auto ids = record["instanceIds"].as<TMap<InstanceId, InstanceId>>();
+		auto source = prefabs->Create(id);
+		auto target = prefabs->Create(id);
+		std::string diagnostic;
+		auto configure = [&]() { return target->ConfigureLinkedInstance(source, ids, InstanceId::Invalid, {}, {}, diagnostic); };
+		source->Deserialize(valid);
+		Require(configure() && target->IsReady(), "standalone linked configuration must validate a valid source");
+		for (uint32_t failure = 0; failure < 4; ++failure)
+		{
+			auto invalid = YAML::Clone(valid);
+			if (failure == 0) invalid["gameObjects"][0]["parentIndex"] = 0;
+			if (failure == 1) invalid["components"][0]["typename"] = "UnknownPrefabComponent";
+			if (failure == 2) invalid["components"][0]["overrideProperties"].remove("instanceId");
+			if (failure == 3) invalid["gameObjects"][1]["instanceId"] = valid["gameObjects"][0]["instanceId"].as<InstanceId>();
+			source->Deserialize(invalid);
+			Require(!configure() && !target->IsReady() && !diagnostic.empty() &&
+				target->Serialize()["gameObjects"].size() == 0,
+				"standalone configuration must reject invalid sources and clear the previous ready target");
+			source->Deserialize(valid);
+			Require(configure() && target->IsReady(), "repairing a source must rebuild its validated index");
+		}
+		Require(!target->ConfigureLinkedInstance(target, ids, InstanceId::Invalid, {}, {}, diagnostic) && !target->IsReady(),
+			"self-configuration must fail without retaining the old ready state");
+		Require(configure() && target->IsReady(), "a distinct valid source must still configure after self-rejection");
+		std::cout << "Standalone prefab validation rejects invalid hierarchy/type/identity and recovers after repair\n";
 	}
 
 	void TestLinkedSourceFailureRetry(const std::filesystem::path& workspace)
@@ -498,7 +557,7 @@ namespace Sailor::Tests
 		TestLinkedSourceFailureRetry(workspace);
 		auto snapshots = Tasks::CreateTaskWithResult<std::string>("Check linked prefab source snapshots", [&]()
 			{
-				try { TestLinkedSourceSnapshots(workspace); return std::string{}; }
+				try { TestLinkedSourceSnapshots(workspace); TestLinkedValidationBoundary(); return std::string{}; }
 				catch (const std::exception& error) { return std::string(error.what()); }
 			}, EThreadType::Worker);
 		snapshots->Run();
