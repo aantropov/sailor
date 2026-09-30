@@ -249,7 +249,6 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 		struct Data
 		{
 			TVector<MeshContext> m_parsedMeshes;
-			tinygltf::Model m_gltfModel;
 			bool m_bIsImported = false;
 		};
 
@@ -257,6 +256,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 			[this, pAssetInfo, pModel]() mutable
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
+				tinygltf::Model gltfModel;
 				const bool bKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
 				const bool bGenerateBLAS = pAssetInfo->ShouldGenerateBLAS();
 				pData->m_bIsImported = ImportModel(pAssetInfo->GetAssetFilepath(),
@@ -267,7 +267,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 					pModel->m_boundsAabb,
 					pModel->m_boundsSphere,
 					pModel->m_inverseBind,
-					&pData->m_gltfModel);
+					&gltfModel);
 				if (!pData->m_bIsImported)
 				{
 					return pData;
@@ -276,7 +276,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 				ModelLodGeneration::Prepare(*pAssetInfo, pData->m_parsedMeshes);
 				TVector<GltfImporterUtils::SceneNode> sceneNodes;
 				pData->m_bIsImported = GltfImporterUtils::CollectSceneNodes(
-					pData->m_gltfModel, pAssetInfo->GetUnitScale(), sceneNodes);
+					gltfModel, pAssetInfo->GetUnitScale(), sceneNodes);
 				if (!pData->m_bIsImported)
 				{
 					return pData;
@@ -285,10 +285,10 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 #if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
 				if (m_beforeCpuPreparationForTests) m_beforeCpuPreparationForTests();
 #endif
-				pModel->m_sourceMeshes.Resize(pData->m_gltfModel.meshes.size());
-				for (size_t meshIndex = 0; meshIndex < pData->m_gltfModel.meshes.size(); ++meshIndex)
+				pModel->m_sourceMeshes.Resize(gltfModel.meshes.size());
+				for (size_t meshIndex = 0; meshIndex < gltfModel.meshes.size(); ++meshIndex)
 				{
-					const auto& name = pData->m_gltfModel.meshes[meshIndex].name;
+					const auto& name = gltfModel.meshes[meshIndex].name;
 					pModel->m_sourceMeshes[meshIndex].m_name = name.empty() ? "Mesh_" + std::to_string(meshIndex) : name;
 				}
 				if (bKeepCpuBuffers || bGenerateBLAS)
@@ -324,19 +324,6 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 				pModel->ProceedCpuMeshes(bGenerateBLAS, bKeepCpuBuffers);
 				return pData;
 			});
-		auto migrationTask = loadDataTask->Then(
-			[this, pAssetInfo](TSharedPtr<Data> pData)
-			{
-				if (pData->m_bIsImported)
-				{
-					UpdateGeneratedMaterialPropertiesOnDemand(pAssetInfo, pData->m_gltfModel);
-				}
-				pData->m_gltfModel = tinygltf::Model();
-			},
-			"Migrate generated model materials",
-			EThreadType::Main);
-		m_generatedMaterialMigrationTasks.At_Lock(uid, nullptr) = migrationTask;
-		m_generatedMaterialMigrationTasks.Unlock(uid);
 
 		promise =
 			loadDataTask
@@ -524,18 +511,5 @@ void ModelImporter::CollectGarbage()
 			m_promises.ForcelyRemove(id);
 		}
 		m_promises.Unlock(id);
-	}
-
-	m_generatedMaterialMigrationTasks.LockAll();
-	ids = m_generatedMaterialMigrationTasks.GetKeys();
-	m_generatedMaterialMigrationTasks.UnlockAll();
-	for (const auto& id : ids)
-	{
-		auto& task = m_generatedMaterialMigrationTasks.At_Lock(id);
-		if (!task || task->IsFinished())
-		{
-			m_generatedMaterialMigrationTasks.ForcelyRemove(id);
-		}
-		m_generatedMaterialMigrationTasks.Unlock(id);
 	}
 }

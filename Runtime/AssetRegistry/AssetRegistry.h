@@ -276,6 +276,7 @@ namespace Sailor
 			const std::string& requestedPath,
 			AssetReadLocation& outLocation) const;
 		IAssetInfoHandler* GetAssetInfoHandler(const std::string& extension) const;
+		IAssetInfoHandler* GetAssetInfoHandler(const AssetInfo& info) const;
 		IAssetInfoHandler* GetAssetInfoHandler(
 			const std::string& extension,
 			const std::string& assetInfoType,

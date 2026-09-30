@@ -582,9 +582,6 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	}
 
 	assetInfo->GetDefaultMaterials() = std::move(generatedMaterials);
-	bool& bMigrationComplete = m_generatedMaterialMigrationComplete.At_Lock(assetInfo->GetFileId(), false);
-	bMigrationComplete = true;
-	m_generatedMaterialMigrationComplete.Unlock(assetInfo->GetFileId());
 	return true;
 }
 
@@ -611,35 +608,7 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInf
 		SAILOR_LOG("Parsing gltf %s warning: %s", assetInfo->GetAssetFilepath().c_str(), warning.c_str());
 	}
 
-	const FileId modelId = assetInfo->GetFileId();
-	bool& bMigrationComplete = m_generatedMaterialMigrationComplete.At_Lock(modelId, false);
-	const bool bUpdated = UpdateGeneratedMaterialProperties(assetInfo, gltfModel);
-	bMigrationComplete = bUpdated;
-	m_generatedMaterialMigrationComplete.Unlock(modelId);
-	return bUpdated;
-}
-
-bool ModelImporter::UpdateGeneratedMaterialPropertiesOnDemand(ModelAssetInfoPtr assetInfo,
-	const tinygltf::Model& gltfModel)
-{
-	if (assetInfo == nullptr || !assetInfo->IsWritable() || !assetInfo->ShouldGenerateMaterials() ||
-		assetInfo->GetDefaultMaterials().IsEmpty())
-	{
-		return true;
-	}
-
-	const FileId modelId = assetInfo->GetFileId();
-	bool& bMigrationComplete = m_generatedMaterialMigrationComplete.At_Lock(modelId, false);
-	if (bMigrationComplete)
-	{
-		m_generatedMaterialMigrationComplete.Unlock(modelId);
-		return true;
-	}
-
-	const bool bUpdated = UpdateGeneratedMaterialProperties(assetInfo, gltfModel);
-	bMigrationComplete = bUpdated;
-	m_generatedMaterialMigrationComplete.Unlock(modelId);
-	return bUpdated;
+	return UpdateGeneratedMaterialProperties(assetInfo, gltfModel);
 }
 
 bool ModelImporter::UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo, const tinygltf::Model& gltfModel)

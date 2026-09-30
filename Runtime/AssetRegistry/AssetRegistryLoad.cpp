@@ -104,13 +104,18 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 		AssetInfoPtr loadedInfo = GetAssetInfoPtr_Internal(physicalId.Value());
 		if (loadedInfo != nullptr && !loadedInfo->m_bPendingUpdateNotification &&
 			!loadedInfo->m_bPendingImportNotification &&
-			(loadedInfo->IsMetaExpired() || loadedInfo->IsAssetExpired() || IsAssetExpired(loadedInfo)))
+			(loadedInfo->IsMetaExpired() || loadedInfo->IsAssetExpired() ||
+				loadedInfo->m_bPendingWasExpired || IsAssetExpired(loadedInfo)))
 		{
 			SAILOR_LOG("Reload asset info: %s", loadedInfo->GetMetaFilepath().c_str());
-			if (!loadedInfo->GetHandler()->ReloadAssetInfo(loadedInfo))
+			if (!GetAssetInfoHandler(*loadedInfo)->ReloadAssetInfo(loadedInfo, true, false))
 			{
 				SAILOR_LOG_ERROR("Asset reload failed; preserving the previous live asset: %s",
 					loadedInfo->GetMetaFilepath().c_str());
+			}
+			else
+			{
+				CacheAsset(loadedInfo);
 			}
 		}
 		return physicalId.Value();
@@ -299,6 +304,7 @@ AssetInfoPtr AssetRegistry::MaterializeLazyAssetInfo(FileId uid) const
 	registry->m_loadedAssetInfo[uid] = info;
 	registry->m_lazyAssetInfos.Remove(uid);
 	info->m_bPendingWasExpired |= bMetadataChanged;
+	info->m_bPendingUpdateNotification = false;
 	if (bPrimary)
 	{
 		const std::string virtualSourcePath = sourcePath.lexically_relative(metadataMount->m_root).generic_string();
@@ -311,8 +317,8 @@ AssetInfoPtr AssetRegistry::MaterializeLazyAssetInfo(FileId uid) const
 			registry->m_fileIds[virtualSourcePathKey] = uid;
 		}
 	}
-	handler->NotifyUpdateAssetInfo(info);
-	registry->CacheAsset(info);
+	// Metadata lookup is read-only. Import/update dispatches the pending notification
+	// before acknowledging the source; listeners may write generated Content.
 	return info;
 }
 

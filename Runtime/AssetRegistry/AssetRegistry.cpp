@@ -206,6 +206,14 @@ IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(const std::string& extensi
 	return GetAssetInfoHandler(extension);
 }
 
+IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(const AssetInfo& info) const
+{
+	std::filesystem::path path(info.GetMetaFilepath());
+	path.replace_extension();
+	return GetAssetInfoHandler(Extension(path.string()), info.GetAssetInfoType(),
+		PathKey(path) == PathKey(info.GetAssetFilepath()));
+}
+
 bool AssetRegistry::RegisterAssetInfoHandler(const TVector<std::string>& supportedExtensions,
 	IAssetInfoHandler* assetInfoHandler)
 {

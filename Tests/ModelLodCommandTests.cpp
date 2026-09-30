@@ -14,7 +14,9 @@
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <map>
 #include <stdexcept>
+#include <nlohmann/json.hpp>
 
 using namespace Sailor;
 
@@ -158,6 +160,153 @@ namespace
 		FileId m_id;
 		ModelAssetInfoPtr m_info = nullptr;
 	};
+
+	struct ContentFile
+	{
+		std::string m_bytes;
+		std::filesystem::file_time_type m_time;
+		bool operator==(const ContentFile&) const = default;
+	};
+
+	std::map<std::filesystem::path, ContentFile> ReadContent(const std::filesystem::path& folder)
+	{
+		std::map<std::filesystem::path, ContentFile> files;
+		for (const auto& entry : std::filesystem::recursive_directory_iterator(folder))
+		{
+			if (!entry.is_regular_file()) continue;
+			std::ifstream stream(entry.path(), std::ios::binary);
+			Require(stream.is_open(), "Content snapshot must read each file");
+			files.emplace(entry.path(), ContentFile{
+				std::string(std::istreambuf_iterator<char>(stream), {}), entry.last_write_time() });
+		}
+		return files;
+	}
+
+	void TestModelLoadDoesNotWriteMaterials(const std::filesystem::path& workspace)
+	{
+		const auto folder = workspace / "Content" / "MaterialImport";
+		std::filesystem::create_directories(folder / "Content");
+		ModelFixture fixture(folder, true);
+		nlohmann::json source;
+		{
+			std::ifstream input(fixture.m_path);
+			input >> source;
+		}
+		auto& sourceMaterial = source["materials"][0];
+		sourceMaterial["alphaMode"] = "MASK";
+		sourceMaterial["alphaCutoff"] = 0.4f;
+		sourceMaterial["emissiveFactor"] = { 0.25f, 0.5f, 1.0f };
+		sourceMaterial["extensions"]["KHR_materials_emissive_strength"]["emissiveStrength"] = 5.0f;
+		{
+			std::ofstream output(fixture.m_path);
+			output << source.dump();
+		}
+		auto settings = fixture.m_info->Serialize();
+		settings["bShouldGenerateMaterials"] = true;
+		fixture.m_info->Deserialize(settings);
+		Require(fixture.m_info->SaveMetaFile(), "explicit material import settings must save");
+		const auto modelId = fixture.m_id.ToString();
+		Require(App::UpdateAsset(modelId.c_str()), "the editor reimport command must generate model materials");
+		Drain();
+		const auto materialIds = fixture.m_info->GetDefaultMaterials();
+		Require(materialIds.Num() == 2, "explicit import must register both generated materials");
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		const auto* materialInfo = registry->GetAssetInfoPtr(materialIds[0]);
+		Require(materialInfo != nullptr, "the generated material must be registered immediately");
+		const auto materialPath = materialInfo->GetAssetFilepath();
+		auto material = YAML::LoadFile(materialPath);
+		material["uniformsFloat"]["material.roughnessFactor"] = 0.37f;
+		material["uniformsVec4"]["material.baseColorFactor"] = glm::vec4(0.1f, 0.2f, 0.3f, 1.0f);
+		material["uniformsVec4"]["material.emissiveFactor"] = glm::vec4(99.0f);
+		const auto shaderId = registry->GetOrLoadFile("Shaders/Unlit.shader");
+		Require(static_cast<bool>(shaderId), "the authored shader replacement must exist");
+		material["shaderUid"] = shaderId;
+		material["defines"].push_back("AUTHORED_FEATURE");
+		material["bCustomDepthShader"] = true;
+		{
+			std::ofstream output(materialPath);
+			output << material;
+		}
+		const auto before = ReadContent(workspace / "Content");
+		{
+			FreshImporter fresh;
+			ModelPtr model;
+			Require(fresh.m_importer.LoadModel_Immediate(fixture.m_id, model) && model,
+				"ordinary model loading must succeed with existing generated materials");
+			Drain();
+			Require(model->IsReady() && model->GetMeshes().Num() == 2,
+				"read-only material handling must still upload the model geometry");
+		}
+		Require(ReadContent(workspace / "Content") == before,
+			"LoadModel must not change Content bytes, timestamps or file inventory, including deferred Main work");
+
+		auto reimport = [&]()
+		{
+			{
+				std::ofstream output(fixture.m_path);
+				output << source.dump();
+			}
+			Require(App::UpdateAsset(modelId.c_str()), "the editor command must reimport changed glTF properties");
+			Drain();
+			Require(fixture.m_info->GetDefaultMaterials() == materialIds &&
+				YAML::LoadFile(materialPath + ".asset")["fileId"].as<FileId>() == materialIds[0],
+				"explicit reimport must preserve generated material identities and references");
+			const auto updated = YAML::LoadFile(materialPath);
+			Require(updated["shaderUid"].as<FileId>() == shaderId &&
+				updated["uniformsFloat"]["material.roughnessFactor"].as<float>() == 0.37f &&
+				updated["uniformsVec4"]["material.baseColorFactor"].as<glm::vec4>() == glm::vec4(0.1f, 0.2f, 0.3f, 1.0f) &&
+				updated["bCustomDepthShader"].as<bool>(),
+				"reimport must preserve authored shader, roughness, base color and custom depth state");
+			bool authoredDefine = false;
+			for (const auto& define : updated["defines"]) authoredDefine |= define.as<std::string>() == "AUTHORED_FEATURE";
+			Require(authoredDefine, "reimport must preserve unrelated authored shader defines");
+			return updated;
+		};
+		sourceMaterial["alphaMode"] = "BLEND";
+		sourceMaterial["extensions"]["KHR_materials_transmission"]["transmissionFactor"] = 0.7f;
+		sourceMaterial["extensions"]["KHR_materials_volume"]["thicknessFactor"] = 0.8f;
+		sourceMaterial["extensions"]["KHR_materials_ior"]["ior"] = 1.4f;
+		sourceMaterial["extensions"]["KHR_materials_emissive_strength"]["emissiveStrength"] = 8.0f;
+		const auto transparent = reimport();
+		Require(transparent["renderQueue"].as<std::string>() == "Transparent" &&
+			!transparent["bEnableZWrite"].as<bool>() &&
+			transparent["uniformsFloat"]["material.transmissionFactor"].as<float>() == 0.7f &&
+			transparent["uniformsFloat"]["material.thicknessFactor"].as<float>() == 0.8f &&
+			transparent["uniformsFloat"]["material.indexOfRefraction"].as<float>() == 1.4f &&
+			transparent["uniformsVec4"]["material.emissiveFactor"].as<glm::vec4>() == glm::vec4(2, 4, 8, 0),
+			"explicit reimport must refresh transmission, alpha state, IOR and HDR emission");
+		sourceMaterial["alphaMode"] = "MASK";
+		sourceMaterial["alphaCutoff"] = 0.6f;
+		sourceMaterial.erase("extensions");
+		const auto masked = reimport();
+		Require(masked["renderQueue"].as<std::string>() == "Masked" && masked["bEnableZWrite"].as<bool>() &&
+			masked["uniformsFloat"]["material.alphaCutoff"].as<float>() == 0.6f &&
+			!masked["uniformsFloat"]["material.transmissionFactor"] &&
+			!masked["uniformsFloat"]["material.indexOfRefraction"] &&
+			!masked["uniformsVec4"]["material.attenuationColor"],
+			"reimport must remove stale extension properties when returning to a masked material");
+		sourceMaterial["alphaMode"] = "OPAQUE";
+		const auto opaque = reimport();
+		Require(opaque["renderQueue"].as<std::string>() == "Opaque" && opaque["bEnableZWrite"].as<bool>(),
+			"explicit reimport must restore opaque rendering when alpha masking is removed");
+		const auto unchanged = ReadContent(workspace / "Content");
+		Require(App::UpdateAsset(modelId.c_str()), "reimporting unchanged source must succeed");
+		Drain();
+		Require(ReadContent(workspace / "Content") == unchanged, "an unchanged reimport must not rewrite Content");
+
+		const auto engineFolder = App::GetWorkspaceContext().GetEngineContent() / "Models" / "Box";
+		const auto engineBefore = ReadContent(engineFolder);
+		const auto engineId = registry->GetOrLoadFile("Models/Box/Box.gltf");
+		Require(engineId && !registry->GetAssetInfoPtr(engineId)->IsWritable(), "the engine model must be read-only");
+		{
+			FreshImporter fresh;
+			ModelPtr model;
+			Require(fresh.m_importer.LoadModel_Immediate(engineId, model), "read-only engine models must still load");
+			Drain();
+		}
+		Require(ReadContent(engineFolder) == engineBefore, "engine Content must remain unchanged during load");
+		std::cout << "Read-only model loading, explicit material reimport and authored-property preservation passed\n";
+	}
 
 	class ModelRayProbe final : public Raytracing::PathTracer
 	{
@@ -313,6 +462,7 @@ namespace Sailor::Tests
 {
 	void RunModelLodCommandTests(const std::filesystem::path& workspace)
 	{
+		TestModelLoadDoesNotWriteMaterials(workspace);
 		ModelFixture cpuFixture(workspace, true);
 		TestCpuPreparationDoesNotUseRhi(cpuFixture);
 		ModelFixture fixture(workspace);

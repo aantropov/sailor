@@ -269,6 +269,11 @@ bool AssetRegistry::ScanContentFolderLazy()
 			}
 			continue;
 		}
+		if (!bWasLoaded)
+		{
+			GetAssetInfoHandler(*info)->NotifyUpdateAssetInfo(info);
+			CacheAsset(info);
+		}
 
 		if (Extension(info->GetAssetFilepath()) == "glsl")
 		{

@@ -42,7 +42,7 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId)
 			return result;
 		}
 
-		result.m_bMetadataExpired = assetInfo->IsMetaExpired();
+		result.m_bMetadataExpired = assetInfo->IsMetaExpired() || assetInfo->m_bPendingWasExpired;
 		result.m_bSourceExpired = assetInfo->IsAssetExpired();
 		// Acknowledgement updates the cache and removes the pending token together.
 		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
@@ -107,7 +107,7 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId)
 			continue;
 		}
 
-		IAssetInfoHandler* handler = assetInfo->GetHandler();
+		IAssetInfoHandler* handler = GetAssetInfoHandler(*assetInfo);
 		if (handler == nullptr || !handler->ReloadAssetInfo(assetInfo, true, false))
 		{
 			SAILOR_LOG_ERROR("Asset update failed; preserving the previous live asset where possible: %s",

@@ -1220,6 +1220,8 @@ namespace
 			"the rebuilt cache must use only the strict asset-cache-v1 identity");
 
 		TestAssetInfoHandler handler;
+		RecordingAssetListener listener;
+		handler.Subscribe(&listener);
 		AssetRegistry registry(workspaceContext);
 		RegisterRawHandler(registry, handler);
 		Require(registry.ScanContentFolder() &&
@@ -1244,6 +1246,10 @@ namespace
 		const auto second = secondRegistry.GetAssetInfoPtr(materialized->GetFileId());
 		Require(second && second != materialized && handler.m_numLoads == 2,
 			"a fresh registry must materialize its own proxy and count the second read");
+		Require(listener.m_events.empty(), "metadata lookups must not dispatch Content-writing import callbacks");
+		Require(secondRegistry.GetOrLoadFile("Retry.raw") == second->GetFileId() &&
+			listener.m_events == std::vector<std::string>{ "update:true" },
+			"explicit import must dispatch the deferred notification exactly once");
 	}
 
 	void TestV2EnvelopeIsResetInsteadOfMigrated()

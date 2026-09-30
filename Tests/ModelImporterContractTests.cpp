@@ -111,13 +111,6 @@ namespace Sailor
 			importer.m_promises.TryGet(id, task);
 			return task;
 		}
-
-		static Tasks::ITaskPtr GetMaterialMigration(const ModelImporter& importer, const FileId& id)
-		{
-			Tasks::ITaskPtr task;
-			importer.m_generatedMaterialMigrationTasks.TryGet(id, task);
-			return task;
-		}
 	};
 }
 
@@ -643,6 +636,46 @@ namespace
 			[&]() { return block.m_bCompletionFlag; });
 	}
 
+	void TestLazyModelMetadataDoesNotRegenerateAssets()
+	{
+		LazyAnimationLoadingScope lazyLoading(true);
+		for (bool targetedUpdate : { false, true })
+		{
+			ModelCacheWorkspace workspace;
+			const auto path = workspace.Context().GetContent() / "Lazy.gltf";
+			CreateAnimationTestModel(path, {}, false);
+			const auto metadataPath = path.string() + ".asset";
+			const auto id = YAML::LoadFile(metadataPath)["fileId"].as<FileId>();
+			TVector<FileId> animationIds;
+			{
+				AnimationRegistryFixture fixture(workspace.Context());
+				ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
+				fixture.Scan();
+				animationIds = fixture.m_registry.GetAssetInfoPtr<ModelAssetInfoPtr>(id)->GetAnimations();
+				Require(animationIds.Num() == 2, "the explicit import must generate both animation sidecars");
+			}
+			AnimationRegistryFixture fixture(workspace.Context());
+			fixture.Scan();
+			auto metadata = YAML::LoadFile(metadataPath);
+			metadata["animations"] = TVector<FileId>{};
+			WriteAnimationFixtureText(metadataPath, YAML::Dump(metadata));
+			const auto before = ReadAnimationFixtureText(metadataPath);
+			const auto timestamp = std::filesystem::last_write_time(metadataPath);
+			ModelImporter importer(&fixture.m_modelHandler, nullptr, &fixture.m_registry);
+			auto* model = fixture.m_registry.GetAssetInfoPtr<ModelAssetInfoPtr>(id);
+			Require(model && model->GetAnimations().IsEmpty() &&
+				ReadAnimationFixtureText(metadataPath) == before && std::filesystem::last_write_time(metadataPath) == timestamp,
+				"lazy metadata hydration must not regenerate missing assets or rewrite Content");
+			metadata["unitScale"] = 3.0f;
+			WriteAnimationFixtureText(metadataPath, YAML::Dump(metadata));
+			Require(targetedUpdate ? fixture.m_registry.UpdateAsset(id) : fixture.m_registry.GetOrLoadFile(path.string()) == id,
+				"explicit update/import must process the metadata change deferred by lookup");
+			Require(model->GetAnimations() == animationIds && model->GetUnitScale() == 3.0f &&
+				!fixture.m_registry.IsAssetExpired(model),
+				"explicit processing must read subsequent metadata edits, retain generated IDs and acknowledge success");
+		}
+	}
+
 	void TestFailedModelImportCanBeRetried()
 	{
 		ModelCacheWorkspace workspace;
@@ -680,8 +713,7 @@ namespace
 		scheduler.ProcessTasksOnMainThread();
 		importer.CollectGarbage();
 		Require(!ModelImporterTestAccess::GetPromise(importer, modelId) &&
-			!ModelImporterTestAccess::GetCachedModel(importer, modelId) &&
-			!ModelImporterTestAccess::GetMaterialMigration(importer, modelId),
+			!ModelImporterTestAccess::GetCachedModel(importer, modelId),
 			"garbage collection must retire the failed model and its finished tasks");
 		Require(firstModel && retryModel && !firstModel->IsStructurallyReady() && !retryModel->IsStructurallyReady(),
 			"retiring a failed cache entry must not force-destroy a caller's retained placeholder");
@@ -702,7 +734,7 @@ namespace
 		importerLifetime = TUniquePtr<ModelImporter>::Make(&fixture.m_modelHandler, &scheduler, &fixture.m_registry);
 		auto& importer = *importerLifetime;
 
-		// Drain the real task queues explicitly to keep both attempts' Main callbacks pending.
+		// Drain the real queues explicitly to keep each retry pending until inspected.
 		auto finishImport = [&]()
 		{
 			Tasks::ITaskPtr task;
@@ -723,19 +755,14 @@ namespace
 			"pending duplicate requests must share one task and one model placeholder");
 		finishImport();
 		Require(first->IsFinished() && !first->GetResult(), "the queued import must publish failure");
-		const auto oldMigration = ModelImporterTestAccess::GetMaterialMigration(importer, modelId);
 
 		ModelPtr retryModel;
 		auto retry = importer.LoadModel(modelId, retryModel);
-		const auto retryMigration = ModelImporterTestAccess::GetMaterialMigration(importer, modelId);
-		Require(retry && retry != first && retryMigration && retryMigration != oldMigration,
-			"a retry must retain its own load and material migration tasks");
+		Require(retry && retry != first && retryModel != firstModel,
+			"a retry must retain its own load task and model placeholder");
 		Tasks::ITaskPtr readyMain;
-		Require(scheduler.TryFetchNextAvailiableTask(readyMain, EThreadType::Main) && readyMain == oldMigration,
-			"the previous attempt's Main callback must still be available independently of the retry");
-		readyMain->Execute();
-		Require(ModelImporterTestAccess::GetMaterialMigration(importer, modelId) == retryMigration,
-			"an old Main callback must not erase the retry's migration tracking");
+		Require(!scheduler.TryFetchNextAvailiableTask(readyMain, EThreadType::Main),
+			"ordinary model loading must not schedule Main-thread material writes");
 		importer.CollectGarbage();
 		Require(ModelImporterTestAccess::GetPromise(importer, modelId) == retry &&
 			ModelImporterTestAccess::GetCachedModel(importer, modelId) == retryModel,
@@ -749,8 +776,8 @@ namespace
 		scheduler.ProcessTasksOnMainThread();
 		importer.CollectGarbage();
 		Require(!ModelImporterTestAccess::GetPromise(importer, modelId) &&
-			!ModelImporterTestAccess::GetMaterialMigration(importer, modelId),
-			"finished load and migration tasks must be collectible");
+			!ModelImporterTestAccess::GetCachedModel(importer, modelId),
+			"finished failed load tasks and their cached placeholders must be collectible");
 	}
 
 	void TestCachedModelDoesNotWaitForGpuUploads()
@@ -3038,6 +3065,7 @@ int main()
 		{ "AnimationRepairPreservesCustomSidecars", TestAnimationRepairPreservesCustomSidecars },
 		{ "AnimationRepairRejectsConflictingMetadata", TestAnimationRepairRejectsConflictingMetadata },
 		{ "AnimationRepairAcceptsOmittedMetadataType", TestAnimationRepairAcceptsOmittedMetadataType },
+		{ "LazyModelMetadataDoesNotRegenerateAssets", TestLazyModelMetadataDoesNotRegenerateAssets },
 		{ "AnimationRepairRetainsLazyOwnership", TestAnimationRepairRetainsLazyOwnership },
 		{ "ModelCallbacksPreserveUnchangedMetadata", TestModelCallbacksPreserveUnchangedMetadata },
 		{ "ModelCallbacksDoNotRequestPreviews", TestModelCallbacksDoNotRequestPreviews },

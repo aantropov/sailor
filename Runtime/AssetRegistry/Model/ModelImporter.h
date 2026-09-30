@@ -270,7 +270,6 @@ namespace Sailor
 		SAILOR_API bool GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 		bool UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo);
 		bool UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo, const tinygltf::Model& gltfModel);
-		bool UpdateGeneratedMaterialPropertiesOnDemand(ModelAssetInfoPtr assetInfo, const tinygltf::Model& gltfModel);
 		FileId CreateTextureAsset(const std::string& filepath,
 			const std::string& sourceFilename,
 			uint32_t sourceTextureIndex,
@@ -303,8 +302,6 @@ namespace Sailor
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;
-		TConcurrentMap<FileId, bool> m_generatedMaterialMigrationComplete;
-		TConcurrentMap<FileId, Tasks::ITaskPtr> m_generatedMaterialMigrationTasks;
 
 		ObjectAllocatorPtr m_allocator;
 

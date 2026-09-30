@@ -374,7 +374,7 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 	}
 
 	const bool bHadLoadedIdentity = static_cast<bool>(assetInfo->GetFileId());
-	const bool bWasMetaExpired = bHadLoadedIdentity && assetInfo->IsMetaExpired();
+	const bool bWasMetaExpired = bHadLoadedIdentity && (assetInfo->IsMetaExpired() || assetInfo->m_bPendingWasExpired);
 	const bool bWasAssetExpired = bHadLoadedIdentity && assetInfo->IsAssetExpired();
 	const std::string metadataPath = assetInfo->GetMetaFilepath();
 	const std::time_t metadataLoadTime = assetInfo->GetMetaLastModificationTime();
@@ -460,6 +460,7 @@ void IAssetInfoHandler::NotifyUpdateAssetInfo(AssetInfoPtr assetInfo) const
 	}
 
 	const bool bWasExpired = assetInfo->m_bPendingWasExpired;
+	assetInfo->m_bPendingUpdateNotification = true;
 	for (IAssetInfoHandlerListener* listener : m_listeners)
 	{
 		listener->OnUpdateAssetInfo(assetInfo, bWasExpired);
