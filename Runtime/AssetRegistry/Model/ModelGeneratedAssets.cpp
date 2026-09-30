@@ -56,6 +56,24 @@ FileId ModelImporter::CreateTextureAsset(const std::string& filepath,
 	}
 
 	const bool bMetadataExists = std::filesystem::exists(metadataStatus);
+	if (!bMetadataExists)
+	{
+		TVector<FileId> textures;
+		assetRegistry->GetAssetInfoIdsByTypeAndSource("Sailor::TextureAssetInfo",
+			(std::filesystem::path(filepath).parent_path() / sourceFilename).string(), textures);
+		for (const auto& id : textures)
+		{
+			const auto* texture = assetRegistry->GetAssetInfoPtr<TextureAssetInfoPtr>(id);
+			if (texture && texture->GetGlbTextureIndex() == static_cast<int32_t>(sourceTextureIndex) &&
+				texture->ShouldGenerateMips() == bShouldGenerateMips && texture->GetFormat() == format &&
+				texture->GetClamping() == clamping && texture->GetFiltration() == filtration &&
+				texture->ShouldKeepCpuBuffers() == bShouldKeepCpuBuffers &&
+				std::filesystem::is_regular_file(texture->GetMetaFilepath()))
+			{
+				return id;
+			}
+		}
+	}
 	if (bMetadataExists && !std::filesystem::is_regular_file(metadataStatus))
 	{
 		SAILOR_LOG_ERROR("Generated texture metadata path is not a regular file: %s", filepath.c_str());
@@ -120,6 +138,150 @@ FileId ModelImporter::CreateTextureAsset(const std::string& filepath,
 	}
 
 	return fileId;
+}
+
+bool GltfImporterUtils::MergeGeneratedMaterialProperties(YAML::Node& inOutMaterial,
+	const YAML::Node& generatedProperties)
+{
+	if (!inOutMaterial.IsMap() || !generatedProperties.IsMap())
+	{
+		return false;
+	}
+
+	YAML::Node merged = YAML::Clone(inOutMaterial);
+	for (const char* property : {"renderQueue", "bEnableZWrite", "blendMode"})
+	{
+		if (!generatedProperties[property] || !generatedProperties[property].IsScalar())
+		{
+			return false;
+		}
+		merged[property] = YAML::Clone(generatedProperties[property]);
+	}
+
+	const YAML::Node generatedCustomDepth = generatedProperties["bCustomDepthShader"];
+	if (!generatedCustomDepth || !generatedCustomDepth.IsScalar())
+	{
+		return false;
+	}
+
+	bool bCustomDepthShader = generatedCustomDepth.as<bool>();
+	const YAML::Node authoredCustomDepth = merged["bCustomDepthShader"];
+	if (authoredCustomDepth)
+	{
+		if (!authoredCustomDepth.IsScalar())
+		{
+			return false;
+		}
+		bCustomDepthShader |= authoredCustomDepth.as<bool>();
+	}
+	merged["bCustomDepthShader"] = bCustomDepthShader;
+
+	// Reimport owns alpha/skinning and optical properties. Surface authoring stays local.
+	static const char* ManagedDefines[] = { "TRANSMISSION", "MATERIAL_IOR", "ALPHA_CUTOUT", "SKINNING" };
+	auto isManagedDefine = [](const std::string& define)
+	{
+		return std::find(std::begin(ManagedDefines), std::end(ManagedDefines), define) != std::end(ManagedDefines);
+	};
+
+	YAML::Node mergedDefines(YAML::NodeType::Sequence);
+	const YAML::Node existingDefines = merged["defines"];
+	if (existingDefines && !existingDefines.IsNull())
+	{
+		if (!existingDefines.IsSequence())
+		{
+			return false;
+		}
+
+		for (const YAML::Node& defineNode : existingDefines)
+		{
+			if (!defineNode.IsScalar())
+			{
+				return false;
+			}
+
+			const std::string define = defineNode.as<std::string>();
+			if (!isManagedDefine(define))
+			{
+				mergedDefines.push_back(define);
+			}
+		}
+	}
+
+	const YAML::Node generatedDefines = generatedProperties["defines"];
+	if (generatedDefines && !generatedDefines.IsNull())
+	{
+		if (!generatedDefines.IsSequence())
+		{
+			return false;
+		}
+
+		TSet<std::string> addedDefines;
+		for (const YAML::Node& defineNode : generatedDefines)
+		{
+			if (!defineNode.IsScalar())
+			{
+				return false;
+			}
+			const std::string define = defineNode.as<std::string>();
+			if (isManagedDefine(define) && !addedDefines.Contains(define))
+			{
+				mergedDefines.push_back(define);
+				addedDefines.Insert(define);
+			}
+		}
+	}
+	merged["defines"] = mergedDefines.size() > 0 ? mergedDefines : YAML::Node();
+
+	struct ManagedPropertyGroup final
+	{
+		const char* m_group;
+		const char* const* m_properties;
+		size_t m_numProperties;
+	};
+
+	static const char* FloatProperties[] = {"material.alphaCutoff",
+		"material.transmissionFactor",
+		"material.thicknessFactor",
+		"material.attenuationDistance",
+		"material.indexOfRefraction"};
+	static const char* Vec4Properties[] = {"material.attenuationColor", "material.emissiveFactor"};
+	static const char* SamplerProperties[] = {"transmissionSampler", "thicknessSampler"};
+	const ManagedPropertyGroup groups[] = {{"uniformsFloat", FloatProperties, std::size(FloatProperties)},
+		{"uniformsVec4", Vec4Properties, std::size(Vec4Properties)},
+		{"samplers", SamplerProperties, std::size(SamplerProperties)}};
+
+	for (const ManagedPropertyGroup& group : groups)
+	{
+		YAML::Node targetGroup = merged[group.m_group];
+		const YAML::Node generatedGroup = generatedProperties[group.m_group];
+		if ((targetGroup && !targetGroup.IsNull() && !targetGroup.IsMap()) ||
+			(generatedGroup && !generatedGroup.IsNull() && !generatedGroup.IsMap()))
+		{
+			return false;
+		}
+
+		if (!targetGroup || targetGroup.IsNull())
+		{
+			targetGroup = YAML::Node(YAML::NodeType::Map);
+			merged[group.m_group] = targetGroup;
+		}
+
+		for (size_t index = 0; index < group.m_numProperties; ++index)
+		{
+			const char* property = group.m_properties[index];
+			if (generatedGroup && generatedGroup[property])
+			{
+				targetGroup[property] = YAML::Clone(generatedGroup[property]);
+			}
+			else
+			{
+				targetGroup.remove(property);
+			}
+		}
+	}
+
+	inOutMaterial = std::move(merged);
+	return true;
 }
 
 bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
@@ -543,20 +705,148 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		return false;
 	}
 
+	TVector<FileId> registeredMaterials;
+	m_assetRegistry->GetAllAssetInfos<MaterialAssetInfo>(registeredMaterials);
+	TMap<int32_t, MaterialAssetInfoPtr> ownedMaterials;
+	for (const FileId& id : registeredMaterials)
+	{
+		auto* info = m_assetRegistry->GetAssetInfoPtr<MaterialAssetInfoPtr>(id);
+		if (info == nullptr || info->GetSourceModel() != assetInfo->GetFileId() || info->GetSourceMaterialIndex() < 0)
+		{
+			continue;
+		}
+		if (ownedMaterials.ContainsKey(info->GetSourceMaterialIndex()))
+		{
+			SAILOR_LOG_ERROR("Multiple materials claim glTF material %d of %s.",
+				info->GetSourceMaterialIndex(), assetInfo->GetAssetFilepath().c_str());
+			return false;
+		}
+		ownedMaterials.Insert(info->GetSourceMaterialIndex(), info);
+	}
+
 	TVector<FileId> materialFiles;
 	materialFiles.Reserve(materials.Num());
 	for (size_t i = 0; i < materials.Num(); ++i)
 	{
-		const MaterialAsset::Data& material = materials[i];
+		const auto owned = ownedMaterials.Find(static_cast<int32_t>(i));
+		MaterialAssetInfoPtr info = owned != ownedMaterials.end() ? owned.Value() : nullptr;
+		std::filesystem::path materialPath;
+		YAML::Node metadata;
+		std::string diagnostic;
+		FileId fileId;
+		if (info != nullptr)
+		{
+			if (!info->IsWritable() || !m_assetRegistry->ResolveWorkspaceContentPathForWrite(
+				info->GetVirtualAssetFilepath(), materialPath))
+			{
+				SAILOR_LOG_ERROR("Cannot reimport a read-only generated material: %s", info->GetAssetFilepath().c_str());
+				return false;
+			}
+			fileId = info->GetFileId();
+			metadata = info->Serialize();
+		}
+		else
+		{
+			const std::string stem = assetInfo->GetAssetFilename() + "_material_" + std::to_string(i);
+			for (uint32_t suffix = 0;; ++suffix)
+			{
+				materialPath = materialsFolder / (stem + (suffix ? "_" + std::to_string(suffix) : "") + ".mat");
+				const auto metadataPath = materialPath.string() + ".asset";
+				if (std::filesystem::exists(metadataPath))
+				{
+					MaterialAssetInfo candidate;
+					if (!TryLoadYamlFile(metadataPath, metadata, diagnostic) ||
+						!External::GuardYamlExceptions([&]() { candidate.Deserialize(metadata); }, diagnostic))
+					{
+						SAILOR_LOG_ERROR("Cannot read generated material metadata '%s': %s", metadataPath.c_str(), diagnostic.c_str());
+						return false;
+					}
+					if (candidate.GetSourceModel() == assetInfo->GetFileId() &&
+						candidate.GetSourceMaterialIndex() == static_cast<int32_t>(i))
+					{
+						fileId = candidate.GetFileId();
+						break;
+					}
+				}
+				else if (!std::filesystem::exists(materialPath))
+				{
+					fileId = FileId::CreateNewFileId();
+					metadata = CreateAssetInfoMetadata<MaterialAssetInfo>(fileId, materialPath.filename().string());
+					metadata["sourceModel"] = assetInfo->GetFileId();
+					metadata["sourceMaterialIndex"] = static_cast<int32_t>(i);
+					break;
+				}
+			}
+		}
 
-		const FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(
-			(materialsFolder / (assetInfo->GetAssetFilename() + "_material_" + std::to_string(i) + ".mat")).string(),
-			material);
-		if (!materialFileId)
+		const auto metadataPath = materialPath.string() + ".asset";
+		const bool bMetadataExists = std::filesystem::exists(metadataPath);
+		if (bMetadataExists && !TryLoadYamlFile(metadataPath, metadata, diagnostic))
+		{
+			SAILOR_LOG_ERROR("Cannot read generated material metadata '%s': %s", metadataPath.c_str(), diagnostic.c_str());
+			return false;
+		}
+		MaterialAssetInfo identity;
+		if (!External::GuardYamlExceptions([&]() { identity.Deserialize(metadata); }, diagnostic) ||
+			!fileId || identity.GetFileId() != fileId || identity.GetSourceModel() != assetInfo->GetFileId() ||
+			identity.GetSourceMaterialIndex() != static_cast<int32_t>(i) ||
+			identity.GetAssetFilename() != materialPath.filename().string())
+		{
+			SAILOR_LOG_ERROR("Generated material ownership changed: %s", metadataPath.c_str());
+			return false;
+		}
+
+		const YAML::Node generated = MaterialAsset::Serialize(materials[i]);
+		YAML::Node document;
+		bool bWriteMaterial = true;
+		if (std::filesystem::exists(materialPath))
+		{
+			YAML::Node previous;
+			bool merged = false;
+			if (!TryLoadYamlFile(materialPath, previous, diagnostic) ||
+				!External::GuardYamlExceptions([&]()
+					{
+						document = YAML::Clone(previous);
+						merged = GltfImporterUtils::MergeGeneratedMaterialProperties(document, generated);
+					}, diagnostic) || !merged)
+			{
+				SAILOR_LOG_ERROR("Cannot update generated material '%s': %s", materialPath.string().c_str(), diagnostic.c_str());
+				return false;
+			}
+			bWriteMaterial = !Utils::AreYamlNodesEqual(previous, document);
+		}
+		else
+		{
+			document = generated;
+		}
+
+		// Persist ownership first so a failed material write can retry with the same FileId.
+		if (!bMetadataExists)
+		{
+			std::string contents;
+			if (!External::TryDumpYaml(metadata, contents, diagnostic) ||
+				!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
+					metadataPath, contents, diagnostic, Platform::EAtomicWriteMode::FailIfExists)))
+			{
+				SAILOR_LOG_ERROR("Cannot save generated material metadata '%s': %s", metadataPath.c_str(), diagnostic.c_str());
+				return false;
+			}
+		}
+		if (bWriteMaterial)
+		{
+			std::string contents;
+			if (!External::TryDumpYaml(document, contents, diagnostic) ||
+				!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(materialPath, contents, diagnostic)))
+			{
+				SAILOR_LOG_ERROR("Cannot save generated material '%s': %s", materialPath.string().c_str(), diagnostic.c_str());
+				return false;
+			}
+		}
+		if (m_assetRegistry->GetOrLoadFile(materialPath.string()) != fileId || !m_assetRegistry->UpdateAsset(fileId))
 		{
 			return false;
 		}
-		materialFiles.Add(materialFileId);
+		materialFiles.Add(fileId);
 	}
 
 	TVector<FileId> generatedMaterials;
@@ -581,325 +871,14 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		}
 	}
 
+	const auto& authoredMaterials = assetInfo->GetDefaultMaterials();
+	for (size_t slot = 0; slot < generatedMaterials.Num() && slot < authoredMaterials.Num(); ++slot)
+	{
+		if (authoredMaterials[slot] && m_assetRegistry->GetAssetInfoPtr(authoredMaterials[slot]))
+		{
+			generatedMaterials[slot] = authoredMaterials[slot];
+		}
+	}
 	assetInfo->GetDefaultMaterials() = std::move(generatedMaterials);
 	return true;
-}
-
-bool ModelImporter::UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo)
-{
-	SAILOR_PROFILE_FUNCTION();
-	if (assetInfo == nullptr || !assetInfo->IsWritable())
-	{
-		return false;
-	}
-
-	tinygltf::Model gltfModel;
-	std::string error;
-	std::string warning;
-	if (!GltfImporterUtils::LoadModel(assetInfo->GetAssetFilepath(), true, gltfModel, error, warning))
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot update generated materials for %s: %s", assetInfo->GetAssetFilepath().c_str(), error.c_str());
-		return false;
-	}
-
-	if (!warning.empty())
-	{
-		SAILOR_LOG("Parsing gltf %s warning: %s", assetInfo->GetAssetFilepath().c_str(), warning.c_str());
-	}
-
-	return UpdateGeneratedMaterialProperties(assetInfo, gltfModel);
-}
-
-bool ModelImporter::UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo, const tinygltf::Model& gltfModel)
-{
-	SAILOR_PROFILE_FUNCTION();
-	if (assetInfo == nullptr || !assetInfo->IsWritable())
-	{
-		return false;
-	}
-
-	AssetRegistry* assetRegistry = m_assetRegistry;
-
-	const std::string relativeFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
-	std::filesystem::path materialsFolder;
-	if (!assetRegistry->ResolveWorkspaceContentPathForWrite(relativeFolder + "materials", materialsFolder))
-	{
-		SAILOR_LOG_ERROR("Cannot resolve generated materials folder for %s.", assetInfo->GetAssetFilepath().c_str());
-		return false;
-	}
-
-	auto sanitizeLegacyMaterialStem = [](const std::string& materialName, size_t materialIndex)
-	{
-		std::string result = materialName.empty() ? ("material" + std::to_string(materialIndex)) : materialName;
-		constexpr const char* InvalidFilenameCharacters = "<>:\"/\\|?*";
-		for (char& character : result)
-		{
-			if (static_cast<unsigned char>(character) < 32 ||
-				std::strchr(InvalidFilenameCharacters, character) != nullptr)
-			{
-				character = '_';
-			}
-		}
-		while (!result.empty() && (result.back() == '.' || result.back() == ' '))
-		{
-			result.back() = '_';
-		}
-		return result.empty() ? ("material" + std::to_string(materialIndex)) : result;
-	};
-
-	auto findOwnedMaterial = [assetInfo, assetRegistry](size_t materialIndex,
-								 const std::filesystem::path& indexedPath,
-								 const std::filesystem::path& legacyPath,
-								 MaterialAssetInfoPtr& outMaterialInfo)
-	{
-		auto tryMatch = [assetRegistry, &indexedPath, &legacyPath, &outMaterialInfo](const FileId& materialId)
-		{
-			MaterialAssetInfoPtr materialInfo = assetRegistry->GetAssetInfoPtr<MaterialAssetInfoPtr>(materialId);
-			if (materialInfo == nullptr || !materialInfo->IsWritable())
-			{
-				return false;
-			}
-
-			for (const std::filesystem::path& candidate : {indexedPath, legacyPath})
-			{
-				std::error_code equivalentError;
-				if (std::filesystem::equivalent(candidate, materialInfo->GetAssetFilepath(), equivalentError) &&
-					!equivalentError)
-				{
-					outMaterialInfo = materialInfo;
-					return true;
-				}
-			}
-			return false;
-		};
-
-		const TVector<FileId>& defaultMaterials = assetInfo->GetDefaultMaterials();
-		if (assetInfo->ShouldBatchByMaterial())
-		{
-			// Batched models retain the direct glTF material ordering. Requiring
-			// both the position and a known generated path avoids claiming a
-			// separately authored replacement material.
-			return materialIndex < defaultMaterials.Num() && tryMatch(defaultMaterials[materialIndex]);
-		}
-
-		for (const FileId& materialId : defaultMaterials)
-		{
-			if (tryMatch(materialId))
-			{
-				return true;
-			}
-		}
-
-		return false;
-	};
-
-	TVector<FileId> registeredTextureIds;
-	assetRegistry->GetAssetInfoIdsByTypeAndSource(
-		"Sailor::TextureAssetInfo", assetInfo->GetAssetFilepath(), registeredTextureIds);
-	TMap<int32_t, FileId> textureIdsByGltfIndex;
-	for (const FileId& registeredTextureId : registeredTextureIds)
-	{
-		TextureAssetInfoPtr textureInfo = assetRegistry->GetAssetInfoPtr<TextureAssetInfoPtr>(registeredTextureId);
-		if (textureInfo == nullptr || textureInfo->GetGlbTextureIndex() < 0 ||
-			textureInfo->GetFormat() != RHI::ETextureFormat::R8G8B8A8_UNORM ||
-			textureInfo->GetClamping() != RHI::ETextureClamping::Repeat ||
-			textureInfo->GetFiltration() != RHI::ETextureFiltration::Linear || !textureInfo->ShouldGenerateMips())
-		{
-			continue;
-		}
-
-		std::error_code sourceError;
-		if (std::filesystem::equivalent(textureInfo->GetAssetFilepath(), assetInfo->GetAssetFilepath(), sourceError) &&
-			!sourceError)
-		{
-			textureIdsByGltfIndex.Insert(textureInfo->GetGlbTextureIndex(), registeredTextureId);
-		}
-	}
-	TSet<FileId> updatedMaterialIds;
-	bool bSucceeded = true;
-	for (size_t materialIndex = 0; materialIndex < gltfModel.materials.size(); ++materialIndex)
-	{
-		const std::string generatedStem = assetInfo->GetAssetFilename() + "_material_" + std::to_string(materialIndex);
-		const std::filesystem::path indexedMaterialPath = materialsFolder / (generatedStem + ".mat");
-		const std::string legacyMaterialStem =
-			sanitizeLegacyMaterialStem(gltfModel.materials[materialIndex].name, materialIndex);
-		const std::filesystem::path legacyMaterialPath = materialsFolder / (legacyMaterialStem + ".mat");
-		MaterialAssetInfoPtr materialInfo = nullptr;
-		if (!findOwnedMaterial(materialIndex, indexedMaterialPath, legacyMaterialPath, materialInfo))
-		{
-			// A default material may be replaced with a separately authored asset.
-			// Do not infer ownership from its position in the model's material list.
-			SAILOR_LOG("Skipped non-generated material while updating %s: %s",
-				assetInfo->GetAssetFilepath().c_str(),
-				indexedMaterialPath.string().c_str());
-			continue;
-		}
-
-		const tinygltf::Material& sourceMaterial = gltfModel.materials[materialIndex];
-		const auto transmission = GltfImporterUtils::ResolveMaterialTransmission(
-			sourceMaterial, gltfModel.textures.size(), assetInfo->GetUnitScale());
-		const auto alphaMode =
-			GltfImporterUtils::ResolveMaterialAlphaMode(sourceMaterial.alphaMode, transmission.IsEnabled());
-		YAML::Node generatedProperties(YAML::NodeType::Map);
-		generatedProperties["renderQueue"] = alphaMode.m_renderQueue;
-		generatedProperties["bEnableZWrite"] = alphaMode.m_bEnableZWrite;
-		generatedProperties["bCustomDepthShader"] = alphaMode.m_bAlphaCutout;
-		::Serialize(generatedProperties, "blendMode", alphaMode.m_blendMode);
-
-		YAML::Node generatedDefines(YAML::NodeType::Sequence);
-		if (GltfImporterUtils::IsMaterialUsedBySkinnedMesh(gltfModel, materialIndex))
-		{
-			generatedDefines.push_back("SKINNING");
-		}
-		if (transmission.IsEnabled())
-		{
-			generatedDefines.push_back("TRANSMISSION");
-		}
-		else if (transmission.m_bHasIndexOfRefraction)
-		{
-			generatedDefines.push_back("MATERIAL_IOR");
-		}
-		if (alphaMode.m_bAlphaCutout)
-		{
-			generatedDefines.push_back("ALPHA_CUTOUT");
-		}
-		generatedProperties["defines"] = generatedDefines;
-		generatedProperties["uniformsFloat"]["material.alphaCutoff"] = static_cast<float>(sourceMaterial.alphaCutoff);
-		generatedProperties["uniformsVec4"]["material.emissiveFactor"] =
-			glm::vec4(GltfImporterUtils::ResolveMaterialEmissiveFactor(sourceMaterial), 0.0f);
-
-		if (transmission.IsEnabled())
-		{
-			generatedProperties["uniformsFloat"]["material.transmissionFactor"] = transmission.m_factor;
-			generatedProperties["uniformsFloat"]["material.thicknessFactor"] = transmission.m_thicknessFactor;
-			generatedProperties["uniformsFloat"]["material.attenuationDistance"] = transmission.m_attenuationDistance;
-			generatedProperties["uniformsVec4"]["material.attenuationColor"] =
-				glm::vec4(transmission.m_attenuationColor, 1.0f);
-
-			auto addGeneratedSampler = [this, assetInfo,
-										   assetRegistry,
-										   materialIndex,
-										   &relativeFolder,
-										   &generatedProperties,
-										   &textureIdsByGltfIndex,
-										   &bSucceeded](
-										   const char* samplerName, const char* assetSuffix, int32_t textureIndex)
-			{
-				if (textureIndex < 0)
-				{
-					return;
-				}
-
-				const FileId* registeredTextureId = nullptr;
-				FileId textureFileId =
-					textureIdsByGltfIndex.Find(textureIndex, registeredTextureId) && registeredTextureId != nullptr
-						? *registeredTextureId
-						: FileId();
-
-				if (!textureFileId)
-				{
-					std::filesystem::path generatedTexturePath;
-					const std::string generatedTextureVirtualPath = relativeFolder + assetInfo->GetAssetFilename() +
-																	"_material_" + std::to_string(materialIndex) + "_" +
-																	assetSuffix + ".png.asset";
-					if (!assetRegistry->ResolveWorkspaceContentPathForWrite(
-							generatedTextureVirtualPath, generatedTexturePath))
-					{
-						SAILOR_LOG_ERROR("Cannot resolve generated glTF %s for %s.",
-							samplerName,
-							assetInfo->GetAssetFilepath().c_str());
-						bSucceeded = false;
-						return;
-					}
-
-					textureFileId = CreateTextureAsset(generatedTexturePath.string(),
-						assetInfo->GetAssetFilename(),
-						static_cast<uint32_t>(textureIndex),
-						true,
-						RHI::ETextureFormat::R8G8B8A8_UNORM,
-						RHI::ETextureClamping::Repeat,
-						RHI::ETextureFiltration::Linear,
-						assetInfo->ShouldKeepCpuBuffers());
-					if (!textureFileId)
-					{
-						SAILOR_LOG_ERROR("Cannot create generated glTF %s for %s.",
-							samplerName,
-							assetInfo->GetAssetFilepath().c_str());
-						bSucceeded = false;
-						return;
-					}
-
-					textureIdsByGltfIndex.Insert(textureIndex, textureFileId);
-				}
-
-				generatedProperties["samplers"][samplerName] = textureFileId;
-			};
-
-			addGeneratedSampler("transmissionSampler", "transmissionTexture", transmission.m_textureIndex);
-			addGeneratedSampler("thicknessSampler", "thicknessTexture", transmission.m_thicknessTextureIndex);
-		}
-		if (transmission.IsEnabled() || transmission.m_bHasIndexOfRefraction)
-		{
-			generatedProperties["uniformsFloat"]["material.indexOfRefraction"] = transmission.m_indexOfRefraction;
-		}
-
-		YAML::Node materialDocument;
-		std::string diagnostic;
-		if (!TryLoadYamlFile(materialInfo->GetAssetFilepath(), materialDocument, diagnostic))
-		{
-			SAILOR_LOG_ERROR("Cannot read generated material '%s': %s",
-				materialInfo->GetAssetFilepath().c_str(),
-				diagnostic.c_str());
-			bSucceeded = false;
-			continue;
-		}
-
-		const YAML::Node previousDocument = YAML::Clone(materialDocument);
-		bool bMerged = false;
-		const bool bYamlHandled = External::GuardYamlExceptions([&materialDocument, &generatedProperties, &bMerged]()
-			{ bMerged = GltfImporterUtils::MergeGeneratedMaterialProperties(materialDocument, generatedProperties); },
-			diagnostic);
-		if (!bYamlHandled || !bMerged)
-		{
-			if (diagnostic.empty())
-			{
-				diagnostic = "material YAML has an incompatible structure";
-			}
-			SAILOR_LOG_ERROR("Cannot migrate generated material '%s': %s",
-				materialInfo->GetAssetFilepath().c_str(),
-				diagnostic.c_str());
-			bSucceeded = false;
-			continue;
-		}
-
-		if (Utils::AreYamlNodesEqual(previousDocument, materialDocument))
-		{
-			continue;
-		}
-
-		std::string serializedMaterial;
-		if (!External::TryDumpYaml(materialDocument, serializedMaterial, diagnostic) ||
-			!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
-				materialInfo->GetAssetFilepath(), serializedMaterial, diagnostic)))
-		{
-			SAILOR_LOG_ERROR(
-				"Cannot save migrated material '%s': %s", materialInfo->GetAssetFilepath().c_str(), diagnostic.c_str());
-			bSucceeded = false;
-			continue;
-		}
-
-		updatedMaterialIds.Insert(materialInfo->GetFileId());
-	}
-
-	for (const FileId& materialId : updatedMaterialIds)
-	{
-		if (!assetRegistry->UpdateAsset(materialId))
-		{
-			SAILOR_LOG_ERROR("Cannot reload migrated generated material: %s", materialId.ToString().c_str());
-			bSucceeded = false;
-		}
-	}
-
-	return bSucceeded;
 }

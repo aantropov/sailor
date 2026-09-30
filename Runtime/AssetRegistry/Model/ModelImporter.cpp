@@ -95,11 +95,9 @@ bool ModelImporter::UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWas
 
 	const TVector<FileId>& materials = assetInfo->GetDefaultMaterials();
 	const bool bMaterialsNeedRepair = !materials.IsEmpty() &&
-		!areGeneratedAssetsValid(materials, assetInfo->ShouldBatchByMaterial());
+		!areGeneratedAssetsValid(materials, false);
 	const bool bGenerateMaterials = assetInfo->ShouldGenerateMaterials() &&
-		((bWasExpired && materials.IsEmpty()) || bMaterialsNeedRepair);
-	const bool bUpdateMaterials = assetInfo->ShouldGenerateMaterials() && bWasExpired &&
-		!materials.IsEmpty() && !bMaterialsNeedRepair;
+		(bWasExpired || bMaterialsNeedRepair);
 
 	const TVector<FileId>& animations = assetInfo->GetAnimations();
 	bool bAnimationsNeedRepair = !areGeneratedAssetsValid(animations, true);
@@ -111,7 +109,7 @@ bool ModelImporter::UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWas
 			!std::filesystem::is_regular_file(animation->GetMetaFilepath(), error);
 	}
 	const bool bGenerateAnimations = bWasExpired || bAnimationsNeedRepair;
-	if (!bGenerateMaterials && !bUpdateMaterials && !bGenerateAnimations)
+	if (!bGenerateMaterials && !bGenerateAnimations)
 	{
 		return true;
 	}
@@ -128,10 +126,6 @@ bool ModelImporter::UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWas
 	if (bGenerateMaterials)
 	{
 		bSucceeded = GenerateMaterialAssets(assetInfo);
-	}
-	else if (bUpdateMaterials)
-	{
-		bSucceeded = UpdateGeneratedMaterialProperties(assetInfo);
 	}
 	bool bAnimationsChanged = false;
 	if (bSucceeded && bGenerateAnimations)

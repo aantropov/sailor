@@ -116,6 +116,7 @@ namespace Sailor
 
 		SAILOR_API virtual ~MaterialAsset() = default;
 
+		SAILOR_API static YAML::Node Serialize(const Data& data);
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 

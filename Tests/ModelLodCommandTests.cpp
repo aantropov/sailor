@@ -1,5 +1,6 @@
 #include "Sailor.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Model/ModelLodCache.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
@@ -206,11 +207,71 @@ namespace
 		fixture.m_info->Deserialize(settings);
 		Require(fixture.m_info->SaveMetaFile(), "explicit material import settings must save");
 		const auto modelId = fixture.m_id.ToString();
+		const auto materialsFolder = fixture.m_path.parent_path() / "materials";
+		std::filesystem::create_directories(materialsFolder);
+		const auto collisionPath = materialsFolder / "CpuHierarchy.gltf_material_0.mat";
+		{
+			std::ofstream output(collisionPath);
+			output << "renderQueue: Authored\n";
+		}
+		const auto collisionTime = std::filesystem::last_write_time(collisionPath);
+		const auto pendingPath = materialsFolder / "CpuHierarchy.gltf_material_1.mat";
+		const auto pendingId = FileId::CreateNewFileId();
+		{
+			auto metadata = CreateAssetInfoMetadata<MaterialAssetInfo>(pendingId, pendingPath.filename().string());
+			metadata["sourceModel"] = fixture.m_id;
+			metadata["sourceMaterialIndex"] = 1;
+			std::ofstream output(pendingPath.string() + ".asset");
+			output << metadata;
+		}
 		Require(App::UpdateAsset(modelId.c_str()), "the editor reimport command must generate model materials");
 		Drain();
-		const auto materialIds = fixture.m_info->GetDefaultMaterials();
+		auto materialIds = fixture.m_info->GetDefaultMaterials();
 		Require(materialIds.Num() == 2, "explicit import must register both generated materials");
+		const auto generatedIds = materialIds;
 		auto* registry = App::GetSubmodule<AssetRegistry>();
+		Require(generatedIds[1] == pendingId && std::filesystem::last_write_time(collisionPath) == collisionTime &&
+			YAML::LoadFile(collisionPath.string())["renderQueue"].as<std::string>() == "Authored" &&
+			registry->GetAssetInfoPtr(generatedIds[0])->GetAssetFilepath() != collisionPath.string(),
+			"import must reuse pending ownership but never overwrite an unowned file with a canonical name");
+		{
+			AssetRegistry reopened(App::GetWorkspaceContext(), nullptr);
+			MaterialAssetInfoHandler handler(&reopened);
+			for (uint32_t index = 0; index < generatedIds.Num(); ++index)
+			{
+				const auto id = reopened.GetOrLoadFile(registry->GetAssetInfoPtr(generatedIds[index])->GetAssetFilepath());
+				const auto* info = reopened.GetAssetInfoPtr<MaterialAssetInfoPtr>(id);
+				Require(info && id == generatedIds[index] && info->GetSourceModel() == fixture.m_id &&
+					info->GetSourceMaterialIndex() == static_cast<int32_t>(index),
+					"a fresh registry must recover typed material ownership from disk");
+			}
+		}
+		const auto unusedGeneratedPath = registry->GetAssetInfoPtr(generatedIds[1])->GetAssetFilepath();
+		MaterialPtr liveGenerated;
+		Require(App::GetSubmodule<MaterialImporter>()->LoadMaterial_Immediate(generatedIds[1], liveGenerated) && liveGenerated,
+			"the generated material must load before its live reimport");
+		const auto authoredPath = fixture.m_path.parent_path() / "Authored.mat";
+		const auto authoredId = FileId::CreateNewFileId();
+		{
+			std::ifstream original(unusedGeneratedPath);
+			std::ofstream replacement(authoredPath);
+			replacement << original.rdbuf();
+		}
+		{
+			auto metadata = registry->GetAssetInfoPtr(generatedIds[1])->Serialize();
+			metadata["fileId"] = authoredId;
+			metadata["filename"] = authoredPath.filename().string();
+			metadata.remove("sourceModel");
+			metadata.remove("sourceMaterialIndex");
+			std::ofstream output(authoredPath.string() + ".asset");
+			output << metadata;
+		}
+		Require(registry->GetOrLoadFile(authoredPath.string()) == authoredId, "an authored replacement must register");
+		materialIds[1] = authoredId;
+		fixture.m_info->GetDefaultMaterials() = materialIds;
+		Require(fixture.m_info->SaveMetaFile(), "authoring a material replacement must save");
+		const auto authoredTime = std::filesystem::last_write_time(authoredPath);
+		const auto authoredDocument = YAML::LoadFile(authoredPath.string());
 		const auto* materialInfo = registry->GetAssetInfoPtr(materialIds[0]);
 		Require(materialInfo != nullptr, "the generated material must be registered immediately");
 		const auto materialPath = materialInfo->GetAssetFilepath();
@@ -260,10 +321,28 @@ namespace
 			bool authoredDefine = false;
 			for (const auto& define : updated["defines"]) authoredDefine |= define.as<std::string>() == "AUTHORED_FEATURE";
 			Require(authoredDefine, "reimport must preserve unrelated authored shader defines");
+			const auto unused = YAML::LoadFile(unusedGeneratedPath);
+			Require(unused["uniformsVec4"]["material.emissiveFactor"].as<glm::vec4>() == glm::vec4(1, 2, 4, 0),
+				"reimport must update its owned material even when a draw slot has an authored replacement");
+			glm::vec4 radiance;
+			Require(liveGenerated->IsReady() && liveGenerated->GetUniformsVec4().TryGet("material.emissiveFactor", radiance) &&
+				radiance == glm::vec4(1, 2, 4, 0),
+				"explicit generation must also publish the changed radiance to an already loaded material");
+			Require(Utils::AreYamlNodesEqual(YAML::LoadFile(authoredPath.string()), authoredDocument) &&
+				std::filesystem::last_write_time(authoredPath) == authoredTime,
+				"reimport must not modify an independently authored replacement");
 			return updated;
 		};
+		source["materials"][1]["emissiveFactor"] = { 0.25f, 0.5f, 1.0f };
+		source["materials"][1]["extensions"]["KHR_materials_emissive_strength"]["emissiveStrength"] = 4.0f;
 		sourceMaterial["alphaMode"] = "BLEND";
 		sourceMaterial["extensions"]["KHR_materials_transmission"]["transmissionFactor"] = 0.7f;
+		std::filesystem::copy_file(App::GetWorkspaceContext().GetEngineContent() / "Textures" / "DitherPattern.png",
+			fixture.m_path.parent_path() / "Surface.png");
+		source["images"] = {{{ "uri", "Surface.png" }}};
+		source["textures"] = {{{ "source", 0 }}};
+		sourceMaterial["extensions"]["KHR_materials_transmission"]["transmissionTexture"]["index"] = 0;
+		sourceMaterial["extensions"]["KHR_materials_volume"]["thicknessTexture"]["index"] = 0;
 		sourceMaterial["extensions"]["KHR_materials_volume"]["thicknessFactor"] = 0.8f;
 		sourceMaterial["extensions"]["KHR_materials_ior"]["ior"] = 1.4f;
 		sourceMaterial["extensions"]["KHR_materials_emissive_strength"]["emissiveStrength"] = 8.0f;
@@ -275,6 +354,12 @@ namespace
 			transparent["uniformsFloat"]["material.indexOfRefraction"].as<float>() == 1.4f &&
 			transparent["uniformsVec4"]["material.emissiveFactor"].as<glm::vec4>() == glm::vec4(2, 4, 8, 0),
 			"explicit reimport must refresh transmission, alpha state, IOR and HDR emission");
+		const auto textureId = transparent["samplers"]["transmissionSampler"].as<FileId>();
+		Require(textureId && transparent["samplers"]["thicknessSampler"].as<FileId>() == textureId,
+			"equal generated texture requests must reuse one source texture identity");
+		const auto repeated = reimport();
+		Require(repeated["samplers"]["transmissionSampler"].as<FileId>() == textureId,
+			"reimport must keep the generated sampler FileId");
 		sourceMaterial["alphaMode"] = "MASK";
 		sourceMaterial["alphaCutoff"] = 0.6f;
 		sourceMaterial.erase("extensions");
@@ -283,7 +368,8 @@ namespace
 			masked["uniformsFloat"]["material.alphaCutoff"].as<float>() == 0.6f &&
 			!masked["uniformsFloat"]["material.transmissionFactor"] &&
 			!masked["uniformsFloat"]["material.indexOfRefraction"] &&
-			!masked["uniformsVec4"]["material.attenuationColor"],
+			!masked["uniformsVec4"]["material.attenuationColor"] &&
+			!masked["samplers"]["transmissionSampler"] && !masked["samplers"]["thicknessSampler"],
 			"reimport must remove stale extension properties when returning to a masked material");
 		sourceMaterial["alphaMode"] = "OPAQUE";
 		const auto opaque = reimport();

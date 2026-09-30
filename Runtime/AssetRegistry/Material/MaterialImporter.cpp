@@ -624,22 +624,27 @@ void Material::ForcelyUpdateUniforms()
 
 YAML::Node MaterialAsset::Serialize() const
 {
+	return Serialize(*m_pData);
+}
+
+YAML::Node MaterialAsset::Serialize(const Data& data)
+{
 	YAML::Node outData;
 
-	::Serialize(outData, "bEnableDepthTest", m_pData->m_renderState.IsDepthTestEnabled());
-	::Serialize(outData, "bEnableZWrite", m_pData->m_renderState.IsEnabledZWrite());
-	::Serialize(outData, "bSupportMultisampling", m_pData->m_renderState.SupportMultisampling());
-	::Serialize(outData, "bCustomDepthShader", m_pData->m_renderState.IsRequiredCustomDepthShader());
-	::Serialize(outData, "depthBias", m_pData->m_renderState.GetDepthBias());
-	::Serialize(outData, "cullMode", m_pData->m_renderState.GetCullMode());
-	::Serialize(outData, "fillMode", m_pData->m_renderState.GetFillMode());
-	::Serialize(outData, "blendMode", m_pData->m_renderState.GetBlendMode());
-	::Serialize(outData, "defines", m_pData->m_shaderDefines);
-	::Serialize(outData, "samplers", m_pData->m_samplers);
-	::Serialize(outData, "uniformsVec4", m_pData->m_uniformsVec4);
-	::Serialize(outData, "uniformsFloat", m_pData->m_uniformsFloat);
-	::Serialize(outData, "shaderUid", m_pData->m_shader);
-	::Serialize(outData, "renderQueue", GetRenderQueue());
+	::Serialize(outData, "bEnableDepthTest", data.m_renderState.IsDepthTestEnabled());
+	::Serialize(outData, "bEnableZWrite", data.m_renderState.IsEnabledZWrite());
+	::Serialize(outData, "bSupportMultisampling", data.m_renderState.SupportMultisampling());
+	::Serialize(outData, "bCustomDepthShader", data.m_renderState.IsRequiredCustomDepthShader());
+	::Serialize(outData, "depthBias", data.m_renderState.GetDepthBias());
+	::Serialize(outData, "cullMode", data.m_renderState.GetCullMode());
+	::Serialize(outData, "fillMode", data.m_renderState.GetFillMode());
+	::Serialize(outData, "blendMode", data.m_renderState.GetBlendMode());
+	::Serialize(outData, "defines", data.m_shaderDefines);
+	::Serialize(outData, "samplers", data.m_samplers);
+	::Serialize(outData, "uniformsVec4", data.m_uniformsVec4);
+	::Serialize(outData, "uniformsFloat", data.m_uniformsFloat);
+	::Serialize(outData, "shaderUid", data.m_shader);
+	::Serialize(outData, "renderQueue", data.m_renderQueue);
 
 	return outData;
 }

@@ -2166,7 +2166,7 @@ uniformsVec4:
 			"KHR_materials_emissive_strength must preserve physical emissive radiance");
 	}
 
-	void TestGeneratedMaterialMigrationPreservesAuthoredProperties()
+	void TestGeneratedMaterialMergePreservesAuthoredProperties()
 	{
 		YAML::Node material = YAML::Load(R"(
 renderQueue: Opaque
@@ -3080,7 +3080,7 @@ int main()
 		{ "StandardGltfTexturelessDefaultsAndLegacyAliases", TestStandardGltfTexturelessDefaultsAndLegacyAliases },
 		{ "GltfTransmissionExtensionResolvesMaterialFields", TestGltfTransmissionExtensionResolvesMaterialFields },
 		{ "GltfEmissiveStrengthResolvesMaterialRadiance", TestGltfEmissiveStrengthResolvesMaterialRadiance },
-		{ "GeneratedMaterialMigrationPreservesAuthoredProperties", TestGeneratedMaterialMigrationPreservesAuthoredProperties },
+		{ "GeneratedMaterialMergePreservesAuthoredProperties", TestGeneratedMaterialMergePreservesAuthoredProperties },
 		{ "SkinnedGltfMaterialsRequireSkinningShaderVariant", TestSkinnedGltfMaterialsRequireSkinningShaderVariant },
 		{ "CompactedMeshesRetainMaterialSlots", TestCompactedMeshesRetainMaterialSlots },
 		{ "GeneratedTangentsPreserveMirroredUvHandedness", TestGeneratedTangentsPreserveMirroredUvHandedness },

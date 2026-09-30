@@ -268,8 +268,6 @@ namespace Sailor
 
 	  protected:
 		SAILOR_API bool GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
-		bool UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo);
-		bool UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo, const tinygltf::Model& gltfModel);
 		FileId CreateTextureAsset(const std::string& filepath,
 			const std::string& sourceFilename,
 			uint32_t sourceTextureIndex,
