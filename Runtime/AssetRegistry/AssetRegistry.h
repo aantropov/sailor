@@ -2,6 +2,7 @@
 #include <string>
 #include <fstream>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <vector>
@@ -131,7 +132,9 @@ namespace Sailor
 			outText = buffer.str();
 
 			file.close();
-
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+			NotifyTextReadForTests(filename);
+#endif
 			return true;
 		}
 
@@ -235,6 +238,8 @@ namespace Sailor
 
 #if defined(SAILOR_FILE_IO_TEST_HOOKS)
 		uint64_t TakeManifestWritesForTests() { return m_assetCache.TakeManifestWriteCountForTests(); }
+		using TextReadObserver = std::function<void(const std::filesystem::path&)>;
+		SAILOR_API static TextReadObserver ExchangeTextReadObserverForTests(TextReadObserver observer);
 #endif
 
 		template<typename T>
@@ -250,6 +255,10 @@ namespace Sailor
 		}
 
 	protected:
+
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		SAILOR_API static void NotifyTextReadForTests(const std::filesystem::path& path);
+#endif
 
 		SAILOR_API TObjectPtr<Object> LoadAsset(IAssetInfoHandler* assetInfoHandler, const FileId& id, bool bImmediate);
 

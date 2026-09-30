@@ -48,7 +48,7 @@ namespace Sailor
 		}
 		SAILOR_API const std::string& GetLoadDiagnostic() const { return m_loadDiagnostic; }
 
-		static WorldPrefabPtr FromWorld(WorldPtr world);
+		SAILOR_API static WorldPrefabPtr FromWorld(WorldPtr world);
 
 	protected:
 

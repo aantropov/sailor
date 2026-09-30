@@ -203,6 +203,7 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 		}
 	}
 
+	TMap<FileId, PrefabPtr> sourcePrefabs;
 	for (uint32_t prefabIndex = 0; prefabIndex < numPrefabs; ++prefabIndex)
 	{
 		const YAML::Node& prefabNode = inData["prefabs"][prefabIndex];
@@ -225,35 +226,33 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 			continue;
 		}
 
-		PrefabAssetInfoPtr sourceAssetInfo =
-			App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<PrefabAssetInfoPtr>(
-				sourcePrefabId);
-		if (!sourceAssetInfo)
+		auto& sourcePrefab = sourcePrefabs[sourcePrefabId];
+		if (!sourcePrefab)
 		{
-			m_loadDiagnostic = "linked prefab " + std::to_string(prefabIndex) +
-				" references an unknown source asset " + sourcePrefabId.ToString();
-			return;
-		}
+			PrefabAssetInfoPtr sourceAssetInfo =
+				App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<PrefabAssetInfoPtr>(sourcePrefabId);
+			if (!sourceAssetInfo)
+			{
+				m_loadDiagnostic = "linked prefab " + std::to_string(prefabIndex) +
+					" references an unknown source asset " + sourcePrefabId.ToString();
+				return;
+			}
 
-		std::string sourceText;
-		if (!AssetRegistry::ReadTextFile(
-				sourceAssetInfo->GetAssetFilepath(),
-				sourceText))
-		{
-			m_loadDiagnostic = "cannot read linked prefab source " +
-				sourceAssetInfo->GetAssetFilepath();
-			return;
-		}
+			std::string sourceText;
+			if (!AssetRegistry::ReadTextFile(sourceAssetInfo->GetAssetFilepath(), sourceText))
+			{
+				m_loadDiagnostic = "cannot read linked prefab source " + sourceAssetInfo->GetAssetFilepath();
+				return;
+			}
 
-		PrefabPtr sourcePrefab =
-			App::GetSubmodule<PrefabImporter>()->Create(sourcePrefabId);
-		sourcePrefab->Deserialize(YAML::Load(sourceText));
-		if (!sourcePrefab->ValidateForInstantiation(m_loadDiagnostic))
-		{
-			m_loadDiagnostic = "linked prefab source '" +
-				sourceAssetInfo->GetAssetFilepath() + "' is invalid: " +
-				m_loadDiagnostic;
-			return;
+			sourcePrefab = App::GetSubmodule<PrefabImporter>()->Create(sourcePrefabId);
+			sourcePrefab->Deserialize(YAML::Load(sourceText));
+			if (!sourcePrefab->ValidateForInstantiation(m_loadDiagnostic))
+			{
+				m_loadDiagnostic = "linked prefab source '" + sourceAssetInfo->GetAssetFilepath() +
+					"' is invalid: " + m_loadDiagnostic;
+				return;
+			}
 		}
 
 		PrefabPtr expandedPrefab = App::GetSubmodule<PrefabImporter>()->Create();

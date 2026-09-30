@@ -25,6 +25,25 @@ using namespace Sailor::AssetRegistryInternal;
 
 bool Sailor::g_bUseLazyAssetInfoLoading = false;
 
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+namespace
+{
+	thread_local AssetRegistry::TextReadObserver g_textReadObserver;
+}
+
+AssetRegistry::TextReadObserver AssetRegistry::ExchangeTextReadObserverForTests(TextReadObserver observer)
+{
+	auto previous = std::move(g_textReadObserver);
+	g_textReadObserver = std::move(observer);
+	return previous;
+}
+
+void AssetRegistry::NotifyTextReadForTests(const std::filesystem::path& path)
+{
+	if (g_textReadObserver) g_textReadObserver(path);
+}
+#endif
+
 std::string AssetRegistry::GetContentFolder()
 {
 	return GetWorkspaceContentFolder();
