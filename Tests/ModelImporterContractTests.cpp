@@ -1,3 +1,10 @@
+// stb is private to the runtime DLL; the test owns its image decoder.
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+#undef STB_IMAGE_IMPLEMENTATION
+#undef STB_IMAGE_STATIC
+
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "AssetRegistry/Model/ModelLodCache.h"
@@ -34,7 +41,6 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <tiny_gltf.h>
-#include <stb_image.h>
 
 using namespace Sailor;
 
