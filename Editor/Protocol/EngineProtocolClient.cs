@@ -173,16 +173,25 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 cancellationToken).ConfigureAwait(false),
             nameof(ProtocolRequest.RequestAssetReload));
 
-    public async Task<bool> UpdateAssetAsync(
+    public Task<bool> UpdateAssetAsync(
         string fileId,
         CancellationToken cancellationToken = default)
+        => SendAssetUpdateAsync(fileId, false, cancellationToken);
+
+    public Task<bool> ReimportAssetAsync(
+        string fileId,
+        CancellationToken cancellationToken = default)
+        => SendAssetUpdateAsync(fileId, true, cancellationToken);
+
+    async Task<bool> SendAssetUpdateAsync(string fileId, bool reimport, CancellationToken cancellationToken)
         => ReadBool(
             await SendAsync(
                     new ProtocolRequest
                     {
-                        UpdateAsset = new FileIdRequest
+                        UpdateAsset = new UpdateAssetRequest
                         {
-                            FileId = ValidateString(fileId, nameof(fileId))
+                            FileId = ValidateString(fileId, nameof(fileId)),
+                            Reimport = reimport
                         }
                     },
                     cancellationToken)

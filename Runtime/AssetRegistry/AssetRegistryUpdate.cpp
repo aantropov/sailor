@@ -10,7 +10,7 @@
 using namespace Sailor;
 using namespace Sailor::AssetRegistryInternal;
 
-bool AssetRegistry::UpdateAsset(const FileId& fileId)
+bool AssetRegistry::UpdateAsset(const FileId& fileId, bool bReimport)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -91,24 +91,24 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId)
 	{
 		AssetInfoPtr assetInfo = assetsToUpdate[index];
 		const AssetExpirationState expiration = getExpirationState(assetInfo);
-		if (!expiration)
+		if (!expiration && !bReimport)
 		{
 			continue;
 		}
 
-		if (assetInfo == targetAssetInfo && expiration.m_bSourceExpired)
+		if (assetInfo == targetAssetInfo && (expiration.m_bSourceExpired || bReimport))
 		{
 			addSharedSourceFamily();
 		}
 
-		if (!expiration.m_bMetadataExpired && !expiration.m_bSourceExpired && expiration.m_bCacheExpired &&
+		if (!bReimport && !expiration.m_bMetadataExpired && !expiration.m_bSourceExpired && expiration.m_bCacheExpired &&
 			expiration.m_bProcessingPending)
 		{
 			continue;
 		}
 
 		IAssetInfoHandler* handler = GetAssetInfoHandler(*assetInfo);
-		if (handler == nullptr || !handler->ReloadAssetInfo(assetInfo, true, false))
+		if (handler == nullptr || !handler->ReloadAssetInfo(assetInfo, false, false))
 		{
 			SAILOR_LOG_ERROR("Asset update failed; preserving the previous live asset where possible: %s",
 				assetInfo->GetMetaFilepath().c_str());
@@ -116,6 +116,7 @@ bool AssetRegistry::UpdateAsset(const FileId& fileId)
 			break;
 		}
 
+		handler->NotifyUpdateAssetInfo(assetInfo, bReimport);
 		CacheAsset(assetInfo);
 		bReloadedAny = true;
 		if (assetInfo == targetAssetInfo && assetInfo->m_importedSourceRevision != initialTargetSourceRevision)

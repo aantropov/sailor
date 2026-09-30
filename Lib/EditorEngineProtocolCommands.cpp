@@ -236,7 +236,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kUpdateAsset:
-			SetBoolResult(response, Sailor::App::UpdateAsset(request.update_asset().file_id().c_str()));
+			SetBoolResult(response, Sailor::App::UpdateAsset(
+				request.update_asset().file_id().c_str(), request.update_asset().reimport()));
 			break;
 
 		case ProtocolRequest::kGetAssetReloadState:

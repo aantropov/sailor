@@ -60,10 +60,13 @@ a trace failure.
 
 `update_asset` revalidates one registered `FileId` against its metadata,
 source-file, and cache revisions. A metadata-only edit reloads that exact
-AssetInfo; a changed source reloads every registered AssetInfo backed by the
-same source (for example, the assets generated from one glTF file). It does not
-scan Content or wait for unrelated Worker, RHI, or Render work. Commands that
-change Content topology still use `request_asset_reload`.
+AssetInfo; a changed source reloads loaded AssetInfos backed by the same source
+(for example, assets generated from one glTF file). Explicit Editor Reimport
+sets `reimport = true` to regenerate even when those revisions are unchanged.
+Normal Save/watcher updates leave it false. Reimport preserves authored values
+and generated FileIds; it does not change source timestamps to trigger work.
+The command drains asset tasks around updates, but does not scan Content.
+Commands that change Content topology still use `request_asset_reload`.
 
 `set_animator_parameter` updates one runtime Animator instance using a typed
 Float, Int, Bool, Trigger, or ResetTrigger value. `get_animator_state` returns

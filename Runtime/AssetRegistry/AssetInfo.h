@@ -91,6 +91,7 @@ namespace Sailor
 		// processing through AssetRegistry; notification alone does not save metadata.
 		// bWasExpired means that the source or metadata changed since the last
 		// acknowledged processing watermark, or that no watermark exists yet.
+		// Explicit reimport also requests regeneration through this notification.
 		// Importers refresh loaded resources here.
 		virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) = 0;
 		// Called only after creating metadata for a previously untracked source.
@@ -129,7 +130,7 @@ namespace Sailor
 			bool bNotifyListeners = true,
 			bool bUpdateAssetCache = true) const;
 		bool DiscardImportedMetadataIfUnchanged(AssetInfoPtr assetInfo) const;
-		void NotifyUpdateAssetInfo(AssetInfoPtr assetInfo) const;
+		void NotifyUpdateAssetInfo(AssetInfoPtr assetInfo, bool bReimport = false) const;
 		void NotifyImportAsset(AssetInfoPtr assetInfo) const;
 
 		virtual ~IAssetInfoHandler() = default;

@@ -1,12 +1,15 @@
 #include "Sailor.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Model/ModelLodCache.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "RHI/Renderer.h"
 #include "RHI/Buffer.h"
 #include "Raytracing/PathTracer.h"
+#include "Support/EditorProtocolWire.h"
+#include "EditorEngineProtocolLifecycle.h"
 
 #include <algorithm>
 #include <array>
@@ -20,6 +23,8 @@
 #include <nlohmann/json.hpp>
 
 using namespace Sailor;
+
+extern "C" SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noexcept;
 
 namespace Sailor
 {
@@ -40,6 +45,39 @@ namespace
 	void Require(bool value, const char* message)
 	{
 		if (!value) throw std::runtime_error(message);
+	}
+
+	bool UpdateAssetThroughEditor(const std::string& fileId, bool reimport)
+	{
+		using namespace Tests::ProtocolWire;
+		Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "the native editor protocol fixture must initialize");
+		gate.CompleteInitialization(true);
+		Protocol::EditorEngineProtocolDependencies dependencies;
+		dependencies.m_lifecycleGate = &gate;
+		std::string command;
+		AppendBytesField(command, 1u, fileId);
+		AppendVarintField(command, 2u, reimport);
+		const auto request = MakeRequest(148u, 57u, command);
+		uint8_t* bytes = nullptr;
+		uint32_t size = 0;
+		const auto status = Protocol::InvokeEditorEngineProtocol(reinterpret_cast<const uint8_t*>(request.data()),
+			static_cast<uint32_t>(request.size()), &bytes, &size, dependencies);
+		const std::string payload(bytes ? reinterpret_cast<const char*>(bytes) : "", size);
+		SailorProtocolFreeBuffer(bytes);
+		TProtocolResponseWire response;
+		Require(status == static_cast<int32_t>(Protocol::EEditorEngineTransportStatus::Ok) &&
+			ParseResponse(payload, response) && response.m_bSuccess && response.m_protocolVersion == 1 &&
+			response.m_requestId == 148u && response.m_resultField == 11u,
+			"the native editor update command must return its typed bool result");
+		if (response.m_resultPayload.empty()) return false;
+		size_t offset = 0;
+		uint64_t key = 0, value = 0;
+		Require(ReadVarint(response.m_resultPayload, offset, key) && key == 8u &&
+			ReadVarint(response.m_resultPayload, offset, value) && offset == response.m_resultPayload.size(),
+			"the native editor bool result must decode");
+		return value != 0;
 	}
 
 	void Drain()
@@ -224,7 +262,7 @@ namespace
 			std::ofstream output(pendingPath.string() + ".asset");
 			output << metadata;
 		}
-		Require(App::UpdateAsset(modelId.c_str()), "the editor reimport command must generate model materials");
+		Require(UpdateAssetThroughEditor(modelId, true), "the editor reimport command must generate model materials");
 		Drain();
 		auto materialIds = fixture.m_info->GetDefaultMaterials();
 		Require(materialIds.Num() == 2, "explicit import must register both generated materials");
@@ -307,7 +345,7 @@ namespace
 				std::ofstream output(fixture.m_path);
 				output << source.dump();
 			}
-			Require(App::UpdateAsset(modelId.c_str()), "the editor command must reimport changed glTF properties");
+			Require(UpdateAssetThroughEditor(modelId, true), "the editor command must reimport changed glTF properties");
 			Drain();
 			Require(fixture.m_info->GetDefaultMaterials() == materialIds &&
 				YAML::LoadFile(materialPath + ".asset")["fileId"].as<FileId>() == materialIds[0],
@@ -346,6 +384,7 @@ namespace
 		sourceMaterial["extensions"]["KHR_materials_volume"]["thicknessFactor"] = 0.8f;
 		sourceMaterial["extensions"]["KHR_materials_ior"]["ior"] = 1.4f;
 		sourceMaterial["extensions"]["KHR_materials_emissive_strength"]["emissiveStrength"] = 8.0f;
+		const auto transparentSource = source;
 		const auto transparent = reimport();
 		Require(transparent["renderQueue"].as<std::string>() == "Transparent" &&
 			!transparent["bEnableZWrite"].as<bool>() &&
@@ -360,6 +399,47 @@ namespace
 		const auto repeated = reimport();
 		Require(repeated["samplers"]["transmissionSampler"].as<FileId>() == textureId,
 			"reimport must keep the generated sampler FileId");
+		{
+			const auto freshFolder = folder / "Fresh";
+			std::filesystem::create_directories(freshFolder / "Content");
+			ModelFixture fresh(freshFolder, true);
+			std::filesystem::copy_file(fixture.m_path.parent_path() / "Surface.png", fresh.m_path.parent_path() / "Surface.png");
+			{
+				std::ofstream output(fresh.m_path);
+				output << transparentSource.dump();
+			}
+			auto metadata = fresh.m_info->Serialize();
+			metadata["bShouldGenerateMaterials"] = true;
+			fresh.m_info->Deserialize(metadata);
+			Require(fresh.m_info->SaveMetaFile() && UpdateAssetThroughEditor(fresh.m_id.ToString(), true),
+				"the comparison model must generate its materials from scratch");
+			const auto freshId = fresh.m_info->GetDefaultMaterials()[0];
+			const auto generated = YAML::LoadFile(registry->GetAssetInfoPtr(freshId)->GetAssetFilepath());
+			for (const char* property : { "renderQueue", "bEnableZWrite", "blendMode" })
+			{
+				Require(Utils::AreYamlNodesEqual(generated[property], transparent[property]),
+					"fresh generation and reimport must produce identical managed render state");
+			}
+			for (const char* property : { "material.alphaCutoff", "material.transmissionFactor", "material.thicknessFactor",
+				"material.attenuationDistance", "material.indexOfRefraction" })
+			{
+				Require(Utils::AreYamlNodesEqual(generated["uniformsFloat"][property], transparent["uniformsFloat"][property]),
+					"fresh generation and reimport must agree on managed optical parameters");
+			}
+			for (const char* property : { "material.attenuationColor", "material.emissiveFactor" })
+			{
+				Require(Utils::AreYamlNodesEqual(generated["uniformsVec4"][property], transparent["uniformsVec4"][property]),
+					"fresh generation and reimport must agree on managed color and radiance");
+			}
+			for (const char* name : { "transmissionSampler", "thicknessSampler" })
+			{
+				const auto* originalTexture = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(transparent["samplers"][name].as<FileId>());
+				const auto* freshTexture = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(generated["samplers"][name].as<FileId>());
+				Require(originalTexture && freshTexture && originalTexture->GetGlbTextureIndex() == freshTexture->GetGlbTextureIndex() &&
+					originalTexture->GetFormat() == freshTexture->GetFormat(),
+					"fresh generation and reimport samplers must reference the same glTF texture with the same color space");
+			}
+		}
 		sourceMaterial["alphaMode"] = "MASK";
 		sourceMaterial["alphaCutoff"] = 0.6f;
 		sourceMaterial.erase("extensions");
@@ -376,14 +456,55 @@ namespace
 		Require(opaque["renderQueue"].as<std::string>() == "Opaque" && opaque["bEnableZWrite"].as<bool>(),
 			"explicit reimport must restore opaque rendering when alpha masking is removed");
 		const auto unchanged = ReadContent(workspace / "Content");
-		Require(App::UpdateAsset(modelId.c_str()), "reimporting unchanged source must succeed");
+		Require(UpdateAssetThroughEditor(modelId, true), "reimporting unchanged source must succeed");
 		Drain();
 		Require(ReadContent(workspace / "Content") == unchanged, "an unchanged reimport must not rewrite Content");
+		{
+			auto stale = YAML::Clone(opaque);
+			stale["uniformsVec4"]["material.emissiveFactor"] = glm::vec4(99.0f);
+			std::ofstream output(materialPath);
+			output << stale;
+		}
+		const auto sourceTime = std::filesystem::last_write_time(fixture.m_path);
+		std::string sourceBytes;
+		Require(AssetRegistry::ReadAllTextFile(fixture.m_path.string(), sourceBytes), "the source glTF must remain readable");
+		const auto staleContent = ReadContent(workspace / "Content");
+		Require(UpdateAssetThroughEditor(modelId, false), "ordinary update of unchanged glTF must succeed");
+		Drain();
+		Require(ReadContent(workspace / "Content") == staleContent,
+			"an ordinary update must not force regeneration of unchanged model assets");
+		Require(UpdateAssetThroughEditor(modelId, true), "explicit reimport of unchanged glTF must succeed");
+		Drain();
+		Require(YAML::LoadFile(materialPath)["uniformsVec4"]["material.emissiveFactor"].as<glm::vec4>() ==
+			glm::vec4(0.25f, 0.5f, 1.0f, 0.0f),
+			"explicit reimport must repair stale generated properties without modifying the source model");
+		{
+			std::ofstream output(materialPath);
+			output << "uniformsFloat: [incomplete";
+		}
+		Require(!UpdateAssetThroughEditor(modelId, true) && registry->IsAssetExpired(fixture.m_info),
+			"failed material regeneration must fail the editor command and retain the need to retry");
+		Require(std::filesystem::remove(materialPath), "the fixture must remove only its own broken generated material");
+		Require(UpdateAssetThroughEditor(modelId, true), "explicit reimport must restore a missing owned material");
+		Drain();
+		Require(std::filesystem::is_regular_file(materialPath) &&
+			YAML::LoadFile(materialPath + ".asset")["fileId"].as<FileId>() == generatedIds[0] &&
+			fixture.m_info->GetDefaultMaterials() == materialIds && !registry->IsAssetExpired(fixture.m_info),
+			"successful retry must retain generated identity and authored slots and acknowledge the model");
+		std::string sourceAfter;
+		Require(AssetRegistry::ReadAllTextFile(fixture.m_path.string(), sourceAfter) && sourceAfter == sourceBytes &&
+			std::filesystem::last_write_time(fixture.m_path) == sourceTime,
+			"forced reimport must never manufacture a source change to trigger processing");
+		const auto repaired = ReadContent(workspace / "Content");
+		Require(UpdateAssetThroughEditor(modelId, true), "a repaired reimport must succeed again");
+		Drain();
+		Require(ReadContent(workspace / "Content") == repaired, "a completed repair must become a Content no-op");
 
 		const auto engineFolder = App::GetWorkspaceContext().GetEngineContent() / "Models" / "Box";
 		const auto engineBefore = ReadContent(engineFolder);
 		const auto engineId = registry->GetOrLoadFile("Models/Box/Box.gltf");
 		Require(engineId && !registry->GetAssetInfoPtr(engineId)->IsWritable(), "the engine model must be read-only");
+		Require(UpdateAssetThroughEditor(engineId.ToString(), true), "explicit reimport may refresh a read-only engine resource");
 		{
 			FreshImporter fresh;
 			ModelPtr model;

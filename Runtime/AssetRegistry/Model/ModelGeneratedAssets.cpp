@@ -260,20 +260,19 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(YAML::Node& inOutMateri
 			return false;
 		}
 
-		if (!targetGroup || targetGroup.IsNull())
-		{
-			targetGroup = YAML::Node(YAML::NodeType::Map);
-			merged[group.m_group] = targetGroup;
-		}
-
 		for (size_t index = 0; index < group.m_numProperties; ++index)
 		{
 			const char* property = group.m_properties[index];
 			if (generatedGroup && generatedGroup[property])
 			{
+				if (!targetGroup || targetGroup.IsNull())
+				{
+					targetGroup = YAML::Node(YAML::NodeType::Map);
+					merged[group.m_group] = targetGroup;
+				}
 				targetGroup[property] = YAML::Clone(generatedGroup[property]);
 			}
-			else
+			else if (targetGroup && targetGroup.IsMap())
 			{
 				targetGroup.remove(property);
 			}

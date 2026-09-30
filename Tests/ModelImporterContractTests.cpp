@@ -13,6 +13,7 @@
 #include "AssetRegistry/Animation/AnimationController.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/Shader/ShaderAssetInfo.h"
 #include "Core/Utils.h"
 #include "Core/StringHash.h"
 #include "Raytracing/MaterialUtils.h"
@@ -717,6 +718,72 @@ namespace
 			"garbage collection must retire the failed model and its finished tasks");
 		Require(firstModel && retryModel && !firstModel->IsStructurallyReady() && !retryModel->IsStructurallyReady(),
 			"retiring a failed cache entry must not force-destroy a caller's retained placeholder");
+	}
+
+	void TestReimportKeepsMovedOwnedMaterialsAndAuthoredSlots()
+	{
+		for (bool lazy : { false, true })
+		{
+			LazyAnimationLoadingScope lazyLoading(lazy);
+			ModelCacheWorkspace workspace;
+			const auto content = workspace.Context().GetContent();
+			const auto modelId = FileId::CreateNewFileId();
+			const auto authoredId = FileId::CreateNewFileId();
+			const auto source = content / "Ship.gltf";
+			const auto authored = content / "Authored.mat";
+			const auto moved = content / "Relocated" / "Hull.mat";
+			WriteAnimationFixtureText(content / "Shaders" / "Standard_glTF.shader", "shader fixture");
+			WriteAnimationFixtureText(source,
+				R"({"asset":{"version":"2.0"},"materials":[{"emissiveFactor":[1,2,3]},{}]})");
+			WriteAnimationFixtureText(source.string() + ".asset",
+				YAML::Dump(CreateAssetInfoMetadata<ModelAssetInfo>(modelId, "Ship.gltf")));
+			WriteAnimationFixtureText(authored, "renderQueue: Authored\n");
+			WriteAnimationFixtureText(authored.string() + ".asset",
+				YAML::Dump(CreateAssetInfoMetadata<MaterialAssetInfo>(authoredId, "Authored.mat")));
+			const auto authoredTime = std::filesystem::last_write_time(authored);
+			TVector<FileId> generated;
+			std::filesystem::path original;
+			for (uint32_t attempt = 0; attempt < 2; ++attempt)
+			{
+				AssetRegistry registry(workspace.Context(), nullptr);
+				ModelAssetInfoHandler modelHandler(&registry);
+				MaterialAssetInfoHandler materialHandler(&registry);
+				ShaderAssetInfoHandler shaderHandler(&registry);
+				ModelImporter importer(&modelHandler, nullptr, &registry);
+				Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(),
+					"the moved-material fixture must finish its real registry scan");
+				auto* model = registry.GetAssetInfoPtr<ModelAssetInfoPtr>(modelId);
+				Require(model != nullptr, "the moved-material fixture model must resolve");
+				if (attempt == 0)
+				{
+					generated = model->GetDefaultMaterials();
+					Require(generated.Num() == 2, "both owned materials must be generated before overriding their slots");
+					model->GetDefaultMaterials() = { authoredId, authoredId };
+					Require(model->SaveMetaFile(), "reusing an authored material in both slots must save");
+					original = registry.GetAssetInfoPtr(generated[0])->GetAssetFilepath();
+					auto metadata = YAML::LoadFile(original.string() + ".asset");
+					metadata["filename"] = moved.filename().string();
+					std::filesystem::create_directories(moved.parent_path());
+					std::filesystem::rename(original, moved);
+					std::filesystem::rename(original.string() + ".asset", moved.string() + ".asset");
+					WriteAnimationFixtureText(moved.string() + ".asset", YAML::Dump(metadata));
+					Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(),
+						"the actual registry rescan must reconcile the editor-style move and rename");
+				}
+				auto stale = YAML::LoadFile(moved.string());
+				stale["uniformsVec4"]["material.emissiveFactor"] = glm::vec4(99.0f);
+				WriteAnimationFixtureText(moved, YAML::Dump(stale));
+				Require(registry.UpdateAsset(modelId, true), "explicit reimport must repair the moved owned material");
+				const auto* info = registry.GetAssetInfoPtr<MaterialAssetInfoPtr>(generated[0]);
+				Require(info && info->GetAssetFilepath() == moved.string() && info->GetSourceModel() == modelId &&
+					info->GetSourceMaterialIndex() == 0 && !std::filesystem::exists(original) &&
+					YAML::LoadFile(moved.string())["uniformsVec4"]["material.emissiveFactor"].as<glm::vec4>() == glm::vec4(1, 2, 3, 0),
+					"ownership and identity must survive the move, rename and a fresh registry");
+				Require(registry.GetAssetInfoPtr<ModelAssetInfoPtr>(modelId)->GetDefaultMaterials() == TVector<FileId>{ authoredId, authoredId } &&
+					ReadAnimationFixtureText(authored) == "renderQueue: Authored\n" && std::filesystem::last_write_time(authored) == authoredTime,
+					"reimport must preserve repeated authored slot replacements without modifying their material");
+			}
+		}
 	}
 
 	void TestPendingModelImportsShareTheirAttempt()
@@ -2168,6 +2235,12 @@ uniformsVec4:
 
 	void TestGeneratedMaterialMergePreservesAuthoredProperties()
 	{
+		const auto defaults = MaterialAsset::Serialize(MaterialAsset::Data{});
+		auto reimported = YAML::Clone(defaults);
+		Require(GltfImporterUtils::MergeGeneratedMaterialProperties(reimported, defaults) &&
+			Utils::AreYamlNodesEqual(reimported, defaults),
+			"reimporting generated defaults must preserve empty groups without rewriting the material");
+
 		YAML::Node material = YAML::Load(R"(
 renderQueue: Opaque
 bEnableZWrite: true
@@ -3081,6 +3154,7 @@ int main()
 		{ "GltfTransmissionExtensionResolvesMaterialFields", TestGltfTransmissionExtensionResolvesMaterialFields },
 		{ "GltfEmissiveStrengthResolvesMaterialRadiance", TestGltfEmissiveStrengthResolvesMaterialRadiance },
 		{ "GeneratedMaterialMergePreservesAuthoredProperties", TestGeneratedMaterialMergePreservesAuthoredProperties },
+		{ "ReimportKeepsMovedOwnedMaterialsAndAuthoredSlots", TestReimportKeepsMovedOwnedMaterialsAndAuthoredSlots },
 		{ "SkinnedGltfMaterialsRequireSkinningShaderVariant", TestSkinnedGltfMaterialsRequireSkinningShaderVariant },
 		{ "CompactedMeshesRetainMaterialSlots", TestCompactedMeshesRetainMaterialSlots },
 		{ "GeneratedTangentsPreserveMirroredUvHandedness", TestGeneratedTangentsPreserveMirroredUvHandedness },

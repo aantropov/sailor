@@ -174,8 +174,10 @@ public sealed class EngineProtocolClientTests
         }, capturedRequest.UpsertRemoteViewport);
     }
 
-    [Fact]
-    public async Task UpdateAssetAsync_SendsExactFileId()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UpdateAssetAsync_SendsExactFileIdAndReimport(bool reimport)
     {
         ProtocolRequest? capturedRequest = null;
         var client = CreateClient(request =>
@@ -188,13 +190,14 @@ public sealed class EngineProtocolClientTests
         });
         const string fileId = "{01234567-89AB-CDEF-0123-456789ABCDEF}";
 
-        Assert.True(await client.UpdateAssetAsync(fileId));
+        Assert.True(reimport ? await client.ReimportAssetAsync(fileId) : await client.UpdateAssetAsync(fileId));
 
         Assert.NotNull(capturedRequest);
         Assert.Equal(
             ProtocolRequest.CommandOneofCase.UpdateAsset,
             capturedRequest.CommandCase);
         Assert.Equal(fileId, capturedRequest.UpdateAsset.FileId);
+        Assert.Equal(reimport, capturedRequest.UpdateAsset.Reimport);
     }
 
     [Fact]

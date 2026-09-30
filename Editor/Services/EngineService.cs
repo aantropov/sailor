@@ -2323,6 +2323,16 @@ namespace SailorEditor.Services
                 cancellationToken: cancellationToken);
         }
 
+        public Task<bool> ReimportAssetAsync(
+            FileId fileId,
+            CancellationToken cancellationToken = default)
+        {
+            var stringId = fileId?.Value ?? string.Empty;
+            return InvokeRunningInteropAsync(
+                token => protocolClient.ReimportAssetAsync(stringId, token),
+                cancellationToken: cancellationToken);
+        }
+
         public Task<bool> PreviewAudioAssetAsync(
             FileId fileId,
             CancellationToken cancellationToken = default)

@@ -1033,7 +1033,7 @@ bool App::RequestAssetReload()
 	return true;
 }
 
-bool App::UpdateAsset(const char* strFileId)
+bool App::UpdateAsset(const char* strFileId, bool bReimport)
 {
 	if (strFileId == nullptr || strFileId[0] == '\0')
 	{
@@ -1041,7 +1041,7 @@ bool App::UpdateAsset(const char* strFileId)
 	}
 
 	const std::string fileIdValue = strFileId;
-	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
+	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue, bReimport]()
 		{
 			AssetRegistry* assetRegistry = GetSubmodule<AssetRegistry>();
 			if (assetRegistry == nullptr)
@@ -1062,10 +1062,10 @@ bool App::UpdateAsset(const char* strFileId)
 				assetRegistry->GetAssetInfoPtr<FrameGraphAssetInfoPtr>(fileId);
 			const bool bRefreshFrameGraph =
 				frameGraphAssetInfo != nullptr &&
-				(frameGraphAssetInfo->IsMetaExpired() ||
+				(bReimport || frameGraphAssetInfo->IsMetaExpired() ||
 					frameGraphAssetInfo->IsAssetExpired() ||
 					assetRegistry->IsAssetExpired(frameGraphAssetInfo));
-			const bool bUpdated = assetRegistry->UpdateAsset(fileId);
+			const bool bUpdated = assetRegistry->UpdateAsset(fileId, bReimport);
 			WaitForAssetTasks();
 			if (bUpdated && bRefreshFrameGraph)
 			{

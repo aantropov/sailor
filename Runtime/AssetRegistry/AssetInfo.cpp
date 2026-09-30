@@ -452,14 +452,14 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 	return true;
 }
 
-void IAssetInfoHandler::NotifyUpdateAssetInfo(AssetInfoPtr assetInfo) const
+void IAssetInfoHandler::NotifyUpdateAssetInfo(AssetInfoPtr assetInfo, bool bReimport) const
 {
 	if (assetInfo == nullptr)
 	{
 		return;
 	}
 
-	const bool bWasExpired = assetInfo->m_bPendingWasExpired;
+	const bool bWasExpired = bReimport || assetInfo->m_bPendingWasExpired;
 	assetInfo->m_bPendingUpdateNotification = true;
 	for (IAssetInfoHandlerListener* listener : m_listeners)
 	{

@@ -28,22 +28,26 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal("name: Утка\n", parsed.UpdateObject.YamlChanges);
     }
 
-    [Fact]
-    public void UpdateAssetRoundTrip_PreservesFileId()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UpdateAssetRoundTrip_PreservesFileIdAndReimport(bool reimport)
     {
         var request = new ProtocolRequest
         {
             ProtocolVersion = 1,
             RequestId = 57,
-            UpdateAsset = new FileIdRequest
+            UpdateAsset = new UpdateAssetRequest
             {
-                FileId = "{01234567-89AB-CDEF-0123-456789ABCDEF}"
+                FileId = "{01234567-89AB-CDEF-0123-456789ABCDEF}",
+                Reimport = reimport
             }
         };
 
         var parsed = ProtocolRequest.Parser.ParseFrom(request.ToByteArray());
 
         Assert.Equal(ProtocolRequest.CommandOneofCase.UpdateAsset, parsed.CommandCase);
+        Assert.Equal(reimport, parsed.UpdateAsset.Reimport);
         Assert.Equal(
             "{01234567-89AB-CDEF-0123-456789ABCDEF}",
             parsed.UpdateAsset.FileId);
