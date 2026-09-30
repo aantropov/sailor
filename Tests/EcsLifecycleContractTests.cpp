@@ -3153,49 +3153,21 @@ namespace
 		CheckSaveToFileResults(document, "saved.world");
 	}
 
-	void TestLegacyPrefabApiSymbolsRemainAddressable()
+	void TestPrefabFactoryOverloadsRemainAddressable()
 	{
-		using LegacyGetOverridePrefab =
-			bool (Prefab::*)(const PrefabPtr, PrefabPtr) const;
-		using LegacyCreate = PrefabPtr (PrefabImporter::*)();
+		using DefaultCreate = PrefabPtr (PrefabImporter::*)();
 		using FileIdCreate =
 			PrefabPtr (PrefabImporter::*)(const FileId&);
 
-		const LegacyGetOverridePrefab legacyGetOverridePrefab =
-			static_cast<LegacyGetOverridePrefab>(
-				&Prefab::GetOverridePrefab);
-		const LegacyCreate legacyCreate =
-			static_cast<LegacyCreate>(&PrefabImporter::Create);
+		const DefaultCreate defaultCreate =
+			static_cast<DefaultCreate>(&PrefabImporter::Create);
 		const FileIdCreate fileIdCreate =
 			static_cast<FileIdCreate>(&PrefabImporter::Create);
 
-		Require(legacyGetOverridePrefab != nullptr,
-			"the legacy exported Prefab::GetOverridePrefab symbol must remain addressable");
-		Require(legacyCreate != nullptr,
-			"the legacy exported zero-argument PrefabImporter::Create symbol must remain addressable");
+		Require(defaultCreate != nullptr,
+			"the zero-argument PrefabImporter::Create symbol must remain addressable");
 		Require(fileIdCreate != nullptr,
 			"the FileId-aware PrefabImporter::Create overload must remain independently addressable");
-
-		PrefabTestWorld world;
-		const FileId currentFileId =
-			DeserializeFileId(
-				"{11111111-2222-3333-4444-555555555555}");
-		const FileId baseFileId =
-			DeserializeFileId(
-				"{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}");
-		PrefabPtr currentPrefab =
-			PrefabPtr::Make(world.GetAllocator(), currentFileId);
-		PrefabPtr basePrefab =
-			PrefabPtr::Make(world.GetAllocator(), baseFileId);
-
-		Require(
-			!(currentPrefab.GetRawPtr()->*legacyGetOverridePrefab)(
-				basePrefab,
-				PrefabPtr{}),
-			"the legacy override API must retain its mismatched-source rejection");
-
-		currentPrefab.DestroyObject(world.GetAllocator());
-		basePrefab.DestroyObject(world.GetAllocator());
 	}
 
 	void TestLinkedPrefabPersistenceAndWorldContract()
@@ -5552,7 +5524,7 @@ int main()
 		{ "ExplicitNullMeshReferenceDoesNotRemainPending", TestExplicitNullMeshReferenceDoesNotRemainPending },
 		{ "EditorUpdateReplacesStaleMeshDependencyResolution", TestEditorUpdateReplacesStaleMeshDependencyResolution },
 		{ "EditorUpdatePreservesNewUnresolvedDependency", TestEditorUpdatePreservesNewUnresolvedDependency },
-		{ "LegacyPrefabApiSymbolsRemainAddressable", TestLegacyPrefabApiSymbolsRemainAddressable },
+		{ "PrefabFactoryOverloadsRemainAddressable", TestPrefabFactoryOverloadsRemainAddressable },
 		{ "PrefabSaveReportsWriteFailures", TestPrefabSaveReportsWriteFailures },
 		{ "WorldSaveReportsWriteFailures", TestWorldSaveReportsWriteFailures },
 		{ "PrefabComponentReferencesFollowRemappedOwners", TestPrefabComponentReferencesFollowRemappedOwners },

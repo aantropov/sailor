@@ -450,34 +450,6 @@ bool Prefab::SaveToFile(const std::string& path) const
 	return true;
 }
 
-bool Prefab::GetOverridePrefab(
-	const PrefabPtr base,
-	PrefabPtr outOverride) const
-{
-	if (base->GetFileId() != GetFileId())
-	{
-		return false;
-	}
-
-	if (base->m_gameObjects.Num() != m_gameObjects.Num() ||
-		base->m_components.Num() != m_components.Num())
-	{
-		return false;
-	}
-
-	PrefabPtr res = App::GetSubmodule<PrefabImporter>()->Create();
-
-	res->m_components.Reserve(m_components.Num());
-	res->m_gameObjects = m_gameObjects;
-
-	for (uint32_t i = 0; i < m_components.Num(); i++)
-	{
-		res->m_components.Add(m_components[i].DiffTo(base->m_components[i]));
-	}
-
-	return true;
-}
-
 void Prefab::SerializeGameObject(
 	GameObjectPtr root,
 	uint32_t parentIndex,
@@ -988,12 +960,9 @@ Tasks::TaskPtr<PrefabPtr> PrefabImporter::LoadPrefab(FileId uid, PrefabPtr& outP
 
 		PrefabPtr prefab = PrefabPtr::Make(m_allocator, uid);
 
-		struct Data {};
-		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load prefab",
+		promise = Tasks::CreateTaskWithResult<PrefabPtr>("Load prefab",
 			[prefab, assetInfo]() mutable
 			{
-				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
-
 				std::string text;
 				std::string diagnostic;
 				bool bLoaded = AssetRegistry::ReadTextFile(assetInfo->GetAssetFilepath(), text);
@@ -1021,20 +990,16 @@ Tasks::TaskPtr<PrefabPtr> PrefabImporter::LoadPrefab(FileId uid, PrefabPtr& outP
 						diagnostic.empty() ? "cannot read the prefab file" : diagnostic.c_str());
 				}
 
-				return res;
+				return prefab;
+			}, EThreadType::Worker);
 
-			}, EThreadType::Worker)->Then<PrefabPtr>([prefab](TSharedPtr<Data> data) mutable
-				{
-					return prefab;
-				}, "Preload resources", EThreadType::RHI)->ToTaskWithResult();
+		outPrefab = loadedPrefab = prefab;
+		promise->Run();
 
-				outPrefab = loadedPrefab = prefab;
-				promise->Run();
+		m_loadedPrefabs.Unlock(uid);
+		m_promises.Unlock(uid);
 
-				m_loadedPrefabs.Unlock(uid);
-				m_promises.Unlock(uid);
-
-				return promise;
+		return promise;
 	}
 
 	outPrefab = nullptr;

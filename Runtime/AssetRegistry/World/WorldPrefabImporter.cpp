@@ -1861,12 +1861,9 @@ Tasks::TaskPtr<WorldPrefabPtr> WorldPrefabImporter::LoadWorld(FileId uid, WorldP
 
 		WorldPrefabPtr pWorldPrefab = WorldPrefabPtr::Make(m_allocator, uid);
 
-		struct Data {};
-		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load WorldPrefab",
+		promise = Tasks::CreateTaskWithResult<WorldPrefabPtr>("Load WorldPrefab",
 			[pWorldPrefab, assetInfo]() mutable
 			{
-				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
-
 				std::string text;
 				std::string diagnostic;
 				bool bLoaded =
@@ -1898,20 +1895,16 @@ Tasks::TaskPtr<WorldPrefabPtr> WorldPrefabImporter::LoadWorld(FileId uid, WorldP
 							: diagnostic.c_str());
 				}
 
-				return res;
+				return pWorldPrefab;
+			}, EThreadType::Worker);
 
-			})->Then<WorldPrefabPtr>([pWorldPrefab](TSharedPtr<Data> data) mutable
-				{
-					return pWorldPrefab;
-				}, "Preload resources", EThreadType::RHI)->ToTaskWithResult();
+		outWorldPrefab = loadedWorldPrefab = pWorldPrefab;
+		promise->Run();
 
-			outWorldPrefab = loadedWorldPrefab = pWorldPrefab;
-			promise->Run();
+		m_loadedWorldPrefabs.Unlock(uid);
+		m_promises.Unlock(uid);
 
-			m_loadedWorldPrefabs.Unlock(uid);
-			m_promises.Unlock(uid);
-
-			return promise;
+		return promise;
 	}
 
 	outWorldPrefab = nullptr;

@@ -268,6 +268,7 @@ add_executable(VulkanSubmissionTests
     MaterialImporterCommandTests.cpp
     AudioCommandTests.cpp
     ModelLodCommandTests.cpp
+    PrefabImporterCommandTests.cpp
     ${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelLodCache.cpp
 )
 target_compile_features(VulkanSubmissionTests PRIVATE cxx_std_20)

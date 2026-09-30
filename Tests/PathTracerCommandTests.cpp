@@ -47,6 +47,7 @@ namespace Sailor::Tests
 	void RunMaterialImporterCommandTests(const std::filesystem::path& workspace);
 	void RunAudioCommandTests(const std::filesystem::path& workspace);
 	void RunModelLodCommandTests(const std::filesystem::path& workspace);
+	void RunPrefabImporterCommandTests(const std::filesystem::path& workspace);
 }
 
 namespace
@@ -901,6 +902,7 @@ namespace Sailor::Tests
 			RunMaterialImporterCommandTests(workspace.Get());
 			RunAudioCommandTests(workspace.Get());
 			RunModelLodCommandTests(workspace.Get());
+			RunPrefabImporterCommandTests(workspace.Get());
 			std::cout << "PathTracer CLI/prepared pixel parity test passed\n";
 			result = 0;
 		}

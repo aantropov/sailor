@@ -68,10 +68,6 @@ namespace Sailor
 
 		SAILOR_API bool SaveToFile(const std::string& path) const;
 
-		SAILOR_API bool GetOverridePrefab(
-			const PrefabPtr base,
-			PrefabPtr outOverride) const;
-
 		static PrefabPtr FromGameObject(
 			GameObjectPtr go,
 			const FileId& sourcePrefabId = FileId::Invalid,
