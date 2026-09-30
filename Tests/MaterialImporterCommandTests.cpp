@@ -11,9 +11,18 @@
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "RHI/Material.h"
 #include "RHI/Renderer.h"
+#include "RHI/Cubemap.h"
+#include "RHI/Lighting.h"
+#include "RHI/GlobalIllumination.h"
+#include "RHI/Mesh.h"
+#include "RHI/RenderTarget.h"
+#include "RHI/Surface.h"
+#include "FrameGraph/RenderSceneNode.h"
+#include <glm/gtc/packing.hpp>
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <latch>
 #include <thread>
@@ -307,6 +316,283 @@ void main() {
 		Drain();
 		CheckGpuColor(customMaterial->GetShaderBindings(), ReadGpu(customMaterial->GetShaderBindings()), customColor);
 		std::cout << "Shader-described material defaults: persisted values, authored overrides and GPU upload passed\n";
+	}
+
+	class SurfaceRenderNode final : public Framegraph::RenderSceneNode
+	{
+	public:
+		TRefPtr<SubmissionResources> GetResources(const RHI::RHISceneViewSnapshot& scene)
+		{
+			return scene.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(this, 0u, 0u);
+		}
+	};
+
+	using SurfacePixels = std::array<glm::vec4, 64>;
+
+	SurfacePixels RenderSurface(MaterialPtr source)
+	{
+		SurfacePixels pixels{};
+		auto task = Tasks::CreateTaskWithResult<std::string>("Render Standard glTF material reference", [&]() -> std::string
+			{
+				try
+				{
+					using namespace RHI;
+					constexpr uint32_t side = 8;
+					const auto hostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
+					auto& driver = Renderer::GetDriver();
+					auto commands = Renderer::GetDriverCommands();
+					auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(upload, true);
+					commands->BeginCommandList(draw, true);
+					auto color = driver->CreateRenderTarget(upload, glm::ivec2(side), 1, EFormat::R16G16B16A16_SFLOAT);
+					auto depth = driver->CreateRenderTarget(upload, glm::ivec2(side), 1, EFormat::D32_SFLOAT_S8_UINT,
+						ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit);
+					auto environment = driver->CreateCubemap(glm::ivec2(1), 1, EFormat::R16G16B16A16_SFLOAT);
+					commands->ImageMemoryBarrier(upload, environment, EImageLayout::TransferDstOptimal);
+					commands->ClearImage(upload, environment, glm::vec4(0.15f, 0.15f, 0.15f, 1));
+					commands->ImageMemoryBarrier(upload, environment, EImageLayout::ShaderReadOnlyOptimal);
+					auto texture = driver->CreateRenderTarget(upload, glm::ivec2(1), 1, EFormat::R32G32B32A32_SFLOAT);
+					commands->ImageMemoryBarrier(upload, texture, EImageLayout::TransferDstOptimal);
+					commands->ClearImage(upload, texture, glm::vec4(1));
+					commands->ImageMemoryBarrier(upload, texture, EImageLayout::ShaderReadOnlyOptimal);
+					RHISceneViewSnapshot scene;
+					scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+					scene.m_submissionContext->BeginSubmission(1, 0);
+					scene.m_frameBindings = driver->CreateShaderBindings();
+					UboFrameData frame{};
+					frame.m_view = frame.m_projection = frame.m_invProjection = glm::mat4(1);
+					frame.m_cameraPosition = glm::vec4(0, 0, 3, 1);
+					frame.m_viewportSize = glm::ivec2(side);
+					frame.m_cameraZNearZFar = glm::vec2(0.1f, 10);
+					auto frameBinding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData",
+						sizeof(frame), 0, EShaderBindingType::UniformBuffer);
+					commands->UpdateShaderBinding(upload, frameBinding, &frame, sizeof(frame));
+					scene.m_rhiLightsData = driver->CreateShaderBindings();
+					auto shader = source->GetShader();
+					// Reflection needs names; the draw below uses the regular material shaders.
+					Require(driver->FillShadersLayout(scene.m_rhiLightsData,
+						{ shader->GetDebugVertexShaderRHI(), shader->GetDebugFragmentShaderRHI() }, 1),
+						"surface lighting layout must reflect the actual shader");
+					const auto layouts = scene.m_rhiLightsData->GetLayoutBindings();
+					for (const auto& layout : layouts)
+					{
+						if (layout.m_type == EShaderBindingType::UniformBuffer || layout.m_type == EShaderBindingType::StorageBuffer)
+						{
+							TVector<uint8_t> zeros;
+							// Match the GI producer: reflection does not size this flat SSBO header.
+							const size_t size = layout.m_name == "globalIlluminationHeader" ? sizeof(RHIGlobalIlluminationGpuHeader) :
+								(std::max)({ layout.m_size, layout.m_paddedSize, 16u });
+							zeros.Resize(size);
+							auto binding = layout.m_type == EShaderBindingType::StorageBuffer ?
+								driver->AddSsboToShaderBindings(scene.m_rhiLightsData, layout.m_name, zeros.Num(), 1, layout.m_binding, true) :
+								driver->AddBufferToShaderBindings(scene.m_rhiLightsData, layout.m_name, zeros.Num(), layout.m_binding, layout.m_type);
+							commands->UpdateShaderBinding(upload, binding, zeros.GetData(), zeros.Num());
+						}
+						else
+						{
+							Require(layout.m_type == EShaderBindingType::CombinedImageSampler, "unexpected surface lighting descriptor");
+							const bool cube = layout.m_binding == 3 || layout.m_binding == 5 || layout.m_binding == 21 || layout.m_binding == 22;
+							TVector<RHITexturePtr> samplers;
+							samplers.Resize((std::max)(1u, layout.m_arrayCount));
+							for (auto& sampler : samplers) sampler = cube ? RHITexturePtr(environment) : texture;
+							Require(driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, layout.m_name, samplers, layout.m_binding).IsValid(),
+								"surface environment samplers must bind");
+						}
+					}
+					RHILightShaderData sunlight;
+					sunlight.m_type = static_cast<uint32_t>(ELightType::Directional);
+					sunlight.m_direction = glm::vec3(0, 0, -1);
+					sunlight.m_intensity = glm::vec3(2);
+					commands->UpdateShaderBinding(upload, scene.m_rhiLightsData->GetOrAddShaderBinding("light"), &sunlight, sizeof(sunlight));
+					const glm::uvec2 grid(0, 1);
+					commands->UpdateShaderBinding(upload, scene.m_rhiLightsData->GetOrAddShaderBinding("lightsGrid"), &grid, sizeof(grid));
+
+					const auto description = driver->GetOrAddVertexDescription<VertexP3N3T3B3UV2C4>();
+					auto material = source->GetOrAddRHI(description);
+					Require(material.IsValid(), "surface graphics material must be ready");
+					std::array<VertexP3N3T3B3UV2C4, 3> vertices{};
+					const glm::vec3 positions[] = { {-1, -1, 0.5f}, {3, -1, 0.5f}, {-1, 3, 0.5f} };
+					for (uint32_t i = 0; i < vertices.size(); ++i)
+					{
+						vertices[i].m_position = positions[i];
+						vertices[i].m_normal = glm::vec3(0, 0, 1);
+						vertices[i].m_tangent = glm::vec3(1, 0, 0);
+						vertices[i].m_bitangent = glm::vec3(0, 1, 0);
+						vertices[i].m_color = glm::vec4(1);
+						vertices[i].m_texcoord = glm::vec2(0.5f);
+					}
+					const uint32_t indices[] = { 0, 1, 2 };
+					auto mesh = RHIMeshPtr::Make();
+					mesh->m_vertexDescription = description;
+					mesh->m_vertexBuffer = driver->CreateBuffer(sizeof(vertices), EBufferUsageBit::VertexBuffer_Bit, hostMemory);
+					mesh->m_indexBuffer = driver->CreateBuffer(sizeof(indices), EBufferUsageBit::IndexBuffer_Bit, hostMemory);
+					std::memcpy(mesh->m_vertexBuffer->GetPointer(), vertices.data(), sizeof(vertices));
+					std::memcpy(mesh->m_indexBuffer->GetPointer(), indices, sizeof(indices));
+					auto graph = RHIFrameGraphPtr::Make();
+					graph->SetRenderTarget("DepthBuffer", depth);
+					auto node = TRefPtr<SurfaceRenderNode>::Make();
+					node->SetString("Tag", "SurfaceReference");
+					node->SetString("GPUCulling", "false");
+					node->SetRHIResource("color", RHISurfacePtr::Make(color, color, false));
+					auto resources = node->GetResources(scene);
+					RHIBatch batch(material, mesh);
+#if defined(__APPLE__)
+					Framegraph::TextureBindingCache textureCache;
+					TSet<uint32_t> requested{ 0u };
+					for (const auto& sampler : source->GetSamplers())
+						requested.Insert(static_cast<uint32_t>(App::GetSubmodule<TextureImporter>()->GetTextureIndex(sampler.m_second->GetFileId())));
+					uint32_t supported = 0;
+					bool current = false;
+					batch.m_textureBindings = Framegraph::Details::GetTextureBindingSet(textureCache, requested, 1, supported, current);
+					Require(current, "surface textures must have current remapping");
+#else
+					batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+#endif
+					SurfaceRenderNode::PerInstanceData instance{};
+					instance.model = glm::mat4(1);
+					instance.materialInstance = source->GetShaderBindings()->GetStorageInstanceIndex("material");
+					resources->m_packet.Add(batch, mesh, instance);
+					resources->m_packet.Finalize();
+					commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
+						static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
+					commands->ImageMemoryBarrier(draw, color, EImageLayout::TransferDstOptimal);
+					commands->ClearImage(draw, color, glm::vec4(-1));
+					node->Process(graph, upload, draw, scene);
+					Require(node->GetDrawCallStats().m_numInstances == 1, "surface reference must issue a real draw");
+					auto readback = driver->CreateBuffer(side * side * 8, EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
+					commands->ImageMemoryBarrier(draw, color, EImageLayout::TransferSrcOptimal);
+					commands->CopyImageToBuffer(draw, color, readback);
+					auto headerReadback = driver->CreateBuffer(sizeof(RHIGlobalIlluminationGpuHeader), EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
+					auto header = scene.m_rhiLightsData->GetOrAddShaderBinding("globalIlluminationHeader");
+					draw->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+					draw->m_vulkan.m_commandBuffer->CopyBuffer(*header->m_vulkan.m_valueBinding->Get(),
+						*headerReadback->m_vulkan.m_buffer->Get(), sizeof(RHIGlobalIlluminationGpuHeader));
+					commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+					commands->EndCommandList(upload);
+					commands->EndCommandList(draw);
+					auto ready = driver->CreateWaitSemaphore();
+					auto uploadFence = RHIFencePtr::Make();
+					auto drawFence = RHIFencePtr::Make();
+					Require(driver->SubmitCommandList(upload, uploadFence, ready) && driver->SubmitCommandList(draw, drawFence, nullptr, ready),
+						"surface upload and draw must submit");
+					Require(drawFence->Wait(5000000000ull) == EFenceStatus::Finished && uploadFence->Wait(5000000000ull) == EFenceStatus::Finished,
+						"surface reference must finish within bounded fence waits");
+					const auto* packed = static_cast<const uint32_t*>(readback->GetPointer());
+					const auto* headerWords = static_cast<const uint32_t*>(headerReadback->GetPointer());
+					for (uint32_t word = 0; word < sizeof(RHIGlobalIlluminationGpuHeader) / sizeof(uint32_t); ++word)
+						Require(headerWords[word] == 0, "surface fixture GI and debug controls must be zero on GPU");
+					for (uint32_t i = 0; i < pixels.size(); ++i)
+						pixels[i] = glm::vec4(glm::unpackHalf2x16(packed[i * 2]), glm::unpackHalf2x16(packed[i * 2 + 1]));
+					uploadFence->ClearDependencies();
+					drawFence->ClearDependencies();
+					return {};
+				}
+				catch (const std::exception& error) { return error.what(); }
+			}, EThreadType::Render);
+		task->Run();
+		task->Wait();
+		if (!task->GetResult().empty()) throw std::runtime_error(task->GetResult());
+		return pixels;
+	}
+
+	void TestStandardGltfSurfaceRendering(const std::filesystem::path& workspace)
+	{
+		auto* importer = App::GetSubmodule<MaterialImporter>();
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		const auto texture = WriteTexture(workspace, "SurfaceBaseColor", true);
+		std::array<SurfacePixels, 8> results;
+		const char* names[] = { "neutral", "emissive", "metal", "smooth", "textured", "cutout", "cutoff override", "owned Box" };
+		for (uint32_t scenario = 0; scenario < results.size(); ++scenario)
+		{
+			MaterialAsset::Data data;
+			data.m_shader = FileId("1A4BA353-FDA4-4F65-941F-D9FFEE4630A0");
+			data.m_renderQueue = "SurfaceReference";
+			data.m_renderState = RHI::RenderState(false, false, 0, false, RHI::ECullMode::None,
+				RHI::EBlendMode::None, RHI::EFillMode::Fill, 0, false);
+			if (scenario == 1) data.m_uniformsVec4["material.emissiveFactor"] = glm::vec4(2, 0.25f, 0.5f, 0);
+			if (scenario == 2 || scenario == 3) data.m_uniformsFloat["material.roughnessFactor"] = 0.2f;
+			if (scenario == 2) data.m_uniformsFloat["material.metallicFactor"] = 1;
+			if (scenario == 4) data.m_samplers["baseColorSampler"] = texture;
+			if (scenario == 5 || scenario == 6)
+			{
+				data.m_shaderDefines.Add("ALPHA_CUTOUT");
+				data.m_uniformsVec4["material.baseColorFactor"] = glm::vec4(1, 1, 1, 0.35f);
+			}
+			if (scenario == 6) data.m_uniformsFloat["material.alphaCutoff"] = 0.25f;
+			if (scenario == 7) data.m_uniformsVec4["material.baseColorFactor"] = glm::vec4(1, 0.5f, 0.5f, 1);
+			MaterialAsset::Data reference = data;
+			reference.m_uniformsVec4 = {
+				{ "material.baseColorFactor", glm::vec4(1) }, { "material.emissiveFactor", glm::vec4(0) }
+			};
+			reference.m_uniformsFloat = {
+				{ "material.roughnessFactor", 1.0f }, { "material.metallicFactor", 0.0f },
+				{ "material.normalScale", 1.0f }, { "material.alphaCutoff", 0.5f }, { "material.occlusionStrength", 1.0f }
+			};
+			for (const auto& entry : data.m_uniformsVec4) reference.m_uniformsVec4[entry.m_first] = *entry.m_second;
+			for (const auto& entry : data.m_uniformsFloat) reference.m_uniformsFloat[entry.m_first] = *entry.m_second;
+			const auto prefix = std::string("Surface") + std::to_string(scenario);
+			const auto actualPath = workspace / "Content" / (prefix + ".mat");
+			FileId actualId;
+			if (scenario == 7)
+			{
+				const auto info = registry->GetAssetInfoPtr("Models/Box/materials/BoxDefault.mat");
+				Require(info != nullptr, "owned Box material must be discoverable");
+				auto box = YAML::LoadFile(info->GetAssetFilepath());
+				box["renderQueue"] = "SurfaceReference";
+				box["bEnableDepthTest"] = box["bEnableZWrite"] = box["bSupportMultisampling"] = false;
+				box["cullMode"] = "None";
+				std::ofstream output(actualPath);
+				output << box;
+				output.close();
+				Require(static_cast<bool>(output), "isolated Box render fixture must be written");
+				actualId = registry->GetOrLoadFile(actualPath.string());
+			}
+			else actualId = importer->CreateMaterialAsset(actualPath.string(), data);
+			const auto referencePath = workspace / "Content" / (prefix + "Reference.mat");
+			std::ofstream output(referencePath);
+			output << MaterialAsset::Serialize(reference);
+			output.close();
+			Require(static_cast<bool>(output), "explicit surface reference must be written");
+			const FileId referenceId = registry->GetOrLoadFile(referencePath.string());
+			MaterialPtr material, referenceMaterial;
+			Require(importer->LoadMaterial_Immediate(actualId, material) && material &&
+				importer->LoadMaterial_Immediate(referenceId, referenceMaterial) && referenceMaterial,
+				"both actual surface materials must load");
+			Drain();
+			CheckGpuColor(material->GetShaderBindings(), ReadGpu(material->GetShaderBindings()),
+				reference.m_uniformsVec4["material.baseColorFactor"]);
+			const auto actual = RenderSurface(material);
+			const auto expected = RenderSurface(referenceMaterial);
+			for (size_t i = 0; i < actual.size(); ++i)
+			{
+				Require(glm::all(glm::lessThan(glm::abs(actual[i] - expected[i]), glm::vec4(0.002f))),
+					"actual Standard glTF pixels must match the explicitly authored reference");
+				if (scenario == 5)
+					Require(actual[i] == glm::vec4(-1), "default alpha cutoff must leave the clear target untouched");
+				else if (!(glm::all(glm::greaterThan(glm::vec3(actual[i]), glm::vec3(0.01f))) && actual[i].a > 0))
+					throw std::runtime_error(std::string(names[scenario]) + " pixel " + std::to_string(i) +
+						" must be visibly lit; RGBA=" + std::to_string(actual[i].r) + "," + std::to_string(actual[i].g) +
+						"," + std::to_string(actual[i].b) + "," + std::to_string(actual[i].a));
+			}
+			results[scenario] = actual;
+			std::cout << "Standard glTF rendered " << names[scenario] << ": "
+				<< actual[32].r << ',' << actual[32].g << ',' << actual[32].b << ',' << actual[32].a << '\n';
+		}
+		float metalDifference = 0, roughnessDifference = 0;
+		for (size_t i = 0; i < results[0].size(); ++i)
+		{
+			Require(glm::length(glm::vec3(results[1][i] - results[0][i]) - glm::vec3(2, 0.25f, 0.5f)) < 0.005f,
+				"emission must contribute its authored linear radiance to the rendered surface");
+			metalDifference += glm::length(glm::vec3(results[2][i] - results[3][i]));
+			roughnessDifference += glm::length(glm::vec3(results[3][i] - results[0][i]));
+			Require(results[4][i].r > results[4][i].g + 0.05f,
+				"the canonical base-color texture slot must visibly tint the surface");
+			Require(std::abs(results[6][i].a - 0.35f) < 0.001f,
+				"authored cutoff must retain fragments rejected by the default cutoff");
+		}
+		Require(metalDifference > 0.1f && roughnessDifference > 0.1f,
+			"metalness and roughness must independently change actual rendered pixels");
 	}
 
 	void TestWarmShaderPermutation(const std::filesystem::path& workspace)
@@ -1089,6 +1375,7 @@ namespace Sailor::Tests
 			catch (const std::exception& error) { failures += std::string(name) + ": " + error.what() + '\n'; }
 		};
 		run("Material creation defaults", [&]() { TestMaterialCreationDefaults(workspace); });
+		run("Standard glTF rendered reference", [&]() { TestStandardGltfSurfaceRendering(workspace); });
 		run("Texture failure and retry", [&]() { TestFailedTextureReload(workspace); });
 		run("Cold failure and retry", [&]() { TestColdFailureRetry(workspace); });
 		run("Reload ordering", [&]() { TestOrderedReload(workspace, false); });
