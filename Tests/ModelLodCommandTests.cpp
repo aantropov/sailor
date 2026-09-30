@@ -4,15 +4,31 @@
 #include "AssetRegistry/Model/ModelLodCache.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "RHI/Renderer.h"
+#include "RHI/Buffer.h"
+#include "Raytracing/PathTracer.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <stdexcept>
 
 using namespace Sailor;
+
+namespace Sailor
+{
+	class ModelImporterTestAccess
+	{
+	public:
+		static void BeforeCpuPreparation(ModelImporter& importer, std::function<void()> callback)
+		{
+			importer.m_beforeCpuPreparationForTests = std::move(callback);
+		}
+	};
+}
 
 namespace
 {
@@ -52,8 +68,8 @@ namespace
 
 	struct ModelFixture
 	{
-		explicit ModelFixture(const std::filesystem::path& workspace) :
-			m_path(workspace / "Content" / "ExternalLod.gltf"),
+		explicit ModelFixture(const std::filesystem::path& workspace, bool instanced = false) :
+			m_path(workspace / "Content" / (instanced ? "CpuHierarchy.gltf" : "ExternalLod.gltf")),
 			m_verticesPath(workspace / "Content" / "Lod vertices.bin"),
 			m_indicesPath(workspace / "Content" / "LodIndices.bin")
 		{
@@ -71,9 +87,25 @@ namespace
 		{"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3"},
 		{"bufferView": 2, "componentType": 5126, "count": 4, "type": "VEC2"},
 		{"bufferView": 3, "componentType": 5125, "count": 6, "type": "SCALAR"}],
+)";
+				if (instanced)
+				{
+					source << R"(
+	"materials": [{"name": "First"}, {"name": "Second"}],
+	"meshes": [{"name": "Empty", "primitives": []},
+		{"name": "First panel", "primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}, "indices": 3, "material": 0}]},
+		{"name": "Second panel", "primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}, "indices": 3, "material": 1}]}],
+	"nodes": [{"mesh": 1, "translation": [4,0,0]}, {"mesh": 2, "translation": [-4,0,0]},
+		{"mesh": 1, "translation": [4,3,0]}], "scenes": [{"nodes": [0,1,2]}], "scene": 0
+})";
+				}
+				else
+				{
+					source << R"(
 	"meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}, "indices": 3}]}],
 	"nodes": [{"mesh": 0}], "scenes": [{"nodes": [0]}], "scene": 0
 })";
+				}
 			}
 			ModelAssetInfo defaults;
 			auto metadata = defaults.Serialize();
@@ -126,6 +158,105 @@ namespace
 		FileId m_id;
 		ModelAssetInfoPtr m_info = nullptr;
 	};
+
+	class ModelRayProbe final : public Raytracing::PathTracer
+	{
+	public:
+		using PathTracer::IntersectScene;
+		using PathTracer::TLASHit;
+	};
+
+	void CheckImportedRayHits(const ModelPtr& model)
+	{
+		auto verifyHit = [&](int32_t selection, glm::vec3 point, uint32_t materialIndex)
+		{
+			ModelRayProbe tracer;
+			Raytracing::PathTracer::TLASInstance instance;
+			instance.m_model = model;
+			instance.m_meshIndex = selection;
+			instance.m_worldBounds = model->GetBoundsAABB(selection);
+			auto material = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make();
+			Require(tracer.InitializeSceneSnapshot({ instance }, { material, material }, {}, false),
+				"imported full and source-mesh BLAS must both prepare for ray tracing");
+			ModelRayProbe::TLASHit hit;
+			Require(tracer.IntersectScene(Math::Ray(point + glm::vec3(0, 0, 2), glm::vec3(0, 0, -1)), hit) &&
+				glm::length(hit.m_hit.m_point - point) < 1e-5f &&
+				hit.m_materialIndex == materialIndex && hit.m_instanceIndex == 0,
+				"full and subset imports must retain the expected hit position and material");
+		};
+		verifyHit(Model::AllMeshes, { 4.25f, 0.125f, 0 }, 0);
+		verifyHit(Model::AllMeshes, { -3.75f, 0.125f, 0 }, 1);
+		verifyHit(Model::AllMeshes, { 4.25f, 3.125f, 0 }, 0);
+		verifyHit(1, { 0.25f, 0.125f, 0 }, 0);
+		verifyHit(2, { 0.25f, 0.125f, 0 }, 1);
+	}
+
+	void TestCpuPreparationDoesNotUseRhi(const ModelFixture& fixture)
+	{
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		const auto original = fixture.m_info->Serialize();
+		for (bool generateBlas : { true, false })
+		{
+			for (bool keepCpu : { false, true })
+			{
+				auto settings = YAML::Clone(original);
+				settings["bGenerateBLAS"] = generateBlas;
+				settings["bShouldKeepCpuBuffers"] = keepCpu;
+				fixture.m_info->Deserialize(settings);
+				std::promise<void> entered, resume, uploadFinished;
+				auto started = entered.get_future();
+				auto released = resume.get_future();
+				auto uploaded = uploadFinished.get_future();
+				bool worker = false;
+				FreshImporter fresh;
+				ModelImporterTestAccess::BeforeCpuPreparation(fresh.m_importer, [&]()
+					{
+						worker = scheduler->GetCurrentThreadType() == EThreadType::Worker;
+						entered.set_value();
+						released.wait();
+					});
+				ModelPtr model;
+				auto load = fresh.m_importer.LoadModel(fixture.m_id, model);
+				const bool reached = started.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+				const bool pending = !load->IsFinished() && !model->IsStructurallyReady();
+				auto upload = Tasks::CreateTask<bool>(*scheduler, "Independent model-test buffer upload", [&]()
+					{
+						const std::array<uint32_t, 4> data{ 17, 29, 41, 53 };
+						auto& driver = RHI::Renderer::GetDriver();
+						auto source = driver->CreateBuffer_Immediate(data.data(), sizeof(data), RHI::EBufferUsageBit::BufferTransferSrc_Bit);
+						auto readback = driver->CreateBuffer(sizeof(data), RHI::EBufferUsageBit::BufferTransferDst_Bit,
+							RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent);
+						const bool copied = source && readback && driver->CopyBuffer_Immediate(source, readback, sizeof(data)) &&
+							std::equal(data.begin(), data.end(), static_cast<const uint32_t*>(readback->GetPointer()));
+						uploadFinished.set_value();
+						return copied;
+					}, EThreadType::RHI);
+				upload->Run();
+				const bool concurrentUpload = uploaded.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+				resume.set_value();
+				load->Wait();
+				upload->Wait();
+				Drain();
+				Require(reached && pending && worker, "model CPU preparation must execute on Worker before RHI publication");
+				Require(concurrentUpload && upload->GetResult(), "paused CPU preparation must not delay an unrelated RHI upload/readback");
+				Require(load->GetResult() == model && model->IsReady() && model->HasCpuMeshes() == keepCpu &&
+					model->HasBLAS() == generateBlas && !model->HasBLAS(0) &&
+					model->HasBLAS(1) == generateBlas && model->HasBLAS(2) == generateBlas &&
+					model->GetMeshes().Num() == 2 && model->GetRenderInstances().Num() == 3 &&
+					model->GetSourceMeshes().Num() == 3 && !model->IsSourceMeshIndexValid(0) &&
+					model->GetSourceMeshes()[1].m_name == "First panel" && model->GetSourceMeshes()[2].m_name == "Second panel",
+					"all BLAS/CPU-retention combinations must publish the same GPU geometry and hierarchy");
+				for (const auto& mesh : model->GetMeshes())
+				{
+					Require(mesh->GetIndexCount() == 6 && mesh->GetNumLods() == 3,
+						"CPU preparation must preserve every uploaded base mesh and its LODs");
+				}
+				if (generateBlas) CheckImportedRayHits(model);
+			}
+		}
+		fixture.m_info->Deserialize(original);
+		std::cout << "Worker CPU preparation, independent RHI upload and full/subset ray hits passed\n";
+	}
 
 	TVector<Geometry> LoadGeometry(const ModelFixture& fixture, ModelImporter& importer)
 	{
@@ -182,6 +313,8 @@ namespace Sailor::Tests
 {
 	void RunModelLodCommandTests(const std::filesystem::path& workspace)
 	{
+		ModelFixture cpuFixture(workspace, true);
+		TestCpuPreparationDoesNotUseRhi(cpuFixture);
 		ModelFixture fixture(workspace);
 		const auto rootTime = std::filesystem::last_write_time(fixture.m_path);
 		const auto verticesTime = std::filesystem::last_write_time(fixture.m_verticesPath);

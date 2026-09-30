@@ -2,6 +2,7 @@
 #include "Containers/Containers.h"
 #include "Core/Defines.h"
 #include "Core/FileRevision.h"
+#include <functional>
 #include <string>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
@@ -324,6 +325,9 @@ namespace Sailor
 		uint64_t m_nextFingerprintGeneration = 0;
 #if defined(SAILOR_FILE_IO_TEST_HOOKS)
 		bool m_bFailFingerprintWriteForTests = false;
+#endif
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+		std::function<void()> m_beforeCpuPreparationForTests;
 #endif
 
 		bool UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWasExpired);

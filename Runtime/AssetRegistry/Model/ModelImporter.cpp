@@ -205,7 +205,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 
 	if (promise && !promise->IsFinished())
 	{
-		// The RHI task may still be writing the model, including its CPU meshes.
+		// Loading tasks may still be writing the model, including its CPU meshes.
 		outModel = loadedModel;
 		auto result = promise;
 		m_loadedModels.Unlock(uid);
@@ -246,56 +246,82 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 
 		ModelPtr pModel = ModelPtr::Make(m_allocator, uid);
 
-		// The way to drop qualifiers inside lambda
-		auto& boundsSphere = pModel->m_boundsSphere;
-		auto& boundsAabb = pModel->m_boundsAabb;
-
 		struct Data
 		{
 			TVector<MeshContext> m_parsedMeshes;
-			TVector<glm::mat4> m_inverseBind;
-			TVector<GltfImporterUtils::SceneNode> m_sceneNodes;
-			TVector<std::string> m_sourceMeshNames;
 			tinygltf::Model m_gltfModel;
 			bool m_bIsImported = false;
-			bool m_bShouldKeepCpuBuffers = false;
-			bool m_bShouldGenerateBLAS = false;
 		};
 
 		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>(*m_scheduler, "Load model",
-			[pAssetInfo, &boundsAabb, &boundsSphere]()
+			[this, pAssetInfo, pModel]() mutable
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
-				pData->m_bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
-				pData->m_bShouldGenerateBLAS = pAssetInfo->ShouldGenerateBLAS();
+				const bool bKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
+				const bool bGenerateBLAS = pAssetInfo->ShouldGenerateBLAS();
 				pData->m_bIsImported = ImportModel(pAssetInfo->GetAssetFilepath(),
 					pAssetInfo->GetUnitScale(),
 					pAssetInfo->ShouldBatchByMaterial(),
 					pAssetInfo->ShouldFlipTexcoordY(),
 					pData->m_parsedMeshes,
-					boundsAabb,
-					boundsSphere,
-					pData->m_inverseBind,
+					pModel->m_boundsAabb,
+					pModel->m_boundsSphere,
+					pModel->m_inverseBind,
 					&pData->m_gltfModel);
-				if (pData->m_bIsImported)
+				if (!pData->m_bIsImported)
 				{
-					ModelLodGeneration::Prepare(*pAssetInfo, pData->m_parsedMeshes);
+					return pData;
 				}
-				if (pData->m_bIsImported)
+
+				ModelLodGeneration::Prepare(*pAssetInfo, pData->m_parsedMeshes);
+				TVector<GltfImporterUtils::SceneNode> sceneNodes;
+				pData->m_bIsImported = GltfImporterUtils::CollectSceneNodes(
+					pData->m_gltfModel, pAssetInfo->GetUnitScale(), sceneNodes);
+				if (!pData->m_bIsImported)
 				{
-					pData->m_bIsImported = GltfImporterUtils::CollectSceneNodes(
-						pData->m_gltfModel, pAssetInfo->GetUnitScale(), pData->m_sceneNodes);
+					return pData;
 				}
-				if (pData->m_bIsImported)
+
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+				if (m_beforeCpuPreparationForTests) m_beforeCpuPreparationForTests();
+#endif
+				pModel->m_sourceMeshes.Resize(pData->m_gltfModel.meshes.size());
+				for (size_t meshIndex = 0; meshIndex < pData->m_gltfModel.meshes.size(); ++meshIndex)
 				{
-					pData->m_sourceMeshNames.Reserve(pData->m_gltfModel.meshes.size());
-					for (size_t meshIndex = 0; meshIndex < pData->m_gltfModel.meshes.size(); ++meshIndex)
+					const auto& name = pData->m_gltfModel.meshes[meshIndex].name;
+					pModel->m_sourceMeshes[meshIndex].m_name = name.empty() ? "Mesh_" + std::to_string(meshIndex) : name;
+				}
+				if (bKeepCpuBuffers || bGenerateBLAS)
+				{
+					pModel->m_cpuMeshes.Reserve(pData->m_parsedMeshes.Num());
+				}
+
+				uint32_t renderMeshIndex = 0;
+				for (const auto& mesh : pData->m_parsedMeshes)
+				{
+					if (!mesh.HasGeometry())
 					{
-						const std::string& sourceName = pData->m_gltfModel.meshes[meshIndex].name;
-						pData->m_sourceMeshNames.Add(
-							sourceName.empty() ? "Mesh_" + std::to_string(meshIndex) : sourceName);
+						continue;
+					}
+					if (mesh.sourceMeshIndex >= 0 && static_cast<size_t>(mesh.sourceMeshIndex) < pModel->m_sourceMeshes.Num())
+					{
+						auto& sourceMesh = pModel->m_sourceMeshes[static_cast<size_t>(mesh.sourceMeshIndex)];
+						sourceMesh.m_renderMeshIndices.Add(renderMeshIndex);
+						sourceMesh.m_bounds.Extend(mesh.bounds);
+					}
+					++renderMeshIndex;
+					if (bKeepCpuBuffers || bGenerateBLAS)
+					{
+						Model::MeshCpuData cpuMesh{};
+						cpuMesh.m_vertices = mesh.outVertices;
+						cpuMesh.m_indices = mesh.outIndices;
+						cpuMesh.m_bounds = mesh.bounds;
+						cpuMesh.m_materialIndex = mesh.materialIndex;
+						pModel->m_cpuMeshes.Add(std::move(cpuMesh));
 					}
 				}
+				PopulateModelSceneHierarchy(*pModel, sceneNodes);
+				pModel->ProceedCpuMeshes(bGenerateBLAS, bKeepCpuBuffers);
 				return pData;
 			});
 		auto migrationTask = loadDataTask->Then(
@@ -319,24 +345,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 					{
 						if (pData->m_bIsImported)
 						{
-							pModel->m_meshes.Clear();
-							pModel->m_cpuMeshes.Clear();
-							pModel->m_nodes.Clear();
-							pModel->m_sourceMeshes.Clear();
-							pModel->m_renderInstances.Clear();
-							pModel->m_bSupportsEditableHierarchy = true;
 							pModel->m_meshes.Reserve(pData->m_parsedMeshes.Num());
-							pModel->m_sourceMeshes.Resize(pData->m_sourceMeshNames.Num());
-							for (size_t sourceMeshIndex = 0; sourceMeshIndex < pData->m_sourceMeshNames.Num();
-								++sourceMeshIndex)
-							{
-								pModel->m_sourceMeshes[sourceMeshIndex].m_name =
-									std::move(pData->m_sourceMeshNames[sourceMeshIndex]);
-							}
-							if (pData->m_bShouldKeepCpuBuffers || pData->m_bShouldGenerateBLAS)
-							{
-								pModel->m_cpuMeshes.Reserve(pData->m_parsedMeshes.Num());
-							}
 
 							for (size_t meshIndex = 0; meshIndex < pData->m_parsedMeshes.Num(); ++meshIndex)
 							{
@@ -355,8 +364,9 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 															 ? mesh.materialSlot
 															 : static_cast<uint32_t>(meshIndex);
 								pMesh->m_bakedVolumeScale = mesh.bakedVolumeScale;
-								TVector<RHI::VertexP3N3T3B3UV2C4I4W4> uploadVertices = mesh.outVertices;
-								TVector<uint32_t> uploadIndices = mesh.outIndices;
+								pMesh->m_indexCount = static_cast<uint32_t>(mesh.outIndices.Num());
+								TVector<RHI::VertexP3N3T3B3UV2C4I4W4> uploadVertices = std::move(mesh.outVertices);
+								TVector<uint32_t> uploadIndices = std::move(mesh.outIndices);
 								TVector<uint32_t> lodVertexOffsets;
 								TVector<uint32_t> lodFirstIndices;
 								lodVertexOffsets.Reserve(mesh.lods.Num());
@@ -368,7 +378,6 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 									uploadVertices.AddRange(lod.m_vertices);
 									uploadIndices.AddRange(lod.m_indices);
 								}
-								pMesh->m_indexCount = static_cast<uint32_t>(mesh.outIndices.Num());
 								pMesh->m_firstIndex = 0u;
 								pMesh->m_vertexOffset = 0u;
 								RHI::Renderer::GetDriver()->UpdateMesh(pMesh,
@@ -398,32 +407,9 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 									pMesh->m_lods.Add(std::move(lodMesh));
 								}
 
-								const uint32_t renderMeshIndex = static_cast<uint32_t>(pModel->m_meshes.Num());
 								pModel->m_meshes.Emplace(pMesh);
-								if (mesh.sourceMeshIndex >= 0 &&
-									static_cast<size_t>(mesh.sourceMeshIndex) < pModel->m_sourceMeshes.Num())
-								{
-									Model::SourceMesh& sourceMesh =
-										pModel->m_sourceMeshes[static_cast<size_t>(mesh.sourceMeshIndex)];
-									sourceMesh.m_renderMeshIndices.Add(renderMeshIndex);
-									sourceMesh.m_bounds.Extend(mesh.bounds);
-								}
-
-								if (pData->m_bShouldKeepCpuBuffers || pData->m_bShouldGenerateBLAS)
-								{
-									Model::MeshCpuData cpuMesh{};
-									cpuMesh.m_vertices = std::move(mesh.outVertices);
-									cpuMesh.m_indices = std::move(mesh.outIndices);
-									cpuMesh.m_bounds = mesh.bounds;
-									cpuMesh.m_materialIndex = mesh.materialIndex;
-									pModel->m_cpuMeshes.Add(std::move(cpuMesh));
-								}
 							}
 
-							ModelImporter::PopulateModelSceneHierarchy(*pModel, pData->m_sceneNodes);
-
-							pModel->m_inverseBind = std::move(pData->m_inverseBind);
-							pModel->ProceedCpuMeshes(pData->m_bShouldGenerateBLAS, pData->m_bShouldKeepCpuBuffers);
 							pModel->Flush();
 						}
 						return pModel->IsStructurallyReady() ? pModel : ModelPtr{};
