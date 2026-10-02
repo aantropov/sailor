@@ -178,8 +178,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, const std::string& name, uint32_t shaderBinding) override;
 		SAILOR_API virtual bool FillShadersLayout(RHI::RHIShaderBindingSetPtr& pShaderBindings, const TVector<RHI::RHIShaderPtr>& shaders, uint32_t setNum) override;
 
-		// Used for full binding update
-		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHI::RHITexturePtr value, uint32_t dstArrayElement = 0) override;
+		// Returns true when the requested texture binding is current.
+		SAILOR_API virtual bool UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHI::RHITexturePtr value, uint32_t dstArrayElement = 0) override;
 		SAILOR_API virtual bool UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) override;
 
 		// Begin Immediate context

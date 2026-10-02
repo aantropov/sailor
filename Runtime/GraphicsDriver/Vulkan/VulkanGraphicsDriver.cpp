@@ -2720,7 +2720,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(R
 	return pShaderBindings->GetOrAddShaderBinding(name);
 }
 
-void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, RHI::RHITexturePtr value, uint32_t dstArrayElement)
+bool VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, RHI::RHITexturePtr value, uint32_t dstArrayElement)
 {
 	SAILOR_PROFILE_FUNCTION();
 	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
@@ -2740,14 +2740,14 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 			value = GetDefaultTexture();
 			if (!value)
 			{
-				return;
+				return false;
 			}
 		}
 		if (!value->m_vulkan.m_imageView)
 		{
 			SAILOR_LOG_ERROR("Cannot update texture binding '%s' (idx=%u): imageView is unavailable.",
 				parameter.c_str(), dstArrayElement);
-			return;
+			return false;
 		}
 
 		auto textureBinding = bindings->GetOrAddShaderBinding(parameter);
@@ -2761,7 +2761,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 				dstArrayElement,
 				value->m_vulkan.m_imageView))
 		{
-			return;
+			return true;
 		}
 
 		const auto& layout = layoutBindings[index];
@@ -2772,7 +2772,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 				parameter.c_str(),
 				dstArrayElement,
 				layout.m_arrayCount);
-			return;
+			return false;
 		}
 
 		auto descriptorSet = bindings->m_vulkan.m_descriptorSet;
@@ -2798,7 +2798,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 			{
 				textureBinding->SetTextureBinding(dstArrayElement, value);
 				bindings->AdvanceDescriptorRevision();
-				return;
+				return true;
 			}
 		}
 
@@ -2836,10 +2836,9 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 				(VkDescriptorType)fallbackLayout.m_type,
 				fallbackLayout.m_arrayCount);
 		}
-		UpdateDescriptorSet(bindings, &updatedBinding);
-
-		return;
+		return UpdateDescriptorSet(bindings, &updatedBinding);
 	}
+	return false;
 }
 
 VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader,

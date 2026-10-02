@@ -2296,6 +2296,18 @@ namespace
 	}
 }
 
+namespace Sailor::Tests
+{
+	void RequireRejectedNativeSubmission(RHICommandListPtr command)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		SubmitOverride rejection(VulkanSubmissionTestAccess::UploadQueue(*device, command->IsTransferOnly()), VK_ERROR_OUT_OF_HOST_MEMORY);
+		const auto before = submitCalls;
+		Require(!Renderer::GetDriver()->SubmitCommandList(command, RHIFencePtr::Make()) && submitCalls == before + 1u,
+			"the native queue must reject the recorded command list");
+	}
+}
+
 int main(int argc, const char** argv)
 {
 	for (int i = 1; i < argc; ++i)

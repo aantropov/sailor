@@ -5,6 +5,7 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "RHI/RenderSubmission.h"
 
 namespace Sailor::Framegraph
 {
@@ -21,14 +22,24 @@ namespace Sailor::Framegraph
 	protected:
 		friend class PostProcessNodeTestAccess;
 
+		class SubmissionResources final : public RHI::RHIFrameGraphSubmissionResource
+		{
+		public:
+			void ResetForSubmission() override {}
+			void InvalidateSubmission() override { m_uploadedParameterRevision = 0; }
+
+			RHI::RHIShaderBindingSetPtr m_shaderBindings{};
+			uint64_t m_shaderGeneration = 0;
+			uint64_t m_uploadedParameterRevision = 0;
+		};
+
 		SAILOR_SHARED_API static const char* m_name;
 
 		ShaderSetPtr m_pShader{};
 		RHI::RHIMaterialPtr m_postEffectMaterial{};
-		RHI::RHIShaderBindingSetPtr m_shaderBindings{};
 		std::string m_shaderPath;
 		std::string m_shaderDefines;
-		uint64_t m_uploadedParameterRevision = 0;
+		uint64_t m_shaderGeneration = 0;
 		bool m_bMultisampling = false;
 	};
 

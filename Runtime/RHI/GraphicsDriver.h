@@ -188,8 +188,8 @@ namespace Sailor::RHI
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, const std::string& name, uint32_t shaderBinding) = 0;
 		SAILOR_API virtual bool FillShadersLayout(RHI::RHIShaderBindingSetPtr& pShaderBindings, const TVector<RHIShaderPtr>& shaders, uint32_t setNum) = 0;
 
-		// Used for full binding update
-		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHITexturePtr value, uint32_t index = 0) = 0;
+		// Returns true when the requested texture binding is current.
+		SAILOR_API virtual bool UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHITexturePtr value, uint32_t index = 0) = 0;
 
 		// Used only for static vertex types
 		template<typename TVertex>

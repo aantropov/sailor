@@ -34,6 +34,8 @@ using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
+namespace Sailor::Tests { void RequireRejectedNativeSubmission(RHICommandListPtr command); }
+
 namespace Sailor::GraphicsDriver::Vulkan
 {
 	class FrameGraphNodeTestAccess
@@ -52,7 +54,11 @@ namespace Sailor::Framegraph
 	class PostProcessNodeTestAccess
 	{
 	public:
-		static RHIShaderBindingSetPtr GetBindings(const PostProcessNode& node) { return node.m_shaderBindings; }
+		static RHIShaderBindingSetPtr GetBindings(const PostProcessNode& node, const RHISceneViewSnapshot& scene)
+		{
+			return scene.m_submissionContext->GetOrAddFrameGraphResources<PostProcessNode::SubmissionResources>(
+				&node, scene.m_cameraIndex, 0)->m_shaderBindings;
+		}
 	};
 }
 
@@ -581,6 +587,96 @@ void main() {
 			": three frames, replaced inputs, sky/alpha and both images passed\n";
 	}
 
+	void TestPostProcessFlights(const std::string& shader, bool sameFlight)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<PostProcessNode>::Make();
+		node->SetString("shader", shader);
+		node->SetRHIResource_Unresolved("color", "Output");
+		node->SetFloat("data.gain", 0.5f);
+		const glm::vec4 texel(0.125f, 0.25f, 0.5f, 1);
+		auto texture = driver->CreateTexture(&texel, sizeof(texel), glm::ivec3(1), 1, ETextureType::Texture2D,
+			EFormat::R32G32B32A32_SFLOAT, ETextureFiltration::Nearest, ETextureClamping::Clamp);
+		node->SetRHIResource("sourceSampler", texture);
+		struct Recording
+		{
+			RHISceneViewSnapshot scene;
+			RHIShaderBindingSetPtr bindings;
+			Memory::VulkanBufferMemoryPtr uniform;
+			RHICommandListPtr upload, draw;
+			RHIBufferPtr readback;
+			RHISemaphorePtr ready;
+			glm::vec4 expected;
+		};
+		std::array<Recording, 2> recordings;
+		for (uint32_t i = 0; i < recordings.size(); ++i)
+		{
+			auto& scene = recordings[i].scene;
+			scene.m_submissionContext = sameFlight && i ? recordings[0].scene.m_submissionContext : RHIRenderSubmissionContextPtr::Make();
+			scene.m_cameraIndex = sameFlight ? i : 0;
+			scene.m_frameBindings = driver->CreateShaderBindings();
+			scene.m_rhiLightsData = driver->CreateShaderBindings();
+		}
+		for (uint32_t round = 0; round < 3; ++round)
+		{
+			if (round == 2) node->Clear();
+			for (uint32_t i = 0; i < recordings.size(); ++i)
+			{
+				auto& recording = recordings[i];
+				if (!sameFlight || i == 0) recording.scene.m_submissionContext->BeginSubmission(round + 1, i);
+				const glm::vec4 tint(0.25f * (i + 1), 0.125f * (round + 1), 0.75f, 1);
+				node->SetVec4("data.tint", tint);
+				recording.expected = tint * 0.5f + texel;
+				auto target = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+				graph->SetRenderTarget("Output", target);
+				recording.upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				recording.draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(recording.upload, true);
+				commands->BeginCommandList(recording.draw, true);
+				commands->MemoryBarrier(recording.draw, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
+					static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
+				node->Process(graph, recording.upload, recording.draw, recording.scene);
+				Require(node->GetDrawCallStats().m_numBatches == 1, "each pending post-process recording must contain a draw");
+				auto bindings = PostProcessNodeTestAccess::GetBindings(*node, recording.scene);
+				const auto uniform = *bindings->GetOrAddShaderBinding("data")->m_vulkan.m_valueBinding->Get();
+				Require(round != 1 || (bindings == recording.bindings && uniform == recording.uniform),
+					"completed post-process slots must reuse their bindings and uniform allocations");
+				Require(round != 2 || (bindings != recording.bindings && uniform != recording.uniform),
+					"clearing the node must recreate bindings for every retained frame/camera");
+				recording.bindings = bindings;
+				recording.uniform = uniform;
+				recording.readback = ReadColor(recording.draw, target);
+				commands->MemoryBarrier(recording.draw, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+				commands->EndCommandList(recording.upload);
+				commands->EndCommandList(recording.draw);
+			}
+			// Both uploads finish before either draw: a shared uniform range would expose the last camera/frame's values.
+			for (auto& recording : recordings)
+			{
+				recording.ready = driver->CreateWaitSemaphore();
+				auto uploaded = RHIFencePtr::Make();
+				Require(driver->SubmitCommandList(recording.upload, uploaded, recording.ready) && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
+					"all pending parameter uploads must finish before either draw");
+			}
+			for (auto& recording : recordings)
+			{
+				auto finished = RHIFencePtr::Make();
+				Require(driver->SubmitCommandList(recording.draw, finished, nullptr, recording.ready) && finished->Wait(5000000000ull) == EFenceStatus::Finished,
+					"pending post-process draws must finish");
+				const auto pixels = static_cast<const glm::vec4*>(recording.readback->GetPointer());
+				for (uint32_t i = 0; i < Side * Side; ++i)
+					for (uint32_t component = 0; component < 4; ++component)
+						Require(std::isfinite(pixels[i][component]) && std::abs(pixels[i][component] - recording.expected[component]) <= 0.00001f,
+							"pending post-process frames/cameras must keep their recorded parameters");
+			}
+			Require(recordings[0].bindings != recordings[1].bindings && recordings[0].uniform != recordings[1].uniform,
+				"active frames/cameras must not share mutable bindings or uniform ranges");
+		}
+		std::cout << "PostProcess " << (sameFlight ? "two cameras" : "two flights") << ": six complete images, reused allocations and Clear passed\n";
+	}
+
 	void TestPostProcess(const std::string& smallShader, const std::string& largeShader)
 	{
 		auto& driver = Renderer::GetDriver();
@@ -598,6 +694,8 @@ void main() {
 		auto textureB = driver->CreateTexture(&secondTexel, sizeof(secondTexel), glm::ivec3(1), 1, ETextureType::Texture2D,
 			EFormat::R32G32B32A32_SFLOAT, ETextureFiltration::Nearest, ETextureClamping::Clamp);
 		RHISceneViewSnapshot scene;
+		scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+		uint64_t submissionId = 0;
 		scene.m_frameBindings = driver->CreateShaderBindings();
 		scene.m_rhiLightsData = driver->CreateShaderBindings();
 		auto node = TRefPtr<PostProcessNode>::Make();
@@ -614,6 +712,7 @@ void main() {
 
 		const auto draw = [&](const char* label, RHITexturePtr target, RHISurfacePtr surface, glm::vec4 texel)
 		{
+			scene.m_submissionContext->BeginSubmission(++submissionId, 0);
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			auto graphics = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(upload, true);
@@ -621,9 +720,11 @@ void main() {
 			commands->MemoryBarrier(graphics, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
 				static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
 			recordedColorCount = 0;
+			const auto beforeUpload = upload->GetNumRecordedCommands();
 			node->Process(graph, upload, graphics, scene);
+			const auto uploadCommands = upload->GetNumRecordedCommands() - beforeUpload;
 			const bool msaa = surface && surface->NeedsResolve();
-			auto currentBindings = PostProcessNodeTestAccess::GetBindings(*node);
+			auto currentBindings = PostProcessNodeTestAccess::GetBindings(*node, scene);
 			Require(currentBindings.IsValid(), "post-process shader must be ready and create its bindings");
 			const auto binding = currentBindings->GetOrAddShaderBinding("data");
 			const auto reflectedSize = (std::max)(binding->GetLayout().m_size, binding->GetLayout().m_paddedSize);
@@ -660,9 +761,10 @@ void main() {
 					if (!std::isfinite(pixels[i][component]) || std::abs(pixels[i][component] - expected[component]) > 0.00001f)
 						throw std::runtime_error(std::string(label) + ": GPU pixel does not match current parameters and texture");
 			std::cout << "PostProcess " << label << ": native attachments and 64 pixels passed\n";
+			return uploadCommands;
 		};
 
-		draw("first draw", output, {}, firstTexel);
+		Require(draw("first draw", output, {}, firstTexel) > 0, "the first draw must upload its parameters");
 		tint = glm::vec4(0.75f, 0.25f, 0.5f, 1);
 		gain = 0.25f;
 		node->SetVec4("data.tint", tint);
@@ -670,12 +772,63 @@ void main() {
 		draw("mutated parameters", output, {}, firstTexel);
 		node->SetRHIResource("sourceSampler", textureB);
 		draw("replaced bound sampler", output, {}, secondTexel);
-		const auto bindings = PostProcessNodeTestAccess::GetBindings(*node);
+		const auto bindings = PostProcessNodeTestAccess::GetBindings(*node, scene);
 		const auto descriptor = bindings->m_vulkan.m_descriptorSet;
 		const auto revision = bindings->GetDescriptorRevision();
-		draw("unchanged frame", output, {}, secondTexel);
-		Require(PostProcessNodeTestAccess::GetBindings(*node) == bindings && bindings->m_vulkan.m_descriptorSet == descriptor &&
+		Require(draw("unchanged frame", output, {}, secondTexel) == 0, "unchanged parameters must not record another upload");
+		Require(PostProcessNodeTestAccess::GetBindings(*node, scene) == bindings && bindings->m_vulkan.m_descriptorSet == descriptor &&
 			bindings->GetDescriptorRevision() == revision, "unchanged post-process inputs must not rebuild descriptors");
+		const char* retries[] = { "retry discarded parameter upload", "retry rejected upload", "retry rejected draw" };
+		for (uint32_t failure = 0; failure < 3; ++failure)
+		{
+			tint = glm::vec4(0.125f * (failure + 1), 0.5f, 0.75f, 1);
+			gain = 0.75f;
+			node->SetVec4("data.tint", tint);
+			node->SetFloat("data.gain", gain);
+			scene.m_submissionContext->BeginSubmission(++submissionId, 0);
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto graphics = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(graphics, true);
+			const auto beforeUpload = upload->GetNumRecordedCommands();
+			node->Process(graph, upload, graphics, scene);
+			Require(node->GetDrawCallStats().m_numBatches == 1 && upload->GetNumRecordedCommands() > beforeUpload,
+				"failure fixture must record a real draw and parameter upload");
+			commands->EndCommandList(upload);
+			commands->EndCommandList(graphics);
+			if (failure == 1)
+			{
+				Tests::RequireRejectedNativeSubmission(upload);
+			}
+			else if (failure == 2)
+			{
+				auto uploaded = RHIFencePtr::Make();
+				Require(driver->SubmitCommandList(upload, uploaded) && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
+					"draw failure fixture must first finish its parameter upload");
+				Tests::RequireRejectedNativeSubmission(graphics);
+			}
+			upload->m_vulkan.m_commandBuffer->Reset();
+			graphics->m_vulkan.m_commandBuffer->Reset();
+			scene.m_submissionContext->InvalidateSubmissionResources();
+			Require(draw(retries[failure], output, {}, secondTexel) > 0, "invalidated parameters must be uploaded on retry");
+		}
+		auto pendingTexture = RHITexturePtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
+		node->SetRHIResource("sourceSampler", pendingTexture);
+		{
+			scene.m_submissionContext->BeginSubmission(++submissionId, 0);
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto graphics = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(graphics, true);
+			const auto beforeUpload = upload->GetNumRecordedCommands();
+			node->Process(graph, upload, graphics, scene);
+			Require(node->GetDrawCallStats().m_numBatches == 0 && upload->GetNumRecordedCommands() == beforeUpload,
+				"an unavailable sampler must defer the draw and parameter upload");
+			CompleteCommands(upload, graphics);
+		}
+		pendingTexture->m_vulkan = textureA->m_vulkan;
+		draw("retry ready bound sampler", output, {}, firstTexel);
+		node->SetRHIResource("sourceSampler", textureB);
 		node->SetRHIResource("color", single);
 		draw("bound 1x surface", output, single, secondTexel);
 		node->SetRHIResource("color", multisampled);
@@ -722,7 +875,7 @@ void main() {
 			graph->SetRenderTarget("SceneDepth", depth);
 			node->SetRHIResource_Unresolved("sourceSampler", "SceneDepth");
 			draw("late sampled depth", output, {}, glm::vec4(0.375f, 0, 0, 1));
-			const auto sampler = PostProcessNodeTestAccess::GetBindings(*node)->GetOrAddShaderBinding("sourceSampler");
+			const auto sampler = PostProcessNodeTestAccess::GetBindings(*node, scene)->GetOrAddShaderBinding("sourceSampler");
 			const RHITexturePtr expectedDepth = depth->GetDepthAspect() ? depth->GetDepthAspect() : RHITexturePtr(depth);
 			Require(sampler->GetTextureBinding() == expectedDepth &&
 				expectedDepth->m_vulkan.m_imageView->m_subresourceRange.aspectMask == VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -731,7 +884,7 @@ void main() {
 		node->SetRHIResource("sourceSampler", textureA);
 		node->SetString("shader", largeShader);
 		draw("large reflected block and changed shader", output, {}, firstTexel);
-		const auto largeBinding = PostProcessNodeTestAccess::GetBindings(*node)->GetOrAddShaderBinding("data");
+		const auto largeBinding = PostProcessNodeTestAccess::GetBindings(*node, scene)->GetOrAddShaderBinding("data");
 		Require(largeBinding->GetLayout().m_binding == 3 && largeBinding->GetLayout().m_size > 512,
 			"large-block test must use the new shader with a nonzero uniform binding");
 		inverted = true;
@@ -780,6 +933,8 @@ namespace Sailor::Tests
 						for (bool colorSurface : { false, true })
 							for (bool motionSurface : { false, true }) TestSceneMrt(mrtShader, colorSurface, motionSurface, late);
 					TestImportedBindings(graphId);
+					TestPostProcessFlights(smallShader, false);
+					TestPostProcessFlights(smallShader, true);
 					if (VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() == VK_SAMPLE_COUNT_2_BIT)
 						TestPostProcess(smallShader, largeShader);
 					return {};

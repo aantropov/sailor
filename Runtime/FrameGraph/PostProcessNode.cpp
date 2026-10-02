@@ -78,20 +78,28 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	const std::string shaderName = std::string(GetName()) + ":" + GetString("shader");
 	commands->BeginDebugRegion(commandList, shaderName, DebugContext::Color_CmdPostProcess);
 
-	const bool bindingsCreated = !m_shaderBindings;
+	auto resources = sceneView.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(this, sceneView.m_cameraIndex, 0);
+	if (resources->m_shaderGeneration != m_shaderGeneration)
+	{
+		resources->m_shaderBindings.Clear();
+		resources->m_uploadedParameterRevision = 0;
+		resources->m_shaderGeneration = m_shaderGeneration;
+	}
+	auto& bindings = resources->m_shaderBindings;
+	const bool bindingsCreated = !bindings;
 	if (bindingsCreated)
 	{
-		m_shaderBindings = driver->CreateShaderBindings();
+		bindings = driver->CreateShaderBindings();
 
 		// Reflection retains uniform names in the debug bytecode; rendering uses the material's regular shaders.
-		driver->FillShadersLayout(m_shaderBindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
+		driver->FillShadersLayout(bindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
 
-		const auto layouts = m_shaderBindings->GetLayoutBindings();
+		const auto layouts = bindings->GetLayoutBindings();
 		for (const auto& layout : layouts)
 		{
 			if (layout.m_type == EShaderBindingType::UniformBuffer)
 			{
-				driver->AddBufferToShaderBindings(m_shaderBindings, layout.m_name,
+				driver->AddBufferToShaderBindings(bindings, layout.m_name,
 					(std::max)(layout.m_size, layout.m_paddedSize), layout.m_binding, layout.m_type);
 			}
 		}
@@ -102,36 +110,37 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		m_bMultisampling = bShouldUseMsaaTarget;
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, bShouldUseMsaaTarget };
-		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pShader, m_shaderBindings);
+		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pShader, bindings);
 	}
 
-	const bool parametersChanged = bindingsCreated || m_uploadedParameterRevision != m_parameterRevision;
+	const bool parametersChanged = bindingsCreated || resources->m_uploadedParameterRevision != m_parameterRevision;
+	for (const auto& binding : bindings->GetLayoutBindings())
+	{
+		if (binding.m_type == EShaderBindingType::CombinedImageSampler &&
+			(parametersChanged || m_unresolvedResourceParams.ContainsKey(binding.m_name)) &&
+			!driver->UpdateShaderBinding(bindings, binding.m_name, GetSampledAttachment(binding.m_name, frameGraph.GetRawPtr())))
+		{
+			commands->EndDebugRegion(commandList);
+			return;
+		}
+	}
+
 	if (parametersChanged)
 	{
 		for (const auto& v : m_vectorParams)
 		{
-			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, v.First(), *v.Second());
+			commands->SetMaterialParameter(transferCommandList, bindings, v.First(), *v.Second());
 		}
 
 		for (const auto& f : m_floatParams)
 		{
-			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, f.First(), *f.Second());
+			commands->SetMaterialParameter(transferCommandList, bindings, f.First(), *f.Second());
 		}
 
-		m_uploadedParameterRevision = m_parameterRevision;
+		resources->m_uploadedParameterRevision = m_parameterRevision;
 	}
 
-	for (const auto& binding : m_shaderBindings->GetLayoutBindings())
-	{
-		if (binding.m_type == EShaderBindingType::CombinedImageSampler &&
-			(parametersChanged || m_unresolvedResourceParams.ContainsKey(binding.m_name)))
-		{
-			driver->UpdateShaderBinding(m_shaderBindings, binding.m_name,
-				GetSampledAttachment(binding.m_name, frameGraph.GetRawPtr()));
-		}
-	}
-
-	const auto& layout = m_shaderBindings->GetLayoutBindings();
+	const auto& layout = bindings->GetLayoutBindings();
 
 	{
 		SAILOR_PROFILE_SCOPE("Image barriers");
@@ -140,7 +149,7 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		{
 			if (binding.m_type == RHI::EShaderBindingType::CombinedImageSampler)
 			{
-				auto& shaderBinding = m_shaderBindings->GetOrAddShaderBinding(binding.m_name);
+				auto& shaderBinding = bindings->GetOrAddShaderBinding(binding.m_name);
 				if (shaderBinding->IsBind())
 				{
 					auto pTexture = shaderBinding->GetTextureBinding();
@@ -187,7 +196,7 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	commands->BindMaterial(commandList, m_postEffectMaterial);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	if (commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_shaderBindings, sceneView.m_rhiLightsData }))
+	if (commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings, bindings, sceneView.m_rhiLightsData }))
 	{
 		commands->SetViewport(commandList,
 			0, 0,
@@ -208,6 +217,5 @@ void PostProcessNode::Clear()
 {
 	m_pShader.Clear();
 	m_postEffectMaterial.Clear();
-	m_shaderBindings.Clear();
-	m_uploadedParameterRevision = 0;
+	++m_shaderGeneration;
 }
