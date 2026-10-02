@@ -2318,7 +2318,7 @@ int main(int argc, const char** argv)
 #endif
 		if (mode == "--gpu-bootstrap-submit") return RunBootstrapGpu(argc, argv, false, false);
 		if (mode == "--gpu-initialization") return RunInitializationGpu(argc, argv);
-		if (mode == "--gpu-pathtracer") return Tests::RunPathTracerCommandTests(argc, argv);
+		if (mode == "--gpu-pathtracer" || mode == "--gpu-pathtracer-1x") return Tests::RunPathTracerCommandTests(argc, argv);
 		if (mode == "--gpu-bootstrap-submit-lost") return RunBootstrapGpu(argc, argv, false, true);
 		if (mode == "--gpu-bootstrap-wait") return RunBootstrapGpu(argc, argv, true, false);
 		if (mode == "--gpu-bootstrap-lost") return RunBootstrapGpu(argc, argv, true, true);

@@ -1019,16 +1019,11 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	auto colorAttachment = GetRHIResource("color").DynamicCast<RHI::RHIRenderTarget>();
-	auto colorSurface = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
-	if (colorSurface)
-	{
-		colorAttachment = colorSurface->GetTarget();
-	}
-	auto motionSurface = GetRHIResource("motionVectors").DynamicCast<RHI::RHISurface>();
-	auto motionAttachment = GetRHIResource("motionVectors").DynamicCast<RHI::RHIRenderTarget>();
-	if (motionSurface) motionAttachment = motionSurface->GetTarget();
-	auto depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
+	auto colorAttachment = GetTargetAttachment("color", frameGraph.GetRawPtr());
+	auto colorSurface = GetRHIResource("color", frameGraph.GetRawPtr()).DynamicCast<RHI::RHISurface>();
+	auto motionAttachment = GetTargetAttachment("motionVectors", frameGraph.GetRawPtr());
+	auto motionSurface = GetRHIResource("motionVectors", frameGraph.GetRawPtr()).DynamicCast<RHI::RHISurface>();
+	auto depthAttachment = GetResolvedAttachment("depthStencil", frameGraph.GetRawPtr());
 	if (!depthAttachment)
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
@@ -1039,18 +1034,11 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		return;
 	}
 
-	RHI::RHITexturePtr transmissionFramebuffer = GetResolvedAttachment("transmissionFramebuffer");
-	RHI::RHITexturePtr sceneDepth = GetResolvedAttachment("sceneDepth");
-	RHI::RHITexturePtr sampledSceneDepth = sceneDepth;
-	if (auto depthTarget = sceneDepth.DynamicCast<RHI::RHIRenderTarget>())
-	{
-		if (auto depthAspect = depthTarget->GetDepthAspect())
-		{
-			sampledSceneDepth = depthAspect;
-		}
-	}
+	RHI::RHITexturePtr transmissionFramebuffer = GetResolvedAttachment("transmissionFramebuffer", frameGraph.GetRawPtr());
+	RHI::RHITexturePtr sceneDepth = GetResolvedAttachment("sceneDepth", frameGraph.GetRawPtr());
+	RHI::RHITexturePtr sampledSceneDepth = GetSampledAttachment("sceneDepth", frameGraph.GetRawPtr());
 	RHI::RHITexturePtr globalIlluminationProbeCellIndicesTexture =
-		GetResolvedAttachment("globalIlluminationProbeCellIndicesSampler");
+		GetResolvedAttachment("globalIlluminationProbeCellIndicesSampler", frameGraph.GetRawPtr());
 	if (transmissionFramebuffer)
 	{
 		commands->ImageMemoryBarrier(commandList, transmissionFramebuffer, RHI::EImageLayout::ShaderReadOnlyOptimal);
@@ -1140,7 +1128,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	RHITexturePtr depthHighZ;
 	if (bGpuCullingEnabled && m_pComputeMeshCullingShader && m_pComputeMeshCullingShader->IsReady())
 	{
-		depthHighZ = GetResolvedAttachment("depthHighZ").StaticCast<RHI::RHITexture>();
+		depthHighZ = GetResolvedAttachment("depthHighZ", frameGraph.GetRawPtr());
 		if (depthHighZ)
 		{
 			if (!resources->m_computeMeshCullingBindings ||
@@ -1212,43 +1200,19 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				0,
 				colorAttachment->GetExtent().x,
 				colorAttachment->GetExtent().y);
-			if (colorSurface)
+			auto& attachments = resources->m_renderPassColorAttachments;
+			auto& resolves = resources->m_renderPassColorResolves;
+			attachments.Clear(false);
+			resolves.Clear(false);
+			attachments.Add(colorAttachment);
+			resolves.Add(colorSurface && colorSurface->NeedsResolve() ? colorSurface->GetResolved() : nullptr);
+			if (motionAttachment)
 			{
-				auto& renderPassColorSurfaces =
-					resources->m_renderPassColorSurfaces;
-				renderPassColorSurfaces.Clear(false);
-				renderPassColorSurfaces.Add(colorSurface);
-				if (motionSurface) renderPassColorSurfaces.Add(motionSurface);
-				commands->BeginRenderPass(
-					commandList,
-					renderPassColorSurfaces,
-					depthAttachment,
-					renderArea,
-					glm::ivec2(0, 0),
-					false,
-					glm::vec4(0.0f),
-					0.0f,
-					true);
+				attachments.Add(motionAttachment);
+				resolves.Add(motionSurface && motionSurface->NeedsResolve() ? motionSurface->GetResolved() : nullptr);
 			}
-			else
-			{
-				auto& renderPassColorAttachments =
-					resources->m_renderPassColorAttachments;
-				renderPassColorAttachments.Clear(false);
-				renderPassColorAttachments.Add(colorAttachment);
-				if (motionAttachment) renderPassColorAttachments.Add(motionAttachment);
-				commands->BeginRenderPass(
-					commandList,
-					renderPassColorAttachments,
-					depthAttachment,
-					renderArea,
-					glm::ivec2(0, 0),
-					false,
-					glm::vec4(0.0f),
-					0.0f,
-					true,
-					true);
-			}
+			commands->BeginRenderPass(commandList, attachments, resolves, depthAttachment, renderArea,
+				glm::ivec2(0), false, glm::vec4(0), 0.0f, !colorSurface || colorSurface->NeedsResolve(), true);
 			bRenderPassStarted = true;
 		};
 

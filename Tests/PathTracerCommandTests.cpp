@@ -58,7 +58,7 @@ namespace
 		if (!condition) throw std::runtime_error(message);
 	}
 
-	void WriteScene(const Tests::TempDirectory& workspace, const std::string& enginePath)
+	void WriteScene(const Tests::TempDirectory& workspace, const std::string& enginePath, uint32_t msaaSamples)
 	{
 		std::filesystem::create_directory(workspace.Path("Content"));
 		YAML::Node manifest;
@@ -81,7 +81,7 @@ namespace
 		for (const char* preset : { "Ultra", "High", "Medium", "Low", "VeryLow" })
 		{
 			auto profile = settings["graphics"]["presets"][preset];
-			profile["msaaSamples"] = 2;
+			profile["msaaSamples"] = msaaSamples;
 			profile["enableGlobalIllumination"] = true;
 			profile["maxGiProbeStatesPerSnapshot"] = 2;
 			auto gi = profile["runtimeGIProbes"];
@@ -869,9 +869,13 @@ namespace Sailor::Tests
 		try
 		{
 			std::string enginePath = std::filesystem::current_path().string();
-			for (int i = 1; i + 1 < argc; ++i)
-				if (std::string_view(argv[i]) == "--workspace") enginePath = argv[i + 1];
-			WriteScene(workspace, enginePath);
+			uint32_t msaaSamples = 2;
+			for (int i = 1; i < argc; ++i)
+			{
+				if (std::string_view(argv[i]) == "--workspace" && i + 1 < argc) enginePath = argv[i + 1];
+				if (std::string_view(argv[i]) == "--gpu-pathtracer-1x") msaaSamples = 1;
+			}
+			WriteScene(workspace, enginePath, msaaSamples);
 			const std::string root = workspace.Get().string();
 			const std::string output = workspace.Path("command.png").string();
 			std::vector<const char*> arguments(argv, argv + argc);

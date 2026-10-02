@@ -67,7 +67,7 @@ namespace Sailor::Framegraph
 			{
 				m_orderedDrawItems.Clear(false);
 				m_renderPassColorAttachments.Clear(false);
-				m_renderPassColorSurfaces.Clear(false);
+				m_renderPassColorResolves.Clear(false);
 				m_cullingDispatchBindings.Clear(false);
 				m_arenaRangeInstances.Clear(false);
 				m_arenaRangeStableKeys.Clear(false);
@@ -90,7 +90,7 @@ namespace Sailor::Framegraph
 			RHI::RHIShaderBindingSetPtr m_computeMeshCullingBindings{};
 			RHI::RHITexturePtr m_cullingDepthHighZ{};
 			TVector<RHI::RHITexturePtr> m_renderPassColorAttachments{};
-			TVector<RHI::RHISurfacePtr> m_renderPassColorSurfaces{};
+			TVector<RHI::RHITexturePtr> m_renderPassColorResolves{};
 			TVector<RHI::RHIShaderBindingSetPtr> m_cullingDispatchBindings{};
 			TVector<PerInstanceData> m_arenaRangeInstances{};
 			TVector<uint64_t> m_arenaRangeStableKeys{};

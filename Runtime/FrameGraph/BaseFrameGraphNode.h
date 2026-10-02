@@ -24,6 +24,7 @@ namespace Sailor::Framegraph
 		SAILOR_API void SetRHIResource_Unresolved(const std::string& name, const std::string& value);
 
 		SAILOR_API RHI::RHITexturePtr GetResolvedAttachment(const std::string& name, const RHI::RHIFrameGraph* frameGraph = nullptr) const;
+		SAILOR_API RHI::RHITexturePtr GetTargetAttachment(const std::string& name, const RHI::RHIFrameGraph* frameGraph = nullptr) const;
 		SAILOR_API RHI::RHITexturePtr GetSampledAttachment(const std::string& name, const RHI::RHIFrameGraph* frameGraph = nullptr) const;
 		SAILOR_API RHI::RHIResourcePtr GetRHIResource(const std::string& name, const RHI::RHIFrameGraph* frameGraph = nullptr) const;
 		SAILOR_API const glm::vec4& GetVec4(const std::string& name) const;

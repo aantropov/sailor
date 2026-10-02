@@ -4,6 +4,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "FrameGraph/PostProcessNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
+#include "FrameGraph/RenderSceneNode.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
 #include "RHI/Buffer.h"
@@ -82,12 +83,14 @@ namespace
 
 	PFN_vkCmdBeginRenderingKHR originalBeginRendering = nullptr;
 	VkRenderingAttachmentInfo recordedColor{};
+	VkRenderingAttachmentInfo recordedMotion{};
 	uint32_t recordedColorCount = 0;
 
 	VKAPI_ATTR void VKAPI_CALL CaptureRendering(VkCommandBuffer command, const VkRenderingInfo* info)
 	{
 		recordedColorCount = info->colorAttachmentCount;
 		if (recordedColorCount) recordedColor = info->pColorAttachments[0];
+		if (recordedColorCount > 1) recordedMotion = info->pColorAttachments[1];
 		originalBeginRendering(command, info);
 	}
 
@@ -176,7 +179,7 @@ frame:
 		auto node = graph->GetGraphNode("Bindings");
 		const auto surface = graph->GetSurface("StaticSurface");
 		const auto texture = graph->GetRenderTarget("StaticTexture");
-		Require(node && surface && texture && surface->NeedsResolve(), "imported graph must contain native surfaces and targets");
+		Require(node && surface && texture, "imported graph must contain native surfaces and targets");
 		Require(node->GetRHIResource("color") == surface && node->GetRHIResource("sourceSampler") == texture &&
 			node->GetResolvedAttachment("color") == surface->GetResolved(),
 			"static graph binding must retain the surface rather than discard its multisampled target");
@@ -189,6 +192,185 @@ frame:
 			node->GetRHIResource("sourceSampler") == texture,
 			"external replacement must refresh independently of fixed graph bindings");
 		std::cout << "FrameGraph static surface/target binding and external publication passed\n";
+	}
+
+	class SceneNode : public RenderSceneNode
+	{
+	public:
+		TRefPtr<SubmissionResources> GetResources(const RHISceneViewSnapshot& scene)
+		{
+			return scene.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(this, scene.m_cameraIndex, 0);
+		}
+	};
+
+	ShaderSetPtr WriteMrtShader(const std::filesystem::path& workspace)
+	{
+		const auto path = workspace / "Content" / "MotionMrt.shader";
+		YAML::Node shader;
+		shader["glslCommon"] = "#version 450\n";
+		shader["colorAttachments"].push_back("R32G32B32A32_SFLOAT");
+		shader["colorAttachments"].push_back("R32G32B32A32_SFLOAT");
+		shader["glslVertex"] = "layout(location = 0) in vec3 position; void main() { gl_Position = vec4(position, 1); }";
+		shader["glslFragment"] = R"glsl(
+layout(location = 0) out vec4 outColor;
+layout(location = 1) out vec4 outMotion;
+void main() {
+	if (gl_FragCoord.x >= 4) discard;
+	outColor = vec4(0.75, 0.5, 0.25, 1);
+	outMotion = vec4(-0.5, 0.25, 0.125, 0);
+}
+)glsl";
+		std::ofstream output(path);
+		output << shader;
+		output.close();
+		Require(static_cast<bool>(output), "MRT shader fixture must be written");
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+		ShaderSetPtr compiled;
+		Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(id, compiled) && compiled && compiled->IsReady(),
+			"MRT shader must compile before recording");
+		return compiled;
+	}
+
+	void TestSceneMrt(ShaderSetPtr shader, bool colorIsSurface, bool motionIsSurface, bool late, bool forceSingleSample = false)
+	{
+		auto driver = Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		auto commands = Renderer::GetDriverCommands();
+		const bool msaa = !forceSingleSample && VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+		auto graph = TRefPtr<TestGraph>::Make();
+		const bool surfaces[] = { colorIsSurface, motionIsSurface };
+		const char* names[] = { "Color", "Motion" };
+		const char* inputs[] = { "color", "motionVectors" };
+		std::array<RHITexturePtr, 2> targets;
+		std::array<RHIRenderTargetPtr, 2> outputs;
+		std::array<RHIResourcePtr, 2> resources;
+		for (uint32_t i = 0; i < 2; ++i)
+		{
+			if (surfaces[i])
+			{
+				auto surface = driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+				if (forceSingleSample) surface = RHISurfacePtr::Make(surface->GetResolved(), surface->GetResolved(), false);
+				resources[i] = surface;
+				outputs[i] = surface->GetResolved();
+				targets[i] = surface->GetTarget();
+				graph->SetSurface(names[i], surface);
+			}
+			else
+			{
+				outputs[i] = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+				resources[i] = outputs[i];
+				targets[i] = msaa ? driver->GetOrAddMsaaFramebufferRenderTarget(EFormat::R32G32B32A32_SFLOAT, glm::ivec2(Side), i) : RHITexturePtr(outputs[i]);
+			}
+			graph->SetRenderTarget(names[i], outputs[i]);
+		}
+		auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT_S8_UINT,
+			ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit);
+		graph->SetRenderTarget("SceneDepth", depth);
+		RHISceneViewSnapshot scene;
+		scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+		scene.m_submissionContext->BeginSubmission(162, 0);
+		scene.m_frameBindings = driver->CreateShaderBindings();
+		scene.m_rhiLightsData = driver->CreateShaderBindings();
+		auto node = TRefPtr<SceneNode>::Make();
+		node->SetString("Tag", "MotionMrt");
+		node->SetString("GPUCulling", "false");
+		for (uint32_t i = 0; i < 2; ++i)
+		{
+			if (late) node->SetRHIResource_Unresolved(inputs[i], names[i]);
+			else node->SetRHIResource(inputs[i], resources[i]);
+		}
+		if (late) node->SetRHIResource_Unresolved("depthStencil", "SceneDepth");
+		else node->SetRHIResource("depthStencil", depth);
+		auto mesh = graph->GetFullscreenNdcQuad();
+		const RenderState state(false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, msaa);
+		auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader);
+		Require(material && material->GetVersion(), "MRT fixture needs a real material version");
+		RHIBatch batch(material, mesh);
+		batch.m_textureBindings = driver->CreateShaderBindings();
+		SceneNode::PerInstanceData instance{};
+		instance.model = glm::mat4(1);
+		instance.sphereBounds = glm::vec4(0, 0, 0, 1);
+		auto submission = node->GetResources(scene);
+		submission->m_packet.Add(batch, mesh, instance);
+		submission->m_packet.Finalize();
+		CaptureAttachments capture;
+		const glm::vec4 background[] = { glm::vec4(0.125f), glm::vec4(-0.25f) };
+		const glm::vec4 drawn[] = { glm::vec4(0.75f, 0.5f, 0.25f, 1), glm::vec4(-0.5f, 0.25f, 0.125f, 0) };
+		for (uint32_t frame = 0; frame < 2; ++frame)
+		{
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			upload->m_vulkan.m_commandBuffer->AddDependency(scene.m_submissionContext);
+			draw->m_vulkan.m_commandBuffer->AddDependency(scene.m_submissionContext);
+			commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
+			for (uint32_t i = 0; i < 2; ++i)
+			{
+				if (frame == 0)
+				{
+					commands->ImageMemoryBarrier(draw, targets[i], EImageLayout::TransferDstOptimal);
+					commands->ClearImage(draw, targets[i], background[i]);
+					commands->ImageMemoryBarrier(draw, targets[i], EImageLayout::ColorAttachmentOptimal);
+				}
+				if (msaa)
+				{
+					commands->ImageMemoryBarrier(draw, outputs[i], EImageLayout::TransferDstOptimal);
+					commands->ClearImage(draw, outputs[i], glm::vec4(-8));
+				}
+			}
+			recordedColorCount = 0;
+			node->Process(graph, upload, draw, scene);
+			const auto descriptors = std::array{ recordedColor, recordedMotion };
+			bool valid = recordedColorCount == 2 && node->GetDrawCallStats().m_numBatches == 1;
+			for (uint32_t i = 0; i < 2 && valid; ++i)
+			{
+				const auto& descriptor = descriptors[i];
+				valid = descriptor.imageView == static_cast<VkImageView>(*targets[i]->m_vulkan.m_imageView) &&
+					descriptor.resolveImageView == (msaa ? static_cast<VkImageView>(*outputs[i]->m_vulkan.m_imageView) : VK_NULL_HANDLE) &&
+					descriptor.resolveMode == (msaa ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE) &&
+					descriptor.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && descriptor.storeOp == VK_ATTACHMENT_STORE_OP_STORE;
+			}
+			if (!valid)
+			{
+				commands->EndCommandList(upload);
+				commands->EndCommandList(draw);
+				upload->m_vulkan.m_commandBuffer->Reset();
+				draw->m_vulkan.m_commandBuffer->Reset();
+				throw std::runtime_error("RenderScene MRT dropped or replaced a native color/motion attachment: count=" +
+					std::to_string(recordedColorCount) + ", batches=" + std::to_string(node->GetDrawCallStats().m_numBatches));
+			}
+			std::array<RHIBufferPtr, 2> readback;
+			for (uint32_t i = 0; i < 2; ++i)
+			{
+				readback[i] = driver->CreateBuffer(Side * Side * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				commands->ImageMemoryBarrier(draw, outputs[i], EImageLayout::TransferSrcOptimal);
+				commands->CopyImageToBuffer(draw, outputs[i], readback[i]);
+			}
+			commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+			commands->EndCommandList(upload);
+			commands->EndCommandList(draw);
+			auto ready = driver->CreateWaitSemaphore();
+			auto uploaded = RHIFencePtr::Make();
+			auto finished = RHIFencePtr::Make();
+			Require(driver->SubmitCommandList(upload, uploaded, ready) && driver->SubmitCommandList(draw, finished, nullptr, ready),
+				"MRT upload and draw must submit");
+			Require(finished->Wait(5000000000ull) == EFenceStatus::Finished && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
+				"MRT GPU readbacks must finish");
+			for (uint32_t image = 0; image < 2; ++image)
+			{
+				const auto pixels = static_cast<const glm::vec4*>(readback[image]->GetPointer());
+				for (uint32_t i = 0; i < Side * Side; ++i)
+					for (uint32_t component = 0; component < 4; ++component)
+					{
+						const auto expected = i % Side < Side / 2 ? drawn[image] : background[image];
+						Require(std::isfinite(pixels[i][component]) && std::abs(pixels[i][component] - expected[component]) < 0.00001f,
+							"MRT must draw both outputs and preserve every uncovered pixel in the live target");
+					}
+			}
+		}
+		std::cout << "RenderScene MRT " << (msaa ? "2x" : "1x") << " colorSurface=" << colorIsSurface <<
+			" motionSurface=" << motionIsSurface << " late=" << late << ": two frames / both images and native descriptors passed\n";
 	}
 
 	void TestPostProcess(const std::string& smallShader, const std::string& largeShader)
@@ -362,10 +544,21 @@ namespace Sailor::Tests
 		const auto smallShader = WriteShader(workspace, false);
 		const auto largeShader = WriteShader(workspace, true);
 		const auto graphId = WriteGraph(workspace);
+		const auto mrtShader = WriteMrtShader(workspace);
 		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 		auto task = Tasks::CreateTaskWithResult<std::string>("Post-process attachment and parameter contracts", [&]() -> std::string
 			{
-				try { TestImportedBindings(graphId); TestPostProcess(smallShader, largeShader); return {}; }
+				try
+				{
+					TestSceneMrt(mrtShader, true, false, false, true);
+					for (bool late : { false, true })
+						for (bool colorSurface : { false, true })
+							for (bool motionSurface : { false, true }) TestSceneMrt(mrtShader, colorSurface, motionSurface, late);
+					TestImportedBindings(graphId);
+					if (VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() == VK_SAMPLE_COUNT_2_BIT)
+						TestPostProcess(smallShader, largeShader);
+					return {};
+				}
 				catch (const std::exception& error) { return error.what(); }
 			}, EThreadType::Render);
 		task->Run();

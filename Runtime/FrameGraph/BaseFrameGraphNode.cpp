@@ -60,6 +60,16 @@ RHITexturePtr BaseFrameGraphNode::GetResolvedAttachment(const std::string& name,
 	return resource.DynamicCast<RHITexture>();
 }
 
+RHITexturePtr BaseFrameGraphNode::GetTargetAttachment(const std::string& name, const RHIFrameGraph* frameGraph) const
+{
+	auto resource = GetRHIResource(name, frameGraph);
+	if (const auto surface = resource.DynamicCast<RHISurface>())
+	{
+		return surface->GetTarget();
+	}
+	return resource.DynamicCast<RHITexture>();
+}
+
 RHITexturePtr BaseFrameGraphNode::GetSampledAttachment(const std::string& name, const RHIFrameGraph* frameGraph) const
 {
 	auto texture = GetResolvedAttachment(name, frameGraph);

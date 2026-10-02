@@ -339,6 +339,19 @@ namespace Sailor::RHI
 			float clearDepth,
 			bool bStoreDepth) = 0;
 
+		// One optional resolve per color target, preserving explicit MSAA targets in mixed MRT passes.
+		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+			const TVector<RHI::RHITexturePtr>& colorAttachments,
+			const TVector<RHI::RHITexturePtr>& colorAttachmentResolves,
+			RHI::RHITexturePtr depthStencilAttachment,
+			glm::ivec4 renderArea,
+			glm::ivec2 offset,
+			bool bClearRenderTargets,
+			glm::vec4 clearColor,
+			float clearDepth,
+			bool bSupportMultisampling,
+			bool bStoreDepth) = 0;
+
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd) = 0;
 
 		SAILOR_API virtual void RestoreImageBarriers(RHI::RHICommandListPtr cmd) = 0;

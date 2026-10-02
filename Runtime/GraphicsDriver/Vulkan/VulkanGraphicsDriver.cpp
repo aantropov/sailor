@@ -3405,6 +3405,47 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 	}
 }
 
+void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
+	const TVector<RHI::RHITexturePtr>& colorAttachments,
+	const TVector<RHI::RHITexturePtr>& colorAttachmentResolves,
+	RHI::RHITexturePtr depthStencilAttachment,
+	glm::ivec4 renderArea,
+	glm::ivec2 offset,
+	bool bClearRenderTargets,
+	glm::vec4 clearColor,
+	float clearDepth,
+	bool bSupportMultisampling,
+	bool bStoreDepth)
+{
+	const bool multisampling = bSupportMultisampling && m_vkInstance->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+	TVector<VulkanImageViewPtr> targets(colorAttachments.Num());
+	TVector<VulkanImageViewPtr> resolves(colorAttachments.Num());
+	for (uint32_t i = 0; i < colorAttachments.Num(); ++i)
+	{
+		const auto& target = colorAttachments[i];
+		const auto& resolve = colorAttachmentResolves[i];
+		targets[i] = target->m_vulkan.m_imageView;
+		resolves[i] = resolve ? resolve->m_vulkan.m_imageView : nullptr;
+		if (multisampling && target->GetMsaaSamples() == RHI::EMsaaSamples::Samples_1)
+		{
+			resolves[i] = targets[i];
+			targets[i] = GetOrAddMsaaFramebufferRenderTarget(target->GetFormat(), target->GetExtent(), i)->m_vulkan.m_imageView;
+		}
+	}
+	VulkanImageViewPtr depthTarget = depthStencilAttachment ? depthStencilAttachment->m_vulkan.m_imageView : nullptr;
+	VulkanImageViewPtr depthResolve;
+	if (multisampling && depthStencilAttachment && depthStencilAttachment->GetMsaaSamples() == RHI::EMsaaSamples::Samples_1)
+	{
+		depthResolve = depthTarget;
+		depthTarget = GetOrAddMsaaFramebufferRenderTarget(depthStencilAttachment->GetFormat(),
+			depthStencilAttachment->GetExtent())->m_vulkan.m_imageView;
+	}
+	const VkRect2D rect{ { renderArea.x, renderArea.y }, { static_cast<uint32_t>(renderArea.z), static_cast<uint32_t>(renderArea.w) } };
+	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(targets, resolves, depthTarget, depthResolve,
+		rect, 0, VkOffset2D{ offset.x, offset.y }, bClearRenderTargets,
+		VulkanRenderPassClearValues(clearColor, clearDepth), bStoreDepth);
+}
+
 void VulkanGraphicsDriver::EndRenderPass(RHI::RHICommandListPtr cmd)
 {
 	cmd->m_vulkan.m_commandBuffer->EndRenderPassEx();

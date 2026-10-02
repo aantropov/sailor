@@ -267,6 +267,18 @@ namespace Sailor::GraphicsDriver::Vulkan
 			bool bSupportMultisampling = true,
 			bool bStoreDepth = true) override;
 
+		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+			const TVector<RHI::RHITexturePtr>& colorAttachments,
+			const TVector<RHI::RHITexturePtr>& colorAttachmentResolves,
+			RHI::RHITexturePtr depthStencilAttachment,
+			glm::ivec4 renderArea,
+			glm::ivec2 offset,
+			bool bClearRenderTargets,
+			glm::vec4 clearColor,
+			float clearDepth,
+			bool bSupportMultisampling,
+			bool bStoreDepth) override;
+
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd) override;
 		SAILOR_API virtual void MemoryBarrier(RHI::RHICommandListPtr cmd, RHI::EAccessFlags srcBit, RHI::EAccessFlags dstBit) override;
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EImageLayout newLayout) override;
