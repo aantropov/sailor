@@ -304,7 +304,7 @@ bool Prefab::ConfigureLinkedInstance(
 	m_linkedParentInstanceId = parentInstanceId;
 	m_gameObjectOverrides = gameObjectOverrides;
 	m_componentOverrides = componentOverrides;
-	m_bLinkedInstanceRecord = true;
+	m_recordType = ERecordType::LinkedInstance;
 
 	if (!ValidateForInstantiation(outDiagnostic))
 	{
@@ -693,7 +693,7 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 		const auto* baselineGameObject = baseline.FindGameObject(sourceGameObject.m_instanceId);
 
 		const bool bHasPriorGameObjectOverride =
-			effectiveBaseline->m_bLinkedInstanceRecord &&
+			effectiveBaseline->IsLinkedInstanceRecord() &&
 			effectiveBaseline->m_gameObjectOverrides.ContainsKey(
 				sourceGameObject.m_instanceId);
 		const YAML::Node priorGameObjectOverride =
@@ -825,7 +825,7 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 			}
 
 			const ReflectedData* priorComponentOverride = nullptr;
-			if (effectiveBaseline->m_bLinkedInstanceRecord &&
+			if (effectiveBaseline->IsLinkedInstanceRecord() &&
 				effectiveBaseline->m_componentOverrides.ContainsKey(
 					sourceComponentId))
 			{

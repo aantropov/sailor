@@ -93,17 +93,30 @@ namespace Sailor
 			const PrefabPtr& expandedPrefab,
 			std::string& outDiagnostic);
 
-		SAILOR_API bool IsLinkedInstanceRecord() const { return m_bLinkedInstanceRecord; }
+		SAILOR_API bool IsLinkedInstanceRecord() const
+		{
+			return m_recordType == ERecordType::LinkedInstance || m_recordType == ERecordType::ExpandedLinkedInstance;
+		}
 		SAILOR_API const InstanceId& GetLinkedParentInstanceId() const { return m_linkedParentInstanceId; }
 		SAILOR_API const TMap<InstanceId, InstanceId>& GetLinkedInstanceIds() const { return m_linkedInstanceIds; }
 		SAILOR_API const TMap<InstanceId, YAML::Node>& GetLinkedGameObjectOverrides() const { return m_gameObjectOverrides; }
 		SAILOR_API const TMap<InstanceId, ReflectedData>& GetLinkedComponentOverrides() const { return m_componentOverrides; }
-		SAILOR_API bool IsDetachedFromPrefabRecord() const { return m_bDetachedFromPrefabRecord; }
+		SAILOR_API bool IsDetachedFromPrefabRecord() const { return m_recordType == ERecordType::DetachedSnapshot; }
 		SAILOR_API const InstanceId& GetDetachedParentInstanceId() const { return m_detachedParentInstanceId; }
-		SAILOR_API bool IsLinkedPrefabSnapshotRecord() const { return m_bLinkedPrefabSnapshotRecord; }
+		SAILOR_API bool IsLinkedPrefabSnapshotRecord() const { return m_recordType == ERecordType::LinkedSnapshot; }
 		SAILOR_API const FileId& GetLinkedSnapshotSourceFileId() const { return m_linkedSnapshotSourceFileId; }
 
 	protected:
+
+		enum class ERecordType : uint8_t
+		{
+			Source,
+			LinkedInstance,
+			ExpandedLinkedInstance,
+			DetachedSnapshot,
+			LinkedSnapshot,
+			Invalid
+		};
 
 		void ResetData();
 		bool ConfigureLinkedInstance(
@@ -136,10 +149,7 @@ namespace Sailor
 		FileId m_linkedSnapshotSourceFileId{};
 		InstanceId m_linkedParentInstanceId{};
 		InstanceId m_detachedParentInstanceId{};
-		bool m_bLinkedInstanceRecord = false;
-		bool m_bExpandedLinkedInstanceRecord = false;
-		bool m_bDetachedFromPrefabRecord = false;
-		bool m_bLinkedPrefabSnapshotRecord = false;
+		ERecordType m_recordType = ERecordType::Source;
 
 		friend class PrefabImporter;
 		friend class WorldPrefab;

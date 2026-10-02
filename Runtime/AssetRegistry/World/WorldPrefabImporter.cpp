@@ -39,7 +39,7 @@ YAML::Node WorldPrefab::Serialize() const
 	for (const auto& prefab : m_gameObjects)
 	{
 		YAML::Node prefabNode = prefab->Serialize();
-		if (prefab->m_bLinkedInstanceRecord)
+		if (prefab->IsLinkedInstanceRecord())
 		{
 			prefab->SerializeLinkedProperties(prefabNode, prefab->GetFileId());
 		}
@@ -80,6 +80,22 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 	TSet<InstanceId> reservedInstanceIds;
 	for (const auto& prefabNode : inData["prefabs"])
 	{
+		FileId sourcePrefabId;
+		::Deserialize(prefabNode, "fileId", sourcePrefabId);
+		if (sourcePrefabId)
+		{
+			for (const auto* field : { "instanceIds", "gameObjectOverrides", "componentOverrides" })
+			{
+				const auto value = prefabNode[field];
+				if (!value || !value.IsMap())
+				{
+					m_loadDiagnostic = "linked prefab '" + sourcePrefabId.ToString() +
+						"' requires a mapping for '" + field + "'";
+					return;
+				}
+			}
+		}
+
 		if (prefabNode["gameObjects"] &&
 			prefabNode["gameObjects"].IsSequence())
 		{
@@ -180,36 +196,7 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 		}
 
 		TMap<InstanceId, InstanceId> savedSourceToInstanceIds;
-		if (prefabNode["instanceIds"])
-		{
-			::Deserialize(
-				prefabNode,
-				"instanceIds",
-				savedSourceToInstanceIds);
-		}
-		else if (expandedPrefab->m_gameObjects.Num() ==
-			sourcePrefab->m_gameObjects.Num())
-		{
-			for (uint32_t gameObjectIndex = 0;
-				gameObjectIndex < sourcePrefab->m_gameObjects.Num();
-				++gameObjectIndex)
-			{
-				savedSourceToInstanceIds[
-					sourcePrefab->m_gameObjects[gameObjectIndex].m_instanceId] =
-					expandedPrefab->m_gameObjects[gameObjectIndex].m_instanceId;
-			}
-		}
-		else
-		{
-			for (const auto& sourceGameObject :
-				sourcePrefab->m_gameObjects)
-			{
-				if (const auto* expandedGameObject = expanded.FindGameObject(sourceGameObject.m_instanceId))
-				{
-					savedSourceToInstanceIds[sourceGameObject.m_instanceId] = expandedGameObject->m_instanceId;
-				}
-			}
-		}
+		::Deserialize(prefabNode, "instanceIds", savedSourceToInstanceIds);
 
 		TMap<InstanceId, InstanceId> sourceToInstanceIds;
 		if (!ReconcileLinkedInstanceIds(
@@ -231,20 +218,8 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 
 		TMap<InstanceId, YAML::Node> gameObjectOverrides;
 		TMap<InstanceId, ReflectedData> componentOverrides;
-		if (prefabNode["gameObjectOverrides"])
-		{
-			::Deserialize(
-				prefabNode,
-				"gameObjectOverrides",
-				gameObjectOverrides);
-		}
-		if (prefabNode["componentOverrides"])
-		{
-			::Deserialize(
-				prefabNode,
-				"componentOverrides",
-				componentOverrides);
-		}
+		::Deserialize(prefabNode, "gameObjectOverrides", gameObjectOverrides);
+		::Deserialize(prefabNode, "componentOverrides", componentOverrides);
 
 		TMap<InstanceId, YAML::Node> filteredGameObjectOverrides;
 		for (const auto& overrideEntry : gameObjectOverrides)
@@ -274,35 +249,6 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 			}
 		}
 		componentOverrides = std::move(filteredComponentOverrides);
-
-		if (!prefabNode["gameObjectOverrides"] ||
-			!prefabNode["componentOverrides"])
-		{
-			TMap<InstanceId, YAML::Node> derivedGameObjectOverrides;
-			TMap<InstanceId, ReflectedData> derivedComponentOverrides;
-			if (!BuildLinkedOverrides(
-					expanded,
-					source,
-					sourceToInstanceIds,
-					derivedGameObjectOverrides,
-					derivedComponentOverrides,
-					m_loadDiagnostic))
-			{
-				m_loadDiagnostic = "cannot derive linked prefab " +
-					std::to_string(prefabIndex) + " overrides: " +
-					m_loadDiagnostic;
-				return;
-			}
-
-			if (!prefabNode["gameObjectOverrides"])
-			{
-				gameObjectOverrides = std::move(derivedGameObjectOverrides);
-			}
-			if (!prefabNode["componentOverrides"])
-			{
-				componentOverrides = std::move(derivedComponentOverrides);
-			}
-		}
 
 		PrefabPtr linkedPrefab =
 			App::GetSubmodule<PrefabImporter>()->Create(sourcePrefabId);
@@ -796,7 +742,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 			root->GetParent()
 				? root->GetParent()->GetInstanceId()
 				: InstanceId::Invalid;
-		nextEffectiveBaseline->m_bLinkedInstanceRecord = true;
+		nextEffectiveBaseline->m_recordType = Prefab::ERecordType::LinkedInstance;
 		if (!bBuiltNextBaseline ||
 			!nextEffectiveBaseline->ValidateForInstantiation(
 				diagnostic))
@@ -819,9 +765,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 		expandedPrefab->m_linkedParentInstanceId = root->GetParent()
 			? root->GetParent()->GetInstanceId()
 			: InstanceId::Invalid;
-		expandedPrefab->m_bLinkedInstanceRecord = true;
-		expandedPrefab->m_bExpandedLinkedInstanceRecord =
-			true;
+		expandedPrefab->m_recordType = Prefab::ERecordType::ExpandedLinkedInstance;
 		expandedPrefab->m_detachedSupplementalInstanceIds.
 			Clear();
 		TSet<InstanceId> mappedLiveInstanceIds;

@@ -72,6 +72,8 @@ void Prefab::SerializeLinkedProperties(
 	::Serialize(outData, "instanceIds", m_linkedInstanceIds);
 	SERIALIZE_PROPERTY(outData, m_gameObjectOverrides);
 	SERIALIZE_PROPERTY(outData, m_componentOverrides);
+	if (m_gameObjectOverrides.IsEmpty()) outData["gameObjectOverrides"] = YAML::Node(YAML::NodeType::Map);
+	if (m_componentOverrides.IsEmpty()) outData["componentOverrides"] = YAML::Node(YAML::NodeType::Map);
 }
 
 YAML::Node Prefab::Serialize() const
@@ -80,12 +82,12 @@ YAML::Node Prefab::Serialize() const
 
 	SERIALIZE_PROPERTY(outData, m_gameObjects);
 	SERIALIZE_PROPERTY(outData, m_components);
-	if (m_bDetachedFromPrefabRecord)
+	if (IsDetachedFromPrefabRecord() || m_recordType == ERecordType::Invalid)
 	{
 		::Serialize(outData, "detachedFromPrefab", true);
 		::Serialize(outData, "parentInstanceId", m_detachedParentInstanceId);
 	}
-	if (m_bLinkedPrefabSnapshotRecord)
+	if (IsLinkedPrefabSnapshotRecord() || m_recordType == ERecordType::Invalid)
 	{
 		::Serialize(outData, "linkedPrefabSnapshot", true);
 		SerializeLinkedProperties(outData, m_linkedSnapshotSourceFileId);
@@ -106,10 +108,7 @@ void Prefab::ResetData()
 	m_linkedSnapshotSourceFileId = FileId::Invalid;
 	m_linkedParentInstanceId = InstanceId::Invalid;
 	m_detachedParentInstanceId = InstanceId::Invalid;
-	m_bLinkedInstanceRecord = false;
-	m_bExpandedLinkedInstanceRecord = false;
-	m_bDetachedFromPrefabRecord = false;
-	m_bLinkedPrefabSnapshotRecord = false;
+	m_recordType = ERecordType::Source;
 }
 
 void Prefab::Deserialize(const YAML::Node& inData)
@@ -118,22 +117,19 @@ void Prefab::Deserialize(const YAML::Node& inData)
 
 	DESERIALIZE_PROPERTY(inData, m_gameObjects);
 	DESERIALIZE_PROPERTY(inData, m_components);
-	::Deserialize(
-		inData,
-		"detachedFromPrefab",
-		m_bDetachedFromPrefabRecord);
-	::Deserialize(
-		inData,
-		"linkedPrefabSnapshot",
-		m_bLinkedPrefabSnapshotRecord);
-	if (m_bDetachedFromPrefabRecord)
+	bool bDetached = false, bLinkedSnapshot = false;
+	::Deserialize(inData, "detachedFromPrefab", bDetached);
+	::Deserialize(inData, "linkedPrefabSnapshot", bLinkedSnapshot);
+	m_recordType = bDetached && bLinkedSnapshot ? ERecordType::Invalid :
+		bDetached ? ERecordType::DetachedSnapshot : bLinkedSnapshot ? ERecordType::LinkedSnapshot : ERecordType::Source;
+	if (bDetached)
 	{
 		::Deserialize(
 			inData,
 			"parentInstanceId",
 			m_detachedParentInstanceId);
 	}
-	if (m_bLinkedPrefabSnapshotRecord)
+	if (bLinkedSnapshot)
 	{
 		::Deserialize(
 			inData,
@@ -164,19 +160,16 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 		return false;
 	}
 
-	if (m_bDetachedFromPrefabRecord &&
-		m_bLinkedPrefabSnapshotRecord)
+	if (m_recordType == ERecordType::Invalid)
 	{
 		outDiagnostic =
 			"a prefab snapshot cannot be both detached and linked";
 		return false;
 	}
 
-	if (m_bDetachedFromPrefabRecord)
+	if (IsDetachedFromPrefabRecord())
 	{
 		if (GetFileId() ||
-			m_bLinkedInstanceRecord ||
-			m_bExpandedLinkedInstanceRecord ||
 			!m_detachedParentInstanceId.IsGameObjectId())
 		{
 			outDiagnostic =
@@ -191,11 +184,9 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 		return false;
 	}
 
-	if (m_bLinkedPrefabSnapshotRecord)
+	if (IsLinkedPrefabSnapshotRecord())
 	{
 		if (GetFileId() ||
-			m_bLinkedInstanceRecord ||
-			m_bExpandedLinkedInstanceRecord ||
 			!m_linkedSnapshotSourceFileId ||
 			m_linkedInstanceIds.IsEmpty() ||
 			(m_linkedParentInstanceId &&
@@ -213,7 +204,7 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 		return false;
 	}
 
-	if (!m_bLinkedInstanceRecord &&
+	if (!IsLinkedInstanceRecord() &&
 		!m_detachedSupplementalInstanceIds.IsEmpty())
 	{
 		outDiagnostic =
@@ -334,10 +325,10 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 		}
 	}
 
-	if (m_bLinkedInstanceRecord)
+	if (IsLinkedInstanceRecord())
 	{
 		TSet<InstanceId> mappedExpandedInstanceIds;
-		if (m_bExpandedLinkedInstanceRecord)
+		if (m_recordType == ERecordType::ExpandedLinkedInstance)
 		{
 			for (const auto& mapping :
 				m_linkedInstanceIds)
@@ -350,7 +341,7 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 		for (const auto& gameObject : m_gameObjects)
 		{
 			const bool bMappedSource =
-				m_bExpandedLinkedInstanceRecord
+				m_recordType == ERecordType::ExpandedLinkedInstance
 					? mappedExpandedInstanceIds.Contains(
 						gameObject.m_instanceId)
 					: m_linkedInstanceIds.ContainsKey(
@@ -477,7 +468,7 @@ bool Prefab::AppendDetachedSupplementalHierarchy(
 	std::string& outDiagnostic)
 {
 	outDiagnostic.clear();
-	if (!m_bLinkedInstanceRecord ||
+	if (!IsLinkedInstanceRecord() ||
 		!expandedPrefab ||
 		expandedPrefab.GetRawPtr() == this)
 	{

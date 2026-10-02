@@ -376,10 +376,7 @@ bool World::RegisterPrefabInstance(
 		effectiveBaseline->m_detachedSupplementalInstanceIds;
 	link.m_effectiveBaseline->m_linkedParentInstanceId =
 		effectiveBaseline->m_linkedParentInstanceId;
-	link.m_effectiveBaseline->m_bLinkedInstanceRecord =
-		effectiveBaseline->m_bLinkedInstanceRecord;
-	link.m_effectiveBaseline->m_bExpandedLinkedInstanceRecord =
-		effectiveBaseline->m_bExpandedLinkedInstanceRecord;
+	link.m_effectiveBaseline->m_recordType = effectiveBaseline->m_recordType;
 	link.m_effectiveBaseline->m_bIsReady.store(
 		effectiveBaseline->IsReady(),
 		std::memory_order_release);
@@ -961,14 +958,14 @@ GameObjectPtr World::Instantiate(
 		return {};
 	}
 
-	if (prefab->m_bLinkedPrefabSnapshotRecord)
+	if (prefab->IsLinkedPrefabSnapshotRecord())
 	{
 		SAILOR_LOG_ERROR(
 			"Cannot instantiate linked prefab snapshot directly; it must be resolved against its current source first.");
 		return {};
 	}
 
-	if (prefab->m_bExpandedLinkedInstanceRecord)
+	if (prefab->m_recordType == Prefab::ERecordType::ExpandedLinkedInstance)
 	{
 		SAILOR_LOG_ERROR(
 			"Cannot instantiate an expanded linked serialization record directly.");
@@ -976,7 +973,7 @@ GameObjectPtr World::Instantiate(
 	}
 
 	GameObjectPtr detachedParent;
-	if (prefab->m_bDetachedFromPrefabRecord)
+	if (prefab->IsDetachedFromPrefabRecord())
 	{
 		if (!bStrictInstanceIds)
 		{
@@ -998,7 +995,7 @@ GameObjectPtr World::Instantiate(
 		}
 	}
 
-	if (prefab->m_bLinkedInstanceRecord)
+	if (prefab->IsLinkedInstanceRecord())
 	{
 		TMap<InstanceId, InstanceId> dependencyAliasTargets;
 		auto registerDependencyAlias =
@@ -1113,7 +1110,7 @@ GameObjectPtr World::Instantiate(
 			const InstanceId& sourceInstanceId =
 				sourceGameObject.m_instanceId;
 			InstanceId desiredGameObjectId = sourceInstanceId;
-			if (prefab->m_bLinkedInstanceRecord)
+			if (prefab->IsLinkedInstanceRecord())
 			{
 				if (prefab->m_linkedInstanceIds.ContainsKey(
 						sourceInstanceId))
@@ -1197,7 +1194,7 @@ GameObjectPtr World::Instantiate(
 	{
 		const InstanceId& sourceInstanceId = prefab->m_gameObjects[j].m_instanceId;
 		InstanceId gameObjectId;
-		if (prefab->m_bLinkedInstanceRecord)
+		if (prefab->IsLinkedInstanceRecord())
 		{
 			if (prefab->m_linkedInstanceIds.ContainsKey(
 					sourceInstanceId))
@@ -1411,7 +1408,7 @@ GameObjectPtr World::Instantiate(
 		return {};
 	}
 
-	if (prefab->m_bLinkedInstanceRecord && prefab->m_linkedParentInstanceId)
+	if (prefab->IsLinkedInstanceRecord() && prefab->m_linkedParentInstanceId)
 	{
 		GameObjectPtr externalParent =
 			GetObjectByInstanceId(prefab->m_linkedParentInstanceId).DynamicCast<GameObject>();
@@ -1435,7 +1432,7 @@ GameObjectPtr World::Instantiate(
 		}
 	}
 
-	if (prefab->m_bDetachedFromPrefabRecord)
+	if (prefab->IsDetachedFromPrefabRecord())
 	{
 		root->SetParentInternal(
 			detachedParent,

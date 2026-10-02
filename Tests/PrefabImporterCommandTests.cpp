@@ -323,6 +323,8 @@ namespace
 		result["instanceIds"] = ids;
 		result["gameObjectOverrides"] = objectOverrides;
 		result["componentOverrides"] = componentOverrides;
+		if (objectOverrides.IsEmpty()) result["gameObjectOverrides"] = YAML::Node(YAML::NodeType::Map);
+		if (componentOverrides.IsEmpty()) result["componentOverrides"] = YAML::Node(YAML::NodeType::Map);
 		return result;
 	}
 
@@ -447,19 +449,32 @@ namespace
 				return saved->Serialize();
 			};
 		const auto serialized = save(next);
+		for (uint32_t i = 1; i < 5; ++i)
+			for (const auto* field : { "instanceIds", "gameObjectOverrides", "componentOverrides" })
+				Require(serialized["prefabs"][i][field].IsMap(),
+					"saved linked records must write explicit maps, including empty overrides");
 		auto roundtrip = load(serialized);
 		verifySnapshot(roundtrip, true);
 		Require(Utils::AreYamlNodesEqual(serialized, save(roundtrip)), "save-load-save must not introduce new overrides");
-		auto withoutOverrides = YAML::Clone(serialized);
-		for (uint32_t i = 1; i < 5; ++i)
+		for (const auto* field : { "instanceIds", "gameObjectOverrides", "componentOverrides" })
 		{
-			withoutOverrides["prefabs"][i].remove("gameObjectOverrides");
-			withoutOverrides["prefabs"][i].remove("componentOverrides");
+			for (uint32_t invalidKind = 0; invalidKind < 4; ++invalidKind)
+			{
+				auto invalid = YAML::Clone(serialized);
+				if (invalidKind == 0) invalid["prefabs"][1].remove(field);
+				if (invalidKind == 1) invalid["prefabs"][1][field] = YAML::Node();
+				if (invalidKind == 2) invalid["prefabs"][1][field] = YAML::Node(YAML::NodeType::Sequence);
+				if (invalidKind == 3) invalid["prefabs"][1][field] = "not a map";
+				auto rejected = worlds->Create();
+				rejected->Deserialize(invalid);
+				Require(!rejected->IsReady() && !rejected->GetLoadDiagnostic().empty(),
+					"linked records must reject missing or malformed identity and override maps");
+				rejected->Deserialize(serialized);
+				Require(rejected->IsReady() && Utils::AreYamlNodesEqual(serialized, save(rejected)),
+					"repairing canonical linked metadata must preserve IDs and authored overrides");
+			}
 		}
-		auto derived = load(withoutOverrides);
-		verifySnapshot(derived, true);
-		Require(Utils::AreYamlNodesEqual(serialized, save(derived)),
-			"deriving absent override fields must reuse the checked source and preserve the existing save contract");
+		std::cout << "Canonical linked records: explicit maps, missing/malformed rejection and repaired roundtrip passed\n";
 		std::cout << "Linked prefab snapshots: one real read and validation per source, coherent edits and independent overrides passed\n";
 	}
 
@@ -493,6 +508,45 @@ namespace
 		Require(!target->ConfigureLinkedInstance(target, ids, InstanceId::Invalid, {}, {}, diagnostic) && !target->IsReady(),
 			"self-configuration must fail without retaining the old ready state");
 		Require(configure() && target->IsReady(), "a distinct valid source must still configure after self-rejection");
+		target->Deserialize(valid);
+		Require(!target->IsReady() && !target->IsLinkedInstanceRecord() && target->ValidateForInstantiation(diagnostic),
+			"deserializing source data must clear the prepared linked record state");
+
+		auto snapshot = prefabs->Create();
+		auto detached = YAML::Clone(valid);
+		detached["detachedFromPrefab"] = true;
+		detached["parentInstanceId"] = InstanceId::GenerateNewInstanceId();
+		snapshot->Deserialize(detached);
+		Require(snapshot->ValidateForInstantiation(diagnostic) && snapshot->IsDetachedFromPrefabRecord() &&
+			!snapshot->IsLinkedPrefabSnapshotRecord() && !snapshot->IsLinkedInstanceRecord(),
+			"a detached snapshot must have exactly its detached record semantics");
+		const auto detachedRoundtrip = YAML::Clone(snapshot->Serialize());
+		snapshot->Deserialize(detachedRoundtrip);
+		Require(snapshot->ValidateForInstantiation(diagnostic) && snapshot->IsDetachedFromPrefabRecord(),
+			"detached snapshot serialization must retain its record kind");
+
+		auto linked = YAML::Clone(record);
+		linked["linkedPrefabSnapshot"] = true;
+		snapshot->Deserialize(linked);
+		Require(snapshot->ValidateForInstantiation(diagnostic) && snapshot->IsLinkedPrefabSnapshotRecord() &&
+			!snapshot->IsDetachedFromPrefabRecord() && !snapshot->IsLinkedInstanceRecord(),
+			"a linked undo snapshot must not inherit the preceding detached state");
+		const auto linkedRoundtrip = YAML::Clone(snapshot->Serialize());
+		snapshot->Deserialize(linkedRoundtrip);
+		Require(snapshot->ValidateForInstantiation(diagnostic) && snapshot->IsLinkedPrefabSnapshotRecord() &&
+			snapshot->GetLinkedSnapshotSourceFileId() == id, "linked snapshot roundtrip must retain its source identity");
+
+		linked["detachedFromPrefab"] = true;
+		snapshot->Deserialize(linked);
+		Require(!snapshot->ValidateForInstantiation(diagnostic) && !diagnostic.empty(),
+			"conflicting snapshot markers must be rejected, not resolved by flag priority");
+		snapshot->Deserialize(YAML::Clone(snapshot->Serialize()));
+		Require(!snapshot->ValidateForInstantiation(diagnostic), "serializing a conflicting record must not make it valid");
+		snapshot->Deserialize(valid);
+		Require(snapshot->ValidateForInstantiation(diagnostic) && !snapshot->IsLinkedInstanceRecord() &&
+			!snapshot->IsDetachedFromPrefabRecord() && !snapshot->IsLinkedPrefabSnapshotRecord(),
+			"a plain source must clear all prior snapshot state after a rejected record");
+		std::cout << "Prefab record kinds: linked/source reset, detached/linked snapshot roundtrip and conflict rejection passed\n";
 		std::cout << "Standalone prefab validation rejects invalid hierarchy/type/identity and recovers after repair\n";
 	}
 

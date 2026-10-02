@@ -476,9 +476,7 @@ namespace
 			}
 
 			result->m_linkedInstanceIds = mappings;
-			result->m_bLinkedInstanceRecord = true;
-			result->m_bExpandedLinkedInstanceRecord =
-				true;
+			result->m_recordType = ERecordType::ExpandedLinkedInstance;
 			result->m_detachedSupplementalInstanceIds.
 				Clear();
 			TSet<InstanceId> mappedLiveIds;
@@ -4434,6 +4432,10 @@ namespace
 					diagnostic),
 			"the expanded save record should remain valid after linked serialization metadata is attached: " +
 				diagnostic);
+		const size_t objectCountBeforeExpandedRestore = world.GetGameObjects().Num();
+		Require(firstSavedExpanded->IsLinkedInstanceRecord() && !world.Instantiate(firstSavedExpanded) &&
+			world.GetGameObjects().Num() == objectCountBeforeExpandedRestore,
+			"expanded linked records must retain linked semantics but reject direct instantiation without mutation");
 		const std::string firstSavedYaml =
 			YAML::Dump(
 				firstSavedExpanded->Serialize());
