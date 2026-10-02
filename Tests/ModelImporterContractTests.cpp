@@ -833,7 +833,9 @@ namespace
 				WriteAnimationFixtureText(moved, YAML::Dump(stale));
 				Require(registry.UpdateAsset(modelId, true), "explicit reimport must repair the moved owned material");
 				const auto* info = registry.GetAssetInfoPtr<MaterialAssetInfoPtr>(generated[0]);
-				Require(info && info->GetAssetFilepath() == moved.string() && info->GetSourceModel() == modelId &&
+				Require(info && std::filesystem::equivalent(info->GetAssetFilepath(), moved),
+					"the moved material must resolve to the same physical file after reimport");
+				Require(info->GetSourceModel() == modelId &&
 					info->GetSourceMaterialIndex() == 0 && !std::filesystem::exists(original) &&
 					YAML::LoadFile(moved.string())["uniformsVec4"]["material.emissiveFactor"].as<glm::vec4>() == glm::vec4(1, 2, 3, 0),
 					"ownership and identity must survive the move, rename and a fresh registry");
