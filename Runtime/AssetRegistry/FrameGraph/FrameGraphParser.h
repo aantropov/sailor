@@ -27,8 +27,16 @@ namespace Sailor
 			virtual void Deserialize(const YAML::Node& inData)
 			{
 				m_name = inData["name"].as<std::string>();
-				m_path = inData["path"].as<std::string>();
-				m_fileId.Deserialize(inData["fileId"]);
+				m_path = inData["path"].as<std::string>("");
+				m_fileId = FileId{};
+				if (inData["fileId"])
+				{
+					m_fileId.Deserialize(inData["fileId"]);
+				}
+				if (!m_fileId && m_path.empty())
+				{
+					throw YAML::RepresentationException(inData.Mark(), "Frame graph sampler needs a path or fileId: " + m_name);
+				}
 			}
 		};
 

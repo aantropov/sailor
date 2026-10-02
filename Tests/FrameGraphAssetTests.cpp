@@ -50,6 +50,79 @@ namespace
 		}
 	}
 
+	void TestResourceDeclarations()
+	{
+		for (const char* document : {
+			"samplers: [{name: Shared, path: first.png, fileId: ''}, {name: Shared, path: second.png, fileId: ''}]",
+			"renderTargets: [{name: Shared, width: 8}, {name: Shared, width: 16}]",
+			"samplers: [{name: Shared, path: first.png, fileId: ''}]\nrenderTargets: [{name: Shared, width: 8}]" })
+		{
+			FrameGraphAsset asset;
+			bool rejected = false;
+			try { asset.Deserialize(YAML::Load(document)); }
+			catch (const YAML::Exception& error)
+			{
+				rejected = true;
+				Require(std::string(error.what()).find("Shared") != std::string::npos,
+					"an ambiguous resource diagnostic must identify its name");
+			}
+			Require(rejected, "duplicate static resource declarations must not silently choose a different image");
+		}
+		std::cout << "FrameGraph duplicate sampler/target declarations rejected\n";
+	}
+
+	void TestSamplerReferences()
+	{
+		bool rejected = false;
+		try
+		{
+			FrameGraphAsset invalid;
+			invalid.Deserialize(YAML::Load("samplers: [{name: Missing}]"));
+		}
+		catch (const YAML::Exception& error)
+		{
+			rejected = std::string(error.what()).find("Missing") != std::string::npos;
+		}
+		Require(rejected, "a static sampler without either asset reference must identify the missing source");
+		const FileId id("00000000-0000-0000-0000-000000000170");
+		FrameGraphAsset asset;
+		asset.Deserialize(YAML::Load(R"(
+samplers:
+  - {name: ByPath, path: Texture.tga}
+  - {name: ById, fileId: 00000000-0000-0000-0000-000000000170}
+  - {name: Both, fileId: 00000000-0000-0000-0000-000000000170, path: Other.tga}
+renderTargets:
+  - {name: Color, width: 8, height: 8, format: R32G32B32A32_SFLOAT}
+frame:
+  - name: PostProcess
+    renderTargets:
+      - color: Color
+      - sourceSampler: ById
+      - externalSampler: PublishedLater
+)"));
+		Require(asset.m_samplers.Num() == 3 && asset.m_renderTargets.Num() == 1,
+			"distinct static resource declarations must remain distinct");
+		Require(asset.m_samplers["ByPath"].m_path == "Texture.tga" && !asset.m_samplers["ByPath"].m_fileId &&
+			asset.m_samplers["ById"].m_path.empty() && asset.m_samplers["ById"].m_fileId == id &&
+			asset.m_samplers["Both"].m_fileId == id && asset.m_samplers["Both"].m_path == "Other.tga",
+			"samplers must support either asset identity without requiring a redundant path");
+		Require(asset.m_nodes.Num() == 1 && asset.m_nodes[0].m_renderTargets["externalSampler"] == "PublishedLater",
+			"names supplied by runtime producers must remain legal without a static declaration");
+
+		asset.Deserialize(YAML::Load(R"(
+samplers: [{name: ByPath, path: Replacement.tga}]
+float: [{gain: 2}]
+frame: [{name: Clear}]
+)"));
+		Require(asset.m_samplers.Num() == 1 && asset.m_samplers["ByPath"].m_path == "Replacement.tga" &&
+			asset.m_renderTargets.IsEmpty() && asset.m_nodes.Num() == 1 && asset.m_nodes[0].m_name == "Clear",
+			"reading another graph must replace declarations and passes instead of mixing two graphs");
+		asset.Deserialize(YAML::Load("{}"));
+		Require(asset.m_samplers.IsEmpty() && asset.m_values.IsEmpty() && asset.m_renderTargets.IsEmpty() && asset.m_nodes.IsEmpty(),
+			"an empty graph must clear every previous declaration");
+		std::cout << "FrameGraph path/id references, external names and replacement passed\n";
+	}
+
 	void TestGlobalValues(const FrameGraphImporter& importer)
 	{
 		auto asset = FrameGraphAssetPtr::Make();
@@ -122,6 +195,8 @@ int main()
 		AssetRegistry registry(resolved.m_context, nullptr);
 		FrameGraphAssetInfoHandler handler(&registry);
 		FrameGraphImporter importer(&handler);
+		TestResourceDeclarations();
+		TestSamplerReferences();
 		TestGlobalValues(importer);
 		std::cout << "FrameGraphAssetTests passed\n";
 		return 0;

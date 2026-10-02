@@ -4,12 +4,21 @@ using namespace Sailor;
 
 void FrameGraphAsset::Deserialize(const YAML::Node& inData)
 {
+	m_samplers.Clear();
+	m_values.Clear();
+	m_renderTargets.Clear();
+	m_nodes.Clear();
+
 	if (inData["samplers"])
 	{
 		auto samplers = inData["samplers"].as<TVector<FrameGraphAsset::Resource>>();
 
 		for (auto& sampler : samplers)
 		{
+			if (m_samplers.ContainsKey(sampler.m_name))
+			{
+				throw YAML::RepresentationException(inData["samplers"].Mark(), "Duplicate frame graph resource: " + sampler.m_name);
+			}
 			m_samplers[sampler.m_name] = std::move(sampler);
 		}
 	}
@@ -44,6 +53,10 @@ void FrameGraphAsset::Deserialize(const YAML::Node& inData)
 
 		for (auto& target : targets)
 		{
+			if (m_renderTargets.ContainsKey(target.m_name) || m_samplers.ContainsKey(target.m_name))
+			{
+				throw YAML::RepresentationException(inData["renderTargets"].Mark(), "Duplicate frame graph resource: " + target.m_name);
+			}
 			m_renderTargets[target.m_name] = std::move(target);
 		}
 	}

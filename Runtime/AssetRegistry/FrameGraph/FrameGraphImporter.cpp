@@ -49,12 +49,17 @@ FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)
 
 		AssetRegistry::ReadAllTextFile(filepath, text);
 
-		YAML::Node yamlNode = YAML::Load(text);
-
-		FrameGraphAsset* frameGraphAsset = new FrameGraphAsset();
-		frameGraphAsset->Deserialize(yamlNode);
-
-		return FrameGraphAssetPtr(frameGraphAsset);
+		try
+		{
+			auto frameGraphAsset = FrameGraphAssetPtr::Make();
+			frameGraphAsset->Deserialize(YAML::Load(text));
+			return frameGraphAsset;
+		}
+		catch (const YAML::Exception& error)
+		{
+			SAILOR_LOG_ERROR("Cannot load frame graph '%s': %s", filepath.c_str(), error.what());
+			return {};
+		}
 	}
 
 	SAILOR_LOG("Cannot find frameGraph asset info with FileId: %s", uid.ToString().c_str());
