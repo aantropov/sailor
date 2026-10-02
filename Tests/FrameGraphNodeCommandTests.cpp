@@ -2,6 +2,8 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "FrameGraph/AtmosphericFogNode.h"
+#include "FrameGraph/BlitNode.h"
 #include "FrameGraph/PostProcessNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/RenderSceneNode.h"
@@ -9,6 +11,7 @@
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
 #include "RHI/Buffer.h"
 #include "RHI/CommandList.h"
+#include "RHI/Cubemap.h"
 #include "RHI/Fence.h"
 #include "RHI/Mesh.h"
 #include "RHI/RenderTarget.h"
@@ -24,6 +27,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <utility>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -72,7 +76,10 @@ namespace
 			m_postEffectPlane->m_vertexDescription = driver->GetOrAddVertexDescription<VertexP3N3UV2C4>();
 			std::array<VertexP3N3UV2C4, 4> vertices{};
 			for (uint32_t i = 0; i < vertices.size(); ++i)
+			{
 				vertices[i].m_position = glm::vec3(i % 2 ? 1 : -1, i / 2 ? 1 : -1, 0);
+				vertices[i].m_texcoord = glm::vec2(i % 2, i / 2);
+			}
 			const uint32_t indices[] = { 0, 1, 2, 2, 1, 3 };
 			m_postEffectPlane->m_vertexBuffer = driver->CreateBuffer(sizeof(vertices), EBufferUsageBit::VertexBuffer_Bit, HostMemory);
 			m_postEffectPlane->m_indexBuffer = driver->CreateBuffer(sizeof(indices), EBufferUsageBit::IndexBuffer_Bit, HostMemory);
@@ -373,6 +380,207 @@ void main() {
 			" motionSurface=" << motionIsSurface << " late=" << late << ": two frames / both images and native descriptors passed\n";
 	}
 
+	void ClearColor(RHICommandListPtr command, RHITexturePtr texture, glm::vec4 color)
+	{
+		auto commands = Renderer::GetDriverCommands();
+		commands->ImageMemoryBarrier(command, texture, EImageLayout::TransferDstOptimal);
+		commands->ClearImage(command, texture, color);
+	}
+
+	RHIBufferPtr ReadColor(RHICommandListPtr command, RHITexturePtr texture)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		commands->ImageMemoryBarrier(command, texture, EImageLayout::TransferSrcOptimal);
+		if (texture->GetMsaaSamples() != EMsaaSamples::Samples_1)
+		{
+			auto resolved = driver->CreateRenderTarget(texture->GetExtent(), 1, texture->GetFormat());
+			commands->ImageMemoryBarrier(command, resolved, EImageLayout::TransferDstOptimal);
+			const glm::ivec4 area(0, 0, texture->GetExtent().x, texture->GetExtent().y);
+			Require(commands->BlitImage(command, texture, resolved, area, area), "live MSAA readback must resolve");
+			texture = resolved;
+			commands->ImageMemoryBarrier(command, texture, EImageLayout::TransferSrcOptimal);
+		}
+		auto buffer = driver->CreateBuffer(Side * Side * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+		commands->CopyImageToBuffer(command, texture, buffer);
+		return buffer;
+	}
+
+	void CompleteCommands(RHICommandListPtr upload, RHICommandListPtr draw)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+		commands->EndCommandList(upload);
+		commands->EndCommandList(draw);
+		auto ready = driver->CreateWaitSemaphore();
+		auto uploaded = RHIFencePtr::Make();
+		auto finished = RHIFencePtr::Make();
+		Require(driver->SubmitCommandList(upload, uploaded, ready) && driver->SubmitCommandList(draw, finished, nullptr, ready),
+			"fullscreen upload and draw must submit");
+		Require(finished->Wait(5000000000ull) == EFenceStatus::Finished && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
+			"fullscreen pixel readback must finish");
+	}
+
+	void TestBlit(bool sourceIsSurface, bool destinationIsSurface, bool late, bool scaled = false)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<BlitNode>::Make();
+		RHISceneViewSnapshot scene;
+		scene.m_frameBindings = driver->CreateShaderBindings();
+		if (late)
+		{
+			node->SetRHIResource_Unresolved("src", "Source");
+			node->SetRHIResource_Unresolved("dst", "Destination");
+		}
+		CaptureAttachments capture;
+		for (uint32_t frame = 0; frame < 2; ++frame)
+		{
+			const glm::ivec2 sourceExtent(scaled ? Side / 2 : Side);
+			auto sourceSurface = sourceIsSurface ? driver->CreateSurface(sourceExtent, 1, EFormat::R32G32B32A32_SFLOAT) : RHISurfacePtr{};
+			auto destinationSurface = destinationIsSurface ? driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT) : RHISurfacePtr{};
+			auto source = sourceSurface ? sourceSurface->GetResolved() : driver->CreateRenderTarget(sourceExtent, 1, EFormat::R32G32B32A32_SFLOAT);
+			auto destination = destinationSurface ? destinationSurface->GetResolved() : driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+			graph->SetRenderTarget("Source", source);
+			graph->SetRenderTarget("Destination", destination);
+			if (sourceSurface) graph->SetSurface("Source", sourceSurface);
+			if (destinationSurface) graph->SetSurface("Destination", destinationSurface);
+			if (!late)
+			{
+				node->SetRHIResource("src", sourceSurface ? RHIResourcePtr(sourceSurface) : source);
+				node->SetRHIResource("dst", destinationSurface ? RHIResourcePtr(destinationSurface) : destination);
+			}
+			const bool sourceMsaa = sourceSurface && sourceSurface->NeedsResolve();
+			const bool destinationMsaa = destinationSurface && destinationSurface->NeedsResolve();
+			const bool copyLiveTarget = sourceMsaa && destinationMsaa && !scaled;
+			const glm::vec4 sourceColor = frame == 0 ? glm::vec4(0.125f, 0.5f, 0.75f, 0.625f) : glm::vec4(0.5f, 0.25f, 0.125f, 1);
+			const glm::vec4 liveColor = sourceColor + glm::vec4(0.25f, 0.5f, 0.75f, 0);
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
+			ClearColor(draw, source, sourceColor);
+			ClearColor(draw, destination, glm::vec4(-8));
+			if (sourceMsaa) ClearColor(draw, sourceSurface->GetTarget(), liveColor);
+			if (destinationMsaa) ClearColor(draw, destinationSurface->GetTarget(), glm::vec4(-16));
+			recordedColorCount = 0;
+			node->Process(graph, upload, draw, scene);
+			auto resolvedReadback = ReadColor(draw, destination);
+			auto targetReadback = destinationMsaa ? ReadColor(draw, destinationSurface->GetTarget()) : resolvedReadback;
+			CompleteCommands(upload, draw);
+			for (const auto& image : { std::pair{ resolvedReadback, sourceColor }, std::pair{ targetReadback, copyLiveTarget ? liveColor : sourceColor } })
+			{
+				const auto pixels = static_cast<const glm::vec4*>(image.first->GetPointer());
+				for (uint32_t i = 0; i < Side * Side; ++i)
+					for (uint32_t component = 0; component < 4; ++component)
+						if (!std::isfinite(pixels[i][component]) || std::abs(pixels[i][component] - image.second[component]) > 0.00001f)
+							throw std::runtime_error("Blit changed resolved/live target contents: sourceSurface=" + std::to_string(sourceIsSurface) +
+								", destinationSurface=" + std::to_string(destinationIsSurface) + ", late=" + std::to_string(late) + ", scaled=" + std::to_string(scaled));
+			}
+			const bool shaderDraw = (destinationMsaa && !copyLiveTarget) || (!destinationSurface && scaled);
+			Require(node->GetDrawCallStats().m_numBatches == (shaderDraw ? 1u : 0u), "Blit must retain direct-copy versus shader paths");
+			if (shaderDraw)
+			{
+				auto target = destinationMsaa ? destinationSurface->GetTarget() : destination;
+				Require(recordedColorCount == 1 && recordedColor.imageView == static_cast<VkImageView>(*target->m_vulkan.m_imageView) &&
+					recordedColor.resolveMode == VK_RESOLVE_MODE_NONE && recordedColor.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD &&
+					recordedColor.storeOp == VK_ATTACHMENT_STORE_OP_STORE, "Blit fullscreen draw must write the selected target directly");
+			}
+		}
+		std::cout << "Blit sourceSurface=" << sourceIsSurface << " destinationSurface=" << destinationIsSurface << " late=" << late <<
+			" scaled=" << scaled << ": replaced inputs, both images and native descriptors passed\n";
+	}
+
+	void TestFog(bool colorIsSurface, bool late, EFormat depthFormat)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<AtmosphericFogNode>::Make();
+		node->SetVec4("scattering", glm::vec4(0.75f, 0, 0.95f, 0));
+		if (late)
+		{
+			node->SetRHIResource_Unresolved("color", "Color");
+			node->SetRHIResource_Unresolved("depthSampler", "Depth");
+		}
+		CaptureAttachments capture;
+		for (uint32_t frame = 0; frame < 3; ++frame)
+		{
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
+			auto surface = colorIsSurface ? driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT) : RHISurfacePtr{};
+			auto color = surface ? surface->GetResolved() : driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+			auto target = surface ? surface->GetTarget() : color;
+			const bool msaa = surface && surface->NeedsResolve();
+			auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, depthFormat,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit);
+			auto environment = driver->CreateCubemap(glm::ivec2(1), 1, EFormat::R32G32B32A32_SFLOAT);
+			const glm::vec4 background(0.25f, 0.5f, 0.75f, 0.625f);
+			const glm::vec4 radiance = frame == 0 ? glm::vec4(0.125f, 1, 0.25f, 1) : glm::vec4(1, 0.125f, 0.5f, 1);
+			const float depthValue = frame == 2 ? 0 : frame == 0 ? 0.5f : 0.25f;
+			const float density = frame == 0 ? 0.3f : 0.65f;
+			ClearColor(draw, target, background);
+			if (msaa) ClearColor(draw, color, glm::vec4(-8));
+			ClearColor(draw, environment, radiance);
+			commands->ImageMemoryBarrier(draw, depth, EImageLayout::TransferDstOptimal);
+			commands->ClearDepthStencil(draw, depth, depthValue, 0);
+			graph->SetRenderTarget("Color", color);
+			if (surface) graph->SetSurface("Color", surface);
+			graph->SetRenderTarget("Depth", depth);
+			graph->SetSampler("g_irradianceCubemap", environment);
+			if (!late)
+			{
+				node->SetRHIResource("color", surface ? RHIResourcePtr(surface) : color);
+				node->SetRHIResource("depthSampler", depth);
+			}
+			node->SetVec4("fog", glm::vec4(density, 0, 0, 0));
+			RHISceneViewSnapshot scene;
+			scene.m_frameBindings = driver->CreateShaderBindings();
+			UboFrameData frameData{};
+			frameData.m_view = frameData.m_projection = frameData.m_invProjection = glm::mat4(1);
+			frameData.m_viewportSize = glm::ivec2(Side);
+			auto frameBinding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData", sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
+			commands->UpdateShaderBinding(upload, frameBinding, &frameData, sizeof(frameData));
+			recordedColorCount = 0;
+			node->Process(graph, upload, draw, scene);
+			auto resolvedReadback = ReadColor(draw, color);
+			auto targetReadback = msaa ? ReadColor(draw, target) : resolvedReadback;
+			CompleteCommands(upload, draw);
+			Require(node->GetDrawCallStats().m_numBatches == 1 && recordedColorCount == 1 &&
+				recordedColor.imageView == static_cast<VkImageView>(*target->m_vulkan.m_imageView) &&
+				recordedColor.resolveImageView == (msaa ? static_cast<VkImageView>(*color->m_vulkan.m_imageView) : VK_NULL_HANDLE) &&
+				recordedColor.resolveMode == (msaa ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE) &&
+				recordedColor.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && recordedColor.storeOp == VK_ATTACHMENT_STORE_OP_STORE,
+				"Fog must blend into the selected live target and resolve it");
+			for (auto readback : { resolvedReadback, targetReadback })
+			{
+				const auto pixels = static_cast<const glm::vec4*>(readback->GetPointer());
+				for (uint32_t i = 0; i < Side * Side; ++i)
+				{
+					const glm::vec2 clip = (glm::vec2(i % Side, i / Side) + 0.5f) * (2.0f / Side) - 1.0f;
+					const float distance = glm::length(glm::vec3(clip, depthValue));
+					const float opacity = depthValue > 0 ? (std::min)(1.0f - std::exp(-density * distance), 0.95f) : 0;
+					const glm::vec4 expected(glm::mix(glm::vec3(background), 0.75f * glm::vec3(radiance), opacity), background.a);
+					for (uint32_t component = 0; component < 4; ++component)
+						if (!std::isfinite(pixels[i][component]) || std::abs(pixels[i][component] - expected[component]) > 0.0001f)
+							throw std::runtime_error("Fog pixel differs from homogeneous-medium source-over: frame=" + std::to_string(frame) +
+								", colorSurface=" + std::to_string(colorIsSurface) + ", late=" + std::to_string(late) +
+								", actual=" + std::to_string(pixels[i][component]) + ", expected=" + std::to_string(expected[component]));
+				}
+			}
+		}
+		std::cout << "Fog colorSurface=" << colorIsSurface << " late=" << late << " depth=" << static_cast<uint32_t>(depthFormat) <<
+			": three frames, replaced inputs, sky/alpha and both images passed\n";
+	}
+
 	void TestPostProcess(const std::string& smallShader, const std::string& largeShader)
 	{
 		auto& driver = Renderer::GetDriver();
@@ -545,11 +753,28 @@ namespace Sailor::Tests
 		const auto largeShader = WriteShader(workspace, true);
 		const auto graphId = WriteGraph(workspace);
 		const auto mrtShader = WriteMrtShader(workspace);
+		ShaderSetPtr blitShader;
+		const auto blitInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blit.shader");
+		Require(blitInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(blitInfo->GetFileId(), blitShader) && blitShader->IsReady(),
+			"the production Blit shader must compile before recording");
+		ShaderSetPtr fogShader;
+		const auto fogInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/AtmosphericFog.shader");
+		Require(fogInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(fogInfo->GetFileId(), fogShader) && fogShader->IsReady(),
+			"the production fog shader must compile before recording");
 		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 		auto task = Tasks::CreateTaskWithResult<std::string>("Post-process attachment and parameter contracts", [&]() -> std::string
 			{
 				try
 				{
+					for (bool late : { false, true })
+					{
+						for (bool sourceSurface : { false, true })
+							for (bool destinationSurface : { false, true }) TestBlit(sourceSurface, destinationSurface, late);
+						TestBlit(false, false, late, true);
+						TestBlit(true, true, late, true);
+						for (bool colorSurface : { false, true })
+							for (auto depthFormat : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT }) TestFog(colorSurface, late, depthFormat);
+					}
 					TestSceneMrt(mrtShader, true, false, false, true);
 					for (bool late : { false, true })
 						for (bool colorSurface : { false, true })

@@ -166,7 +166,7 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 		bool bMsaaBlitSuccessful = false;
 
 		// First try to blit MSAA src to MSAA dst
-		if (RHISurfacePtr srcSurface = GetRHIResource("src").DynamicCast<RHISurface>())
+		if (RHISurfacePtr srcSurface = GetRHIResource("src", frameGraph.GetRawPtr()).DynamicCast<RHISurface>())
 		{
 			auto src2 = srcSurface->GetTarget();
 			auto dst2 = dstSurface->GetTarget();
