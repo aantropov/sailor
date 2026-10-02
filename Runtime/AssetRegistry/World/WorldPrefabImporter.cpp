@@ -183,7 +183,6 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 			}
 		}
 
-		const auto& sourcePrefab = source.m_prefab;
 		PrefabPtr expandedPrefab = App::GetSubmodule<PrefabImporter>()->Create();
 		expandedPrefab->Deserialize(prefabNode);
 		PrefabInstance::Snapshot expanded;
