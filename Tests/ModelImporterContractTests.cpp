@@ -1642,6 +1642,87 @@ namespace
 		RequireLodsEqual(loaded, retained);
 	}
 
+	void TestModelLodCacheChecksPayloadBeforeAllocation()
+	{
+		ModelCacheWorkspace workspace;
+		ModelAssetInfo info;
+		auto metadata = info.Serialize();
+		metadata["fileId"] = "01234567-89ab-cdef-0123-456789abcdef";
+		info.Deserialize(metadata);
+		const FileRevision revision{ 123456789, true };
+		const auto meshes = MakeLodCacheMeshes();
+		ModelLodCache::Save(info, revision, 1, meshes);
+		const auto path = workspace.Context().GetCache() / "Lods" / ModelImporter::GetLodCacheFilename(info.GetFileId(), 1);
+		const auto bytes = ReadAnimationFixtureText(path);
+		struct HeaderPrefix
+		{
+			std::array<char, 8> m_magic;
+			uint32_t m_headerSize;
+		};
+		HeaderPrefix prefix{};
+		Require(bytes.size() >= sizeof(prefix), "the saved LOD fixture must contain a header");
+		std::memcpy(&prefix, bytes.data(), sizeof(prefix));
+		size_t offset = prefix.m_headerSize;
+		auto loaded = meshes;
+		for (auto& mesh : loaded) mesh.lods[0].m_vertices[0].m_position.z += 100.0f;
+		const auto retained = loaded;
+		TVector<uint64_t> allocations;
+		struct ObserveAllocations
+		{
+			ModelLodCache::AllocationObserver m_previous;
+			~ObserveAllocations() { ModelLodCache::ExchangeAllocationObserverForTests(std::move(m_previous)); }
+		} observer{ ModelLodCache::ExchangeAllocationObserverForTests([&](uint64_t size)
+			{
+				Require(size < 1024u * 1024u, "missing LOD payload must not request large geometry allocations");
+				allocations.Add(size);
+			}) };
+		auto reject = [&](const std::string& corrupted, size_t expectedAllocations)
+		{
+			WriteAnimationFixtureText(path, corrupted);
+			allocations.Clear();
+			Require(!ModelLodCache::Load(info, revision, 1, loaded), "an invalid LOD must reject the entire cache");
+			Require(allocations.Num() == expectedAllocations,
+				"only meshes with complete payloads preceding the rejection may allocate buffers");
+			RequireLodsEqual(loaded, retained);
+			for (size_t i = 0; i < loaded.Num(); ++i)
+				Require(loaded[i].outVertices == meshes[i].outVertices && loaded[i].outIndices == meshes[i].outIndices,
+					"cache rejection must preserve the source geometry");
+		};
+
+		for (size_t meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
+		{
+			using Counts = std::array<uint64_t, 2>;
+			Counts counts{};
+			Require(offset + sizeof(counts) <= bytes.size(), "the saved mesh header must fit");
+			std::memcpy(counts.data(), bytes.data() + offset, sizeof(counts));
+			const size_t vertexBytes = counts[0] * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
+			const size_t indexBytes = counts[1] * sizeof(uint32_t);
+			for (const Counts oversized : { Counts{ 1u << 20u, 3u }, Counts{ 3u, 1u << 25u },
+				Counts{ UINT32_MAX, UINT32_MAX }, Counts{ UINT64_MAX, 3u } })
+			{
+				auto corrupted = bytes.substr(0, offset + sizeof(counts));
+				std::memcpy(corrupted.data() + offset, oversized.data(), sizeof(oversized));
+				reject(corrupted, meshIndex);
+			}
+			for (size_t remaining : { size_t(0), sizeof(counts) - 1u, sizeof(counts) + vertexBytes - 1u,
+				sizeof(counts) + vertexBytes, sizeof(counts) + vertexBytes + indexBytes - 1u })
+			{
+				reject(bytes.substr(0, offset + remaining), meshIndex);
+			}
+			auto invalidIndices = bytes;
+			const uint32_t invalidIndex = static_cast<uint32_t>(counts[0]);
+			std::memcpy(invalidIndices.data() + offset + sizeof(counts) + vertexBytes, &invalidIndex, sizeof(invalidIndex));
+			reject(invalidIndices, meshIndex + 1u);
+			offset += sizeof(counts) + vertexBytes + indexBytes;
+		}
+		reject(bytes + 'x', meshes.Num());
+		WriteAnimationFixtureText(path, bytes);
+		allocations.Clear();
+		Require(ModelLodCache::Load(info, revision, 1, loaded) && allocations.Num() == meshes.Num(),
+			"a complete cache must allocate its meshes and load after a rejected input");
+		RequireLodsEqual(loaded, meshes);
+	}
+
 	void TestModelLodCacheGeometryInvalidation()
 	{
 		ModelCacheWorkspace workspace;
@@ -3061,6 +3142,7 @@ int main()
 		{ "ModelLodMetadataDefaultsAndRoundTrip", TestModelLodMetadataDefaultsAndRoundTrip },
 		{ "ModelLodGenerationAndCacheNaming", TestModelLodGenerationAndCacheNaming },
 		{ "ModelLodCacheRoundTripAndInvalidation", TestModelLodCacheRoundTripAndInvalidation },
+		{ "ModelLodCacheChecksPayloadBeforeAllocation", TestModelLodCacheChecksPayloadBeforeAllocation },
 		{ "ModelLodCacheGeometryInvalidation", TestModelLodCacheGeometryInvalidation },
 		{ "ModelLodCacheRegeneratesTimestampOnlyHeader", TestModelLodCacheRegeneratesTimestampOnlyHeader },
 		{ "ModelLodCacheUsesCurrentProject", TestModelLodCacheUsesCurrentProject },

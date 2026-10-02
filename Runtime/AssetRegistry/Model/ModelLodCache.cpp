@@ -14,6 +14,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <utility>
 
 using namespace Sailor;
 
@@ -22,6 +23,10 @@ namespace
 	constexpr uint32_t Version = 1u;
 	constexpr uint64_t MaxBytes = 1024ull * 1024ull * 1024ull;
 	constexpr std::array<char, 8> Magic = {'S', 'A', 'I', 'L', 'L', 'O', 'D', '\0'};
+
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+	thread_local ModelLodCache::AllocationObserver g_allocationObserver;
+#endif
 
 	struct Header final
 	{
@@ -117,6 +122,13 @@ namespace
 	}
 }
 
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+ModelLodCache::AllocationObserver ModelLodCache::ExchangeAllocationObserverForTests(AllocationObserver observer)
+{
+	return std::exchange(g_allocationObserver, std::move(observer));
+}
+#endif
+
 bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 	const FileRevision& sourceRevision,
 	uint32_t lodLevel,
@@ -166,11 +178,14 @@ bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 
 		const uint64_t vertexBytes = meshHeader.m_vertexCount * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
 		const uint64_t indexBytes = meshHeader.m_indexCount * sizeof(uint32_t);
-		if (vertexBytes + indexBytes > MaxBytes)
+		if (vertexBytes + indexBytes > bytes.size() - offset)
 		{
 			return false;
 		}
 
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+		if (g_allocationObserver) g_allocationObserver(vertexBytes + indexBytes);
+#endif
 		lod.m_vertices.Resize(static_cast<size_t>(meshHeader.m_vertexCount));
 		lod.m_indices.Resize(static_cast<size_t>(meshHeader.m_indexCount));
 		if (!Read(bytes, offset, lod.m_vertices.GetData(), static_cast<size_t>(vertexBytes)) ||
