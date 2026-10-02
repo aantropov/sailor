@@ -9,11 +9,14 @@
 #include "RHI/Buffer.h"
 #include "Raytracing/PathTracer.h"
 #include "Support/EditorProtocolWire.h"
+#include "Support/SurfaceRender.h"
 #include "EditorEngineProtocolLifecycle.h"
 
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -188,6 +191,42 @@ namespace
 			output.write(reinterpret_cast<const char*>(indices.data()), sizeof(indices));
 			output.close();
 			Require(static_cast<bool>(output), "external index buffer must be written");
+		}
+
+		void WriteGeometry(const Geometry& geometry) const
+		{
+			TVector<float> attributes;
+			for (const auto& vertex : geometry.m_vertices)
+				attributes.AddRange({ vertex.m_position.x, vertex.m_position.y, vertex.m_position.z });
+			for (const auto& vertex : geometry.m_vertices)
+				attributes.AddRange({ vertex.m_normal.x, vertex.m_normal.y, vertex.m_normal.z });
+			for (const auto& vertex : geometry.m_vertices)
+				attributes.AddRange({ vertex.m_texcoord.x, vertex.m_texcoord.y });
+			std::ofstream vertices(m_verticesPath, std::ios::binary);
+			vertices.write(reinterpret_cast<const char*>(attributes.GetData()), attributes.Num() * sizeof(float));
+			vertices.close();
+			std::ofstream indices(m_indicesPath, std::ios::binary);
+			indices.write(reinterpret_cast<const char*>(geometry.m_indices.GetData()), geometry.m_indices.Num() * sizeof(uint32_t));
+			indices.close();
+			Require(vertices && indices, "LOD geometry buffers must be written");
+			std::ifstream input(m_path);
+			auto document = nlohmann::json::parse(input);
+			input.close();
+			const size_t positionBytes = geometry.m_vertices.Num() * 3 * sizeof(float);
+			document["buffers"][0]["byteLength"] = attributes.Num() * sizeof(float);
+			document["buffers"][1]["byteLength"] = geometry.m_indices.Num() * sizeof(uint32_t);
+			for (uint32_t i = 0; i < 3; ++i)
+			{
+				document["bufferViews"][i]["byteOffset"] = i * positionBytes;
+				document["bufferViews"][i]["byteLength"] = geometry.m_vertices.Num() * (i == 2 ? 2 : 3) * sizeof(float);
+				document["accessors"][i]["count"] = geometry.m_vertices.Num();
+			}
+			document["bufferViews"][3]["byteLength"] = geometry.m_indices.Num() * sizeof(uint32_t);
+			document["accessors"][3]["count"] = geometry.m_indices.Num();
+			std::ofstream output(m_path);
+			output << document;
+			output.close();
+			Require(static_cast<bool>(output), "LOD glTF buffer ranges must match their geometry");
 		}
 
 		std::filesystem::path CachePath(uint32_t level) const
@@ -614,6 +653,29 @@ namespace
 		std::cout << "Worker CPU preparation, independent RHI upload and full/subset ray hits passed\n";
 	}
 
+	void CheckGpuGeometry(const RHI::RHIMeshPtr& mesh, const Geometry& geometry)
+	{
+		auto readback = Tasks::CreateTaskWithResult<bool>("Read back selected LOD geometry", [mesh, &geometry]()
+			{
+				auto& driver = RHI::Renderer::GetDriver();
+				const auto memory = RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent;
+				const auto vertexBytes = geometry.m_vertices.Num() * sizeof(geometry.m_vertices[0]);
+				const auto indexBytes = geometry.m_indices.Num() * sizeof(uint32_t);
+				auto vertices = driver->CreateBuffer(vertexBytes, RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
+				auto indices = driver->CreateBuffer(indexBytes, RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
+				return driver->CopyBuffer_Immediate(mesh->m_vertexBuffer, vertices, vertexBytes,
+					mesh->m_vertexOffset * sizeof(geometry.m_vertices[0])) &&
+					driver->CopyBuffer_Immediate(mesh->m_indexBuffer, indices, indexBytes, mesh->m_firstIndex * sizeof(uint32_t)) &&
+					std::equal(geometry.m_vertices.begin(), geometry.m_vertices.end(),
+						static_cast<const RHI::VertexP3N3T3B3UV2C4I4W4*>(vertices->GetPointer())) &&
+					std::equal(geometry.m_indices.begin(), geometry.m_indices.end(),
+						static_cast<const uint32_t*>(indices->GetPointer()));
+			}, EThreadType::RHI);
+		readback->Run();
+		readback->Wait();
+		Require(readback->GetResult(), "the selected LOD range must contain the expected GPU attributes and indices");
+	}
+
 	TVector<Geometry> LoadGeometry(const ModelFixture& fixture, ModelImporter& importer)
 	{
 		ModelPtr model;
@@ -634,24 +696,7 @@ namespace
 		Require(mesh->m_vertexBuffer->GetSize() == source.m_vertices.Num() * sizeof(source.m_vertices[0]) &&
 			mesh->m_indexBuffer->GetSize() == source.m_indices.Num() * sizeof(uint32_t),
 			"the locked-border panel must upload its vertex and index data only once");
-		auto readback = Tasks::CreateTaskWithResult<bool>("Read back aliased LOD buffers", [mesh, &source]()
-			{
-				auto& driver = RHI::Renderer::GetDriver();
-				const auto memory = RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent;
-				const auto vertexBytes = mesh->m_vertexBuffer->GetSize();
-				const auto indexBytes = mesh->m_indexBuffer->GetSize();
-				auto vertices = driver->CreateBuffer(vertexBytes, RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
-				auto indices = driver->CreateBuffer(indexBytes, RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
-				return driver->CopyBuffer_Immediate(mesh->m_vertexBuffer, vertices, vertexBytes) &&
-					driver->CopyBuffer_Immediate(mesh->m_indexBuffer, indices, indexBytes) &&
-					std::equal(source.m_vertices.begin(), source.m_vertices.end(),
-						static_cast<const RHI::VertexP3N3T3B3UV2C4I4W4*>(vertices->GetPointer())) &&
-					std::equal(source.m_indices.begin(), source.m_indices.end(),
-						static_cast<const uint32_t*>(indices->GetPointer()));
-			}, EThreadType::RHI);
-		readback->Run();
-		readback->Wait();
-		Require(readback->GetResult(), "all aliased LOD vertex attributes and indices must match actual GPU buffer contents");
+		CheckGpuGeometry(mesh, Geometry{ source.m_vertices, source.m_indices });
 		TVector<Geometry> result{ Geometry{ source.m_vertices, source.m_indices } };
 		for (uint32_t level = 1; level < mesh->GetNumLods(); ++level)
 		{
@@ -689,6 +734,190 @@ namespace
 			Require(geometry[level].m_vertices == selected.m_vertices && geometry[level].m_indices == selected.m_indices,
 				"every cached LOD must match fresh generation from the current imported geometry");
 		}
+	}
+
+	Geometry MakeSurfaceGeometry(uint32_t cells)
+	{
+		Geometry geometry;
+		const uint32_t subdivisions = (std::max)(cells, 1u);
+		const uint32_t width = subdivisions + 1;
+		for (uint32_t y = 0; y < width; ++y)
+		{
+			for (uint32_t x = 0; x < width; ++x)
+			{
+				RHI::VertexP3N3T3B3UV2C4I4W4 vertex{};
+				vertex.m_texcoord = glm::vec2(x, y) / static_cast<float>(subdivisions);
+				vertex.m_position = glm::vec3(vertex.m_texcoord * 1.5f - 0.75f, 0.5f);
+				vertex.m_normal = glm::vec3(0, 0, 1);
+				vertex.m_tangent = glm::vec3(1, 0, 0);
+				vertex.m_bitangent = glm::vec3(0, 1, 0);
+				vertex.m_color = glm::vec4(1);
+				geometry.m_vertices.Add(vertex);
+			}
+		}
+		if (cells == 0)
+		{
+			geometry.m_vertices.Resize(3);
+			geometry.m_indices = { 0, 1, 2 };
+			return geometry;
+		}
+		for (uint32_t y = 0; y < cells; ++y)
+		{
+			for (uint32_t x = 0; x < cells; ++x)
+			{
+				const uint32_t first = y * width + x;
+				geometry.m_indices.AddRange({ first, first + 1, first + width,
+					first + 1, first + width + 1, first + width });
+			}
+		}
+		return geometry;
+	}
+
+	RHI::RHIMeshPtr MakeReferenceMesh(const Geometry& geometry)
+	{
+		auto task = Tasks::CreateTaskWithResult<RHI::RHIMeshPtr>("Upload independent LOD reference", [&geometry]()
+			{
+				auto& driver = RHI::Renderer::GetDriver();
+				const auto memory = RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent;
+				auto mesh = RHI::RHIMeshPtr::Make();
+				mesh->m_vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>();
+				const size_t vertexBytes = geometry.m_vertices.Num() * sizeof(geometry.m_vertices[0]);
+				const size_t indexBytes = geometry.m_indices.Num() * sizeof(uint32_t);
+				mesh->m_vertexBuffer = driver->CreateBuffer(vertexBytes, RHI::EBufferUsageBit::VertexBuffer_Bit, memory);
+				mesh->m_indexBuffer = driver->CreateBuffer(indexBytes, RHI::EBufferUsageBit::IndexBuffer_Bit, memory);
+				std::memcpy(mesh->m_vertexBuffer->GetPointer(), geometry.m_vertices.GetData(), vertexBytes);
+				std::memcpy(mesh->m_indexBuffer->GetPointer(), geometry.m_indices.GetData(), indexBytes);
+				mesh->m_indexCount = static_cast<uint32_t>(geometry.m_indices.Num());
+				mesh->m_firstIndex = mesh->m_vertexOffset = 0;
+				return mesh;
+			}, EThreadType::RHI);
+		task->Run();
+		task->Wait();
+		return task->GetResult();
+	}
+
+	void CheckSurfacePixels(const Tests::SurfacePixels& expected, const Tests::SurfacePixels& actual, uint32_t level)
+	{
+		for (size_t pixel = 0; pixel < expected.size(); ++pixel)
+		{
+			for (uint32_t channel = 0; channel < 4; ++channel)
+			{
+				if (!std::isfinite(actual[pixel][channel]) || std::abs(actual[pixel][channel] - expected[pixel][channel]) > 0.002f)
+				{
+					std::cerr << "LOD " << level << ", pixel " << pixel << ", channel " << channel
+						<< ": expected " << expected[pixel][channel] << ", got " << actual[pixel][channel] << '\n';
+					throw std::runtime_error("the selected LOD must render the independent geometry reference");
+				}
+			}
+		}
+	}
+
+	void CheckLodDrawRanges(const ModelFixture& fixture, MaterialPtr material,
+		const Tests::SurfacePixels& pixels, uint32_t numLods, bool reduced)
+	{
+		FreshImporter fresh;
+		ModelPtr model;
+		Require(fresh.m_importer.LoadModel_Immediate(fixture.m_id, model) && model,
+			"the surface model must load through the real importer");
+		Drain();
+		Require(model->IsReady() && model->GetMeshes().Num() == 1 && model->GetCpuMeshes().Num() == 1,
+			"the surface model must retain source geometry and upload its mesh");
+		const auto& cpu = model->GetCpuMeshes()[0];
+		const Geometry source{ cpu.m_vertices, cpu.m_indices };
+		TVector<ModelImporter::MeshContext> expected(1);
+		expected[0].outVertices = source.m_vertices;
+		expected[0].outIndices = source.m_indices;
+		ModelImporter::GenerateLods(expected, numLods, 0.05f);
+		const auto mesh = model->GetMeshes()[0];
+		Require(mesh->GetNumLods() == numLods + 1, "geometry reuse must preserve every requested logical level");
+		size_t vertices = source.m_vertices.Num(), indices = source.m_indices.Num();
+		size_t vertexOffset = 0, firstIndex = 0;
+		size_t bytesWithoutAliases = 0;
+		uint32_t physicalLevels = 1, nonBaseAliases = 0;
+		const Geometry* selected = &source;
+		for (uint32_t level = 0; level <= numLods; ++level)
+		{
+			if (level > 0)
+			{
+				const auto& lod = expected[0].lods[level - 1];
+				if (!lod.m_indices.IsEmpty())
+				{
+					selected = &lod;
+					vertexOffset = vertices;
+					firstIndex = indices;
+					vertices += lod.m_vertices.Num();
+					indices += lod.m_indices.Num();
+					++physicalLevels;
+				}
+				else if (vertexOffset > 0 && firstIndex > 0)
+				{
+					++nonBaseAliases;
+				}
+			}
+			const auto view = level == 0 ? mesh : mesh->GetLod(level);
+			Require(view && view->GetIndexCount() == selected->m_indices.Num() &&
+				view->m_vertexBuffer == mesh->m_vertexBuffer && view->m_indexBuffer == mesh->m_indexBuffer &&
+				view->GetVertexOffset() == mesh->GetVertexOffset() + vertexOffset &&
+				view->GetFirstIndex() == mesh->GetFirstIndex() + firstIndex,
+				"each logical LOD must select its physical geometry range in the shared buffers");
+			CheckGpuGeometry(view, *selected);
+			CheckSurfacePixels(pixels, Tests::RenderSurface(material, view), level);
+			bytesWithoutAliases += selected->m_vertices.Num() * sizeof(source.m_vertices[0]) +
+				selected->m_indices.Num() * sizeof(uint32_t);
+		}
+		Require(mesh->m_vertexBuffer->GetSize() == vertices * sizeof(source.m_vertices[0]) &&
+			mesh->m_indexBuffer->GetSize() == indices * sizeof(uint32_t),
+			"GPU buffers must contain only the base and genuinely reduced geometry");
+		Require(reduced ? physicalLevels > 1 && nonBaseAliases > 0 : physicalLevels == 1,
+			"the fixtures must exercise both base aliases and aliases of a reduced non-base range");
+		const size_t uploadedBytes = vertices * sizeof(source.m_vertices[0]) + indices * sizeof(uint32_t);
+		Require(uploadedBytes < bytesWithoutAliases, "aliased levels must reduce the uploaded geometry size");
+		std::cout << "LOD surface: " << numLods + 1 << " logical / " << physicalLevels << " physical levels, "
+			<< uploadedBytes << " uploaded bytes (" << bytesWithoutAliases << " without aliases)\n";
+	}
+
+	void TestLodRendering(const std::filesystem::path& workspace, const ModelFixture& fixture)
+	{
+		MaterialAsset::Data data;
+		data.m_shader = FileId("1A4BA353-FDA4-4F65-941F-D9FFEE4630A0");
+		data.m_renderQueue = "SurfaceReference";
+		data.m_renderState = RHI::RenderState(false, false, 0, false, RHI::ECullMode::None,
+			RHI::EBlendMode::None, RHI::EFillMode::Fill, 0, false);
+		data.m_uniformsVec4["material.baseColorFactor"] = glm::vec4(0.3f, 0.6f, 0.85f, 1);
+		auto* importer = App::GetSubmodule<MaterialImporter>();
+		const auto id = importer->CreateMaterialAsset((workspace / "Content" / "LodSurface.mat").string(), data);
+		MaterialPtr material;
+		Require(importer->LoadMaterial_Immediate(id, material) && material, "the LOD reference material must load");
+		Drain();
+		for (uint32_t cells : { 0u, 1u, 8u })
+		{
+			const uint32_t numLods = cells == 8 ? 8 : 2;
+			fixture.WriteGeometry(MakeSurfaceGeometry(cells));
+			auto metadata = fixture.m_info->Serialize();
+			metadata["unitScale"] = 1.0f;
+			metadata["bFlipTexcoordY"] = false;
+			metadata["numGeneratedLods"] = numLods;
+			metadata["lodReductionFactor"] = 0.05f;
+			fixture.m_info->Deserialize(metadata);
+			auto reference = MakeSurfaceGeometry(cells == 0 ? 0 : 1);
+			const auto pixels = Tests::RenderSurface(material, MakeReferenceMesh(reference));
+			const auto covered = std::count_if(pixels.begin(), pixels.end(), [](const auto& color) { return color.r > 0; });
+			Require(covered > 0 && covered < static_cast<ptrdiff_t>(pixels.size()),
+				"the reference must contain both the lit surface and uncovered pixels");
+			for (auto& vertex : reference.m_vertices) vertex.m_position.x += 4.0f;
+			const auto outside = Tests::RenderSurface(material, MakeReferenceMesh(reference));
+			Require(std::all_of(outside.begin(), outside.end(), [](const auto& color) { return color == glm::vec4(-1); }),
+				"moving the independent reference outside the view must clear all coverage");
+			CheckLodDrawRanges(fixture, material, pixels, numLods, cells == 8);
+			const auto cacheTime = std::filesystem::last_write_time(fixture.m_path) - std::chrono::hours(24);
+			for (uint32_t level = 1; level <= numLods; ++level)
+				std::filesystem::last_write_time(fixture.CachePath(level), cacheTime);
+			CheckLodDrawRanges(fixture, material, pixels, numLods, cells == 8);
+			for (uint32_t level = 1; level <= numLods; ++level)
+				Require(std::filesystem::last_write_time(fixture.CachePath(level)) == cacheTime,
+					"warm LOD rendering must reuse every cache file without rewriting it");
+		}
+		std::cout << "Cold/warm triangle, locked plane and reduced-grid LOD ranges and pixels passed\n";
 	}
 }
 
@@ -787,5 +1016,6 @@ namespace Sailor::Tests
 			"native preview retry must complete without another model edit");
 		std::cout << "Explicit model preview bridge, workspace cache and missing-output retry passed\n";
 		std::cout << "Model LOD external buffers, warm cache, native import and repaired model retry passed\n";
+		TestLodRendering(workspace, fixture);
 	}
 }

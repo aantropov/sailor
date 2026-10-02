@@ -18,6 +18,7 @@
 #include "RHI/RenderTarget.h"
 #include "RHI/Surface.h"
 #include "FrameGraph/RenderSceneNode.h"
+#include "Support/SurfaceRender.h"
 #include <glm/gtc/packing.hpp>
 
 #include <array>
@@ -32,6 +33,8 @@
 #include <stdexcept>
 
 using namespace Sailor;
+using Sailor::Tests::SurfacePixels;
+using Sailor::Tests::RenderSurface;
 
 namespace
 {
@@ -326,10 +329,11 @@ void main() {
 			return scene.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(this, 0u, 0u);
 		}
 	};
+}
 
-	using SurfacePixels = std::array<glm::vec4, 64>;
-
-	SurfacePixels RenderSurface(MaterialPtr source)
+namespace Sailor::Tests
+{
+	SurfacePixels RenderSurface(MaterialPtr source, RHI::RHIMeshPtr inputMesh)
 	{
 		SurfacePixels pixels{};
 		auto task = Tasks::CreateTaskWithResult<std::string>("Render Standard glTF material reference", [&]() -> std::string
@@ -408,27 +412,31 @@ void main() {
 					const glm::uvec2 grid(0, 1);
 					commands->UpdateShaderBinding(upload, scene.m_rhiLightsData->GetOrAddShaderBinding("lightsGrid"), &grid, sizeof(grid));
 
-					const auto description = driver->GetOrAddVertexDescription<VertexP3N3T3B3UV2C4>();
-					auto material = source->GetOrAddRHI(description);
-					Require(material.IsValid(), "surface graphics material must be ready");
-					std::array<VertexP3N3T3B3UV2C4, 3> vertices{};
-					const glm::vec3 positions[] = { {-1, -1, 0.5f}, {3, -1, 0.5f}, {-1, 3, 0.5f} };
-					for (uint32_t i = 0; i < vertices.size(); ++i)
+					auto mesh = inputMesh;
+					if (!mesh)
 					{
-						vertices[i].m_position = positions[i];
-						vertices[i].m_normal = glm::vec3(0, 0, 1);
-						vertices[i].m_tangent = glm::vec3(1, 0, 0);
-						vertices[i].m_bitangent = glm::vec3(0, 1, 0);
-						vertices[i].m_color = glm::vec4(1);
-						vertices[i].m_texcoord = glm::vec2(0.5f);
+						const auto description = driver->GetOrAddVertexDescription<VertexP3N3T3B3UV2C4>();
+						std::array<VertexP3N3T3B3UV2C4, 3> vertices{};
+						const glm::vec3 positions[] = { {-1, -1, 0.5f}, {3, -1, 0.5f}, {-1, 3, 0.5f} };
+						for (uint32_t i = 0; i < vertices.size(); ++i)
+						{
+							vertices[i].m_position = positions[i];
+							vertices[i].m_normal = glm::vec3(0, 0, 1);
+							vertices[i].m_tangent = glm::vec3(1, 0, 0);
+							vertices[i].m_bitangent = glm::vec3(0, 1, 0);
+							vertices[i].m_color = glm::vec4(1);
+							vertices[i].m_texcoord = glm::vec2(0.5f);
+						}
+						const uint32_t indices[] = { 0, 1, 2 };
+						mesh = RHIMeshPtr::Make();
+						mesh->m_vertexDescription = description;
+						mesh->m_vertexBuffer = driver->CreateBuffer(sizeof(vertices), EBufferUsageBit::VertexBuffer_Bit, hostMemory);
+						mesh->m_indexBuffer = driver->CreateBuffer(sizeof(indices), EBufferUsageBit::IndexBuffer_Bit, hostMemory);
+						std::memcpy(mesh->m_vertexBuffer->GetPointer(), vertices.data(), sizeof(vertices));
+						std::memcpy(mesh->m_indexBuffer->GetPointer(), indices, sizeof(indices));
 					}
-					const uint32_t indices[] = { 0, 1, 2 };
-					auto mesh = RHIMeshPtr::Make();
-					mesh->m_vertexDescription = description;
-					mesh->m_vertexBuffer = driver->CreateBuffer(sizeof(vertices), EBufferUsageBit::VertexBuffer_Bit, hostMemory);
-					mesh->m_indexBuffer = driver->CreateBuffer(sizeof(indices), EBufferUsageBit::IndexBuffer_Bit, hostMemory);
-					std::memcpy(mesh->m_vertexBuffer->GetPointer(), vertices.data(), sizeof(vertices));
-					std::memcpy(mesh->m_indexBuffer->GetPointer(), indices, sizeof(indices));
+					auto material = source->GetOrAddRHI(mesh->m_vertexDescription);
+					Require(material.IsValid(), "surface graphics material must be ready");
 					auto graph = RHIFrameGraphPtr::Make();
 					graph->SetRenderTarget("DepthBuffer", depth);
 					auto node = TRefPtr<SurfaceRenderNode>::Make();
@@ -495,7 +503,10 @@ void main() {
 		if (!task->GetResult().empty()) throw std::runtime_error(task->GetResult());
 		return pixels;
 	}
+}
 
+namespace
+{
 	void TestStandardGltfSurfaceRendering(const std::filesystem::path& workspace)
 	{
 		auto* importer = App::GetSubmodule<MaterialImporter>();
