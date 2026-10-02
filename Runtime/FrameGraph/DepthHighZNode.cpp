@@ -2,12 +2,8 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
-#include "RHI/Surface.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Texture.h"
-#include "Engine/World.h"
-#include "Engine/GameObject.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
 
 using namespace Sailor;
@@ -25,13 +21,13 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	RHI::RHIRenderTargetPtr depthAttachment = GetRHIResource("src").DynamicCast<RHI::RHIRenderTarget>();
+	RHI::RHIRenderTargetPtr depthAttachment = GetTargetAttachment("src", frameGraph.GetRawPtr()).DynamicCast<RHI::RHIRenderTarget>();
 	if (!depthAttachment)
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
-	RHI::RHIRenderTargetPtr highZRenderTarget = GetResolvedAttachment("dst").DynamicCast<RHIRenderTarget>();
+	RHI::RHIRenderTargetPtr highZRenderTarget = GetResolvedAttachment("dst", frameGraph.GetRawPtr()).DynamicCast<RHIRenderTarget>();
 	if (!depthAttachment || !highZRenderTarget || highZRenderTarget->GetMipLevels() == 0u)
 	{
 		return;

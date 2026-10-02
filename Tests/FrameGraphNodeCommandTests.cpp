@@ -5,6 +5,7 @@
 #include "FrameGraph/AtmosphericFogNode.h"
 #include "FrameGraph/BlitNode.h"
 #include "FrameGraph/ClearNode.h"
+#include "FrameGraph/DepthHighZNode.h"
 #include "FrameGraph/LinearizeDepthNode.h"
 #include "FrameGraph/PostProcessNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
@@ -185,14 +186,18 @@ void main() {
 	int samples = 1;
 #ifdef MSAA
 	samples = textureSamples(depthSampler);
+	ivec2 size = textureSize(depthSampler);
+#else
+	ivec2 size = textureSize(depthSampler, 0);
 #endif
+	if (any(greaterThanEqual(pixel, size))) return;
 	for (int sampleIndex = 0; sampleIndex < samples; ++sampleIndex) {
 		float depth = texelFetch(depthSampler, pixel, sampleIndex).r;
 		float stencil = 0;
 #ifdef STENCIL
 		stencil = float(texelFetch(stencilSampler, pixel, sampleIndex).r);
 #endif
-		outputValues.values[(pixel.y * 8 + pixel.x) * samples + sampleIndex] = vec2(depth, stencil);
+		outputValues.values[(pixel.y * size.x + pixel.x) * samples + sampleIndex] = vec2(depth, stencil);
 	}
 }
 )glsl";
@@ -210,6 +215,33 @@ void main() {
 			Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(id, result[variant], defines) && result[variant]->IsReady(),
 				"all depth/stencil readback permutations must compile");
 		}
+		return result;
+	}
+
+	ShaderSetPtr WriteDepthPatternShader(const std::filesystem::path& workspace, EFormat format)
+	{
+		const auto path = workspace / "Content" / ("DepthPattern" + std::to_string(uint32_t(format)) + ".shader");
+		YAML::Node shader;
+		shader["glslCommon"] = "#version 450\n";
+		shader["depthStencilAttachment"] = format == EFormat::D32_SFLOAT ? "D32_SFLOAT" : "D32_SFLOAT_S8_UINT";
+		shader["glslVertex"] = "layout(location = 0) in vec3 position; void main() { gl_Position = vec4(position, 1); }";
+		shader["glslFragment"] = R"glsl(
+layout(push_constant) uniform Pattern { uint sampleIndex; uint frame; } pattern;
+void main() {
+	uvec2 pixel = uvec2(gl_FragCoord.xy);
+	if (pattern.sampleIndex > 0 && (pixel.x + pixel.y + pattern.frame) % 5 == 0) discard;
+	gl_SampleMask[0] = 1 << pattern.sampleIndex;
+	gl_FragDepth = float(1 + (pixel.x * 3 + pixel.y * 5 + pattern.frame * 7) % 13) / 16.0 - float(pattern.sampleIndex) / 32.0;
+}
+)glsl";
+		std::ofstream output(path);
+		output << shader;
+		output.close();
+		Require(static_cast<bool>(output), "depth pattern shader must be written");
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+		ShaderSetPtr result;
+		Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(id, result) && result->IsReady(),
+			"depth pattern shader must compile before recording");
 		return result;
 	}
 
@@ -492,8 +524,10 @@ void main() {
 		auto commands = Renderer::GetDriverCommands();
 		const uint32_t samples = static_cast<uint32_t>(texture->GetMsaaSamples());
 		const bool stencil = IsDepthStencilFormat(texture->GetFormat());
-		auto buffer = driver->CreateBuffer(Side * Side * samples * sizeof(glm::vec2), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
-		std::fill_n(static_cast<glm::vec2*>(buffer->GetPointer()), Side * Side * samples, glm::vec2(std::numeric_limits<float>::quiet_NaN()));
+		const auto size = texture->GetExtent();
+		const uint32_t count = size.x * size.y * samples;
+		auto buffer = driver->CreateBuffer(count * sizeof(glm::vec2), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+		std::fill_n(static_cast<glm::vec2*>(buffer->GetPointer()), count, glm::vec2(std::numeric_limits<float>::quiet_NaN()));
 		auto bindings = driver->CreateShaderBindings();
 		Require(driver->AddSamplerToShaderBindings(bindings, "depthSampler", texture->GetDepthAspect(), 0).IsValid(),
 			"readback must bind the real depth view");
@@ -507,9 +541,160 @@ void main() {
 		Require(driver->AddBufferToShaderBindings(bindings, buffer, "outputValues", 2).IsValid(), "depth readback storage must bind");
 		commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit), static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit));
 		commands->ImageMemoryBarrierForComputeSampling(command, texture);
-		commands->Dispatch(command, shaders[(samples > 1 ? 1 : 0) | (stencil ? 2 : 0)]->GetComputeShaderRHI(), 1, 1, 1, { bindings });
+		commands->Dispatch(command, shaders[(samples > 1 ? 1 : 0) | (stencil ? 2 : 0)]->GetComputeShaderRHI(),
+			(size.x + 7) / 8, (size.y + 7) / 8, 1, { bindings });
 		commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
 		return buffer;
+	}
+
+	void DrawDepthPattern(RHICommandListPtr command, RHIFrameGraphPtr graph, RHIRenderTargetPtr depth, ShaderSetPtr shader, uint32_t frame)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		const auto size = depth->GetExtent();
+		const RenderState state{ true, true, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0,
+			depth->GetMsaaSamples() != EMsaaSamples::Samples_1, EDepthCompare::Always };
+		auto material = driver->CreateMaterial(driver->GetOrAddVertexDescription<VertexP3N3UV2C4>(), EPrimitiveTopology::TriangleList, state, shader);
+		commands->ImageMemoryBarrier(command, depth, depth->GetDefaultLayout());
+		commands->BeginRenderPass(command, TVector<RHITexturePtr>{}, TVector<RHITexturePtr>{}, depth,
+			glm::ivec4(0, 0, size.x, size.y), glm::ivec2(0), true, glm::vec4(0), 0.0f, false, true);
+		commands->BindMaterial(command, material);
+		const auto mesh = graph->GetFullscreenNdcQuad();
+		commands->BindVertexBuffer(command, mesh->m_vertexBuffer, 0);
+		commands->BindIndexBuffer(command, mesh->m_indexBuffer, 0);
+		commands->SetViewport(command, 0, 0, float(size.x), float(size.y), glm::vec2(0), glm::vec2(size), 0, 1);
+		for (uint32_t sample = 0; sample < uint32_t(depth->GetMsaaSamples()); ++sample)
+		{
+			const glm::uvec2 pattern(sample, frame);
+			commands->PushConstants(command, material, sizeof(pattern), &pattern);
+			commands->DrawIndexed(command, 6, 1, uint32_t(mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t)),
+				uint32_t(mesh->m_vertexBuffer->GetOffset() / mesh->m_vertexDescription->GetVertexStride()), 0);
+		}
+		commands->EndRenderPass(command);
+	}
+
+	enum class DepthInput { Default, Texture, Surface };
+
+	void TestDepthHighZ(ShaderSetPtr patternShader, const std::array<ShaderSetPtr, 4>& readbackShaders,
+		EFormat format, DepthInput input, bool namedInput, bool namedOutput, bool outputSurface)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<DepthHighZNode>::Make();
+		if (namedInput) node->SetRHIResource_Unresolved("src", input == DepthInput::Default ? "DepthBuffer" : "CustomDepth");
+		if (namedOutput) node->SetRHIResource_Unresolved("dst", "Pyramid");
+		RHIRenderTargetPtr previousPyramid;
+		for (uint32_t frame = 0; frame < 3; ++frame)
+		{
+			if (frame == 2) node->Clear();
+			const glm::ivec2 inputSize = frame == 0 ? glm::ivec2(8) : frame == 1 ? glm::ivec2(9, 7) : glm::ivec2(5, 9);
+			const glm::ivec2 outputSize = frame == 0 ? glm::ivec2(8) : frame == 1 ? glm::ivec2(7, 5) : glm::ivec2(3, 7);
+			const uint32_t mipCount = frame == 0 ? 4 : 3;
+			const auto usage = ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit;
+			auto defaultDepth = driver->CreateRenderTarget(inputSize, 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+			auto defaultTarget = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT ?
+				driver->GetOrAddMsaaFramebufferRenderTarget(format, inputSize).StaticCast<RHIRenderTarget>() : defaultDepth;
+			graph->SetRenderTarget("DepthBuffer", defaultDepth);
+			auto depthSurface = input == DepthInput::Surface ? driver->CreateSurface(inputSize, 1, format,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp, usage) : RHISurfacePtr{};
+			auto resolved = depthSurface ? depthSurface->GetResolved() : input == DepthInput::Default ? defaultDepth :
+				driver->CreateRenderTarget(inputSize, 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+			auto depth = depthSurface ? depthSurface->GetTarget() : input == DepthInput::Default ? defaultTarget : resolved;
+			auto surface = outputSurface ? driver->CreateSurface(outputSize, mipCount, EFormat::R32_SFLOAT) : RHISurfacePtr{};
+			auto pyramid = surface ? surface->GetResolved() : driver->CreateRenderTarget(outputSize, mipCount, EFormat::R32_SFLOAT);
+			if (depthSurface) graph->SetSurface("CustomDepth", depthSurface);
+			else graph->SetRenderTarget("CustomDepth", resolved);
+			if (surface) graph->SetSurface("Pyramid", surface);
+			else graph->SetRenderTarget("Pyramid", pyramid);
+			if (!namedInput && input != DepthInput::Default) node->SetRHIResource("src", depthSurface ? RHIResourcePtr(depthSurface) : depth);
+			if (!namedOutput) node->SetRHIResource("dst", surface ? RHIResourcePtr(surface) : pyramid);
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
+			for (auto texture : { defaultDepth, defaultTarget, resolved })
+			{
+				commands->ImageMemoryBarrier(draw, texture, EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(draw, texture, 0.9375f, 0);
+			}
+			DrawDepthPattern(draw, graph, depth, patternShader, frame);
+			auto inputReadback = ReadDepth(draw, depth, readbackShaders);
+			ClearColor(draw, pyramid, glm::vec4(-8));
+			if (surface && surface->NeedsResolve()) ClearColor(draw, surface->GetTarget(), glm::vec4(-4));
+			graph->ResetCurrentDepthPyramids();
+			Require(!graph->HasCurrentDepthPyramid(pyramid) && !graph->HasCurrentDepthPyramid(previousPyramid),
+				"reset must invalidate the previous camera/frame depth pyramid");
+			RHISceneViewSnapshot scene;
+			node->Process(graph, upload, draw, scene);
+			const bool published = graph->HasCurrentDepthPyramid(pyramid);
+			TVector<RHIBufferPtr> mipReadbacks(mipCount);
+			for (uint32_t mip = 0; mip < mipCount; ++mip)
+			{
+				auto texture = pyramid->GetMipLayer(mip);
+				const auto size = texture->GetExtent();
+				mipReadbacks[mip] = driver->CreateBuffer(size.x * size.y * sizeof(float), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				std::fill_n(static_cast<float*>(mipReadbacks[mip]->GetPointer()), size.x * size.y, std::numeric_limits<float>::quiet_NaN());
+				commands->ImageMemoryBarrier(draw, texture, EImageLayout::TransferSrcOptimal);
+				commands->CopyImageToBuffer(draw, texture, mipReadbacks[mip]);
+			}
+			auto unusedTarget = surface && surface->NeedsResolve() ? ReadColor(draw, surface->GetTarget()) : RHIBufferPtr{};
+			CompleteCommands(upload, draw);
+			if (unusedTarget)
+			{
+				const auto values = static_cast<const float*>(unusedTarget->GetPointer());
+				for (int32_t i = 0; i < outputSize.x * outputSize.y; ++i)
+					Require(values[i] == -4.0f, "depth pyramid compute must not modify an unused MSAA output target");
+			}
+			const auto inputValues = static_cast<const glm::vec2*>(inputReadback->GetPointer());
+			const uint32_t samples = uint32_t(depth->GetMsaaSamples());
+			TVector<float> previous(inputSize.x * inputSize.y);
+			for (int32_t y = 0; y < inputSize.y; ++y)
+				for (int32_t x = 0; x < inputSize.x; ++x)
+				{
+					float minDepth = 1;
+					for (uint32_t sample = 0; sample < samples; ++sample)
+					{
+						const float expected = sample > 0 && (x + y + frame) % 5 == 0 ? 0.0f :
+							float(1 + (x * 3 + y * 5 + frame * 7) % 13) / 16.0f - float(sample) / 32.0f;
+						const auto value = inputValues[(y * inputSize.x + x) * samples + sample].x;
+						Require(std::isfinite(value) && std::abs(value - expected) < 0.00001f,
+							"depth fixture must write each distinct sample, including uncovered zero samples");
+						minDepth = glm::min(minDepth, expected);
+					}
+					previous[y * inputSize.x + x] = minDepth;
+				}
+			if (!published) throw std::runtime_error("DepthHighZ did not publish: input=" + std::to_string(uint32_t(input)) +
+				" namedInput=" + std::to_string(namedInput) + " namedOutput=" + std::to_string(namedOutput));
+			auto previousSize = inputSize;
+			for (uint32_t mip = 0; mip < mipCount; ++mip)
+			{
+				const auto size = pyramid->GetMipLayer(mip)->GetExtent();
+				TVector<float> expected(size.x * size.y);
+				const auto actual = static_cast<const float*>(mipReadbacks[mip]->GetPointer());
+				for (int32_t y = 0; y < size.y; ++y)
+					for (int32_t x = 0; x < size.x; ++x)
+					{
+						float value = 1;
+						const glm::ivec2 begin = glm::ivec2(x, y) * previousSize / size;
+						const glm::ivec2 end = (glm::ivec2(x + 1, y + 1) * previousSize + size - 1) / size;
+						for (int32_t sourceY = begin.y; sourceY < end.y; ++sourceY)
+							for (int32_t sourceX = begin.x; sourceX < end.x; ++sourceX)
+								value = glm::min(value, previous[sourceY * previousSize.x + sourceX]);
+						expected[y * size.x + x] = value;
+						if (!std::isfinite(actual[y * size.x + x]) || std::abs(actual[y * size.x + x] - value) > 0.00001f)
+							throw std::runtime_error("DepthHighZ mip differs from conservative reduction: input=" + std::to_string(uint32_t(input)) +
+								" namedInput=" + std::to_string(namedInput) + " namedOutput=" + std::to_string(namedOutput) + " mip=" + std::to_string(mip));
+					}
+				previous = std::move(expected);
+				previousSize = size;
+			}
+			previousPyramid = pyramid;
+		}
+		std::cout << "DepthHighZ format=" << uint32_t(format) << " input=" << uint32_t(input) << " namedInput=" << namedInput
+			<< " namedOutput=" << namedOutput << " outputSurface=" << outputSurface << ": all samples, even/odd mips, replacement and Clear passed\n";
 	}
 
 	void TestDepthSurfaceFactory(const std::array<ShaderSetPtr, 4>& shaders, EFormat format)
@@ -1245,6 +1430,16 @@ namespace Sailor::Tests
 		const auto smallShader = WriteShader(workspace, false);
 		const auto largeShader = WriteShader(workspace, true);
 		const auto depthReadback = WriteDepthReadbackShader(workspace);
+		const std::array depthPatterns{ WriteDepthPatternShader(workspace, EFormat::D32_SFLOAT), WriteDepthPatternShader(workspace, EFormat::D32_SFLOAT_S8_UINT) };
+		const auto highZInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeDepthHighZ.shader");
+		Require(highZInfo != nullptr, "the production depth pyramid shader must exist");
+		std::array<ShaderSetPtr, 3> highZShaders;
+		for (uint32_t i = 0; i < highZShaders.size(); ++i)
+		{
+			const TVector<std::string> defines = i == 0 ? TVector<std::string>{} : TVector<std::string>{ i == 1 ? "DEPTH_INPUT" : "MSAA_DEPTH_INPUT" };
+			Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(highZInfo->GetFileId(), highZShaders[i], defines) && highZShaders[i]->IsReady(),
+				"all production depth pyramid permutations must compile before recording");
+		}
 		const auto graphId = WriteGraph(workspace);
 		const auto mrtShader = WriteMrtShader(workspace);
 		ShaderSetPtr blitShader;
@@ -1265,6 +1460,12 @@ namespace Sailor::Tests
 				try
 				{
 					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT }) TestDepthSurfaceFactory(depthReadback, format);
+					for (bool namedInput : { false, true })
+						for (bool namedOutput : { false, true })
+							for (auto input : { DepthInput::Default, DepthInput::Texture, DepthInput::Surface })
+								for (bool outputSurface : { false, true })
+									for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
+										TestDepthHighZ(depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1], depthReadback, format, input, namedInput, namedOutput, outputSurface);
 					for (bool namedDepth : { false, true })
 						for (bool namedTarget : { false, true })
 							for (bool depthSurface : { false, true })
