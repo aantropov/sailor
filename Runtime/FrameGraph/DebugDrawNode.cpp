@@ -2,12 +2,9 @@
 #include "RHI/SceneView.h"
 #include "RHI/CommandList.h"
 #include "RHI/Renderer.h"
-#include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Texture.h"
-#include "Engine/World.h"
-#include "Engine/GameObject.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -24,17 +21,23 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	auto colorAttachmentSurface = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
-	auto colorAttachmentRT = GetRHIResource("color").DynamicCast<RHI::RHIRenderTarget>();
-	auto target = GetResolvedAttachment("color");
+	auto colorAttachmentSurface = GetRHIResource("color", frameGraph.GetRawPtr()).DynamicCast<RHI::RHISurface>();
+	auto target = GetTargetAttachment("color", frameGraph.GetRawPtr());
 
-	auto depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
+	auto depthAttachment = GetTargetAttachment("depthStencil", frameGraph.GetRawPtr());
 	if (!depthAttachment)
 	{
-		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+		const auto surface = frameGraph->GetSurface("DepthBuffer");
+		depthAttachment = surface ? surface->GetTarget() : frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
-	if (!commands || !commandList || !target || !depthAttachment || (!colorAttachmentSurface && !colorAttachmentRT) || !sceneView.m_debugDrawSecondaryCmdList)
+	if (!target || !depthAttachment || !sceneView.m_debugDrawSecondaryCmdList)
+	{
+		return;
+	}
+
+	auto debugDrawCommandList = sceneView.m_debugDrawSecondaryCmdList->GetResult();
+	if (!debugDrawCommandList)
 	{
 		return;
 	}
@@ -44,14 +47,11 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ? EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
 
 	commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
-
-	auto debugDrawCommandList = sceneView.m_debugDrawSecondaryCmdList->GetResult();
-	if (!debugDrawCommandList)
+	if (colorAttachmentSurface && colorAttachmentSurface->NeedsResolve())
 	{
-		commands->EndDebugRegion(commandList);
-		return;
+		commands->ImageMemoryBarrier(commandList, colorAttachmentSurface->GetResolved(), EImageLayout::ColorAttachmentOptimal);
 	}
+	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
 
 	m_drawCallStats += debugDrawCommandList->GetRecordedDrawCallStats();
 
@@ -72,7 +72,7 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	{
 		commands->RenderSecondaryCommandBuffers(commandList,
 			TVector<RHI::RHICommandListPtr> {debugDrawCommandList},
-			TVector<RHI::RHITexturePtr>{ colorAttachmentRT },
+			TVector<RHI::RHITexturePtr>{ target },
 			depthAttachment,
 			glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
 			glm::ivec2(0, 0),

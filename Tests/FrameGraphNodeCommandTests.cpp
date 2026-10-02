@@ -9,6 +9,7 @@
 #include "FrameGraph/BlitNode.h"
 #include "FrameGraph/ClearNode.h"
 #include "FrameGraph/DepthHighZNode.h"
+#include "FrameGraph/DebugDrawNode.h"
 #include "FrameGraph/LinearizeDepthNode.h"
 #include "FrameGraph/LightCullingNode.h"
 #include "FrameGraph/PostProcessNode.h"
@@ -107,11 +108,15 @@ namespace
 	PFN_vkCmdBeginRenderingKHR originalBeginRendering = nullptr;
 	VkRenderingAttachmentInfo recordedColor{};
 	VkRenderingAttachmentInfo recordedMotion{};
+	VkRenderingAttachmentInfo recordedDepth{};
+	VkRenderingFlags recordedRenderingFlags = 0;
 	uint32_t recordedColorCount = 0;
 
 	VKAPI_ATTR void VKAPI_CALL CaptureRendering(VkCommandBuffer command, const VkRenderingInfo* info)
 	{
 		recordedColorCount = info->colorAttachmentCount;
+		recordedDepth = info->pDepthAttachment ? *info->pDepthAttachment : VkRenderingAttachmentInfo{};
+		recordedRenderingFlags = info->flags;
 		if (recordedColorCount) recordedColor = info->pColorAttachments[0];
 		if (recordedColorCount > 1) recordedMotion = info->pColorAttachments[1];
 		originalBeginRendering(command, info);
@@ -247,6 +252,36 @@ void main() {
 		ShaderSetPtr result;
 		Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(id, result) && result->IsReady(),
 			"depth pattern shader must compile before recording");
+		return result;
+	}
+
+	ShaderSetPtr WriteDebugDrawShader(const std::filesystem::path& workspace, EFormat format)
+	{
+		const auto path = workspace / "Content" / ("DebugDrawTest" + std::to_string(uint32_t(format)) + ".shader");
+		YAML::Node shader;
+		shader["glslCommon"] = "#version 450\n";
+		shader["colorAttachments"].push_back("R32G32B32A32_SFLOAT");
+		shader["depthStencilAttachment"] = format == EFormat::D32_SFLOAT ? "D32_SFLOAT" : "D32_SFLOAT_S8_UINT";
+		shader["glslVertex"] = R"glsl(
+layout(location = 0) in vec3 position;
+layout(push_constant) uniform Camera { mat4 viewProjection; } camera;
+void main() { gl_Position = camera.viewProjection * vec4(position, 1); }
+)glsl";
+		shader["glslFragment"] = R"glsl(
+layout(location = 0) out vec4 outColor;
+void main() {
+	if (gl_FragCoord.x >= 4) discard;
+	outColor = vec4(0.75, 0.5, 0.25, 1);
+}
+)glsl";
+		std::ofstream output(path);
+		output << shader;
+		output.close();
+		Require(static_cast<bool>(output), "debug draw shader fixture must be written");
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+		ShaderSetPtr result;
+		Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(id, result) && result->IsReady(),
+			"debug draw shader must compile before secondary recording");
 		return result;
 	}
 
@@ -576,6 +611,147 @@ void main() {
 				uint32_t(mesh->m_vertexBuffer->GetOffset() / mesh->m_vertexDescription->GetVertexStride()), 0);
 		}
 		commands->EndRenderPass(command);
+	}
+
+	enum class DebugDepthInput { Default, Texture, Surface, DefaultSurface };
+
+	void TestDebugDraw(ShaderSetPtr shader, ShaderSetPtr depthPattern, const std::array<ShaderSetPtr, 4>& depthReadback,
+		EFormat format, bool colorSurface, DebugDepthInput depthInput, bool namedColor, bool namedDepth)
+	{
+		auto driver = Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		auto commands = Renderer::GetDriverCommands();
+		const bool msaa = colorSurface && VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+		const bool defaultDepth = depthInput == DebugDepthInput::Default || depthInput == DebugDepthInput::DefaultSurface;
+		const bool depthSurface = depthInput == DebugDepthInput::Surface || depthInput == DebugDepthInput::DefaultSurface;
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<DebugDrawNode>::Make();
+		if (namedColor) node->SetRHIResource_Unresolved("color", "DebugColor");
+		if (namedDepth) node->SetRHIResource_Unresolved("depthStencil", defaultDepth ? "DepthBuffer" : "DebugDepth");
+		CaptureAttachments capture;
+		for (uint32_t frame = 0; frame < 3; ++frame)
+		{
+			if (frame == 2) node->Clear();
+			auto color = colorSurface ? driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT) : RHISurfacePtr{};
+			auto resolved = color ? color->GetResolved() : driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+			auto target = color ? color->GetTarget() : resolved;
+			const auto usage = ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit;
+			auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+			auto surface = depthSurface ? driver->CreateSurface(glm::ivec2(Side), 1, format,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp, usage) : RHISurfacePtr{};
+			if (surface && !msaa) surface = RHISurfacePtr::Make(surface->GetResolved(), surface->GetResolved(), false);
+			auto cachedDepth = msaa ? driver->GetOrAddMsaaFramebufferRenderTarget(format, glm::ivec2(Side)).StaticCast<RHIRenderTarget>() : depth;
+			auto depthTarget = surface ? surface->GetTarget() : cachedDepth;
+			if (color) graph->SetSurface("DebugColor", color);
+			else graph->SetRenderTarget("DebugColor", resolved);
+			if (surface) graph->SetSurface(defaultDepth ? "DepthBuffer" : "DebugDepth", surface);
+			else graph->SetRenderTarget(defaultDepth ? "DepthBuffer" : "DebugDepth", depth);
+			if (!namedColor) node->SetRHIResource("color", color ? RHIResourcePtr(color) : resolved);
+			if (!namedDepth && !defaultDepth) node->SetRHIResource("depthStencil", surface ? RHIResourcePtr(surface) : depth);
+			if (!defaultDepth) graph->SetRenderTarget("DepthBuffer", depth);
+			const auto mesh = graph->GetFullscreenNdcQuad();
+			const RenderState state(true, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, msaa, EDepthCompare::Greater);
+			auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader);
+			auto secondaryTask = Tasks::CreateTaskWithResult<RHICommandListPtr>("Record debug attachment fixture",
+				[mesh, material, format, msaa]()
+				{
+					auto secondary = Renderer::GetDriver()->CreateCommandList(true, ECommandListQueue::Graphics);
+					secondary->m_vulkan.m_commandBuffer->BeginSecondaryCommandList({ VK_FORMAT_R32G32B32A32_SFLOAT },
+						static_cast<VkFormat>(format), VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+						VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT, msaa);
+					DebugContext::DrawSnapshot snapshot;
+					snapshot.m_vertexBuffer = mesh->m_vertexBuffer;
+					snapshot.m_indexBuffer = mesh->m_indexBuffer;
+					snapshot.m_material = material;
+					snapshot.m_numVertices = 6;
+					DebugContext::DrawDebugMesh(secondary, glm::translate(glm::mat4(1), glm::vec3(0, 0, 0.5f)), snapshot, glm::ivec2(Side));
+					Renderer::GetDriverCommands()->EndCommandList(secondary);
+					return secondary;
+				}, EThreadType::RHI);
+			secondaryTask->Run();
+			secondaryTask->Wait();
+			Require(secondaryTask->IsFinished() && secondaryTask->GetResult()->GetRecordedDrawCallStats().m_numBatches == 1,
+				"debug fixture must deliver a completed, nonempty secondary before Process");
+			RHISceneViewSnapshot scene;
+			scene.m_debugDrawSecondaryCmdList = secondaryTask;
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
+			const glm::vec4 background(0.125f * (frame + 1));
+			ClearColor(draw, target, background);
+			if (msaa) ClearColor(draw, resolved, glm::vec4(-8));
+			for (auto image : { depth, cachedDepth, surface ? surface->GetResolved() : depth })
+			{
+				commands->ImageMemoryBarrier(draw, image, EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(draw, image, 0.9375f, 0);
+				commands->ImageMemoryBarrier(draw, image, image->GetDefaultLayout());
+			}
+			DrawDepthPattern(draw, graph, depthTarget, depthPattern, frame);
+			recordedColorCount = 0;
+			recordedDepth = {};
+			recordedRenderingFlags = 0;
+			node->Process(graph, upload, draw, scene);
+			const bool valid = recordedColorCount == 1 && node->GetDrawCallStats().m_numBatches == 1 &&
+				recordedRenderingFlags == VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT &&
+				recordedColor.imageView == static_cast<VkImageView>(*target->m_vulkan.m_imageView) &&
+				recordedColor.resolveImageView == (msaa ? static_cast<VkImageView>(*resolved->m_vulkan.m_imageView) : VK_NULL_HANDLE) &&
+				recordedColor.resolveMode == (msaa ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE) &&
+				recordedColor.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && recordedColor.storeOp == VK_ATTACHMENT_STORE_OP_STORE &&
+				recordedDepth.imageView == static_cast<VkImageView>(*depthTarget->m_vulkan.m_imageView) &&
+				recordedDepth.resolveImageView == (msaa && !surface ? static_cast<VkImageView>(*depth->m_vulkan.m_imageView) : VK_NULL_HANDLE) &&
+				recordedDepth.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && recordedDepth.storeOp == VK_ATTACHMENT_STORE_OP_STORE;
+			if (!valid)
+			{
+				commands->EndCommandList(upload);
+				commands->EndCommandList(draw);
+				upload->m_vulkan.m_commandBuffer->Reset();
+				draw->m_vulkan.m_commandBuffer->Reset();
+				throw std::runtime_error("DebugDraw attachment mismatch: colorSurface=" + std::to_string(colorSurface) +
+					", depth=" + std::to_string(uint32_t(depthInput)) + ", namedColor=" + std::to_string(namedColor) +
+					", namedDepth=" + std::to_string(namedDepth) + ", colors=" + std::to_string(recordedColorCount) +
+					", batches=" + std::to_string(node->GetDrawCallStats().m_numBatches));
+			}
+			auto resolvedPixels = ReadColor(draw, resolved);
+			auto targetPixels = msaa ? ReadColor(draw, target) : resolvedPixels;
+			auto depthPixels = ReadDepth(draw, depthTarget, depthReadback);
+			const auto depthResolved = surface ? surface->GetResolved() : depth;
+			auto depthResolvedPixels = depthResolved != depthTarget ? ReadDepth(draw, depthResolved, depthReadback) : depthPixels;
+			CompleteCommands(upload, draw);
+			const uint32_t samples = uint32_t(depthTarget->GetMsaaSamples());
+			const auto actualDepth = static_cast<const glm::vec2*>(depthPixels->GetPointer());
+			for (uint32_t y = 0; y < Side; ++y)
+				for (uint32_t x = 0; x < Side; ++x)
+				{
+					uint32_t visibleSamples = 0;
+					float resolvedDepth = 1;
+					for (uint32_t sample = 0; sample < samples; ++sample)
+					{
+						const float expectedDepth = sample > 0 && (x + y + frame) % 5 == 0 ? 0.0f :
+							float(1 + (x * 3 + y * 5 + frame * 7) % 13) / 16.0f - float(sample) / 32.0f;
+						Require(actualDepth[(y * Side + x) * samples + sample] == glm::vec2(expectedDepth, 0),
+							"debug overlay must preserve every depth/stencil sample");
+						if (sample == 0 || recordedDepth.resolveMode == VK_RESOLVE_MODE_MIN_BIT)
+							resolvedDepth = glm::min(resolvedDepth, expectedDepth);
+						if (x < Side / 2 && 0.5f > expectedDepth) ++visibleSamples;
+					}
+					if (surface && msaa) resolvedDepth = 0.9375f;
+					Require(static_cast<const glm::vec2*>(depthResolvedPixels->GetPointer())[y * Side + x] == glm::vec2(resolvedDepth, 0),
+						"implicit depth must resolve; an explicit Surface's unused resolve must remain untouched");
+					const auto expected = glm::mix(background, glm::vec4(0.75f, 0.5f, 0.25f, 1), float(visibleSamples) / samples);
+					for (auto image : { resolvedPixels, targetPixels })
+					{
+						const auto actual = static_cast<const glm::vec4*>(image->GetPointer())[y * Side + x];
+						for (uint32_t component = 0; component < 4; ++component)
+							Require(std::isfinite(actual[component]) && std::abs(actual[component] - expected[component]) < 0.00001f,
+								"debug secondary must respect per-sample depth and preserve uncovered live color");
+					}
+				}
+		}
+		std::cout << "DebugDraw colorSurface=" << colorSurface << " depth=" << uint32_t(depthInput) <<
+			" namedColor=" << namedColor << " namedDepth=" << namedDepth << " format=" << uint32_t(format) <<
+			": three replacements, completed secondary, native attachments and per-sample occlusion passed\n";
 	}
 
 	enum class DepthInput { Default, Texture, Surface };
@@ -1624,6 +1800,7 @@ namespace Sailor::Tests
 		const auto largeShader = WriteShader(workspace, true);
 		const auto depthReadback = WriteDepthReadbackShader(workspace);
 		const std::array depthPatterns{ WriteDepthPatternShader(workspace, EFormat::D32_SFLOAT), WriteDepthPatternShader(workspace, EFormat::D32_SFLOAT_S8_UINT) };
+		const std::array debugShaders{ WriteDebugDrawShader(workspace, EFormat::D32_SFLOAT), WriteDebugDrawShader(workspace, EFormat::D32_SFLOAT_S8_UINT) };
 		const auto highZInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeDepthHighZ.shader");
 		Require(highZInfo != nullptr, "the production depth pyramid shader must exist");
 		std::array<ShaderSetPtr, 3> highZShaders;
@@ -1656,6 +1833,13 @@ namespace Sailor::Tests
 			{
 				try
 				{
+					for (bool namedColor : { true, false })
+						for (bool namedDepth : { false, true })
+							for (bool colorSurface : { false, true })
+								for (auto depthInput : { DebugDepthInput::Default, DebugDepthInput::Texture, DebugDepthInput::Surface, DebugDepthInput::DefaultSurface })
+									for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
+										TestDebugDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],
+											depthReadback, format, colorSurface, depthInput, namedColor, namedDepth);
 					for (auto inputMode : { LightCullingInput::Bound, LightCullingInput::Named,
 						LightCullingInput::Default, LightCullingInput::NamedWithoutDefault })
 						for (bool surfaceInput : { false, true })

@@ -3213,7 +3213,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 		for (uint32_t i = 0; i < colorAttachments.Num(); i++)
 		{
 			targets[i] = colorAttachments[i]->GetTarget()->m_vulkan.m_imageView;
-			resolved[i] = colorAttachments[i]->GetResolved()->m_vulkan.m_imageView;;
+			resolved[i] = colorAttachments[i]->GetResolved()->m_vulkan.m_imageView;
 		}
 
 		VkRect2D rect{};
@@ -3225,15 +3225,18 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 
 		const VulkanRenderPassClearValues clearValues(clearColor, clearDepth);
 
-		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
-		VulkanImageViewPtr vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
-
-		const auto depthExtents = glm::ivec2(vulkanDepthStencil->GetImage()->m_extent.width, vulkanDepthStencil->GetImage()->m_extent.height);
-		VulkanImageViewPtr msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
+		auto depthTarget = depthStencilAttachment->m_vulkan.m_imageView;
+		VulkanImageViewPtr depthResolve;
+		if (depthStencilAttachment->GetMsaaSamples() == RHI::EMsaaSamples::Samples_1)
+		{
+			depthResolve = depthTarget;
+			depthTarget = GetOrAddMsaaFramebufferRenderTarget(depthStencilAttachment->GetFormat(),
+				depthStencilAttachment->GetExtent())->m_vulkan.m_imageView;
+		}
 
 		cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(targets, resolved,
-			msaaDepthStencilTarget,
-			depthStencilAttachment->m_vulkan.m_imageView,
+			depthTarget,
+			depthResolve,
 			rect,
 			VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
 			VkOffset2D{ .x = offset.x, .y = offset.y },
