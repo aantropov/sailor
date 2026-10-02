@@ -247,7 +247,11 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 		};
 
 		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>(*m_scheduler, "Load model",
-			[this, pAssetInfo, pModel]() mutable
+			[pAssetInfo, pModel
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+			, this
+#endif
+			]() mutable
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
 				tinygltf::Model gltfModel;
