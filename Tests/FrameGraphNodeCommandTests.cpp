@@ -4,6 +4,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "FrameGraph/AtmosphericFogNode.h"
 #include "FrameGraph/BlitNode.h"
+#include "FrameGraph/ClearNode.h"
 #include "FrameGraph/PostProcessNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/RenderSceneNode.h"
@@ -26,6 +27,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -153,6 +155,60 @@ void main() {
 		Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(id, compiled, { "INVERT" }) && compiled && compiled->IsReady(),
 			"post-process shader permutation must compile before recording");
 		return name;
+	}
+
+	std::array<ShaderSetPtr, 4> WriteDepthReadbackShader(const std::filesystem::path& workspace)
+	{
+		const auto path = workspace / "Content" / "ClearDepthReadback.shader";
+		YAML::Node shader;
+		shader["defines"].push_back("MSAA");
+		shader["defines"].push_back("STENCIL");
+		shader["glslCommon"] = "#version 450\n";
+		shader["glslCompute"] = R"glsl(
+layout(local_size_x = 8, local_size_y = 8) in;
+#ifdef MSAA
+layout(set = 0, binding = 0) uniform sampler2DMS depthSampler;
+#ifdef STENCIL
+layout(set = 0, binding = 1) uniform usampler2DMS stencilSampler;
+#endif
+#else
+layout(set = 0, binding = 0) uniform sampler2D depthSampler;
+#ifdef STENCIL
+layout(set = 0, binding = 1) uniform usampler2D stencilSampler;
+#endif
+#endif
+layout(set = 0, binding = 2, std430) writeonly buffer OutputValues { vec2 values[]; } outputValues;
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	int samples = 1;
+#ifdef MSAA
+	samples = textureSamples(depthSampler);
+#endif
+	for (int sampleIndex = 0; sampleIndex < samples; ++sampleIndex) {
+		float depth = texelFetch(depthSampler, pixel, sampleIndex).r;
+		float stencil = 0;
+#ifdef STENCIL
+		stencil = float(texelFetch(stencilSampler, pixel, sampleIndex).r);
+#endif
+		outputValues.values[(pixel.y * 8 + pixel.x) * samples + sampleIndex] = vec2(depth, stencil);
+	}
+}
+)glsl";
+		std::ofstream output(path);
+		output << shader;
+		output.close();
+		Require(static_cast<bool>(output), "depth readback shader fixture must be written");
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+		std::array<ShaderSetPtr, 4> result;
+		for (uint32_t variant = 0; variant < result.size(); ++variant)
+		{
+			TVector<std::string> defines;
+			if (variant & 1u) defines.Add("MSAA");
+			if (variant & 2u) defines.Add("STENCIL");
+			Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(id, result[variant], defines) && result[variant]->IsReady(),
+				"all depth/stencil readback permutations must compile");
+		}
+		return result;
 	}
 
 	FileId WriteGraph(const std::filesystem::path& workspace)
@@ -426,6 +482,125 @@ void main() {
 			"fullscreen upload and draw must submit");
 		Require(finished->Wait(5000000000ull) == EFenceStatus::Finished && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
 			"fullscreen pixel readback must finish");
+	}
+
+	RHIBufferPtr ReadDepth(RHICommandListPtr command, RHIRenderTargetPtr texture, const std::array<ShaderSetPtr, 4>& shaders)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		const uint32_t samples = static_cast<uint32_t>(texture->GetMsaaSamples());
+		const bool stencil = IsDepthStencilFormat(texture->GetFormat());
+		auto buffer = driver->CreateBuffer(Side * Side * samples * sizeof(glm::vec2), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+		std::fill_n(static_cast<glm::vec2*>(buffer->GetPointer()), Side * Side * samples, glm::vec2(std::numeric_limits<float>::quiet_NaN()));
+		auto bindings = driver->CreateShaderBindings();
+		Require(driver->AddSamplerToShaderBindings(bindings, "depthSampler", texture->GetDepthAspect(), 0).IsValid(),
+			"readback must bind the real depth view");
+		if (stencil)
+		{
+			auto stencilView = RHITexturePtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
+			stencilView->m_vulkan = texture->GetStencilAspect()->m_vulkan;
+			Require(driver->AddSamplerToShaderBindings(bindings, "stencilSampler", stencilView, 1).IsValid(),
+				"readback must bind the integer stencil view");
+		}
+		Require(driver->AddBufferToShaderBindings(bindings, buffer, "outputValues", 2).IsValid(), "depth readback storage must bind");
+		commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit), static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit));
+		commands->ImageMemoryBarrierForComputeSampling(command, texture);
+		commands->Dispatch(command, shaders[(samples > 1 ? 1 : 0) | (stencil ? 2 : 0)]->GetComputeShaderRHI(), 1, 1, 1, { bindings });
+		commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+		return buffer;
+	}
+
+	void TestClearDepth(const std::array<ShaderSetPtr, 4>& shaders, EFormat format, bool surfaceInput, bool late, bool implicitDepth = false)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<ClearNode>::Make();
+		RHISceneViewSnapshot scene;
+		const char* name = implicitDepth ? "DepthBuffer" : "Output";
+		if (late) node->SetRHIResource_Unresolved("target", name);
+		for (uint32_t frame = 0; frame < 2; ++frame)
+		{
+			auto resolved = driver->CreateRenderTarget(glm::ivec2(Side), 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp,
+				ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit);
+			const bool msaa = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+			auto target = (surfaceInput || implicitDepth) && msaa ?
+				driver->GetOrAddMsaaFramebufferRenderTarget(format, glm::ivec2(Side), implicitDepth ? 0 : frame + 1).StaticCast<RHIRenderTarget>() : resolved;
+			auto surface = surfaceInput ? RHISurfacePtr::Make(target, resolved, target != resolved) : RHISurfacePtr{};
+			graph->SetRenderTarget(name, surface && frame == 1 && !implicitDepth ? RHIRenderTargetPtr{} : resolved);
+			if (surface) graph->SetSurface(name, surface);
+			if (!late) node->SetRHIResource("target", surface ? RHIResourcePtr(surface) : resolved);
+			const glm::vec2 expected(frame == 0 ? 0.375f : 0.0f, IsDepthStencilFormat(format) ? float(17 + frame) : 0.0f);
+			node->SetFloat("clearDepth", expected.x);
+			node->SetFloat("clearStencil", expected.y);
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			for (auto texture : { target, resolved })
+			{
+				commands->ImageMemoryBarrier(draw, texture, EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(draw, texture, 0.875f, 91);
+			}
+			node->Process(graph, upload, draw, scene);
+			auto resolvedReadback = ReadDepth(draw, resolved, shaders);
+			auto targetReadback = target != resolved ? ReadDepth(draw, target, shaders) : resolvedReadback;
+			CompleteCommands(upload, draw);
+			for (const auto& image : { std::pair{ resolved, resolvedReadback }, std::pair{ target, targetReadback } })
+			{
+				const auto values = static_cast<const glm::vec2*>(image.second->GetPointer());
+				const uint32_t count = Side * Side * static_cast<uint32_t>(image.first->GetMsaaSamples());
+				for (uint32_t i = 0; i < count; ++i)
+					for (uint32_t component = 0; component < 2; ++component)
+						if (!std::isfinite(values[i][component]) || std::abs(values[i][component] - expected[component]) > 0.00001f)
+							throw std::runtime_error("Clear depth surface=" + std::to_string(surfaceInput) + " late=" + std::to_string(late) +
+								" implicit=" + std::to_string(implicitDepth) + ": every depth/stencil sample must contain the current clear value");
+			}
+		}
+		std::cout << "Clear depth format=" << uint32_t(format) << " surface=" << surfaceInput << " late=" << late << " implicit=" << implicitDepth
+			<< ": two frames and all live/resolved depth/stencil samples passed\n";
+	}
+
+	void TestClearColor(bool surfaceInput, bool late)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<ClearNode>::Make();
+		RHISceneViewSnapshot scene;
+		if (late) node->SetRHIResource_Unresolved("target", "Output");
+		for (uint32_t frame = 0; frame < 2; ++frame)
+		{
+			auto surface = surfaceInput ? driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT) : RHISurfacePtr{};
+			auto resolved = surface ? surface->GetResolved() : driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+			auto target = surface ? surface->GetTarget() : resolved;
+			// A named Surface must work without a second entry for its resolved texture.
+			graph->SetRenderTarget("Output", surface && frame == 1 ? RHIRenderTargetPtr{} : resolved);
+			if (surface) graph->SetSurface("Output", surface);
+			if (!late) node->SetRHIResource("target", surface ? RHIResourcePtr(surface) : resolved);
+			const glm::vec4 expected(0.125f * (frame + 1), 0.25f, 0.75f, 0.5f);
+			node->SetVec4("clearColor", expected);
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			ClearColor(draw, resolved, glm::vec4(-16));
+			if (target != resolved) ClearColor(draw, target, glm::vec4(-8));
+			node->Process(graph, upload, draw, scene);
+			auto resolvedReadback = ReadColor(draw, resolved);
+			auto targetReadback = target != resolved ? ReadColor(draw, target) : resolvedReadback;
+			CompleteCommands(upload, draw);
+			for (const auto& readback : { resolvedReadback, targetReadback })
+			{
+				const auto pixels = static_cast<const glm::vec4*>(readback->GetPointer());
+				for (uint32_t i = 0; i < Side * Side; ++i)
+					for (uint32_t component = 0; component < 4; ++component)
+						if (!std::isfinite(pixels[i][component]) || std::abs(pixels[i][component] - expected[component]) > 0.00001f)
+							throw std::runtime_error("Clear color surface=" + std::to_string(surfaceInput) + " late=" + std::to_string(late) +
+								": every live/resolved pixel must contain the current clear color");
+			}
+		}
+		std::cout << "Clear color surface=" << surfaceInput << " late=" << late << ": two frames and both images passed\n";
 	}
 
 	void TestBlit(bool sourceIsSurface, bool destinationIsSurface, bool late, bool scaled = false)
@@ -904,6 +1079,7 @@ namespace Sailor::Tests
 	{
 		const auto smallShader = WriteShader(workspace, false);
 		const auto largeShader = WriteShader(workspace, true);
+		const auto depthReadback = WriteDepthReadbackShader(workspace);
 		const auto graphId = WriteGraph(workspace);
 		const auto mrtShader = WriteMrtShader(workspace);
 		ShaderSetPtr blitShader;
@@ -921,6 +1097,13 @@ namespace Sailor::Tests
 				{
 					for (bool late : { false, true })
 					{
+						for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
+						{
+							TestClearDepth(depthReadback, format, false, late);
+							TestClearDepth(depthReadback, format, false, late, true);
+							TestClearDepth(depthReadback, format, true, late);
+						}
+						for (bool surface : { false, true }) TestClearColor(surface, late);
 						for (bool sourceSurface : { false, true })
 							for (bool destinationSurface : { false, true }) TestBlit(sourceSurface, destinationSurface, late);
 						TestBlit(false, false, late, true);
