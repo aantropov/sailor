@@ -653,6 +653,100 @@ namespace
 		std::cout << "Worker CPU preparation, independent RHI upload and full/subset ray hits passed\n";
 	}
 
+	void TestImportedWideMaterialSlots(const ModelFixture& fixture)
+	{
+		std::ifstream input(fixture.m_path);
+		auto document = nlohmann::json::parse(input);
+		input.close();
+		document["materials"] = nlohmann::json::array();
+		for (uint32_t i = 0; i < 257; ++i)
+			document["materials"].push_back({ { "name", "Material " + std::to_string(i) } });
+		document["meshes"][1]["primitives"][0]["material"] = 255;
+		document["meshes"][2]["primitives"][0]["material"] = 256;
+		std::ofstream output(fixture.m_path);
+		output << document;
+		output.close();
+		Require(static_cast<bool>(output), "the 257-material glTF fixture must be written");
+		for (bool batchByMaterial : { true, false })
+		{
+			auto settings = fixture.m_info->Serialize();
+			settings["bGenerateBLAS"] = true;
+			settings["bShouldKeepCpuBuffers"] = !batchByMaterial;
+			settings["bShouldBatchByMaterial"] = batchByMaterial;
+			fixture.m_info->Deserialize(settings);
+			FreshImporter fresh;
+			ModelPtr model;
+			Require(fresh.m_importer.LoadModel_Immediate(fixture.m_id, model) && model,
+				"the model with 257 glTF materials must import");
+			Drain();
+			const uint32_t firstSlot = batchByMaterial ? 255 : 0;
+			const uint32_t slotsPerInstance = firstSlot + 2;
+			Require(model->IsReady() && model->HasBLAS() && model->HasCpuMeshes() == !batchByMaterial &&
+				model->GetMeshes().Num() == 2 && model->GetMeshes()[0]->m_materialIndex == firstSlot &&
+				model->GetMeshes()[1]->m_materialIndex == firstSlot + 1,
+				"GPU material slots must preserve the selected batching policy");
+			ModelRayProbe::MaterialSnapshots materials;
+			materials.Resize(2 * slotsPerInstance);
+			auto neutral = TSharedPtr<ModelRayProbe::MaterialSnapshot>::Make();
+			for (auto& material : materials) material = neutral;
+			for (uint32_t i = 0; i < 4; ++i)
+			{
+				auto material = TSharedPtr<ModelRayProbe::MaterialSnapshot>::Make();
+				material->m_parameters.m_emissiveFactor = glm::vec3(i + 1, 0.5f * i, 0.25f);
+				materials[(i / 2) * slotsPerInstance + firstSlot + i % 2] = material;
+			}
+			for (int32_t selection : { Model::AllMeshes, 1, 2 })
+			{
+				ModelRayProbe tracer;
+				TVector<ModelRayProbe::TLASInstance> instances;
+				for (uint32_t index = 0; index < 2; ++index)
+				{
+					ModelRayProbe::TLASInstance instance;
+					instance.m_model = model;
+					instance.m_meshIndex = selection;
+					instance.m_materialBaseOffset = static_cast<int32_t>(index * slotsPerInstance);
+					instance.m_worldMatrix[3].y = 10.0f * index;
+					instance.m_inverseWorldMatrix = glm::inverse(instance.m_worldMatrix);
+					instance.m_worldBounds = model->GetBoundsAABB(selection);
+					instance.m_worldBounds.Apply(instance.m_worldMatrix);
+					instances.Add(instance);
+				}
+				Require(tracer.InitializeSceneSnapshot(instances, materials, {}, false, {}, true),
+					"imported CPU geometry must resolve the same material slots as GPU geometry");
+				for (uint32_t index = 0; index < 2; ++index)
+				{
+					auto verify = [&](glm::vec3 point, uint32_t primitive)
+					{
+						point.y += 10.0f * index;
+						const glm::vec3 origin = point + glm::vec3(0, 0, 2);
+						const glm::vec3 direction(0, 0, -1);
+						const uint32_t expected = index * slotsPerInstance + firstSlot + primitive;
+						ModelRayProbe::TLASHit hit;
+						Require(tracer.IntersectScene(Math::Ray(origin, direction), hit) && hit.m_materialIndex == expected,
+							"imported full/subset rays must retain high slots and neighboring instance material bases");
+						ModelRayProbe::Params params{};
+						params.m_maxBounces = 1;
+						params.m_bIncludeDirectLighting = params.m_bIncludeEnvironment = false;
+						ModelRayProbe::PreparedRaySample sample;
+						Require(tracer.SamplePreparedSceneRay(origin, direction, 3, params, 29, sample) && sample.m_bHit &&
+							glm::length(sample.m_radiance - materials[expected]->m_parameters.m_emissiveFactor) < 1e-5f,
+							"imported geometry must trace the intended material's radiance");
+					};
+					if (selection == Model::AllMeshes)
+					{
+						verify({ 4.25f, 0.125f, 0 }, 0);
+						verify({ -3.75f, 0.125f, 0 }, 1);
+						verify({ 4.25f, 3.125f, 0 }, 0);
+					}
+					else verify({ 0.25f, 0.125f, 0 }, static_cast<uint32_t>(selection - 1));
+				}
+			}
+			std::cout << "Imported " << (batchByMaterial ? "batched" : "unbatched")
+				<< " material slots, full/subset hits and radiance passed\n";
+		}
+		std::cout << "257-material glTF, CPU/GPU slot parity, full/subset rays and instance radiance passed\n";
+	}
+
 	void CheckGpuGeometry(const RHI::RHIMeshPtr& mesh, const Geometry& geometry)
 	{
 		auto readback = Tasks::CreateTaskWithResult<bool>("Read back selected LOD geometry", [mesh, &geometry]()
@@ -928,6 +1022,7 @@ namespace Sailor::Tests
 		TestModelLoadDoesNotWriteMaterials(workspace);
 		ModelFixture cpuFixture(workspace, true);
 		TestCpuPreparationDoesNotUseRhi(cpuFixture);
+		TestImportedWideMaterialSlots(cpuFixture);
 		ModelFixture fixture(workspace);
 		const auto rootTime = std::filesystem::last_write_time(fixture.m_path);
 		const auto verticesTime = std::filesystem::last_write_time(fixture.m_verticesPath);

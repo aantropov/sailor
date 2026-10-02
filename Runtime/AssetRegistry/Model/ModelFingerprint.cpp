@@ -272,7 +272,7 @@ TVector<uint8_t> ModelImporter::RenderFingerprint(const FileId& fileId,
 	}
 
 	ObjectAllocatorPtr allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
-	const size_t previewMaterialCount = (std::min)(gltfModel.materials.size(), size_t{256});
+	const size_t previewMaterialCount = gltfModel.materials.size();
 	TVector<MaterialPtr> previewMaterials(previewMaterialCount);
 	TMap<int32_t, int32_t> previewTextureSources;
 	TMap<int32_t, TexturePtr> previewImages;

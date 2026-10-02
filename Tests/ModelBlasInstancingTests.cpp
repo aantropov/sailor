@@ -3,6 +3,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <chrono>
+#include <cstddef>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -119,6 +120,7 @@ namespace
 		using PathTracer::IntersectScene;
 		using PathTracer::TLASHit;
 		using PathTracer::GetShadingBasis;
+		using PathTracer::GetMaterialData;
 		size_t InstanceCount() const { return m_geometry->m_tlasInstances.Num(); }
 	};
 
@@ -303,6 +305,114 @@ namespace
 			}
 		}
 	}
+
+	void VerifyWideMaterialSlots(const Memory::ObjectAllocatorPtr& allocator)
+	{
+		constexpr uint32_t SlotsPerInstance = 257;
+		auto source = TObjectPtr<RepeatedModel>::Make(allocator, 1);
+		source->AddPrimitive();
+		source->GetCpuMeshes()[0].m_materialIndex = 255;
+		source->GetCpuMeshes()[1].m_materialIndex = 256;
+		Require(source->BuildBLAS(), "a model using material slots 255 and 256 must build");
+		RayProbe::MaterialSnapshots materials;
+		materials.Resize(2 * SlotsPerInstance);
+		auto neutral = TSharedPtr<RayProbe::MaterialSnapshot>::Make();
+		for (auto& material : materials) material = neutral;
+		for (uint32_t i = 0; i < 4; ++i)
+		{
+			auto material = TSharedPtr<RayProbe::MaterialSnapshot>::Make();
+			material->m_parameters.m_baseColorFactor = glm::vec4(0.1f * (i + 1), 0.25f, 0.7f, 1);
+			material->m_parameters.m_roughnessFactor = 0.2f + 0.15f * i;
+			material->m_parameters.m_metallicFactor = 0.1f + 0.2f * i;
+			material->m_parameters.m_emissiveFactor = glm::vec3(i + 1, 4 - i, 0.25f * i);
+			materials[(i / 2) * SlotsPerInstance + 255 + i % 2] = material;
+		}
+		RayProbe::Params params{};
+		params.m_maxBounces = 1;
+		params.m_bIncludeDirectLighting = params.m_bIncludeEnvironment = false;
+		for (int32_t selection : { Model::AllMeshes, 0 })
+		{
+			RayProbe tracer;
+			TVector<RayProbe::TLASInstance> instances;
+			for (uint32_t index = 0; index < 2; ++index)
+			{
+				RayProbe::TLASInstance instance;
+				instance.m_model = source.StaticCast<Model>();
+				instance.m_meshIndex = selection;
+				instance.m_materialBaseOffset = static_cast<int32_t>(index * SlotsPerInstance);
+				instance.m_worldMatrix = glm::translate(glm::mat4(1), glm::vec3(0, 4 * index, 0));
+				instance.m_inverseWorldMatrix = glm::inverse(instance.m_worldMatrix);
+				instance.m_worldBounds = source->GetBoundsAABB(selection);
+				instance.m_worldBounds.Apply(instance.m_worldMatrix);
+				instances.Add(instance);
+			}
+			Require(tracer.InitializeSceneSnapshot(instances, materials, {}, false, {}, true),
+				"wide material slots must resolve for both instances and source selections");
+			Require(tracer.GetLastScenePreparationStats().m_materialSlotCount == materials.Num() &&
+				tracer.GetLastScenePreparationStats().m_skippedInstanceCount == 0,
+				"all 514 material slots must remain available without skipping an instance");
+			for (uint32_t index = 0; index < 2; ++index)
+			{
+				for (uint32_t primitive = 0; primitive < 2; ++primitive)
+				{
+					const uint32_t expectedIndex = index * SlotsPerInstance + 255 + primitive;
+					const glm::vec3 origin(0.217f + 2 * primitive, 0.331f + 4 * index, 2);
+					const glm::vec3 direction(0, 0, -1);
+					RayProbe::TLASHit hit;
+					Require(tracer.IntersectScene(Math::Ray(origin, direction), hit), "each wide-slot primitive must be hit");
+					if (hit.m_materialIndex != expectedIndex)
+					{
+						std::cerr << "Expected material " << expectedIndex << ", got " << hit.m_materialIndex << '\n';
+						throw std::runtime_error("ray hits must preserve material slots above 255 and each instance base");
+					}
+					const auto& expected = materials[expectedIndex]->m_parameters;
+					const auto sampled = tracer.GetMaterialData(hit.m_materialIndex, hit.m_hit.m_textureCoord);
+					Require(glm::length(sampled.m_baseColor - expected.m_baseColorFactor) < 1e-5f &&
+						std::abs(sampled.m_orm.y - expected.m_roughnessFactor) < 1e-5f &&
+						std::abs(sampled.m_orm.z - expected.m_metallicFactor) < 1e-5f &&
+						glm::length(sampled.m_emissive - expected.m_emissiveFactor) < 1e-5f,
+						"the selected material must retain its own base color, roughness, metalness and emission");
+					RayProbe::PreparedRaySample sample;
+					Require(tracer.SamplePreparedSceneRay(origin, direction, 3, params, 17, sample) && sample.m_bHit &&
+						std::abs(sample.m_distance - 2) < 1e-5f && glm::length(sample.m_radiance - expected.m_emissiveFactor) < 1e-5f,
+						"the prepared ray must return the selected high-slot material's emitted radiance");
+				}
+			}
+		}
+		const auto& geometry = source->GetBLASInstances();
+		Require(geometry[0].m_geometry->m_materialSlots == 256 && geometry[1].m_geometry->m_materialSlots == 257,
+			"BLAS material-slot counts must include the full local material index");
+	}
+
+	void VerifyMaterialSlotBounds(const Memory::ObjectAllocatorPtr& allocator)
+	{
+		auto source = TObjectPtr<RepeatedModel>::Make(allocator, 1);
+		for (int32_t slot : { -1, 0, 255, 256, 65535, INT32_MAX })
+		{
+			source->GetCpuMeshes()[0].m_materialIndex = slot;
+			Require(source->BuildBLAS(), "every nonnegative int32 source slot must fit in CPU geometry");
+			const uint32_t expected = slot < 0 ? 0 : static_cast<uint32_t>(slot);
+			const auto& geometry = *source->GetBLASInstances()[0].m_geometry;
+			Require(geometry.m_materialSlots == expected + 1, "the unassigned slot must keep its existing zero fallback");
+			for (const auto& triangle : *geometry.m_triangles)
+				Require(triangle.m_materialIndex == expected, "BLAS construction must retain the complete source slot");
+		}
+		auto material = TSharedPtr<RayProbe::MaterialSnapshot>::Make();
+		for (int32_t base : { -INT32_MAX, INT32_MAX })
+		{
+			RayProbe tracer;
+			RayProbe::TLASInstance instance;
+			instance.m_model = source.StaticCast<Model>();
+			instance.m_worldBounds = source->GetBoundsAABB();
+			instance.m_materialBaseOffset = base;
+			Require(tracer.InitializeSceneSnapshot({ instance }, { material, material }, {}, false),
+				"the existing unresolved-slot fallback must remain available");
+			RayProbe::TLASHit hit;
+			Require(tracer.IntersectScene(Math::Ray(glm::vec3(0.217f, 0.331f, 2), glm::vec3(0, 0, -1)), hit) &&
+				hit.m_materialIndex == (base < 0 ? 0u : 1u),
+				"adding a wide local slot and signed instance base must not overflow before clamping");
+		}
+	}
 }
 
 int main(int argc, char** argv)
@@ -337,6 +447,10 @@ int main(int argc, char** argv)
 			VerifySnapshotLifetime(allocator);
 			VerifyCancellationAndSelection(allocator);
 			VerifyMultiPrimitiveSelection(allocator);
+			std::cout << "cpu_triangle_bytes=" << sizeof(Math::Triangle) << " alignment=" << alignof(Math::Triangle)
+				<< " material_offset=" << offsetof(Math::Triangle, m_materialIndex) << std::endl;
+			VerifyWideMaterialSlots(allocator);
+			VerifyMaterialSlotBounds(allocator);
 		}
 		return 0;
 	}

@@ -42,6 +42,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <tiny_gltf.h>
+#include <nlohmann/json.hpp>
 
 using namespace Sailor;
 
@@ -1306,6 +1307,53 @@ namespace
 				!fixture.m_scheduler.TryFetchNextAvailiableTask(unwanted, EThreadType::Background),
 				"a new importer must reuse a current on-disk preview without starting another render");
 			fixture.m_assets.m_modelHandler.Unsubscribe(&restarted);
+		}
+	}
+
+	void TestFingerprintUsesWideMaterialSlots()
+	{
+		for (bool batchByMaterial : { true, false })
+		{
+			ModelFingerprintFixture fixture;
+			auto* info = fixture.m_assets.m_registry.GetAssetInfoPtr<ModelAssetInfoPtr>(fixture.m_id);
+			auto metadata = info->Serialize();
+			metadata["bShouldBatchByMaterial"] = batchByMaterial;
+			info->Deserialize(metadata);
+			auto document = nlohmann::json::parse(ReadAnimationFixtureText(fixture.m_source));
+			auto material = document["materials"][0];
+			// Pure emission keeps the pixel reference independent of sampling noise.
+			material["pbrMetallicRoughness"]["baseColorFactor"] = { 0, 0, 0, 1 };
+			material["pbrMetallicRoughness"]["metallicFactor"] = 0.0;
+			material["extensions"]["KHR_materials_ior"]["ior"] = 1.0;
+			document["extensionsUsed"] = { "KHR_materials_ior" };
+			material["emissiveFactor"] = { 1, 0, 0 };
+			document["materials"] = nlohmann::json::array();
+			for (uint32_t i = 0; i < 257; ++i) document["materials"].push_back(material);
+			document["materials"][0]["emissiveFactor"] = { 0, 1, 0 };
+			document["materials"][256]["emissiveFactor"] = { 0, 1, 0 };
+			auto render = [&](uint32_t slot)
+			{
+				document["meshes"][0]["primitives"][0]["material"] = slot;
+				WriteAnimationFixtureText(fixture.m_source, document.dump());
+				auto task = fixture.Request();
+				fixture.Finish();
+				Require(task->GetResult(), "the high-material-slot preview must publish");
+				const auto bytes = ReadAnimationFixtureText(fixture.m_output);
+				int width = 0, height = 0, channels = 0;
+				std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(stbi_load_from_memory(
+					reinterpret_cast<const stbi_uc*>(bytes.data()), static_cast<int>(bytes.size()),
+					&width, &height, &channels, STBI_rgb_alpha), stbi_image_free);
+				Require(pixels && width == 256 && height == 256, "the requested fingerprint must decode");
+				TVector<uint8_t> result(static_cast<size_t>(width) * height * 4);
+				std::memcpy(result.GetData(), pixels.get(), result.Num());
+				return result;
+			};
+			const auto reference = render(0);
+			constexpr size_t Center = (128 * 256 + 128) * 4;
+			Require(reference[Center + 3] != 0 && reference[Center + 1] > reference[Center],
+				"the reference preview must show the green emissive triangle");
+			Require(render(255) != reference, "slot 255 must produce its distinct red material");
+			Require(render(256) == reference, "slot 256 must render the same pixels as the equivalent material at slot zero");
 		}
 	}
 
@@ -3213,6 +3261,7 @@ int main()
 		{ "ModelCallbacksPreserveUnchangedMetadata", TestModelCallbacksPreserveUnchangedMetadata },
 		{ "ModelCallbacksDoNotRequestPreviews", TestModelCallbacksDoNotRequestPreviews },
 		{ "RequestedFingerprintsPublishAndReuse", TestRequestedFingerprintsPublishAndReuse },
+		{ "FingerprintUsesWideMaterialSlots", TestFingerprintUsesWideMaterialSlots },
 		{ "FailedFingerprintsKeepThePreviousImageAndRetry", TestFailedFingerprintsKeepThePreviousImageAndRetry },
 		{ "FingerprintPublicationRejectsSupersededWork", TestFingerprintPublicationRejectsSupersededWork },
 		{ "ModelCallbacksRetryFailedAnimationGeneration", TestModelCallbacksRetryFailedAnimationGeneration },

@@ -310,7 +310,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 						cpuMesh.m_vertices = mesh.outVertices;
 						cpuMesh.m_indices = mesh.outIndices;
 						cpuMesh.m_bounds = mesh.bounds;
-						cpuMesh.m_materialIndex = mesh.materialIndex;
+						cpuMesh.m_materialIndex = static_cast<int32_t>(mesh.materialSlot);
 						pModel->m_cpuMeshes.Add(std::move(cpuMesh));
 					}
 				}

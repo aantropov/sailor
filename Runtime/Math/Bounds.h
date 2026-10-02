@@ -27,7 +27,7 @@ namespace Sailor::Math
 		vec2 m_uvs[3];
 		vec2 m_uvs2[3];
 		vec4 m_colors[3];
-		u8 m_materialIndex{};
+		uint32_t m_materialIndex{};
 
 		float SquareArea() const;
 		float Area() const;

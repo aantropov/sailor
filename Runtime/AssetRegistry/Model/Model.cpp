@@ -267,7 +267,7 @@ bool Model::BuildBLASData(const TVector<RenderInstance>& blasInstances, BLASData
 			tri.m_colors[1] = Math::AllFinite(v1.m_color) ? v1.m_color : glm::vec4(1.0f);
 			tri.m_colors[2] = Math::AllFinite(v2.m_color) ? v2.m_color : glm::vec4(1.0f);
 
-			tri.m_materialIndex = static_cast<uint8_t>((std::max)(0, (std::min)(mesh.m_materialIndex, 255)));
+			tri.m_materialIndex = static_cast<uint32_t>((std::max)(0, mesh.m_materialIndex));
 			tri.m_centroid = tri.m_vertices[0] / 3.0f + tri.m_vertices[1] / 3.0f + tri.m_vertices[2] / 3.0f;
 			if (!Math::AllFinite(tri.m_centroid))
 			{
@@ -278,7 +278,7 @@ bool Model::BuildBLASData(const TVector<RenderInstance>& blasInstances, BLASData
 			outData.m_bounds.Extend(v0.m_position);
 			outData.m_bounds.Extend(v1.m_position);
 			outData.m_bounds.Extend(v2.m_position);
-			outData.m_materialSlots = (std::max)(outData.m_materialSlots, uint32_t(tri.m_materialIndex) + 1);
+			outData.m_materialSlots = (std::max)(outData.m_materialSlots, tri.m_materialIndex + 1u);
 			outData.m_triangles->Add(tri);
 		}
 	}

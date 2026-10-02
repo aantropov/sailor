@@ -2767,8 +2767,9 @@ uint32_t PathTracer::ResolveMaterialIndex(const TLASHit& hit) const
 	const auto& instance = m_geometry->m_tlasInstances[hit.m_instanceIndex];
 	const auto& tri =
 		(*ResolveInstanceTriangles(instance))[hit.m_triangleIndex];
-	const int32_t idx = instance.m_materialBaseOffset + (int32_t)tri.m_materialIndex;
-	return (uint32_t)(std::max)(0, (std::min)(idx, (int32_t)m_preparedMaterials->m_materials.Num() - 1));
+	const int64_t index = static_cast<int64_t>(instance.m_materialBaseOffset) + tri.m_materialIndex;
+	return static_cast<uint32_t>((std::clamp)(index, int64_t{ 0 },
+		static_cast<int64_t>(m_preparedMaterials->m_materials.Num()) - 1));
 }
 
 bool PathTracer::IsThickVolumeAtHit(
