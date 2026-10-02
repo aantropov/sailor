@@ -48,6 +48,7 @@ namespace Sailor::Tests
 	void RunAudioCommandTests(const std::filesystem::path& workspace);
 	void RunModelLodCommandTests(const std::filesystem::path& workspace);
 	void RunPrefabImporterCommandTests(const std::filesystem::path& workspace);
+	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace);
 }
 
 namespace
@@ -80,6 +81,7 @@ namespace
 		for (const char* preset : { "Ultra", "High", "Medium", "Low", "VeryLow" })
 		{
 			auto profile = settings["graphics"]["presets"][preset];
+			profile["msaaSamples"] = 2;
 			profile["enableGlobalIllumination"] = true;
 			profile["maxGiProbeStatesPerSnapshot"] = 2;
 			auto gi = profile["runtimeGIProbes"];
@@ -903,6 +905,7 @@ namespace Sailor::Tests
 			RunAudioCommandTests(workspace.Get());
 			RunModelLodCommandTests(workspace.Get());
 			RunPrefabImporterCommandTests(workspace.Get());
+			RunFrameGraphNodeCommandTests(workspace.Get());
 			std::cout << "PathTracer CLI/prepared pixel parity test passed\n";
 			result = 0;
 		}

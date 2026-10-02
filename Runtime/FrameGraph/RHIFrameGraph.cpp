@@ -1507,7 +1507,14 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	return true;
 }
 
-RHI::RHITexturePtr RHIFrameGraph::GetSampler(const std::string& name)
+RHI::RHIResourcePtr RHIFrameGraph::GetResource(const std::string& name) const
+{
+	if (const auto surface = GetSurface(name)) return surface;
+	if (const auto target = GetRenderTarget(name)) return target;
+	return GetSampler(name);
+}
+
+RHI::RHITexturePtr RHIFrameGraph::GetSampler(const std::string& name) const
 {
 	if (!m_samplers.ContainsKey(name))
 	{
@@ -1517,7 +1524,7 @@ RHI::RHITexturePtr RHIFrameGraph::GetSampler(const std::string& name)
 	return m_samplers[name];
 }
 
-RHI::RHIRenderTargetPtr RHIFrameGraph::GetRenderTarget(const std::string& name)
+RHI::RHIRenderTargetPtr RHIFrameGraph::GetRenderTarget(const std::string& name) const
 {
 	if (!m_renderTargets.ContainsKey(name))
 	{
@@ -1527,7 +1534,7 @@ RHI::RHIRenderTargetPtr RHIFrameGraph::GetRenderTarget(const std::string& name)
 	return m_renderTargets[name];
 }
 
-RHI::RHISurfacePtr RHIFrameGraph::GetSurface(const std::string& name)
+RHI::RHISurfacePtr RHIFrameGraph::GetSurface(const std::string& name) const
 {
 	if (!m_surfaces.ContainsKey(name))
 	{

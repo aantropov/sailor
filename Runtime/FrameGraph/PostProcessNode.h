@@ -19,12 +19,17 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Clear() override;
 
 	protected:
+		friend class PostProcessNodeTestAccess;
 
 		SAILOR_SHARED_API static const char* m_name;
 
 		ShaderSetPtr m_pShader{};
 		RHI::RHIMaterialPtr m_postEffectMaterial{};
 		RHI::RHIShaderBindingSetPtr m_shaderBindings{};
+		std::string m_shaderPath;
+		std::string m_shaderDefines;
+		uint64_t m_uploadedParameterRevision = 0;
+		bool m_bMultisampling = false;
 	};
 
 	template class TFrameGraphNode<PostProcessNode>;

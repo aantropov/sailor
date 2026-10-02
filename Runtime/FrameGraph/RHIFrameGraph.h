@@ -36,9 +36,10 @@ namespace Sailor::RHI
 		SAILOR_API void SetRenderTarget(const std::string& name, RHI::RHIRenderTargetPtr sampler);
 		SAILOR_API void SetSurface(const std::string& name, RHI::RHISurfacePtr surface);
 
-		SAILOR_API RHI::RHITexturePtr GetSampler(const std::string& name);
-		SAILOR_API RHI::RHIRenderTargetPtr GetRenderTarget(const std::string& name);
-		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name);
+		SAILOR_API RHI::RHIResourcePtr GetResource(const std::string& name) const;
+		SAILOR_API RHI::RHITexturePtr GetSampler(const std::string& name) const;
+		SAILOR_API RHI::RHIRenderTargetPtr GetRenderTarget(const std::string& name) const;
+		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name) const;
 		SAILOR_API glm::ivec2 GetSceneRenderExtent();
 
 		void ResetCurrentDepthPyramids() { m_currentDepthPyramids.Clear(); }

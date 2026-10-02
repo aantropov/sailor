@@ -285,5 +285,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		bool m_bLastFrameSubmitSuccessful = false;
 		friend class VulkanFence;
 		friend class VulkanSubmissionTestAccess;
+		friend class FrameGraphNodeTestAccess;
 	};
 }

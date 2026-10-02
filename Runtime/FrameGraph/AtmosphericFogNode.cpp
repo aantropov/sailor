@@ -54,18 +54,9 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 	}
 	if (m_parameters.m_fog.x <= 0.0f || m_parameters.m_scattering.z <= 0.0f || !frameGraph) return;
 
-	RHITexturePtr color = GetResolvedAttachment("color");
-	RHISurfacePtr surface = GetRHIResource("color").DynamicCast<RHISurface>();
-	RHITexturePtr depth = GetResolvedAttachment("depthSampler");
-	for (const auto& resource : m_unresolvedResourceParams)
-	{
-		if (resource.First() == "color")
-		{
-			surface = frameGraph->GetSurface(*resource.Second());
-			color = surface ? surface->GetResolved() : frameGraph->GetRenderTarget(*resource.Second());
-		}
-		else if (resource.First() == "depthSampler") depth = frameGraph->GetRenderTarget(*resource.Second());
-	}
+	RHITexturePtr color = GetResolvedAttachment("color", frameGraph.GetRawPtr());
+	RHISurfacePtr surface = GetRHIResource("color", frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
+	RHITexturePtr depth = GetResolvedAttachment("depthSampler", frameGraph.GetRawPtr());
 	if (!color || !depth || !sceneView.m_frameBindings) return;
 	PreloadShader();
 	if (!IsShaderReady()) return;
@@ -108,11 +99,7 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 
 	auto& driver = App::GetSubmodule<Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
-	RHITexturePtr sampledDepth = depth;
-	if (const auto target = depth.DynamicCast<RHIRenderTarget>())
-	{
-		if (const auto aspect = target->GetDepthAspect()) sampledDepth = aspect;
-	}
+	RHITexturePtr sampledDepth = GetSampledAttachment("depthSampler", frameGraph.GetRawPtr());
 	if (!m_bindings || m_depthTexture != sampledDepth || lightingChanged)
 	{
 		m_bindings = driver->CreateShaderBindings();

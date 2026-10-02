@@ -114,20 +114,8 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 		m_blitToMsaaTargetMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, msaaRenderState, m_pShader, m_shaderBindings);
 	}
 
-	RHI::RHITexturePtr src = GetResolvedAttachment("src");
-	RHI::RHITexturePtr dst = GetResolvedAttachment("dst");
-
-	for (const auto& r : m_unresolvedResourceParams)
-	{
-		if (r.First() == "src")
-		{
-			src = frameGraph->GetRenderTarget(*r.Second());
-		}
-		else if (r.First() == "dst")
-		{
-			dst = frameGraph->GetRenderTarget(*r.Second());
-		}
-	}
+	RHI::RHITexturePtr src = GetResolvedAttachment("src", frameGraph.GetRawPtr());
+	RHI::RHITexturePtr dst = GetResolvedAttachment("dst", frameGraph.GetRawPtr());
 
 	const bool bIsDepthFormat = RHI::IsDepthFormat(src->GetFormat()) || RHI::IsDepthFormat(dst->GetFormat());
 	const bool bForceShaderConversion =
@@ -140,7 +128,7 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 	glm::ivec4 srcRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
 	glm::ivec4 dstRegion(0, 0, dst->GetExtent().x, dst->GetExtent().y);
 
-	RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>();
+	RHISurfacePtr dstSurface = GetRHIResource("dst", frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
 	const bool bUseFullscreenColorBlit =
 		!bIsDepthFormat &&
 		!dstSurface &&

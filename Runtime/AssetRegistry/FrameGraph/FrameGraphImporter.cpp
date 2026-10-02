@@ -191,17 +191,9 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 
 		for (const auto& param : node.m_renderTargets)
 		{
-			if (auto pSurface = pRhiFrameGraph->GetSurface(*param.m_second))
+			if (auto resource = pRhiFrameGraph->GetResource(*param.m_second))
 			{
-				pNewNode->SetRHIResource(param.m_first, pSurface);
-			}
-			else if (auto pRenderTarget = pRhiFrameGraph->GetRenderTarget(*param.m_second))
-			{
-				pNewNode->SetRHIResource(param.m_first, pRenderTarget);
-			}
-			else if (auto pTextureTarget = pRhiFrameGraph->GetSampler(*param.m_second))
-			{
-				pNewNode->SetRHIResource(param.m_first, pTextureTarget);
+				pNewNode->SetRHIResource(param.m_first, resource);
 			}
 			else
 			{
