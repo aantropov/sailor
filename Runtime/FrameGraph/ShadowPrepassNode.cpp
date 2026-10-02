@@ -15,6 +15,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "ECS/LightingECS.h"
 
+#include <algorithm>
 #include <limits>
 
 using namespace Sailor;
@@ -917,7 +918,13 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	if (!m_pBlurShaderBindings)
+	const auto requiresBlur = [](const RHIUpdateShadowMapCommand& pass)
+	{
+		return pass.m_shadowType == EShadowType::EVSM &&
+			(pass.m_blurRadius.x > 0.1f || pass.m_blurRadius.y > 0.1f);
+	};
+	const bool bHasBlur = std::any_of(sceneView.m_shadowMapsToUpdate.begin(), sceneView.m_shadowMapsToUpdate.end(), requiresBlur);
+	if (bHasBlur && !m_pBlurShaderBindings)
 	{
 		auto shaderFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blur.shader");
 		const bool bVerticalReady = m_pBlurVerticalShader ||
@@ -945,7 +952,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		}
 	}
 
-	if (!blurShaderBindings && m_pBlurShaderBindings)
+	if (bHasBlur && !blurShaderBindings && m_pBlurShaderBindings)
 	{
 		auto candidateBindings = driver->CreateShaderBindings();
 		if (driver->FillShadersLayout(candidateBindings, { m_pBlurVerticalShader->GetDebugVertexShaderRHI(), m_pBlurVerticalShader->GetDebugFragmentShaderRHI() }, 1))
@@ -1074,11 +1081,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			}
 		}
 
-		auto fullscreenMesh = frameGraph->GetFullscreenNdcQuad();
-
-		const uint32_t firstIndex = (uint32_t)fullscreenMesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-		const uint32_t vertexOffset = (uint32_t)fullscreenMesh->m_vertexBuffer->GetOffset() / (uint32_t)fullscreenMesh->m_vertexDescription->GetVertexStride();
-
 		for (uint32_t index = 0; index < sceneView.m_shadowMapsToUpdate.Num(); index++)
 		{
 			char debugMarker[64];
@@ -1202,12 +1204,14 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 				commands->EndRenderPass(commandList);
 
-				commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
-				commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
-
-				const bool bRequiresBlur = shadowPass.m_shadowType == EShadowType::EVSM && shadowPass.m_blurRadius.length() > 0.1f;
+				const bool bRequiresBlur = requiresBlur(shadowPass);
 				if (bRequiresBlur && blurShaderBindings)
 				{
+					auto fullscreenMesh = frameGraph->GetFullscreenNdcQuad();
+					const uint32_t firstIndex = (uint32_t)fullscreenMesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
+					const uint32_t vertexOffset = (uint32_t)fullscreenMesh->m_vertexBuffer->GetOffset() / (uint32_t)fullscreenMesh->m_vertexDescription->GetVertexStride();
+					commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
+					commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
 					RHI::RHIRenderTargetPtr blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 1);
 					RHIShaderBindingPtr blurDataBinding = blurShaderBindings->GetOrAddShaderBinding("data");
 					// The flight reuses this UBO for every shadow map.

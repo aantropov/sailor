@@ -18,6 +18,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/Shader.h"
 #include "RHI/VertexDescription.h"
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -213,6 +214,17 @@ namespace
 		if (task) { task->Run(); task->Wait(); }
 	}
 
+	void AddEmptyEvsmPass(RHISceneViewSnapshot& snapshot, glm::vec2 radius = glm::vec2(1.0f))
+	{
+		RHIUpdateShadowMapCommand pass;
+		pass.m_shadowType = EShadowType::EVSM;
+		pass.m_lightMatrix = glm::mat4(1.0f);
+		pass.m_blurRadius = radius;
+		pass.m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
+		pass.m_shadowMap = Renderer::GetDriver()->CreateRenderTarget(glm::ivec2(32), 1u, EFormat::R32G32B32A32_SFLOAT);
+		snapshot.m_shadowMapsToUpdate.Add(std::move(pass));
+	}
+
 	bool Tokens(const RHISceneViewSnapshot& snapshot, const TVector<bool>& expected)
 	{
 		if (snapshot.m_shadowMapsToUpdate.Num() != expected.Num()) return false;
@@ -243,7 +255,14 @@ namespace
 		node.Process(graph, upload, graphics, snapshot);
 		const auto stats = node.GetDrawCallStats();
 		const uint32_t candidates = expectedCandidates ? expectedCandidates : expectedDraws;
-		const bool recorded = stats.m_numBatches == expectedDraws && stats.m_numInstances == candidates && Tokens(snapshot, tokens);
+		bool recorded = stats.m_numBatches == expectedDraws && stats.m_numInstances == candidates && Tokens(snapshot, tokens);
+		const bool emptyCasters = std::all_of(snapshot.m_shadowMapsToUpdate.begin(), snapshot.m_shadowMapsToUpdate.end(),
+			[](const auto& pass) { return pass.m_meshList.IsEmpty() && pass.m_internalCommandsList.IsEmpty(); });
+		if (emptyCasters)
+		{
+			const auto commandStats = graphics->GetRecordedDrawCallStats();
+			recorded &= commandStats.m_numBatches == expectedDraws && commandStats.m_numInstances == candidates;
+		}
 		if (recorded && readback)
 		{
 			auto target = snapshot.m_shadowMapsToUpdate[0].m_shadowMap;
@@ -407,6 +426,78 @@ namespace
 			HasPublishedBuffer(node.m_pBlurShaderBindings, "data", 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4));
 	}
 
+	std::string ValidateBlurRadius(ShadowDrawCompletionState& state)
+	{
+		auto node = TRefPtr<ShadowProbe>::Make();
+		auto readback = Renderer::GetDriver()->CreateBuffer(1024u * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+		struct Case { EShadowType m_type; glm::vec2 m_radius; uint32_t m_draws; };
+		const Case cases[] = {
+			{ EShadowType::EVSM, { 0, 0 }, 0 },
+			{ EShadowType::PCF, { 2, 2 }, 0 },
+			{ EShadowType::EVSM, { 0.1f, 0.1f }, 0 },
+			{ EShadowType::EVSM, { 1, 2 }, 2 },
+			{ EShadowType::EVSM, { 0, 1 }, 2 },
+			{ EShadowType::EVSM, { 1, 0 }, 2 },
+			{ EShadowType::EVSM, { 0.11f, 0.1f }, 2 },
+			{ EShadowType::EVSM, { 0, 0 }, 0 }
+		};
+		for (const auto& test : cases)
+		{
+			RHISceneViewSnapshot snapshot;
+			InitializeSnapshot(snapshot, {});
+			AddEmptyEvsmPass(snapshot, test.m_radius);
+			snapshot.m_shadowMapsToUpdate[0].m_shadowType = test.m_type;
+			const auto previousTemplate = node->m_pBlurShaderBindings;
+			Prepare(*node, state.m_graph, snapshot);
+			if (auto error = Record(*node, state.m_graph, snapshot, test.m_draws, { true }, readback); !error.empty())
+				return std::format("blur radius ({}, {}), type {}: {}", test.m_radius.x, test.m_radius.y, static_cast<int>(test.m_type), error);
+			if (test.m_draws)
+			{
+				if (!CompleteBlurTuple(*node) || !node->Resources(snapshot)->m_blurShaderBindings)
+					return "positive-radius EVSM did not publish its blur resources";
+			}
+			else if (node->Resources(snapshot)->m_blurShaderBindings || node->m_pBlurShaderBindings != previousTemplate ||
+				(!previousTemplate && (node->m_pBlurHorizontalShader || node->m_pBlurVerticalShader ||
+					node->m_pBlurHorizontalMaterial || node->m_pBlurVerticalMaterial)))
+				return "an unblurred submission initialized blur-only resources";
+			const glm::vec4 expected = test.m_type == EShadowType::EVSM ? glm::vec4(1, 1, -1, 1) : glm::vec4(0);
+			const auto* pixels = static_cast<const glm::vec4*>(readback->GetPointer());
+			for (uint32_t p = 0u; p < 1024u; ++p)
+				for (uint32_t c = 0u; c < 4u; ++c)
+					if (!std::isfinite(pixels[p][c]) || std::abs(pixels[p][c] - expected[c]) > 0.00001f)
+						return std::format("blur radius ({}, {}), pixel {} channel {}: expected {}, got {}",
+							test.m_radius.x, test.m_radius.y, p, c, expected[c], pixels[p][c]);
+		}
+
+		auto idle = TRefPtr<ShadowProbe>::Make();
+		RHISceneViewSnapshot empty;
+		InitializeSnapshot(empty, {});
+		if (auto error = Record(*idle, state.m_graph, empty, 0u, {}); !error.empty()) return error;
+		if (idle->m_pBlurHorizontalShader || idle->m_pBlurVerticalShader || idle->m_pBlurShaderBindings ||
+			idle->Resources(empty)->m_blurShaderBindings) return "an empty submission initialized blur resources";
+
+		RHISceneViewSnapshot atlas;
+		InitializeSnapshot(atlas, {});
+		AddEmptyEvsmPass(atlas, glm::vec2(0));
+		auto& tile = atlas.m_shadowMapsToUpdate[0];
+		tile.m_shadowType = EShadowType::PCF;
+		Prepare(*node, state.m_graph, atlas);
+		if (auto error = Record(*node, state.m_graph, atlas, 0u, { true }); !error.empty()) return error;
+		tile.m_shadowType = EShadowType::EVSM;
+		tile.m_renderArea = glm::ivec4(8, 8, 8, 8);
+		Prepare(*node, state.m_graph, atlas);
+		if (auto error = Record(*node, state.m_graph, atlas, 0u, { true }, readback); !error.empty()) return error;
+		const auto* pixels = static_cast<const glm::vec4*>(readback->GetPointer());
+		for (uint32_t y = 0u; y < 32u; ++y)
+			for (uint32_t x = 0u; x < 32u; ++x)
+			{
+				const glm::vec4 expected = x >= 8u && x < 16u && y >= 8u && y < 16u ? glm::vec4(1, 1, -1, 1) : glm::vec4(0);
+				for (uint32_t c = 0u; c < 4u; ++c)
+					if (pixels[y * 32u + x][c] != expected[c]) return "unblurred EVSM tile clear changed the wrong atlas pixels";
+			}
+		return {};
+	}
+
 	std::string ValidateColdPublication(ShadowDrawCompletionState& state)
 	{
 		auto& driver = Renderer::GetDriver();
@@ -416,6 +507,8 @@ namespace
 		gate->m_pBlurVerticalShader = state.m_shaders[6];
 		RHISceneViewSnapshot empty;
 		InitializeSnapshot(empty, {});
+		AddEmptyEvsmPass(empty);
+		Prepare(*gate, state.m_graph, empty);
 		auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 		auto graphics = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 		for (auto cmd : { upload, graphics })
@@ -436,7 +529,6 @@ namespace
 			graphics->m_vulkan.m_commandBuffer->Reset();
 			return std::format("preloaded shader latch: complete tuple={}, flight UBO={}; discarded before submission; incompatible-reflection cases not entered", complete, flightReady);
 		}
-		// Old81 returns above. Only a complete owner may reach the real rejection cases.
 		auto ready = driver->CreateWaitSemaphore();
 		auto uploadFence = RHIFencePtr::Make();
 		auto fence = RHIFencePtr::Make();
@@ -454,6 +546,7 @@ namespace
 		const auto templateHash = firstTemplate->GetCompatibilityHashCode();
 		auto firstNative = firstFlight->m_vulkan.m_descriptorSet;
 		const auto firstRevision = firstFlight->GetDescriptorRevision();
+		empty.m_shadowMapsToUpdate.Clear();
 		if (auto error = Record(*gate, state.m_graph, empty, 0u, {}); !error.empty()) return error;
 		if (!CompleteBlurTuple(*gate) || gate->m_pBlurShaderBindings != firstTemplate || gate->m_pBlurHorizontalMaterial != firstHorizontal ||
 			gate->m_pBlurVerticalMaterial != firstVertical || gate->Resources(empty)->m_blurShaderBindings != firstFlight ||
@@ -475,7 +568,9 @@ namespace
 			InitializeSnapshot(previousFlight, {});
 			if (flightOnly)
 			{
-				if (auto error = Record(*node, state.m_graph, previousFlight, 0u, {}); !error.empty()) return error;
+				AddEmptyEvsmPass(previousFlight);
+				Prepare(*node, state.m_graph, previousFlight);
+				if (auto error = Record(*node, state.m_graph, previousFlight, 2u, { true }); !error.empty()) return error;
 				if (!CompleteBlurTuple(*node)) return "submission rejection requires a complete retained node tuple";
 			}
 			auto oldTemplate = node->m_pBlurShaderBindings;
@@ -711,14 +806,9 @@ namespace
 		auto node = TRefPtr<ShadowProbe>::Make();
 		RHISceneViewSnapshot snapshot;
 		InitializeSnapshot(snapshot, {});
-		RHIUpdateShadowMapCommand pass;
-		pass.m_shadowType = EShadowType::PCF;
-		pass.m_lightMatrix = glm::mat4(1.0f);
-		pass.m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
-		pass.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(8), 1u, EFormat::R16_UNORM);
-		snapshot.m_shadowMapsToUpdate.Add(std::move(pass));
+		AddEmptyEvsmPass(snapshot);
 		Prepare(*node, graph, snapshot);
-		if (auto error = Record(*node, graph, snapshot, 0u, { true }); !error.empty()) return "blur publication initialization: " + error;
+		if (auto error = Record(*node, graph, snapshot, 2u, { true }); !error.empty()) return "blur publication initialization: " + error;
 		node->SetBlurMaterials(horizontal, vertical);
 		auto resources = node->Resources(snapshot);
 		auto bindings = resources->m_blurShaderBindings;
@@ -731,9 +821,6 @@ namespace
 				layouts[1]->m_descriptorSetLayoutBindings[0].binding != 1u) return "normal blur projection must omit unused producer binding 31";
 		}
 		auto& request = snapshot.m_shadowMapsToUpdate[0];
-		request.m_shadowType = EShadowType::EVSM;
-		request.m_blurRadius = glm::vec2(1.0f);
-		request.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(32), 1u, EFormat::R32G32B32A32_SFLOAT);
 		auto readback = driver->CreateBuffer(1024u * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
 		auto checkPixels = [&](uint32_t count, glm::vec4 expected, const char* phase) -> std::string
 		{
@@ -813,15 +900,10 @@ namespace
 		auto& node = *state.m_nodes[0];
 		RHISceneViewSnapshot snapshot;
 		InitializeSnapshot(snapshot, {});
-		RHIUpdateShadowMapCommand pass;
-		pass.m_shadowType = EShadowType::PCF;
-		pass.m_lightMatrix = glm::mat4(1.0f);
-		pass.m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
-		pass.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(8), 1u, EFormat::R16_UNORM);
-		snapshot.m_shadowMapsToUpdate.Add(std::move(pass));
+		AddEmptyEvsmPass(snapshot);
 		Prepare(node, state.m_graph, snapshot);
 		// Initialize actual Process-owned blur shaders/data, before swapping only its materials.
-		if (auto error = Record(node, state.m_graph, snapshot, 0u, { true }); !error.empty()) return "blur initialization: " + error;
+		if (auto error = Record(node, state.m_graph, snapshot, 2u, { true }); !error.empty()) return "blur initialization: " + error;
 		std::array<RHIMaterialPtr, 4> materials;
 		const RenderState renderState(false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0u, false);
 		for (uint32_t i = 0u; i < 4u; ++i)
@@ -835,9 +917,6 @@ namespace
 				layouts[0]->m_descriptorSetLayoutBindings.Num() != (i >= 2u ? 1u : 0u) ||
 				(i >= 2u && layouts[0]->m_descriptorSetLayoutBindings[0].binding != 7u)) return "compiled H/V interfaces do not isolate read-only frame binding 7";
 		}
-		snapshot.m_shadowMapsToUpdate[0].m_shadowType = EShadowType::EVSM;
-		snapshot.m_shadowMapsToUpdate[0].m_blurRadius = glm::vec2(1.0f);
-		snapshot.m_shadowMapsToUpdate[0].m_shadowMap = driver->CreateRenderTarget(glm::ivec2(32), 1u, EFormat::R32G32B32A32_SFLOAT);
 		auto readback = driver->CreateBuffer(32u * 32u * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
 		for (uint32_t failVertical = 0u; failVertical < 2u; ++failVertical)
 		{
@@ -958,6 +1037,7 @@ void ShadowDrawCompletionTestComponent::Tick(float)
 		state.m_phase = Phase::Validate;
 		m_validation = Tasks::CreateTaskWithResult<std::string>("Validate shadow draw completion", [hold = m_state]()
 		{
+			if (auto error = ValidateBlurRadius(*hold); !error.empty()) return error;
 			if (auto error = ValidateColdPublication(*hold); !error.empty()) return error;
 #if defined(__APPLE__)
 			if (auto error = ValidateLighting(*hold); !error.empty()) return error;
@@ -990,6 +1070,7 @@ void ShadowDrawCompletionTestComponent::Tick(float)
 	AddJournalEvent("ShadowDrawCompletionEvidence", "Dense-cache Lighting/dependency failures are macOS-only and were not executed with this platform's global sampler set");
 #endif
 	AddJournalEvent("ShadowBlurEvidence", "Actual empty EVSM Prepare/Process: horizontal reject 0, vertical reject 1, each restored retry 2 blur draws; all 1024 float pixels checked per submission with five-second fence bounds");
+	AddJournalEvent("ShadowBlurRadiusEvidence", "Command recorder: zero/threshold EVSM and PCF record zero blur draws and create no blur resources; positive EVSM records two. Cold/empty/warm submissions, single-lobe/fractional radii, all 1024 reverse-Z clear pixels and isolated 8x8 atlas tile verified");
 	AddJournalEvent("ShadowBlurPublicationEvidence", "Own unused buffer 31 caused actual H sampler producer refusal: A32 retained sampler/view/native/revision/hash, B16 recorded zero with failed token and all 256 clear pixels; exact range restoration retried B with two draws and all 256 blurred pixels, retaining native A; no V-only producer-failure coverage");
 	AddJournalEvent("ShadowColdPublicationEvidence", "Preloaded-shader owner latch completed/reused template plus H/V and flight UBO; real reflected Storage-vs-Uniform rejected template/fresh-flight candidates, each retained node publication and allowed one independent PCF caster draw; same-owner retries accepted two normal blur draws plus PCF and all 1024 EVSM pixels; real SSBO 1/3/3 storage+candidates grew then reused one view, retaining the original pair; positive SSBO coverage is not failure rollback proof");
 	AddJournalEvent("ShadowDrawCompletionScope", "Recorded candidates, existing completion tokens and blur pixels; not CSM atlas/matrix atomic publication, visual quality, performance or Windows GPU coverage");
