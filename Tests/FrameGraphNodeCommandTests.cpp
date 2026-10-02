@@ -2,11 +2,15 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "Components/CameraComponent.h"
+#include "Engine/GameObject.h"
+#include "Engine/World.h"
 #include "FrameGraph/AtmosphericFogNode.h"
 #include "FrameGraph/BlitNode.h"
 #include "FrameGraph/ClearNode.h"
 #include "FrameGraph/DepthHighZNode.h"
 #include "FrameGraph/LinearizeDepthNode.h"
+#include "FrameGraph/LightCullingNode.h"
 #include "FrameGraph/PostProcessNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/RenderSceneNode.h"
@@ -24,6 +28,7 @@
 #include "RHI/Surface.h"
 #include "RHI/VertexDescription.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -1112,6 +1117,194 @@ void main() {
 			": three frames, replaced inputs, sky/alpha and both images passed\n";
 	}
 
+	enum class LightCullingInput { Default, Bound, Named, NamedWithoutDefault };
+
+	void TestLightCulling(LightCullingInput inputMode, bool surfaceInput, bool sameFlight)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<LightCullingNode>::Make();
+		graph->GetGraph().Add(node);
+		if (inputMode == LightCullingInput::Named || inputMode == LightCullingInput::NamedWithoutDefault)
+			node->SetRHIResource_Unresolved("linearDepth", "SelectedDepth");
+		World cameraWorld("LightCullingTestCamera", 0);
+		auto cameraObject = cameraWorld.Instantiate("Camera");
+		auto camera = cameraObject->AddComponent<CameraComponent>();
+		cameraWorld.GetECS<CameraECS>()->Tick(0);
+		auto cameraData = camera->GetData();
+		cameraData.SetOwner({});
+		cameraWorld.Clear();
+		Require(cameraData.GetViewMatrix() == glm::mat4(1), "the culling fixture must use an identity camera view");
+		struct Recording
+		{
+			RHISceneViewPtr view;
+			RHIResourcePtr input;
+			RHIRenderTargetPtr depth;
+			RHIShaderBindingSetPtr bindings;
+			VulkanDescriptorSetPtr descriptor, lightingDescriptor;
+			Memory::VulkanBufferMemoryPtr indices, grid;
+			TVector<RHICommandListPtr> transfers, graphics;
+			RHISemaphorePtr ready;
+		};
+		std::array<Recording, 2> recordings;
+		for (uint32_t i = 0; i < recordings.size(); ++i)
+		{
+			auto& recording = recordings[i];
+			recording.view = RHISceneViewPtr::Make();
+			recording.view->m_snapshots.Resize(1);
+			auto& scene = recording.view->m_snapshots[0];
+			scene.m_submissionContext = sameFlight && i ? recordings[0].view->m_snapshots[0].m_submissionContext : RHIRenderSubmissionContextPtr::Make();
+			scene.m_cameraIndex = sameFlight ? i : 0;
+			scene.m_rhiLightsData = driver->CreateShaderBindings();
+			scene.m_camera = TUniquePtr<CameraData>::Make(cameraData);
+			scene.m_bGlobalIlluminationEnabled = false;
+		}
+		// Initial, unchanged, replaced, larger, smaller, Clear, no lights, restored lights.
+		const std::array extents{ glm::ivec2(8), glm::ivec2(8), glm::ivec2(8), glm::ivec2(35, 19),
+			glm::ivec2(11, 5), glm::ivec2(17, 33), glm::ivec2(17, 33), glm::ivec2(17, 33) };
+		for (uint32_t round = 0; round < extents.size(); ++round)
+		{
+			const auto extent = extents[round];
+			const glm::ivec2 tiles = (extent + 15) / 16;
+			const uint32_t tileCount = tiles.x * tiles.y;
+			const float aspect = static_cast<float>(extent.x) / extent.y;
+			auto lights = TSharedPtr<TVector<RHILightShaderData>>::Make();
+			lights->Resize(2 + 2 * tileCount);
+			(*lights)[0].m_type = 0;
+			(*lights)[1].m_type = 1;
+			(*lights)[1].m_bounds.x = 2;
+			for (uint32_t tile = 0; tile < tileCount; ++tile)
+			{
+				const glm::ivec2 first = glm::ivec2(tile % tiles.x, tile / tiles.x) * 16;
+				const glm::vec2 center = (glm::vec2(first) + glm::vec2(glm::min(first + 16, extent))) * 0.5f;
+				const glm::vec2 ndc = center / glm::vec2(extent) * 2.0f - 1.0f;
+				for (uint32_t i = 0; i < 2; ++i)
+				{
+					auto& light = (*lights)[2 + tile * 2 + i];
+					const float depth = 12.0f * (i + 1);
+					light.m_type = 1;
+					light.m_worldPosition = glm::vec3(ndc.x * aspect * depth, -ndc.y * depth, -depth);
+					light.m_bounds.x = 0.001f;
+				}
+			}
+			if (round == 5) node->Clear();
+			for (uint32_t i = 0; i < recordings.size(); ++i)
+			{
+				auto& recording = recordings[i];
+				auto& scene = recording.view->m_snapshots[0];
+				if (!sameFlight || i == 0) scene.m_submissionContext->BeginSubmission(round + 1, i);
+				scene.m_cpuLightsData = lights;
+				scene.m_totalNumLights = round == 6 ? 0 : static_cast<uint32_t>(lights->Num());
+				scene.m_lightingRevision = round + 1;
+				scene.m_camera->SetProjectionMatrix(Math::PerspectiveRH(glm::radians(90.0f), aspect, 0.1f, 200.0f));
+				if (round != 1 && round != 6 && round != 7)
+				{
+					auto surface = surfaceInput ? driver->CreateSurface(extent, 1, EFormat::R32_SFLOAT) : RHISurfacePtr{};
+					recording.depth = surface ? surface->GetResolved() : driver->CreateRenderTarget(extent, 1, EFormat::R32_SFLOAT);
+					recording.input = surface ? RHIResourcePtr(surface) : recording.depth;
+					auto setup = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(setup, true);
+					ClearColor(setup, recording.depth, glm::vec4(12.0f * (i + 1)));
+					if (surface && surface->NeedsResolve()) ClearColor(setup, surface->GetTarget(), glm::vec4(100));
+					commands->EndCommandList(setup);
+					auto initialized = RHIFencePtr::Make();
+					Require(driver->SubmitCommandList(setup, initialized) && initialized->Wait(5000000000ull) == EFenceStatus::Finished,
+						"light-culling depth fixture must initialize");
+				}
+				graph->SetRenderTarget("Main", recording.depth);
+				const char* depthName = inputMode == LightCullingInput::Default ? "LinearDepth" : "SelectedDepth";
+				graph->SetRenderTarget(depthName, surfaceInput ? RHIRenderTargetPtr{} : recording.depth);
+				graph->SetSurface(depthName, recording.input.DynamicCast<RHISurface>());
+				if (inputMode == LightCullingInput::Bound) node->SetRHIResource("linearDepth", recording.input);
+				if (inputMode == LightCullingInput::Bound || inputMode == LightCullingInput::Named)
+				{
+					// Large enough for every tested dispatch, but deliberately wrong depth and dimensions.
+					auto poison = driver->CreateRenderTarget(glm::ivec2(48), 1, EFormat::R32_SFLOAT);
+					auto setup = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(setup, true);
+					ClearColor(setup, poison, glm::vec4(100));
+					commands->EndCommandList(setup);
+					auto initialized = RHIFencePtr::Make();
+					Require(driver->SubmitCommandList(setup, initialized) && initialized->Wait(5000000000ull) == EFenceStatus::Finished,
+						"unrelated default depth must initialize");
+					graph->SetRenderTarget("LinearDepth", poison);
+				}
+				recording.transfers.Clear();
+				recording.graphics.Clear();
+				Require(graph->Process(recording.view, recording.transfers, recording.graphics, {}, recording.ready),
+					"light-culling test must run actual framegraph resource preparation");
+			}
+			for (uint32_t i = 0; i < recordings.size(); ++i)
+			{
+				auto& recording = recordings[i];
+				auto& scene = recording.view->m_snapshots[0];
+				for (size_t j = 0; j < recording.transfers.Num(); ++j)
+					for (const auto& command : { recording.transfers[j], recording.graphics[j] })
+					{
+						auto next = driver->CreateWaitSemaphore();
+						Require(driver->SubmitCommandList(command, RHIFencePtr::Make(), next, recording.ready), "light-culling commands must submit");
+						recording.ready = next;
+					}
+				auto bindings = scene.m_rhiLightCullingData;
+				Require(bindings.IsValid(), "light-culling bindings must be published to the view");
+				const auto indices = *bindings->GetOrAddShaderBinding("culledLights")->m_vulkan.m_valueBinding->Get();
+				const auto grid = *bindings->GetOrAddShaderBinding("lightsGrid")->m_vulkan.m_valueBinding->Get();
+				auto indexReadback = driver->CreateBuffer(indices.m_size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				auto gridReadback = driver->CreateBuffer(grid.m_size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				auto read = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(read, true);
+				read->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+				read->m_vulkan.m_commandBuffer->CopyBuffer(indices, *indexReadback->m_vulkan.m_buffer->Get(), indices.m_size);
+				read->m_vulkan.m_commandBuffer->CopyBuffer(grid, *gridReadback->m_vulkan.m_buffer->Get(), grid.m_size);
+				read->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+				commands->EndCommandList(read);
+				auto finished = RHIFencePtr::Make();
+				Require(driver->SubmitCommandList(read, finished, {}, recording.ready) && finished->Wait(5000000000ull) == EFenceStatus::Finished,
+					"light-culling readback must complete");
+				Require(indices.m_size >= tileCount * 128 * sizeof(uint32_t) && grid.m_size >= tileCount * 2 * sizeof(uint32_t),
+					"light-culling storage must cover every tile of the selected input");
+				const auto gpuGrid = static_cast<const glm::uvec2*>(gridReadback->GetPointer());
+				const auto gpuIndices = static_cast<const uint32_t*>(indexReadback->GetPointer());
+				for (uint32_t tile = 0; tile < tileCount; ++tile)
+				{
+					if (gpuGrid[tile] != glm::uvec2(tile * 128, round == 6 ? 0 : 3))
+						throw std::runtime_error("LightCulling GPU grid mismatch: input=" + std::to_string(static_cast<uint32_t>(inputMode)) +
+							", surface=" + std::to_string(surfaceInput) + ", sameFlight=" + std::to_string(sameFlight) +
+							", round=" + std::to_string(round) + ", view=" + std::to_string(i) + ", tile=" + std::to_string(tile) +
+							", count=" + std::to_string(gpuGrid[tile].y) + ", offset=" + std::to_string(gpuGrid[tile].x));
+					if (round == 6) continue;
+					std::array actual{ gpuIndices[tile * 128], gpuIndices[tile * 128 + 1], gpuIndices[tile * 128 + 2] };
+					std::sort(actual.begin(), actual.end());
+					Require(actual == std::array<uint32_t, 3>{ 0, 1, 2 + tile * 2 + i }, "GPU tile must contain only the directional, enclosing and matching-depth light");
+				}
+				Require(bindings->GetOrAddShaderBinding("linearDepth")->GetTextureBinding() == recording.depth,
+					"light-culling sampler must use the selected resolved input");
+				Require(*scene.m_rhiLightsData->GetOrAddShaderBinding("culledLights")->m_vulkan.m_valueBinding->Get() == indices &&
+					*scene.m_rhiLightsData->GetOrAddShaderBinding("lightsGrid")->m_vulkan.m_valueBinding->Get() == grid,
+					"downstream lighting must consume exactly the culling output allocations");
+				if (round == 1 || round == 2 || round >= 4)
+				{
+					Require(bindings == recording.bindings && indices == recording.indices && grid == recording.grid,
+						"completed flight/camera must reuse sufficient tile storage, including replaced inputs and smaller extents");
+					Require(scene.m_rhiLightsData->m_vulkan.m_descriptorSet == recording.lightingDescriptor,
+						"unchanged output allocations must not rebuild downstream lighting descriptors");
+				}
+				if (round == 1 || round == 6 || round == 7)
+					Require(bindings->m_vulkan.m_descriptorSet == recording.descriptor, "unchanged culling inputs must not rebuild descriptors");
+				recording.bindings = bindings;
+				recording.descriptor = bindings->m_vulkan.m_descriptorSet;
+				recording.lightingDescriptor = scene.m_rhiLightsData->m_vulkan.m_descriptorSet;
+				recording.indices = indices;
+				recording.grid = grid;
+			}
+			Require(recordings[0].indices != recordings[1].indices && recordings[0].grid != recordings[1].grid,
+				"pending cameras/flights must own separate culling output ranges");
+		}
+		std::cout << "LightCulling input=" << static_cast<uint32_t>(inputMode) << " surface=" << surfaceInput << " sameFlight=" << sameFlight <<
+			": eight frames, two pending views, native bindings and exact GPU tile lists passed\n";
+	}
+
 	void TestPostProcessFlights(const std::string& shader, bool sameFlight)
 	{
 		auto& driver = Renderer::GetDriver();
@@ -1454,11 +1647,19 @@ namespace Sailor::Tests
 		const auto linearDepthInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/LinearizeDepth.shader");
 		Require(linearDepthInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(linearDepthInfo->GetFileId(), linearDepthShader) && linearDepthShader->IsReady(),
 			"the production linear-depth shader must compile before recording");
+		ShaderSetPtr lightCullingShader;
+		const auto lightCullingInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeLightCulling.shader");
+		Require(lightCullingInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(lightCullingInfo->GetFileId(), lightCullingShader) && lightCullingShader->IsReady(),
+			"the production light-culling shader must compile before recording");
 		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 		auto task = Tasks::CreateTaskWithResult<std::string>("Post-process attachment and parameter contracts", [&]() -> std::string
 			{
 				try
 				{
+					for (auto inputMode : { LightCullingInput::Bound, LightCullingInput::Named,
+						LightCullingInput::Default, LightCullingInput::NamedWithoutDefault })
+						for (bool surfaceInput : { false, true })
+							for (bool sameFlight : { false, true }) TestLightCulling(inputMode, surfaceInput, sameFlight);
 					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT }) TestDepthSurfaceFactory(depthReadback, format);
 					for (bool namedInput : { false, true })
 						for (bool namedOutput : { false, true })
