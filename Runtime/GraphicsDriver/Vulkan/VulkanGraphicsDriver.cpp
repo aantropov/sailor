@@ -1892,17 +1892,16 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	RHI::RHISurfacePtr res;
-
 	auto device = m_vkInstance->GetMainDevice();
 
 	const RHI::RHIRenderTargetPtr resolved = CreateRenderTarget(extent, mipLevels, format, filtration, clamping, usage);
 	RHI::RHIRenderTargetPtr target = resolved;
 
-	bool bNeedsResolved = m_vkInstance->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+	const bool bNeedsResolved = device->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
 	if (bNeedsResolved)
 	{
-		target = RHI::RHIRenderTargetPtr::Make(filtration, clamping, false, RHI::EImageLayout::ColorAttachmentOptimal);
+		const auto layout = RHI::IsDepthFormat(format) ? resolved->GetDefaultLayout() : RHI::EImageLayout::ColorAttachmentOptimal;
+		target = RHI::RHIRenderTargetPtr::Make(filtration, clamping, false, layout);
 
 		VkExtent3D vkExtent;
 		vkExtent.width = extent.x;
@@ -1911,9 +1910,8 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 
 		// Disable storage for MSAA target
 		usage = usage & ~RHI::ETextureUsageBit::Storage_Bit;
-		//usage = usage & ~VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 
-		target->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
+		target->m_vulkan.m_image = m_vkInstance->CreateImage(device,
 			vkExtent,
 			1, // MSAA Don't support mips
 			VkImageType::VK_IMAGE_TYPE_2D,
@@ -1922,12 +1920,13 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 			(uint32_t)usage,
 			(VkSharingMode)VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 			device->GetCurrentMsaaSamples(),
-			(VkImageLayout)RHI::EImageLayout::ColorAttachmentOptimal);
+			(VkImageLayout)layout);
 
 		target->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(target->GetDefaultLayout());
 
 		target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
 		target->m_vulkan.m_imageView->Compile();
+		CreateDepthStencilViews(target);
 
 		RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 		RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Surface");
@@ -1936,7 +1935,7 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 			target,
 			target->GetFormat(),
 			RHI::EImageLayout::Undefined,
-			RHI::EImageLayout::ColorAttachmentOptimal);
+			layout);
 		RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 		RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();

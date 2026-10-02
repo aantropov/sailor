@@ -5,10 +5,12 @@
 #include "FrameGraph/AtmosphericFogNode.h"
 #include "FrameGraph/BlitNode.h"
 #include "FrameGraph/ClearNode.h"
+#include "FrameGraph/LinearizeDepthNode.h"
 #include "FrameGraph/PostProcessNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
+#include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
 #include "RHI/Buffer.h"
 #include "RHI/CommandList.h"
@@ -508,6 +510,169 @@ void main() {
 		commands->Dispatch(command, shaders[(samples > 1 ? 1 : 0) | (stencil ? 2 : 0)]->GetComputeShaderRHI(), 1, 1, 1, { bindings });
 		commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
 		return buffer;
+	}
+
+	void TestDepthSurfaceFactory(const std::array<ShaderSetPtr, 4>& shaders, EFormat format)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		const uint32_t samples = uint32_t(VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples());
+		const bool stencil = IsDepthStencilFormat(format);
+		for (uint32_t frame = 0; frame < 2; ++frame)
+		{
+			auto surface = driver->CreateSurface(glm::ivec2(Side), 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp,
+				ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit);
+			const auto target = surface->GetTarget();
+			const auto resolved = surface->GetResolved();
+			Require(surface->NeedsResolve() == (samples > 1) && (target != resolved) == (samples > 1),
+				"depth surface target must alias its resolve only without MSAA");
+			Require(uint32_t(target->GetMsaaSamples()) == samples && resolved->GetMsaaSamples() == EMsaaSamples::Samples_1,
+				"depth surface must use the requested target and resolve sample counts");
+			for (auto texture : { target, resolved })
+			{
+				const auto depthView = texture->GetDepthAspect();
+				const auto stencilView = texture->GetStencilAspect();
+				if (texture->GetDefaultLayout() != EImageLayout::DepthStencilAttachmentOptimal || !depthView || bool(stencilView) != stencil)
+					throw std::runtime_error("DepthSurface factory format=" + std::to_string(uint32_t(format)) +
+						" samples=" + std::to_string(uint32_t(texture->GetMsaaSamples())) +
+						" layout=" + std::to_string(uint32_t(texture->GetDefaultLayout())) +
+						" depthView=" + std::to_string(bool(depthView)) + " stencilView=" + std::to_string(bool(stencilView)));
+				Require(texture->GetFormat() == format && texture->GetExtent() == glm::ivec2(Side) &&
+					texture->m_vulkan.m_image->m_defaultLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+					"native depth image must retain its format, extent and attachment layout");
+				for (const auto& aspect : { std::pair{ depthView, VK_IMAGE_ASPECT_DEPTH_BIT }, std::pair{ stencilView, VK_IMAGE_ASPECT_STENCIL_BIT } })
+				{
+					if (!aspect.first) continue;
+					Require(aspect.first->m_vulkan.m_image == texture->m_vulkan.m_image &&
+						aspect.first->m_vulkan.m_imageView->m_image == texture->m_vulkan.m_image &&
+						aspect.first->m_vulkan.m_imageView->m_subresourceRange.aspectMask == aspect.second &&
+						aspect.first->GetDefaultLayout() == texture->GetDefaultLayout(),
+						"sampled depth/stencil views must reference the correct image and individual aspect");
+				}
+			}
+
+			const glm::vec2 targetValue(0.25f + 0.125f * frame, stencil ? float(17 + frame) : 0.0f);
+			const glm::vec2 resolveValue(0.75f + 0.125f * frame, stencil ? float(41 + frame) : 0.0f);
+			const std::array textures{ target, resolved };
+			const std::array expected{ targetValue, target == resolved ? targetValue : resolveValue };
+			std::array<RHIBufferPtr, 2> readbacks;
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			for (uint32_t image = 0; image < textures.size(); ++image)
+			{
+				if (image == 1 && target == resolved)
+				{
+					readbacks[image] = readbacks[0];
+					continue;
+				}
+				commands->ImageMemoryBarrier(draw, textures[image], EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(draw, textures[image], expected[image].x, uint32_t(expected[image].y));
+				readbacks[image] = ReadDepth(draw, textures[image], shaders);
+			}
+			CompleteCommands(upload, draw);
+			for (uint32_t image = 0; image < textures.size(); ++image)
+			{
+				const auto values = static_cast<const glm::vec2*>(readbacks[image]->GetPointer());
+				const uint32_t count = Side * Side * uint32_t(textures[image]->GetMsaaSamples());
+				for (uint32_t i = 0; i < count; ++i)
+					for (uint32_t component = 0; component < 2; ++component)
+						Require(std::isfinite(values[i][component]) && std::abs(values[i][component] - expected[image][component]) < 0.00001f,
+							"factory-created depth surfaces must retain independent target/resolve values in every depth/stencil sample");
+			}
+		}
+		std::cout << "DepthSurface factory format=" << uint32_t(format) << " samples=" << samples
+			<< ": layouts, aspect identity and all independent target/resolve samples passed\n";
+	}
+
+	void TestLinearizeDepth(EFormat format, bool depthIsSurface, bool targetIsSurface, bool namedDepth, bool namedTarget)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<LinearizeDepthNode>::Make();
+		if (namedDepth) node->SetRHIResource_Unresolved("depthStencil", "Depth");
+		if (namedTarget) node->SetRHIResource_Unresolved("target", "LinearDepth");
+		CaptureAttachments capture;
+		for (uint32_t frame = 0; frame < 3; ++frame)
+		{
+			if (frame == 2) node->Clear();
+			const auto depthUsage = ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit;
+			auto depthSurface = depthIsSurface ? driver->CreateSurface(glm::ivec2(Side), 1, format,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp, depthUsage) : RHISurfacePtr{};
+			auto depth = depthSurface ? depthSurface->GetResolved() : driver->CreateRenderTarget(glm::ivec2(Side), 1, format,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp, depthUsage);
+			auto colorSurface = targetIsSurface ? driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32_SFLOAT) : RHISurfacePtr{};
+			auto color = colorSurface ? colorSurface->GetResolved() : driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
+			auto liveColor = colorSurface ? colorSurface->GetTarget() : color;
+			const float nearPlane = 0.25f * (frame + 1);
+			const float distance = 2.0f + 3.0f * frame;
+			UboFrameData frameData{};
+			frameData.m_view = glm::mat4(1);
+			frameData.m_projection = glm::mat4(0);
+			frameData.m_projection[0][0] = frameData.m_projection[1][1] = 1;
+			frameData.m_projection[2][3] = -1;
+			frameData.m_projection[3][2] = nearPlane;
+			frameData.m_invProjection = glm::inverse(frameData.m_projection);
+			frameData.m_cameraZNearZFar = glm::vec2(nearPlane, 1000);
+			frameData.m_viewportSize = glm::ivec2(Side);
+			RHISceneViewSnapshot scene;
+			scene.m_frameBindings = driver->CreateShaderBindings();
+			auto frameBinding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData", sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			commands->UpdateShaderBinding(upload, frameBinding, &frameData, sizeof(frameData));
+			commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
+			ClearColor(draw, color, glm::vec4(-8));
+			if (liveColor != color) ClearColor(draw, liveColor, glm::vec4(-4));
+			commands->ImageMemoryBarrier(draw, depth, EImageLayout::TransferDstOptimal);
+			commands->ClearDepthStencil(draw, depth, nearPlane / distance, 23);
+			if (depthSurface && depthSurface->NeedsResolve())
+			{
+				commands->ImageMemoryBarrier(draw, depthSurface->GetTarget(), EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(draw, depthSurface->GetTarget(), 0.75f, 41);
+			}
+			if (frame == 0)
+			{
+				recordedColorCount = 0;
+				node->Process(graph, upload, draw, scene);
+				Require(recordedColorCount == 0 && node->GetDrawCallStats().m_numBatches == 0,
+					"linear depth must defer drawing until its resources are available");
+			}
+			if (depthSurface) graph->SetSurface("Depth", depthSurface);
+			else graph->SetRenderTarget("Depth", depth);
+			if (colorSurface) graph->SetSurface("LinearDepth", colorSurface);
+			else graph->SetRenderTarget("LinearDepth", color);
+			if (!namedDepth) node->SetRHIResource("depthStencil", depthSurface ? RHIResourcePtr(depthSurface) : depth);
+			if (!namedTarget) node->SetRHIResource("target", colorSurface ? RHIResourcePtr(colorSurface) : color);
+			recordedColorCount = 0;
+			node->Process(graph, upload, draw, scene);
+			auto readback = ReadColor(draw, color);
+			auto liveReadback = liveColor != color ? ReadColor(draw, liveColor) : readback;
+			CompleteCommands(upload, draw);
+			if (node->GetDrawCallStats().m_numBatches != 1 || recordedColorCount != 1)
+				throw std::runtime_error("LinearizeDepth did not draw: depthSurface=" + std::to_string(depthIsSurface) +
+					" targetSurface=" + std::to_string(targetIsSurface) + " namedDepth=" + std::to_string(namedDepth) +
+					" namedTarget=" + std::to_string(namedTarget));
+			Require(recordedColor.imageView == static_cast<VkImageView>(*color->m_vulkan.m_imageView) &&
+				recordedColor.resolveMode == VK_RESOLVE_MODE_NONE && recordedColor.resolveImageView == VK_NULL_HANDLE &&
+				recordedColor.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && recordedColor.storeOp == VK_ATTACHMENT_STORE_OP_STORE,
+				"linear depth must write the single-sample output directly without an implicit MSAA target or resolve");
+			const auto values = static_cast<const float*>(readback->GetPointer());
+			const auto liveValues = static_cast<const float*>(liveReadback->GetPointer());
+			for (uint32_t i = 0; i < Side * Side; ++i)
+			{
+				Require(std::isfinite(values[i]) && std::abs(values[i] - distance) < 0.0001f,
+					"linear depth pixels must reconstruct the known view-space distance from resolved depth");
+				if (liveColor != color) Require(liveValues[i] == -4.0f, "linear depth must leave an unused multisampled output unchanged");
+			}
+		}
+		std::cout << "LinearizeDepth format=" << uint32_t(format) << " depthSurface=" << depthIsSurface << " targetSurface=" << targetIsSurface
+			<< " namedDepth=" << namedDepth << " namedTarget=" << namedTarget << ": resource replacement, Clear and reconstructed distances passed\n";
 	}
 
 	void TestClearDepth(const std::array<ShaderSetPtr, 4>& shaders, EFormat format, bool surfaceInput, bool late, bool implicitDepth = false)
@@ -1090,11 +1255,22 @@ namespace Sailor::Tests
 		const auto fogInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/AtmosphericFog.shader");
 		Require(fogInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(fogInfo->GetFileId(), fogShader) && fogShader->IsReady(),
 			"the production fog shader must compile before recording");
+		ShaderSetPtr linearDepthShader;
+		const auto linearDepthInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/LinearizeDepth.shader");
+		Require(linearDepthInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(linearDepthInfo->GetFileId(), linearDepthShader) && linearDepthShader->IsReady(),
+			"the production linear-depth shader must compile before recording");
 		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 		auto task = Tasks::CreateTaskWithResult<std::string>("Post-process attachment and parameter contracts", [&]() -> std::string
 			{
 				try
 				{
+					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT }) TestDepthSurfaceFactory(depthReadback, format);
+					for (bool namedDepth : { false, true })
+						for (bool namedTarget : { false, true })
+							for (bool depthSurface : { false, true })
+								for (bool targetSurface : { false, true })
+									for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
+										TestLinearizeDepth(format, depthSurface, targetSurface, namedDepth, namedTarget);
 					for (bool late : { false, true })
 					{
 						for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
