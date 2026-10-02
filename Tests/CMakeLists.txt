@@ -223,6 +223,21 @@ add_executable(ModelImporterContractTests
     ${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelLodCache.cpp
 )
 
+# Compile the production generator without the runtime's private meshoptimizer definition.
+add_executable(ModelLodWithoutMeshoptTests
+    ModelLodWithoutMeshoptTests.cpp
+    ${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelLodGeneration.cpp
+    ${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelLodCache.cpp
+)
+target_compile_features(ModelLodWithoutMeshoptTests PRIVATE cxx_std_20)
+target_include_directories(ModelLodWithoutMeshoptTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ModelLodWithoutMeshoptTests PRIVATE Sailor::Runtime)
+add_test(NAME ModelLodWithoutMeshoptTests COMMAND ModelLodWithoutMeshoptTests)
+set_tests_properties(ModelLodWithoutMeshoptTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ModelLodWithoutMeshoptTests)
+endif()
+
 add_executable(AnimationSamplingContractTests
     AnimationSamplingContractTests.cpp
 )

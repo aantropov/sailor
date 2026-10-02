@@ -631,15 +631,41 @@ namespace
 		Require(Utils::TryGetFileRevision(fixture.m_path.string(), revision), "the fixture source must have a revision");
 		const auto& mesh = model->GetMeshes()[0];
 		Require(mesh->GetNumLods() == 3, "source geometry and both generated LODs must upload");
+		Require(mesh->m_vertexBuffer->GetSize() == source.m_vertices.Num() * sizeof(source.m_vertices[0]) &&
+			mesh->m_indexBuffer->GetSize() == source.m_indices.Num() * sizeof(uint32_t),
+			"the locked-border panel must upload its vertex and index data only once");
+		auto readback = Tasks::CreateTaskWithResult<bool>("Read back aliased LOD buffers", [mesh, &source]()
+			{
+				auto& driver = RHI::Renderer::GetDriver();
+				const auto memory = RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent;
+				const auto vertexBytes = mesh->m_vertexBuffer->GetSize();
+				const auto indexBytes = mesh->m_indexBuffer->GetSize();
+				auto vertices = driver->CreateBuffer(vertexBytes, RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
+				auto indices = driver->CreateBuffer(indexBytes, RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
+				return driver->CopyBuffer_Immediate(mesh->m_vertexBuffer, vertices, vertexBytes) &&
+					driver->CopyBuffer_Immediate(mesh->m_indexBuffer, indices, indexBytes) &&
+					std::equal(source.m_vertices.begin(), source.m_vertices.end(),
+						static_cast<const RHI::VertexP3N3T3B3UV2C4I4W4*>(vertices->GetPointer())) &&
+					std::equal(source.m_indices.begin(), source.m_indices.end(),
+						static_cast<const uint32_t*>(indices->GetPointer()));
+			}, EThreadType::RHI);
+		readback->Run();
+		readback->Wait();
+		Require(readback->GetResult(), "all aliased LOD vertex attributes and indices must match actual GPU buffer contents");
 		TVector<Geometry> result{ Geometry{ source.m_vertices, source.m_indices } };
 		for (uint32_t level = 1; level < mesh->GetNumLods(); ++level)
 		{
 			Require(ModelLodCache::Load(*fixture.m_info, revision, level, parsed),
 				"the real importer must publish a cache matching its source geometry");
 			const auto lod = mesh->GetLod(level);
-			Require(lod && lod->GetIndexCount() == parsed[0].lods[level - 1].m_indices.Num(),
+			const auto& cached = parsed[0].lods[level - 1];
+			auto geometry = cached.m_indices.IsEmpty() ? *result.Last() : cached;
+			Require(lod && lod->GetIndexCount() == geometry.m_indices.Num(),
 				"uploaded LOD views must use the generated geometry's draw counts");
-			result.Add(parsed[0].lods[level - 1]);
+			Require(lod->m_vertexBuffer == mesh->m_vertexBuffer && lod->m_indexBuffer == mesh->m_indexBuffer &&
+				lod->GetVertexOffset() == mesh->GetVertexOffset() && lod->GetFirstIndex() == mesh->GetFirstIndex(),
+				"unreduced LODs must select the exact base vertex and index ranges");
+			result.Add(std::move(geometry));
 		}
 		return result;
 	}
@@ -658,8 +684,9 @@ namespace
 		ModelImporter::GenerateLods(expected, 2, 0.5f);
 		for (size_t level = 1; level < geometry.Num(); ++level)
 		{
-			Require(geometry[level].m_vertices == expected[0].lods[level - 1].m_vertices &&
-				geometry[level].m_indices == expected[0].lods[level - 1].m_indices,
+			const auto& generated = expected[0].lods[level - 1];
+			const auto& selected = generated.m_indices.IsEmpty() ? geometry[level - 1] : generated;
+			Require(geometry[level].m_vertices == selected.m_vertices && geometry[level].m_indices == selected.m_indices,
 				"every cached LOD must match fresh generation from the current imported geometry");
 		}
 	}

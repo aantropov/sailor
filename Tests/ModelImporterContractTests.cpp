@@ -493,6 +493,29 @@ namespace
 			}
 		}
 
+		ModelImporter::GenerateLods(meshes, 8, 0.05f);
+		size_t previousIndices = sourceIndexCount;
+		size_t previousBytes = meshes[0].outVertices.Num() * sizeof(meshes[0].outVertices[0]) + previousIndices * sizeof(uint32_t);
+		bool reduced = false, aliased = false;
+		for (const auto& lod : meshes[0].lods)
+		{
+			if (lod.m_indices.IsEmpty())
+			{
+				aliased = true;
+				Require(lod.m_vertices.Capacity() == 0 && lod.m_indices.Capacity() == 0,
+					"a repeated reduction must release its duplicate geometry");
+				continue;
+			}
+			const size_t bytes = lod.m_vertices.Num() * sizeof(lod.m_vertices[0]) + lod.m_indices.Num() * sizeof(uint32_t);
+			Require(lod.m_indices.Num() < previousIndices && bytes < previousBytes,
+				"each physical LOD must reduce triangles and geometry bytes against the previous physical level");
+			previousIndices = lod.m_indices.Num();
+			previousBytes = bytes;
+			reduced = true;
+		}
+		Require(reduced && aliased && meshes[0].lods.Num() == 8,
+			"a reducible grid must retain eight logical levels without copying its final reduction");
+
 		FileId fileId;
 		fileId.Deserialize(YAML::Node("01234567-89ab-cdef-0123-456789abcdef"));
 			Require(
@@ -501,6 +524,35 @@ namespace
 				"model LOD cache filenames must follow the fileId_lodN.bin contract");
 		Require(ModelImporter::GetLodCacheFilename(fileId, 0u).empty(),
 			"LOD0 must remain source geometry instead of a generated cache file");
+	}
+
+	void TestUnreducedLodsDoNotCopyGeometry()
+	{
+		TVector<ModelImporter::MeshContext> meshes(2);
+		const auto triangle = MakeTriangleMesh(2);
+		for (auto& mesh : meshes)
+		{
+			mesh.outVertices = triangle.m_vertices;
+			mesh.outIndices = triangle.m_indices;
+		}
+		meshes[1].outVertices.Add(MakeVertex(glm::vec3(1, 1, 0)));
+		meshes[1].outIndices.AddRange({ 1, 3, 2 });
+		const auto source = meshes;
+		for (uint32_t requested : { 0u, 2u, 8u, 99u })
+		{
+			ModelImporter::GenerateLods(meshes, requested, 0.5f);
+			for (size_t i = 0; i < meshes.Num(); ++i)
+			{
+				Require(meshes[i].lods.Num() == (std::min)(requested, 8u),
+					"unreduced meshes must retain their requested logical LOD count");
+				Require(meshes[i].outVertices == source[i].outVertices && meshes[i].outIndices == source[i].outIndices,
+					"aliasing a LOD must not change its source vertex attributes or indices");
+				for (const auto& lod : meshes[i].lods)
+					Require(lod.m_vertices.IsEmpty() && lod.m_indices.IsEmpty() &&
+						lod.m_vertices.Capacity() == 0 && lod.m_indices.Capacity() == 0,
+						"a triangle or locked-border plane must not retain duplicated LOD buffers");
+			}
+		}
 	}
 
 	class ModelCacheWorkspace final
@@ -3141,6 +3193,7 @@ int main()
 		{ "MeshContextRejectsEmptyGpuUploads", TestMeshContextRejectsEmptyGpuUploads },
 		{ "ModelLodMetadataDefaultsAndRoundTrip", TestModelLodMetadataDefaultsAndRoundTrip },
 		{ "ModelLodGenerationAndCacheNaming", TestModelLodGenerationAndCacheNaming },
+		{ "UnreducedLodsDoNotCopyGeometry", TestUnreducedLodsDoNotCopyGeometry },
 		{ "ModelLodCacheRoundTripAndInvalidation", TestModelLodCacheRoundTripAndInvalidation },
 		{ "ModelLodCacheChecksPayloadBeforeAllocation", TestModelLodCacheChecksPayloadBeforeAllocation },
 		{ "ModelLodCacheGeometryInvalidation", TestModelLodCacheGeometryInvalidation },

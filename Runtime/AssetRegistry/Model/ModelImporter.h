@@ -225,6 +225,7 @@ namespace Sailor
 		{
 			struct LodGeometry
 			{
+				// Empty geometry reuses the preceding level's draw range.
 				TVector<RHI::VertexP3N3T3B3UV2C4I4W4> m_vertices;
 				TVector<uint32_t> m_indices;
 			};
