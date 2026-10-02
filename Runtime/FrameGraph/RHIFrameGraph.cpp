@@ -1206,9 +1206,9 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 	if (!m_postEffectPlane)
 	{
-		m_postEffectPlane = renderer->GetDriver()->CreateMesh();
-		m_postEffectPlane->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		m_postEffectPlane->m_bounds = Math::AABB(vec3(0), vec3(1, 1, 1));
+		auto plane = driver->CreateMesh();
+		plane->m_vertexDescription = driver->GetOrAddVertexDescription<VertexP3N3UV2C4>();
+		plane->m_bounds = Math::AABB(vec3(0), vec3(1, 1, 1));
 
 		TVector<VertexP3N3UV2C4> ndcQuad(4);
 		ndcQuad[0].m_texcoord = vec2(0.0f, 0.0f);
@@ -1223,7 +1223,26 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 		const TVector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
 
-		RHI::Renderer::GetDriver()->UpdateMesh(m_postEffectPlane, &ndcQuad[0], ndcQuad.Num() * sizeof(VertexP3N3UV2C4), &indices[0], sizeof(uint32_t) * indices.Num());
+		// UpdateMesh queues a later render task; this frame needs the quad before its draws.
+		auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		driver->SetDebugName(upload, "FrameGraph:FullscreenQuadUpload");
+		driverCommands->BeginCommandList(upload, true);
+		plane->m_vertexBuffer = driver->CreateBuffer(upload, ndcQuad.GetData(), ndcQuad.Num() * sizeof(VertexP3N3UV2C4),
+			EBufferUsageBit::VertexBuffer_Bit, EMemoryPropertyBit::DeviceLocal);
+		plane->m_indexBuffer = driver->CreateBuffer(upload, indices.GetData(), indices.Num() * sizeof(uint32_t),
+			EBufferUsageBit::IndexBuffer_Bit, EMemoryPropertyBit::DeviceLocal);
+		driverCommands->EndCommandList(upload);
+		auto ready = driver->CreateWaitSemaphore();
+		auto initialized = RHIFencePtr::Make();
+		driver->TrackDelayedInitialization(plane.GetRawPtr(), initialized);
+		if (!driver->SubmitCommandList(upload, initialized, ready, frameGraphChainSemaphore))
+		{
+			outWaitSemaphore = frameGraphChainSemaphore;
+			return false;
+		}
+		m_postEffectPlane = std::move(plane);
+		frameGraphChainSemaphore = ready;
+		submissionProgress->SetLastSuccessfulSemaphore(ready);
 	}
 
 	for (auto& snapshot : rhiSceneView->m_snapshots)

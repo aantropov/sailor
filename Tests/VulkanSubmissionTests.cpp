@@ -2298,6 +2298,14 @@ namespace
 
 namespace Sailor::Tests
 {
+	void RequireRejectedGraphicsSubmission(const std::function<bool()>& submit)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		SubmitOverride rejection(VulkanSubmissionTestAccess::UploadQueue(*device, false), VK_ERROR_OUT_OF_HOST_MEMORY);
+		const auto before = submitCalls;
+		Require(!submit() && submitCalls == before + 1u, "the native graphics queue must reject the submission");
+	}
+
 	void RequireRejectedNativeSubmission(RHICommandListPtr command)
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();

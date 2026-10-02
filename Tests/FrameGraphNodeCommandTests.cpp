@@ -2,6 +2,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "Components/CameraComponent.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
@@ -35,6 +36,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -45,7 +47,23 @@ using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-namespace Sailor::Tests { void RequireRejectedNativeSubmission(RHICommandListPtr command); }
+namespace Sailor::Tests
+{
+	void RequireRejectedNativeSubmission(RHICommandListPtr command);
+	void RequireRejectedGraphicsSubmission(const std::function<bool()>& submit);
+}
+
+namespace Sailor
+{
+	class FrameGraphImporterTestAccess
+	{
+	public:
+		static void ReleaseInstance(FrameGraphImporter& importer, FrameGraphPtr instance)
+		{
+			instance.DestroyObject(importer.m_allocator);
+		}
+	};
+}
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
@@ -337,6 +355,73 @@ frame:
 		std::cout << "FrameGraph static surface/target binding and external publication passed\n";
 	}
 
+	std::array<FileId, 2> WriteImportedGraph(const std::filesystem::path& workspace)
+	{
+		const auto texturePath = workspace / "Content" / "GraphSample.tga";
+		const uint8_t tga[] = { 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 32, 8, 0, 0, 255, 255 };
+		std::ofstream textureFile(texturePath, std::ios::binary);
+		textureFile.write(reinterpret_cast<const char*>(tga), sizeof(tga));
+		textureFile.close();
+		Require(static_cast<bool>(textureFile), "the one-pixel red TGA must be written");
+		auto registry = App::GetSubmodule<AssetRegistry>();
+		const auto textureId = registry->GetOrLoadFile(texturePath.string());
+		TexturePtr texture;
+		Require(App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(textureId, texture) && texture,
+			"the static texture must load before recording the imported graph");
+
+		const auto shaderPath = workspace / "Content" / "ImportedBindings.shader";
+		YAML::Node shader;
+		shader["glslCommon"] = "#version 450\n";
+		shader["colorAttachments"].push_back("R32G32B32A32_SFLOAT");
+		shader["glslVertex"] = "layout(location = 0) in vec3 position; void main() { gl_Position = vec4(position, 1); }";
+		shader["glslFragment"] = R"glsl(
+layout(set = 1, binding = 0) uniform sampler2D sourceSampler;
+layout(set = 1, binding = 1) uniform sampler2D externalSampler;
+layout(location = 0) out vec4 outColor;
+void main() {
+	outColor = texelFetch(sourceSampler, ivec2(0), 0) * 0.25 + texelFetch(externalSampler, ivec2(0), 0);
+}
+)glsl";
+		std::ofstream shaderFile(shaderPath);
+		shaderFile << shader;
+		shaderFile.close();
+		Require(static_cast<bool>(shaderFile), "the imported graph shader must be written");
+		ShaderSetPtr compiled;
+		Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(registry->GetOrLoadFile(shaderPath.string()), compiled) &&
+			compiled && compiled->IsReady(), "the imported graph shader must compile before recording");
+
+		auto graph = YAML::Load(R"yaml(
+samplers:
+  - {name: ById}
+  - {name: ByPath, path: GraphSample.tga}
+  - {name: Both, path: DoesNotExist.tga}
+renderTargets:
+  - {name: Main, width: 8, height: 8, format: R32G32B32A32_SFLOAT, bIsSurface: true}
+frame:
+  - name: Clear
+    renderTargets: [{target: Main}]
+    vec4: [{clearColor: [0, 0, 0, 0]}]
+  - name: PostProcess
+    tag: Composite
+    string: [{shader: ImportedBindings.shader}]
+    renderTargets: [{color: Main}, {sourceSampler: ById}, {externalSampler: DynamicInput}]
+)yaml");
+		graph["samplers"][0]["fileId"] = textureId.ToString();
+		graph["samplers"][2]["fileId"] = textureId.ToString();
+		const auto graphPath = workspace / "Content" / "ImportedBindings.renderer";
+		std::ofstream graphFile(graphPath);
+		graphFile << graph;
+		graphFile.close();
+		Require(static_cast<bool>(graphFile), "the imported graph must be written");
+
+		const auto invalidPath = workspace / "Content" / "AmbiguousBindings.renderer";
+		std::ofstream invalidFile(invalidPath);
+		invalidFile << "renderTargets: [{name: Shared, width: 8}, {name: Shared, width: 16}]\n";
+		invalidFile.close();
+		Require(static_cast<bool>(invalidFile), "the ambiguous graph must be written");
+		return { registry->GetOrLoadFile(graphPath.string()), registry->GetOrLoadFile(invalidPath.string()) };
+	}
+
 	class SceneNode : public RenderSceneNode
 	{
 	public:
@@ -611,6 +696,182 @@ void main() {
 				uint32_t(mesh->m_vertexBuffer->GetOffset() / mesh->m_vertexDescription->GetVertexStride()), 0);
 		}
 		commands->EndRenderPass(command);
+	}
+
+	void TestFullscreenUploadRetry()
+	{
+		auto graph = RHIFrameGraphPtr::Make();
+		auto view = RHISceneViewPtr::Make();
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto before = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(before, true);
+		commands->EndCommandList(before);
+		auto input = driver->CreateWaitSemaphore();
+		Require(driver->SubmitCommandList(before, RHIFencePtr::Make(), input), "the incoming graph dependency must submit");
+		TVector<RHICommandListPtr> transfers, graphics;
+		RHISemaphorePtr ready;
+		Tests::RequireRejectedGraphicsSubmission([&]() { return graph->Process(view, transfers, graphics, input, ready); });
+		Require(!graph->GetFullscreenNdcQuad() && ready == input && transfers.IsEmpty() && graphics.IsEmpty(),
+			"a rejected quad upload must retain the incoming dependency without publishing an uninitialized mesh");
+		Require(graph->Process(view, transfers, graphics, input, ready) && ready && ready != input,
+			"the graph must retry its quad upload and publish the accepted dependency");
+		auto after = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(after, true);
+		commands->EndCommandList(after);
+		auto finished = RHIFencePtr::Make();
+		Require(driver->SubmitCommandList(after, finished, {}, ready) && finished->Wait(5000000000ull) == EFenceStatus::Finished,
+			"the quad upload dependency must complete on the GPU");
+		driver->TrackResources_ThreadSafe();
+		const auto plane = graph->GetFullscreenNdcQuad();
+		Require(plane && plane->IsReady() && plane->GetIndexCount() == 6, "the accepted quad must finish initialization");
+		const auto submissions = driver->GetNumSubmittedCommandBuffers();
+		Require(graph->Process(view, transfers, graphics, {}, ready) && !ready &&
+			graph->GetFullscreenNdcQuad() == plane && driver->GetNumSubmittedCommandBuffers() == submissions,
+			"later frames must reuse the quad without another upload or submission");
+		std::cout << "FrameGraph fullscreen upload: native rejection, dependency-preserving retry and stable reuse passed\n";
+	}
+
+	void TestImportedRendering(const std::array<FileId, 2>& ids)
+	{
+		auto importer = App::GetSubmodule<FrameGraphImporter>();
+		FrameGraphPtr rejected;
+		Require(!importer->LoadFrameGraphAsset(ids[1]) &&
+			!importer->LoadFrameGraph_Immediate(ids[1], rejected) && !rejected &&
+			!importer->Instantiate_Immediate(ids[1], rejected) && !rejected,
+			"invalid static declarations must report a failed load, not escape as an exception or partial graph");
+		auto registry = App::GetSubmodule<AssetRegistry>();
+		std::ifstream validFile(registry->GetAssetInfoPtr(ids[0])->GetAssetFilepath());
+		std::ofstream repairedFile(registry->GetAssetInfoPtr(ids[1])->GetAssetFilepath());
+		repairedFile << validFile.rdbuf();
+		repairedFile.close();
+		Require(static_cast<bool>(validFile) && static_cast<bool>(repairedFile) &&
+			importer->LoadFrameGraph_Immediate(ids[1], rejected) && rejected,
+			"a failed graph load must retry successfully after its temporary fixture is repaired");
+		std::array<FrameGraphPtr, 2> instances;
+		Require(importer->LoadFrameGraph_Immediate(ids[0], instances[0]) &&
+			importer->Instantiate_Immediate(ids[0], instances[1]), "both graph instances must load");
+		Require(instances[0]->GetRHI() != instances[1]->GetRHI() &&
+			instances[0]->GetRHI()->GetSurface("Main") != instances[1]->GetRHI()->GetSurface("Main"),
+			"instantiating the same asset must not share mutable targets or nodes");
+		World cameraWorld("ImportedGraphCamera", 0);
+		auto camera = cameraWorld.Instantiate("Camera")->AddComponent<CameraComponent>();
+		cameraWorld.GetECS<CameraECS>()->Tick(0);
+		auto cameraData = camera->GetData();
+		cameraData.SetOwner({});
+		cameraWorld.Clear();
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		const auto fallback = driver->GetDefaultTexture();
+		Require(fallback && fallback->GetFormat() == EFormat::R8G8B8A8_SRGB,
+			"the Vulkan fallback fixture must expose its RGBA8 sRGB texel");
+		auto fallbackRead = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		auto fallbackUpload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(fallbackRead, true);
+		commands->BeginCommandList(fallbackUpload, true);
+		auto fallbackPixels = ReadColor(fallbackRead, fallback);
+		CompleteCommands(fallbackUpload, fallbackRead);
+		const auto bytes = static_cast<const uint8_t*>(fallbackPixels->GetPointer());
+		glm::vec4 fallbackValue(bytes[0] / 255.0f, bytes[1] / 255.0f, bytes[2] / 255.0f, bytes[3] / 255.0f);
+		for (uint32_t i = 0; i < 3; ++i)
+			fallbackValue[i] = fallbackValue[i] <= 0.04045f ? fallbackValue[i] / 12.92f :
+				std::pow((fallbackValue[i] + 0.055f) / 1.055f, 2.4f);
+		CaptureAttachments capture;
+		for (uint32_t instanceIndex = 0; instanceIndex < instances.size(); ++instanceIndex)
+		{
+			auto graph = instances[instanceIndex]->GetRHI();
+			auto node = graph->GetGraphNode("Composite").DynamicCast<PostProcessNode>();
+			const auto output = graph->GetSurface("Main");
+			const auto source = graph->GetSampler("ById");
+			Require(source && source == graph->GetSampler("ByPath") && source == graph->GetSampler("Both") &&
+				node->GetSampledAttachment("sourceSampler") == source,
+				"path-only/id-only samplers must bind the same asset; fileId takes precedence over path");
+			auto view = RHISceneViewPtr::Make();
+			view->m_snapshots.Resize(1);
+			auto& scene = view->m_snapshots[0];
+			scene.m_camera = TUniquePtr<CameraData>::Make(cameraData);
+			scene.m_bGlobalIlluminationEnabled = false;
+			scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+			scene.m_rhiLightsData = driver->CreateShaderBindings();
+			RHIRenderTargetPtr external;
+			RHISurfacePtr externalSurface;
+			VulkanDescriptorSetPtr previousDescriptor;
+			for (uint32_t frame = 0; frame < 6; ++frame)
+			{
+				const bool published = frame != 0 && frame != 4;
+				const float externalValue = float(instanceIndex + 1) * (frame >= 2 ? 0.25f : 0.125f);
+				if (frame == 1 || frame == 2 || frame == 5)
+				{
+					externalSurface = frame == 2 ? driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT) : RHISurfacePtr{};
+					external = externalSurface ? externalSurface->GetResolved() :
+						driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+					auto setup = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(upload, true);
+					commands->BeginCommandList(setup, true);
+					ClearColor(setup, external, glm::vec4(externalValue));
+					if (externalSurface && externalSurface->NeedsResolve())
+						ClearColor(setup, externalSurface->GetTarget(), glm::vec4(8));
+					CompleteCommands(upload, setup);
+				}
+				graph->SetSurface("DynamicInput", published ? externalSurface : RHISurfacePtr{});
+				graph->SetSampler("DynamicInput", published && !externalSurface ? RHITexturePtr(external) : RHITexturePtr{});
+				if (frame >= 2) graph->SetSampler("ById", external);
+				scene.m_submissionContext->BeginSubmission(frame + 1, 0);
+				TVector<RHICommandListPtr> transfers, graphics;
+				RHISemaphorePtr ready;
+				recordedColorCount = 0;
+				Require(graph->Process(view, transfers, graphics, {}, ready),
+					"the imported graph must prepare and record through its actual pass sequence");
+				if (node->GetDrawCallStats().m_numBatches != 1)
+					throw std::runtime_error("Imported graph draw mismatch: instance=" + std::to_string(instanceIndex) +
+						" frame=" + std::to_string(frame) + " published=" + std::to_string(published) +
+						" shaderReady=" + std::to_string(node->IsShaderReady()) +
+						" batches=" + std::to_string(node->GetDrawCallStats().m_numBatches));
+				{
+					Require(recordedColorCount == 1 &&
+						recordedColor.imageView == static_cast<VkImageView>(*output->GetTarget()->m_vulkan.m_imageView) &&
+						recordedColor.resolveImageView == (output->NeedsResolve() ? static_cast<VkImageView>(*output->GetResolved()->m_vulkan.m_imageView) : VK_NULL_HANDLE),
+						"imported rendering must retain the actual static Surface attachment");
+					auto bindings = PostProcessNodeTestAccess::GetBindings(*node, scene);
+					Require(bindings->GetOrAddShaderBinding("sourceSampler")->GetTextureBinding() == source &&
+						bindings->GetOrAddShaderBinding("externalSampler")->GetTextureBinding() == (published ? RHITexturePtr(external) : fallback),
+						"only external inputs may refresh, retaining the driver fallback when unpublished");
+					if (frame == 3) Require(bindings->m_vulkan.m_descriptorSet == previousDescriptor,
+						"unchanged external input must reuse its descriptor set");
+					previousDescriptor = bindings->m_vulkan.m_descriptorSet;
+				}
+				for (size_t i = 0; i < transfers.Num(); ++i)
+					for (const auto& command : { transfers[i], graphics[i] })
+					{
+						auto next = driver->CreateWaitSemaphore();
+						Require(driver->SubmitCommandList(command, RHIFencePtr::Make(), next, ready), "imported graph commands must submit");
+						ready = next;
+					}
+				auto readback = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(readback, true);
+				const std::array images{ ReadColor(readback, output->GetResolved()), ReadColor(readback, output->GetTarget()) };
+				commands->MemoryBarrier(readback, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+				commands->EndCommandList(readback);
+				auto finished = RHIFencePtr::Make();
+				Require(driver->SubmitCommandList(readback, finished, {}, ready) && finished->Wait(5000000000ull) == EFenceStatus::Finished,
+					"imported graph readback must complete");
+				const auto expected = glm::vec4(0.25f, 0, 0, 0.25f) + (published ? glm::vec4(externalValue) : fallbackValue);
+				for (const auto& image : images)
+					for (uint32_t pixel = 0; pixel < Side * Side; ++pixel)
+					{
+						const auto actual = static_cast<const glm::vec4*>(image->GetPointer())[pixel];
+						for (uint32_t component = 0; component < 4; ++component)
+							if (!std::isfinite(actual[component]) || std::abs(actual[component] - expected[component]) >= (published ? 0.00001f : 0.002f))
+								throw std::runtime_error("Imported graph pixel mismatch: instance=" + std::to_string(instanceIndex) +
+									" frame=" + std::to_string(frame) + " pixel=" + std::to_string(pixel) +
+									" component=" + std::to_string(component) + " actual=" + std::to_string(actual[component]) +
+									" expected=" + std::to_string(expected[component]));
+					}
+			}
+		}
+		FrameGraphImporterTestAccess::ReleaseInstance(*importer, instances[1]);
+		std::cout << "FrameGraph imported rendering: two instances, six frames, static samplers and external replacement passed\n";
 	}
 
 	enum class DebugDepthInput { Default, Texture, Surface, DefaultSurface };
@@ -1811,6 +2072,7 @@ namespace Sailor::Tests
 				"all production depth pyramid permutations must compile before recording");
 		}
 		const auto graphId = WriteGraph(workspace);
+		const auto importedGraphIds = WriteImportedGraph(workspace);
 		const auto mrtShader = WriteMrtShader(workspace);
 		ShaderSetPtr blitShader;
 		const auto blitInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blit.shader");
@@ -1833,6 +2095,8 @@ namespace Sailor::Tests
 			{
 				try
 				{
+					TestFullscreenUploadRetry();
+					TestImportedRendering(importedGraphIds);
 					for (bool namedColor : { true, false })
 						for (bool namedDepth : { false, true })
 							for (bool colorSurface : { false, true })
