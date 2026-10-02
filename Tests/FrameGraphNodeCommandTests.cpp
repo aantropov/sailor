@@ -422,6 +422,99 @@ frame:
 		return { registry->GetOrLoadFile(graphPath.string()), registry->GetOrLoadFile(invalidPath.string()) };
 	}
 
+	void TestGraphLoadFailures(const std::filesystem::path& workspace, FileId validId)
+	{
+		auto importer = App::GetSubmodule<FrameGraphImporter>();
+		auto registry = App::GetSubmodule<AssetRegistry>();
+		FrameGraphPtr previous;
+		Require(importer->LoadFrameGraph_Immediate(validId, previous) && previous,
+			"the valid graph must be available before testing failed replacements");
+		auto valid = YAML::LoadFile(registry->GetAssetInfoPtr(validId)->GetAssetFilepath());
+		valid["frame"].push_back(YAML::Load("{name: ExperimentalParticles, tag: Particles}"));
+
+		for (const std::string failure : { "missing-file", "unknown-node", "texture-decode", "sampler-path", "sampler-id" })
+		{
+			auto description = YAML::Clone(valid);
+			const auto path = workspace / "Content" / (failure + ".renderer");
+			const auto unavailable = workspace / "Content" / (failure + ".unavailable");
+			const auto brokenTexture = workspace / "Content" / "BrokenGraphSample.tga";
+			if (failure == "unknown-node")
+			{
+				description["frame"][1]["name"] = "UnregisteredTestNode";
+			}
+			else if (failure == "texture-decode")
+			{
+				std::ofstream output(brokenTexture, std::ios::binary);
+				output << "not a TGA image";
+				output.close();
+				Require(static_cast<bool>(output), "the invalid texture fixture must be written");
+				description["samplers"][0]["fileId"] = registry->GetOrLoadFile(brokenTexture.string()).ToString();
+			}
+			else if (failure == "sampler-path")
+			{
+				description["samplers"][0].remove("fileId");
+				description["samplers"][0]["path"] = "MissingGraphSample.tga";
+			}
+			else if (failure == "sampler-id")
+			{
+				description["samplers"][0]["fileId"] = FileId::CreateNewFileId().ToString();
+				description["samplers"][0]["path"] = "GraphSample.tga";
+			}
+			auto write = [&](const YAML::Node& data)
+				{
+					std::ofstream output(path);
+					output << data;
+					output.close();
+					Require(static_cast<bool>(output), "the failed-load graph fixture must be written");
+				};
+			write(description);
+			const auto id = registry->GetOrLoadFile(path.string());
+			if (failure == "missing-file") std::filesystem::rename(path, unavailable);
+			auto parsed = importer->LoadFrameGraphAsset(id);
+			Require(failure == "missing-file" ? !parsed : static_cast<bool>(parsed),
+				"an unreadable graph must fail to load; invalid build dependencies must still parse");
+			for (uint32_t attempt = 0; attempt < 2; ++attempt)
+			{
+				FrameGraphPtr rejected;
+				Require(!importer->LoadFrameGraph_Immediate(id, rejected) && !rejected &&
+					!importer->Instantiate_Immediate(id, rejected) && !rejected,
+					"a failed build must not return or cache a partial graph");
+				auto retained = previous;
+				Require(!importer->LoadFrameGraph_Immediate(id, retained) && retained == previous &&
+					!importer->Instantiate_Immediate(id, retained) && retained == previous,
+					"a failed build must leave the caller's existing graph unchanged");
+			}
+			if (failure == "missing-file")
+			{
+				std::filesystem::rename(unavailable, path);
+			}
+			else if (failure == "texture-decode")
+			{
+				std::filesystem::copy_file(workspace / "Content" / "GraphSample.tga", brokenTexture,
+					std::filesystem::copy_options::overwrite_existing);
+			}
+			else
+			{
+				write(valid);
+			}
+			FrameGraphPtr repaired, instance, cached;
+			Require(importer->LoadFrameGraph_Immediate(id, repaired) && repaired &&
+				importer->Instantiate_Immediate(id, instance) && instance &&
+				importer->LoadFrameGraph_Immediate(id, cached) && cached == repaired,
+				"repairing the file or its dependency must allow retry and normal cache reuse");
+			Require(instance->GetRHI() != repaired->GetRHI(), "instantiation must still create an independent graph");
+			for (auto graph : { repaired->GetRHI(), instance->GetRHI() })
+			{
+				Require(graph->GetGraph().Num() == 3 && graph->GetGraph()[0]->GetTag() == "Clear" &&
+					graph->GetGraph()[1]->GetTag() == "Composite" && graph->GetGraph()[2]->GetTag() == "Particles" &&
+					graph->GetSampler("ById") && graph->GetSampler("ByPath") && graph->GetSampler("Both"),
+					"a repaired graph must retain every ordered pass and static sampler, including ExperimentalParticles");
+			}
+			FrameGraphImporterTestAccess::ReleaseInstance(*importer, instance);
+			std::cout << "FrameGraph load failure: " << failure << ", rejection, retained output and repair retry passed\n";
+		}
+	}
+
 	class SceneNode : public RenderSceneNode
 	{
 	public:
@@ -2097,6 +2190,7 @@ namespace Sailor::Tests
 				{
 					TestFullscreenUploadRetry();
 					TestImportedRendering(importedGraphIds);
+					TestGraphLoadFailures(workspace, importedGraphIds[0]);
 					for (bool namedColor : { true, false })
 						for (bool namedDepth : { false, true })
 							for (bool colorSurface : { false, true })

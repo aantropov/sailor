@@ -47,7 +47,11 @@ FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)
 
 		std::string text;
 
-		AssetRegistry::ReadAllTextFile(filepath, text);
+		if (!AssetRegistry::ReadAllTextFile(filepath, text))
+		{
+			SAILOR_LOG_ERROR("Cannot load frame graph '%s': cannot read the file.", filepath.c_str());
+			return {};
+		}
 
 		try
 		{
@@ -77,12 +81,12 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(FileId uid, FrameGraphPtr& out
 
 	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
 	{
-		FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset);
-
-		m_loadedFrameGraphs.At_Lock(uid) = outFrameGraph = pFrameGraph;
-		m_loadedFrameGraphs.Unlock(uid);
-
-		return true;
+		if (FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset))
+		{
+			m_loadedFrameGraphs.At_Lock(uid) = outFrameGraph = pFrameGraph;
+			m_loadedFrameGraphs.Unlock(uid);
+			return true;
+		}
 	}
 
 	return false;
@@ -90,7 +94,6 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(FileId uid, FrameGraphPtr& out
 
 FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const FrameGraphAssetPtr& frameGraphAsset) const
 {
-	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
 	RHI::RHIFrameGraphPtr pRhiFrameGraph = RHI::RHIFrameGraphPtr::Make();
 
 	auto& graph = pRhiFrameGraph->GetGraph();
@@ -150,19 +153,23 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 	for (const auto& sampler : frameGraphAsset->m_samplers)
 	{
 		TexturePtr texture;
+		bool bLoaded = false;
 		if (sampler.m_second->m_fileId)
 		{
-			App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second->m_fileId, texture);
+			bLoaded = App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second->m_fileId, texture);
 		}
-		else
+		else if (auto assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(sampler.m_second->m_path))
 		{
-			if (auto assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(sampler.m_second->m_path))
-			{
-				App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetFileId(), texture);
-			}
+			bLoaded = App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetFileId(), texture);
 		}
 
-		check(texture);
+		if (!bLoaded)
+		{
+			const std::string source = sampler.m_second->m_fileId ? sampler.m_second->m_fileId.ToString() : sampler.m_second->m_path;
+			SAILOR_LOG_ERROR("Cannot build frame graph %s: sampler '%s' could not load texture '%s'.",
+				uid.ToString().c_str(), sampler.m_first.c_str(), source.c_str());
+			return {};
+		}
 		pRhiFrameGraph->SetSampler(sampler.m_first, texture->GetRHI());
 	}
 
@@ -172,8 +179,8 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 
 		if (!pNewNode)
 		{
-			SAILOR_LOG("FrameGraph Node %s is not implemented!", node.m_name.c_str());
-			continue;
+			SAILOR_LOG_ERROR("Cannot build frame graph %s: unknown node '%s'.", uid.ToString().c_str(), node.m_name.c_str());
+			return {};
 		}
 
 		pNewNode->SetTag(node.m_tag.empty() ? node.m_name : node.m_tag);
@@ -211,6 +218,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 		graph.Add(pNewNode);
 	}
 
+	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
 	pFrameGraph->m_frameGraph = pRhiFrameGraph;
 
 	return pFrameGraph;
@@ -220,10 +228,11 @@ bool FrameGraphImporter::Instantiate_Immediate(FileId uid, FrameGraphPtr& outFra
 {
 	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
 	{
-		FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset);
-		outFrameGraph = pFrameGraph;
-
-		return outFrameGraph.IsValid();
+		if (FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset))
+		{
+			outFrameGraph = pFrameGraph;
+			return true;
+		}
 	}
 
 	return false;
