@@ -643,7 +643,7 @@ namespace
 		for (bool targetedUpdate : { false, true })
 		{
 			ModelCacheWorkspace workspace;
-			const auto path = workspace.Context().GetContent() / "Lazy.gltf";
+			const auto path = workspace.Context().GetContent() / "MixedCase" / "Lazy.gltf";
 			CreateAnimationTestModel(path, {}, false);
 			const auto metadataPath = path.string() + ".asset";
 			const auto id = YAML::LoadFile(metadataPath)["fileId"].as<FileId>();
@@ -667,6 +667,12 @@ namespace
 			Require(model && model->GetAnimations().IsEmpty() &&
 				ReadAnimationFixtureText(metadataPath) == before && std::filesystem::last_write_time(metadataPath) == timestamp,
 				"lazy metadata hydration must not regenerate missing assets or rewrite Content");
+			AssetRegistry::AssetReadLocation location;
+			Require(!model->GetVirtualAssetFilepath().empty() && !model->GetVirtualMetaFilepath().empty() &&
+				fixture.m_registry.ResolveContentFile(model->GetVirtualAssetFilepath(), location) &&
+				std::filesystem::equivalent(location.m_physicalPath, path) &&
+				std::filesystem::equivalent(workspace.Context().GetContent() / model->GetVirtualMetaFilepath(), metadataPath),
+				"lazy cache paths must remain relative to the active mount, including mixed-case Windows paths");
 			metadata["unitScale"] = 3.0f;
 			WriteAnimationFixtureText(metadataPath, YAML::Dump(metadata));
 			Require(targetedUpdate ? fixture.m_registry.UpdateAsset(id) : fixture.m_registry.GetOrLoadFile(path.string()) == id,

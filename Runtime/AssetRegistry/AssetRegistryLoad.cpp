@@ -291,7 +291,9 @@ AssetInfoPtr AssetRegistry::MaterializeLazyAssetInfo(FileId uid) const
 		return nullptr;
 	}
 
-	const std::string virtualMetadataPath = metadataPath.lexically_relative(metadataMount->m_root).generic_string();
+	// Cached paths are case-folded on Windows; the mount root must use the same spelling.
+	const auto mountRootKey = PathKey(metadataMount->m_root);
+	const std::string virtualMetadataPath = std::filesystem::path(PathKey(metadataPath)).lexically_relative(mountRootKey).generic_string();
 	AssetInfoPtr info = handler->LoadAssetInfo(
 		metadataPath.string(), virtualMetadataPath, metadataMount->m_kind, metadataMount->m_bWritable, false, false);
 	if (info == nullptr || info->GetFileId() != uid || PathKey(info->GetAssetFilepath()) != PathKey(sourcePath))
@@ -307,7 +309,7 @@ AssetInfoPtr AssetRegistry::MaterializeLazyAssetInfo(FileId uid) const
 	info->m_bPendingUpdateNotification = false;
 	if (bPrimary)
 	{
-		const std::string virtualSourcePath = sourcePath.lexically_relative(metadataMount->m_root).generic_string();
+		const std::string virtualSourcePath = std::filesystem::path(PathKey(sourcePath)).lexically_relative(mountRootKey).generic_string();
 		const std::string virtualSourcePathKey = VirtualPathKey(virtualSourcePath);
 		const auto effectiveWinner = registry->m_contentFileWinners.Find(virtualSourcePathKey);
 		if (effectiveWinner != registry->m_contentFileWinners.end() &&
