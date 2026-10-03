@@ -228,7 +228,7 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 		m_fileIds[virtualPathKey] = fileId;
 		m_contentFileWinners[virtualPathKey] = location;
 	}
-	handler->NotifyUpdateAssetInfo(assetInfo);
+	handler->NotifyRegisterAsset(assetInfo);
 	if (bImported)
 	{
 		handler->NotifyImportAsset(assetInfo);

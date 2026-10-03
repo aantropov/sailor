@@ -132,6 +132,7 @@ namespace Sailor
 		SAILOR_API virtual ~ShaderCompiler() override;
 
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
+		SAILOR_API virtual void OnRegisterAsset(AssetInfoPtr assetInfo, bool bWasExpired) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 		SAILOR_API void OnAssetScanStarted() override;
 		SAILOR_API Tasks::TaskPtr<bool> OnAssetScanFinished() override;
@@ -182,6 +183,7 @@ namespace Sailor
 		Tasks::TaskPtr<ShaderReloadResults> m_lastScanReload;
 		bool m_bCollectScanChanges = false;
 		bool IsCollectingScanChanges() const;
+		void ProcessRegisteredAsset(AssetInfoPtr assetInfo);
 		void ProcessAssetUpdate(AssetInfoPtr assetInfo);
 
 		SAILOR_API void UpdateConstantsLibrary();

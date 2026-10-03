@@ -966,11 +966,12 @@ namespace
 		std::cout << "Material CPU capture: Main updates, immutable cache reuse and inline Render caller passed\n";
 	}
 
-	void TestColdIncludePublication(const std::filesystem::path& workspace, bool fromWorker, bool invalidFirst)
+	void TestColdIncludePublication(const std::filesystem::path& workspace, bool fromWorker, bool invalidFirst,
+		bool hasMetadata = false)
 	{
 		auto* registry = App::GetSubmodule<AssetRegistry>();
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		const std::string name = std::string("ColdInclude") + (fromWorker ? "Worker" : "Main") +
+		const std::string name = std::string(hasMetadata ? "ColdMetadataInclude" : "ColdInclude") + (fromWorker ? "Worker" : "Main") +
 			(invalidFirst ? "Retry" : "Valid");
 		const std::string includeName = name + ".glsl";
 		const auto shaderId = WriteShader(workspace, name.c_str());
@@ -994,6 +995,19 @@ namespace
 				Require(static_cast<bool>(output), "the missing include fixture must be written");
 			};
 		writeInclude(!invalidFirst);
+		FileId authoredId;
+		if (hasMetadata)
+		{
+			authoredId = FileId::CreateNewFileId();
+			const auto shaderInfo = registry->GetAssetInfoPtr(shaderId);
+			YAML::Node metadata = shaderInfo->Serialize();
+			metadata["assetInfoType"] = shaderInfo->GetAssetInfoType();
+			metadata["filename"] = includeName;
+			metadata["fileId"] = authoredId;
+			std::ofstream output(includePath.string() + ".asset");
+			output << metadata;
+			Require(static_cast<bool>(output), "the authored include metadata must be written before registration");
+		}
 
 		const glm::vec4 color(0.25f, 0.5f, 0.75f, 1);
 		FileId includeId;
@@ -1028,6 +1042,7 @@ namespace
 			includeId = registry->GetOrLoadFile(includePath.string());
 			Require(static_cast<bool>(includeId), "Main must register the late include");
 		}
+		Require(!hasMetadata || includeId == authoredId, "cold registration must preserve the authored include identity");
 		const auto includeInfo = registry->GetAssetInfoPtr(includeId);
 		if (invalidFirst)
 		{
@@ -1046,6 +1061,13 @@ namespace
 			"the cold include must be acknowledged after successful publication");
 		Drain();
 		Require(material->IsReady(), "the recovered material must become ready after its GPU upload completes");
+		const auto recoveredStage = shader->GetVertexShaderRHI();
+		const auto recoveredRevision = material->GetContentRevision();
+		Require(registry->GetOrLoadFile(includePath.string()) == includeId, "a warm lookup must keep the include identity");
+		scheduler->ProcessTasksOnMainThread();
+		Drain();
+		Require(shader->GetVertexShaderRHI() == recoveredStage && material->GetContentRevision() == recoveredRevision,
+			"a warm include lookup must not replay registration or overwrite the material");
 		std::cout << name << ": owner publication, material edits and cache acknowledgement passed\n";
 	}
 
@@ -1944,6 +1966,10 @@ namespace Sailor::Tests
 		run("Cold Worker include retry", [&]() { TestColdIncludePublication(workspace, true, true); });
 		run("Cold Main include publication", [&]() { TestColdIncludePublication(workspace, false, false); });
 		run("Cold Main include retry", [&]() { TestColdIncludePublication(workspace, false, true); });
+		run("Cold Worker metadata include publication", [&]() { TestColdIncludePublication(workspace, true, false, true); });
+		run("Cold Worker metadata include retry", [&]() { TestColdIncludePublication(workspace, true, true, true); });
+		run("Cold Main metadata include publication", [&]() { TestColdIncludePublication(workspace, false, false, true); });
+		run("Cold Main metadata include retry", [&]() { TestColdIncludePublication(workspace, false, true, true); });
 		run("Material capture publication", [&]() { TestMaterialCapturePublication(workspace); });
 		run("Material capture owner updates", [&]() { TestMaterialCaptureOwnerUpdates(workspace); });
 		run("Warm shader permutation", [&]() { TestWarmShaderPermutation(workspace); });

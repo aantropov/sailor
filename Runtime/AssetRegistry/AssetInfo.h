@@ -88,6 +88,13 @@ namespace Sailor
 	class SAILOR_API IAssetInfoHandlerListener
 	{
 	public:
+		// Direct registration can make dependencies available to existing resources.
+		// Most importers handle it like an update; dependent resources may need an owner task.
+		virtual void OnRegisterAsset(AssetInfoPtr assetInfo, bool bWasExpired)
+		{
+			OnUpdateAssetInfo(assetInfo, bWasExpired);
+		}
+
 		// Listeners persist intentional metadata changes and acknowledge required
 		// processing through AssetRegistry; notification alone does not save metadata.
 		// bWasExpired means that the source or metadata changed since the last
@@ -96,7 +103,7 @@ namespace Sailor
 		// Importers refresh loaded resources here.
 		virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) = 0;
 		// Called only after creating metadata for a previously untracked source.
-		// A new source receives OnUpdateAssetInfo(..., false) before this callback.
+		// A new source receives a non-expired registration/update notification first.
 		virtual void OnImportAsset(AssetInfoPtr assetInfo) = 0;
 
 	};
@@ -131,6 +138,7 @@ namespace Sailor
 			bool bNotifyListeners = true,
 			bool bUpdateAssetCache = true) const;
 		bool DiscardImportedMetadataIfUnchanged(AssetInfoPtr assetInfo) const;
+		void NotifyRegisterAsset(AssetInfoPtr assetInfo) const;
 		void NotifyUpdateAssetInfo(AssetInfoPtr assetInfo, bool bReimport = false) const;
 		void NotifyImportAsset(AssetInfoPtr assetInfo) const;
 
@@ -143,6 +151,10 @@ namespace Sailor
 		virtual AssetInfoPtr CreateAssetInfo() const = 0;
 
 		TVector<IAssetInfoHandlerListener*> m_listeners;
+
+	private:
+
+		void NotifyAssetInfo(AssetInfoPtr assetInfo, bool bReimport, bool bRegistered) const;
 	};
 
 	class SAILOR_API DefaultAssetInfoHandler final : public TSubmodule<DefaultAssetInfoHandler>, public IAssetInfoHandler

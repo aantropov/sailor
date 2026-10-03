@@ -459,7 +459,17 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 	return true;
 }
 
+void IAssetInfoHandler::NotifyRegisterAsset(AssetInfoPtr assetInfo) const
+{
+	NotifyAssetInfo(assetInfo, false, true);
+}
+
 void IAssetInfoHandler::NotifyUpdateAssetInfo(AssetInfoPtr assetInfo, bool bReimport) const
+{
+	NotifyAssetInfo(assetInfo, bReimport, false);
+}
+
+void IAssetInfoHandler::NotifyAssetInfo(AssetInfoPtr assetInfo, bool bReimport, bool bRegistered) const
 {
 	if (assetInfo == nullptr)
 	{
@@ -470,7 +480,14 @@ void IAssetInfoHandler::NotifyUpdateAssetInfo(AssetInfoPtr assetInfo, bool bReim
 	assetInfo->m_bPendingUpdateNotification = true;
 	for (IAssetInfoHandlerListener* listener : m_listeners)
 	{
-		listener->OnUpdateAssetInfo(assetInfo, bWasExpired);
+		if (bRegistered)
+		{
+			listener->OnRegisterAsset(assetInfo, bWasExpired);
+		}
+		else
+		{
+			listener->OnUpdateAssetInfo(assetInfo, bWasExpired);
+		}
 	}
 	assetInfo->m_bPendingUpdateNotification = false;
 	assetInfo->m_bPendingWasExpired = false;

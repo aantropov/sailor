@@ -725,6 +725,14 @@ bool ShaderCompiler::RecoverMissingShaderCacheStorage()
 	return true;
 }
 
+void ShaderCompiler::OnRegisterAsset(AssetInfoPtr assetInfo, bool bWasExpired)
+{
+	if (bWasExpired)
+	{
+		ProcessRegisteredAsset(assetInfo);
+	}
+}
+
 void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -1321,6 +1329,11 @@ bool ShaderCompiler::NormalizeShaderTabs(
 }
 
 void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
+{
+	ProcessRegisteredAsset(assetInfo);
+}
+
+void ShaderCompiler::ProcessRegisteredAsset(AssetInfoPtr assetInfo)
 {
 	const std::string extension = NormalizeShaderExtension(assetInfo->GetAssetFilepath());
 	if (extension == "glsl" && !IsCollectingScanChanges())
