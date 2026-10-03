@@ -83,7 +83,7 @@ RHITexturePtr BaseFrameGraphNode::GetSampledAttachment(const std::string& name, 
 RHIResourcePtr BaseFrameGraphNode::GetRHIResource(const std::string& name, const RHIFrameGraph* frameGraph) const
 {
 	const RHIResourcePtr* resource = nullptr;
-	if (m_resourceParams.Find(name, resource)) return *resource;
+	if (m_resourceParams.Find(name, resource)) return frameGraph ? frameGraph->ResolveResource(*resource) : *resource;
 	const std::string* resourceName = nullptr;
 	if (frameGraph && m_unresolvedResourceParams.Find(name, resourceName))
 	{

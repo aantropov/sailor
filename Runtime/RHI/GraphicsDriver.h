@@ -160,6 +160,8 @@ namespace Sailor::RHI
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit) = 0;
 
+		SAILOR_API virtual RHI::RHISurfacePtr CreateSurface(RHI::RHIRenderTargetPtr resolved) = 0;
+
 		SAILOR_API virtual RHI::RHICubemapPtr CreateCubemap(
 			glm::ivec2 extent,
 			uint32_t mipMapLevel = 1,

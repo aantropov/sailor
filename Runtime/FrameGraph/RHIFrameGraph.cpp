@@ -11,6 +11,7 @@
 #include "RHI/Cubemap.h"
 #include "RHI/CommandList.h"
 #include "FrameGraph/LightCullingNode.h"
+#include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/EnvironmentNode.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Settings/GraphicsSettings.h"
@@ -986,6 +987,8 @@ void RHIFrameGraph::Clear()
 	m_values.Clear();
 	m_renderTargets.Clear();
 	m_surfaces.Clear();
+	m_msaaSources.Clear();
+	m_msaaSurfaces.Clear();
 }
 
 FrameGraphNodePtr RHIFrameGraph::GetGraphNode(const std::string& tag)
@@ -1147,6 +1150,70 @@ TVector<Sailor::Tasks::ITaskPtr> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhi
 	return res;
 }
 
+void RHIFrameGraph::PrepareRenderTargets()
+{
+	SAILOR_PROFILE_FUNCTION();
+	m_msaaSources.Clear(false);
+	if (App::GetSubmodule<Renderer>()->GetMsaaSamples() != EMsaaSamples::Samples_1)
+	{
+		for (auto& node : m_graph)
+		{
+			if (!node.DynamicCast<RenderSceneNode>()) continue;
+			auto color = node->GetRHIResource("color", this);
+			const auto colorSurface = color.DynamicCast<RHISurface>();
+			if (!color || (colorSurface && !colorSurface->NeedsResolve())) continue;
+			for (const char* name : { "color", "motionVectors" })
+			{
+				auto resource = node->GetRHIResource(name, this);
+				auto surface = resource.DynamicCast<RHISurface>();
+				auto target = surface ? surface->GetResolved() : resource.DynamicCast<RHIRenderTarget>();
+				if (!target || target->GetMsaaSamples() != EMsaaSamples::Samples_1) continue;
+				if (surface) m_msaaSurfaces[target.GetRawPtr()] = surface;
+				if (!m_msaaSources.Contains(target)) m_msaaSources.Add(target);
+			}
+		}
+	}
+
+	if (m_msaaSources.IsEmpty())
+	{
+		if (!m_msaaSurfaces.IsEmpty()) m_msaaSurfaces.Clear();
+		return;
+	}
+
+	// A pass may bind a Surface while another binds its resolved texture.
+	const auto useSurface = [&](RHISurfacePtr surface)
+	{
+		if (surface && surface->NeedsResolve() && m_msaaSources.Contains(surface->GetResolved()))
+		{
+			m_msaaSurfaces[surface->GetResolved().GetRawPtr()] = surface;
+		}
+	};
+	for (const auto& surface : m_surfaces) useSurface(*surface.m_second);
+	for (const auto& node : m_graph)
+	{
+		for (const auto& parameter : node->m_resourceParams)
+		{
+			auto resource = *parameter.m_second;
+			useSurface(resource.DynamicCast<RHISurface>());
+		}
+	}
+
+	if (m_msaaSources.Num() == m_msaaSurfaces.Num() &&
+		std::all_of(m_msaaSources.begin(), m_msaaSources.end(),
+			[&](const auto& source) { return m_msaaSurfaces.ContainsKey(source.GetRawPtr()); }))
+	{
+		return;
+	}
+
+	auto previous = std::move(m_msaaSurfaces);
+	for (auto& source : m_msaaSources)
+	{
+		const RHISurfacePtr* surface = nullptr;
+		m_msaaSurfaces[source.GetRawPtr()] = previous.Find(source.GetRawPtr(), surface) ?
+			*surface : Renderer::GetDriver()->CreateSurface(source);
+	}
+}
+
 bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 	TVector<RHI::RHICommandListPtr>& outCommandLists,
@@ -1156,6 +1223,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	SAILOR_PROFILE_FUNCTION();
 	m_drawCallStats = {};
 	RHIGlobalIlluminationRenderStats globalIlluminationRenderStats;
+	PrepareRenderTargets();
 
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
 	auto& driver = RHI::Renderer::GetDriver();
@@ -1533,9 +1601,20 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 RHI::RHIResourcePtr RHIFrameGraph::GetResource(const std::string& name) const
 {
-	if (const auto surface = GetSurface(name)) return surface;
-	if (const auto target = GetRenderTarget(name)) return target;
-	return GetSampler(name);
+	const RHISurfacePtr* surface = nullptr;
+	if (m_surfaces.Find(name, surface) && *surface) return *surface;
+	if (const auto target = GetRenderTarget(name)) return ResolveResource(target);
+	return ResolveResource(GetSampler(name));
+}
+
+RHI::RHIResourcePtr RHIFrameGraph::ResolveResource(RHI::RHIResourcePtr resource) const
+{
+	if (const auto target = resource.DynamicCast<RHIRenderTarget>())
+	{
+		const RHISurfacePtr* surface = nullptr;
+		if (m_msaaSurfaces.Find(target.GetRawPtr(), surface)) return *surface;
+	}
+	return resource;
 }
 
 RHI::RHITexturePtr RHIFrameGraph::GetSampler(const std::string& name) const
@@ -1560,10 +1639,8 @@ RHI::RHIRenderTargetPtr RHIFrameGraph::GetRenderTarget(const std::string& name) 
 
 RHI::RHISurfacePtr RHIFrameGraph::GetSurface(const std::string& name) const
 {
-	if (!m_surfaces.ContainsKey(name))
-	{
-		return nullptr;
-	}
-
-	return m_surfaces[name];
+	const RHISurfacePtr* surface = nullptr;
+	if (m_surfaces.Find(name, surface) && *surface) return *surface;
+	const auto target = GetRenderTarget(name);
+	return target ? ResolveResource(target).DynamicCast<RHISurface>() : RHISurfacePtr{};
 }

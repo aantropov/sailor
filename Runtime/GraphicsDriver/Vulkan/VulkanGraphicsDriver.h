@@ -145,6 +145,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit) override;
 
+		SAILOR_API virtual RHI::RHISurfacePtr CreateSurface(RHI::RHIRenderTargetPtr resolved) override;
+
 		SAILOR_API virtual RHI::RHICubemapPtr CreateCubemap(
 			glm::ivec2 extent,
 			uint32_t mipMapLevel = 1,

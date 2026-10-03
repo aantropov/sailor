@@ -37,6 +37,7 @@ namespace Sailor::RHI
 		SAILOR_API void SetSurface(const std::string& name, RHI::RHISurfacePtr surface);
 
 		SAILOR_API RHI::RHIResourcePtr GetResource(const std::string& name) const;
+		SAILOR_API RHI::RHIResourcePtr ResolveResource(RHI::RHIResourcePtr resource) const;
 		SAILOR_API RHI::RHITexturePtr GetSampler(const std::string& name) const;
 		SAILOR_API RHI::RHIRenderTargetPtr GetRenderTarget(const std::string& name) const;
 		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name) const;
@@ -88,10 +89,13 @@ namespace Sailor::RHI
 		friend class Sailor::FrameGraphImporterTestAccess;
 
 		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime);
+		void PrepareRenderTargets();
 
 		TMap<std::string, RHI::RHITexturePtr> m_samplers;
 		TMap<std::string, RHI::RHIRenderTargetPtr> m_renderTargets;
 		TMap<std::string, RHI::RHISurfacePtr> m_surfaces;
+		TMap<RHI::RHIRenderTarget*, RHI::RHISurfacePtr> m_msaaSurfaces;
+		TVector<RHI::RHIRenderTargetPtr> m_msaaSources;
 		TMap<std::string, glm::vec4> m_values;
 		TVector<Framegraph::FrameGraphNodePtr> m_graph;
 		// Cleared for every recorded view, including multiple cameras in one frame.

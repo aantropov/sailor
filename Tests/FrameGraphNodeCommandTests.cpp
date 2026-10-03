@@ -552,7 +552,78 @@ void main() {
 		return compiled;
 	}
 
-	void TestSceneMrt(ShaderSetPtr shader, bool colorIsSurface, bool motionIsSurface, bool late, bool forceSingleSample = false)
+	void TestGraphMsaaTargets()
+	{
+		auto& driver = Renderer::GetDriver();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto first = TRefPtr<RenderSceneNode>::Make();
+		auto second = TRefPtr<RenderSceneNode>::Make();
+		auto firstOutput = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+		auto secondOutput = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+		auto unused = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+		graph->SetRenderTarget("External", firstOutput);
+		graph->SetRenderTarget("Unused", unused);
+		first->SetRHIResource_Unresolved("color", "External");
+		second->SetRHIResource("color", secondOutput);
+		graph->GetGraph().Add(first);
+		graph->GetGraph().Add(second);
+		const auto prepare = [&]()
+		{
+			TVector<RHICommandListPtr> transfers, graphics;
+			RHISemaphorePtr ready;
+			Require(graph->Process(RHISceneViewPtr::Make(), transfers, graphics, {}, ready), "graph target preparation must succeed");
+			Require(transfers.IsEmpty() && graphics.IsEmpty() && !ready, "an empty view must not record a camera");
+		};
+		prepare();
+		auto firstLive = first->GetTargetAttachment("color", graph.GetRawPtr());
+		auto secondLive = second->GetTargetAttachment("color", graph.GetRawPtr());
+		const bool msaa = App::GetSubmodule<Renderer>()->GetMsaaSamples() != EMsaaSamples::Samples_1;
+		Require(firstLive != secondLive && firstLive->GetMsaaSamples() == App::GetSubmodule<Renderer>()->GetMsaaSamples(),
+			"same-format color outputs in separate passes need distinct native targets");
+		Require(first->GetResolvedAttachment("color", graph.GetRawPtr()) == firstOutput &&
+			second->GetSampledAttachment("color", graph.GetRawPtr()) == secondOutput && graph->GetResource("Unused") == unused,
+			"MSAA preparation must retain resolve identities and leave unrelated targets alone");
+		prepare();
+		Require(first->GetTargetAttachment("color", graph.GetRawPtr()) == firstLive &&
+			second->GetTargetAttachment("color", graph.GetRawPtr()) == secondLive, "unchanged outputs must reuse their MSAA targets");
+
+		auto previous = first->GetRHIResource("color", graph.GetRawPtr());
+		graph->SetRenderTarget("External", unused);
+		prepare();
+		Require(first->GetResolvedAttachment("color", graph.GetRawPtr()) == unused &&
+			first->GetTargetAttachment("color", graph.GetRawPtr()) != firstLive &&
+			second->GetTargetAttachment("color", graph.GetRawPtr()) == secondLive, "external replacement must change only its own target");
+		if (msaa) Require(previous.NumRefs() == 1, "the graph must release a retired MSAA surface");
+		previous = first->GetRHIResource("color", graph.GetRawPtr());
+		graph->SetRenderTarget("External", {});
+		prepare();
+		Require(!first->GetRHIResource("color", graph.GetRawPtr()), "a withdrawn input must not retain its former surface");
+		if (msaa) Require(previous.NumRefs() == 1, "withdrawal must release the graph's MSAA surface");
+		graph->SetRenderTarget("External", firstOutput);
+		prepare();
+		Require(first->GetResolvedAttachment("color", graph.GetRawPtr()) == firstOutput, "a restored input must be usable again");
+		graph->SetRenderTarget("External", secondOutput);
+		prepare();
+		Require(first->GetTargetAttachment("color", graph.GetRawPtr()) == secondLive, "aliases of one output must share its live target");
+
+		auto declared = driver->CreateSurface(secondOutput);
+		auto clear = TRefPtr<ClearNode>::Make();
+		clear->SetRHIResource("target", declared);
+		graph->Clear();
+		graph->GetGraph().Add(clear);
+		graph->GetGraph().Add(second);
+		prepare();
+		Require(second->GetTargetAttachment("color", graph.GetRawPtr()) == declared->GetTarget(),
+			"a resolved output must reuse the Surface supplied to its clear pass");
+		graph->Clear();
+		Require(graph->ResolveResource(secondOutput) == secondOutput, "clearing the graph must discard its MSAA associations");
+		std::cout << "FrameGraph MSAA ownership: independent outputs, reuse, replacement, withdrawal, aliases and Clear passed\n";
+	}
+
+	RHIBufferPtr ReadColor(RHICommandListPtr command, RHITexturePtr texture);
+
+	void TestSceneMrt(ShaderSetPtr shader, bool colorIsSurface, bool motionIsSurface, bool late, bool forceSingleSample = false,
+		bool clearThroughNode = false)
 	{
 		auto driver = Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
 		auto commands = Renderer::GetDriverCommands();
@@ -564,29 +635,36 @@ void main() {
 		std::array<RHITexturePtr, 2> targets;
 		std::array<RHIRenderTargetPtr, 2> outputs;
 		std::array<RHIResourcePtr, 2> resources;
-		for (uint32_t i = 0; i < 2; ++i)
+		std::array<TRefPtr<ClearNode>, 2> clears;
+		const auto publishOutputs = [&]()
 		{
-			if (surfaces[i])
+			for (uint32_t i = 0; i < 2; ++i)
 			{
-				auto surface = driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
-				if (forceSingleSample) surface = RHISurfacePtr::Make(surface->GetResolved(), surface->GetResolved(), false);
-				resources[i] = surface;
-				outputs[i] = surface->GetResolved();
-				targets[i] = surface->GetTarget();
-				graph->SetSurface(names[i], surface);
+				if (surfaces[i])
+				{
+					auto surface = driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+					if (forceSingleSample) surface = RHISurfacePtr::Make(surface->GetResolved(), surface->GetResolved(), false);
+					resources[i] = surface;
+					outputs[i] = surface->GetResolved();
+					targets[i] = surface->GetTarget();
+					graph->SetSurface(names[i], surface);
+				}
+				else
+				{
+					outputs[i] = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+					resources[i] = outputs[i];
+					targets[i] = msaa ? driver->GetOrAddMsaaFramebufferRenderTarget(EFormat::R32G32B32A32_SFLOAT, glm::ivec2(Side), i) : RHITexturePtr(outputs[i]);
+				}
+				graph->SetRenderTarget(names[i], outputs[i]);
 			}
-			else
-			{
-				outputs[i] = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
-				resources[i] = outputs[i];
-				targets[i] = msaa ? driver->GetOrAddMsaaFramebufferRenderTarget(EFormat::R32G32B32A32_SFLOAT, glm::ivec2(Side), i) : RHITexturePtr(outputs[i]);
-			}
-			graph->SetRenderTarget(names[i], outputs[i]);
-		}
+		};
+		publishOutputs();
 		auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT_S8_UINT,
 			ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit);
 		graph->SetRenderTarget("SceneDepth", depth);
-		RHISceneViewSnapshot scene;
+		auto view = RHISceneViewPtr::Make();
+		view->m_snapshots.Resize(1);
+		auto& scene = view->m_snapshots[0];
 		scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
 		scene.m_submissionContext->BeginSubmission(162, 0);
 		scene.m_frameBindings = driver->CreateShaderBindings();
@@ -598,9 +676,29 @@ void main() {
 		{
 			if (late) node->SetRHIResource_Unresolved(inputs[i], names[i]);
 			else node->SetRHIResource(inputs[i], resources[i]);
+			if (clearThroughNode)
+			{
+				clears[i] = TRefPtr<ClearNode>::Make();
+				if (late) clears[i]->SetRHIResource_Unresolved("target", names[i]);
+				else clears[i]->SetRHIResource("target", resources[i]);
+			}
 		}
 		if (late) node->SetRHIResource_Unresolved("depthStencil", "SceneDepth");
 		else node->SetRHIResource("depthStencil", depth);
+		if (clearThroughNode)
+		{
+			World cameraWorld("ClearSceneCamera", 0);
+			auto camera = cameraWorld.Instantiate("Camera")->AddComponent<CameraComponent>();
+			cameraWorld.GetECS<CameraECS>()->Tick(0);
+			auto data = camera->GetData();
+			data.SetOwner({});
+			cameraWorld.Clear();
+			scene.m_camera = TUniquePtr<CameraData>::Make(data);
+			scene.m_bGlobalIlluminationEnabled = false;
+			graph->SetRenderTarget("Main", outputs[0]);
+			for (auto clear : clears) graph->GetGraph().Add(clear);
+			graph->GetGraph().Add(node);
+		}
 		auto mesh = graph->GetFullscreenNdcQuad();
 		const RenderState state(false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, msaa);
 		auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader);
@@ -616,8 +714,27 @@ void main() {
 		CaptureAttachments capture;
 		const glm::vec4 background[] = { glm::vec4(0.125f), glm::vec4(-0.25f) };
 		const glm::vec4 drawn[] = { glm::vec4(0.75f, 0.5f, 0.25f, 1), glm::vec4(-0.5f, 0.25f, 0.125f, 0) };
-		for (uint32_t frame = 0; frame < 2; ++frame)
+		std::array<RHITexturePtr, 2> previousTargets;
+		const uint32_t frames = clearThroughNode ? 4 : 2;
+		for (uint32_t frame = 0; frame < frames; ++frame)
 		{
+			if (clearThroughNode)
+			{
+				if (frame == 2)
+				{
+					publishOutputs();
+					graph->SetRenderTarget("Main", outputs[0]);
+					if (!late)
+						for (uint32_t i = 0; i < 2; ++i) node->SetRHIResource(inputs[i], resources[i]);
+				}
+				for (uint32_t i = 0; i < 2; ++i)
+				{
+					const std::string clearName = std::string("Clear") + names[i];
+					graph->SetRenderTarget(clearName, outputs[i]);
+					if (late) clears[i]->SetRHIResource_Unresolved("target", frame % 2 ? clearName : names[i]);
+					else clears[i]->SetRHIResource("target", frame % 2 ? RHIResourcePtr(outputs[i]) : resources[i]);
+				}
+			}
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(upload, true);
@@ -628,6 +745,17 @@ void main() {
 				static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
 			for (uint32_t i = 0; i < 2; ++i)
 			{
+				if (clearThroughNode)
+				{
+					if (frame == 0)
+					{
+						commands->ImageMemoryBarrier(draw, targets[i], EImageLayout::TransferDstOptimal);
+						commands->ClearImage(draw, targets[i], glm::vec4(-16));
+						commands->ImageMemoryBarrier(draw, targets[i], EImageLayout::ColorAttachmentOptimal);
+					}
+					clears[i]->SetVec4("clearColor", background[i] + glm::vec4(0.125f * frame));
+					continue;
+				}
 				if (frame == 0)
 				{
 					commands->ImageMemoryBarrier(draw, targets[i], EImageLayout::TransferDstOptimal);
@@ -641,7 +769,38 @@ void main() {
 				}
 			}
 			recordedColorCount = 0;
-			node->Process(graph, upload, draw, scene);
+			RHISemaphorePtr graphReady;
+			if (clearThroughNode)
+			{
+				commands->EndCommandList(upload);
+				commands->EndCommandList(draw);
+				auto initialized = driver->CreateWaitSemaphore();
+				Require(driver->SubmitCommandList(draw, RHIFencePtr::Make(), initialized), "MRT poison setup must submit");
+				TVector<RHICommandListPtr> transfers, graphics;
+				Require(graph->Process(view, transfers, graphics, initialized, graphReady), "Clear and RenderScene must execute through the frame graph");
+				for (size_t i = 0; i < transfers.Num(); ++i)
+					for (auto command : { transfers[i], graphics[i] })
+					{
+						auto next = driver->CreateWaitSemaphore();
+						Require(driver->SubmitCommandList(command, RHIFencePtr::Make(), next, graphReady), "the composed graph must submit");
+						graphReady = next;
+					}
+				for (uint32_t i = 0; i < 2; ++i)
+				{
+					targets[i] = node->GetTargetAttachment(inputs[i], graph.GetRawPtr());
+					if (frame % 2) Require(targets[i] == previousTargets[i], "an unchanged MRT output must reuse its live image");
+					else if (frame) Require(targets[i] != previousTargets[i], "a replaced MRT output needs its own live image");
+					previousTargets[i] = targets[i];
+				}
+				upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+			}
+			else
+			{
+				node->Process(graph, upload, draw, scene);
+			}
 			const auto descriptors = std::array{ recordedColor, recordedMotion };
 			bool valid = recordedColorCount == 2 && node->GetDrawCallStats().m_numBatches == 1;
 			for (uint32_t i = 0; i < 2 && valid; ++i)
@@ -661,12 +820,11 @@ void main() {
 				throw std::runtime_error("RenderScene MRT dropped or replaced a native color/motion attachment: count=" +
 					std::to_string(recordedColorCount) + ", batches=" + std::to_string(node->GetDrawCallStats().m_numBatches));
 			}
-			std::array<RHIBufferPtr, 2> readback;
+			std::array<RHIBufferPtr, 4> readback;
 			for (uint32_t i = 0; i < 2; ++i)
 			{
-				readback[i] = driver->CreateBuffer(Side * Side * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
-				commands->ImageMemoryBarrier(draw, outputs[i], EImageLayout::TransferSrcOptimal);
-				commands->CopyImageToBuffer(draw, outputs[i], readback[i]);
+				readback[i * 2] = ReadColor(draw, outputs[i]);
+				readback[i * 2 + 1] = targets[i] == outputs[i] ? readback[i * 2] : ReadColor(draw, targets[i]);
 			}
 			commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
 			commands->EndCommandList(upload);
@@ -674,24 +832,27 @@ void main() {
 			auto ready = driver->CreateWaitSemaphore();
 			auto uploaded = RHIFencePtr::Make();
 			auto finished = RHIFencePtr::Make();
-			Require(driver->SubmitCommandList(upload, uploaded, ready) && driver->SubmitCommandList(draw, finished, nullptr, ready),
+			Require(driver->SubmitCommandList(upload, uploaded, ready, graphReady) && driver->SubmitCommandList(draw, finished, nullptr, ready),
 				"MRT upload and draw must submit");
 			Require(finished->Wait(5000000000ull) == EFenceStatus::Finished && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
 				"MRT GPU readbacks must finish");
-			for (uint32_t image = 0; image < 2; ++image)
+			for (uint32_t image = 0; image < readback.size(); ++image)
 			{
 				const auto pixels = static_cast<const glm::vec4*>(readback[image]->GetPointer());
 				for (uint32_t i = 0; i < Side * Side; ++i)
 					for (uint32_t component = 0; component < 4; ++component)
 					{
-						const auto expected = i % Side < Side / 2 ? drawn[image] : background[image];
-						Require(std::isfinite(pixels[i][component]) && std::abs(pixels[i][component] - expected[component]) < 0.00001f,
-							"MRT must draw both outputs and preserve every uncovered pixel in the live target");
+						const auto expected = i % Side < Side / 2 ? drawn[image / 2] : background[image / 2] + glm::vec4(clearThroughNode ? 0.125f * frame : 0);
+						if (!std::isfinite(pixels[i][component]) || std::abs(pixels[i][component] - expected[component]) >= 0.00001f)
+							throw std::runtime_error("MRT uncovered pixel mismatch: clearNode=" + std::to_string(clearThroughNode) +
+								", colorSurface=" + std::to_string(colorIsSurface) + ", motionSurface=" + std::to_string(motionIsSurface) +
+								", frame=" + std::to_string(frame) + ", image=" + std::to_string(image) + ", pixel=" + std::to_string(i) +
+								", actual=" + std::to_string(pixels[i][component]) + ", expected=" + std::to_string(expected[component]));
 					}
 			}
 		}
-		std::cout << "RenderScene MRT " << (msaa ? "2x" : "1x") << " colorSurface=" << colorIsSurface <<
-			" motionSurface=" << motionIsSurface << " late=" << late << ": two frames / both images and native descriptors passed\n";
+		std::cout << (clearThroughNode ? "ClearSceneMRT " : "RenderScene MRT ") << (msaa ? "2x" : "1x") << " colorSurface=" << colorIsSurface <<
+			" motionSurface=" << motionIsSurface << " late=" << late << ": " << frames << " frames / live and resolved images and native descriptors passed\n";
 	}
 
 	void ClearColor(RHICommandListPtr command, RHITexturePtr texture, glm::vec4 color)
@@ -734,6 +895,36 @@ void main() {
 			"fullscreen upload and draw must submit");
 		Require(finished->Wait(5000000000ull) == EFenceStatus::Finished && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
 			"fullscreen pixel readback must finish");
+	}
+
+	void TestGraphTargetLifetime()
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(upload, true);
+		commands->BeginCommandList(draw, true);
+		RHIBufferPtr pixels;
+		{
+			auto graph = TRefPtr<TestGraph>::Make();
+			auto node = TRefPtr<RenderSceneNode>::Make();
+			node->SetRHIResource("color", driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT));
+			graph->GetGraph().Add(node);
+			TVector<RHICommandListPtr> transfers, graphics;
+			RHISemaphorePtr ready;
+			Require(graph->Process(RHISceneViewPtr::Make(), transfers, graphics, {}, ready), "lifetime fixture must prepare its graph");
+			auto target = node->GetTargetAttachment("color", graph.GetRawPtr());
+			ClearColor(draw, target, glm::vec4(0.375f));
+			pixels = ReadColor(draw, target);
+			graph->Clear();
+		}
+		CompleteCommands(upload, draw);
+		const auto values = static_cast<const glm::vec4*>(pixels->GetPointer());
+		for (uint32_t pixel = 0; pixel < Side * Side; ++pixel)
+			for (uint32_t component = 0; component < 4; ++component)
+				Require(values[pixel][component] == 0.375f, "recorded commands must retain images after the graph and its nodes are destroyed");
+		std::cout << "FrameGraph target lifetime: clear, graph destruction, submission and complete readback passed\n";
 	}
 
 	RHIBufferPtr ReadDepth(RHICommandListPtr command, RHIRenderTargetPtr texture, const std::array<ShaderSetPtr, 4>& shaders)
@@ -2209,6 +2400,12 @@ namespace Sailor::Tests
 					TestFullscreenUploadRetry();
 					TestImportedRendering(importedGraphIds);
 					TestGraphLoadFailures(workspace, importedGraphIds[0]);
+					TestGraphMsaaTargets();
+					TestGraphTargetLifetime();
+					TestSceneMrt(mrtShader, true, false, false, true, true);
+					for (bool late : { false, true })
+						for (bool colorSurface : { true, false })
+							for (bool motionSurface : { true, false }) TestSceneMrt(mrtShader, colorSurface, motionSurface, late, false, true);
 					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
 						for (auto input : { DebugDepthInput::Texture, DebugDepthInput::Surface })
 							TestDepthTestedDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],

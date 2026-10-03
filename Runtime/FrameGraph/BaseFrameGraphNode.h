@@ -41,6 +41,8 @@ namespace Sailor::Framegraph
 		SAILOR_API void SetTag(const std::string& tag) { m_tag = tag; }
 
 	protected:
+		friend class RHI::RHIFrameGraph;
+
 		void ResetDrawCallStats() { m_drawCallStats = {}; }
 		void RecordDrawCallStats(uint32_t numInstances)
 		{

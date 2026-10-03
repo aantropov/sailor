@@ -1892,9 +1892,19 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	return CreateSurface(CreateRenderTarget(extent, mipLevels, format, filtration, clamping, usage));
+}
+
+RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(RHI::RHIRenderTargetPtr resolved)
+{
+	SAILOR_PROFILE_FUNCTION();
+	const auto extent = resolved->GetExtent();
+	const auto format = resolved->GetFormat();
+	const auto filtration = resolved->GetFiltration();
+	const auto clamping = resolved->GetClamping();
+	auto usage = resolved->m_vulkan.m_image->m_usage;
 	auto device = m_vkInstance->GetMainDevice();
 
-	const RHI::RHIRenderTargetPtr resolved = CreateRenderTarget(extent, mipLevels, format, filtration, clamping, usage);
 	RHI::RHIRenderTargetPtr target = resolved;
 
 	const bool bNeedsResolved = device->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
