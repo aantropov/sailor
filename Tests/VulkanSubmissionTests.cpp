@@ -67,6 +67,7 @@ using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
 namespace Sailor::Tests { int RunPathTracerCommandTests(int argc, const char** argv); }
+namespace Sailor::Tests { void RunLoggingWithoutAppTests(); }
 
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStartLocalHost(const uint8_t* requestData, uint32_t requestSize,
@@ -2376,6 +2377,7 @@ int main(int argc, const char** argv)
 	try
 	{
 		TestQueueDispatch();
+		Tests::RunLoggingWithoutAppTests();
 		std::cout << "Vulkan submission tests passed\n";
 		return 0;
 	}

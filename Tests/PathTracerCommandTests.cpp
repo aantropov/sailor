@@ -50,6 +50,8 @@ namespace Sailor::Tests
 	void RunTextureImporterCommandTests(const std::filesystem::path& workspace);
 	void RunMaterialImporterCommandTests(const std::filesystem::path& workspace);
 	void RunAudioCommandTests(const std::filesystem::path& workspace);
+	void RunLoggingCommandTests();
+	void RunLoggingShutdownTests();
 	void RunModelLodCommandTests(const std::filesystem::path& workspace);
 	void RunPrefabImporterCommandTests(const std::filesystem::path& workspace);
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace);
@@ -1161,12 +1163,23 @@ namespace Sailor::Tests
 			RunModelLodCommandTests(workspace.Get());
 			RunPrefabImporterCommandTests(workspace.Get());
 			RunFrameGraphNodeCommandTests(workspace.Get());
+			RunLoggingCommandTests();
 			std::cout << "PathTracer CLI/prepared pixel parity test passed\n";
 			result = 0;
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
 		App::Stop();
-		if (!App::Shutdown()) result = 1;
+		try
+		{
+			if (result == 0) RunLoggingShutdownTests();
+			else if (!App::Shutdown()) result = 1;
+		}
+		catch (const std::exception& error)
+		{
+			std::cerr << error.what() << '\n';
+			App::Shutdown();
+			result = 1;
+		}
 		return result;
 	}
 }

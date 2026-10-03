@@ -301,6 +301,7 @@ add_executable(VulkanSubmissionTests
     TextureImporterCommandTests.cpp
     MaterialImporterCommandTests.cpp
     AudioCommandTests.cpp
+    LogCommandTests.cpp
     ModelLodCommandTests.cpp
     PrefabImporterCommandTests.cpp
     FrameGraphNodeCommandTests.cpp
