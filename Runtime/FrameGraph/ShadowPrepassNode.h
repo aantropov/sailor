@@ -10,6 +10,11 @@
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RenderSceneTextureCache.h"
 
+namespace Sailor::RHI
+{
+	class RHIMaterialPreparationCache;
+}
+
 namespace Sailor
 {
 	class ShadowPrepassNode : public TFrameGraphNode<ShadowPrepassNode>
@@ -100,8 +105,6 @@ namespace Sailor
 			{
 				m_numActiveShadowViews = 0u;
 				m_activeShadowViews.Clear(false);
-				m_shadowPayloadRevisions.Clear(false);
-				m_buildShadowPayloads.Clear(false);
 				m_shadowPayloadComplete.Clear(false);
 				m_renderPassColorAttachments.Clear(false);
 				m_blurDrawBindingSets.Clear(false);
@@ -125,10 +128,6 @@ namespace Sailor
 
 			TMap<uint64_t, TSharedPtr<ShadowViewResources>> m_shadowViewCache{};
 			TVector<TSharedPtr<ShadowViewResources>> m_activeShadowViews{};
-			TVector<std::array<size_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>>
-				m_shadowPayloadRevisions{};
-			TVector<std::array<bool, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>>
-				m_buildShadowPayloads{};
 			TVector<std::array<bool, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>>
 				m_shadowPayloadComplete{};
 			uint32_t m_numActiveShadowViews = 0u;
@@ -140,6 +139,11 @@ namespace Sailor
 
 			RHI::RHIShaderBindingSetPtr m_blurShaderBindings{};
 		};
+
+		void BuildStableArenas(const RHI::RHISceneViewSnapshot& sceneView, SubmissionResources& resources,
+			RHI::RHIMaterialPreparationCache& preparedMaterials, uint32_t passIndex);
+		void BuildVisiblePacket(const RHI::RHISceneViewSnapshot& sceneView, SubmissionResources& resources,
+			RHI::RHIMaterialPreparationCache& preparedMaterials, uint32_t passIndex, bool bUsesPagedArenas);
 
 		ShaderSetPtr m_pBlurVerticalShader{};
 		ShaderSetPtr m_pBlurHorizontalShader{};
@@ -202,6 +206,7 @@ namespace Sailor
 
 		Framegraph::TextureBindingCache m_textureBindingCache{};
 		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache{};
+		// Shared by concurrent RHI preparation tasks; finalizers own separate view packets.
 		SpinLock m_syncSharedResources{};
 
 		SAILOR_SHARED_API static const char* m_name;

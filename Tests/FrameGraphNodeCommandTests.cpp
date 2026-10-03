@@ -634,6 +634,57 @@ renderTargets:
 		return payload.IsPagedArena() ? payload.m_arenaPages[index / pageSize]->m_instances[index % pageSize] : payload.m_instances[index];
 	}
 
+	void VerifyConcurrentPacketPreparation(const RHIFrameGraphPtr& graph, const RHISceneViewSnapshot& source,
+		SceneNode& main, DepthNode& depth, ShadowCacheProbe& shadow, EMobilityType mobility)
+	{
+		std::array<RHISceneViewSnapshot, 4> views;
+		TVector<Tasks::TaskPtr<void, void>> tasks;
+		std::array<BaseFrameGraphNode*, 3> nodes{ &main, &depth, &shadow };
+		for (uint32_t i = 0; i < views.size(); ++i)
+		{
+			auto& view = views[i];
+			view.m_cameraIndex = 3 + i;
+			view.m_frame = source.m_frame;
+			view.m_submissionContext = source.m_submissionContext;
+			view.m_sceneVersions = source.m_sceneVersions;
+			view.m_previousMotionFrame = source.m_previousMotionFrame;
+			view.m_cameraTransform = source.m_cameraTransform;
+			view.m_shadowMapsToUpdate = source.m_shadowMapsToUpdate;
+			view.m_shadowMapsToUpdate[0].m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
+			if (i % 2) view.m_proxies = source.m_proxies;
+			else view.m_shadowMapsToUpdate[0].m_meshList.Clear(false);
+			view.PrepareLods(glm::mat4(1), glm::mat4(1));
+			for (auto* node : nodes) tasks.Add(node->Prepare(graph, view));
+		}
+		for (auto& task : tasks) task->Run();
+		for (auto& task : tasks) task->Wait();
+		for (uint32_t i = 0; i < views.size(); ++i)
+		{
+			const auto& view = views[i];
+			const auto compare = [&](const auto& actual, const auto& expected)
+			{
+				const uint32_t count = i % 2 ? expected.GetNumInstances() : 0;
+				Require(actual.GetNumInstances() == count, "concurrent cameras must retain their own draw visibility");
+				for (uint32_t instance = 0; instance < count; ++instance)
+				{
+					Require(GetSingleMobilityInstance(actual, mobility, instance) == GetSingleMobilityInstance(expected, mobility, instance),
+						"concurrent preparation must preserve complete finalized instance records");
+				}
+				const auto& payload = expected.GetPayload(mobility);
+				if (payload.IsPagedArena())
+				{
+					const auto& pages = actual.GetPayload(mobility).m_arenaPages;
+					Require(!pages.IsEmpty() && pages[0] == payload.m_arenaPages[0],
+						"concurrent cameras must share complete-scene storage, not rebuild it per view");
+				}
+			};
+			compare(main.GetResources(view)->m_packet, main.GetResources(source)->m_packet);
+			compare(depth.GetResources(view)->m_customPacket, depth.GetResources(source)->m_customPacket);
+			compare(shadow.GetResources(view)->m_activeShadowViews[0]->m_packet,
+				shadow.GetResources(source)->m_activeShadowViews[0]->m_packet);
+		}
+	}
+
 	ShaderSetPtr WriteMrtShader(const std::filesystem::path& workspace)
 	{
 		const auto path = workspace / "Content" / "MotionMrt.shader";
@@ -1413,9 +1464,18 @@ frame:
 			const uint64_t submissionId = 177000 + frame;
 			const uint64_t materialRevision = RHIMaterial::BeginSubmissionVersionCapture(submissionId);
 			snapshot.m_submissionContext->BeginSubmission(submissionId, 0, 0, materialRevision);
-			for (uint32_t camera = 0; camera < 2; ++camera)
+			std::array<const void*, 3> arenaPages{};
+			for (uint32_t camera = 0; camera < 3; ++camera)
 			{
 				snapshot.m_cameraIndex = camera;
+				snapshot.m_proxies.Clear(false);
+				snapshot.m_shadowMapsToUpdate[0].m_meshList.Clear(false);
+				if (camera != 0)
+				{
+					snapshot.ForEachSceneProxy(mobility, [&](const RHIVisibleSceneProxy& proxy) { snapshot.m_proxies.Add(proxy); });
+					snapshot.ForEachShadowCaster(mobility, [&](const RHIVisibleShadowCaster& caster)
+						{ snapshot.m_shadowMapsToUpdate[0].m_meshList.Add(caster); });
+				}
 				snapshot.m_shadowMapsToUpdate[0].m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
 				for (FrameGraphNodePtr node : { FrameGraphNodePtr(depth), FrameGraphNodePtr(main), FrameGraphNodePtr(shadow) })
 				{
@@ -1425,6 +1485,27 @@ frame:
 				const auto& mainPacket = main->GetResources(snapshot)->m_packet;
 				const auto& depthPacket = depth->GetResources(snapshot)->m_customPacket;
 				const auto& shadowPacket = shadow->GetResources(snapshot)->m_activeShadowViews[0]->m_packet;
+				if (paged && mobility != EMobilityType::Dynamic)
+				{
+					const auto verifyArena = [&](const auto& packet, size_t pass)
+					{
+						const auto& payload = packet.GetPayload(mobility);
+						Require(payload.IsPagedArena() && !payload.m_arenaPages.IsEmpty() && payload.m_arenaPages[0],
+							"an empty camera must still prepare complete-scene arena storage");
+						if (camera == 0) arenaPages[pass] = payload.m_arenaPages[0].GetRawPtr();
+						else Require(arenaPages[pass] == payload.m_arenaPages[0].GetRawPtr(),
+							"visible cameras must reuse the arena built with no visible objects");
+					};
+					verifyArena(mainPacket, 0);
+					verifyArena(depthPacket, 1);
+					verifyArena(shadowPacket, 2);
+				}
+				if (camera == 0)
+				{
+					Require(mainPacket.GetNumInstances() == 0 && depthPacket.GetNumInstances() == 0 && shadowPacket.GetNumInstances() == 0,
+						"complete-scene storage must not add draws to an empty camera");
+					continue;
+				}
 				Require(mainPacket.GetNumInstances() == 2 && depthPacket.GetNumInstances() == 2 && shadowPacket.GetNumInstances() == 2,
 					"each prepared packet must retain both authored instances");
 				const RHIShaderBindingPtr* materialBinding = nullptr;
@@ -1509,11 +1590,12 @@ frame:
 						Require((shadows[pixel].r > 0.1f) == covered, "packed custom shadow pixels must match the main-pass silhouette");
 					}
 			}
+			VerifyConcurrentPacketPreparation(graph, snapshot, *main, *depth, *shadow, mobility);
 			RHIMaterial::EndSubmissionVersionCapture(submissionId);
 		}
 		std::cout << "Custom masked depth paged=" << paged << " instanced=" << instanced << " skinned=" << skinned
 			<< " mobility=" << static_cast<uint32_t>(mobility)
-			<< ": main/depth/shadow silhouettes, two cameras, two instance strides and material replacement passed\n";
+			<< ": main/depth/shadow silhouettes, concurrent empty/visible cameras, shared arenas and material replacement passed\n";
 	}
 
 	void TestTransparentPacketOrder(ShaderSetPtr shader, bool paged, bool instanced)
@@ -1665,10 +1747,28 @@ frame:
 		auto node = TRefPtr<DepthNode>::Make();
 		node->SetString("Tag", masked ? "Masked" : "Opaque");
 		node->SetString("VirtualizeInstancePayloads", paged ? "true" : "false");
+		auto visibleProxies = std::move(snapshot.m_proxies);
 		auto prepare = node->Prepare(graph, snapshot);
 		prepare->Run();
 		prepare->Wait();
+		const auto emptyResources = node->GetResources(snapshot);
+		Require(emptyResources->m_packet.GetNumInstances() == 0 && emptyResources->m_customPacket.GetNumInstances() == 0,
+			"an empty camera must not draw complete-scene depth instances");
+		snapshot.m_cameraIndex = 1;
+		snapshot.m_proxies = std::move(visibleProxies);
+		prepare = node->Prepare(graph, snapshot);
+		prepare->Run();
+		prepare->Wait();
 		const auto resources = node->GetResources(snapshot);
+		if (paged && mobility != EMobilityType::Dynamic)
+		{
+			const auto& emptyPayload = emptyResources->m_packet.GetPayload(mobility);
+			const auto& visiblePayload = resources->m_packet.GetPayload(mobility);
+			Require(emptyPayload.IsPagedArena() && visiblePayload.IsPagedArena() &&
+				!emptyPayload.m_arenaPages.IsEmpty() && !visiblePayload.m_arenaPages.IsEmpty() &&
+				emptyPayload.m_arenaPages[0] == visiblePayload.m_arenaPages[0],
+				"compact depth must reuse the complete-scene page prepared by the empty camera");
+		}
 		Require(resources->m_customPacket.GetNumInstances() == 0 && resources->m_packet.GetNumInstances() == 3,
 			"generic depth must keep all records in its compact packet");
 		const float cutoffs[] = { 2, 0.8f, 0.4f };
@@ -1686,7 +1786,7 @@ frame:
 			seen[index] = true;
 		}
 		std::cout << "Depth packet paged=" << paged << " instanced=" << instanced << " masked=" << masked
-			<< " mobility=" << static_cast<uint32_t>(mobility) << ": exact compact records and alpha policy passed\n";
+			<< " mobility=" << static_cast<uint32_t>(mobility) << ": empty/visible cameras, exact compact records and alpha policy passed\n";
 	}
 
 	void TestCustomShadowCache(ShaderSetPtr shader, bool paged)

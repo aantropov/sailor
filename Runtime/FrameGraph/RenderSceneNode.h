@@ -10,6 +10,11 @@
 #include "RHI/Batch.hpp"
 #include "RHI/MotionHistory.h"
 
+namespace Sailor::RHI
+{
+	class RHIMaterialPreparationCache;
+}
+
 namespace Sailor::Framegraph
 {
 	class RenderSceneNode : public TFrameGraphNode<RenderSceneNode>
@@ -97,8 +102,15 @@ namespace Sailor::Framegraph
 			TVector<RHI::PackedDrawArenaMaterialRun> m_arenaRangeMaterialVersionRuns{};
 		};
 
+		void BuildStableArenas(const RHI::RHISceneViewSnapshot& sceneView, SubmissionResources& resources,
+			RHI::RHIMaterialPreparationCache& preparedMaterials, size_t queueTagHash);
+		void BuildVisiblePacket(const RHI::RHISceneViewSnapshot& sceneView, SubmissionResources& resources,
+			RHI::RHIMaterialPreparationCache& preparedMaterials, size_t queueTagHash,
+			bool bUsesPagedArenas, bool bBackToFront);
+
 		SAILOR_SHARED_API static const char* m_name;
 
+		// Shared by concurrent Worker preparation tasks; Process belongs to Render.
 		SpinLock m_syncSharedResources;
 
 		// Culling

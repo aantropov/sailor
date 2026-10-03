@@ -112,6 +112,12 @@ namespace Sailor
 			}
 		};
 
+		void BuildStableArenas(const RHI::RHISceneViewSnapshot& sceneView, SubmissionResources& resources,
+			RHI::RHIMaterialPreparationCache& preparedMaterials, size_t queueTagHash);
+		void BuildVisiblePacket(const RHI::RHISceneViewSnapshot& sceneView, SubmissionResources& resources,
+			RHI::RHIMaterialPreparationCache& preparedMaterials, size_t queueTagHash, bool bUsesPagedArenas);
+
+		// Shared by concurrent RHI preparation tasks; Process belongs to Render.
 		SpinLock m_syncSharedResources;
 
 		TMap<DepthMaterialKey, RHI::RHIMaterialPtr> m_depthOnlyMaterials;

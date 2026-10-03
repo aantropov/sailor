@@ -385,485 +385,32 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			{
 				return;
 			}
-			const uint64_t materialSubmissionId =
-				sceneViewSnapshot.m_submissionContext->GetSubmissionId();
-			RHIMaterialPreparationCache preparedMaterials(materialSubmissionId);
+			RHIMaterialPreparationCache preparedMaterials(sceneViewSnapshot.m_submissionContext->GetSubmissionId());
 
 			auto submissionResources = sceneViewSnapshot.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(
 				this,
 				sceneViewSnapshot.m_cameraIndex,
 				0u);
-			auto& m_packet = submissionResources->m_packet;
-			auto& m_orderedDrawItems = submissionResources->m_orderedDrawItems;
+			auto& packet = submissionResources->m_packet;
+			auto& orderedDrawItems = submissionResources->m_orderedDrawItems;
 
-			syncSharedResources.Lock();
-			constexpr size_t PayloadRevisionSeed = Fnv1aOffsetBasis;
-			std::array<size_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
-				payloadRevisions{};
-			const size_t staticPayloadIndex =
-				RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(
-					EMobilityType::Static);
-			const size_t stationaryPayloadIndex =
-				RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(
-					EMobilityType::Stationary);
+			packet.Reset();
+			orderedDrawItems.Clear(false);
 			const bool bUsesPagedArenas = bVirtualizeInstancePayloads && !bBackToFront;
-			auto usesPagedArena = [&](size_t payloadIndex)
-				{
-					return bUsesPagedArenas &&
-						(payloadIndex == staticPayloadIndex ||
-							payloadIndex == stationaryPayloadIndex);
-				};
+			syncSharedResources.Lock();
 			if (bUsesPagedArenas)
 			{
-				for (const EMobilityType mobility :
-					{ EMobilityType::Static, EMobilityType::Stationary })
-				{
-					const size_t payloadIndex =
-						RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-					payloadRevisions[payloadIndex] = PayloadRevisionSeed;
-					HashCombine(
-						payloadRevisions[payloadIndex],
-						payloadIndex,
-						QueueTagHash,
-						sceneViewSnapshot.m_submissionContext->GetMaterialRevision(),
-						sceneViewSnapshot.GetMobilityRevision(mobility));
-					HashCombine(payloadRevisions[payloadIndex], sceneViewSnapshot.m_previousMotionFrame ?
-						sceneViewSnapshot.m_previousMotionFrame->m_mobilityRevisions[static_cast<size_t>(mobility)] : 0ull);
-				}
-			}
-			m_packet.Reset();
-			m_orderedDrawItems.Clear(false);
-			std::array<bool, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
-				bBuildPayload{ true, true, true };
-			auto buildArenaCacheSlot = [](EMobilityType mobility)
-				{
-					size_t cacheSlot = PayloadRevisionSeed;
-					const size_t index =
-						RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-					HashCombine(cacheSlot, 0u, index);
-					return cacheSlot;
-				};
-			if (bUsesPagedArenas)
-			{
-				for (const EMobilityType mobility :
-					{ EMobilityType::Static, EMobilityType::Stationary })
-				{
-					const size_t index =
-						RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-					const size_t cacheSlot = buildArenaCacheSlot(mobility);
-					auto payload = m_pagedArenaCache.Find(
-						cacheSlot,
-						payloadRevisions[index],
-						sceneViewSnapshot.m_frame);
-					if (payload)
-					{
-						m_packet.UseSharedArenaPayload(mobility, std::move(payload));
-						bBuildPayload[index] = false;
-					}
-				}
-			}
-
-			if (bUsesPagedArenas)
-			{
-				for (const EMobilityType mobility : {EMobilityType::Static, EMobilityType::Stationary})
-				{
-					const size_t arenaPayloadIndex = RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-					if (!bBuildPayload[arenaPayloadIndex])
-					{
-						continue;
-					}
-					const size_t arenaCacheSlot = buildArenaCacheSlot(mobility);
-					m_pagedArenaCache.BeginUpdate(
-						arenaCacheSlot, payloadRevisions[arenaPayloadIndex], sceneViewSnapshot.m_frame);
-					auto& rangeInstances = submissionResources->m_arenaRangeInstances;
-					auto& rangeStableKeys = submissionResources->m_arenaRangeStableKeys;
-					auto& rangeMaterialVersionRuns = submissionResources->m_arenaRangeMaterialVersionRuns;
-					bool bPayloadComplete = true;
-					sceneViewSnapshot.ForEachSceneProxy(mobility,
-						[&](const RHIVisibleSceneProxy& proxy)
-						{
-							const auto* source = proxy.GetSource();
-							if (!source)
-							{
-								return;
-							}
-							const uint64_t rangeKey =
-								BuildPackedDrawRangeKey(proxy.m_handle, source->m_staticMeshEcs, proxy.m_resource);
-							size_t rangeRevision =
-								proxy.m_resource ? proxy.m_resource->m_mainRevision : proxy.GetContentRevision();
-							HashCombine(rangeRevision,
-								QueueTagHash,
-								proxy.GetContentRevision(),
-								std::hash<glm::mat4>{}(proxy.GetWorldMatrix()),
-								proxy.GetSkeletonOffset());
-							if (proxy.m_record)
-							{
-								HashMotionHistory(rangeRevision, sceneViewSnapshot, proxy);
-							}
-							if (proxy.m_record)
-							{
-								HashCombine(
-									rangeRevision, proxy.m_record->m_materialRevision, proxy.m_record->m_renderFlags);
-							}
-							for (const auto& material : source->GetMaterials())
-							{
-								const auto version = material ?
-									material->GetVersionForSubmission(materialSubmissionId) :
-									RHIMaterialVersionPtr{};
-								HashCombine(rangeRevision, version ? version->GetVersionId() : 0ull);
-							}
-							for (const auto& group : source->m_instancedGroups)
-							{
-								for (const auto& material : group.m_materials)
-								{
-									const auto version = material ?
-										material->GetVersionForSubmission(materialSubmissionId) :
-										RHIMaterialVersionPtr{};
-									HashCombine(rangeRevision, version ? version->GetVersionId() : 0ull);
-								}
-							}
-							if (m_pagedArenaCache.TryReuseRange(rangeKey, rangeRevision))
-							{
-								return;
-							}
-
-							rangeInstances.Clear(false);
-							rangeStableKeys.Clear(false);
-							rangeMaterialVersionRuns.Clear(false);
-							bool bRangeComplete = true;
-
-							for (size_t meshIndex = 0u; meshIndex < source->m_meshes.Num(); ++meshIndex)
-							{
-								if (meshIndex >= source->GetMaterials().Num())
-								{
-									break;
-								}
-								const auto& material = source->GetMaterials()[meshIndex];
-								const auto& mesh = source->m_meshes[meshIndex];
-								const bool bRelevantMaterial =
-									material && material->GetRenderState().GetTag() == QueueTagHash;
-								if (!bRelevantMaterial)
-								{
-									continue;
-								}
-								RHIBatch batch;
-								if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
-								{
-									bRangeComplete = false;
-									continue;
-								}
-
-								const auto& preparedMaterial = preparedMaterials.Get(material);
-								auto data = MakeInstanceData(
-									sceneViewSnapshot, proxy, *mesh, preparedMaterial, meshIndex);
-								rangeInstances.Add(std::move(data));
-								rangeStableKeys.Add(BuildPackedDrawStableKey(
-									proxy.m_handle, source->m_staticMeshEcs, 0u, static_cast<uint32_t>(meshIndex), 0u));
-								AppendPackedDrawArenaMaterialVersion(rangeMaterialVersionRuns, batch.m_materialVersion);
-							}
-
-							for (size_t groupIndex = 0u; groupIndex < source->m_instancedGroups.Num(); ++groupIndex)
-							{
-								const auto& group = source->m_instancedGroups[groupIndex];
-								for (size_t meshIndex = 0u; meshIndex < group.m_meshes.Num(); ++meshIndex)
-								{
-									if (meshIndex >= group.m_materials.Num())
-									{
-										break;
-									}
-									const auto& material = group.m_materials[meshIndex];
-									const auto& mesh = group.m_meshes[meshIndex];
-									const bool bRelevantMaterial =
-										material && material->GetRenderState().GetTag() == QueueTagHash;
-									if (!bRelevantMaterial)
-									{
-										continue;
-									}
-									RHIBatch batch;
-									if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
-									{
-										bRangeComplete = false;
-										continue;
-									}
-
-									const auto& preparedMaterial = preparedMaterials.Get(material);
-									for (size_t instanceIndex = 0u; instanceIndex < group.m_instanceTransforms.Num();
-										++instanceIndex)
-									{
-										auto data = MakeInstanceData(
-											sceneViewSnapshot, proxy, *mesh, preparedMaterial, meshIndex, &group, instanceIndex);
-										rangeInstances.Add(std::move(data));
-										rangeStableKeys.Add(BuildPackedDrawStableKey(proxy.m_handle,
-											source->m_staticMeshEcs,
-											static_cast<uint32_t>(groupIndex + 1u),
-											static_cast<uint32_t>(meshIndex),
-											static_cast<uint32_t>(instanceIndex)));
-										AppendPackedDrawArenaMaterialVersion(
-											rangeMaterialVersionRuns, batch.m_materialVersion);
-									}
-								}
-							}
-
-							if (!m_pagedArenaCache.ReplaceRange(rangeKey,
-									rangeRevision,
-									rangeInstances,
-									rangeStableKeys,
-									&rangeMaterialVersionRuns))
-							{
-								bRangeComplete = false;
-							}
-							bPayloadComplete &= bRangeComplete;
-						});
-
-					auto arenaPayload = m_pagedArenaCache.EndUpdate(bPayloadComplete);
-					m_packet.UseSharedArenaPayload(mobility, std::move(arenaPayload));
-					rangeInstances.Clear(false);
-					rangeStableKeys.Clear(false);
-					rangeMaterialVersionRuns.Clear(false);
-				}
+				BuildStableArenas(sceneViewSnapshot, *submissionResources, preparedMaterials, QueueTagHash);
 			}
 			Details::EvictTextureBindingCache(m_textureBindingCache, sceneViewSnapshot.m_frame);
 			m_pagedArenaCache.Evict(sceneViewSnapshot.m_frame);
-
-			SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
-
-			for (const auto& proxy : sceneViewSnapshot.m_proxies)
-			{
-				const auto* source = proxy.GetSource();
-				if (!source)
-				{
-					continue;
-				}
-				const EMobilityType payloadMobility = bBackToFront ?
-					EMobilityType::Dynamic : proxy.GetMobility();
-				const size_t payloadIndex =
-					RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(payloadMobility);
-				for (size_t i = 0; i < source->m_meshes.Num(); i++)
-				{
-					const bool bHasMaterial = source->GetMaterials().Num() > i;
-					if (!bHasMaterial)
-					{
-						break;
-					}
-
-					const auto& mesh = sceneViewSnapshot.ResolveMesh(proxy, i);
-					const auto& material = source->GetMaterials()[i];
-
-					const bool bRelevantMaterial = material &&
-						material->GetRenderState().GetTag() == QueueTagHash;
-					if (!bRelevantMaterial)
-					{
-						continue;
-					}
-					RHIBatch batch;
-					if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
-					{
-						continue;
-					}
-
-					const auto& preparedMaterial = preparedMaterials.Get(material);
-
-					uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
-#if defined(__APPLE__)
-					bool bCurrentTextureBindings = false;
-					const auto& requestedTextures =
-						source->m_materialTextureSamplers.Num() > i ?
-						source->m_materialTextureSamplers[i] :
-						Details::GetDefaultRequestedTextures();
-					batch.m_textureBindings = Details::GetTextureBindingSet(
-						m_textureBindingCache,
-						requestedTextures,
-						sceneViewSnapshot.m_frame,
-						supportedMeshesPerBatch,
-						bCurrentTextureBindings);
-#else
-					batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
-#endif
-					batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
-					if (!batch.m_textureBindings)
-					{
-						continue;
-					}
-					const uint64_t stableKey = BuildPackedDrawStableKey(
-						proxy.m_handle,
-						source->m_staticMeshEcs,
-						0u,
-						static_cast<uint32_t>(i),
-						0u);
-					if (usesPagedArena(payloadIndex))
-					{
-						m_packet.AddArenaView(
-							std::move(batch),
-							mesh,
-							BuildPackedDrawRangeKey(
-								proxy.m_handle,
-								source->m_staticMeshEcs,
-								proxy.m_resource),
-							stableKey,
-							payloadMobility);
-						continue;
-					}
-
-					auto data = MakeInstanceData(
-						sceneViewSnapshot, proxy, *mesh, preparedMaterial, i);
-
-					if (bBackToFront)
-					{
-						const glm::vec4 worldCenter = data.model *
-							glm::vec4(mesh->m_bounds.GetCenter(), 1.0f);
-						const glm::vec4 viewCenter = sceneViewSnapshot.m_camera->GetViewMatrix() *
-							worldCenter;
-
-						OrderedDrawItem item;
-						item.m_batch = std::move(batch);
-						item.m_mesh = mesh;
-						item.m_instanceData = data;
-						item.m_cameraDepth = std::isfinite(viewCenter.z) ?
-							-viewCenter.z :
-							-(std::numeric_limits<float>::max)();
-						item.m_staticMeshEcs = source->m_staticMeshEcs;
-						item.m_meshIndex = i;
-						m_orderedDrawItems.Emplace(std::move(item));
-					}
-					else
-					{
-						m_packet.Add(
-							std::move(batch),
-							mesh,
-							data,
-							stableKey,
-							payloadMobility);
-					}
-				}
-
-				for (size_t groupIndex = 0u;
-					groupIndex < source->m_instancedGroups.Num(); ++groupIndex)
-				{
-					const auto& group = source->m_instancedGroups[groupIndex];
-					for (size_t meshIndex = 0u; meshIndex < group.m_meshes.Num(); ++meshIndex)
-					{
-						if (meshIndex >= group.m_materials.Num())
-						{
-							break;
-						}
-
-						const auto& sourceMesh = group.m_meshes[meshIndex];
-						const auto& material = group.m_materials[meshIndex];
-						const bool bRelevantMaterial = material &&
-							material->GetRenderState().GetTag() == QueueTagHash;
-						if (!bRelevantMaterial)
-						{
-							continue;
-						}
-						RHIBatch batchTemplate;
-						if (!TryPrepareBatch(material, sourceMesh, preparedMaterials, batchTemplate))
-						{
-							continue;
-						}
-
-						const auto& preparedMaterial = preparedMaterials.Get(material);
-
-						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
-#if defined(__APPLE__)
-						bool bCurrentTextureBindings = false;
-						const auto& requestedTextures =
-							meshIndex < group.m_materialTextureSamplers.Num() ?
-							group.m_materialTextureSamplers[meshIndex] :
-							Details::GetDefaultRequestedTextures();
-						batchTemplate.m_textureBindings = Details::GetTextureBindingSet(
-							m_textureBindingCache,
-							requestedTextures,
-							sceneViewSnapshot.m_frame,
-							supportedMeshesPerBatch,
-							bCurrentTextureBindings);
-#else
-						batchTemplate.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
-#endif
-						batchTemplate.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
-						if (!batchTemplate.m_textureBindings)
-						{
-							continue;
-						}
-
-						for (size_t instanceIndex = 0u;
-							instanceIndex < group.m_instanceTransforms.Num(); ++instanceIndex)
-						{
-							if (!proxy.IsInstancedMeshWithinDistance(
-								group,
-								instanceIndex,
-								meshIndex,
-								glm::vec3(sceneViewSnapshot.m_cameraTransform.m_position),
-								source->m_lodPolicy.m_maxCameraDistance))
-							{
-								continue;
-							}
-							const auto& mesh = sceneViewSnapshot.ResolveInstancedMesh(
-								proxy, groupIndex, instanceIndex, meshIndex);
-							if (!mesh)
-							{
-								continue;
-							}
-							const uint64_t stableKey = BuildPackedDrawStableKey(
-								proxy.m_handle,
-								source->m_staticMeshEcs,
-								static_cast<uint32_t>(groupIndex + 1u),
-								static_cast<uint32_t>(meshIndex),
-								static_cast<uint32_t>(instanceIndex));
-							RHI::RHIBatch batch = batchTemplate;
-							batch.m_mesh = mesh;
-							if (usesPagedArena(payloadIndex))
-							{
-								m_packet.AddArenaView(
-									std::move(batch),
-									mesh,
-									BuildPackedDrawRangeKey(
-										proxy.m_handle,
-										source->m_staticMeshEcs,
-										proxy.m_resource),
-									stableKey,
-									payloadMobility);
-								continue;
-							}
-
-							auto data = MakeInstanceData(
-								sceneViewSnapshot, proxy, *mesh, preparedMaterial, meshIndex, &group, instanceIndex);
-
-							if (bBackToFront)
-							{
-								const glm::vec4 worldCenter = data.model *
-									glm::vec4(mesh->m_bounds.GetCenter(), 1.0f);
-								const glm::vec4 viewCenter = sceneViewSnapshot.m_camera->GetViewMatrix() *
-									worldCenter;
-
-								OrderedDrawItem item;
-								item.m_batch = std::move(batch);
-								item.m_mesh = mesh;
-								item.m_instanceData = data;
-								item.m_cameraDepth = std::isfinite(viewCenter.z) ?
-									-viewCenter.z :
-									-(std::numeric_limits<float>::max)();
-								item.m_staticMeshEcs = source->m_staticMeshEcs;
-								item.m_meshIndex = source->m_meshes.Num() + instanceIndex;
-								HashCombine(item.m_meshIndex, groupIndex, meshIndex);
-								m_orderedDrawItems.Emplace(std::move(item));
-							}
-							else
-							{
-								m_packet.Add(
-									std::move(batch),
-									mesh,
-									data,
-									stableKey,
-									payloadMobility);
-							}
-						}
-					}
-				}
-			}
+			BuildVisiblePacket(sceneViewSnapshot, *submissionResources, preparedMaterials, QueueTagHash,
+				bUsesPagedArenas, bBackToFront);
+			syncSharedResources.Unlock();
 
 			if (bBackToFront)
 			{
-				m_orderedDrawItems.Sort([](const OrderedDrawItem& lhs, const OrderedDrawItem& rhs)
+				orderedDrawItems.Sort([](const OrderedDrawItem& lhs, const OrderedDrawItem& rhs)
 					{
 						if (lhs.m_cameraDepth != rhs.m_cameraDepth)
 						{
@@ -877,21 +424,435 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 
 						return lhs.m_meshIndex < rhs.m_meshIndex;
 					});
-				for (auto& item : m_orderedDrawItems)
+				for (auto& item : orderedDrawItems)
 				{
-					m_packet.Add(std::move(item.m_batch), item.m_mesh, item.m_instanceData);
+					packet.Add(std::move(item.m_batch), item.m_mesh, item.m_instanceData);
 				}
-				m_packet.Finalize(true);
+				packet.Finalize(true);
 			}
 			else
 			{
-				m_packet.Finalize(false);
+				packet.Finalize(false);
 			}
-			m_orderedDrawItems.Clear(false);
-			syncSharedResources.Unlock();
+			orderedDrawItems.Clear(false);
 		}, EThreadType::Worker);
 
 	return res;
+}
+
+void RenderSceneNode::BuildStableArenas(const RHISceneViewSnapshot& sceneView,
+	SubmissionResources& resources, RHIMaterialPreparationCache& preparedMaterials, size_t queueTagHash)
+{
+	SAILOR_PROFILE_SCOPE("Build main stable arenas");
+	auto& packet = resources.m_packet;
+	const uint64_t materialSubmissionId = sceneView.m_submissionContext->GetSubmissionId();
+	for (const EMobilityType mobility : { EMobilityType::Static, EMobilityType::Stationary })
+	{
+		const size_t arenaPayloadIndex = TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
+		size_t payloadRevision = Fnv1aOffsetBasis;
+		HashCombine(payloadRevision, arenaPayloadIndex, queueTagHash,
+			sceneView.m_submissionContext->GetMaterialRevision(), sceneView.GetMobilityRevision(mobility));
+		HashCombine(payloadRevision, sceneView.m_previousMotionFrame ?
+			sceneView.m_previousMotionFrame->m_mobilityRevisions[static_cast<size_t>(mobility)] : 0ull);
+		size_t arenaCacheSlot = Fnv1aOffsetBasis;
+		HashCombine(arenaCacheSlot, 0u, arenaPayloadIndex);
+		if (auto payload = m_pagedArenaCache.Find(arenaCacheSlot, payloadRevision, sceneView.m_frame))
+		{
+			packet.UseSharedArenaPayload(mobility, std::move(payload));
+			continue;
+		}
+		m_pagedArenaCache.BeginUpdate(
+			arenaCacheSlot, payloadRevision, sceneView.m_frame);
+		auto& rangeInstances = resources.m_arenaRangeInstances;
+		auto& rangeStableKeys = resources.m_arenaRangeStableKeys;
+		auto& rangeMaterialVersionRuns = resources.m_arenaRangeMaterialVersionRuns;
+		bool bPayloadComplete = true;
+		sceneView.ForEachSceneProxy(mobility,
+			[&](const RHIVisibleSceneProxy& proxy)
+			{
+				const auto* source = proxy.GetSource();
+				if (!source)
+				{
+					return;
+				}
+				const uint64_t rangeKey =
+					BuildPackedDrawRangeKey(proxy.m_handle, source->m_staticMeshEcs, proxy.m_resource);
+				size_t rangeRevision =
+					proxy.m_resource ? proxy.m_resource->m_mainRevision : proxy.GetContentRevision();
+				HashCombine(rangeRevision,
+					queueTagHash,
+					proxy.GetContentRevision(),
+					std::hash<glm::mat4>{}(proxy.GetWorldMatrix()),
+					proxy.GetSkeletonOffset());
+				if (proxy.m_record)
+				{
+					HashMotionHistory(rangeRevision, sceneView, proxy);
+				}
+				if (proxy.m_record)
+				{
+					HashCombine(
+						rangeRevision, proxy.m_record->m_materialRevision, proxy.m_record->m_renderFlags);
+				}
+				for (const auto& material : source->GetMaterials())
+				{
+					const auto version = material ?
+						material->GetVersionForSubmission(materialSubmissionId) :
+						RHIMaterialVersionPtr{};
+					HashCombine(rangeRevision, version ? version->GetVersionId() : 0ull);
+				}
+				for (const auto& group : source->m_instancedGroups)
+				{
+					for (const auto& material : group.m_materials)
+					{
+						const auto version = material ?
+							material->GetVersionForSubmission(materialSubmissionId) :
+							RHIMaterialVersionPtr{};
+						HashCombine(rangeRevision, version ? version->GetVersionId() : 0ull);
+					}
+				}
+				if (m_pagedArenaCache.TryReuseRange(rangeKey, rangeRevision))
+				{
+					return;
+				}
+
+				rangeInstances.Clear(false);
+				rangeStableKeys.Clear(false);
+				rangeMaterialVersionRuns.Clear(false);
+				bool bRangeComplete = true;
+
+				for (size_t meshIndex = 0u; meshIndex < source->m_meshes.Num(); ++meshIndex)
+				{
+					if (meshIndex >= source->GetMaterials().Num())
+					{
+						break;
+					}
+					const auto& material = source->GetMaterials()[meshIndex];
+					const auto& mesh = source->m_meshes[meshIndex];
+					const bool bRelevantMaterial =
+						material && material->GetRenderState().GetTag() == queueTagHash;
+					if (!bRelevantMaterial)
+					{
+						continue;
+					}
+					RHIBatch batch;
+					if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
+					{
+						bRangeComplete = false;
+						continue;
+					}
+
+					const auto& preparedMaterial = preparedMaterials.Get(material);
+					auto data = MakeInstanceData(
+						sceneView, proxy, *mesh, preparedMaterial, meshIndex);
+					rangeInstances.Add(std::move(data));
+					rangeStableKeys.Add(BuildPackedDrawStableKey(
+						proxy.m_handle, source->m_staticMeshEcs, 0u, static_cast<uint32_t>(meshIndex), 0u));
+					AppendPackedDrawArenaMaterialVersion(rangeMaterialVersionRuns, batch.m_materialVersion);
+				}
+
+				for (size_t groupIndex = 0u; groupIndex < source->m_instancedGroups.Num(); ++groupIndex)
+				{
+					const auto& group = source->m_instancedGroups[groupIndex];
+					for (size_t meshIndex = 0u; meshIndex < group.m_meshes.Num(); ++meshIndex)
+					{
+						if (meshIndex >= group.m_materials.Num())
+						{
+							break;
+						}
+						const auto& material = group.m_materials[meshIndex];
+						const auto& mesh = group.m_meshes[meshIndex];
+						const bool bRelevantMaterial =
+							material && material->GetRenderState().GetTag() == queueTagHash;
+						if (!bRelevantMaterial)
+						{
+							continue;
+						}
+						RHIBatch batch;
+						if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
+						{
+							bRangeComplete = false;
+							continue;
+						}
+
+						const auto& preparedMaterial = preparedMaterials.Get(material);
+						for (size_t instanceIndex = 0u; instanceIndex < group.m_instanceTransforms.Num();
+							++instanceIndex)
+						{
+							auto data = MakeInstanceData(
+								sceneView, proxy, *mesh, preparedMaterial, meshIndex, &group, instanceIndex);
+							rangeInstances.Add(std::move(data));
+							rangeStableKeys.Add(BuildPackedDrawStableKey(proxy.m_handle,
+								source->m_staticMeshEcs,
+								static_cast<uint32_t>(groupIndex + 1u),
+								static_cast<uint32_t>(meshIndex),
+								static_cast<uint32_t>(instanceIndex)));
+							AppendPackedDrawArenaMaterialVersion(
+								rangeMaterialVersionRuns, batch.m_materialVersion);
+						}
+					}
+				}
+
+				if (!m_pagedArenaCache.ReplaceRange(rangeKey,
+						rangeRevision,
+						rangeInstances,
+						rangeStableKeys,
+						&rangeMaterialVersionRuns))
+				{
+					bRangeComplete = false;
+				}
+				bPayloadComplete &= bRangeComplete;
+			});
+
+		auto arenaPayload = m_pagedArenaCache.EndUpdate(bPayloadComplete);
+		packet.UseSharedArenaPayload(mobility, std::move(arenaPayload));
+		rangeInstances.Clear(false);
+		rangeStableKeys.Clear(false);
+		rangeMaterialVersionRuns.Clear(false);
+	}
+}
+
+void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
+	SubmissionResources& resources, RHIMaterialPreparationCache& preparedMaterials, size_t queueTagHash,
+	bool bUsesPagedArenas, bool bBackToFront)
+{
+	auto& packet = resources.m_packet;
+	auto& orderedDrawItems = resources.m_orderedDrawItems;
+	SAILOR_PROFILE_SCOPE("Build visible main packet");
+
+	for (const auto& proxy : sceneView.m_proxies)
+	{
+		const auto* source = proxy.GetSource();
+		if (!source)
+		{
+			continue;
+		}
+		const EMobilityType payloadMobility = bBackToFront ?
+			EMobilityType::Dynamic : proxy.GetMobility();
+		const bool bArenaView = bUsesPagedArenas &&
+			(payloadMobility == EMobilityType::Static || payloadMobility == EMobilityType::Stationary);
+		for (size_t i = 0; i < source->m_meshes.Num(); i++)
+		{
+			const bool bHasMaterial = source->GetMaterials().Num() > i;
+			if (!bHasMaterial)
+			{
+				break;
+			}
+
+			const auto& mesh = sceneView.ResolveMesh(proxy, i);
+			const auto& material = source->GetMaterials()[i];
+
+			const bool bRelevantMaterial = material &&
+				material->GetRenderState().GetTag() == queueTagHash;
+			if (!bRelevantMaterial)
+			{
+				continue;
+			}
+			RHIBatch batch;
+			if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
+			{
+				continue;
+			}
+
+			const auto& preparedMaterial = preparedMaterials.Get(material);
+
+			uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+#if defined(__APPLE__)
+			bool bCurrentTextureBindings = false;
+			const auto& requestedTextures =
+				source->m_materialTextureSamplers.Num() > i ?
+				source->m_materialTextureSamplers[i] :
+				Details::GetDefaultRequestedTextures();
+			batch.m_textureBindings = Details::GetTextureBindingSet(
+				m_textureBindingCache,
+				requestedTextures,
+				sceneView.m_frame,
+				supportedMeshesPerBatch,
+				bCurrentTextureBindings);
+#else
+			batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+#endif
+			batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
+			if (!batch.m_textureBindings)
+			{
+				continue;
+			}
+			const uint64_t stableKey = BuildPackedDrawStableKey(
+				proxy.m_handle,
+				source->m_staticMeshEcs,
+				0u,
+				static_cast<uint32_t>(i),
+				0u);
+			if (bArenaView)
+			{
+				packet.AddArenaView(
+					std::move(batch),
+					mesh,
+					BuildPackedDrawRangeKey(
+						proxy.m_handle,
+						source->m_staticMeshEcs,
+						proxy.m_resource),
+					stableKey,
+					payloadMobility);
+				continue;
+			}
+
+			auto data = MakeInstanceData(
+				sceneView, proxy, *mesh, preparedMaterial, i);
+
+			if (bBackToFront)
+			{
+				const glm::vec4 worldCenter = data.model *
+					glm::vec4(mesh->m_bounds.GetCenter(), 1.0f);
+				const glm::vec4 viewCenter = sceneView.m_camera->GetViewMatrix() *
+					worldCenter;
+
+				OrderedDrawItem item;
+				item.m_batch = std::move(batch);
+				item.m_mesh = mesh;
+				item.m_instanceData = data;
+				item.m_cameraDepth = std::isfinite(viewCenter.z) ?
+					-viewCenter.z :
+					-(std::numeric_limits<float>::max)();
+				item.m_staticMeshEcs = source->m_staticMeshEcs;
+				item.m_meshIndex = i;
+				orderedDrawItems.Emplace(std::move(item));
+			}
+			else
+			{
+				packet.Add(
+					std::move(batch),
+					mesh,
+					data,
+					stableKey,
+					payloadMobility);
+			}
+		}
+
+		for (size_t groupIndex = 0u;
+			groupIndex < source->m_instancedGroups.Num(); ++groupIndex)
+		{
+			const auto& group = source->m_instancedGroups[groupIndex];
+			for (size_t meshIndex = 0u; meshIndex < group.m_meshes.Num(); ++meshIndex)
+			{
+				if (meshIndex >= group.m_materials.Num())
+				{
+					break;
+				}
+
+				const auto& sourceMesh = group.m_meshes[meshIndex];
+				const auto& material = group.m_materials[meshIndex];
+				const bool bRelevantMaterial = material &&
+					material->GetRenderState().GetTag() == queueTagHash;
+				if (!bRelevantMaterial)
+				{
+					continue;
+				}
+				RHIBatch batchTemplate;
+				if (!TryPrepareBatch(material, sourceMesh, preparedMaterials, batchTemplate))
+				{
+					continue;
+				}
+
+				const auto& preparedMaterial = preparedMaterials.Get(material);
+
+				uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+#if defined(__APPLE__)
+				bool bCurrentTextureBindings = false;
+				const auto& requestedTextures =
+					meshIndex < group.m_materialTextureSamplers.Num() ?
+					group.m_materialTextureSamplers[meshIndex] :
+					Details::GetDefaultRequestedTextures();
+				batchTemplate.m_textureBindings = Details::GetTextureBindingSet(
+					m_textureBindingCache,
+					requestedTextures,
+					sceneView.m_frame,
+					supportedMeshesPerBatch,
+					bCurrentTextureBindings);
+#else
+				batchTemplate.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+#endif
+				batchTemplate.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
+				if (!batchTemplate.m_textureBindings)
+				{
+					continue;
+				}
+
+				for (size_t instanceIndex = 0u;
+					instanceIndex < group.m_instanceTransforms.Num(); ++instanceIndex)
+				{
+					if (!proxy.IsInstancedMeshWithinDistance(
+						group,
+						instanceIndex,
+						meshIndex,
+						glm::vec3(sceneView.m_cameraTransform.m_position),
+						source->m_lodPolicy.m_maxCameraDistance))
+					{
+						continue;
+					}
+					const auto& mesh = sceneView.ResolveInstancedMesh(
+						proxy, groupIndex, instanceIndex, meshIndex);
+					if (!mesh)
+					{
+						continue;
+					}
+					const uint64_t stableKey = BuildPackedDrawStableKey(
+						proxy.m_handle,
+						source->m_staticMeshEcs,
+						static_cast<uint32_t>(groupIndex + 1u),
+						static_cast<uint32_t>(meshIndex),
+						static_cast<uint32_t>(instanceIndex));
+					RHI::RHIBatch batch = batchTemplate;
+					batch.m_mesh = mesh;
+					if (bArenaView)
+					{
+						packet.AddArenaView(
+							std::move(batch),
+							mesh,
+							BuildPackedDrawRangeKey(
+								proxy.m_handle,
+								source->m_staticMeshEcs,
+								proxy.m_resource),
+							stableKey,
+							payloadMobility);
+						continue;
+					}
+
+					auto data = MakeInstanceData(
+						sceneView, proxy, *mesh, preparedMaterial, meshIndex, &group, instanceIndex);
+
+					if (bBackToFront)
+					{
+						const glm::vec4 worldCenter = data.model *
+							glm::vec4(mesh->m_bounds.GetCenter(), 1.0f);
+						const glm::vec4 viewCenter = sceneView.m_camera->GetViewMatrix() *
+							worldCenter;
+
+						OrderedDrawItem item;
+						item.m_batch = std::move(batch);
+						item.m_mesh = mesh;
+						item.m_instanceData = data;
+						item.m_cameraDepth = std::isfinite(viewCenter.z) ?
+							-viewCenter.z :
+							-(std::numeric_limits<float>::max)();
+						item.m_staticMeshEcs = source->m_staticMeshEcs;
+						item.m_meshIndex = source->m_meshes.Num() + instanceIndex;
+						HashCombine(item.m_meshIndex, groupIndex, meshIndex);
+						orderedDrawItems.Emplace(std::move(item));
+					}
+					else
+					{
+						packet.Add(
+							std::move(batch),
+							mesh,
+							data,
+							stableKey,
+							payloadMobility);
+					}
+				}
+			}
+		}
+	}
+
 }
 
 void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
@@ -907,10 +868,8 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		this,
 		sceneView.m_cameraIndex,
 		0u);
-	m_syncSharedResources.Lock();
 	if (resources->m_packet.GetNumInstances() == 0u)
 	{
-		m_syncSharedResources.Unlock();
 		return;
 	}
 
@@ -927,7 +886,6 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	}
 	if (!colorAttachment || !depthAttachment)
 	{
-		m_syncSharedResources.Unlock();
 		return;
 	}
 
@@ -995,7 +953,6 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		!bindPassTexture("g_sceneDepthSampler", sampledSceneDepth, 3u) ||
 		!bindPassTexture("g_globalIlluminationProbeCellIndicesSampler", globalIlluminationProbeCellIndicesTexture, 4u))
 	{
-		m_syncSharedResources.Unlock();
 		return;
 	}
 
@@ -1169,7 +1126,6 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		commands->EndRenderPass(commandList);
 	}
 	commands->EndDebugRegion(commandList);
-	m_syncSharedResources.Unlock();
 }
 
 void RenderSceneNode::Clear()
