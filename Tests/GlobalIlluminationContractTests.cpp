@@ -5932,8 +5932,8 @@ components:
 		texture->SetPixel(glm::u8vec4(0, 0, 255, 255));
 		material->SetSampler("baseColorSampler", texture);
 		const auto rebound = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
-		Require(rebound[0]->m_samplers[0].m_second.m_texture->m_data[2] == 255 &&
-			pixels->m_data[0] == 255 && pixels->m_data[2] == 0,
+		Require((*rebound[0]->m_samplers[0].m_second.m_texture->m_data)[2] == 255 &&
+			(*pixels->m_data)[0] == 255 && (*pixels->m_data)[2] == 0,
 			"sampler updates must capture fresh pixels without mutating a retained older snapshot");
 		auto replacement = TObjectPtr<CapturedGiTestMaterial>::Make(allocator);
 		Require(replacement->GetFileId() == material->GetFileId(), "the cache fixture uses two materials with one file id");
@@ -6078,7 +6078,7 @@ components:
 			}, warning) && bCancelledAfterDecode && warnings == 0u &&
 			tracer.GetLastScenePreparationStats().m_uniqueTextureCount == 0u,
 			"cancellation after decoding must stop conversion without reporting a missing texture");
-		Require(texture->m_data.IsEmpty() &&
+		Require(!texture->m_data &&
 			tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings,
 				glm::vec3(0.0f), {}, warning) && warnings == 0u &&
 			tracer.GetLastScenePreparationStats().m_decodedTextureCount == 1u &&

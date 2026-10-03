@@ -2,6 +2,8 @@
 #include "TextureImporterTestAccess.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
+#include "Raytracing/PathTracer.h"
 #include "RHI/Texture.h"
 
 #include <array>
@@ -46,19 +48,24 @@ namespace
 			m_info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(m_id);
 		}
 
-		void Write(uint8_t red, uint8_t blue)
+		void Write(uint8_t red, uint8_t blue, uint16_t width = 1)
 		{
 			const bool existed = std::filesystem::exists(m_path);
 			const auto previousTime = existed ? std::filesystem::last_write_time(m_path) :
 				std::filesystem::file_time_type{};
-			std::array<uint8_t, 21> bytes{};
-			bytes[2] = 2;
-			bytes[12] = bytes[14] = 1;
-			bytes[16] = 24;
-			bytes[18] = blue;
-			bytes[20] = red;
+			std::array<uint8_t, 18> header{};
+			header[2] = 2;
+			header[12] = static_cast<uint8_t>(width);
+			header[13] = static_cast<uint8_t>(width >> 8);
+			header[14] = 1;
+			header[16] = 24;
+			const std::array<uint8_t, 3> pixel{ blue, 0, red };
 			std::ofstream output(m_path, std::ios::binary);
-			output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+			output.write(reinterpret_cast<const char*>(header.data()), header.size());
+			for (uint16_t i = 0; i < width; ++i)
+			{
+				output.write(reinterpret_cast<const char*>(pixel.data()), pixel.size());
+			}
 			output.close();
 			Require(static_cast<bool>(output), "texture fixture must be written");
 			if (existed && std::filesystem::last_write_time(m_path) <= previousTime)
@@ -122,6 +129,12 @@ namespace
 			Require(m_decoded.load() == count && !m_wrongThread.load(),
 				"all cold, enrichment and reload decoding must execute on Worker");
 		}
+		void WaitOtherDecoded()
+		{
+			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+			while (!m_otherDecoded && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+			Require(m_otherDecoded > 0, "another texture must finish decoding while the first is held");
+		}
 
 	private:
 		static bool Decode(const TextureImporter::CpuDecodeRequest& request, TextureImporter::ByteCode& bytes,
@@ -138,6 +151,10 @@ namespace
 				const auto index = probe->m_decoded.fetch_add(1);
 				if (index == 0 && probe->m_holdFirst) probe->m_release.wait();
 			}
+			else
+			{
+				++probe->m_otherDecoded;
+			}
 			return result;
 		}
 		static inline DecodeProbe* s_active = nullptr;
@@ -145,6 +162,7 @@ namespace
 		bool m_holdFirst;
 		TextureImporterTestAccess::Decoder m_original;
 		std::atomic<uint32_t> m_decoded{ 0 };
+		std::atomic<uint32_t> m_otherDecoded{ 0 };
 		std::atomic<bool> m_wrongThread{ false }, m_released{ false };
 		std::latch m_release{ 1 };
 	};
@@ -383,6 +401,111 @@ namespace
 		decode.CheckWorker(4);
 	}
 
+	void TestCpuSnapshotDuringReload(const std::filesystem::path& workspace)
+	{
+		TextureFixture fixture(workspace, "SnapshotDuringReload");
+		fixture.KeepCpu(true);
+		auto* importer = App::GetSubmodule<TextureImporter>();
+		TexturePtr texture;
+		Require(importer->LoadTexture_Immediate(fixture.m_id, texture), "snapshot fixture must load");
+		DecodeProbe decode(fixture.m_id, true);
+		fixture.Write(0, 255, 2);
+		fixture.Clamp(RHI::ETextureClamping::Clamp);
+		importer->OnUpdateAssetInfo(fixture.m_info, true);
+		auto reload = importer->GetLoadPromise(fixture.m_id);
+		decode.WaitDecoded(1);
+
+		auto allocator = App::GetSubmodule<MaterialImporter>()->GetAllocator();
+		auto material = MaterialPtr::Make(allocator, FileId{});
+		material->SetSampler("baseColorSampler", texture);
+		Raytracing::PathTracer::MaterialSnapshots snapshots;
+		std::atomic<bool> captured{ false };
+		std::jthread capture([&]()
+			{
+				snapshots = Raytracing::PathTracer::CaptureMaterials({ material });
+				captured = true;
+			});
+		const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+		while (!captured && TextureImporterTestAccess::GetLastAccess(*importer, fixture.m_id) == reload &&
+			std::chrono::steady_clock::now() < until) std::this_thread::yield();
+		const bool capturedBeforePublication = captured;
+		const auto registeredCapture = TextureImporterTestAccess::GetLastAccess(*importer, fixture.m_id);
+		decode.Release();
+		capture.join();
+		reload->Wait();
+		material.DestroyObject(allocator);
+		Require(registeredCapture && registeredCapture != reload && !capturedBeforePublication,
+			"CPU texture capture must join the preceding reload publication");
+		Require(snapshots.Num() == 1 && snapshots[0]->m_samplers.Num() == 1,
+			"actual material capture must retain its sampler");
+		const auto& sampler = snapshots[0]->m_samplers[0].m_second;
+		Require(sampler.m_clamping == RHI::ETextureClamping::Clamp &&
+			sampler.m_texture->m_width == 2 && sampler.m_texture->m_height == 1 &&
+			sampler.m_texture->m_data && sampler.m_texture->m_data->Num() == 8 && (*sampler.m_texture->m_data)[2] == 255,
+			"capture must observe one completed texture state, including pixels and clamping");
+		Require(sampler.m_texture->m_data->GetData() == texture->GetDecodedData().GetData(),
+			"capturing resident pixels must retain the immutable buffer without copying it");
+		fixture.Write(255, 0);
+		fixture.Clamp(RHI::ETextureClamping::Repeat);
+		importer->OnUpdateAssetInfo(fixture.m_info, true);
+		auto next = importer->GetLoadPromise(fixture.m_id);
+		next->Wait();
+		Require(next->GetResult() == texture && texture->GetDecodedData()[0] == 255 &&
+			texture->GetWidth() == 1 && sampler.m_texture->m_width == 2 &&
+			(*sampler.m_texture->m_data)[2] == 255 && sampler.m_clamping == RHI::ETextureClamping::Clamp,
+			"later reloads must not change already captured texture pixels or sampler state");
+		std::cout << "Texture CPU capture: ordered reload, coherent pixels/clamping and retained snapshot passed\n";
+	}
+
+	void TestCpuSnapshotBatchOrdering(const std::filesystem::path& workspace)
+	{
+		TextureFixture first(workspace, "SnapshotBatchFirst"), second(workspace, "SnapshotBatchSecond");
+		first.KeepCpu(true);
+		second.KeepCpu(true);
+		auto* importer = App::GetSubmodule<TextureImporter>();
+		TexturePtr firstTexture, secondTexture;
+		Require(importer->LoadTexture_Immediate(first.m_id, firstTexture) &&
+			importer->LoadTexture_Immediate(second.m_id, secondTexture), "batch fixtures must load");
+		DecodeProbe decode(second.m_id, true);
+		second.Write(0, 255, 2);
+		second.Clamp(RHI::ETextureClamping::Clamp);
+		importer->OnUpdateAssetInfo(second.m_info, true);
+		auto secondReload = importer->GetLoadPromise(second.m_id);
+		decode.WaitDecoded(1);
+		auto captured = importer->CaptureCpuTextures({ firstTexture, secondTexture, firstTexture, {} });
+		importer->CollectGarbage();
+		Require(!captured->IsFinished() && !importer->GetLoadPromise(first.m_id) &&
+			importer->GetLoadPromise(second.m_id) == secondReload,
+			"pending captures must survive GC without replacing typed load results");
+
+		first.Write(0, 255);
+		importer->OnUpdateAssetInfo(first.m_info, true);
+		auto firstReload = importer->GetLoadPromise(first.m_id);
+		auto later = importer->CaptureCpuTextures({ firstTexture, secondTexture });
+		if (App::GetSubmodule<Tasks::Scheduler>()->GetNumThreads(EThreadType::Worker) > 1)
+		{
+			decode.WaitOtherDecoded();
+		}
+		decode.Release();
+		later->Wait();
+		const auto& before = captured->GetResult();
+		const auto& after = later->GetResult();
+		Require(before.Num() == 4 && before[0].m_pixels && (*before[0].m_pixels)[0] == 255 &&
+			before[0].m_clamping == RHI::ETextureClamping::Repeat &&
+			before[1].m_pixels && (*before[1].m_pixels)[2] == 255 && before[1].m_width == 2 &&
+			before[1].m_clamping == RHI::ETextureClamping::Clamp &&
+			before[2].m_pixels == before[0].m_pixels && !before[3].m_pixels,
+			"one batch must follow earlier writes and precede later writes for every selected texture");
+		Require(after.Num() == 2 && after[0].m_pixels && (*after[0].m_pixels)[2] == 255 &&
+			after[1].m_pixels == before[1].m_pixels && firstReload->GetResult() == firstTexture &&
+			secondReload->GetResult() == secondTexture,
+			"a subsequent capture must observe the next publication without changing the first snapshot");
+		importer->CollectGarbage();
+		auto empty = importer->CaptureCpuTextures({});
+		Require(empty->IsFinished() && empty->GetResult().IsEmpty(), "an empty capture must be ready without queue work");
+		std::cout << "Texture CPU capture: batched read/write ordering, GC, duplicate and empty slots passed\n";
+	}
+
 	void TestReloadGcStress(const std::filesystem::path& workspace)
 	{
 		TextureFixture fixture(workspace, "ReloadGcStress");
@@ -441,6 +564,8 @@ namespace Sailor::Tests
 		run("Cold failure retry", [&]() { TestColdFailureRetry(workspace); });
 		run("First CPU publication", [&]() { TestFirstCpuPublication(workspace); });
 		run("Source mismatch and failure", [&]() { TestSourceMismatchAndFailure(workspace); });
+		run("CPU snapshot during reload", [&]() { TestCpuSnapshotDuringReload(workspace); });
+		run("CPU snapshot batch ordering", [&]() { TestCpuSnapshotBatchOrdering(workspace); });
 		run("Reload GC stress", [&]() { TestReloadGcStress(workspace); });
 		if (!failures.empty()) throw std::runtime_error(failures);
 		std::cout << "Texture importer CPU enrichment, Worker decode, ordered reload and failure tests passed\n";

@@ -13,5 +13,11 @@ namespace Sailor
 		{
 			return std::exchange(importer.m_decodeTexture, decoder);
 		}
+		static Tasks::ITaskPtr GetLastAccess(TextureImporter& importer, FileId id)
+		{
+			TextureImporter::TextureEntry entry;
+			importer.m_textures.TryGet(id, entry);
+			return entry.m_lastAccess;
+		}
 	};
 }

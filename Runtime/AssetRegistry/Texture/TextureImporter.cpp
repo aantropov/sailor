@@ -429,24 +429,94 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 
 TextureImporter::~TextureImporter()
 {
-	for (auto& instance : m_loadedTextures)
+	for (auto& instance : m_textures)
 	{
-		instance.m_second.DestroyObject(m_allocator);
+		instance.m_second.m_texture.DestroyObject(m_allocator);
 	}
 }
 
 TexturePtr TextureImporter::GetLoadedTexture(FileId uid)
 {
-	TexturePtr texture;
-	m_loadedTextures.TryGet(uid, texture);
-	return texture;
+	TextureEntry entry;
+	m_textures.TryGet(uid, entry);
+	return entry.m_texture;
 }
 
 Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(FileId uid)
 {
-	Tasks::TaskPtr<TexturePtr> promise;
-	m_promises.TryGet(uid, promise);
-	return promise;
+	TextureEntry entry;
+	m_textures.TryGet(uid, entry);
+	return entry.m_load;
+}
+
+Tasks::TaskPtr<TVector<TextureImporter::CpuTextureSnapshot>> TextureImporter::CaptureCpuTextures(
+	const TVector<TexturePtr>& textures)
+{
+	if (textures.IsEmpty())
+	{
+		return Tasks::TaskPtr<TVector<CpuTextureSnapshot>>::Make(TVector<CpuTextureSnapshot>{});
+	}
+
+	m_textures.LockAll();
+	TVector<TexturePtr> loaded;
+	TVector<Tasks::ITaskPtr> previous;
+	loaded.Reserve(textures.Num());
+	for (const auto& texture : textures)
+	{
+		TextureEntry* entry = nullptr;
+		if (texture && m_textures.Find(texture->GetFileId(), entry))
+		{
+			loaded.Add(entry->m_texture);
+			previous.Add(entry->m_lastAccess);
+		}
+		else
+		{
+			loaded.Add({});
+		}
+	}
+	auto capture = Tasks::CreateTask<TVector<CpuTextureSnapshot>>("Capture texture CPU state",
+		[textures, loaded]()
+		{
+			TVector<CpuTextureSnapshot> snapshots;
+			snapshots.Reserve(textures.Num());
+			for (size_t i = 0; i < textures.Num(); ++i)
+			{
+				auto texture = textures[i];
+				if (loaded[i] && (loaded[i]->HasCpuData() || !texture || !texture->HasCpuData()))
+				{
+					texture = loaded[i];
+				}
+				CpuTextureSnapshot snapshot;
+				if (texture)
+				{
+					snapshot.m_pixels = texture->m_decodedData;
+					snapshot.m_width = texture->m_width;
+					snapshot.m_height = texture->m_height;
+					snapshot.m_source = texture->m_cpuSource;
+					if (texture->m_rhiTexture)
+					{
+						snapshot.m_clamping = texture->m_rhiTexture->GetClamping();
+					}
+				}
+				snapshots.Add(std::move(snapshot));
+			}
+			return snapshots;
+		}, EThreadType::RHI);
+	for (const auto& task : previous)
+	{
+		capture->Join(task);
+	}
+	for (const auto& texture : textures)
+	{
+		TextureEntry* entry = nullptr;
+		if (texture && m_textures.Find(texture->GetFileId(), entry))
+		{
+			entry->m_lastAccess = capture;
+		}
+	}
+	m_textures.UnlockAll();
+	capture->Run();
+	return capture;
 }
 
 TextureImporter::TextureSamplersSnapshot TextureImporter::GetTextureSamplersSnapshot(const TVector<uint32_t>& requestedIndices) const
@@ -592,11 +662,12 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 	}
 
 	const auto uid = assetInfo->GetFileId();
-	auto& promise = m_promises.At_Lock(uid, nullptr);
-	texture->m_bCpuBuffersRequested = assetInfo->ShouldKeepCpuBuffers();
-	promise = CreateTextureTask(texture, *assetInfo, false, true, promise);
-	auto task = promise;
-	m_promises.Unlock(uid);
+	auto& entry = m_textures.At_Lock(uid);
+	entry.m_bCpuBuffersRequested = assetInfo->ShouldKeepCpuBuffers();
+	entry.m_load = CreateTextureTask(texture, *assetInfo, false, true, entry.m_lastAccess);
+	entry.m_lastAccess = entry.m_load;
+	auto task = entry.m_load;
+	m_textures.Unlock(uid);
 	task->Run();
 }
 
@@ -606,7 +677,7 @@ void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)
 
 bool TextureImporter::IsTextureLoaded(FileId uid) const
 {
-	return m_loadedTextures.ContainsKey(uid);
+	return m_textures.ContainsKey(uid);
 }
 
 bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
@@ -866,19 +937,19 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 		return {};
 	}
 
-	auto& promise = m_promises.At_Lock(uid, nullptr);
-	auto& texture = m_loadedTextures.At_Lock(uid, TexturePtr{});
+	auto& entry = m_textures.At_Lock(uid);
+	auto& promise = entry.m_load;
+	auto& texture = entry.m_texture;
 	const bool bKeepCpu = assetInfo->ShouldKeepCpuBuffers();
 	const bool bPending = promise && !promise->IsFinished();
 	bool bCpuOnly = false;
 	if (bPending)
 	{
-		if (!bKeepCpu || texture->m_bCpuBuffersRequested)
+		if (!bKeepCpu || entry.m_bCpuBuffersRequested)
 		{
 			outTexture = texture;
 			auto task = promise;
-			m_loadedTextures.Unlock(uid);
-			m_promises.Unlock(uid);
+			m_textures.Unlock(uid);
 			return task;
 		}
 		bCpuOnly = true;
@@ -889,8 +960,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 		{
 			outTexture = texture;
 			auto task = Tasks::TaskPtr<TexturePtr>::Make(texture);
-			m_loadedTextures.Unlock(uid);
-			m_promises.Unlock(uid);
+			m_textures.Unlock(uid);
 			return task;
 		}
 		bCpuOnly = true;
@@ -900,12 +970,12 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 		texture = TexturePtr::Make(m_allocator, uid);
 	}
 
-	texture->m_bCpuBuffersRequested = bKeepCpu;
-	promise = CreateTextureTask(texture, *assetInfo, bCpuOnly, false, promise);
+	entry.m_bCpuBuffersRequested = bKeepCpu;
+	promise = CreateTextureTask(texture, *assetInfo, bCpuOnly, false, entry.m_lastAccess);
+	entry.m_lastAccess = promise;
 	outTexture = texture;
 	auto task = promise;
-	m_loadedTextures.Unlock(uid);
-	m_promises.Unlock(uid);
+	m_textures.Unlock(uid);
 	task->Run();
 	return task;
 }
@@ -936,17 +1006,17 @@ bool TextureImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmed
 
 void TextureImporter::CollectGarbage()
 {
-	m_promises.LockAll();
-	auto ids = m_promises.GetKeys();
-	m_promises.UnlockAll();
-
-	for (const auto& id : ids)
+	m_textures.LockAll();
+	for (auto& entry : m_textures)
 	{
-		auto promise = m_promises.At_Lock(id);
-		if (!promise || promise->IsFinished())
+		if (entry.m_second.m_load && entry.m_second.m_load->IsFinished())
 		{
-			m_promises.ForcelyRemove(id);
+			entry.m_second.m_load.Clear();
 		}
-		m_promises.Unlock(id);
+		if (entry.m_second.m_lastAccess && entry.m_second.m_lastAccess->IsFinished())
+		{
+			entry.m_second.m_lastAccess.Clear();
+		}
 	}
+	m_textures.UnlockAll();
 }

@@ -650,22 +650,24 @@ namespace
 			if (!cpuTextureSnapshots.Find(sourceKey, cachedSnapshot))
 			{
 				auto snapshot = pTexture;
-				if (snapshot->m_data.IsEmpty())
+				if (!snapshot->m_data || snapshot->m_data->IsEmpty())
 				{
 					if (!reportMaterialProgress(completedMaterials))
 					{
 						return false;
 					}
 					auto decoded = TSharedPtr<PathTracer::TextureSnapshot>::Make();
+					TVector<uint8_t> pixels;
 					uint32_t mipLevels = 1u;
 					const bool bDecoded = TextureImporter::DecodeTextureCpu(
 						pTexture->m_decodeRequest,
-						decoded->m_data,
+						pixels,
 						decoded->m_width,
 						decoded->m_height,
 						mipLevels);
 					if (bDecoded)
 					{
+						decoded->m_data = TSharedPtr<TVector<uint8_t>>::Make(std::move(pixels));
 						++stats.m_decodedTextureCount;
 					}
 					if (!reportMaterialProgress(completedMaterials))
@@ -682,7 +684,7 @@ namespace
 					snapshot = std::move(decoded);
 				}
 				if (snapshot->m_width <= 0 || snapshot->m_height <= 0 ||
-					snapshot->m_data.IsEmpty())
+					!snapshot->m_data || snapshot->m_data->IsEmpty())
 				{
 					outDiagnostic =
 						"the decoded texture has invalid dimensions or no pixel data";
@@ -698,7 +700,7 @@ namespace
 				return false;
 			}
 			const auto& snapshot = **cachedSnapshot;
-			const TVector<uint8_t>* sourceData = &snapshot.m_data;
+			const TVector<uint8_t>* sourceData = snapshot.m_data.GetRawPtr();
 			const int32_t width = snapshot.m_width;
 			const int32_t height = snapshot.m_height;
 
@@ -986,7 +988,10 @@ PathTracer::MaterialSnapshots PathTracer::CaptureMaterials(const TVector<Materia
 	MaterialSnapshots result;
 	result.Reserve(materials.Num());
 	MaterialSnapshotCache capturedMaterials;
-	TMap<std::string, TSharedPtr<const TextureSnapshot>> capturedTextures;
+	TMap<std::string, size_t> textureIndices;
+	TVector<TexturePtr> textures;
+	TVector<TSharedPtr<TextureSnapshot>> textureSnapshots;
+	TVector<TSharedPtr<MaterialSnapshot>> createdMaterials;
 	auto* textureImporter = App::GetSubmodule<TextureImporter>();
 	auto* registry = App::GetSubmodule<AssetRegistry>();
 	for (const auto& material : materials)
@@ -1031,49 +1036,78 @@ PathTracer::MaterialSnapshots PathTracer::CaptureMaterials(const TVector<Materia
 			if (texture)
 			{
 				const FileId fileId = texture->GetFileId();
-				if (fileId && textureImporter)
-				{
-					auto loaded = textureImporter->GetLoadedTexture(fileId);
-					if (loaded && (loaded->HasCpuData() || !texture->HasCpuData()))
-					{
-						texture = std::move(loaded);
-					}
-				}
-				binding.m_clamping = texture->GetRHI() ?
-					texture->GetRHI()->GetClamping() : RHI::ETextureClamping::Repeat;
 				const std::string sourceKey = fileId ? fileId.ToString() :
 					"runtime:" + std::to_string(reinterpret_cast<uintptr_t>(texture.GetRawPtr()));
-				TSharedPtr<const TextureSnapshot>* captured = nullptr;
-				if (capturedTextures.Find(sourceKey, captured))
+				size_t* index = nullptr;
+				if (textureIndices.Find(sourceKey, index))
 				{
-					binding.m_texture = *captured;
+					binding.m_texture = textureSnapshots[*index];
 				}
 				else
 				{
 					auto source = TSharedPtr<TextureSnapshot>::Make();
 					source->m_fileId = fileId;
 					source->m_sourceKey = sourceKey;
-					source->m_width = texture->GetWidth();
-					source->m_height = texture->GetHeight();
-					if (texture->HasCpuData())
-					{
-						source->m_data = texture->GetDecodedData();
-					}
-					else if (fileId && registry)
-					{
-						if (auto* info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(fileId))
-						{
-							TextureImporter::CaptureCpuDecodeRequest(*info, source->m_decodeRequest);
-						}
-					}
+					textureIndices.Add(sourceKey, textures.Num());
+					textures.Add(texture);
+					textureSnapshots.Add(source);
 					binding.m_texture = std::move(source);
-					capturedTextures.Add(sourceKey, binding.m_texture);
 				}
 			}
 			snapshot->m_samplers.Add({ sampler.m_first, std::move(binding) });
 		}
+		createdMaterials.Add(snapshot);
 		result.Add(snapshot);
 		capturedMaterials.Add(material, std::move(snapshot));
+	}
+
+	TVector<TextureImporter::CpuTextureSnapshot> pixels;
+	if (textureImporter && !textures.IsEmpty())
+	{
+		auto capture = textureImporter->CaptureCpuTextures(textures);
+		capture->Wait();
+		pixels = capture->GetResult();
+	}
+	else
+	{
+		// Standalone callers own their private textures; no importer can replace them.
+		for (const auto& texture : textures)
+		{
+			TextureImporter::CpuTextureSnapshot snapshot;
+			snapshot.m_width = texture->GetWidth();
+			snapshot.m_height = texture->GetHeight();
+			if (texture->GetRHI()) snapshot.m_clamping = texture->GetRHI()->GetClamping();
+			if (texture->HasCpuData())
+			{
+				snapshot.m_pixels = TSharedPtr<TVector<uint8_t>>::Make(texture->GetDecodedData());
+			}
+			pixels.Add(std::move(snapshot));
+		}
+	}
+	for (size_t i = 0; i < pixels.Num(); ++i)
+	{
+		auto snapshot = textureSnapshots[i];
+		snapshot->m_width = pixels[i].m_width;
+		snapshot->m_height = pixels[i].m_height;
+		snapshot->m_data = pixels[i].m_pixels;
+		snapshot->m_decodeRequest = pixels[i].m_source;
+		if (!snapshot->m_data && snapshot->m_decodeRequest.m_filepath.empty() && snapshot->m_fileId && registry)
+		{
+			if (auto* info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(snapshot->m_fileId))
+			{
+				TextureImporter::CaptureCpuDecodeRequest(*info, snapshot->m_decodeRequest);
+			}
+		}
+	}
+	for (auto& material : createdMaterials)
+	{
+		for (auto& sampler : material->m_samplers)
+		{
+			if (sampler.m_second.m_texture)
+			{
+				sampler.m_second.m_clamping = pixels[textureIndices[sampler.m_second.m_texture->m_sourceKey]].m_clamping;
+			}
+		}
 	}
 	if (cache)
 	{

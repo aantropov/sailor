@@ -62,6 +62,14 @@ namespace Sailor
 			bool operator==(const CpuDecodeRequest&) const = default;
 		};
 
+		struct CpuTextureSnapshot
+		{
+			TSharedPtr<const ByteCode> m_pixels;
+			int32_t m_width = 0, m_height = 0;
+			RHI::ETextureClamping m_clamping = RHI::ETextureClamping::Repeat;
+			CpuDecodeRequest m_source;
+		};
+
 		static constexpr RHI::ETextureUsageFlags DefaultTextureUsage =
 			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
 			RHI::ETextureUsageBit::TextureTransferDst_Bit |
@@ -84,6 +92,7 @@ namespace Sailor
 			int32_t& width, int32_t& height, uint32_t& mipLevels);
 		SAILOR_API TexturePtr GetLoadedTexture(FileId uid);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> GetLoadPromise(FileId uid);
+		SAILOR_API Tasks::TaskPtr<TVector<CpuTextureSnapshot>> CaptureCpuTextures(const TVector<TexturePtr>& textures);
 		SAILOR_API virtual void CollectGarbage() override;
 
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetTextureSamplersBindingSet() { return m_textureSamplersBindings; }
@@ -102,8 +111,15 @@ namespace Sailor
 		TVector<uint64_t> m_textureSamplerSlotRevisions{};
 		mutable SpinLock m_textureSamplersLock;
 
-		TConcurrentMap<FileId, Tasks::TaskPtr<TexturePtr>> m_promises{};
-		TConcurrentMap<FileId, TexturePtr> m_loadedTextures{};
+		struct TextureEntry
+		{
+			TexturePtr m_texture;
+			Tasks::TaskPtr<TexturePtr> m_load;
+			Tasks::ITaskPtr m_lastAccess;
+			bool m_bCpuBuffersRequested = false;
+			bool operator==(const TextureEntry&) const = default;
+		};
+		TConcurrentMap<FileId, TextureEntry> m_textures;
 
 		Memory::ObjectAllocatorPtr m_allocator;
 
@@ -134,7 +150,11 @@ namespace Sailor
 
 		SAILOR_API const RHI::RHITexturePtr& GetRHI() const { return m_rhiTexture; }
 		SAILOR_API RHI::RHITexturePtr& GetRHI() { return m_rhiTexture; }
-		SAILOR_API const TVector<uint8_t>& GetDecodedData() const { return m_decodedData; }
+		SAILOR_API const TVector<uint8_t>& GetDecodedData() const
+		{
+			static const TVector<uint8_t> empty;
+			return m_decodedData ? *m_decodedData : empty;
+		}
 		SAILOR_API int32_t GetWidth() const { return m_width; }
 		SAILOR_API int32_t GetHeight() const { return m_height; }
 		SAILOR_API uint32_t GetMipLevels() const { return m_mipLevels; }
@@ -144,16 +164,15 @@ namespace Sailor
 
 		void SetDecodedData(TVector<uint8_t>&& data)
 		{
-			m_decodedData = std::move(data);
-			m_bCpuDataReady.store(!m_decodedData.IsEmpty(), std::memory_order_release);
+			m_decodedData = data.IsEmpty() ? TSharedPtr<const TVector<uint8_t>>{} :
+				TSharedPtr<TVector<uint8_t>>::Make(std::move(data));
+			m_bCpuDataReady.store(static_cast<bool>(m_decodedData), std::memory_order_release);
 		}
 
 		RHI::RHITexturePtr m_rhiTexture;
-		TVector<uint8_t> m_decodedData;
+		TSharedPtr<const TVector<uint8_t>> m_decodedData;
 		TextureImporter::CpuDecodeRequest m_cpuSource;
 		std::atomic<bool> m_bCpuDataReady{ false };
-		// Accessed under the importer's per-FileId promise stripe.
-		bool m_bCpuBuffersRequested = false;
 		int32_t m_width = 0;
 		int32_t m_height = 0;
 		uint32_t m_mipLevels = 1;

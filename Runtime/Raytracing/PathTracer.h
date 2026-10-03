@@ -118,7 +118,7 @@ namespace Sailor::Raytracing
 		{
 			FileId m_fileId{};
 			std::string m_sourceKey;
-			TVector<uint8_t> m_data;
+			TSharedPtr<const TVector<uint8_t>> m_data;
 			int32_t m_width = 0;
 			int32_t m_height = 0;
 			TextureImporter::CpuDecodeRequest m_decodeRequest;
@@ -141,7 +141,7 @@ namespace Sailor::Raytracing
 
 		using MaterialSnapshots = TVector<TSharedPtr<const MaterialSnapshot>>;
 		using MaterialSnapshotCache = TMap<MaterialPtr, TSharedPtr<const MaterialSnapshot>>;
-		// Capture on the material/texture owner before dispatching background preparation.
+		// Capture on the material owner; texture reads join their importer publication queue.
 		SAILOR_SHARED_API static MaterialSnapshots CaptureMaterials(const TVector<MaterialPtr>& materials,
 			MaterialSnapshotCache* cache = nullptr);
 

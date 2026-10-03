@@ -376,8 +376,8 @@ namespace
 		};
 		const auto redTexture = findTexture(captured);
 		Require(captured[0]->m_parameters.m_emissiveFactor == glm::vec3(7, 3, 1) &&
-			captured[0]->m_parameters.m_alphaCutoff == 0.375f && redTexture && redTexture->m_data.Num() == 4 &&
-			redTexture->m_data[0] == 255 && redTexture->m_data[2] == 0,
+			captured[0]->m_parameters.m_alphaCutoff == 0.375f && redTexture && redTexture->m_data && redTexture->m_data->Num() == 4 &&
+			(*redTexture->m_data)[0] == 255 && (*redTexture->m_data)[2] == 0,
 			"GI must capture the completed emission, alpha and sampler update together");
 		Require(oldScene->m_materials[0]->m_parameters.m_emissiveFactor == oldEmission,
 			"in-flight GI must retain its old material values across reload");
@@ -390,8 +390,8 @@ namespace
 		const auto updated = Raytracing::PathTracer::CaptureMaterials({ material });
 		const auto blueTexture = findTexture(updated);
 		Require(textures->GetLoadedTexture(textureId) == texture && textures->GetTextureIndex(textureId) == textureSlot &&
-			blueTexture && blueTexture->m_data[0] == 0 && blueTexture->m_data[2] == 255 &&
-			redTexture->m_data[0] == 255 && redTexture->m_data[2] == 0 &&
+			blueTexture && blueTexture->m_data && (*blueTexture->m_data)[0] == 0 && (*blueTexture->m_data)[2] == 255 &&
+			(*redTexture->m_data)[0] == 255 && (*redTexture->m_data)[2] == 0 &&
 			updated[0]->m_contentRevision > captured[0]->m_contentRevision,
 			"texture reload must finish dependent materials, preserve object/slot identity and retain old CPU pixels");
 		Require(!App::UpdateAsset(nullptr) && !App::UpdateAsset("") &&
