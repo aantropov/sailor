@@ -662,7 +662,9 @@ namespace
 			const size_t dataBytes = sizeof(ShadowPrepassNode::PerInstanceData) * count;
 			const size_t indexBytes = sizeof(uint32_t) * count;
 			auto set = view->m_perInstanceData;
-			if (!view->m_bUploadedThisSubmission || view->m_sizePerInstanceData != dataBytes || view->m_sizeInstanceIndices != indexBytes ||
+			if (phase < 2u && view->m_packet.m_metrics.m_instanceUploadBytes != dataBytes)
+				return "cold/grown SSBO must upload the complete instance payload";
+			if (view->m_sizePerInstanceData != dataBytes || view->m_sizeInstanceIndices != indexBytes ||
 				!HasPublishedBuffer(set, "data", 0u, EShaderBindingType::StorageBuffer, dataBytes) ||
 				!HasPublishedBuffer(set, "indices", 1u, EShaderBindingType::StorageBuffer, indexBytes)) return "SSBO pair/capacity/native publication is incomplete";
 			if (phase == 1u && (set == previousSet || set->m_vulkan.m_descriptorSet == previousNative)) return "larger packet did not publish a fresh SSBO pair";

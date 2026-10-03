@@ -16,6 +16,7 @@
 #include "FrameGraph/LightCullingNode.h"
 #include "FrameGraph/PostProcessNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
+#include "FrameGraph/RenderImGuiNode.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/ShadowPrepassNode.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
@@ -40,10 +41,12 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <latch>
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -184,6 +187,182 @@ namespace
 		}
 		~CaptureAttachments() { FrameGraphNodeTestAccess::ExchangeBeginRendering(*VulkanApi::GetInstance()->GetMainDevice(), originalBeginRendering); }
 	};
+
+	class ImGuiCommandRecorder : public VulkanGraphicsDriver
+	{
+	public:
+		void BeginDebugRegion(RHICommandListPtr, const std::string& title, const glm::vec4&) override
+		{
+			m_regions.push_back(title);
+		}
+
+		void EndDebugRegion(RHICommandListPtr) override
+		{
+			if (m_regions.empty()) m_unbalanced = true;
+			else m_regions.pop_back();
+		}
+
+		void RenderSecondaryCommandBuffers(RHICommandListPtr, TVector<RHICommandListPtr> secondary,
+			const TVector<RHITexturePtr>& color, RHITexturePtr depth, glm::ivec4, glm::ivec2,
+			bool, glm::vec4, float, bool, bool) override
+		{
+			Require(m_regions.size() == 2 && m_regions.back() == RenderImGuiNode::GetName(),
+				"ImGui commands must be nested inside their own debug region");
+			Require(secondary.Num() == 1 && color.Num() == 1 && color[0] && depth,
+				"ImGui must record one complete secondary with both attachments");
+			m_secondary = secondary[0];
+			++m_draws;
+		}
+
+		std::vector<std::string> m_regions;
+		RHICommandListPtr m_secondary;
+		uint32_t m_draws = 0;
+		bool m_unbalanced = false;
+	};
+
+	struct ScopedImGuiRecorder
+	{
+		ScopedImGuiRecorder()
+		{
+			auto recorder = TUniquePtr<ImGuiCommandRecorder>::Make();
+			m_commands = recorder.GetRawPtr();
+			m_driver = std::move(Renderer::GetDriver());
+			Renderer::GetDriver() = std::move(recorder);
+		}
+
+		~ScopedImGuiRecorder() { Renderer::GetDriver() = std::move(m_driver); }
+
+		ImGuiCommandRecorder* m_commands = nullptr;
+		TUniquePtr<IGraphicsDriver> m_driver;
+	};
+
+	class ObservedImGuiTask : public Tasks::Task<RHICommandListPtr>
+	{
+	public:
+		ObservedImGuiTask(Function function, std::latch& observed, std::latch& resume) :
+			Tasks::Task<RHICommandListPtr>("Delayed ImGui producer", std::move(function), EThreadType::RHI),
+			m_observed(observed), m_resume(resume)
+		{
+		}
+
+		static TSharedPtr<ObservedImGuiTask> Create(Function function, std::latch& observed, std::latch& resume)
+		{
+			auto task = TSharedPtr<ObservedImGuiTask>::Make(std::move(function), observed, resume);
+			task->m_self = task;
+			return task;
+		}
+
+		bool IsFinished() const override
+		{
+			const bool finished = Tasks::ITask::IsFinished();
+			if (!finished && m_pScheduler->IsRendererThread() && ++m_renderChecks == 2)
+			{
+				m_observed.count_down();
+				m_resume.wait();
+			}
+			return finished;
+		}
+
+	private:
+		std::latch& m_observed;
+		std::latch& m_resume;
+		mutable uint32_t m_renderChecks = 0;
+	};
+
+	void TestDelayedImGuiProducer()
+	{
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		for (bool empty : { false, true })
+		{
+			ScopedImGuiRecorder recorder;
+			auto graph = RHIFrameGraphPtr::Make();
+			auto node = TRefPtr<RenderImGuiNode>::Make();
+			auto color = RHIRenderTargetPtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
+			auto depth = RHIRenderTargetPtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
+			node->SetRHIResource("color", color);
+			node->SetRHIResource("depthStencil", depth);
+			auto secondary = RHICommandListPtr::Make(ECommandListQueue::Graphics);
+			secondary->RecordDrawCallStats(3);
+			secondary->RecordDrawCallStats(5);
+			std::latch producerStarted(1), releaseProducer(1), observed(1), resume(1);
+			uint32_t producerCalls = 0;
+			bool precedingPassRecorded = false;
+			auto producer = ObservedImGuiTask::Create([&]()
+				{
+					++producerCalls;
+					producerStarted.count_down();
+					releaseProducer.wait();
+					return empty ? RHICommandListPtr{} : secondary;
+				}, observed, resume);
+			producer->Run();
+			producerStarted.wait();
+			RHISceneViewSnapshot scene;
+			scene.m_drawImGui = producer;
+			auto record = Tasks::CreateTaskWithResult<std::string>("Record delayed ImGui pass", [&]() -> std::string
+				{
+					try
+					{
+						precedingPassRecorded = true;
+						recorder.m_commands->BeginDebugRegion({}, "Frame", {});
+						node->Process(graph, {}, {}, scene);
+						Require(recorder.m_commands->m_regions == std::vector<std::string>{ "Frame" },
+							"ImGui must leave its enclosing debug region open");
+						recorder.m_commands->EndDebugRegion({});
+						return {};
+					}
+					catch (const std::exception& error) { return error.what(); }
+				}, EThreadType::Render);
+			record->Run();
+			observed.wait();
+			// Inspect from another thread while the producer is held. Task::Wait
+			// rechecks completion under its existing sync lock; a polling loop does not.
+			auto& block = scheduler->GetTaskSyncBlock(*producer);
+			const bool polling = block.m_mutex.try_lock();
+			if (polling) block.m_mutex.unlock();
+			const bool reachedPass = precedingPassRecorded && recorder.m_commands->m_draws == 0;
+			resume.count_down();
+			releaseProducer.count_down();
+			record->Wait();
+			producer->Wait();
+			Require(!polling, "ImGui must use the task completion wait instead of polling the producer");
+			Require(reachedPass, "earlier recording must proceed before the ImGui producer completes");
+			Require(record->GetResult().empty(), record->GetResult().c_str());
+			Require(producerCalls == 1 && recorder.m_commands->m_draws == (empty ? 0u : 1u),
+				"an already-running ImGui producer must finish once and draw only a nonempty result");
+			Require(node->GetDrawCallStats().m_numBatches == (empty ? 0u : 2u) &&
+				node->GetDrawCallStats().m_numInstances == (empty ? 0u : 8u),
+				"ImGui statistics must come from the completed secondary");
+			Require(!recorder.m_commands->m_unbalanced && recorder.m_commands->m_regions.empty(),
+				"ready and empty ImGui results must balance debug regions");
+			if (!empty) Require(recorder.m_commands->m_secondary == secondary,
+				"ImGui must consume the exact RHIPtr produced on the RHI queue");
+		}
+		std::cout << "ImGui delayed producer: task completion wait, pass overlap, single execution and empty result passed\n";
+	}
+
+	void TestImGuiSkippedAttachments()
+	{
+		ScopedImGuiRecorder recorder;
+		auto graph = RHIFrameGraphPtr::Make();
+		auto node = TRefPtr<RenderImGuiNode>::Make();
+		auto attachment = RHIRenderTargetPtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
+		RHISceneViewSnapshot scene;
+		scene.m_drawImGui = Tasks::CreateTaskWithResult<RHICommandListPtr>("Unused ImGui producer", []() { return RHICommandListPtr{}; });
+		for (uint32_t mask = 0; mask < 3; ++mask)
+		{
+			node->SetRHIResource("color", mask & 1 ? attachment : RHIRenderTargetPtr{});
+			node->SetRHIResource("depthStencil", mask & 2 ? attachment : RHIRenderTargetPtr{});
+			recorder.m_commands->BeginDebugRegion({}, "Frame", {});
+			node->Process(graph, {}, {}, scene);
+			Require(recorder.m_commands->m_regions == std::vector<std::string>{ "Frame" },
+				"a skipped ImGui pass must not leave an extra debug region open");
+			recorder.m_commands->EndDebugRegion({});
+		}
+		Require(!scene.m_drawImGui->IsStarted() && recorder.m_commands->m_draws == 0 &&
+			node->GetDrawCallStats().m_numBatches == 0 && !recorder.m_commands->m_unbalanced,
+			"missing ImGui attachments must skip recording without starting or waiting for the producer");
+		std::cout << "ImGui missing attachments: no producer wait or unmatched debug region passed\n";
+	}
 
 	std::string WriteShader(const std::filesystem::path& workspace, bool large)
 	{
@@ -2150,7 +2329,7 @@ frame:
 	}
 
 	enum class DebugDepthInput { Default, Texture, Surface, DefaultSurface };
-	enum class DepthDrawPath { DebugNode, SurfacePass };
+	enum class DepthDrawPath { DebugNode, SurfacePass, ImGuiNode };
 
 	void TestDepthTestedDraw(ShaderSetPtr shader, ShaderSetPtr depthPattern, const std::array<ShaderSetPtr, 4>& depthReadback,
 		EFormat format, bool colorSurface, DebugDepthInput depthInput, bool namedColor, bool namedDepth,
@@ -2162,7 +2341,8 @@ frame:
 		const bool defaultDepth = depthInput == DebugDepthInput::Default || depthInput == DebugDepthInput::DefaultSurface;
 		const bool depthSurface = depthInput == DebugDepthInput::Surface || depthInput == DebugDepthInput::DefaultSurface;
 		auto graph = TRefPtr<TestGraph>::Make();
-		auto node = TRefPtr<DebugDrawNode>::Make();
+		FrameGraphNodePtr node = path == DepthDrawPath::ImGuiNode ?
+			FrameGraphNodePtr(TRefPtr<RenderImGuiNode>::Make()) : TRefPtr<DebugDrawNode>::Make();
 		if (namedColor) node->SetRHIResource_Unresolved("color", "DebugColor");
 		if (namedDepth) node->SetRHIResource_Unresolved("depthStencil", defaultDepth ? "DepthBuffer" : "DebugDepth");
 		CaptureAttachments capture;
@@ -2195,7 +2375,7 @@ frame:
 			snapshot.m_material = material;
 			snapshot.m_numVertices = 6;
 			RHISceneViewSnapshot scene;
-			if (path == DepthDrawPath::DebugNode)
+			if (path != DepthDrawPath::SurfacePass)
 			{
 				auto secondaryTask = Tasks::CreateTaskWithResult<RHICommandListPtr>("Record debug attachment fixture",
 					[snapshot, format, msaa]()
@@ -2212,7 +2392,8 @@ frame:
 				secondaryTask->Wait();
 				Require(secondaryTask->IsFinished() && secondaryTask->GetResult()->GetRecordedDrawCallStats().m_numBatches == 1,
 					"debug fixture must deliver a completed, nonempty secondary before Process");
-				scene.m_debugDrawSecondaryCmdList = secondaryTask;
+				if (path == DepthDrawPath::ImGuiNode) scene.m_drawImGui = secondaryTask;
+				else scene.m_debugDrawSecondaryCmdList = secondaryTask;
 			}
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -3385,10 +3566,12 @@ namespace Sailor::Tests
 		Require(lightCullingInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(lightCullingInfo->GetFileId(), lightCullingShader) && lightCullingShader->IsReady(),
 			"the production light-culling shader must compile before recording");
 		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		TestDelayedImGuiProducer();
 		auto task = Tasks::CreateTaskWithResult<std::string>("Post-process attachment and parameter contracts", [&]() -> std::string
 			{
 				try
 				{
+					TestImGuiSkippedAttachments();
 					TestFullscreenUploadRetry();
 					TestImportedRendering(importedGraphIds);
 					TestGraphLoadFailures(workspace, importedGraphIds[0]);
@@ -3413,6 +3596,10 @@ namespace Sailor::Tests
 					for (bool late : { false, true })
 						for (bool colorSurface : { true, false })
 							for (bool motionSurface : { true, false }) TestSceneMrt(mrtShader, colorSurface, motionSurface, late, false, true);
+					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
+						for (bool named : { false, true })
+							TestDepthTestedDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],
+								depthReadback, format, false, DebugDepthInput::Texture, named, named, DepthDrawPath::ImGuiNode);
 					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
 						for (auto input : { DebugDepthInput::Texture, DebugDepthInput::Surface })
 							TestDepthTestedDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],

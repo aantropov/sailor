@@ -87,7 +87,6 @@ namespace Sailor
 				size_t m_sizeInstanceIndices = 0u;
 				RHI::RHIShaderBindingSetPtr m_perInstanceData{};
 				RHI::RHIBufferPtr m_indirectBuffer{};
-				bool m_bUploadedThisSubmission = false;
 
 				void Begin(uint64_t viewKey)
 				{
@@ -97,13 +96,11 @@ namespace Sailor
 						m_viewKey = viewKey;
 					}
 					m_packet.Reset();
-					m_bUploadedThisSubmission = false;
 				}
 			};
 
 			void ResetForSubmission() override
 			{
-				m_numActiveShadowViews = 0u;
 				m_activeShadowViews.Clear(false);
 				m_shadowPayloadComplete.Clear(false);
 				m_renderPassColorAttachments.Clear(false);
@@ -121,7 +118,6 @@ namespace Sailor
 					if (entry.Second() && *entry.Second())
 					{
 						(*entry.Second())->m_packet.InvalidateUploadedState();
-						(*entry.Second())->m_bUploadedThisSubmission = false;
 					}
 				}
 			}
@@ -130,7 +126,6 @@ namespace Sailor
 			TVector<TSharedPtr<ShadowViewResources>> m_activeShadowViews{};
 			TVector<std::array<bool, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>>
 				m_shadowPayloadComplete{};
-			uint32_t m_numActiveShadowViews = 0u;
 			TVector<RHI::RHITexturePtr> m_renderPassColorAttachments{};
 			TVector<RHI::RHIShaderBindingSetPtr> m_blurDrawBindingSets{};
 			TVector<PerInstanceData> m_arenaRangeInstances{};

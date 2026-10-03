@@ -248,7 +248,6 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 			const uint32_t NumShadowPasses = static_cast<uint32_t>(sceneView.m_shadowMapsToUpdate.Num());
 			submissionResources->m_activeShadowViews.Clear(false);
 			submissionResources->m_activeShadowViews.Reserve(NumShadowPasses);
-			submissionResources->m_numActiveShadowViews = NumShadowPasses;
 			auto& bShadowPayloadComplete = submissionResources->m_shadowPayloadComplete;
 			bShadowPayloadComplete.Clear(false);
 			bShadowPayloadComplete.Resize(NumShadowPasses);
@@ -1073,7 +1072,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 							glm::ivec4(renderArea.x, renderArea.y + renderArea.w, renderArea.z, -renderArea.w),
 							glm::uvec4(renderArea),
 							glm::vec2(0.0f, 1.0f));
-						viewResources.m_bUploadedThisSubmission = true;
 					}
 					m_drawCallStats += stats;
 					const bool bComplete = stats.m_numInstances == viewResources.m_packet.GetNumDrawInstances();
