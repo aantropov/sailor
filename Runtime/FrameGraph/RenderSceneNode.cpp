@@ -39,6 +39,35 @@ namespace
 		return MakeObjectMotionData(currentModel, previousModel, valid ? previous.GetSkeletonOffset() : 0xFFFFFFFFu, valid);
 	}
 
+	bool TryPrepareBatch(const RHIMaterialPtr& material, const RHIMeshPtr& mesh,
+		RHIMaterialPreparationCache& preparedMaterials, RHIBatch& batch)
+	{
+		if (!mesh || !preparedMaterials.Get(material).m_bHasGraphicsShaders)
+		{
+			return false;
+		}
+		batch = preparedMaterials.MakeBatch(material, mesh);
+		const auto* bindings = batch.GetMaterialBindingsRaw();
+		return bindings && !bindings->GetShaderBindings().IsEmpty();
+	}
+
+	RenderSceneNode::PerInstanceData MakeInstanceData(
+		const RHISceneViewSnapshot& view, const RHIVisibleSceneProxy& proxy,
+		const RHIMesh& mesh, const RHIMaterialPreparationCache::Entry& material,
+		size_t meshIndex, const RHIInstancedMeshGroup* group = nullptr, size_t instanceIndex = 0)
+	{
+		RenderSceneNode::PerInstanceData data;
+		data.model = group ? proxy.ResolveInstancedMeshWorldMatrix(*group, instanceIndex, meshIndex) :
+			proxy.ResolveMeshWorldMatrix(meshIndex);
+		data.motion = ResolveMeshMotion(view, proxy, meshIndex, group, instanceIndex);
+		data.motion.m_state.z = material.m_material->GetRenderState().GetBlendMode() != EBlendMode::None;
+		data.skeletonOffset = proxy.GetSkeletonOffset();
+		data.materialInstance = material.m_materialInstance;
+		data.sphereBounds = mesh.m_bounds.ToSphere().GetVec4();
+		data.bakedVolumeScale = vec4(mesh.m_bakedVolumeScale, 1.0f);
+		return data;
+	}
+
 	void HashMotionHistory(size_t& revision, const RHISceneViewSnapshot& view, const RHIVisibleSceneProxy& proxy)
 	{
 		RHIVisibleSceneProxy previous;
@@ -517,30 +546,16 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 								{
 									continue;
 								}
-								if (!mesh || !preparedMaterials.Get(material).m_bHasGraphicsShaders)
+								RHIBatch batch;
+								if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
 								{
 									bRangeComplete = false;
 									continue;
 								}
 
-								RHIBatch batch = preparedMaterials.MakeBatch(material, mesh);
-								const auto* materialBindings = batch.GetMaterialBindingsRaw();
-								if (!materialBindings || materialBindings->GetShaderBindings().Num() == 0u)
-								{
-									bRangeComplete = false;
-									continue;
-								}
-
-								const uint32_t materialInstance = preparedMaterials.Get(material).m_materialInstance;
-								PerInstanceData data;
-								data.model = proxy.ResolveMeshWorldMatrix(meshIndex);
-								data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex);
-								data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
-								data.skeletonOffset = proxy.GetSkeletonOffset();
-								data.materialInstance = materialInstance;
-								data.bIsCulled = 0u;
-								data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-								data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
+								const auto& preparedMaterial = preparedMaterials.Get(material);
+								auto data = MakeInstanceData(
+									sceneViewSnapshot, proxy, *mesh, preparedMaterial, meshIndex);
 								rangeInstances.Add(std::move(data));
 								rangeStableKeys.Add(BuildPackedDrawStableKey(
 									proxy.m_handle, source->m_staticMeshEcs, 0u, static_cast<uint32_t>(meshIndex), 0u));
@@ -564,34 +579,19 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 									{
 										continue;
 									}
-									if (!mesh || !preparedMaterials.Get(material).m_bHasGraphicsShaders)
+									RHIBatch batch;
+									if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
 									{
 										bRangeComplete = false;
 										continue;
 									}
 
-									RHIBatch batch = preparedMaterials.MakeBatch(material, mesh);
-									const auto* materialBindings = batch.GetMaterialBindingsRaw();
-									if (!materialBindings || materialBindings->GetShaderBindings().Num() == 0u)
-									{
-										bRangeComplete = false;
-										continue;
-									}
-
-									const uint32_t materialInstance = preparedMaterials.Get(material).m_materialInstance;
+									const auto& preparedMaterial = preparedMaterials.Get(material);
 									for (size_t instanceIndex = 0u; instanceIndex < group.m_instanceTransforms.Num();
 										++instanceIndex)
 									{
-										PerInstanceData data;
-										data.model =
-											proxy.ResolveInstancedMeshWorldMatrix(group, instanceIndex, meshIndex);
-										data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex, &group, instanceIndex);
-										data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
-										data.skeletonOffset = proxy.GetSkeletonOffset();
-										data.materialInstance = materialInstance;
-										data.bIsCulled = 0u;
-										data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-										data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
+										auto data = MakeInstanceData(
+											sceneViewSnapshot, proxy, *mesh, preparedMaterial, meshIndex, &group, instanceIndex);
 										rangeInstances.Add(std::move(data));
 										rangeStableKeys.Add(BuildPackedDrawStableKey(proxy.m_handle,
 											source->m_staticMeshEcs,
@@ -651,104 +651,88 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 
 					const bool bRelevantMaterial = material &&
 						material->GetRenderState().GetTag() == QueueTagHash;
-					const bool bHasMaterialShaders = mesh && bRelevantMaterial &&
-						preparedMaterials.Get(material).m_bHasGraphicsShaders;
-
-					if (!bHasMaterialShaders)
+					if (!bRelevantMaterial)
 					{
 						continue;
 					}
-					RHIBatch batch = preparedMaterials.MakeBatch(material, mesh);
-					const auto* materialBindings = batch.GetMaterialBindingsRaw();
-					if (!materialBindings || materialBindings->GetShaderBindings().Num() == 0u)
+					RHIBatch batch;
+					if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
 					{
 						continue;
 					}
 
-					if (bRelevantMaterial)
-					{
-						const uint32_t materialInstance = preparedMaterials.Get(material).m_materialInstance;
+					const auto& preparedMaterial = preparedMaterials.Get(material);
 
-						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+					uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
 #if defined(__APPLE__)
-						bool bCurrentTextureBindings = false;
-						const auto& requestedTextures =
-							source->m_materialTextureSamplers.Num() > i ?
-							source->m_materialTextureSamplers[i] :
-							Details::GetDefaultRequestedTextures();
-						batch.m_textureBindings = Details::GetTextureBindingSet(
-							m_textureBindingCache,
-							requestedTextures,
-							sceneViewSnapshot.m_frame,
-							supportedMeshesPerBatch,
-							bCurrentTextureBindings);
+					bool bCurrentTextureBindings = false;
+					const auto& requestedTextures =
+						source->m_materialTextureSamplers.Num() > i ?
+						source->m_materialTextureSamplers[i] :
+						Details::GetDefaultRequestedTextures();
+					batch.m_textureBindings = Details::GetTextureBindingSet(
+						m_textureBindingCache,
+						requestedTextures,
+						sceneViewSnapshot.m_frame,
+						supportedMeshesPerBatch,
+						bCurrentTextureBindings);
 #else
-						batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+					batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 #endif
-						batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
-						if (!batch.m_textureBindings)
-						{
-							continue;
-						}
-						const uint64_t stableKey = BuildPackedDrawStableKey(
-							proxy.m_handle,
-							source->m_staticMeshEcs,
-							0u,
-							static_cast<uint32_t>(i),
-							0u);
-						if (usesPagedArena(payloadIndex))
-						{
-							m_packet.AddArenaView(
-								std::move(batch),
-								mesh,
-								BuildPackedDrawRangeKey(
-									proxy.m_handle,
-									source->m_staticMeshEcs,
-									proxy.m_resource),
-								stableKey,
-								payloadMobility);
-							continue;
-						}
+					batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
+					if (!batch.m_textureBindings)
+					{
+						continue;
+					}
+					const uint64_t stableKey = BuildPackedDrawStableKey(
+						proxy.m_handle,
+						source->m_staticMeshEcs,
+						0u,
+						static_cast<uint32_t>(i),
+						0u);
+					if (usesPagedArena(payloadIndex))
+					{
+						m_packet.AddArenaView(
+							std::move(batch),
+							mesh,
+							BuildPackedDrawRangeKey(
+								proxy.m_handle,
+								source->m_staticMeshEcs,
+								proxy.m_resource),
+							stableKey,
+							payloadMobility);
+						continue;
+					}
 
-						const glm::mat4 meshWorldMatrix = proxy.ResolveMeshWorldMatrix(i);
-						RenderSceneNode::PerInstanceData data;
-						data.model = meshWorldMatrix;
-						data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, i);
-						data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
-						data.skeletonOffset = proxy.GetSkeletonOffset();
-						data.materialInstance = materialInstance;
-						data.bIsCulled = 0u;
-						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-						data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
+					auto data = MakeInstanceData(
+						sceneViewSnapshot, proxy, *mesh, preparedMaterial, i);
 
-						if (bBackToFront)
-						{
-							const glm::vec4 worldCenter = meshWorldMatrix *
-								glm::vec4(mesh->m_bounds.GetCenter(), 1.0f);
-							const glm::vec4 viewCenter = sceneViewSnapshot.m_camera->GetViewMatrix() *
-								worldCenter;
+					if (bBackToFront)
+					{
+						const glm::vec4 worldCenter = data.model *
+							glm::vec4(mesh->m_bounds.GetCenter(), 1.0f);
+						const glm::vec4 viewCenter = sceneViewSnapshot.m_camera->GetViewMatrix() *
+							worldCenter;
 
-							OrderedDrawItem item;
-							item.m_batch = std::move(batch);
-							item.m_mesh = mesh;
-							item.m_instanceData = data;
-							item.m_cameraDepth = std::isfinite(viewCenter.z) ?
-								-viewCenter.z :
-								-(std::numeric_limits<float>::max)();
-							item.m_staticMeshEcs = source->m_staticMeshEcs;
-							item.m_meshIndex = i;
-							m_orderedDrawItems.Emplace(std::move(item));
-						}
-						else
-						{
-							m_packet.Add(
-								std::move(batch),
-								mesh,
-								data,
-								stableKey,
-								payloadMobility);
-						}
-
+						OrderedDrawItem item;
+						item.m_batch = std::move(batch);
+						item.m_mesh = mesh;
+						item.m_instanceData = data;
+						item.m_cameraDepth = std::isfinite(viewCenter.z) ?
+							-viewCenter.z :
+							-(std::numeric_limits<float>::max)();
+						item.m_staticMeshEcs = source->m_staticMeshEcs;
+						item.m_meshIndex = i;
+						m_orderedDrawItems.Emplace(std::move(item));
+					}
+					else
+					{
+						m_packet.Add(
+							std::move(batch),
+							mesh,
+							data,
+							stableKey,
+							payloadMobility);
 					}
 				}
 
@@ -767,21 +751,17 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						const auto& material = group.m_materials[meshIndex];
 						const bool bRelevantMaterial = material &&
 							material->GetRenderState().GetTag() == QueueTagHash;
-						const bool bHasMaterialShaders = sourceMesh && bRelevantMaterial &&
-							preparedMaterials.Get(material).m_bHasGraphicsShaders;
-						if (!bHasMaterialShaders)
+						if (!bRelevantMaterial)
+						{
+							continue;
+						}
+						RHIBatch batchTemplate;
+						if (!TryPrepareBatch(material, sourceMesh, preparedMaterials, batchTemplate))
 						{
 							continue;
 						}
 
-						RHIBatch batchTemplate = preparedMaterials.MakeBatch(material, sourceMesh);
-						const auto* materialBindings = batchTemplate.GetMaterialBindingsRaw();
-						if (!materialBindings || materialBindings->GetShaderBindings().Num() == 0u)
-						{
-							continue;
-						}
-
-						const uint32_t materialInstance = preparedMaterials.Get(material).m_materialInstance;
+						const auto& preparedMaterial = preparedMaterials.Get(material);
 
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
 #if defined(__APPLE__)
@@ -845,23 +825,12 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 								continue;
 							}
 
-							const glm::mat4 meshWorldMatrix = proxy.ResolveInstancedMeshWorldMatrix(
-								group,
-								instanceIndex,
-								meshIndex);
-							RenderSceneNode::PerInstanceData data;
-							data.model = meshWorldMatrix;
-							data.motion = ResolveMeshMotion(sceneViewSnapshot, proxy, meshIndex, &group, instanceIndex);
-							data.motion.m_state.z = material->GetRenderState().GetBlendMode() != EBlendMode::None;
-							data.skeletonOffset = proxy.GetSkeletonOffset();
-							data.materialInstance = materialInstance;
-							data.bIsCulled = 0u;
-							data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-							data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
+							auto data = MakeInstanceData(
+								sceneViewSnapshot, proxy, *mesh, preparedMaterial, meshIndex, &group, instanceIndex);
 
 							if (bBackToFront)
 							{
-								const glm::vec4 worldCenter = meshWorldMatrix *
+								const glm::vec4 worldCenter = data.model *
 									glm::vec4(mesh->m_bounds.GetCenter(), 1.0f);
 								const glm::vec4 viewCenter = sceneViewSnapshot.m_camera->GetViewMatrix() *
 									worldCenter;

@@ -186,6 +186,10 @@ namespace Sailor
 		TMap<CustomShadowMaterialKey, CustomShadowMaterialCacheEntry> m_customShadowMaterials{};
 
 		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType, bool bSkinned, bool bMasked);
+		RHI::RHIMaterialPtr SelectShadowMaterial(
+			RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType, bool bSkinned, bool bMasked,
+			const ShaderSetPtr& sourceShader, const RHI::RHIMaterialPtr& sourceMaterial,
+			const RHI::RHIMaterialVersionPtr& sourceVersion, uint64_t frame);
 		RHI::RHIMaterialPtr GetOrAddCustomShadowMaterial(
 			const ShaderSetPtr& sourceShader,
 			const RHI::RHIMaterialPtr& sourceMaterial,

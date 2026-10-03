@@ -25,6 +25,42 @@ using namespace Sailor::RHI;
 const char* ShadowPrepassNode::m_name = "ShadowPrepass";
 #endif
 
+namespace
+{
+	ShadowPrepassNode::PerInstanceData MakeInstanceData(
+		const glm::mat4& model, const RHIMesh& mesh, uint32_t materialInstance,
+		uint32_t skeletonOffset, float baseColorAlpha, uint32_t baseColorSampler, float alphaCutoff)
+	{
+		ShadowPrepassNode::PerInstanceData data;
+		data.model = model;
+		data.sphereBounds = mesh.m_bounds.ToSphere().GetVec4();
+		data.materialInstance = materialInstance;
+		data.skeletonOffset = skeletonOffset;
+		data.bakedVolumeScale = vec4(mesh.m_bakedVolumeScale, 1.0f);
+		data.baseColorAlpha = baseColorAlpha;
+		data.baseColorSampler = baseColorSampler;
+		data.alphaCutoff = alphaCutoff;
+		return data;
+	}
+}
+
+RHI::RHIMaterialPtr ShadowPrepassNode::SelectShadowMaterial(
+	RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType, bool bSkinned, bool bMasked,
+	const ShaderSetPtr& sourceShader, const RHI::RHIMaterialPtr& sourceMaterial,
+	const RHI::RHIMaterialVersionPtr& sourceVersion, uint64_t frame)
+{
+	auto material = GetOrAddShadowMaterial(vertex, shadowType, bSkinned, bMasked);
+	if (sourceMaterial)
+	{
+		if (auto custom = GetOrAddCustomShadowMaterial(
+			sourceShader, sourceMaterial, sourceVersion, vertex, shadowType, bMasked, frame))
+		{
+			material = std::move(custom);
+		}
+	}
+	return material;
+}
+
 RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertexDescription, RHI::EShadowType shadowType, bool bSkinned, bool bMasked)
 {
 	auto& materials = shadowType == EShadowType::EVSM ?
@@ -415,17 +451,9 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 											mesh->m_vertexDescription->HasAttribute(
 												RHIVertexDescription::DefaultBoneWeightsBinding);
 										const bool bMasked = renderQueueTag == maskedQueueTag;
-										auto depthMaterial = GetOrAddShadowMaterial(
-											mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked);
-										if (customDepthMaterial)
-										{
-											if (auto customShadowMaterial = GetOrAddCustomShadowMaterial(customDepthShader,
-													customDepthMaterial, customDepthMaterialVersion,
-													mesh->m_vertexDescription, shadowPass.m_shadowType, bMasked, sceneView.m_frame))
-											{
-												depthMaterial = customShadowMaterial;
-											}
-										}
+										auto depthMaterial = SelectShadowMaterial(
+											mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked,
+											customDepthShader, customDepthMaterial, customDepthMaterialVersion, sceneView.m_frame);
 										if (!depthMaterial || !preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders)
 										{
 											bShadowPayloadComplete[passIndex][arenaPayloadIndex] = false;
@@ -435,17 +463,9 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 										// Shadow materials are immutable derivatives of the exact source
 										// version resolved for this submission.
 										RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
-										PerInstanceData data;
-										data.model = model;
-										data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-										data.materialInstance =
-											preparedMaterials.Get(depthMaterial).m_materialInstance;
-										data.skeletonOffset =
-											bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)();
-										data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
-										data.baseColorAlpha = baseColorAlpha;
-										data.baseColorSampler = baseColorSampler;
-										data.alphaCutoff = alphaCutoff;
+										auto data = MakeInstanceData(model, *mesh, preparedMaterials.Get(depthMaterial).m_materialInstance,
+											bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)(),
+											baseColorAlpha, baseColorSampler, alphaCutoff);
 										rangeInstances.Add(std::move(data));
 										rangeStableKeys.Add(stableKey);
 										AppendPackedDrawArenaMaterialVersion(
@@ -581,19 +601,12 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 							mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
 							mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
 						const bool bMasked = renderQueueTag == maskedQueueTag;
-						auto depthMaterial =
-							GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked);
-						if (shadowMesh.m_customDepthMaterial)
-						{
-							auto customShadowMaterial = GetOrAddCustomShadowMaterial(shadowMesh.m_customDepthShader,
-								shadowMesh.m_customDepthMaterial,
-								shadowMesh.m_customDepthMaterial->GetVersionForSubmission(materialSubmissionId),
-								mesh->m_vertexDescription, shadowPass.m_shadowType, bMasked, sceneView.m_frame);
-							if (customShadowMaterial)
-							{
-								depthMaterial = customShadowMaterial;
-							}
-						}
+						auto depthMaterial = SelectShadowMaterial(
+							mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked,
+							shadowMesh.m_customDepthShader, shadowMesh.m_customDepthMaterial,
+							shadowMesh.m_customDepthMaterial ?
+								shadowMesh.m_customDepthMaterial->GetVersionForSubmission(materialSubmissionId) :
+								RHIMaterialVersionPtr{}, sceneView.m_frame);
 
 						const bool bIsDepthMaterialReady =
 							depthMaterial && preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders;
@@ -605,16 +618,9 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 						}
 						RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
 
-						ShadowPrepassNode::PerInstanceData data;
-						data.model = meshWorldMatrix;
-						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-						data.materialInstance =
-							preparedMaterials.Get(depthMaterial).m_materialInstance;
-						data.skeletonOffset = bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)();
-						data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
-						data.baseColorAlpha = shadowMesh.m_baseColorFactor.a;
-						data.baseColorSampler = shadowMesh.m_baseColorSampler;
-						data.alphaCutoff = shadowMesh.m_alphaCutoff;
+						auto data = MakeInstanceData(meshWorldMatrix, *mesh, preparedMaterials.Get(depthMaterial).m_materialInstance,
+							bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)(),
+							shadowMesh.m_baseColorFactor.a, shadowMesh.m_baseColorSampler, shadowMesh.m_alphaCutoff);
 
 						if (bMasked || depthMaterial->GetRenderState().IsRequiredCustomDepthShader())
 						{
@@ -690,9 +696,6 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 								sourceMesh->m_vertexDescription->HasAttribute(
 									RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
 							const bool bMasked = renderQueueTag == maskedQueueTag;
-							auto depthMaterial = GetOrAddShadowMaterial(
-								sourceMesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked);
-
 							ShaderSetPtr customDepthShader;
 							RHIMaterialPtr customDepthMaterial;
 							if (meshIndex < group.m_sourceMaterialShaders.Num() &&
@@ -702,16 +705,12 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 							{
 								customDepthShader = group.m_sourceMaterialShaders[meshIndex];
 								customDepthMaterial = group.m_materials[meshIndex];
-								auto customShadowMaterial = GetOrAddCustomShadowMaterial(customDepthShader,
-									customDepthMaterial,
-									customDepthMaterial ? customDepthMaterial->GetVersionForSubmission(materialSubmissionId)
-														: RHIMaterialVersionPtr{},
-									sourceMesh->m_vertexDescription, shadowPass.m_shadowType, bMasked, sceneView.m_frame);
-								if (customShadowMaterial)
-								{
-									depthMaterial = customShadowMaterial;
-								}
 							}
+							auto depthMaterial = SelectShadowMaterial(
+								sourceMesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked,
+								customDepthShader, customDepthMaterial,
+								customDepthMaterial ? customDepthMaterial->GetVersionForSubmission(materialSubmissionId) :
+									RHIMaterialVersionPtr{}, sceneView.m_frame);
 
 							const bool bIsDepthMaterialReady =
 								depthMaterial && preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders;
@@ -793,16 +792,9 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 									continue;
 								}
 
-								ShadowPrepassNode::PerInstanceData data;
-								data.model = meshWorldMatrix;
-								data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-								data.materialInstance = materialInstance;
-								data.skeletonOffset =
-									bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)();
-								data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
-								data.baseColorAlpha = baseColorAlpha;
-								data.baseColorSampler = baseColorSampler;
-								data.alphaCutoff = alphaCutoff;
+								auto data = MakeInstanceData(meshWorldMatrix, *mesh, materialInstance,
+									bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)(),
+									baseColorAlpha, baseColorSampler, alphaCutoff);
 
 								viewResources.m_packet.Add(std::move(batch), mesh, data, stableKey, payloadMobility);
 							}

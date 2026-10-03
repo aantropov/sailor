@@ -20,6 +20,57 @@ using namespace Sailor::RHI;
 const char* DepthPrepassNode::m_name = "DepthPrepass";
 #endif
 
+namespace
+{
+	struct DepthMaterialData
+	{
+		uint32_t m_materialInstance = 0;
+		uint32_t m_alphaCutoffBits = 0;
+	};
+
+	DepthMaterialData GetDepthMaterialData(const RenderState& sourceState, uint32_t materialInstance,
+		uint32_t baseColorSampler, float baseColorAlpha, float alphaCutoff)
+	{
+		DepthMaterialData data;
+		if (sourceState.IsRequiredCustomDepthShader())
+		{
+			data.m_materialInstance = materialInstance;
+		}
+		else if (sourceState.GetTag() == "Masked"_h.GetHash())
+		{
+			data.m_materialInstance = baseColorSampler;
+			const float effectiveAlphaCutoff = baseColorAlpha > 0.000001f ? alphaCutoff / baseColorAlpha : 2.0f;
+			data.m_alphaCutoffBits = glm::floatBitsToUint(effectiveAlphaCutoff);
+		}
+		return data;
+	}
+
+	DepthPrepassNode::PerInstanceData MakeInstanceData(
+		const glm::mat4& model, const RHIMesh& mesh, uint32_t skeletonOffset, const DepthMaterialData& material)
+	{
+		DepthPrepassNode::PerInstanceData data;
+		data.model = model;
+		data.sphereBounds = mesh.m_bounds.ToSphere().GetVec4();
+		data.skeletonOffset = skeletonOffset;
+		data.materialInstance = material.m_materialInstance;
+		data.padding = material.m_alphaCutoffBits;
+		return data;
+	}
+
+	DepthPrepassNode::CustomPerInstanceData MakeCustomInstanceData(
+		const DepthPrepassNode::PerInstanceData& source, const RHIMesh& mesh)
+	{
+		DepthPrepassNode::CustomPerInstanceData data;
+		data.model = source.model;
+		data.sphereBounds = source.sphereBounds;
+		data.materialInstance = source.materialInstance;
+		data.skeletonOffset = source.skeletonOffset;
+		data.padding = source.padding;
+		data.bakedVolumeScale = vec4(mesh.m_bakedVolumeScale, 1.0f);
+		return data;
+	}
+}
+
 RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(
 	const RHI::RHIMaterialPtr& source,
 	RHI::RHIVertexDescriptionPtr vertexDescription,
@@ -266,32 +317,15 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						}
 
 						RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
-						PerInstanceData data;
-						data.model = model;
-						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-						data.skeletonOffset =
-							bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)();
-						if (bRequiredCustomDepth)
-						{
-							data.materialInstance = preparedMaterials.Get(depthMaterial).m_materialInstance;
-						}
-						else if (bMaskedQueue)
-						{
-							data.materialInstance = baseColorSampler;
-							const float effectiveAlphaCutoff =
-								baseColorFactor.a > 0.000001f ? alphaCutoff / baseColorFactor.a : 2.0f;
-							data.padding = glm::floatBitsToUint(effectiveAlphaCutoff);
-						}
+						const auto materialData = GetDepthMaterialData(sourceMaterial->GetRenderState(),
+							bRequiredCustomDepth ? preparedMaterials.Get(depthMaterial).m_materialInstance : 0u,
+							baseColorSampler, baseColorFactor.a, alphaCutoff);
+						auto data = MakeInstanceData(model, *mesh,
+							bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)(), materialData);
 
 						if (bRequiredCustomDepth)
 						{
-							CustomPerInstanceData customData;
-							customData.model = data.model;
-							customData.sphereBounds = data.sphereBounds;
-							customData.materialInstance = data.materialInstance;
-							customData.skeletonOffset = data.skeletonOffset;
-							customData.padding = data.padding;
-							customData.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
+							auto customData = MakeCustomInstanceData(data, *mesh);
 							customRangeInstances.Add(std::move(customData));
 							customRangeStableKeys.Add(stableKey);
 							RHI::AppendPackedDrawArenaMaterialVersion(
@@ -520,32 +554,13 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					}
 					RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
 
-					const glm::mat4 meshWorldMatrix = proxy.ResolveMeshWorldMatrix(i);
-					DepthPrepassNode::PerInstanceData data;
-					data.model = meshWorldMatrix;
-					data.skeletonOffset = bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)();
-					data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-
-					if (bRequiredCustomDepth)
-					{
-						data.materialInstance = preparedMaterials.Get(depthMaterial).m_materialInstance;
-					}
-					else if (bMaskedQueue)
-					{
-						data.materialInstance = source->m_baseColorSamplers.Num() > i ?
-							source->m_baseColorSamplers[i] : 0u;
-						const float baseColorAlpha = source->m_baseColorFactors.Num() > i ?
-							source->m_baseColorFactors[i].a : 1.0f;
-						const float alphaCutoff = source->m_alphaCutoffs.Num() > i ?
-							source->m_alphaCutoffs[i] : 0.5f;
-						const float effectiveAlphaCutoff = baseColorAlpha > 0.000001f ?
-							alphaCutoff / baseColorAlpha : 2.0f;
-						data.padding = glm::floatBitsToUint(effectiveAlphaCutoff);
-					}
-					else
-					{
-						data.materialInstance = 0;
-					}
+					const auto materialData = GetDepthMaterialData(sourceMaterial->GetRenderState(),
+						bRequiredCustomDepth ? preparedMaterials.Get(depthMaterial).m_materialInstance : 0u,
+						i < source->m_baseColorSamplers.Num() ? source->m_baseColorSamplers[i] : 0u,
+						i < source->m_baseColorFactors.Num() ? source->m_baseColorFactors[i].a : 1.0f,
+						i < source->m_alphaCutoffs.Num() ? source->m_alphaCutoffs[i] : 0.5f);
+					auto data = MakeInstanceData(proxy.ResolveMeshWorldMatrix(i), *mesh,
+						bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)(), materialData);
 
 					if (bRequiredCustomDepth || bMaskedQueue)
 					{
@@ -596,13 +611,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 
 					if (bRequiredCustomDepth)
 					{
-						DepthPrepassNode::CustomPerInstanceData customData;
-						customData.model = data.model;
-						customData.sphereBounds = data.sphereBounds;
-						customData.materialInstance = data.materialInstance;
-						customData.skeletonOffset = data.skeletonOffset;
-						customData.padding = data.padding;
-						customData.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
+						auto customData = MakeCustomInstanceData(data, *mesh);
 						m_customPacket.Add(
 							std::move(batch),
 							mesh,
@@ -662,26 +671,11 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						}
 
 						RHIBatch batchTemplate = preparedMaterials.MakeBatch(depthMaterial, sourceMesh);
-						uint32_t materialInstance = 0u;
-						if (bRequiredCustomDepth)
-						{
-							materialInstance = preparedMaterials.Get(depthMaterial).m_materialInstance;
-						}
-						else if (bMaskedQueue && meshIndex < group.m_baseColorSamplers.Num())
-						{
-							materialInstance = group.m_baseColorSamplers[meshIndex];
-						}
-
-						float effectiveAlphaCutoff = 0.0f;
-						if (bMaskedQueue && !bRequiredCustomDepth)
-						{
-							const float baseColorAlpha = meshIndex < group.m_baseColorFactors.Num() ?
-								group.m_baseColorFactors[meshIndex].a : 1.0f;
-							const float alphaCutoff = meshIndex < group.m_alphaCutoffs.Num() ?
-								group.m_alphaCutoffs[meshIndex] : 0.5f;
-							effectiveAlphaCutoff = baseColorAlpha > 0.000001f ?
-								alphaCutoff / baseColorAlpha : 2.0f;
-						}
+						const auto materialData = GetDepthMaterialData(sourceMaterial->GetRenderState(),
+							bRequiredCustomDepth ? preparedMaterials.Get(depthMaterial).m_materialInstance : 0u,
+							meshIndex < group.m_baseColorSamplers.Num() ? group.m_baseColorSamplers[meshIndex] : 0u,
+							meshIndex < group.m_baseColorFactors.Num() ? group.m_baseColorFactors[meshIndex].a : 1.0f,
+							meshIndex < group.m_alphaCutoffs.Num() ? group.m_alphaCutoffs[meshIndex] : 0.5f);
 
 						if (bRequiredCustomDepth || bMaskedQueue)
 						{
@@ -751,29 +745,13 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 								continue;
 							}
 
-							DepthPrepassNode::PerInstanceData data;
-							data.model = proxy.ResolveInstancedMeshWorldMatrix(
-								group,
-								instanceIndex,
-								meshIndex);
-							data.skeletonOffset = bSkinned ? proxy.GetSkeletonOffset() :
-								(std::numeric_limits<uint32_t>::max)();
-							data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
-							data.materialInstance = materialInstance;
-							if (bMaskedQueue && !bRequiredCustomDepth)
-							{
-								data.padding = glm::floatBitsToUint(effectiveAlphaCutoff);
-							}
+							auto data = MakeInstanceData(
+								proxy.ResolveInstancedMeshWorldMatrix(group, instanceIndex, meshIndex), *mesh,
+								bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)(), materialData);
 
 							if (bRequiredCustomDepth)
 							{
-								DepthPrepassNode::CustomPerInstanceData customData;
-								customData.model = data.model;
-								customData.sphereBounds = data.sphereBounds;
-								customData.materialInstance = data.materialInstance;
-								customData.skeletonOffset = data.skeletonOffset;
-								customData.padding = data.padding;
-								customData.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
+								auto customData = MakeCustomInstanceData(data, *mesh);
 								m_customPacket.Add(
 									std::move(batch),
 									mesh,
