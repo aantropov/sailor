@@ -10,12 +10,14 @@
 #include "FrameGraph/BlitNode.h"
 #include "FrameGraph/ClearNode.h"
 #include "FrameGraph/DepthHighZNode.h"
+#include "FrameGraph/DepthPrepassNode.h"
 #include "FrameGraph/DebugDrawNode.h"
 #include "FrameGraph/LinearizeDepthNode.h"
 #include "FrameGraph/LightCullingNode.h"
 #include "FrameGraph/PostProcessNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/RenderSceneNode.h"
+#include "FrameGraph/ShadowPrepassNode.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
@@ -611,6 +613,96 @@ void main() {
 		return compiled;
 	}
 
+	std::array<ShaderSetPtr, 2> WriteCustomDepthShader(const std::filesystem::path& workspace)
+	{
+		const auto path = workspace / "Content" / "CustomMaskedDepth.shader";
+		YAML::Node shader;
+		shader["includes"].push_back("Shaders/Constants.glsl");
+		for (const char* define : { "SKINNING", "ALPHA_CUTOUT", "PACKED_SHADOW_CASTER" }) shader["defines"].push_back(define);
+		shader["glslCommon"] = R"glsl(
+#version 450
+layout(std430, set=3, binding=0) readonly buffer MaterialData { vec4 instance[]; } material;
+)glsl";
+		shader["glslVertex"] = R"glsl(
+layout(location=DefaultPositionBinding) in vec3 position;
+layout(location=DefaultTexcoordBinding) in vec2 texcoord;
+layout(location=0) out vec2 uv;
+layout(location=1) flat out uint materialIndex;
+struct Instance {
+	mat4 model; vec4 sphereBounds; uvec4 indices; vec4 bakedVolumeScale;
+#ifdef PACKED_SHADOW_CASTER
+	vec4 masked;
+#else
+	mat4 previousModel; uvec4 motionState;
+#endif
+};
+layout(std430, set=2, binding=0) readonly buffer InstanceData { Instance instance[]; } data;
+layout(std430, set=2, binding=1) readonly buffer InstanceIndices { uint instance[]; } instanceIndices;
+layout(set=0, binding=0) uniform FrameData {
+	mat4 view; mat4 projection; mat4 invProjection; vec4 cameraPosition;
+	ivec2 viewportSize; vec2 cameraZNearZFar; float currentTime; float deltaTime;
+} frame;
+#ifdef PACKED_SHADOW_CASTER
+layout(push_constant) uniform Shadow { mat4 lightMatrix; } shadow;
+#endif
+#ifdef SKINNING
+layout(location=DefaultBoneIdsBinding) in uvec4 boneIds;
+layout(location=DefaultBoneWeightsBinding) in vec4 weights;
+layout(std430, set=5, binding=0) readonly buffer Bones { mat4 matrix[]; } bones;
+#endif
+void main() {
+	Instance instance = data.instance[instanceIndices.instance[gl_InstanceIndex]];
+	materialIndex = instance.indices.x;
+	vec4 settings = material.instance[materialIndex];
+	vec4 vertex = vec4(position.xy * settings.w + vec2(settings.x, 0), settings.z, 1);
+#ifdef SKINNING
+	vertex = (bones.matrix[instance.indices.y + boneIds.x] * weights.x +
+		bones.matrix[instance.indices.y + boneIds.y] * weights.y +
+		bones.matrix[instance.indices.y + boneIds.z] * weights.z +
+		bones.matrix[instance.indices.y + boneIds.w] * weights.w) * vertex;
+#endif
+#ifdef PACKED_SHADOW_CASTER
+	gl_Position = shadow.lightMatrix * instance.model * vertex;
+#else
+	gl_Position = frame.projection * frame.view * instance.model * vertex;
+#endif
+	uv = texcoord;
+}
+)glsl";
+		shader["glslFragment"] = R"glsl(
+layout(location=0) in vec2 uv;
+layout(location=1) flat in uint materialIndex;
+layout(location=0) out vec4 color;
+void main() {
+	if (uv.x < material.instance[materialIndex].y) discard;
+#ifdef PACKED_SHADOW_CASTER
+	color = vec4(gl_FragCoord.z);
+#else
+	color = vec4(1);
+#endif
+}
+)glsl";
+		std::ofstream output(path);
+		output << shader;
+		output.close();
+		Require(static_cast<bool>(output), "custom masked shader fixture must be written");
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+		auto* compiler = App::GetSubmodule<ShaderCompiler>();
+		std::array<ShaderSetPtr, 2> result;
+		for (uint32_t skinned = 0; skinned < result.size(); ++skinned)
+		{
+			TVector<std::string> defines{ "ALPHA_CUTOUT" };
+			if (skinned) defines.Add("SKINNING");
+			Require(compiler->LoadShader_Immediate(id, result[skinned], defines) && result[skinned]->IsReady(),
+				"the custom main/depth shader must compile");
+			defines.Add("PACKED_SHADOW_CASTER");
+			ShaderSetPtr shadow;
+			Require(compiler->LoadShader_Immediate(id, shadow, defines) && shadow->IsReady(),
+				"the compatible packed shadow variant must compile");
+		}
+		return result;
+	}
+
 	void TestStaticMsaaBindings(const std::filesystem::path& workspace)
 	{
 		const auto path = workspace / "Content" / "StaticMsaaBindings.renderer";
@@ -1096,6 +1188,217 @@ frame:
 			(size.x + 7) / 8, (size.y + 7) / 8, 1, { bindings });
 		commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
 		return buffer;
+	}
+
+	void TestCustomDepthSilhouette(ShaderSetPtr shader, const std::array<ShaderSetPtr, 4>& depthReadback,
+		bool paged, bool instanced, bool skinned)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto mesh = RHIMeshPtr::Make();
+		mesh->m_vertexDescription = driver->GetOrAddVertexDescription<VertexP3N3T3B3UV2C4I4W4>();
+		std::array<VertexP3N3T3B3UV2C4I4W4, 4> vertices{};
+		for (uint32_t i = 0; i < vertices.size(); ++i)
+		{
+			vertices[i].m_position = glm::vec3(i % 2 ? 1 : -1, i / 2 ? 1 : -1, 0.5f);
+			vertices[i].m_texcoord = glm::vec2(i % 2, i / 2);
+			vertices[i].m_color = glm::vec4(1);
+			vertices[i].m_boneWeights = glm::vec4(1, 0, 0, 0);
+		}
+		const uint32_t indices[] = { 0, 1, 2, 2, 1, 3 };
+		mesh->m_vertexBuffer = driver->CreateBuffer(sizeof(vertices), EBufferUsageBit::VertexBuffer_Bit, HostMemory);
+		mesh->m_indexBuffer = driver->CreateBuffer(sizeof(indices), EBufferUsageBit::IndexBuffer_Bit, HostMemory);
+		std::memcpy(mesh->m_vertexBuffer->GetPointer(), vertices.data(), sizeof(vertices));
+		std::memcpy(mesh->m_indexBuffer->GetPointer(), indices, sizeof(indices));
+		mesh->m_bounds = Math::AABB(glm::vec3(0), glm::vec3(2));
+		const auto materialBindings = [&](float shift)
+		{
+			const glm::vec4 settings(shift, 0.75f, 0.5f, 0.5f);
+			auto buffer = driver->CreateBuffer(sizeof(settings), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+			std::memcpy(buffer->GetPointer(), &settings, sizeof(settings));
+			auto result = driver->CreateShaderBindings();
+			Require(driver->AddBufferToShaderBindings(result, buffer, "material", 0).IsValid(), "custom material parameters must bind");
+			return result;
+		};
+		const RenderState state(true, true, 0, true, ECullMode::None, EBlendMode::None, EFillMode::Fill, "Masked"_h.GetHash(), true);
+		auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader, materialBindings(0.25f));
+		Require(material && material->GetVersion(), "custom masked material must have a complete version");
+		RHISceneViewProxy source;
+		source.m_staticMeshEcs = 1;
+		source.m_mobility = EMobilityType::Static;
+		source.m_worldMatrix = glm::mat4(1);
+		source.m_worldAabb = Math::AABB(glm::vec3(0), glm::vec3(3));
+		source.m_shadowCaster = RHIShadowCasterProxyPtr::Make();
+		source.m_shadowCaster->m_worldAabb = source.m_worldAabb;
+		glm::mat4 second(1);
+		second[3].x = -1;
+		if (instanced)
+		{
+			RHIInstancedMeshGroup group;
+			group.m_instanceTransforms = { glm::mat4(1), second };
+			group.m_meshes = { mesh };
+			group.m_materials = { material };
+			group.m_sourceMaterialShaders = { shader };
+			group.m_renderQueueTags = { "Masked"_h.GetHash() };
+			group.m_baseColorFactors = { glm::vec4(1) };
+			group.m_baseColorSamplers = { 0 };
+			group.m_alphaCutoffs = { 0.75f };
+			group.m_bCastShadows = true;
+#if defined(__APPLE__)
+			group.m_materialTextureSamplers = { TSet<uint32_t>{ 0 } };
+#endif
+			source.m_instancedGroups.Add(std::move(group));
+		}
+		else
+		{
+			source.m_meshes = { mesh, mesh };
+			source.m_meshModelMatrices = { glm::mat4(1), second };
+			source.m_overrideMaterials = { material, material };
+			source.m_renderQueueTags = { "Masked"_h.GetHash(), "Masked"_h.GetHash() };
+			source.m_baseColorFactors = { glm::vec4(1), glm::vec4(1) };
+			source.m_baseColorSamplers = { 0, 0 };
+			source.m_alphaCutoffs = { 0.75f, 0.75f };
+#if defined(__APPLE__)
+			source.m_materialTextureSamplers = { TSet<uint32_t>{ 0 }, TSet<uint32_t>{ 0 } };
+#endif
+			for (const auto& transform : source.m_meshModelMatrices)
+			{
+				RHIShadowMeshProxy caster;
+				caster.m_mesh = mesh;
+				caster.m_worldMatrix = transform;
+				caster.m_renderQueueTag = "Masked"_h.GetHash();
+				caster.m_customDepthMaterial = material;
+				caster.m_customDepthShader = shader;
+				caster.m_alphaCutoff = 0.75f;
+#if defined(__APPLE__)
+				caster.m_materialTextureSamplers = { 0 };
+#endif
+				source.m_shadowCaster->m_meshes.Add(std::move(caster));
+			}
+		}
+		auto topology = RHISceneProxyResourcePtr::Make(std::move(source));
+		RHISceneInstanceRecord record;
+		record.m_producerKey = 1;
+		record.m_mobility = EMobilityType::Static;
+		record.m_worldMatrix = glm::mat4(1);
+		record.m_worldBounds = topology->m_proxy.m_worldAabb;
+		record.m_topology = topology;
+		record.m_topologyRevision = topology->m_mainRevision;
+		record.m_shadowRevision = topology->m_shadowRevision;
+		record.m_renderFlags = 1;
+		record.m_skeletonOffset = skinned ? 0 : std::numeric_limits<uint32_t>::max();
+		auto scene = RHIScenePtr::Make();
+		scene->AddInstance(record);
+		RHISceneViewSnapshot snapshot;
+		snapshot.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+		snapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
+		snapshot.m_sceneVersions->Add(scene->PublishVersion());
+		snapshot.m_camera = TUniquePtr<CameraData>::Make();
+		snapshot.m_frameBindings = driver->CreateShaderBindings();
+		snapshot.m_rhiLightsData = driver->CreateShaderBindings();
+		snapshot.m_bGlobalIlluminationEnabled = false;
+		UboFrameData frameData{};
+		frameData.m_view = frameData.m_projection = frameData.m_invProjection = glm::mat4(1);
+		frameData.m_viewportSize = glm::ivec2(Side);
+		for (uint32_t binding = 0; binding < 2; ++binding)
+		{
+			auto buffer = driver->CreateBuffer(sizeof(frameData), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
+			std::memcpy(buffer->GetPointer(), &frameData, sizeof(frameData));
+			driver->AddBufferToShaderBindings(snapshot.m_frameBindings, buffer, binding ? "previousFrame" : "frame", binding);
+		}
+		if (skinned)
+		{
+			glm::mat4 bone(1);
+			bone[3].x = 0.25f;
+			auto buffer = driver->CreateBuffer(sizeof(bone), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+			std::memcpy(buffer->GetPointer(), &bone, sizeof(bone));
+			snapshot.m_boneMatrices = driver->CreateShaderBindings();
+			driver->AddBufferToShaderBindings(snapshot.m_boneMatrices, buffer, "bones", 0);
+		}
+		snapshot.ForEachSceneProxy(EMobilityType::Static, [&](const RHIVisibleSceneProxy& proxy) { snapshot.m_proxies.Add(proxy); });
+		RHIUpdateShadowMapCommand shadowPass;
+		shadowPass.m_shadowType = EShadowType::PCF;
+		shadowPass.m_lightMatrix = glm::mat4(1);
+		shadowPass.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+		snapshot.ForEachShadowCaster(EMobilityType::Static, [&](const RHIVisibleShadowCaster& caster) { shadowPass.m_meshList.Add(caster); });
+		snapshot.m_shadowMapsToUpdate.Add(std::move(shadowPass));
+		snapshot.PrepareLods(glm::mat4(1), glm::mat4(1));
+		auto color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+		const auto depthTarget = [&]()
+		{
+			return driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp,
+				ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit);
+		};
+		auto prepassDepth = depthTarget();
+		auto mainDepth = depthTarget();
+		auto depth = TRefPtr<DepthPrepassNode>::Make();
+		auto main = TRefPtr<RenderSceneNode>::Make();
+		auto shadow = TRefPtr<ShadowPrepassNode>::Make();
+		for (FrameGraphNodePtr node : { FrameGraphNodePtr(depth), FrameGraphNodePtr(main), FrameGraphNodePtr(shadow) })
+		{
+			node->SetString("Tag", "Masked");
+			node->SetString("GPUCulling", "false");
+			node->SetString("VirtualizeInstancePayloads", paged ? "true" : "false");
+		}
+		depth->SetString("ClearDepth", "true");
+		depth->SetRHIResource("depthStencil", prepassDepth);
+		main->SetRHIResource("color", color);
+		main->SetRHIResource("depthStencil", mainDepth);
+		for (uint32_t frame = 0; frame < 4; ++frame)
+		{
+			if (frame == 2) material->SetBindings(materialBindings(0));
+			snapshot.m_frame = frame + 1;
+			const uint64_t submissionId = 177000 + frame;
+			const uint64_t materialRevision = RHIMaterial::BeginSubmissionVersionCapture(submissionId);
+			snapshot.m_submissionContext->BeginSubmission(submissionId, 0, 0, materialRevision);
+			snapshot.m_shadowMapsToUpdate[0].m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
+			for (FrameGraphNodePtr node : { FrameGraphNodePtr(depth), FrameGraphNodePtr(main), FrameGraphNodePtr(shadow) })
+			{
+				auto prepare = node->Prepare(graph, snapshot);
+				if (prepare) { prepare->Run(); prepare->Wait(); }
+			}
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			depth->Process(graph, upload, draw, snapshot);
+			auto depthPixels = ReadDepth(draw, prepassDepth, depthReadback);
+			commands->BeginRenderPass(draw, TVector<RHITexturePtr>{ color }, mainDepth,
+				glm::ivec4(0, 0, Side, Side), glm::ivec2(0), true, glm::vec4(0), 0, true, true);
+			commands->EndRenderPass(draw);
+			main->Process(graph, upload, draw, snapshot);
+			auto mainPixels = ReadColor(draw, color);
+			shadow->Process(graph, upload, draw, snapshot);
+			auto shadowPixels = ReadColor(draw, snapshot.m_shadowMapsToUpdate[0].m_shadowMap);
+			CompleteCommands(upload, draw);
+			RHIMaterial::EndSubmissionVersionCapture(submissionId);
+			Require(depth->GetDrawCallStats().m_numInstances == 2 && main->GetDrawCallStats().m_numInstances == 2 &&
+				shadow->GetDrawCallStats().m_numInstances == 2, "all three real passes must draw both fixture instances");
+			const auto depths = static_cast<const glm::vec2*>(depthPixels->GetPointer());
+			const auto colors = static_cast<const glm::vec4*>(mainPixels->GetPointer());
+			const auto shadows = static_cast<const glm::vec4*>(shadowPixels->GetPointer());
+			const uint32_t column = (frame < 2 ? 6 : 5) + (skinned ? 1 : 0);
+			for (uint32_t y = 0; y < Side; ++y)
+				for (uint32_t x = 0; x < Side; ++x)
+				{
+					const uint32_t pixel = y * Side + x;
+					const bool covered = y >= 2 && y < 6 && (x == column || x == column - 4);
+					if ((colors[pixel].r > 0.1f) != covered || (depths[pixel].x > 0.1f) != covered ||
+						(shadows[pixel].r > 0.1f) != covered)
+					{
+						std::cerr << "Custom depth paged=" << paged << " instanced=" << instanced << " skinned=" << skinned
+							<< " frame=" << frame << " pixel=" << x << ',' << y << " covered=" << covered
+							<< " main=" << colors[pixel].r << " depth=" << depths[pixel].x << " shadow=" << shadows[pixel].r << '\n';
+					}
+					Require((colors[pixel].r > 0.1f) == covered, "main-pass pixels must show the authored displacement, cutoff and skinning");
+					Require((depths[pixel].x > 0.1f) == covered, "masked custom depth must match the main-pass silhouette");
+					Require((shadows[pixel].r > 0.1f) == covered, "packed custom shadow pixels must match the main-pass silhouette");
+				}
+		}
+		std::cout << "Custom masked depth paged=" << paged << " instanced=" << instanced << " skinned=" << skinned
+			<< ": main/depth/shadow silhouettes, two instance strides and material replacement passed\n";
 	}
 
 	void DrawDepthPattern(RHICommandListPtr command, RHIFrameGraphPtr graph, RHIRenderTargetPtr depth, ShaderSetPtr shader, uint32_t frame)
@@ -2518,6 +2821,7 @@ namespace Sailor::Tests
 		const auto graphId = WriteGraph(workspace);
 		const auto importedGraphIds = WriteImportedGraph(workspace);
 		const auto mrtShader = WriteMrtShader(workspace);
+		const auto customDepthShaders = WriteCustomDepthShader(workspace);
 		ShaderSetPtr blitShader;
 		const auto blitInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blit.shader");
 		Require(blitInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(blitInfo->GetFileId(), blitShader) && blitShader->IsReady(),
@@ -2543,6 +2847,10 @@ namespace Sailor::Tests
 					TestImportedRendering(importedGraphIds);
 					TestGraphLoadFailures(workspace, importedGraphIds[0]);
 					TestRelativeAttachmentDimensions(workspace);
+					for (bool paged : { false, true })
+						for (bool instanced : { false, true })
+							for (bool skinned : { false, true })
+								TestCustomDepthSilhouette(customDepthShaders[skinned ? 1 : 0], depthReadback, paged, instanced, skinned);
 					TestStaticMsaaBindings(workspace);
 					TestGraphMsaaTargets();
 					TestGraphTargetLifetime();

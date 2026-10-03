@@ -8,6 +8,7 @@
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RenderSceneTextureCache.h"
+#include "FrameGraph/RenderSceneNode.h"
 #include "RHI/MotionHistory.h"
 
 namespace Sailor
@@ -38,31 +39,8 @@ namespace Sailor
 
 		};
 
-		// Custom depth shaders reuse the main-pass material layout. Keep this rare
-		// stream separate so ordinary opaque/masked depth records stay compact.
-		struct CustomPerInstanceData
-		{
-			glm::mat4 model;
-			vec4 sphereBounds;
-			uint32_t materialInstance = 0u;
-			uint32_t skeletonOffset = 0u;
-			uint32_t bIsCulled = 0u;
-			uint32_t padding = 0u;
-			vec4 bakedVolumeScale = vec4(1.0f);
-			RHI::RHIObjectMotionData motion{};
-
-			bool operator==(const CustomPerInstanceData& rhs) const
-			{
-				return model == rhs.model &&
-					sphereBounds == rhs.sphereBounds &&
-					materialInstance == rhs.materialInstance &&
-					skeletonOffset == rhs.skeletonOffset &&
-					bIsCulled == rhs.bIsCulled &&
-					padding == rhs.padding &&
-					bakedVolumeScale == rhs.bakedVolumeScale && motion == rhs.motion;
-			}
-
-		};
+		// Custom materials use the main-pass shader interface, not the compact depth layout.
+		using CustomPerInstanceData = Framegraph::RenderSceneNode::PerInstanceData;
 
 		SAILOR_API static const char* GetName() { return m_name; }
 
@@ -141,10 +119,9 @@ namespace Sailor
 		TMap<DepthMaterialKey, RHI::RHIMaterialPtr> m_maskedDepthOnlyMaterials;
 		TMap<DepthMaterialKey, RHI::RHIMaterialPtr> m_skinnedMaskedDepthOnlyMaterials;
 		RHI::RHIMaterialPtr GetOrAddDepthMaterial(
+			const RHI::RHIMaterialPtr& source,
 			RHI::RHIVertexDescriptionPtr vertex,
-			bool bSkinned,
-			bool bMasked,
-			RHI::ECullMode cullMode);
+			bool bSkinned);
 		// Culling
 		ShaderSetPtr m_pComputeMeshCullingShader{};
 		Framegraph::TextureBindingCache m_textureBindingCache;

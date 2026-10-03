@@ -42,6 +42,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <yaml-cpp/yaml.h>
 
@@ -1525,6 +1526,7 @@ namespace
 
 	void TestBakedVolumeScalePerInstanceLayoutContract()
 	{
+		static_assert(std::is_same_v<DepthPrepassNode::CustomPerInstanceData, Framegraph::RenderSceneNode::PerInstanceData>);
 		Framegraph::RenderSceneNode::PerInstanceData renderInstance{};
 		DepthPrepassNode::PerInstanceData depthInstance{};
 		DepthPrepassNode::CustomPerInstanceData customDepthInstance{};
@@ -1551,7 +1553,7 @@ namespace
 			shadowScaleOffset == 96u &&
 			shadowAlphaOffset == 112u &&
 			renderScaleOffset + sizeof(vec4) + sizeof(RHI::RHIObjectMotionData) == sizeof(renderInstance),
-			"main, ordinary depth, custom depth, and shadow passes must keep their independent std430 instance layouts");
+			"custom depth must match the main layout while generic depth and shadows keep their compact std430 records");
 
 		RHI::RHIMesh mesh;
 		Require(mesh.m_bakedVolumeScale == glm::vec3(1.0f) &&

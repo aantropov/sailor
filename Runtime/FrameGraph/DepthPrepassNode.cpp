@@ -21,11 +21,17 @@ const char* DepthPrepassNode::m_name = "DepthPrepass";
 #endif
 
 RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(
+	const RHI::RHIMaterialPtr& source,
 	RHI::RHIVertexDescriptionPtr vertexDescription,
-	bool bSkinned,
-	bool bMasked,
-	RHI::ECullMode cullMode)
+	bool bSkinned)
 {
+	const auto& state = source->GetRenderState();
+	if (state.IsRequiredCustomDepthShader())
+	{
+		return source;
+	}
+	const bool bMasked = state.GetTag() == "Masked"_h.GetHash();
+	const auto cullMode = state.GetCullMode();
 	auto& materials = bMasked ?
 		(bSkinned ? m_skinnedMaskedDepthOnlyMaterials : m_maskedDepthOnlyMaterials) :
 		(bSkinned ? m_skinnedDepthOnlyMaterials : m_depthOnlyMaterials);
@@ -253,7 +259,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							return;
 						}
 						const bool bRequiredCustomDepth =
-							!bMaskedQueue && sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
+							sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
 						if ((bRequiredCustomDepth && !bBuildCustomRange) ||
 							(!bRequiredCustomDepth && !bBuildPacketRange))
 						{
@@ -275,14 +281,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						const bool bSkinned = proxy.GetSkeletonOffset() != (std::numeric_limits<uint32_t>::max)() &&
 							mesh->m_vertexDescription->HasAttribute(RHIVertexDescription::DefaultBoneIdsBinding) &&
 							mesh->m_vertexDescription->HasAttribute(RHIVertexDescription::DefaultBoneWeightsBinding);
-						auto depthMaterial = GetOrAddDepthMaterial(mesh->m_vertexDescription,
-							bSkinned,
-							bMaskedQueue,
-							sourceMaterial->GetRenderState().GetCullMode());
-						if (bRequiredCustomDepth)
-						{
-							depthMaterial = sourceMaterial;
-						}
+						auto depthMaterial = GetOrAddDepthMaterial(sourceMaterial, mesh->m_vertexDescription, bSkinned);
 						const bool bReady = depthMaterial &&
 							preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders &&
 							depthMaterial->GetRenderState().IsEnabledZWrite();
@@ -366,7 +365,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							auto hashCustomDepthMaterialVersion =
 								[&](const RHI::RHIMaterialPtr& material)
 								{
-									if (bMaskedQueue || !material ||
+									if (!material ||
 										material->GetRenderState().GetTag() != QueueTagHash ||
 										!material->GetRenderState().IsRequiredCustomDepthShader())
 									{
@@ -542,7 +541,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					const auto& mesh = sceneViewSnapshot.ResolveMesh(proxy, i);
 					if (!mesh)
 					{
-						const bool bExpectedCustomDepth = !bMaskedQueue &&
+						const bool bExpectedCustomDepth =
 							sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
 						if (bExpectedCustomDepth)
 						{
@@ -559,13 +558,9 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						proxy.GetSkeletonOffset() != (std::numeric_limits<uint32_t>::max)() &&
 						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
 						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
-					auto depthMaterial = GetOrAddDepthMaterial(
-						mesh->m_vertexDescription,
-						bSkinned,
-						bMaskedQueue,
-						sourceMaterial->GetRenderState().GetCullMode());
+					auto depthMaterial = GetOrAddDepthMaterial(sourceMaterial, mesh->m_vertexDescription, bSkinned);
 
-					const bool bRequiredCustomDepth = !bMaskedQueue &&
+					const bool bRequiredCustomDepth =
 						sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
 					if (!bArenaView &&
 						((bRequiredCustomDepth && !bBuildCustomPayload[payloadIndex]) ||
@@ -573,11 +568,6 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					{
 						continue;
 					}
-					if (bRequiredCustomDepth)
-					{
-						depthMaterial = sourceMaterial;
-					}
-
 					const bool bIsDepthMaterialReady = depthMaterial &&
 						preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders &&
 						depthMaterial->GetRenderState().IsEnabledZWrite();
@@ -748,7 +738,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						const auto& sourceMesh = group.m_meshes[meshIndex];
 						if (!sourceMesh)
 						{
-							const bool bExpectedCustomDepth = !bMaskedQueue &&
+							const bool bExpectedCustomDepth =
 								sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
 							if (bExpectedCustomDepth)
 							{
@@ -766,11 +756,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							sourceMesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
 							sourceMesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
 						auto depthMaterial = GetOrAddDepthMaterial(
-							sourceMesh->m_vertexDescription,
-							bSkinned,
-							bMaskedQueue,
-							sourceMaterial->GetRenderState().GetCullMode());
-						const bool bRequiredCustomDepth = !bMaskedQueue &&
+							sourceMaterial, sourceMesh->m_vertexDescription, bSkinned);
+						const bool bRequiredCustomDepth =
 							sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
 						if (!bArenaView &&
 							((bRequiredCustomDepth && !bBuildCustomPayload[payloadIndex]) ||
@@ -778,11 +765,6 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						{
 							continue;
 						}
-						if (bRequiredCustomDepth)
-						{
-							depthMaterial = sourceMaterial;
-						}
-
 						const bool bIsDepthMaterialReady = depthMaterial &&
 							preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders &&
 							depthMaterial->GetRenderState().IsEnabledZWrite();
@@ -811,7 +793,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						}
 
 						float effectiveAlphaCutoff = 0.0f;
-						if (bMaskedQueue)
+						if (bMaskedQueue && !bRequiredCustomDepth)
 						{
 							const float baseColorAlpha = meshIndex < group.m_baseColorFactors.Num() ?
 								group.m_baseColorFactors[meshIndex].a : 1.0f;
@@ -936,7 +918,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 								(std::numeric_limits<uint32_t>::max)();
 							data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 							data.materialInstance = materialInstance;
-							if (bMaskedQueue)
+							if (bMaskedQueue && !bRequiredCustomDepth)
 							{
 								data.padding = glm::floatBitsToUint(effectiveAlphaCutoff);
 							}
