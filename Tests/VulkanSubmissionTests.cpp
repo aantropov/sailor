@@ -38,6 +38,7 @@
 #endif
 
 #include <iostream>
+#include <iterator>
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -2040,6 +2041,42 @@ namespace
 		return result;
 	}
 
+	int RunEditorProtocolHost(const std::filesystem::path& directory)
+	{
+		int result = 1;
+		try
+		{
+			const auto endpoint = YAML::LoadFile((directory / "endpoint.yaml").string());
+			const auto port = endpoint["port"].as<uint16_t>();
+			const auto token = endpoint["token"].as<std::string>();
+			std::ifstream requestFile(directory / "initialize.pb", std::ios::binary);
+			const std::string request((std::istreambuf_iterator<char>(requestFile)), {});
+			const int32_t status = SailorProtocolStartLocalHost(
+				reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+				port, token.data(), static_cast<uint32_t>(token.size()));
+			{
+				std::ofstream ready(directory / "ready.tmp");
+				ready << status;
+			}
+			std::filesystem::rename(directory / "ready.tmp", directory / "ready");
+			Require(status == static_cast<int32_t>(Protocol::EEditorEngineWebSocketHostStatus::Ok),
+				"the managed integration fixture must start the real editor protocol host");
+			Require(App::IsRendererInitialized() && App::HasEditor(), "the protocol host needs a real initialized engine");
+			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(90);
+			while (!std::filesystem::exists(directory / "stop") && std::chrono::steady_clock::now() < deadline)
+			{
+				App::GetMainWindow()->ProcessSystemMessages();
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+			Require(std::filesystem::exists(directory / "stop"), "the managed integration fixture did not stop its host");
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		if (SailorProtocolStopLocalHost(true) == 0) result = 1;
+		if (result == 0) std::cout << "Managed editor protocol host completed\n";
+		return result;
+	}
+
 #if defined(__APPLE__)
 	void WriteEditorReadbackGraph(const std::filesystem::path& path, size_t firstTarget,
 		glm::ivec2 extent, bool authored = false, bool surface = false, bool unsupportedFirst = false, bool multiple = false)
@@ -2413,6 +2450,7 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
+		if (mode == "--gpu-editor-protocol-host" && i + 1 < argc) return RunEditorProtocolHost(argv[i + 1]);
 #if defined(__APPLE__)
 		if (mode == "--gpu-editor-readback-graph") return RunEditorReadbackGraphGpu(argc, argv);
 		if (mode == "--gpu-metal-export" || mode == "--gpu-metal-retirement") return RunFenceGpu(argc, argv, mode);
