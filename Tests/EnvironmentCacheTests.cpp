@@ -190,7 +190,7 @@ namespace
 	void TestConsumersRetainEvictedMaps()
 	{
 		ResourceCounts counts;
-		RHIShaderBinding retainedBinding;
+		RHIShaderBindingPtr retainedBinding = RHIShaderBindingPtr::Make();
 		RHICubemapPtr previousFogEnvironment;
 		{
 			EnvironmentNodeProbe node;
@@ -199,7 +199,7 @@ namespace
 			Require(node.TryRestoreEnvironment(frameGraph, MakeKey(1u), {}), "the first bundle must be available");
 			for (uint32_t channel = 0u; channel < 3u; ++channel)
 			{
-				retainedBinding.SetTextureBinding(channel, frameGraph->GetSampler(MapNames[channel]));
+				retainedBinding->SetTextureBinding(channel, frameGraph->GetSampler(MapNames[channel]));
 			}
 			previousFogEnvironment = frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>();
 			for (uint32_t state = 2u; state <= 5u; ++state)
@@ -212,13 +212,16 @@ namespace
 			Require(counts.Live() == 15u, "shader bindings must retain the evicted bundle after frame-graph reset");
 		}
 		Require(counts.Live() == 3u, "consumer references must outlive the Environment node");
+		auto retainedConsumer = retainedBinding;
+		retainedBinding.Clear();
+		Require(counts.Live() == 3u, "another RHIPtr must retain the binding and its evicted environment maps");
 		for (uint32_t channel = 0u; channel < 3u; ++channel)
 		{
-			const auto cube = retainedBinding.GetTextureBinding(channel).DynamicCast<CountedCubemap>();
+			const auto cube = retainedConsumer->GetTextureBinding(channel).DynamicCast<CountedCubemap>();
 			Require(cube && cube->m_state == 1u && cube->m_channel == channel,
 				"retained bindings must still refer to the original complete bundle");
 		}
-		retainedBinding.SetTextureBindings({});
+		retainedConsumer.Clear();
 		Require(counts.Live() == 1u, "the previous fog irradiance must remain alive independently of other maps");
 		previousFogEnvironment.Clear();
 		Require(counts.Live() == 0u, "the final consumer release must destroy the last evicted map");
