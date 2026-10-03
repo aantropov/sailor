@@ -262,6 +262,125 @@ namespace
 		return files;
 	}
 
+	void TestColdModelMaterialPublication(const std::filesystem::path& workspace, bool worker)
+	{
+		const auto folder = workspace / "Content" / (worker ? "ColdModelWorker" : "ColdModelMain");
+		std::filesystem::create_directories(folder / "Content/materials");
+		ModelFixture fixture(folder, true);
+		const auto modelPath = fixture.m_path.parent_path() / "ColdModel.gltf";
+		const auto modelId = FileId::CreateNewFileId();
+		nlohmann::json source;
+		{
+			std::ifstream input(fixture.m_path);
+			input >> source;
+		}
+		source["extensionsUsed"] = { "KHR_materials_emissive_strength" };
+		source["materials"][0]["emissiveFactor"] = { 0.25f, 0.5f, 0.75f };
+		source["materials"][0]["extensions"]["KHR_materials_emissive_strength"]["emissiveStrength"] = 4.0f;
+		{
+			std::ofstream output(modelPath);
+			output << source;
+			Require(static_cast<bool>(output), "the cold glTF source must be written");
+		}
+		{
+			auto metadata = fixture.m_info->Serialize();
+			metadata["fileId"] = modelId;
+			metadata["filename"] = modelPath.filename().string();
+			metadata["bShouldGenerateMaterials"] = true;
+			std::ofstream output(modelPath.string() + ".asset");
+			output << metadata;
+			Require(static_cast<bool>(output), "the cold model metadata must be written");
+		}
+
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		const auto materialPath = modelPath.parent_path() / "materials/ColdModel.gltf_material_0.mat";
+		const auto materialId = FileId::CreateNewFileId();
+		MaterialAsset::Data data;
+		data.m_shader = registry->GetOrLoadFile("Shaders/Standard_glTF.shader");
+		data.m_uniformsVec4["material.emissiveFactor"] = glm::vec4(0.125f, 0.25f, 0.5f, 0);
+		{
+			std::ofstream output(materialPath);
+			output << MaterialAsset::Serialize(data);
+			Require(static_cast<bool>(output), "the existing generated material must be written");
+		}
+		{
+			auto metadata = CreateAssetInfoMetadata<MaterialAssetInfo>(materialId, materialPath.filename().string());
+			metadata["sourceModel"] = modelId;
+			metadata["sourceMaterialIndex"] = 0;
+			std::ofstream output(materialPath.string() + ".asset");
+			output << metadata;
+			Require(static_cast<bool>(output), "the generated material ownership must be written");
+		}
+		Require(registry->GetOrLoadFile(materialPath.string()) == materialId,
+			"the owned material must register before its source model");
+		MaterialPtr material;
+		Require(App::GetSubmodule<MaterialImporter>()->LoadMaterial_Immediate(materialId, material) && material,
+			"the owned material must already be live");
+		Drain();
+		const auto revision = material->GetContentRevision();
+		if (worker)
+		{
+			auto lookup = Tasks::CreateTask<FileId>("Register model with a live generated material", [registry, modelPath]()
+				{
+					return registry->GetOrLoadFile(modelPath.string());
+				}, EThreadType::Worker);
+			lookup->Run();
+			lookup->Wait();
+			Require(lookup->GetResult() == modelId, "cold model registration must return its authored identity");
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
+			const bool deferred = material->GetContentRevision() == revision;
+			Drain();
+			Require(deferred, "cold model registration must not publish a live generated material before Main handles the update");
+		}
+		else
+		{
+			Require(registry->GetOrLoadFile(modelPath.string()) == modelId,
+				"Main registration must return the authored model identity");
+		}
+		glm::vec4 emission;
+		Require(material->GetUniformsVec4().TryGet("material.emissiveFactor", emission) && emission == glm::vec4(1, 2, 3, 0),
+			"Main must publish the generated emission to the existing material");
+		auto* model = registry->GetAssetInfoPtr<ModelAssetInfoPtr>(modelId);
+		Require(model && model->GetDefaultMaterials().Num() == 2 && model->GetDefaultMaterials()[0] == materialId,
+			"cold generation must retain owned material identity and populate model slots");
+		Require(!registry->IsAssetExpired(registry->GetAssetInfoPtr(materialId)),
+			"the generated material must be acknowledged after publication");
+		Drain();
+
+		const auto publishedRevision = material->GetContentRevision();
+		const auto published = YAML::LoadFile(materialPath.string());
+		{
+			auto invalid = YAML::Clone(published);
+			invalid["uniformsFloat"]["material.roughnessFactor"] = "invalid";
+			std::ofstream output(materialPath);
+			output << invalid;
+		}
+		Require(!UpdateAssetThroughEditor(modelId.ToString(), true),
+			"reimport must report a generated material publication failure");
+		Require(material->GetContentRevision() == publishedRevision && registry->IsAssetExpired(model) &&
+			registry->IsAssetExpired(registry->GetAssetInfoPtr(materialId)),
+			"failed publication must keep the live material and leave the import retryable");
+		Require(!UpdateAssetThroughEditor(modelId.ToString(), true),
+			"unchanged invalid material data must fail again rather than being acknowledged");
+		{
+			std::ofstream output(materialPath);
+			output << published;
+		}
+		Require(UpdateAssetThroughEditor(modelId.ToString(), true) && !registry->IsAssetExpired(model) &&
+			!registry->IsAssetExpired(registry->GetAssetInfoPtr(materialId)),
+			"repair must publish the material and acknowledge both assets without changing the glTF");
+		Drain();
+		const auto repairedRevision = material->GetContentRevision();
+		const auto content = ReadContent(folder);
+		Require(registry->GetOrLoadFile(modelPath.string()) == modelId, "warm model lookup must keep its identity");
+		Drain();
+		Require(material->GetContentRevision() == repairedRevision && ReadContent(folder) == content,
+			"warm model lookup must not replay material publication or rewrite Content");
+		std::cout << (worker ? "Cold model Worker" : "Cold model Main")
+			<< ": owner publication, retained identity, failure/retry and warm lookup passed\n";
+	}
+
 	void TestModelLoadDoesNotWriteMaterials(const std::filesystem::path& workspace)
 	{
 		const auto folder = workspace / "Content" / "MaterialImport";
@@ -1062,6 +1181,8 @@ namespace Sailor::Tests
 	void RunModelLodCommandTests(const std::filesystem::path& workspace)
 	{
 		TestAssetRelativePaths();
+		TestColdModelMaterialPublication(workspace, false);
+		TestColdModelMaterialPublication(workspace, true);
 		TestModelLoadDoesNotWriteMaterials(workspace);
 		ModelFixture cpuFixture(workspace, true);
 		TestCpuPreparationDoesNotUseRhi(cpuFixture);

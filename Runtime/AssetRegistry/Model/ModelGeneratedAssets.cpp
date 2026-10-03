@@ -842,7 +842,10 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				return false;
 			}
 		}
-		if (m_assetRegistry->GetOrLoadFile(materialPath.string()) != fileId || !m_assetRegistry->UpdateAsset(fileId))
+		// Keep standalone/Main error handling synchronous. Off-Main engine
+		// callers already requested publication through GetOrLoadFile.
+		if (m_assetRegistry->GetOrLoadFile(materialPath.string()) != fileId ||
+			((!m_scheduler || m_scheduler->IsMainThread()) && !m_assetRegistry->UpdateAsset(fileId)))
 		{
 			return false;
 		}
