@@ -87,6 +87,9 @@ namespace Sailor::RHI
 
 		RHI::Stats m_stats{};
 
+		mutable SpinLock m_globalIlluminationStatsLock;
+		RHIGlobalIlluminationRenderStats m_globalIlluminationStats{};
+
 		mutable SpinLock m_gpuTimingsLock;
 		RendererTimings m_timings;
 		GpuTimingSnapshot m_gpuTimings;

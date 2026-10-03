@@ -50,18 +50,6 @@ namespace
 		uint32_t m_flightSlot = 0u;
 		RHIRenderSubmissionContextPtr m_context{};
 	};
-
-	struct GlobalIlluminationRenderStatsStorage final
-	{
-		SpinLock m_lock;
-		RHIGlobalIlluminationRenderStats m_stats{};
-	};
-
-	GlobalIlluminationRenderStatsStorage& GetGlobalIlluminationRenderStatsStorage()
-	{
-		static GlobalIlluminationRenderStatsStorage storage;
-		return storage;
-	}
 }
 
 void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool& bShouldRemoveFromList)
@@ -110,7 +98,6 @@ bool IDelayedInitialization::HasInitializationFailed() const
 
 Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
-	UpdateGlobalIlluminationRenderStats({});
 	m_pViewport = pViewport;
 	m_msaaSamples = msaaSamples;
 	m_bIsInitialized = false;
@@ -297,20 +284,18 @@ void Renderer::ResetFrameCadence()
 RHIGlobalIlluminationRenderStats
 Renderer::GetGlobalIlluminationRenderStats() const
 {
-	auto& storage = GetGlobalIlluminationRenderStatsStorage();
-	storage.m_lock.Lock();
-	RHIGlobalIlluminationRenderStats result = storage.m_stats;
-	storage.m_lock.Unlock();
+	m_globalIlluminationStatsLock.Lock();
+	const auto result = m_globalIlluminationStats;
+	m_globalIlluminationStatsLock.Unlock();
 	return result;
 }
 
 void Renderer::UpdateGlobalIlluminationRenderStats(
 	const RHIGlobalIlluminationRenderStats& stats)
 {
-	auto& storage = GetGlobalIlluminationRenderStatsStorage();
-	storage.m_lock.Lock();
-	storage.m_stats = stats;
-	storage.m_lock.Unlock();
+	m_globalIlluminationStatsLock.Lock();
+	m_globalIlluminationStats = stats;
+	m_globalIlluminationStatsLock.Unlock();
 }
 
 RHI::EFormat Renderer::GetColorFormat() const

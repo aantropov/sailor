@@ -26,12 +26,19 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <latch>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 
 using namespace Sailor;
+
+namespace Sailor::Tests
+{
+	void RequireRejectedComputeSubmission(const std::function<bool()>& submit);
+}
 
 namespace Sailor
 {
@@ -675,78 +682,138 @@ namespace
 				std::array<RHIRenderSubmissionContextPtr, 2> flights{
 					RHIRenderSubmissionContextPtr::Make(), RHIRenderSubmissionContextPtr::Make() };
 				uint64_t submission = 0;
-				auto checkBuffers = [&](RHIShaderBindingSetPtr bindings, const GIProbesDataPtr& expected,
-					RHISemaphorePtr wait = {})
+				uint32_t cameraCount = 1;
+				float stateWeight = 1.0f;
+				auto renderMode = ESceneViewRenderMode::Lit;
+				bool giEnabled = true, rejectNextUpload = false;
+				auto lights = TSharedPtr<TVector<RHILightShaderData>>::Make();
+				lights->Add(RHILightShaderData{});
+				(*lights)[0].m_intensity = glm::vec3(3, 5, 7);
+				auto bones = TSharedPtr<TVector<glm::mat4>>::Make();
+				bones->Add(glm::mat4(2.0f));
+				uint64_t lightingRevision = 1, animationRevision = 1;
+				auto checkBuffers = [&](const RHISceneViewSnapshot& snapshot, RHISemaphorePtr wait = {})
 				{
+					const auto& gi = *snapshot.m_globalIllumination;
 					RHIGlobalIlluminationGpuLayout layout;
-					std::string diagnostic;
-					Require(BuildGlobalIlluminationGpuLayout(*expected, layout, diagnostic), diagnostic);
-					RHIGlobalIlluminationSnapshot snapshot;
-					snapshot.m_layout = expected;
-					snapshot.m_qualityBudget = 1;
-					RHIGlobalIlluminationState state;
-					state.m_data = expected;
-					state.m_effectiveWeight = 1;
-					snapshot.m_states.Add(state);
 					TVector<RHIGlobalIlluminationGpuCoefficients> coefficients;
-					Require(BuildGlobalIlluminationGpuCoefficients(snapshot, coefficients, diagnostic), diagnostic);
-					const std::array<const char*, 4> names{ "globalIlluminationBvh", "globalIlluminationBricks",
-						"globalIlluminationProbes", "globalIlluminationCoefficients" };
-					const std::array<const void*, 4> values{ layout.m_nodes.GetData(), layout.m_bricks.GetData(),
-						layout.m_probes.GetData(), coefficients.GetData() };
-					const std::array<size_t, 4> sizes{ layout.m_nodes.Num() * sizeof(RHIGlobalIlluminationGpuBvhNode),
-						layout.m_bricks.Num() * sizeof(RHIGlobalIlluminationGpuBrick),
-						layout.m_probes.Num() * sizeof(RHIGlobalIlluminationGpuProbe),
-						coefficients.Num() * sizeof(RHIGlobalIlluminationGpuCoefficients) };
-					std::array<RHIBufferPtr, 4> readbacks;
+					TVector<RHIGlobalIlluminationGpuState> states;
+					std::string diagnostic;
+					Require(BuildGlobalIlluminationGpuLayout(*gi.m_layout, layout, diagnostic), diagnostic);
+					Require(BuildGlobalIlluminationGpuCoefficients(gi, coefficients, diagnostic), diagnostic);
+					Require(BuildGlobalIlluminationGpuStates(gi, states, diagnostic), diagnostic);
+					const auto debug = snapshot.m_renderMode == ESceneViewRenderMode::GlobalIlluminationOnly ?
+						EGlobalIlluminationDebugVisualization::IndirectOnly : EGlobalIlluminationDebugVisualization::Lit;
+					const auto header = BuildGlobalIlluminationGpuHeader(&gi, debug,
+						snapshot.m_globalIlluminationMode, snapshot.m_bGlobalIlluminationEnabled);
+					const glm::mat4 identity(1.0f);
+					const size_t numBones = snapshot.m_cpuBoneMatrices ? snapshot.m_cpuBoneMatrices->Num() : 0;
+					const size_t numLights = snapshot.m_cpuLightsData ? snapshot.m_cpuLightsData->Num() : 0;
+					struct Buffer
+					{
+						const char* name;
+						const void* data;
+						size_t size;
+					};
+					const std::array<Buffer, 11> expected{ {
+						{ "globalIlluminationBvh", layout.m_nodes.GetData(), layout.m_nodes.Num() * sizeof(RHIGlobalIlluminationGpuBvhNode) },
+						{ "globalIlluminationBricks", layout.m_bricks.GetData(), layout.m_bricks.Num() * sizeof(RHIGlobalIlluminationGpuBrick) },
+						{ "globalIlluminationProbes", layout.m_probes.GetData(), layout.m_probes.Num() * sizeof(RHIGlobalIlluminationGpuProbe) },
+						{ "globalIlluminationCoefficients", coefficients.GetData(), coefficients.Num() * sizeof(RHIGlobalIlluminationGpuCoefficients) },
+						{ "globalIlluminationStates", states.GetData(), states.Num() * sizeof(RHIGlobalIlluminationGpuState) },
+						{ "globalIlluminationHeader", &header, sizeof(header) },
+						{ "light", numLights ? snapshot.m_cpuLightsData->GetData() : nullptr, numLights * sizeof(RHILightShaderData) },
+						{ "bones", numBones ? snapshot.m_cpuBoneMatrices->GetData() : &identity, (std::max)(size_t{ 1 }, numBones) * sizeof(glm::mat4) },
+						{ "lightsMatrices", snapshot.m_shadowMatrices.GetData(), snapshot.m_shadowMatrices.Num() * sizeof(glm::mat4) },
+						{ "shadowIndices", snapshot.m_shadowIndices.GetData(), snapshot.m_shadowIndices.Num() * sizeof(uint32_t) },
+						{ "shadowAtlasTiles", snapshot.m_shadowAtlasTiles.GetData(), snapshot.m_shadowAtlasTiles.Num() * sizeof(uint32_t) }
+					} };
+					std::array<RHIBufferPtr, 11> readbacks;
 					auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 					commands->BeginCommandList(command, true);
 					command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-					for (size_t i = 0; i < names.size(); ++i)
+					for (size_t i = 0; i < expected.size(); ++i)
 					{
-						auto binding = bindings->GetOrAddShaderBinding(names[i]);
-						Require(binding && binding->m_vulkan.m_valueBinding, "framegraph must publish each GI buffer");
-						readbacks[i] = driver->CreateBuffer(sizes[i], EBufferUsageBit::BufferTransferDst_Bit,
+						const auto& buffer = expected[i];
+						auto bindings = std::string_view(buffer.name) == "bones" ? snapshot.m_boneMatrices : snapshot.m_rhiLightsData;
+						auto binding = bindings->GetOrAddShaderBinding(buffer.name);
+						Require(binding && binding->m_vulkan.m_valueBinding, "framegraph must publish each shared and per-view buffer");
+						if (buffer.size == 0) continue;
+						readbacks[i] = driver->CreateBuffer(buffer.size, EBufferUsageBit::BufferTransferDst_Bit,
 							EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
 						command->m_vulkan.m_commandBuffer->CopyBuffer(*binding->m_vulkan.m_valueBinding->Get(),
-							*readbacks[i]->m_vulkan.m_buffer->Get(), sizes[i]);
+							*readbacks[i]->m_vulkan.m_buffer->Get(), buffer.size);
 					}
 					command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
 					commands->EndCommandList(command);
 					auto fence = RHIFencePtr::Make();
-					Require(driver->SubmitCommandList(command, fence, {}, wait), "GI readback submission must succeed");
+					Require(driver->SubmitCommandList(command, fence, {}, wait), "shared resource readback submission must succeed");
 					fence->Wait(5000000000ull);
-					Require(fence->IsFinished(), "GI readback must complete");
-					for (size_t i = 0; i < names.size(); ++i)
+					Require(fence->IsFinished(), "shared resource readback must complete");
+					for (size_t i = 0; i < expected.size(); ++i)
 					{
-						Require(std::memcmp(readbacks[i]->GetPointer(), values[i], sizes[i]) == 0,
-							std::string("GPU GI bytes must match the retained publication: ") + names[i]);
+						Require(expected[i].size == 0 || std::memcmp(readbacks[i]->GetPointer(), expected[i].data, expected[i].size) == 0,
+							std::string("GPU bytes must match the retained publication: ") + expected[i].name);
 					}
 					fence->ClearDependencies();
 				};
-				auto upload = [&](uint32_t flight, const GIProbesDataPtr& payload, uint64_t revision, uint64_t expectedBytes)
+				auto upload = [&](uint32_t flight, const GIProbesDataPtr& payload, uint64_t revision,
+					uint64_t expectedBytes, bool expectSharedUpload = true)
 				{
 					flights[flight]->BeginSubmission(++submission, flight);
 					auto view = RHISceneViewPtr::Make();
-					view->m_snapshots.Resize(1);
-					auto& snapshot = view->m_snapshots[0];
-					snapshot.m_submissionContext = flights[flight];
-					snapshot.m_camera = TUniquePtr<CameraData>::Make();
-					snapshot.m_globalIlluminationMode = EGlobalIlluminationMode::Runtime;
-					snapshot.m_bGlobalIlluminationEnabled = true;
-					snapshot.m_globalIllumination = RHIGlobalIlluminationSnapshotPtr::Make();
-					auto& gi = *snapshot.m_globalIllumination;
-					gi.m_generation = revision;
-					gi.m_lightingHash = payload->m_lightingHash;
-					gi.m_layout = payload;
-					gi.m_qualityBudget = 1;
+					auto gi = RHIGlobalIlluminationSnapshotPtr::Make();
+					gi->m_generation = revision;
+					gi->m_lightingHash = payload->m_lightingHash;
+					gi->m_layout = payload;
+					gi->m_qualityBudget = 1;
 					RHIGlobalIlluminationState state;
 					state.m_data = payload;
-					state.m_effectiveWeight = 1;
-					gi.m_states.Add(state);
+					state.m_effectiveWeight = stateWeight;
+					gi->m_states.Add(state);
+					view->m_snapshots.Resize(cameraCount);
+					for (uint32_t camera = 0; camera < cameraCount; ++camera)
+					{
+						auto& snapshot = view->m_snapshots[camera];
+						snapshot.m_submissionContext = flights[flight];
+						snapshot.m_cameraIndex = camera;
+						snapshot.m_camera = TUniquePtr<CameraData>::Make();
+						snapshot.m_globalIlluminationMode = EGlobalIlluminationMode::Runtime;
+						snapshot.m_bGlobalIlluminationEnabled = giEnabled;
+						snapshot.m_globalIllumination = gi;
+						snapshot.m_renderMode = renderMode;
+						snapshot.m_cpuLightsData = lights;
+						snapshot.m_lightingRevision = lightingRevision;
+						snapshot.m_cpuBoneMatrices = bones;
+						snapshot.m_animationRevision = animationRevision;
+						snapshot.m_shadowMatrices.Add(glm::mat4(float(camera + 1)));
+						snapshot.m_shadowIndices.Add(camera + 1);
+						snapshot.m_shadowAtlasTiles.Add(camera * 4);
+					}
 					TVector<RHICommandListPtr> transfers, graphics;
-					RHISemaphorePtr chain;
-					Require(graph->Process(view, transfers, graphics, {}, chain), "the actual GI framegraph must process");
+					RHISemaphorePtr input, chain;
+					if (rejectNextUpload)
+					{
+						auto before = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+						commands->BeginCommandList(before, true);
+						commands->EndCommandList(before);
+						input = driver->CreateWaitSemaphore();
+						Require(driver->SubmitCommandList(before, RHIFencePtr::Make(), input), "incoming upload dependency must submit");
+						const auto oldStats = graph->GetGlobalIlluminationRenderStats();
+						Tests::RequireRejectedComputeSubmission([&]() { return graph->Process(view, transfers, graphics, input, chain); });
+						Require(chain == input && transfers.IsEmpty() && graphics.IsEmpty(),
+							"rejected shared upload must preserve the incoming semaphore and stop before per-view work");
+						Require(graph->GetGlobalIlluminationRenderStats().m_activeRevision == oldStats.m_activeRevision,
+							"rejected shared upload must not publish its GI statistics");
+						flights[flight]->InvalidateSubmissionResources();
+						flights[flight]->BeginSubmission(++submission, flight);
+						rejectNextUpload = false;
+					}
+					Require(graph->Process(view, transfers, graphics, input, chain), "the actual GI framegraph must process");
+					Require((chain != input) == expectSharedUpload,
+						"only changed shared payloads may add a submission, independently of camera count");
+					Require(transfers.Num() == cameraCount && graphics.Num() == cameraCount,
+						"every camera must retain its own transfer and graphics commands");
 					for (size_t i = 0; i < transfers.Num(); ++i)
 					{
 						for (const auto& command : { transfers[i], graphics[i] })
@@ -757,13 +824,33 @@ namespace
 							chain = next;
 						}
 					}
-					checkBuffers(snapshot.m_rhiLightsData, payload, chain);
+					auto& first = view->m_snapshots[0];
+					for (auto& snapshot : view->m_snapshots)
+					{
+						Require(snapshot.m_boneMatrices == first.m_boneMatrices, "cameras must share one bones binding");
+						for (const char* name : { "light", "globalIlluminationHeader", "globalIlluminationBvh",
+							"globalIlluminationBricks", "globalIlluminationProbes", "globalIlluminationCoefficients", "globalIlluminationStates" })
+						{
+							Require(snapshot.m_rhiLightsData->GetOrAddShaderBinding(name)->m_vulkan.m_valueBinding ==
+								first.m_rhiLightsData->GetOrAddShaderBinding(name)->m_vulkan.m_valueBinding,
+								"camera bindings must reference the same shared GPU allocation");
+						}
+						if (snapshot.m_cameraIndex != 0)
+						{
+							Require(snapshot.m_frameBindings != first.m_frameBindings &&
+								snapshot.m_rhiLightsData->GetOrAddShaderBinding("lightsMatrices")->m_vulkan.m_valueBinding !=
+								first.m_rhiLightsData->GetOrAddShaderBinding("lightsMatrices")->m_vulkan.m_valueBinding,
+								"camera frame and shadow allocations must remain independent");
+						}
+						checkBuffers(snapshot, chain);
+						chain.Clear();
+					}
 					const auto stats = graph->GetGlobalIlluminationRenderStats();
-					Require(stats.m_bActive, "the submitted GI payload must stay active");
+					Require(stats.m_bActive == giEnabled && stats.m_flightSlot == flight, "GI activity and flight must match the submission");
 					Require(stats.m_uploadedGpuBytes == expectedBytes && stats.m_copiedCpuBytes == expectedBytes,
 						"GI uploaded " + std::to_string(stats.m_uploadedGpuBytes) + " bytes; expected " +
 						std::to_string(expectedBytes) + " for changed payload ranges");
-					return snapshot.m_rhiLightsData;
+					return view;
 				};
 				Require(data->m_bricks.Num() == 1 && data->m_probes.Num() == 8, "GI upload fixture must have eight probes");
 				const uint64_t layoutBytes = sizeof(RHIGlobalIlluminationGpuBvhNode) + sizeof(RHIGlobalIlluminationGpuBrick) +
@@ -779,15 +866,87 @@ namespace
 				{
 					probe.m_irradiance[0] += glm::vec3(0.25f);
 				}
+				cameraCount = 3;
 				auto otherFlight = upload(1, refined, 2, layoutBytes + lightingBytes);
-				checkBuffers(olderFlight, data);
+				checkBuffers(olderFlight->m_snapshots[0]);
 				upload(0, refined, 2, lightingBytes);
-				upload(0, refined, 2, 0);
+				auto stable = upload(0, refined, 2, 0, false);
+				cameraCount = 1;
+				auto fewerCameras = upload(0, refined, 2, 0, false);
+				Require(stable->m_snapshots[0].m_rhiLightsData == fewerCameras->m_snapshots[0].m_rhiLightsData,
+					"unchanged frames must reuse existing camera bindings");
+				cameraCount = 4;
+				upload(0, refined, 2, 0, false);
 				auto changed = GIProbesDataPtr::Make(*refined);
 				changed->m_probes[0].m_validity = changed->m_probes[0].m_validity < 0.5f ? 0.75f : 0.25f;
 				Require(ComputeGIProbesTransportHash(*changed, changed->m_transportHash), "transport edit must hash");
 				upload(0, changed, 3, layoutBytes + lightingBytes);
-				checkBuffers(otherFlight, refined);
+				checkBuffers(otherFlight->m_snapshots[0]);
+				stateWeight = 0.5f;
+				upload(0, changed, 3, sizeof(RHIGlobalIlluminationGpuState));
+				renderMode = ESceneViewRenderMode::GlobalIlluminationOnly;
+				upload(0, changed, 3, sizeof(RHIGlobalIlluminationGpuHeader));
+				giEnabled = false;
+				upload(0, changed, 3, sizeof(RHIGlobalIlluminationGpuHeader));
+				giEnabled = true;
+				upload(0, changed, 3, sizeof(RHIGlobalIlluminationGpuHeader));
+
+				(*lights)[0].m_intensity = glm::vec3(11, 13, 17);
+				++lightingRevision;
+				upload(0, changed, 3, 0);
+				(*bones)[0] = glm::mat4(3.0f);
+				++animationRevision;
+				upload(0, changed, 3, 0);
+				lights = TSharedPtr<TVector<RHILightShaderData>>::Make(*lights);
+				(*lights)[0].m_intensity = glm::vec3(19, 23, 29);
+				bones = TSharedPtr<TVector<glm::mat4>>::Make(*bones);
+				(*bones)[0] = glm::mat4(4.0f);
+				upload(0, changed, 3, 0);
+				lights->Resize(17);
+				bones->Resize(17);
+				for (size_t i = 0; i < 17; ++i)
+				{
+					(*lights)[i].m_intensity = glm::vec3(float(i + 2));
+					(*bones)[i] = glm::mat4(float(i + 3));
+				}
+				++lightingRevision;
+				++animationRevision;
+				upload(0, changed, 3, 0);
+				upload(0, changed, 3, 0, false);
+				lights->Clear();
+				bones.Clear();
+				++lightingRevision;
+				++animationRevision;
+				upload(0, changed, 3, 0);
+				upload(0, changed, 3, 0, false);
+				lights->Add(RHILightShaderData{});
+				(*lights)[0].m_intensity = glm::vec3(31, 37, 41);
+				bones = TSharedPtr<TVector<glm::mat4>>::Make();
+				bones->Add(glm::mat4(5.0f));
+				++lightingRevision;
+				++animationRevision;
+				rejectNextUpload = true;
+				upload(0, changed, 4, layoutBytes + lightingBytes);
+				upload(0, changed, 4, 0, false);
+
+				const auto activeStats = graph->GetGlobalIlluminationRenderStats();
+				auto otherGraph = RHIFrameGraphPtr::Make();
+				auto emptyView = RHISceneViewPtr::Make();
+				TVector<RHICommandListPtr> emptyTransfers, emptyGraphics;
+				RHISemaphorePtr emptyChain;
+				Require(otherGraph->Process(emptyView, emptyTransfers, emptyGraphics, {}, emptyChain),
+					"a second graph must process an empty view");
+				const auto retainedStats = graph->GetGlobalIlluminationRenderStats();
+				Require(retainedStats.m_bActive && retainedStats.m_activeRevision == activeStats.m_activeRevision &&
+					retainedStats.m_uploadedGpuBytes == activeStats.m_uploadedGpuBytes,
+					"processing a second graph must not overwrite the first graph's GI statistics");
+				Require(!otherGraph->GetGlobalIlluminationRenderStats().m_bActive,
+					"an empty graph must not inherit another graph's active GI statistics");
+				graph->Clear();
+				Require(!graph->GetGlobalIlluminationRenderStats().m_bActive &&
+					graph->GetGlobalIlluminationRenderStats().m_gpuAllocatedBytes == 0,
+					"clearing a graph must reset its own GI statistics");
+				std::cout << "FrameGraph shared uploads: 1-4 cameras, light/bone revisions, capacity growth, GI states/header, native rejection/retry and graph-owned statistics passed\n";
 				std::cout << "GI GPU layout uploads passed: full=" << layoutBytes + lightingBytes
 					<< ", SH-only=" << lightingBytes << ", unchanged=0; both flights retain exact buffer contents\n";
 				return std::string{};

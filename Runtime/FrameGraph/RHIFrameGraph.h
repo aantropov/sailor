@@ -5,6 +5,8 @@
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "Tasks/Tasks.h"
 #include "RHI/MotionHistory.h"
+#include "RHI/GlobalIllumination.h"
+#include "Core/SpinLock.h"
 
 using namespace Sailor::Framegraph;
 
@@ -16,8 +18,6 @@ namespace Sailor
 
 namespace Sailor::RHI
 {
-	struct RHIGlobalIlluminationRenderStats;
-
 	class RHIFrameGraph : public RHI::RHIResource
 	{
 	public:
@@ -92,6 +92,7 @@ namespace Sailor::RHI
 
 		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime);
 		void PrepareRenderTargets();
+		void PublishGlobalIlluminationRenderStats(const RHIGlobalIlluminationRenderStats& stats);
 
 		TMap<std::string, RHI::RHITexturePtr> m_samplers;
 		TMap<std::string, RHI::RHIRenderTargetPtr> m_renderTargets;
@@ -112,6 +113,9 @@ namespace Sailor::RHI
 		RHI::RHIMeshPtr m_postEffectPlane;
 
 		TVector<TSharedPtr<RHIMotionHistoryFrame>> m_motionHistory{};
+
+		mutable SpinLock m_globalIlluminationStatsLock;
+		RHIGlobalIlluminationRenderStats m_globalIlluminationStats{};
 
 		GpuStats m_lastFrameGpuStats{};
 		RHI::DrawCallStats m_drawCallStats{};

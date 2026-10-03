@@ -108,6 +108,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		static VulkanFencePtr FlightFence(const VulkanDevice& device) { return device.m_syncFences[device.m_currentFrame]; }
 		static VulkanSemaphorePtr AcquireSemaphore(const VulkanDevice& device) { return device.m_imageAvailableSemaphores[device.m_currentFrame]; }
 		static VulkanSemaphorePtr PresentSemaphore(const VulkanDevice& device) { return device.m_renderFinishedSemaphores[device.m_currentSwapchainImageIndex]; }
+		static VulkanQueuePtr ComputeQueue(const VulkanDevice& device) { return device.m_computeQueue; }
 		static uint32_t ImageIndex(const VulkanDevice& device) { return device.m_currentSwapchainImageIndex; }
 		static VulkanQueuePtr UploadQueue(VulkanDevice& device, bool transfer = false)
 		{
@@ -2298,6 +2299,14 @@ namespace
 
 namespace Sailor::Tests
 {
+	void RequireRejectedComputeSubmission(const std::function<bool()>& submit)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		SubmitOverride rejection(VulkanSubmissionTestAccess::ComputeQueue(*device), VK_ERROR_OUT_OF_HOST_MEMORY);
+		const auto before = submitCalls;
+		Require(!submit() && submitCalls == before + 1u, "the native compute queue must reject the submission");
+	}
+
 	void RequireRejectedGraphicsSubmission(const std::function<bool()>& submit)
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
