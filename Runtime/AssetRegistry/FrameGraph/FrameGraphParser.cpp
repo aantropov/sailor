@@ -10,7 +10,6 @@ uint32_t FrameGraphAsset::RenderTarget::ParseUintValue(const std::string& str)
 {
 	std::string value = str;
 	Utils::Trim(value);
-	value.erase(value.find_last_not_of(" \t\r\n\f\v") + 1);
 	uint32_t size = 0;
 	const char* begin = value.data();
 	if (!value.empty() && value.front() == '+') ++begin;
@@ -22,7 +21,7 @@ uint32_t FrameGraphAsset::RenderTarget::ParseUintValue(const std::string& str)
 
 	const auto slash = value.find('/');
 	std::string variable = value.substr(0, slash);
-	variable.erase(variable.find_last_not_of(" \t\r\n\f\v") + 1);
+	Utils::Trim(variable);
 	if (variable != "RenderWidth" && variable != "RenderHeight" &&
 		variable != "ViewportWidth" && variable != "ViewportHeight")
 	{

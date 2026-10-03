@@ -222,14 +222,26 @@ void Utils::SetThreadName(std::thread* thread, const std::string& threadName)
 #endif
 }
 
+namespace
+{
+	size_t FindExtensionOffset(const std::string& filename)
+	{
+		const size_t separator = filename.find_last_of("/\\");
+		const size_t nameStart = separator == std::string::npos ? 0 : separator + 1;
+		const size_t dot = filename.find_last_of('.');
+		if (dot == std::string::npos || dot <= nameStart ||
+			filename.compare(nameStart, std::string::npos, "..") == 0)
+		{
+			return std::string::npos;
+		}
+		return dot;
+	}
+}
+
 std::string Utils::RemoveFileExtension(const std::string& filename)
 {
 	SAILOR_PROFILE_FUNCTION();
-	size_t lastdot = filename.find_last_of('.');
-	lastdot++;
-	if (lastdot == std::string::npos)
-		return filename;
-	return filename.substr(0, lastdot - 1);
+	return filename.substr(0, FindExtensionOffset(filename));
 }
 
 std::string Utils::GetFileFolder(const std::string& filepath)
@@ -246,11 +258,8 @@ std::string Utils::GetFileFolder(const std::string& filepath)
 std::string Utils::GetFileExtension(const std::string& filename)
 {
 	SAILOR_PROFILE_FUNCTION();
-	size_t lastdot = filename.find_last_of('.');
-	lastdot++;
-	if (lastdot == std::string::npos)
-		return std::string();
-	return filename.substr(lastdot, filename.size() - lastdot);
+	const size_t dot = FindExtensionOffset(filename);
+	return dot == std::string::npos ? std::string() : filename.substr(dot + 1);
 }
 
 TVector<std::string> Utils::SplitStringByLines(const std::string& str)
@@ -288,31 +297,25 @@ TVector<std::string> Utils::SplitString(const std::string& str, const std::strin
 void Utils::ReplaceAll(std::string& str, const std::string& from, const std::string& to, size_t startPosition, size_t endLocation)
 {
 	SAILOR_PROFILE_FUNCTION();
-	while ((startPosition = str.find(from, startPosition)) < endLocation)
+	if (from.empty())
 	{
-		str.replace(startPosition, from.length(), to);
+		return;
+	}
 
-		// Handles case where 'to' is a substring of 'from'
-		startPosition += to.length();
-
-		size_t maxJump = std::string::npos - endLocation;
-		endLocation += std::min(maxJump, to.length() - from.length());
+	endLocation = (std::min)(endLocation, str.size());
+	while ((startPosition = str.find(from, startPosition)) < endLocation &&
+		from.size() <= endLocation - startPosition)
+	{
+		str.replace(startPosition, from.size(), to);
+		endLocation = endLocation - from.size() + to.size();
+		startPosition += to.size();
 	}
 }
 
 void Utils::Erase(std::string& str, const std::string& substr, size_t startPosition, size_t endLocation)
 {
 	SAILOR_PROFILE_FUNCTION();
-	while ((startPosition = str.find(substr, startPosition)) < endLocation)
-	{
-		str = str.erase(startPosition, substr.length());
-
-		// Handles case where 'to' is a substring of 'from'
-		startPosition += substr.length();
-
-		size_t maxJump = std::string::npos - endLocation;
-		endLocation += std::min(maxJump, substr.length());
-	}
+	ReplaceAll(str, substr, {}, startPosition, endLocation);
 }
 
 std::string Utils::SanitizeFilepath(const std::string& filename)
@@ -371,9 +374,11 @@ void Utils::FindAllOccurances(const std::string& str, const std::string& substr,
 void Utils::Trim(std::string& s)
 {
 	SAILOR_PROFILE_FUNCTION();
-	s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+	const auto isNotSpace = [](unsigned char ch) {
 		return !std::isspace(ch);
-		}));
+	};
+	s.erase(s.begin(), std::find_if(s.begin(), s.end(), isNotSpace));
+	s.erase(std::find_if(s.rbegin(), s.rend(), isNotSpace).base(), s.end());
 }
 
 int64_t Utils::GetCurrentTimeMs()

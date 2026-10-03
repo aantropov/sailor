@@ -20,6 +20,16 @@ using namespace Sailor;
 
 namespace
 {
+	std::string RemoveContentPrefix(std::string filepath)
+	{
+		const std::string contentFolder = AssetRegistry::GetContentFolder();
+		if (filepath.starts_with(contentFolder))
+		{
+			filepath.erase(0, contentFolder.size());
+		}
+		return filepath;
+	}
+
 	bool ReadFileExactly(const std::filesystem::path& filepath, std::string& outContents)
 	{
 		std::ifstream file(filepath, std::ios::binary);
@@ -225,9 +235,7 @@ std::string AssetInfo::GetRelativeAssetFilepath() const
 		return m_virtualAssetFilepath;
 	}
 
-	std::string res = GetAssetFilepath();
-	Utils::Erase(res, AssetRegistry::GetContentFolder());
-	return res;
+	return RemoveContentPrefix(GetAssetFilepath());
 }
 
 std::string AssetInfo::GetRelativeMetaFilepath() const
@@ -237,9 +245,7 @@ std::string AssetInfo::GetRelativeMetaFilepath() const
 		return m_virtualMetaFilepath;
 	}
 
-	std::string res = GetMetaFilepath();
-	Utils::Erase(res, AssetRegistry::GetContentFolder());
-	return res;
+	return RemoveContentPrefix(GetMetaFilepath());
 }
 
 IAssetInfoHandler* AssetInfo::GetHandler()

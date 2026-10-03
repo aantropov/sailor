@@ -1018,8 +1018,49 @@ namespace
 
 namespace Sailor::Tests
 {
+	void TestAssetRelativePaths()
+	{
+		struct AssetPaths : AssetInfo
+		{
+			AssetPaths(const std::string& folder, const std::string& filename)
+			{
+				m_folder = folder;
+				m_assetFilename = filename;
+			}
+
+			void SetVirtualPaths(const std::string& asset, const std::string& meta)
+			{
+				m_virtualAssetFilepath = asset;
+				m_virtualMetaFilepath = meta;
+			}
+		};
+
+		const std::string root = AssetRegistry::GetContentFolder();
+		Require(!root.empty(), "relative-path checks require the active workspace content root");
+		AssetPaths ordinary(root + "Models/", "Ship.glb");
+		Require(ordinary.GetRelativeAssetFilepath() == "Models/Ship.glb" &&
+			ordinary.GetRelativeMetaFilepath() == "Models/Ship.glb.asset",
+			"asset and metadata paths must remove the initial content prefix");
+
+		AssetPaths repeated(root + "Copies" + root, "Ship.glb");
+		Require(repeated.GetRelativeAssetFilepath() == "Copies" + root + "Ship.glb" &&
+			repeated.GetRelativeMetaFilepath() == "Copies" + root + "Ship.glb.asset",
+			"a content-root substring inside the relative name must not be erased");
+		AssetPaths outside("Other" + root, "Ship.glb");
+		Require(outside.GetRelativeAssetFilepath() == outside.GetAssetFilepath() &&
+			outside.GetRelativeMetaFilepath() == outside.GetMetaFilepath(),
+			"a non-prefix content-root match must leave both paths unchanged");
+
+		repeated.SetVirtualPaths("Models/Alias.glb", "Metadata/Alias.asset");
+		Require(repeated.GetRelativeAssetFilepath() == "Models/Alias.glb" &&
+			repeated.GetRelativeMetaFilepath() == "Metadata/Alias.asset",
+			"virtual mount paths must take precedence over physical prefix handling");
+		std::cout << "Asset relative paths preserve nested names and virtual mount overrides passed\n";
+	}
+
 	void RunModelLodCommandTests(const std::filesystem::path& workspace)
 	{
+		TestAssetRelativePaths();
 		TestModelLoadDoesNotWriteMaterials(workspace);
 		ModelFixture cpuFixture(workspace, true);
 		TestCpuPreparationDoesNotUseRhi(cpuFixture);

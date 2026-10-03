@@ -861,7 +861,7 @@ frame:
 				"an exact dimension variable must select the corresponding viewport/render axis");
 			for (const double divisor : { 0.5, 2.0, 2.5, 1000000.0 })
 			{
-				const auto expression = std::string(" ") + name + " / " + std::to_string(divisor) + " ";
+				const auto expression = std::string(" \t") + name + "\t\r\n/\v " + std::to_string(divisor) + "\f\r\n";
 				const auto expected = (std::max)(1u, static_cast<uint32_t>(size / divisor));
 				Require(FrameGraphAsset::RenderTarget::ParseUintValue(expression) == expected,
 					"relative dimensions must support positive fractions, whitespace, truncation and minimum-one extents");
