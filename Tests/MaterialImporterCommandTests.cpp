@@ -447,9 +447,10 @@ namespace Sailor::Tests
 					RHIBatch batch(material, mesh);
 #if defined(__APPLE__)
 					Framegraph::TextureBindingCache textureCache;
-					TSet<uint32_t> requested{ 0u };
+					TVector<uint32_t> requested;
 					for (const auto& sampler : source->GetSamplers())
-						requested.Insert(static_cast<uint32_t>(App::GetSubmodule<TextureImporter>()->GetTextureIndex(sampler.m_second->GetFileId())));
+						requested.Add(static_cast<uint32_t>(App::GetSubmodule<TextureImporter>()->GetTextureIndex(sampler.m_second->GetFileId())));
+					NormalizeTextureSamplers(requested);
 					uint32_t supported = 0;
 					bool current = false;
 					batch.m_textureBindings = Framegraph::Details::GetTextureBindingSet(textureCache, requested, 1, supported, current);

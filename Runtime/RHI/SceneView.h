@@ -20,6 +20,10 @@
 
 namespace Sailor::RHI
 {
+#if defined(__APPLE__)
+	SAILOR_API void NormalizeTextureSamplers(TVector<uint32_t>& textures);
+#endif
+
 	SAILOR_API float CalculateScreenCoverage(
 		const Math::AABB& worldBounds,
 		const glm::mat4& viewMatrix,
@@ -44,7 +48,7 @@ namespace Sailor::RHI
 		RHIMaterialPtr m_customDepthMaterial{};
 		ShaderSetPtr m_customDepthShader{};
 #if defined(__APPLE__)
-		TSet<uint32_t> m_materialTextureSamplers{};
+		TVector<uint32_t> m_materialTextureSamplers{};
 #endif
 	};
 
@@ -97,7 +101,7 @@ namespace Sailor::RHI
 		TVector<uint32_t> m_baseColorSamplers{};
 		TVector<float> m_alphaCutoffs{};
 #if defined(__APPLE__)
-		TVector<TSet<uint32_t>> m_materialTextureSamplers{};
+		TVector<TVector<uint32_t>> m_materialTextureSamplers{};
 #endif
 		bool m_bCastShadows = false;
 		float m_maxShadowDistance = (std::numeric_limits<float>::max)();
@@ -143,7 +147,7 @@ namespace Sailor::RHI
 		TVector<float> m_alphaCutoffs;
 		TVector<RHIInstancedMeshGroup> m_instancedGroups{};
 #if defined(__APPLE__)
-		TVector<TSet<uint32_t>> m_materialTextureSamplers;
+		TVector<TVector<uint32_t>> m_materialTextureSamplers;
 #endif
 		RHIShadowCasterProxyPtr m_shadowCaster{};
 		RHILodPolicy m_lodPolicy{};

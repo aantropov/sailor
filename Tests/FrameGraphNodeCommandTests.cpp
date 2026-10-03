@@ -1270,7 +1270,7 @@ frame:
 			group.m_alphaCutoffs = { 0.75f };
 			group.m_bCastShadows = true;
 #if defined(__APPLE__)
-			group.m_materialTextureSamplers = { TSet<uint32_t>{ 0 } };
+			group.m_materialTextureSamplers = { { 0 } };
 #endif
 			source.m_instancedGroups.Add(std::move(group));
 		}
@@ -1284,7 +1284,7 @@ frame:
 			source.m_baseColorSamplers = { 0, 0 };
 			source.m_alphaCutoffs = { 0.75f, 0.75f };
 #if defined(__APPLE__)
-			source.m_materialTextureSamplers = { TSet<uint32_t>{ 0 }, TSet<uint32_t>{ 0 } };
+			source.m_materialTextureSamplers = { { 0 }, { 0 } };
 #endif
 			for (const auto& transform : source.m_meshModelMatrices)
 			{

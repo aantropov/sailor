@@ -90,7 +90,7 @@ namespace
 		if (task) { task->Run(); task->Wait(); }
 	}
 
-	TextureBindingCacheEntry* FindEntry(TextureBindingCache& cache, const TSet<uint32_t>& requested)
+	TextureBindingCacheEntry* FindEntry(TextureBindingCache& cache, const TVector<uint32_t>& requested)
 	{
 		TextureBindingCacheEntry* entry = nullptr;
 		cache.Find(TextureBindingCacheKey(requested), entry);
@@ -211,7 +211,7 @@ namespace
 	}
 
 	RHISpatialSceneVersionPtr CreateScene(RHIMeshPtr mesh, RHIMaterialPtr material,
-		const TSet<uint32_t>& requested, uint32_t textureIndex, bool ordinary, bool instanced)
+		const TVector<uint32_t>& requested, uint32_t textureIndex, bool ordinary, bool instanced)
 	{
 		RHISceneViewProxy proxy;
 		proxy.m_staticMeshEcs = 1u;
@@ -314,7 +314,7 @@ struct Sailor::TextureBindingPublicationState
 	ShaderSetPtr m_shader;
 	Samplers m_sourceA, m_sourceB;
 	TextureImporter::TextureSamplerSlotSnapshot m_unrelatedA;
-	TSet<uint32_t> m_requested;
+	TVector<uint32_t> m_requested;
 	TVector<uint32_t> m_requestedIndices;
 	std::array<PreparationCase, 4> m_cases;
 	std::array<PreparationCase, 2> m_customCases;
@@ -374,13 +374,26 @@ namespace
 			TextureBindingCache* caches[] = { &test.m_main->Cache(), &test.m_depth->Cache(), &test.m_shadow->Cache() };
 			for (uint32_t n = 0u; n < 3u; ++n)
 			{
-				auto* entry = FindEntry(*caches[n], state.m_requested);
+				auto* entry = FindEntry(*caches[n], state.m_requestedIndices);
 				if (!entry) return std::format("warm case {} node {} has no requested cache key: entries={}, visible proxies={}, main instances={}, depth instances={}",
 					i, n, caches[n]->Num(), test.m_snapshot.m_proxies.Num(), test.m_main->Resources(test.m_snapshot)->m_packet.GetNumInstances(),
 					test.m_depth->Resources(test.m_snapshot)->m_packet.GetNumInstances());
 				std::string diagnostic;
 				if (!CompleteEntry(*entry, state.m_sourceA, &diagnostic)) return std::format("warm case {} node {}: {}", i, n, diagnostic);
 				test.m_warm[n] = *entry;
+			}
+			auto equivalentScene = CreateScene(mesh, material, state.m_requestedIndices,
+				state.m_indices[0], i % 2u == 0u, i % 2u != 0u);
+			RHISceneViewSnapshot equivalentSnapshot;
+			CreateSnapshot(equivalentSnapshot, equivalentScene);
+			Prepare(*test.m_main, equivalentSnapshot);
+			Prepare(*test.m_depth, equivalentSnapshot);
+			Prepare(*test.m_shadow, equivalentSnapshot);
+			for (uint32_t n = 0u; n < 3u; ++n)
+			{
+				auto* entry = FindEntry(*caches[n], state.m_requestedIndices);
+				if (caches[n]->Num() != 1u || !entry || !SamePublication(*entry, test.m_warm[n]))
+					return "equivalent sampler publication rebuilt or duplicated main/depth/shadow bindings";
 			}
 			auto mainSet = test.m_warm[0].m_textureBindings;
 			auto depthSet = test.m_warm[1].m_textureBindings;
@@ -406,7 +419,7 @@ namespace
 			if (i) test.m_depth->SetString("VirtualizeInstancePayloads", "false");
 			Prepare(*test.m_depth, test.m_snapshot);
 #if defined(__APPLE__)
-			auto* entry = FindEntry(test.m_depth->Cache(), state.m_requested);
+			auto* entry = FindEntry(test.m_depth->Cache(), state.m_requestedIndices);
 			if (!entry) return "custom-depth warm cache has no requested key";
 			std::string diagnostic;
 			if (!CompleteEntry(*entry, state.m_sourceA, &diagnostic)) return "custom-depth warm: " + diagnostic;
@@ -437,7 +450,7 @@ namespace
 			TextureBindingCache* caches[] = { &test.m_main->Cache(), &test.m_depth->Cache(), &test.m_shadow->Cache() };
 			for (uint32_t n = 0u; n < 3u; ++n)
 			{
-				auto* entry = FindEntry(*caches[n], state.m_requested);
+				auto* entry = FindEntry(*caches[n], state.m_requestedIndices);
 				auto expected = test.m_warm[n];
 				expected.m_sourceDescriptorRevision = source.m_descriptorRevision;
 				if (!entry || !SamePublication(*entry, expected) || !CompleteEntry(*entry, source)) return "unrelated reload rebuilt or corrupted warm A";
@@ -450,7 +463,7 @@ namespace
 			Prepare(*test.m_depth, test.m_snapshot);
 			auto expected = test.m_warm[1];
 			expected.m_sourceDescriptorRevision = source.m_descriptorRevision;
-			auto* entry = FindEntry(test.m_depth->Cache(), state.m_requested);
+			auto* entry = FindEntry(test.m_depth->Cache(), state.m_requestedIndices);
 			if (!entry || !SamePublication(*entry, expected)) return "unrelated reload replaced custom-depth A";
 			test.m_warm[1] = *entry;
 		}
@@ -497,7 +510,7 @@ namespace
 		auto& snapshot = scene->m_snapshots[0];
 		if (snapshot.m_shadowMapsToUpdate.IsEmpty()) return "first B Fill emitted no real CSM update";
 		Prepare(*test.m_shadow, snapshot);
-		auto* failed = FindEntry(test.m_shadow->Cache(), state.m_requested);
+		auto* failed = FindEntry(test.m_shadow->Cache(), state.m_requestedIndices);
 		if (!failed || !SamePublication(*failed, test.m_warm[2]) ||
 			!ShadowPacketsUse(*test.m_shadow, snapshot, test.m_warm[2].m_textureBindings, count)) return "shadow B did not retain complete fallback A with real casters/instances";
 		uint32_t failedPasses = 0u;
@@ -514,14 +527,14 @@ namespace
 		if (snapshot.m_shadowMapsToUpdate.Num() != failedPasses || scene->GetOrCreateSubmissionCompletionToken() != submission ||
 			!submission->IsPending()) return "identical C Fill did not retry precisely the failed payloads on the same pending submission";
 		Prepare(*test.m_shadow, snapshot);
-		auto* current = FindEntry(test.m_shadow->Cache(), state.m_requested);
+		auto* current = FindEntry(test.m_shadow->Cache(), state.m_requestedIndices);
 		if (!current || current->m_textureBindings == test.m_warm[2].m_textureBindings || !CompleteEntry(*current, state.m_sourceB) ||
 			!ShadowPacketsUse(*test.m_shadow, snapshot, current->m_textureBindings, count)) return "same-B shadow retry did not prepare full C with actual instances";
 		for (const auto& pass : snapshot.m_shadowMapsToUpdate)
 			if (!pass.m_payloadCompletionToken || !pass.m_payloadCompletionToken->IsSuccessful()) return "C payload did not complete successfully";
 		const auto stable = *current;
 		fill();
-		current = FindEntry(test.m_shadow->Cache(), state.m_requested);
+		current = FindEntry(test.m_shadow->Cache(), state.m_requestedIndices);
 		if (!snapshot.m_shadowMapsToUpdate.IsEmpty() || !current || !SamePublication(*current, stable) ||
 			scene->GetOrCreateSubmissionCompletionToken() != submission) return "unchanged D failed to reuse successful C";
 		return {};
@@ -566,7 +579,7 @@ namespace
 			TextureBindingCache* caches[] = { &test.m_main->Cache(), &test.m_depth->Cache() };
 			for (uint32_t n = 0u; n < 2u; ++n)
 			{
-				auto* entry = FindEntry(*caches[n], state.m_requested);
+				auto* entry = FindEntry(*caches[n], state.m_requestedIndices);
 				if (!entry || !SamePublication(*entry, test.m_warm[n]) || !CompleteEntry(*entry, state.m_sourceA)) return "failed warm main/depth request changed A content or source keys";
 			}
 			if (!PacketUses(test.m_main->Resources(test.m_snapshot)->m_packet, test.m_warm[0].m_textureBindings, count) ||
@@ -577,7 +590,7 @@ namespace
 			std::array<TextureBindingCacheEntry, 2> current;
 			for (uint32_t n = 0u; n < 2u; ++n)
 			{
-				auto* entry = FindEntry(*caches[n], state.m_requested);
+				auto* entry = FindEntry(*caches[n], state.m_requestedIndices);
 				if (!entry || entry->m_textureBindings == test.m_warm[n].m_textureBindings || !CompleteEntry(*entry, state.m_sourceB)) return "same-B main/depth retry did not publish complete C";
 				current[n] = *entry;
 			}
@@ -587,7 +600,7 @@ namespace
 			Prepare(*test.m_depth, test.m_snapshot);
 			for (uint32_t n = 0u; n < 2u; ++n)
 			{
-				auto* entry = FindEntry(*caches[n], state.m_requested);
+				auto* entry = FindEntry(*caches[n], state.m_requestedIndices);
 				if (!entry || !SamePublication(*entry, current[n])) return "unchanged main/depth C was republished";
 			}
 			if (auto error = CheckShadowRetry(state, test, count, unavailable); !error.empty()) return std::format("shadow case {}: {}", i, error);
@@ -596,17 +609,17 @@ namespace
 		{
 			texture->m_vulkan.m_imageView = unavailable;
 			Prepare(*test.m_depth, test.m_snapshot);
-			auto* entry = FindEntry(test.m_depth->Cache(), state.m_requested);
+			auto* entry = FindEntry(test.m_depth->Cache(), state.m_requestedIndices);
 			if (!entry || !SamePublication(*entry, test.m_warm[1]) ||
 				!PacketUses(test.m_depth->Resources(test.m_snapshot)->m_customPacket, entry->m_textureBindings, 3u)) return "custom-depth B lost fallback A or its ordinary/instanced packet";
 			texture->m_vulkan.m_imageView = restore.m_view;
 			Prepare(*test.m_depth, test.m_snapshot);
-			entry = FindEntry(test.m_depth->Cache(), state.m_requested);
+			entry = FindEntry(test.m_depth->Cache(), state.m_requestedIndices);
 			if (!entry || entry->m_textureBindings == test.m_warm[1].m_textureBindings || !CompleteEntry(*entry, state.m_sourceB) ||
 				!PacketUses(test.m_depth->Resources(test.m_snapshot)->m_customPacket, entry->m_textureBindings, 3u)) return "custom-depth same-B retry did not publish C";
 			const auto stable = *entry;
 			Prepare(*test.m_depth, test.m_snapshot);
-			entry = FindEntry(test.m_depth->Cache(), state.m_requested);
+			entry = FindEntry(test.m_depth->Cache(), state.m_requestedIndices);
 			if (!entry || !SamePublication(*entry, stable)) return "custom-depth C was republished";
 		}
 		const auto unchanged = App::GetSubmodule<TextureImporter>()->GetTextureSamplersSnapshot(state.m_requestedIndices);
@@ -684,7 +697,7 @@ void TextureBindingPublicationTestComponent::Tick(float)
 		}
 		if (!state.m_indices[0] || !state.m_indices[1] || state.m_indices[0] == state.m_indices[1] ||
 			state.m_indices[0] >= AbsentSlot || state.m_indices[1] >= AbsentSlot) { MarkFailed("private textures need distinct valid sampler slots"); return; }
-		state.m_requested = { 0u, state.m_indices[0], AbsentSlot };
+		state.m_requested = { AbsentSlot, state.m_indices[0], state.m_indices[0], TextureImporter::MaxTexturesInScene };
 		state.m_requestedIndices = { 0u, state.m_indices[0], AbsentSlot };
 		state.m_sourceA = importer->GetTextureSamplersSnapshot(state.m_requestedIndices);
 		state.m_unrelatedA = importer->GetTextureSamplersSnapshot({ state.m_indices[1] }).m_slots[0];

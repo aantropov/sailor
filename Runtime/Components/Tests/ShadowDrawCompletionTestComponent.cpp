@@ -51,7 +51,7 @@ namespace
 		}
 		TextureBindingCacheEntry* Entry(uint32_t index)
 		{
-			const TSet<uint32_t> requested{ 0u, index };
+			const TVector<uint32_t> requested{ 0u, index };
 			TextureBindingCacheEntry* result = nullptr;
 			m_textureBindingCache.Find(TextureBindingCacheKey(requested), result);
 			return result;

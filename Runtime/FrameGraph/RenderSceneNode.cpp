@@ -22,9 +22,6 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-static_assert(TextureDependencyCollector::MaxTrackedTextures ==
-	TextureImporter::MaxTexturesInScene);
-
 #ifndef _SAILOR_IMPORT_
 const char* RenderSceneNode::m_name = "RenderScene";
 #endif
@@ -152,7 +149,7 @@ RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 
 RHIShaderBindingSetPtr Details::GetTextureBindingSet(
 	TextureBindingCache& textureBindingCache,
-	const TSet<uint32_t>& requestedTextures,
+	const TVector<uint32_t>& requestedTextures,
 	uint64_t frame,
 	uint32_t& outSupportedMeshesPerBatch,
 	bool& outCurrent)
@@ -194,9 +191,8 @@ RHIShaderBindingSetPtr Details::GetTextureBindingSet(
 		return cachedEntry->m_textureBindings;
 	}
 
-	key.Materialize();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
-	const auto sourceSnapshot = textureImporter->GetTextureSamplersSnapshot(key.m_requestedTextures);
+	const auto sourceSnapshot = textureImporter->GetTextureSamplersSnapshot(requestedTextures);
 	TVector<uint64_t> currentSlotRevisions;
 	currentSlotRevisions.Reserve(sourceSnapshot.m_slots.Num());
 	for (const auto& slot : sourceSnapshot.m_slots)
@@ -234,7 +230,7 @@ RHIShaderBindingSetPtr Details::GetTextureBindingSet(
 	RHITexturePtr defaultTexture = driver->GetDefaultTexture();
 	TVector<RHITexturePtr> localTextures{ defaultTexture };
 	TVector<uint32_t> globalToLocal =
-		Details::BuildDenseTextureRemap(key.m_requestedTextures);
+		Details::BuildDenseTextureRemap(requestedTextures);
 	globalToLocal.Resize(TextureImporter::MaxTexturesInScene);
 
 	for (const auto& slot : sourceSnapshot.m_slots)
@@ -300,7 +296,11 @@ RHIShaderBindingSetPtr Details::GetTextureBindingSet(
 	}
 #endif
 
-	auto& entry = textureBindingCache[key];
+	if (!cachedEntry)
+	{
+		key.Materialize();
+	}
+	auto& entry = cachedEntry ? *cachedEntry : textureBindingCache[key];
 	entry.m_textureBindings = localTextureSet;
 	entry.m_textureRemapBuffer = remapBuffer;
 	entry.m_textureSetSize = denseTextureCount;

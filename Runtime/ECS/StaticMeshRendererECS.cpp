@@ -218,25 +218,24 @@ namespace
 #if defined(__APPLE__)
 				if (!shadowMesh.m_customDepthMaterial)
 				{
-					shadowMesh.m_materialTextureSamplers.Insert(0u);
-					shadowMesh.m_materialTextureSamplers.Insert(shadowMesh.m_baseColorSampler);
+					shadowMesh.m_materialTextureSamplers.Add(shadowMesh.m_baseColorSampler);
 				}
 #endif
 			}
 #if defined(__APPLE__)
 			if (shadowMesh.m_customDepthMaterial)
 			{
-				shadowMesh.m_materialTextureSamplers.Insert(0u);
 				if (textureImporter)
 				{
 					for (const auto& sampler : material->GetSamplers())
 					{
 						const uint32_t textureIndex = sampler.m_second ?
 							(uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
-						shadowMesh.m_materialTextureSamplers.Insert(textureIndex);
+						shadowMesh.m_materialTextureSamplers.Add(textureIndex);
 					}
 				}
 			}
+			RHI::NormalizeTextureSamplers(shadowMesh.m_materialTextureSamplers);
 #endif
 			shadowCaster->m_meshes.Add(std::move(shadowMesh));
 		}
@@ -789,15 +788,14 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				}
 				proxy.m_baseColorSamplers.Add(baseColorSampler);
 #if defined(__APPLE__)
-				TSet<uint32_t> requestedTextures;
-				requestedTextures.Insert(0u);
+				TVector<uint32_t> requestedTextures;
 				if (textureImporter)
 				{
 					for (const auto& sampler : material->GetSamplers())
 					{
 						const uint32_t textureIndex = sampler.m_second ?
 							(uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
-						requestedTextures.Insert(textureIndex);
+						requestedTextures.Add(textureIndex);
 					}
 				}
 				proxy.m_materialTextureSamplers.Add(std::move(requestedTextures));

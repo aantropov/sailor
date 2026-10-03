@@ -1351,10 +1351,12 @@ namespace
 	{
 		using TextureBindingCacheKey = RenderSceneNodeProbe::TextureBindingCacheKeyProbe;
 
-		TextureBindingCacheKey firstTextureSet;
-		firstTextureSet.m_requestedTextures = { 0u, 4u, 8u };
-		TextureBindingCacheKey secondTextureSet;
-		secondTextureSet.m_requestedTextures = { 0u, 5u, 8u };
+		const TVector<uint32_t> firstTextures{ 0u, 4u, 8u };
+		const TVector<uint32_t> secondTextures{ 0u, 5u, 8u };
+		TextureBindingCacheKey firstTextureSet(firstTextures);
+		TextureBindingCacheKey secondTextureSet(secondTextures);
+		firstTextureSet.Materialize();
+		secondTextureSet.Materialize();
 
 		TMap<TextureBindingCacheKey, uint32_t> textureBindingCache;
 		Require(textureBindingCache.Insert(firstTextureSet, 1u),
@@ -1363,22 +1365,28 @@ namespace
 			"a different equal-sized texture binding cache key must not collapse into the first");
 		Require(textureBindingCache.Num() == 2,
 			"texture sets with the same count and layout capacity must retain distinct cache identities");
-		TSet<uint32_t> lookupTextures{ 8u, 4u };
+		TVector<uint32_t> lookupTextures{ 0u, 4u, 8u };
 		TextureBindingCacheKey lookupKey(lookupTextures);
-		Require(lookupKey.m_requestedTextures.IsEmpty() &&
+		Require(lookupKey.GetTextures().GetData() == lookupTextures.GetData() &&
 			lookupKey == firstTextureSet &&
 			lookupKey.GetHash() == firstTextureSet.GetHash(),
-			"a cache-hit lookup key must compare and hash a non-owning texture set without materializing a vector");
+			"a cache-hit lookup key must compare and hash the published vector without copying it");
 		uint32_t* lookupValue = nullptr;
 		Require(textureBindingCache.Find(lookupKey, lookupValue) &&
 			lookupValue && *lookupValue == 1u,
 			"a non-owning texture key must resolve the canonical cached entry");
 		lookupKey.Materialize();
-		Require(lookupKey.m_requestedTextures.Num() == 3u &&
-			lookupKey.m_requestedTextures[0] == 0u &&
-			lookupKey.m_requestedTextures[1] == 4u &&
-			lookupKey.m_requestedTextures[2] == 8u,
-			"a cache miss must materialize one sorted canonical key including the default texture slot");
+		Require(lookupKey.GetTextures() == firstTextures &&
+			lookupKey.GetTextures().GetData() != lookupTextures.GetData(),
+			"an inserted key must own the canonical indices independently of the lookup source");
+		lookupTextures = { 0u };
+		Require(lookupKey == firstTextureSet && lookupKey.GetHash() == firstTextureSet.GetHash() &&
+			!(lookupKey == TextureBindingCacheKey(lookupTextures)),
+			"changing the borrowed source after materialization must not change a stored key");
+		const auto copiedKey = lookupKey;
+		const auto movedKey = std::move(lookupKey);
+		Require(copiedKey == movedKey && textureBindingCache.Find(movedKey, lookupValue) && *lookupValue == 1u,
+			"copied and moved owning keys must retain the original cache identity");
 
 		const auto materialBindings = RHI::RHIShaderBindingSetPtr::Make();
 		auto material = RHI::RHIMaterialPtr::Make(
@@ -1414,22 +1422,81 @@ namespace
 
 	}
 
-	void TestRenderResourceVirtualizationContract()
+	void TestTextureSamplerPublication()
 	{
-		Framegraph::TextureDependencyCollector textureDependencies;
-		textureDependencies.Reset();
-		textureDependencies.Insert(42u);
-		textureDependencies.Insert(7u);
-		textureDependencies.Insert(42u);
-		textureDependencies.Insert(
-			static_cast<uint32_t>(Framegraph::TextureDependencyCollector::MaxTrackedTextures));
-		const auto& textureIndices = textureDependencies.GetIndices();
-		Require(textureIndices.Num() == 3u &&
-			textureIndices[0] == 0u &&
-			textureIndices[1] == 7u &&
-			textureIndices[2] == 42u,
-			"the reusable texture dependency collector must deduplicate, bound, and sort indices without transient sets");
-
+#if defined(__APPLE__)
+		constexpr uint32_t Limit = TextureImporter::MaxTexturesInScene;
+		const TVector<uint32_t> expected{ 0u, 4u, 8u, Limit - 1u };
+		auto makeProxy = [](bool alternate)
+		{
+			RHI::RHISceneViewProxy proxy;
+			proxy.m_materialTextureSamplers = { { 8u, 4u, 8u, 0u, Limit, Limit - 1u }, {} };
+			if (alternate)
+			{
+				proxy.m_materialTextureSamplers = {
+					{ Limit - 1u, 8u, 4u, 4u }, { 0u, 0u, (std::numeric_limits<uint32_t>::max)() } };
+			}
+			RHI::RHIInstancedMeshGroup group;
+			group.m_materialTextureSamplers = proxy.m_materialTextureSamplers;
+			proxy.m_instancedGroups.Add(std::move(group));
+			proxy.m_shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
+			for (const auto& textures : proxy.m_materialTextureSamplers)
+			{
+				RHI::RHIShadowMeshProxy mesh;
+				mesh.m_worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 3, 4));
+				mesh.m_materialTextureSamplers = textures;
+				proxy.m_shadowCaster->m_meshes.Add(std::move(mesh));
+			}
+			return proxy;
+		};
+		auto requireIndices = [](const TVector<uint32_t>& textures, const TVector<uint32_t>& indices)
+		{
+			Require(textures == indices,
+				"published material indices must be sorted, unique, bounded and include the default slot");
+		};
+		for (const auto& world : { glm::mat4(1.0f), glm::mat4(0.0f) })
+		{
+			auto source = makeProxy(false);
+			source.m_worldMatrix = world;
+			const auto originalTextures = source.m_materialTextureSamplers;
+			const auto originalShadow = source.m_shadowCaster;
+			const auto originalShadowTextures = originalShadow->m_meshes[0].m_materialTextureSamplers;
+			const auto originalShadowMatrix = originalShadow->m_meshes[0].m_worldMatrix;
+			auto copied = RHI::RHISceneProxyResourcePtr::Make(source);
+			Require(source.m_materialTextureSamplers == originalTextures,
+				"publication must not rewrite the producer's texture metadata");
+			auto moved = RHI::RHISceneProxyResourcePtr::Make(std::move(source));
+			for (const auto& resource : { copied, moved })
+			{
+				const auto& proxy = resource->m_proxy;
+				for (size_t i = 0; i < 2u; ++i)
+				{
+					const TVector<uint32_t> indices = i == 0u ? expected : TVector<uint32_t>{ 0u };
+					requireIndices(proxy.m_materialTextureSamplers[i], indices);
+					requireIndices(proxy.m_instancedGroups[0].m_materialTextureSamplers[i], indices);
+					requireIndices(proxy.m_shadowCaster->m_meshes[i].m_materialTextureSamplers, indices);
+				}
+				Require(proxy.m_shadowCaster != originalShadow &&
+					originalShadow->m_meshes[0].m_materialTextureSamplers == originalShadowTextures &&
+					originalShadow->m_meshes[0].m_worldMatrix == originalShadowMatrix,
+					"copy and move publication must isolate shared shadow metadata even with a singular world transform");
+			}
+			auto alternate = makeProxy(true);
+			alternate.m_worldMatrix = world;
+			auto equivalent = RHI::RHISceneProxyResourcePtr::Make(alternate);
+			Require(copied->m_mainRevision == equivalent->m_mainRevision &&
+				copied->m_shadowRevision == equivalent->m_shadowRevision &&
+				copied->m_mainRevision == moved->m_mainRevision &&
+				copied->m_shadowRevision == moved->m_shadowRevision,
+				"permutations, duplicates, invalid indices and implicit slot zero must share publication revisions");
+			alternate.m_materialTextureSamplers[0] = { 0u, 4u, 9u, Limit - 1u };
+			alternate.m_shadowCaster->m_meshes[0].m_materialTextureSamplers = alternate.m_materialTextureSamplers[0];
+			auto changed = RHI::RHISceneProxyResourcePtr::Make(std::move(alternate));
+			Require(changed->m_mainRevision != copied->m_mainRevision &&
+				changed->m_shadowRevision != copied->m_shadowRevision,
+				"an actual sampler replacement must still invalidate main and shadow publications");
+		}
+#endif
 	}
 
 	void TestShaderReadOnlyBarrierSynchronizesShaderSampling()
@@ -1816,7 +1883,7 @@ int main()
 		{ "SnapshotCameraLodContract", TestSnapshotCameraLodContract },
 		{ "BatchTextureBindingIdentityContract", TestBatchTextureBindingIdentityContract },
 		{ "CustomShadowMaterialKey", TestCustomShadowMaterialKey },
-		{ "RenderResourceVirtualizationContract", TestRenderResourceVirtualizationContract },
+		{ "TextureSamplerPublication", TestTextureSamplerPublication },
 		{ "ShaderReadOnlyBarrierSynchronizesShaderSampling", TestShaderReadOnlyBarrierSynchronizesShaderSampling },
 		{ "DepthSamplingBarrierScopes", TestDepthSamplingBarrierScopes },
 		{ "ComputeWriteBarrierOverloadDirections", TestComputeWriteBarrierOverloadDirections },
