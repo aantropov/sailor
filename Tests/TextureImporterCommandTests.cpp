@@ -88,6 +88,13 @@ namespace
 			m_info->Deserialize(metadata);
 		}
 
+		void SaveMetadata() const
+		{
+			std::ofstream output(m_path.string() + ".asset");
+			output << m_info->Serialize();
+			Require(static_cast<bool>(output), "texture fixture metadata must be written");
+		}
+
 		std::filesystem::path m_path;
 		FileId m_id;
 		TextureAssetInfoPtr m_info = nullptr;
@@ -252,27 +259,35 @@ namespace
 			std::filesystem::rename(fixture.m_path, saved);
 			importer->OnUpdateAssetInfo(fixture.m_info, true);
 			missing = importer->GetLoadPromise(fixture.m_id);
+			Require(missing && missing != first && !missing->IsFinished(),
+				"a rejected reload must remain ordered after the held previous publication");
 			std::filesystem::rename(saved, fixture.m_path);
 		}
 		fixture.Clamp(RHI::ETextureClamping::Clamp);
 		importer->OnUpdateAssetInfo(fixture.m_info, true);
 		auto latest = importer->GetLoadPromise(fixture.m_id);
-		const uint32_t requests = missingMiddle ? 3 : 2;
+		const uint32_t requests = 2;
 		if (App::GetSubmodule<Tasks::Scheduler>()->GetNumThreads(EThreadType::Worker) > 1)
 		{
 			decode.WaitDecoded(requests);
 			std::this_thread::sleep_for(std::chrono::milliseconds(30));
 		}
 		const bool stayedPending = latest != first && !latest->IsFinished();
+		Require(App::GetSubmodule<AssetRegistry>()->IsAssetExpired(fixture.m_info),
+			"a held texture publication must not be acknowledged by an earlier request");
 		decode.Release();
 		latest->Wait();
 		first->Wait();
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(
+			{ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
 		Require(stayedPending && latest->GetResult() == texture &&
 			texture->GetRHI()->GetClamping() == RHI::ETextureClamping::Clamp &&
 			texture->HasCpuData() && importer->GetTextureIndex(fixture.m_id) == slot &&
 			importer->GetTextureSamplersCount() == slots,
 			"reload publication must follow request order even when newer decoding finishes first");
 		if (missing) Require(!missing->GetResult(), "a missing source must fail without breaking the publication chain");
+		Require(!App::GetSubmodule<AssetRegistry>()->IsAssetExpired(fixture.m_info),
+			"the latest successful reload must acknowledge its source despite superseded failures");
 		decode.CheckWorker(requests);
 	}
 
@@ -399,6 +414,134 @@ namespace
 			importer->GetTextureIndex(fixture.m_id) == slot && importer->GetTextureSamplersCount() == slots,
 			"reload must retry successfully after failure and promise collection");
 		decode.CheckWorker(4);
+	}
+
+	void TestRegistryReloadFailure(const std::filesystem::path& workspace)
+	{
+		TextureFixture fixture(workspace, "RegistryTextureRetry");
+		fixture.KeepCpu(true);
+		fixture.SaveMetadata();
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* importer = App::GetSubmodule<TextureImporter>();
+		Require(App::UpdateAsset(fixture.m_id.ToString().c_str()), "texture metadata must become current");
+		TexturePtr texture;
+		Require(importer->LoadTexture_Immediate(fixture.m_id, texture) && texture->HasCpuData(),
+			"registry retry fixture must load retained CPU pixels and a GPU image");
+		const auto rhi = texture->GetRHI();
+		const auto slot = static_cast<uint32_t>(importer->GetTextureIndex(fixture.m_id));
+		const auto slots = importer->GetTextureSamplersCount();
+		const auto bindings = importer->GetTextureSamplersSnapshot({ slot });
+		auto capture = importer->CaptureCpuTextures({ texture });
+		capture->Wait();
+		const auto previous = capture->GetResult()[0];
+		DecodeProbe decode(fixture.m_id);
+		{
+			std::ofstream invalid(fixture.m_path, std::ios::binary);
+			invalid << "not an image";
+		}
+		const bool updated = App::UpdateAsset(fixture.m_id.ToString().c_str());
+		const auto failed = importer->GetLoadPromise(fixture.m_id);
+		Require(failed && failed->IsFinished() && !failed->GetResult() && texture->GetRHI() == rhi &&
+			texture->GetDecodedData().GetData() == previous.m_pixels->GetData() &&
+			importer->GetTextureSamplersSnapshot({ slot }).m_descriptorRevision == bindings.m_descriptorRevision,
+			"a failed targeted texture reload must retain the GPU image, descriptor and CPU pixels");
+		Require(!updated && registry->IsAssetExpired(fixture.m_info),
+			"a failed texture publication must not acknowledge the source revision in the asset cache");
+		const auto failedTime = std::filesystem::last_write_time(fixture.m_path);
+		const auto failedSize = std::filesystem::file_size(fixture.m_path);
+		Require(registry->GetOrLoadFile(fixture.m_path.string()) == fixture.m_id,
+			"retrying LoadFile must preserve the registered texture ID");
+		const auto repeated = importer->GetLoadPromise(fixture.m_id);
+		Require(repeated && repeated != failed && repeated->IsFinished() && !repeated->GetResult() &&
+			registry->IsAssetExpired(fixture.m_info) &&
+			std::filesystem::last_write_time(fixture.m_path) == failedTime &&
+			std::filesystem::file_size(fixture.m_path) == failedSize,
+			"the same failed texture file must be retried without an external edit");
+		fixture.Write(0, 255, 3);
+		Require(App::UpdateAsset(fixture.m_id.ToString().c_str()) && !registry->IsAssetExpired(fixture.m_info),
+			"successful texture publication must acknowledge its repaired source");
+		Require(importer->GetLoadedTexture(fixture.m_id) == texture && texture->GetRHI() != rhi &&
+			texture->GetWidth() == 3 && texture->GetDecodedData().Num() == 12 &&
+			texture->GetDecodedData()[2] == 255 && (*previous.m_pixels)[0] == 255 &&
+			importer->GetTextureIndex(fixture.m_id) == slot && importer->GetTextureSamplersCount() == slots,
+			"texture retry must preserve object and slot identity without overwriting retained snapshots");
+		const auto repaired = texture->GetRHI();
+		Require(registry->GetOrLoadFile(fixture.m_path.string()) == fixture.m_id && texture->GetRHI() == repaired,
+			"an acknowledged texture must not reload again without a change");
+		const auto sourceTime = std::filesystem::last_write_time(fixture.m_path);
+		const auto sourceSize = std::filesystem::file_size(fixture.m_path);
+		fixture.Clamp(RHI::ETextureClamping::Clamp);
+		fixture.SaveMetadata();
+		Require(App::UpdateAsset(fixture.m_id.ToString().c_str()) && !registry->IsAssetExpired(fixture.m_info) &&
+			texture->GetRHI()->GetClamping() == RHI::ETextureClamping::Clamp &&
+			texture->GetDecodedData()[2] == 255 &&
+			std::filesystem::last_write_time(fixture.m_path) == sourceTime &&
+			std::filesystem::file_size(fixture.m_path) == sourceSize,
+			"metadata-only texture reload must acknowledge the new sampler without changing the image source");
+		decode.CheckWorker(4);
+		std::cout << "Texture registry reload: failed/metadata-only revisions, unchanged-source retry and retained resources passed\n";
+	}
+
+	void TestTextureScanFailure(const std::filesystem::path& workspace)
+	{
+		TextureFixture failing(workspace, "TextureScanFailing"), independent(workspace, "TextureScanIndependent");
+		for (auto* fixture : { &failing, &independent })
+		{
+			fixture->KeepCpu(true);
+			fixture->SaveMetadata();
+		}
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* importer = App::GetSubmodule<TextureImporter>();
+		TexturePtr texture, other;
+		Require(importer->LoadTexture_Immediate(failing.m_id, texture) &&
+			importer->LoadTexture_Immediate(independent.m_id, other), "scan fixtures must load");
+		const auto slot = static_cast<uint32_t>(importer->GetTextureIndex(failing.m_id));
+		auto scan = [&]()
+		{
+			auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
+			const bool scanned = registry->ScanContentFolder();
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
+			const bool completed = registry->CompleteScanProcessing();
+			failing.m_info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(failing.m_id);
+			independent.m_info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(independent.m_id);
+			return scanned && completed;
+		};
+		struct RestoreLazyLoading
+		{
+			bool m_previous = g_bUseLazyAssetInfoLoading;
+			~RestoreLazyLoading() { g_bUseLazyAssetInfoLoading = m_previous; }
+		} restoreLazyLoading;
+		uint8_t blue = 32;
+		for (bool lazy : { false, true })
+		{
+			g_bUseLazyAssetInfoLoading = lazy;
+			Require(scan(), "texture scan fixture must start from an acknowledged registry");
+			const auto goodRhi = texture->GetRHI();
+			const auto slotRevision = importer->GetTextureSamplersSnapshot({ slot }).m_slots[0].m_contentRevision;
+			auto capture = importer->CaptureCpuTextures({ texture });
+			capture->Wait();
+			const auto pixels = capture->GetResult()[0].m_pixels;
+			{
+				std::ofstream invalid(failing.m_path, std::ios::binary);
+				invalid << "not an image";
+			}
+			independent.Write(0, blue);
+			Require(!scan(), "one failed texture publication must fail scan completion");
+			Require(failing.m_info && independent.m_info && registry->IsAssetExpired(failing.m_info) &&
+				!registry->IsAssetExpired(independent.m_info) && other->GetDecodedData()[2] == blue &&
+				texture->GetRHI() == goodRhi && texture->GetDecodedData().GetData() == pixels->GetData() &&
+				importer->GetTextureSamplersSnapshot({ slot }).m_slots[0].m_contentRevision == slotRevision,
+				"failed scans must preserve old texture state and acknowledge independent successful textures");
+			const auto otherRhi = other->GetRHI();
+			failing.Write(0, blue, 2);
+			Require(scan() && !registry->IsAssetExpired(failing.m_info) && texture->GetWidth() == 2 &&
+				texture->GetDecodedData()[2] == blue && other->GetRHI() == otherRhi &&
+				importer->GetTextureIndex(failing.m_id) == slot,
+				"repair scan must retry the failed texture without rebuilding the successful one");
+			blue += 32;
+		}
+		std::cout << "Texture scan reload: eager/lazy failure, independent acknowledgement and repair passed\n";
 	}
 
 	void TestCpuSnapshotDuringReload(const std::filesystem::path& workspace)
@@ -564,9 +707,11 @@ namespace Sailor::Tests
 		run("Cold failure retry", [&]() { TestColdFailureRetry(workspace); });
 		run("First CPU publication", [&]() { TestFirstCpuPublication(workspace); });
 		run("Source mismatch and failure", [&]() { TestSourceMismatchAndFailure(workspace); });
+		run("Registry texture reload failure", [&]() { TestRegistryReloadFailure(workspace); });
 		run("CPU snapshot during reload", [&]() { TestCpuSnapshotDuringReload(workspace); });
 		run("CPU snapshot batch ordering", [&]() { TestCpuSnapshotBatchOrdering(workspace); });
 		run("Reload GC stress", [&]() { TestReloadGcStress(workspace); });
+		run("Texture scan failure", [&]() { TestTextureScanFailure(workspace); });
 		if (!failures.empty()) throw std::runtime_error(failures);
 		std::cout << "Texture importer CPU enrichment, Worker decode, ordered reload and failure tests passed\n";
 	}

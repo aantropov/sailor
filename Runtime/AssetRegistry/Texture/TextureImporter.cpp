@@ -661,14 +661,34 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 		return;
 	}
 
+	auto* registry = App::GetSubmodule<AssetRegistry>();
+	const auto token = registry->BeginAssetProcessing(assetInfo);
 	const auto uid = assetInfo->GetFileId();
 	auto& entry = m_textures.At_Lock(uid);
 	entry.m_bCpuBuffersRequested = assetInfo->ShouldKeepCpuBuffers();
-	entry.m_load = CreateTextureTask(texture, *assetInfo, false, true, entry.m_lastAccess);
+	if (token)
+	{
+		entry.m_load = CreateTextureTask(texture, *assetInfo, false, true, entry.m_lastAccess);
+	}
+	else
+	{
+		// Rejected reloads still preserve the publication/read ordering for this texture.
+		entry.m_load = Tasks::CreateTask<TexturePtr>("Reject texture reload", []() { return TexturePtr{}; }, EThreadType::RHI);
+		entry.m_load->Join(entry.m_lastAccess);
+	}
 	entry.m_lastAccess = entry.m_load;
 	auto task = entry.m_load;
 	m_textures.Unlock(uid);
+	auto acknowledge = Tasks::CreateTask<bool>("Acknowledge texture reload", [registry, token, task]()
+		{
+			const bool succeeded = task->GetResult().IsValid();
+			registry->CompleteAssetProcessing(token, succeeded);
+			return succeeded;
+		});
+	acknowledge->Join(task);
+	registry->TrackScanProcessingTask(acknowledge);
 	task->Run();
+	acknowledge->Run();
 }
 
 void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)
