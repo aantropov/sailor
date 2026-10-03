@@ -968,9 +968,11 @@ void main() {
 	}
 
 	enum class DebugDepthInput { Default, Texture, Surface, DefaultSurface };
+	enum class DepthDrawPath { DebugNode, SurfacePass };
 
-	void TestDebugDraw(ShaderSetPtr shader, ShaderSetPtr depthPattern, const std::array<ShaderSetPtr, 4>& depthReadback,
-		EFormat format, bool colorSurface, DebugDepthInput depthInput, bool namedColor, bool namedDepth)
+	void TestDepthTestedDraw(ShaderSetPtr shader, ShaderSetPtr depthPattern, const std::array<ShaderSetPtr, 4>& depthReadback,
+		EFormat format, bool colorSurface, DebugDepthInput depthInput, bool namedColor, bool namedDepth,
+		DepthDrawPath path = DepthDrawPath::DebugNode)
 	{
 		auto driver = Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
 		auto commands = Renderer::GetDriverCommands();
@@ -1005,28 +1007,31 @@ void main() {
 			const auto mesh = graph->GetFullscreenNdcQuad();
 			const RenderState state(true, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, msaa, EDepthCompare::Greater);
 			auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader);
-			auto secondaryTask = Tasks::CreateTaskWithResult<RHICommandListPtr>("Record debug attachment fixture",
-				[mesh, material, format, msaa]()
-				{
-					auto secondary = Renderer::GetDriver()->CreateCommandList(true, ECommandListQueue::Graphics);
-					secondary->m_vulkan.m_commandBuffer->BeginSecondaryCommandList({ VK_FORMAT_R32G32B32A32_SFLOAT },
-						static_cast<VkFormat>(format), VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-						VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT, msaa);
-					DebugContext::DrawSnapshot snapshot;
-					snapshot.m_vertexBuffer = mesh->m_vertexBuffer;
-					snapshot.m_indexBuffer = mesh->m_indexBuffer;
-					snapshot.m_material = material;
-					snapshot.m_numVertices = 6;
-					DebugContext::DrawDebugMesh(secondary, glm::translate(glm::mat4(1), glm::vec3(0, 0, 0.5f)), snapshot, glm::ivec2(Side));
-					Renderer::GetDriverCommands()->EndCommandList(secondary);
-					return secondary;
-				}, EThreadType::RHI);
-			secondaryTask->Run();
-			secondaryTask->Wait();
-			Require(secondaryTask->IsFinished() && secondaryTask->GetResult()->GetRecordedDrawCallStats().m_numBatches == 1,
-				"debug fixture must deliver a completed, nonempty secondary before Process");
+			DebugContext::DrawSnapshot snapshot;
+			snapshot.m_vertexBuffer = mesh->m_vertexBuffer;
+			snapshot.m_indexBuffer = mesh->m_indexBuffer;
+			snapshot.m_material = material;
+			snapshot.m_numVertices = 6;
 			RHISceneViewSnapshot scene;
-			scene.m_debugDrawSecondaryCmdList = secondaryTask;
+			if (path == DepthDrawPath::DebugNode)
+			{
+				auto secondaryTask = Tasks::CreateTaskWithResult<RHICommandListPtr>("Record debug attachment fixture",
+					[snapshot, format, msaa]()
+					{
+						auto secondary = Renderer::GetDriver()->CreateCommandList(true, ECommandListQueue::Graphics);
+						secondary->m_vulkan.m_commandBuffer->BeginSecondaryCommandList({ VK_FORMAT_R32G32B32A32_SFLOAT },
+							static_cast<VkFormat>(format), VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+							VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT, msaa);
+						DebugContext::DrawDebugMesh(secondary, glm::translate(glm::mat4(1), glm::vec3(0, 0, 0.5f)), snapshot, glm::ivec2(Side));
+						Renderer::GetDriverCommands()->EndCommandList(secondary);
+						return secondary;
+					}, EThreadType::RHI);
+				secondaryTask->Run();
+				secondaryTask->Wait();
+				Require(secondaryTask->IsFinished() && secondaryTask->GetResult()->GetRecordedDrawCallStats().m_numBatches == 1,
+					"debug fixture must deliver a completed, nonempty secondary before Process");
+				scene.m_debugDrawSecondaryCmdList = secondaryTask;
+			}
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(upload, true);
@@ -1046,9 +1051,22 @@ void main() {
 			recordedColorCount = 0;
 			recordedDepth = {};
 			recordedRenderingFlags = 0;
-			node->Process(graph, upload, draw, scene);
-			const bool valid = recordedColorCount == 1 && node->GetDrawCallStats().m_numBatches == 1 &&
-				recordedRenderingFlags == VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT &&
+			const auto batchesBefore = draw->GetRecordedDrawCallStats().m_numBatches;
+			if (path == DepthDrawPath::SurfacePass)
+			{
+				commands->BeginRenderPass(draw, TVector<RHISurfacePtr>{ color }, surface ? surface->GetTarget() : depth,
+					glm::ivec4(0, 0, Side, Side), glm::ivec2(0), false, glm::vec4(0), 0.0f, true);
+				DebugContext::DrawDebugMesh(draw, glm::translate(glm::mat4(1), glm::vec3(0, 0, 0.5f)), snapshot, glm::ivec2(Side));
+				commands->EndRenderPass(draw);
+			}
+			else
+			{
+				node->Process(graph, upload, draw, scene);
+			}
+			const bool oneDraw = path == DepthDrawPath::SurfacePass ?
+				draw->GetRecordedDrawCallStats().m_numBatches == batchesBefore + 1 : node->GetDrawCallStats().m_numBatches == 1;
+			const bool valid = recordedColorCount == 1 && oneDraw &&
+				recordedRenderingFlags == (path == DepthDrawPath::SurfacePass ? 0 : VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT) &&
 				recordedColor.imageView == static_cast<VkImageView>(*target->m_vulkan.m_imageView) &&
 				recordedColor.resolveImageView == (msaa ? static_cast<VkImageView>(*resolved->m_vulkan.m_imageView) : VK_NULL_HANDLE) &&
 				recordedColor.resolveMode == (msaa ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE) &&
@@ -1062,10 +1080,10 @@ void main() {
 				commands->EndCommandList(draw);
 				upload->m_vulkan.m_commandBuffer->Reset();
 				draw->m_vulkan.m_commandBuffer->Reset();
-				throw std::runtime_error("DebugDraw attachment mismatch: colorSurface=" + std::to_string(colorSurface) +
+				throw std::runtime_error("Depth draw attachment mismatch: path=" + std::to_string(uint32_t(path)) + ", colorSurface=" + std::to_string(colorSurface) +
 					", depth=" + std::to_string(uint32_t(depthInput)) + ", namedColor=" + std::to_string(namedColor) +
 					", namedDepth=" + std::to_string(namedDepth) + ", colors=" + std::to_string(recordedColorCount) +
-					", batches=" + std::to_string(node->GetDrawCallStats().m_numBatches));
+					", singleDraw=" + std::to_string(oneDraw));
 			}
 			auto resolvedPixels = ReadColor(draw, resolved);
 			auto targetPixels = msaa ? ReadColor(draw, target) : resolvedPixels;
@@ -1085,7 +1103,7 @@ void main() {
 						const float expectedDepth = sample > 0 && (x + y + frame) % 5 == 0 ? 0.0f :
 							float(1 + (x * 3 + y * 5 + frame * 7) % 13) / 16.0f - float(sample) / 32.0f;
 						Require(actualDepth[(y * Side + x) * samples + sample] == glm::vec2(expectedDepth, 0),
-							"debug overlay must preserve every depth/stencil sample");
+							"the depth-tested draw must preserve every depth/stencil sample");
 						if (sample == 0 || recordedDepth.resolveMode == VK_RESOLVE_MODE_MIN_BIT)
 							resolvedDepth = glm::min(resolvedDepth, expectedDepth);
 						if (x < Side / 2 && 0.5f > expectedDepth) ++visibleSamples;
@@ -1099,13 +1117,13 @@ void main() {
 						const auto actual = static_cast<const glm::vec4*>(image->GetPointer())[y * Side + x];
 						for (uint32_t component = 0; component < 4; ++component)
 							Require(std::isfinite(actual[component]) && std::abs(actual[component] - expected[component]) < 0.00001f,
-								"debug secondary must respect per-sample depth and preserve uncovered live color");
+								"the draw must respect per-sample depth and preserve uncovered live color");
 					}
 				}
 		}
-		std::cout << "DebugDraw colorSurface=" << colorSurface << " depth=" << uint32_t(depthInput) <<
+		std::cout << (path == DepthDrawPath::SurfacePass ? "PrimarySurfaceDepth" : "DebugDraw") << " colorSurface=" << colorSurface << " depth=" << uint32_t(depthInput) <<
 			" namedColor=" << namedColor << " namedDepth=" << namedDepth << " format=" << uint32_t(format) <<
-			": three replacements, completed secondary, native attachments and per-sample occlusion passed\n";
+			": three replacements, native attachments and per-sample occlusion passed\n";
 	}
 
 	enum class DepthInput { Default, Texture, Surface };
@@ -2191,12 +2209,16 @@ namespace Sailor::Tests
 					TestFullscreenUploadRetry();
 					TestImportedRendering(importedGraphIds);
 					TestGraphLoadFailures(workspace, importedGraphIds[0]);
+					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
+						for (auto input : { DebugDepthInput::Texture, DebugDepthInput::Surface })
+							TestDepthTestedDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],
+								depthReadback, format, true, input, false, false, DepthDrawPath::SurfacePass);
 					for (bool namedColor : { true, false })
 						for (bool namedDepth : { false, true })
 							for (bool colorSurface : { false, true })
 								for (auto depthInput : { DebugDepthInput::Default, DebugDepthInput::Texture, DebugDepthInput::Surface, DebugDepthInput::DefaultSurface })
 									for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
-										TestDebugDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],
+										TestDepthTestedDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],
 											depthReadback, format, colorSurface, depthInput, namedColor, namedDepth);
 					for (auto inputMode : { LightCullingInput::Bound, LightCullingInput::Named,
 						LightCullingInput::Default, LightCullingInput::NamedWithoutDefault })
