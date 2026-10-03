@@ -28,9 +28,7 @@ void ModelAssetInfo::CopyMetadata(const AssetInfo& source)
 ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)
 {
 	// TODO: Add more formats
-	m_supportedExtensions.Emplace("glb");
-	m_supportedExtensions.Emplace("gltf");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<ModelAssetInfo>(), this);
 }
 
 void ModelAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

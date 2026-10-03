@@ -38,7 +38,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::AudioAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::AudioAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "wav", "flac", "mp3" }),
 	field(m_fileId),
 	field(m_assetFilename),
 	field(m_stream)

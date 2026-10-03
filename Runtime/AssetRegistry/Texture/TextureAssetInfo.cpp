@@ -27,16 +27,7 @@ void TextureAssetInfo::CopyMetadata(const AssetInfo& source)
 
 TextureAssetInfoHandler::TextureAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("png");
-	m_supportedExtensions.Emplace("bmp");
-	m_supportedExtensions.Emplace("tga");
-	m_supportedExtensions.Emplace("jpg");
-	m_supportedExtensions.Emplace("gif");
-	m_supportedExtensions.Emplace("psd");
-	m_supportedExtensions.Emplace("dds");
-	m_supportedExtensions.Emplace("hdr");
-
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<TextureAssetInfo>(), this);
 }
 
 IAssetInfoHandler* TextureAssetInfo::GetHandler()

@@ -22,8 +22,7 @@ void WorldPrefabAssetInfo::Deserialize(const YAML::Node& outData)
 
 WorldPrefabAssetInfoHandler::WorldPrefabAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("world");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<WorldPrefabAssetInfo>(), this);
 }
 
 void WorldPrefabAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

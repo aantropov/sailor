@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <string>
 #include <ctime>
 #include <type_traits>
@@ -140,7 +141,6 @@ namespace Sailor
 	protected:
 
 		virtual AssetInfoPtr CreateAssetInfo() const = 0;
-		TVector<std::string> m_supportedExtensions;
 
 		TVector<IAssetInfoHandlerListener*> m_listeners;
 	};
@@ -174,6 +174,70 @@ namespace Sailor
 		}
 
 		return fieldName;
+	}
+
+	namespace Attributes
+	{
+		template<typename... TExtensions>
+		struct Asset : refl::attr::usage::type
+		{
+			constexpr Asset(TExtensions... extensions) : m_extensions{ extensions... } {}
+
+			TVector<std::string> Extensions() const
+			{
+				TVector<std::string> extensions;
+				for (const auto extension : m_extensions)
+				{
+					extensions.Emplace(extension);
+				}
+				return extensions;
+			}
+
+			template<typename TAssetInfo>
+			YAML::Node Serialize() const
+			{
+				static_assert(std::is_base_of_v<AssetInfo, TAssetInfo>);
+				YAML::Node node;
+				node["typename"] = refl::reflect<TAssetInfo>().name.c_str();
+				node["extensions"] = YAML::Node(YAML::NodeType::Sequence);
+				for (const auto extension : m_extensions)
+				{
+					node["extensions"].push_back(std::string(extension));
+				}
+
+				YAML::Node properties(YAML::NodeType::Sequence);
+				TVector<std::string> names;
+				TAssetInfo* empty = nullptr;
+				for_each(refl::reflect<TAssetInfo>().members, [&](auto member)
+					{
+						if constexpr (is_writable(member))
+						{
+							const std::string name = NormalizeAssetInfoFieldName(get_display_name(member));
+							if (names.Contains(name))
+							{
+								return;
+							}
+							names.Add(name);
+							using PropertyType = decltype(get_reader(member)(*empty));
+							YAML::Node property;
+							property["name"] = name;
+							property["type"] = TypeInfo::GetReflectedPropertyTypeName<PropertyType>();
+							properties.push_back(property);
+						}
+					});
+				node["properties"] = properties;
+				return node;
+			}
+
+		private:
+			std::array<std::string_view, sizeof...(TExtensions)> m_extensions;
+		};
+	}
+
+	template<typename TAssetInfo>
+	TVector<std::string> GetAssetInfoExtensions()
+	{
+		return refl::descriptor::get_attribute<Attributes::Asset>(refl::reflect<TAssetInfo>()).Extensions();
 	}
 
 	template<typename TAssetInfo>
@@ -254,7 +318,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::AssetInfo),
+	type(Sailor::AssetInfo, Sailor::Attributes::Asset{}),
 	field(m_fileId),
 	field(m_assetFilename)
 )

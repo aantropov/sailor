@@ -40,7 +40,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::AnimationAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::AnimationAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "anim" }),
 	field(m_fileId),
 	field(m_assetFilename),
 	field(m_animationIndex),

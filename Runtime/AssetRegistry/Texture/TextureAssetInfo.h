@@ -64,7 +64,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::TextureAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::TextureAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "png", "bmp", "tga", "jpg", "gif", "psd", "dds", "hdr" }),
 	field(m_fileId),
 	field(m_assetFilename),
 	field(m_clamping),

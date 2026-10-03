@@ -544,8 +544,7 @@ IAssetInfoHandler* LandscapeVegetationAssetInfo::GetHandler()
 LandscapeVegetationAssetInfoHandler::LandscapeVegetationAssetInfoHandler(
 	AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("vegetation");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<LandscapeVegetationAssetInfo>(), this);
 }
 
 void LandscapeVegetationAssetInfoHandler::GetDefaultMeta(

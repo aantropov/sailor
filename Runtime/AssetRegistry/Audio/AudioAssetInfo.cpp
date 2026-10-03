@@ -26,10 +26,7 @@ IAssetInfoHandler* AudioAssetInfo::GetHandler()
 
 AudioAssetInfoHandler::AudioAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("wav");
-	m_supportedExtensions.Emplace("flac");
-	m_supportedExtensions.Emplace("mp3");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<AudioAssetInfo>(), this);
 }
 
 void AudioAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

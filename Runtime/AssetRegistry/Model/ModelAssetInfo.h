@@ -72,7 +72,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::ModelAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::ModelAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "glb", "gltf" }),
 	field(m_fileId),
 	field(m_assetFilename),
 	field(m_bShouldGenerateMaterials),

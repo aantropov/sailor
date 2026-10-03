@@ -27,8 +27,7 @@ void MaterialAssetInfo::CopyMetadata(const AssetInfo& source)
 
 MaterialAssetInfoHandler::MaterialAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("mat");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<MaterialAssetInfo>(), this);
 }
 
 void MaterialAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

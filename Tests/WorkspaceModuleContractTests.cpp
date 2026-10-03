@@ -225,8 +225,8 @@ namespace
 			"workspace metadata should explicitly identify serialized read-only properties");
 		Require(type["properties"]["skippedDefault"].as<std::string>() == "float",
 			"SkipCDO properties should remain available in the writable property schema");
-		Require(type["properties"]["mode"].as<std::string>().rfind("enum ", 0) == 0,
-			"workspace component metadata should preserve reflected enum properties");
+		Require(type["properties"]["mode"].as<std::string>() == "enum WorkspaceFixture::EFixtureMode",
+			"workspace component metadata should preserve the enum's declaring namespace");
 		const YAML::Node fixtureModeValues = FindEnum(
 			metadata["enums"],
 			type["properties"]["mode"].as<std::string>());

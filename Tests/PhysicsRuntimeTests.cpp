@@ -950,7 +950,7 @@ namespace
 			"rigid body should remain a reflected engine component");
 		Require(
 			rigidBodyType.Properties()["motionType"] ==
-				"enum Sailor::ERigidBodyMotionType" &&
+				"enum Sailor::Physics::ERigidBodyMotionType" &&
 				rigidBodyType.Properties()["collisionLayer"] == "uint32",
 			"rigid body authoring fields should export Editor-compatible types");
 		Require(
@@ -962,7 +962,7 @@ namespace
 		Require(
 			shapeType.Name() == "Sailor::CollisionShapeComponent" &&
 				shapeType.Properties()["shapeType"] ==
-					"enum Sailor::ECollisionShapeType" &&
+					"enum Sailor::Physics::ECollisionShapeType" &&
 				!shapeType.Properties()["center"].empty(),
 			"collision shape should expose typed primitive authoring fields: " +
 				shapeType.Properties()["shapeType"] + ", " +

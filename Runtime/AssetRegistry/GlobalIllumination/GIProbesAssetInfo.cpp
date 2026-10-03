@@ -23,8 +23,7 @@ IAssetInfoHandler* GIProbesAssetInfo::GetHandler()
 GIProbesAssetInfoHandler::GIProbesAssetInfoHandler(
 	AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("probes");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<GIProbesAssetInfo>(), this);
 }
 
 void GIProbesAssetInfoHandler::GetDefaultMeta(

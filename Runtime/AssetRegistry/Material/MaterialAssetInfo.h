@@ -43,7 +43,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::MaterialAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::MaterialAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "mat" }),
 	field(m_fileId),
 	field(m_assetFilename),
 	field(m_sourceModel),

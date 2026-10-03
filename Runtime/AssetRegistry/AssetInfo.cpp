@@ -202,7 +202,7 @@ bool AssetInfo::IsMetaExpired() const
 
 DefaultAssetInfoHandler::DefaultAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<AssetInfo>(), this);
 }
 
 std::time_t AssetInfo::GetAssetLastModificationTime() const
