@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Defines.h"
+#include <atomic>
 #include <string>
 #include "Containers/Pair.h"
 #include "Containers/Map.h"
@@ -64,6 +65,7 @@ namespace Sailor
 		RHI::EFormat m_depthStencilAttachment = RHI::EFormat::UNDEFINED;
 
 		TVector<std::string> m_defines{};
+		std::atomic<bool> m_ready{ false };
 
 		friend class ShaderCompiler;
 	};
@@ -153,6 +155,21 @@ namespace Sailor
 		TConcurrentMap<FileId, TVector<TPair<uint32_t, ShaderSetPtr>>> m_loadedShaders;
 
 		using ShaderReloadResults = TVector<TPair<FileId, bool>>;
+		struct ShaderResources
+		{
+			RHI::RHIShaderPtr m_vertex, m_fragment, m_compute;
+			RHI::RHIShaderPtr m_debugVertex, m_debugFragment, m_debugCompute;
+			TVector<RHI::EFormat> m_colorAttachments;
+			RHI::EFormat m_depthStencilAttachment = RHI::EFormat::UNDEFINED;
+		};
+		struct PreparedShaderReload
+		{
+			ShaderReloadResults m_results;
+			TVector<TPair<ShaderSetPtr, ShaderResources>> m_resources;
+		};
+		// Registration uses the existing promise-map locks. Preparation never waits for Render.
+		Tasks::ITaskPtr m_lastShaderPreparation;
+		Tasks::ITaskPtr m_lastShaderPublication;
 		struct PendingShaderChange
 		{
 			AssetRegistry::AssetProcessingToken m_token;
@@ -186,7 +203,8 @@ namespace Sailor
 		SAILOR_API static uint32_t GetPermutation(const TVector<std::string>& defines, const TVector<std::string>& actualDefines);
 		SAILOR_API static TVector<std::string> GetDefines(const TVector<std::string>& defines, uint32_t permutation);
 
-		SAILOR_API bool UpdateRHIResource(ShaderSetPtr shader, uint32_t permutation);
+		bool PrepareShaderResources(const FileId& uid, uint32_t permutation, ShaderResources& resources);
+		static void PublishShaderResources(ShaderSetPtr shader, const ShaderResources& resources);
 
 		static bool SaveShaderCacheAndCombineResult(
 			ShaderCache& cache,
@@ -265,13 +283,13 @@ namespace Sailor
 
 		SAILOR_API void ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const;
 		Tasks::TaskPtr<bool> ReloadShader(ShaderAssetInfoPtr assetInfo);
-		Tasks::TaskPtr<bool> ReloadShaders(const TVector<ShaderAssetInfoPtr>& assetInfos);
-		Tasks::TaskPtr<ShaderReloadResults> ReloadShaderBatch(const TVector<ShaderAssetInfoPtr>& assetInfos);
+		Tasks::TaskPtr<bool> ReloadShaders(const TVector<ShaderAssetInfoPtr>& assetInfos, bool invalidate = true);
+		Tasks::TaskPtr<ShaderReloadResults> ReloadShaderBatch(const TVector<ShaderAssetInfoPtr>& assetInfos, bool invalidate = true);
+		PreparedShaderReload PrepareShaderReload(const TVector<ShaderAssetInfoPtr>& assetInfos, bool invalidate);
 		Tasks::TaskPtr<bool> ReloadShadersDependingOn(AssetInfoPtr includeAssetInfo);
 		Tasks::TaskPtr<bool> ReloadShadersDependingOn(const std::string& includeVirtualPath);
 		Tasks::TaskPtr<bool> CompilePermutations(ShaderAssetInfoPtr assetInfo, const TVector<uint32_t>& permutations);
 		bool CompileLoadedShaderPermutations(ShaderAssetInfoPtr assetInfo);
-		bool ReloadLoadedShaderResources(ShaderAssetInfoPtr assetInfo);
 		static Tasks::TaskPtr<bool> AggregateShaderReloadTasks(
 			const TVector<Tasks::TaskPtr<bool>>& reloadTasks);
 		static bool ReadShaderSourceBinary(
@@ -301,7 +319,8 @@ namespace Sailor
 	{
 	public:
 		SAILOR_API static ShaderCache& GetShaderCache(ShaderCompiler& compiler);
-		SAILOR_API static bool UpdateRHIResource(ShaderCompiler& compiler, ShaderSetPtr shader, uint32_t permutation);
+		SAILOR_API static Tasks::TaskPtr<bool> ReloadShaderResources(ShaderCompiler& compiler, const FileId& uid);
+		SAILOR_API static Tasks::ITaskPtr GetLastPreparation(ShaderCompiler& compiler);
 		SAILOR_API static bool AggregateCompileResults(const bool* results, size_t count);
 		SAILOR_API static bool SaveCacheAndCombineResult(
 			ShaderCache& cache,

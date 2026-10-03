@@ -607,6 +607,165 @@ namespace
 			"metalness and roughness must independently change actual rendered pixels");
 	}
 
+	class HoldRenderQueue
+	{
+	public:
+		HoldRenderQueue()
+		{
+			m_task = Tasks::CreateTask("Hold shader publication", [this]()
+				{
+					m_entered = true;
+					m_release.wait();
+				}, EThreadType::Render);
+			m_task->Run();
+		}
+		~HoldRenderQueue()
+		{
+			Release();
+			m_task->Wait();
+		}
+		void Wait()
+		{
+			const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+			while (!m_entered && std::chrono::steady_clock::now() < until) std::this_thread::yield();
+			Require(m_entered, "render publication gate must start");
+		}
+		void Release()
+		{
+			if (!m_released) m_release.count_down();
+			m_released = true;
+		}
+	private:
+		Tasks::TaskPtr<> m_task;
+		std::atomic<bool> m_entered{ false };
+		std::latch m_release{ 1 };
+		bool m_released = false;
+	};
+
+	class ShaderReloadObserver final : public Object
+	{
+	public:
+		explicit ShaderReloadObserver(ShaderSetPtr shader) : m_shader(shader) {}
+		Tasks::ITaskPtr OnHotReload() override
+		{
+			m_threads.Add(App::GetSubmodule<Tasks::Scheduler>()->GetCurrentThreadType());
+			m_stages.Add(m_shader->GetComputeShaderRHI());
+			m_complete &= m_shader->IsReady() && m_shader->GetComputeShaderRHI() && m_shader->GetDebugComputeShaderRHI();
+			return {};
+		}
+		ShaderSetPtr m_shader;
+		TVector<EThreadType> m_threads;
+		TVector<RHI::RHIShaderPtr> m_stages;
+		bool m_complete = true;
+	};
+
+	void TestShaderPublicationQueue(const std::filesystem::path& workspace)
+	{
+		auto* compiler = App::GetSubmodule<ShaderCompiler>();
+		auto& cache = ShaderCompilerTestAccess::GetShaderCache(*compiler);
+		const auto includePath = workspace / "Content" / "QueuedShader.glsl";
+		auto writeInclude = [&](float value)
+		{
+			std::ofstream output(includePath);
+			output << "const float QueuedValue = " << value << ";\n";
+			output.close();
+			Require(static_cast<bool>(output), "queued shader include must be written");
+		};
+		writeInclude(0.25f);
+		Require(static_cast<bool>(App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(includePath.string())),
+			"queued shader include must be registered");
+		const auto id = WriteShader(workspace, "QueuedShader", true, true, "QueuedShader.glsl");
+		ShaderSetPtr shader;
+		bool loaded = false;
+		auto cold = Tasks::CreateTask("Load shader from Render", [&]()
+			{
+				loaded = compiler->LoadShader_Immediate(id, shader);
+			}, EThreadType::Render);
+		cold->Run();
+		cold->Wait();
+		Drain();
+		Require(loaded && shader && shader->IsReady(),
+			"synchronous cold shader loading from Render must not wait for its own queue");
+		const auto coldId = WriteShader(workspace, "ColdDuringShaderReload", true, true);
+		Drain();
+		const auto generation = ShaderCacheTestAccess::GetGeneration(cache, id, 0);
+		const auto previous = shader->GetComputeShaderRHI();
+		struct ObserveShader
+		{
+			Memory::ObjectAllocatorPtr allocator = Memory::ObjectAllocatorPtr::Make();
+			TObjectPtr<ShaderReloadObserver> observer;
+			~ObserveShader()
+			{
+				App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(
+					{ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
+				observer->m_shader->RemoveHotReloadDependentObject(observer);
+				observer.DestroyObject(allocator);
+			}
+		} observation;
+		observation.observer = TObjectPtr<ShaderReloadObserver>::Make(observation.allocator, shader);
+		shader->AddHotReloadDependentObject(observation.observer);
+		HoldRenderQueue hold;
+		hold.Wait();
+		writeInclude(0.75f);
+		auto reload = compiler->OnEffectiveContentChanged("QueuedShader.glsl");
+		Require(static_cast<bool>(reload), "include reload must return a completion task");
+		auto preparation = ShaderCompilerTestAccess::GetLastPreparation(*compiler);
+		Require(preparation && preparation->GetThreadType() == EThreadType::Worker,
+			"shader preparation must run on Worker, independently of Render publication");
+		preparation->Wait();
+		const bool prepared = ShaderCacheTestAccess::GetGeneration(cache, id, 0) != generation;
+		const bool publishedWhileHeld = reload->IsFinished();
+		const bool retained = shader->GetComputeShaderRHI() == previous;
+		ShaderSetPtr coldShader;
+		auto coldDuringReload = compiler->LoadShader(coldId, coldShader);
+		Require(static_cast<bool>(coldDuringReload), "a cold shader request must be admitted during reload");
+		coldDuringReload->Wait();
+		Require(coldDuringReload->GetResult() == coldShader && coldShader && coldShader->IsReady() &&
+			coldShader->GetComputeShaderRHI() && coldShader->GetDebugComputeShaderRHI(),
+			"a cold load must not wait behind a pending Render publication");
+		writeInclude(0.875f);
+		auto second = compiler->OnEffectiveContentChanged("QueuedShader.glsl");
+		preparation = ShaderCompilerTestAccess::GetLastPreparation(*compiler);
+		preparation->Wait();
+		const bool secondDeferred = !second->IsFinished() && shader->GetComputeShaderRHI() == previous;
+		hold.Release();
+		reload->Wait();
+		second->Wait();
+		Drain();
+		Require(prepared, "shader compilation must progress while the Render queue is occupied");
+		Require(!publishedWhileHeld && retained && secondDeferred,
+			"shader reloads must retain the last-good stages until Render publishes each result");
+		Require(reload->GetResult() && second->GetResult() && shader->IsReady() && shader->GetComputeShaderRHI() != previous,
+			"shader reload must publish the prepared stages after Render becomes available");
+		auto observer = observation.observer;
+		Require(observer->m_complete && observer->m_threads.Num() == 2 &&
+			observer->m_threads[0] == EThreadType::Render && observer->m_threads[1] == EThreadType::Render &&
+			observer->m_stages[0] != observer->m_stages[1] && observer->m_stages[1] == shader->GetComputeShaderRHI(),
+			"dependents must observe complete, ordered shader replacements on Render");
+		std::cout << "Shader publication: Render cold load, Worker preparation, ordered Render reload and notifications passed\n";
+
+		const auto cachePath = ShaderCacheTestAccess::GetCachePath(cache);
+		Require(cachePath.parent_path() == std::filesystem::weakly_canonical(workspace / "Cache"),
+			"cache recovery must only move the fixture workspace manifest");
+		Require(cache.SaveCache(), "shader cache must be committed before simulating missing storage");
+		std::filesystem::rename(cachePath, workspace / "ShaderCache.before-recovery.yaml");
+		const auto beforeRecovery = shader->GetComputeShaderRHI();
+		HoldRenderQueue recoveryGate;
+		recoveryGate.Wait();
+		Require(compiler->RecoverMissingShaderCacheStorage(), "missing shader cache storage must trigger recovery");
+		preparation = ShaderCompilerTestAccess::GetLastPreparation(*compiler);
+		preparation->Wait();
+		const bool recoveryDeferred = shader->GetComputeShaderRHI() == beforeRecovery;
+		recoveryGate.Release();
+		Drain();
+		Require(recoveryDeferred && shader->IsReady() && shader->GetComputeShaderRHI() != beforeRecovery &&
+			observer->m_threads.Num() == 3 && observer->m_threads[2] == EThreadType::Render && observer->m_complete,
+			"cache recovery must also retain live shaders until complete Render-owned replacement");
+		Require(std::filesystem::is_regular_file(cachePath) && !compiler->RecoverMissingShaderCacheStorage(),
+			"recovered cache storage must be committed without repeating recovery");
+		std::cout << "Shader cache recovery: complete deferred Render replacement and stable storage passed\n";
+	}
+
 	void TestWarmShaderPermutation(const std::filesystem::path& workspace)
 	{
 		auto* compiler = App::GetSubmodule<ShaderCompiler>();
@@ -620,15 +779,10 @@ namespace
 			Drain();
 			auto update = [&]()
 			{
-				bool success = false;
-				auto task = Tasks::CreateTask("Rebuild cached shader RHI", [&]()
-					{
-						success = ShaderCompilerTestAccess::UpdateRHIResource(*compiler, shader, 0);
-					}, EThreadType::Render);
-				task->Run();
+				auto task = ShaderCompilerTestAccess::ReloadShaderResources(*compiler, uid);
 				task->Wait();
 				Drain();
-				return success;
+				return task->GetResult();
 			};
 			const uint64_t expectedReads = compute ? 2 : 4;
 			const auto generation = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
@@ -641,12 +795,11 @@ namespace
 			const auto damaged = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0,
 				compute ? ShaderCache::ComputeShaderTag : ShaderCache::FragmentShaderTag, true);
 			std::filesystem::resize_file(damaged, 7);
+			ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
 			Require(update() && shader->IsReady(), "a broken artifact must recompile to a complete RHI set");
 			const auto repairedGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
 			Require(repairedGeneration != generation, "a broken debug artifact must rebuild the complete permutation");
-			ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
-			Require(ShaderCompilerTestAccess::SaveCacheAndCombineResult(cache, true) &&
-				!cache.IsDirty() && cache.NeedsMaintenance() && shader->IsReady(),
+			Require(!cache.IsDirty() && cache.NeedsMaintenance() && shader->IsReady(),
 				"a deferred artifact cleanup must not invalidate successful native shader compilation");
 			ShaderCacheTestAccess::TakeManifestWriteCount(cache);
 			if (compute)
@@ -1393,6 +1546,7 @@ namespace Sailor::Tests
 		run("Reload ordering", [&]() { TestOrderedReload(workspace, false); });
 		run("Cold ordering", [&]() { TestOrderedReload(workspace, true); });
 		run("Shader failures", [&]() { TestShaderFailures(workspace); });
+		run("Shader publication queue", [&]() { TestShaderPublicationQueue(workspace); });
 		run("Warm shader permutation", [&]() { TestWarmShaderPermutation(workspace); });
 		run("Shared shader reload", [&]() { TestSharedShaderReload(workspace); });
 		run("Layout and cold parity", [&]() { TestLayoutAndColdParity(workspace); });
