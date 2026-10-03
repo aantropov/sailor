@@ -1651,7 +1651,8 @@ namespace
 		const auto image = WriteTexture(workspace, "ColdMaterialInvalid", false);
 		MaterialFixture fixture(workspace, "ColdMaterialFailure", image);
 		MaterialPtr material;
-		Require(!importer->LoadMaterial_Immediate(fixture.id, material) && material && !material->GetShaderBindings(),
+		Require(!importer->LoadMaterial_Immediate(fixture.id, material) && material &&
+			!material->IsReady() && !material->GetShaderBindings(),
 			"failed cold dependency must not publish a usable material or report success");
 		const auto original = material;
 		Require(WriteTexture(workspace, "ColdMaterialInvalid", true) == image, "cold repair must preserve texture identity");
@@ -1659,6 +1660,44 @@ namespace
 			"completed cold failure must retry on the existing Material");
 		Drain();
 		Require(material->IsReady() && material->GetContentRevision() == 1, "cold retry must publish once");
+	}
+
+	void TestColdReadinessPublication(const std::filesystem::path& workspace)
+	{
+		auto* importer = App::GetSubmodule<MaterialImporter>();
+		const auto texture = WriteTexture(workspace, "ColdReadinessTexture", true);
+		for (uint32_t i = 0; i < 32; ++i)
+		{
+			const auto name = "ColdReadiness" + std::to_string(i);
+			MaterialFixture fixture(workspace, name.c_str(), texture);
+			HoldRenderQueue hold;
+			hold.Wait();
+			MaterialPtr material;
+			auto load = importer->LoadMaterial(fixture.id, material);
+			Require(load && material && !material->IsReady(),
+				"a cold material must remain unready before Render publishes its data");
+			hold.Release();
+
+			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+			bool ready = false;
+			while (!(ready = material->IsReady()) && std::chrono::steady_clock::now() < deadline)
+			{
+				RHI::Renderer::GetDriver()->TrackResources_ThreadSafe();
+				std::this_thread::yield();
+			}
+			Require(ready, "Main must observe cold material readiness without waiting on its load task");
+			TexturePtr sampler;
+			float roughness = 0;
+			Require(material->GetShader() && material->GetShaderBindings() &&
+				Color(material) == glm::vec4(1, 0.5f, 0.25f, 1) &&
+				material->GetUniformsFloat().TryGet("material.roughnessFactor", roughness) && roughness == 0.75f &&
+				material->GetSamplers().TryGet("baseColorSampler", sampler) && sampler && sampler->GetFileId() == texture,
+				"readiness must expose complete shader, binding, uniform and sampler state");
+			load->Wait();
+			Require(load->GetResult() == material, "the load task and readiness poll must publish the same material");
+		}
+		Drain();
+		std::cout << "Cold material readiness: 32 Main polls observe complete Render publication passed\n";
 	}
 
 	void TestOrderedReload(const std::filesystem::path& workspace, bool cold)
@@ -1955,6 +1994,7 @@ namespace Sailor::Tests
 		run("Standard glTF rendered reference", [&]() { TestStandardGltfSurfaceRendering(workspace); });
 		run("Texture failure and retry", [&]() { TestFailedTextureReload(workspace); });
 		run("Cold failure and retry", [&]() { TestColdFailureRetry(workspace); });
+		run("Cold readiness publication", [&]() { TestColdReadinessPublication(workspace); });
 		run("Reload ordering", [&]() { TestOrderedReload(workspace, false); });
 		run("Cold ordering", [&]() { TestOrderedReload(workspace, true); });
 		run("Shader failures", [&]() { TestShaderFailures(workspace); });

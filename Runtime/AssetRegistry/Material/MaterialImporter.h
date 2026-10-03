@@ -48,6 +48,8 @@ namespace Sailor
 		SAILOR_API const TConcurrentMap<std::string, glm::vec4>& GetUniformsVec4() const { return m_uniformsVec4; }
 		SAILOR_API const TConcurrentMap<std::string, float>& GetUniformsFloat() const { return m_uniformsFloat; }
 
+		// World-owned values are edited on Main after loading. Private instances
+		// can be initialized by their creating task before publication.
 		SAILOR_API void ClearSamplers();
 		SAILOR_API void ClearUniforms();
 
@@ -77,6 +79,8 @@ namespace Sailor
 		void ForcelyUpdateUniforms();
 		void UpdateUniforms(RHI::RHICommandListPtr cmdList);
 
+		// Publishes initial CPU state; GPU readiness is checked separately.
+		std::atomic<bool> m_initialized{ false };
 		std::atomic<bool> m_bIsDirty{};
 		std::atomic<uint64_t> m_contentRevision{};
 		// Emission RGB changes lighting, but leaves the transport surface intact.

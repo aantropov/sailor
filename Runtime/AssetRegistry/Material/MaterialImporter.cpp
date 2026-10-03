@@ -92,7 +92,7 @@ void Material::SetRenderState(const RHI::RenderState& renderState)
 
 bool Material::IsReady() const
 {
-	const bool bReady = m_shader && m_shader->IsReady() &&
+	const bool bReady = m_initialized.load(std::memory_order_acquire) && m_shader && m_shader->IsReady() &&
 		m_commonShaderBindings.IsValid() && m_commonShaderBindings->IsReady();
 	if (bReady)
 	{
@@ -356,6 +356,7 @@ void Material::UpdateRHIResource()
 
 	m_commonShaderBindings->RecalculateCompatibility();
 	m_bIsDirty = false;
+	m_initialized.store(true, std::memory_order_release);
 }
 
 void Material::UpdateRHIResourceAndUniforms()
@@ -845,6 +846,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
 			{
 				material->TraceHotReloadDependents(nullptr);
 			}
+			material->m_initialized.store(true, std::memory_order_release);
 			return material;
 		}, EThreadType::Render);
 	publish->Join(loadShader);
