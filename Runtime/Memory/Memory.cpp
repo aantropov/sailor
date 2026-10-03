@@ -5,13 +5,14 @@
 #include <cassert>
 #include <functional> 
 #include <cctype>
-#include "Core/Utils.h"
+#include "Platform/Time.h"
 #include "Containers/Pair.h"
 #include "MallocAllocator.hpp"
 #include "MemoryBlockAllocator.hpp"
 #include "MemoryPoolAllocator.hpp"
 #include "MemoryMultiPoolAllocator.hpp"
 #ifdef _WIN32
+#include <windows.h>
 #include "psapi.h"
 #else
 #include <unistd.h>

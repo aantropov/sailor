@@ -1,4 +1,5 @@
 #include "Components/Tests/SkyDrawCompletionTestComponent.h"
+#include "Platform/Time.h"
 #include "FrameGraph/SkyNode.h"
 #include "RHI/Buffer.h"
 #include "RHI/CommandList.h"

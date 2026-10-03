@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Platform/Time.h"
 #include "Editor/EditorRuntimeBridge.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"

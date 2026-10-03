@@ -11,6 +11,23 @@
 #include "Math/Math.h"
 #include "Containers/Containers.h"
 
+namespace Sailor::Utils
+{
+	struct WindowSizeAndPosition
+	{
+		RECT m_windowRect; // Includes title bar, borders, etc.
+		RECT m_clientRect; // Only the client area
+		int32_t m_width;
+		int32_t m_height;
+		int32_t m_clientWidth;
+		int32_t m_clientHeight;
+		int32_t m_xPos;
+		int32_t m_yPos;
+	};
+
+	SAILOR_API WindowSizeAndPosition GetWindowSizeAndPosition(HWND hwnd);
+}
+
 namespace Sailor::Win32
 {
 	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);

@@ -3,7 +3,7 @@
 #include <list>
 #include <cassert>
 #include <cctype>
-#include "Core/Utils.h"
+#include "Platform/Time.h"
 #include "List.h"
 #include "Memory/Memory.h"
 #include "Tasks/Tasks.h"

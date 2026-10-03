@@ -1,4 +1,5 @@
 #include "PathTracer.h"
+#include "Platform/Time.h"
 #include "Tasks/Scheduler.h"
 #include "Core/LogMacros.h"
 #include "Core/Utils.h"

@@ -1,4 +1,6 @@
 #include "Components/Tests/TestCaseComponent.h"
+#include "Platform/Time.h"
+#include "Math/Math.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "FrameGraph/CopyTextureToRamNode.h"
 #include "RHI/Renderer.h"

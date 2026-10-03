@@ -1,4 +1,5 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "Core/FileRevision.h"
 #include "Containers/Containers.h"
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"

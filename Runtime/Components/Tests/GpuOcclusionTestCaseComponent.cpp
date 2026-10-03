@@ -1,4 +1,5 @@
 #include "Components/Tests/GpuOcclusionTestCaseComponent.h"
+#include "Platform/Time.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "FrameGraph/FrameGraphNode.h"

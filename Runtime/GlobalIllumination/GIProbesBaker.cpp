@@ -2,7 +2,7 @@
 #include "GlobalIllumination/GIProbesTracing.h"
 
 #include "Containers/Hash.h"
-#include "Core/Utils.h"
+#include "Platform/Time.h"
 #include "Math/Math.h"
 
 #include <algorithm>

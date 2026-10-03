@@ -14,7 +14,7 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "Core/LogMacros.h"
-#include "Core/Utils.h"
+#include "Math/Math.h"
 #include "Containers/Hash.h"
 #include <algorithm>
 #include <cmath>

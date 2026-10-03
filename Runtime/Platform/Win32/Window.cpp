@@ -20,6 +20,27 @@
 using namespace Sailor;
 using namespace Sailor::Win32;
 
+Utils::WindowSizeAndPosition Utils::GetWindowSizeAndPosition(HWND hwnd)
+{
+	WindowSizeAndPosition result = {};
+
+	if (GetWindowRect(hwnd, &result.m_windowRect))
+	{
+		result.m_width = result.m_windowRect.right - result.m_windowRect.left;
+		result.m_height = result.m_windowRect.bottom - result.m_windowRect.top;
+		result.m_xPos = result.m_windowRect.left;
+		result.m_yPos = result.m_windowRect.top;
+	}
+
+	if (GetClientRect(hwnd, &result.m_clientRect))
+	{
+		result.m_clientWidth = result.m_clientRect.right - result.m_clientRect.left;
+		result.m_clientHeight = result.m_clientRect.bottom - result.m_clientRect.top;
+	}
+
+	return result;
+}
+
 namespace
 {
 	constexpr UINT c_destroyWindowMessage = WM_APP + 0x351;

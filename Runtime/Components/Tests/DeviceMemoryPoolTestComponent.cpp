@@ -1,4 +1,5 @@
 #include "Components/Tests/DeviceMemoryPoolTestComponent.h"
+#include "Platform/Time.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "GraphicsDriver/Vulkan/VulkanBuffer.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"

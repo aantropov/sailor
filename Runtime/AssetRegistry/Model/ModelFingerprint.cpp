@@ -1,4 +1,5 @@
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "Core/FileRevision.h"
 #include "Platform/AtomicFile.h"
 #if defined(SAILOR_FILE_IO_TEST_HOOKS)
 #include "Platform/AtomicFileTestAccess.h"

@@ -116,6 +116,16 @@ namespace
 			Require(value == c.second, "Trim must remove only surrounding whitespace");
 		}
 	}
+
+	void TestSplitStrings()
+	{
+		const auto fields = Utils::SplitString("one::two::::", "::");
+		Require(fields.Num() == 4 && fields[0] == "one" && fields[1] == "two" &&
+			fields[2].empty() && fields[3].empty(), "splitting must preserve empty fields and return owned strings");
+		const auto lines = Utils::SplitStringByLines("first\n\nlast\n");
+		Require(lines.Num() == 3 && lines[0] == "first" && lines[1].empty() && lines[2] == "last",
+			"line splitting must preserve interior empty lines");
+	}
 }
 
 int main()
@@ -125,7 +135,8 @@ int main()
 		{ "AdjacentErase", TestAdjacentErase },
 		{ "EraseRange", TestEraseRange },
 		{ "ReplacementRange", TestReplacementRange },
-		{ "TwoSidedTrim", TestTwoSidedTrim }
+		{ "TwoSidedTrim", TestTwoSidedTrim },
+		{ "SplitStrings", TestSplitStrings }
 	};
 	bool passed = true;
 	for (const auto& [name, test] : tests)

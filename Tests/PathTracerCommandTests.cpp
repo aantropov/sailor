@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Core/FileRevision.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"

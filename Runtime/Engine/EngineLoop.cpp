@@ -1,4 +1,5 @@
 #include "EngineLoop.h"
+#include "Platform/Time.h"
 #include "Core/Defines.h"
 #include "Core/LogMacros.h"
 

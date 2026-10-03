@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetCache.h"
+#include "Core/FileRevision.h"
 #include "AssetRegistry/AssetScanSourceRevisionCache.h"
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"

@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetInfo.h"
+#include "Core/FileRevision.h"
 #include "Platform/AtomicFile.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/AssetScanSourceRevisionCache.h"

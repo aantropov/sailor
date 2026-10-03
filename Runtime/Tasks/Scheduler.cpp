@@ -9,7 +9,7 @@
 #include <mutex>
 #include <set>
 #include <string>
-#include "Core/Utils.h"
+#include "Platform/Thread.h"
 #include "Core/StringHash.h"
 
 #include "Tasks/Tasks.h"

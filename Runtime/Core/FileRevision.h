@@ -3,6 +3,7 @@
 #include "Core/Defines.h"
 
 #include <cstdint>
+#include <ctime>
 #include <string>
 
 namespace YAML
@@ -34,6 +35,7 @@ namespace Sailor
 
 	namespace Utils
 	{
+		SAILOR_API std::time_t GetFileModificationTime(const std::string& filepath);
 		SAILOR_API bool TryGetFileRevision(
 			const std::string& filepath,
 			FileRevision& outRevision) noexcept;

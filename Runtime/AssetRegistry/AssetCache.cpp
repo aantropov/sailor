@@ -1,4 +1,5 @@
 #include "AssetCache.h"
+#include "Core/FileRevision.h"
 #include "Platform/AtomicFile.h"
 #include "Containers/Containers.h"
 

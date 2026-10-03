@@ -1,4 +1,5 @@
 #include "Components/Tests/DescriptorPreparationTestComponent.h"
+#include "Platform/Time.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "GraphicsDriver/Vulkan/VulkanDescriptors.h"

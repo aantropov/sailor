@@ -1,4 +1,5 @@
 #include "AssetRegistry/Model/ModelLodGeneration.h"
+#include "Core/FileRevision.h"
 
 #include "AssetRegistry/Model/ModelGeometry.h"
 #include "AssetRegistry/Model/ModelLodCache.h"

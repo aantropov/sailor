@@ -1,4 +1,5 @@
 #include "ShaderCache.h"
+#include "Core/FileRevision.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderDependencyFingerprint.h"

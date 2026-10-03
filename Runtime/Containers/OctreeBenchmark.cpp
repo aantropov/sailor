@@ -1,6 +1,6 @@
 #include "Containers/Octree.h"
 #include "Containers/Octree2.h"
-#include "Core/Utils.h"
+#include "Platform/Time.h"
 #include <random>
 
 namespace Sailor

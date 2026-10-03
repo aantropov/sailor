@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <thread>
 
-#include "Core/Utils.h"
+#include "Platform/Time.h"
 
 using Sailor::Utils::Timer;
 using namespace std::chrono_literals;

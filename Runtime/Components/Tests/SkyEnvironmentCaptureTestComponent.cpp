@@ -1,4 +1,5 @@
 #include "Components/Tests/SkyEnvironmentCaptureTestComponent.h"
+#include "Platform/Time.h"
 #include "Components/CameraComponent.h"
 #include "Components/SkyComponent.h"
 #include "Engine/GameObject.h"

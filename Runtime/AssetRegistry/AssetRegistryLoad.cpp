@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetRegistry.h"
+#include "Core/FileRevision.h"
 #include "AssetRegistry/AssetRegistryInternal.h"
 #include "AssetRegistry/AssetFactory.h"
 #include "AssetRegistry/AssetInfo.h"
