@@ -5,6 +5,10 @@
 #include "Containers/ConcurrentMap.h"
 #include "HeapAllocator.h"
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 using namespace Sailor;
 using namespace Sailor::Memory;
 
