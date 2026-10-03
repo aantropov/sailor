@@ -13,6 +13,7 @@ namespace Sailor::Framegraph
 	{
 	public:
 		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API bool IsEnabled(RHI::ESceneViewRenderMode mode) const;
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph,
 			RHI::RHICommandListPtr transferCommandList,
@@ -68,6 +69,7 @@ namespace Sailor::Framegraph
 		struct CameraState
 		{
 			Raytracing::PathTracer m_pathTracer{};
+			RHI::RHIPathTracerScenePtr m_scene;
 			TRefPtr<SubmissionResources> m_pendingReadback{};
 			RHI::RHICubemapPtr m_environmentSource{};
 			RHI::RHICubemapPtr m_diffuseEnvironmentSource{};

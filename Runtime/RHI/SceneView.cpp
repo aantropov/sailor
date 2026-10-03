@@ -797,11 +797,7 @@ void RHISceneView::Clear()
 	m_renderMode = ESceneViewRenderMode::Lit;
 	m_shadowCastersRevision = 0ull;
 	m_bHasCustomDepthShadowCasters = false;
-	m_pathTracerProxies.Clear(false);
-	m_pathTracerTLASInstances.Clear(false);
-	m_pathTracerMaterials.Clear(false);
-	m_pathTracerLights.Clear(false);
-	m_pathTracerSceneRevision = 0;
+	m_pathTracerScene.Clear();
 }
 
 void RHISceneViewSnapshot::ResetForReuse()
@@ -822,11 +818,7 @@ void RHISceneViewSnapshot::ResetForReuse()
 		m_lodMeshes.Clear(false);
 		m_instancedLodOffsets.Clear(false);
 	}
-	m_pathTracerProxies.Clear(false);
-	m_pathTracerTLASInstances.Clear(false);
-	m_pathTracerMaterials.Clear(false);
-	m_pathTracerLights.Clear(false);
-	m_pathTracerSceneRevision = 0;
+	m_pathTracerScene.Clear();
 	m_totalNumLights = 0u;
 	m_shadowMapsToUpdate.Clear(false);
 	m_shadowMapsToBlit.Clear(false);
@@ -1323,11 +1315,7 @@ void RHISceneView::PrepareSnapshots()
 			res.m_camera = TUniquePtr<CameraData>::Make();
 		}
 		*res.m_camera = camera;
-		res.m_pathTracerProxies = m_pathTracerProxies;
-		res.m_pathTracerTLASInstances = m_pathTracerTLASInstances;
-		res.m_pathTracerMaterials = m_pathTracerMaterials;
-		res.m_pathTracerLights = m_pathTracerLights;
-		res.m_pathTracerSceneRevision = m_pathTracerSceneRevision;
+		res.m_pathTracerScene = m_pathTracerScene;
 
 		res.m_totalNumLights = m_totalNumLights;
 		res.m_rhiLightsData = i < m_rhiLightsDataPerCamera.Num() ?

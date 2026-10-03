@@ -9,6 +9,9 @@
 #include "ECS/TransformECS.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/PathTracerProxyComponent.h"
+#include "Components/CameraComponent.h"
+#include "Components/LightComponent.h"
+#include "Engine/Frame.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "FrameGraph/CPUPathTracerNode.h"
@@ -232,6 +235,7 @@ namespace
 		{
 			++m_currentFrame;
 			GetECS<TransformECS>()->Tick(0);
+			GetECS<LightingECS>()->Tick(0);
 			GetECS<PathTracerECS>()->Tick(0);
 			GetECS<PathTracerECS>()->CopySceneView(view);
 			view->PrepareSnapshots();
@@ -248,6 +252,258 @@ namespace
 			return systems;
 		}
 	};
+
+	RHI::RHISceneViewPtr CreateTracerView(World& world, uint32_t cameras = 1)
+	{
+		using namespace RHI;
+		auto view = RHISceneViewPtr::Make();
+		view->m_world = &world;
+		view->m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+		view->m_cameras.Resize(cameras);
+		view->m_cameraTransforms.Resize(cameras);
+		view->m_shadowMapsToUpdate.Resize(cameras);
+		view->m_shadowMapsToBlit.Resize(cameras);
+		view->m_shadowIndices.Resize(cameras);
+		view->m_shadowAtlasTiles.Resize(cameras);
+		view->m_shadowMatrices.Resize(cameras);
+		for (uint32_t i = 0; i < cameras; ++i)
+		{
+			view->m_cameras[i].SetAspect(1);
+			view->m_cameras[i].SetFov(glm::degrees(0.8f));
+			view->m_cameraTransforms[i].m_position = vec4(0, 0, 3, 1);
+		}
+		return view;
+	}
+
+	void TestTracerSceneDemand(ModelPtr model)
+	{
+		TracerWorld world;
+		auto object = world.Instantiate("Tracer scene publication");
+		auto mesh = object->AddComponent<MeshRendererComponent>();
+		mesh->GetData().SetModel(model);
+		auto proxy = object->AddComponent<PathTracerProxyComponent>();
+		proxy->SetEnabled(true);
+		auto material = MaterialPtr::Make(world.GetAllocator(), FileId::Invalid);
+		material->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
+		material->SetUniform("material.emissiveFactor", vec4(2, 0.5f, 0.25f, 0));
+		mesh->GetMaterials() = { material };
+		auto light = world.Instantiate("Tracer sun")->AddComponent<LightComponent>();
+		light->SetLightType(ELightType::Directional);
+		light->SetIntensity(vec3(1));
+		auto view = CreateTracerView(world, 2);
+		auto* ecs = world.GetECS<PathTracerECS>();
+		world.Publish(view);
+		Require(!view->m_snapshots[0].m_pathTracerScene && !view->m_snapshots[1].m_pathTracerScene,
+			"a populated raster-only world must not publish tracer payload");
+		ecs->SetPathTracingEnabled(true);
+		world.Publish(view);
+		Require(view->m_snapshots[0].m_pathTracerScene && view->m_snapshots[0].m_pathTracerScene->m_instances.Num() == 1,
+			"the demand fixture must contain a ready, populated tracer scene before disabling it");
+		const auto original = view->m_pathTracerScene;
+		Require(original->m_materials.Num() == 1 && original->m_lights.Num() == 1,
+			"the publication must include actual material and lighting data");
+		for (uint32_t frame = 0; frame < 64; ++frame)
+		{
+			view->m_cameraTransforms[1].m_position.x += 0.01f;
+			world.Publish(view);
+			for (const auto& snapshot : view->m_snapshots)
+			{
+				Require(snapshot.m_pathTracerScene == original &&
+					snapshot.m_pathTracerScene->m_instances.GetData() == original->m_instances.GetData() &&
+					snapshot.m_pathTracerScene->m_materials.GetData() == original->m_materials.GetData() &&
+					snapshot.m_pathTracerScene->m_lights.GetData() == original->m_lights.GetData(),
+					"unchanged scenes and camera-only motion must reuse all published arrays across frames and cameras");
+			}
+		}
+		ecs->SetPathTracingEnabled(false);
+		world.Publish(view);
+		Require(!view->m_snapshots[0].m_pathTracerScene && !view->m_snapshots[1].m_pathTracerScene,
+			"disabled tracing must not prepare or copy tracer payload into raster camera snapshots");
+		ecs->SetPathTracingEnabled(true);
+		world.Publish(view);
+		Require(view->m_pathTracerScene == original, "re-enabling unchanged input must reuse its publication");
+
+		auto publishChange = [&]()
+		{
+			const auto previous = view->m_pathTracerScene;
+			world.Publish(view);
+			Require(view->m_pathTracerScene && view->m_pathTracerScene != previous &&
+				view->m_snapshots[0].m_pathTracerScene == view->m_pathTracerScene &&
+				view->m_snapshots[1].m_pathTracerScene == view->m_pathTracerScene,
+				"a scene edit must publish one new generation to both cameras in the same frame");
+			return view->m_pathTracerScene;
+		};
+		material->SetUniform("material.emissiveFactor", vec4(0.25f, 2, 0.5f, 0));
+		const auto edited = publishChange();
+		Require(original->m_materials[0]->m_parameters.m_emissiveFactor == vec3(2, 0.5f, 0.25f) &&
+			edited->m_materials[0]->m_parameters.m_emissiveFactor == vec3(0.25f, 2, 0.5f),
+			"material edits must not mutate the retained frame's material parameters");
+		auto replacement = MaterialPtr::Make(world.GetAllocator(), FileId::Invalid);
+		replacement->SetUniform("material.emissiveFactor", vec4(3, 1, 0.5f, 0));
+		mesh->GetMaterials()[0] = replacement;
+		Require(publishChange()->m_materials[0]->m_parameters.m_emissiveFactor == vec3(3, 1, 0.5f),
+			"replacing a material must reach both cameras");
+		light->SetIntensity(vec3(3));
+		Require(publishChange()->m_lights[0].m_intensity == vec3(3) && original->m_lights[0].m_intensity == vec3(1),
+			"light edits must publish new values without modifying retained lights");
+
+		ecs->SetPathTracingEnabled(false);
+		object->GetTransformComponent().SetPosition(vec3(5, 0, 0));
+		world.Publish(view);
+		Require(!view->m_pathTracerScene, "changes while disabled must not publish payload");
+		ecs->SetPathTracingEnabled(true);
+		Require(publishChange()->m_instances[0].m_worldMatrix[3].x == 5 && original->m_instances[0].m_worldMatrix[3].x == 0,
+			"the first enabled frame must include changes made while tracing was disabled");
+		object->GetTransformComponent().SetPosition(vec3(0));
+		publishChange();
+		mesh->SetMeshIndex(0);
+		Require(publishChange()->m_instances[0].m_meshIndex == 0, "mesh selection must invalidate the shared scene");
+		mesh->SetMeshIndex(Model::AllMeshes);
+		publishChange();
+		auto* importer = App::GetSubmodule<ModelImporter>();
+		const auto otherInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("NoView.gltf");
+		ModelPtr otherModel;
+		Require(otherInfo && importer->LoadModel_Immediate(otherInfo->GetFileId(), otherModel) && otherModel->IsReady(),
+			"the alternate fixture model must have completed its earlier CLI load");
+		mesh->GetData().SetModel(otherModel);
+		Require(publishChange()->m_instances[0].m_model == otherModel && original->m_instances[0].m_model == model,
+			"model replacement must not change an old frame's model selection");
+		mesh->GetData().SetModel(model);
+		publishChange();
+
+		const auto vertices = model->GetCpuMeshes()[0].m_vertices;
+		for (auto& vertex : model->GetCpuMeshes()[0].m_vertices) vertex.m_position.x *= 0.25f;
+		Require(model->BuildBLAS(), "the fixture's narrowed geometry must build");
+		const auto narrowed = publishChange();
+		Require(narrowed->m_instances[0].m_modelGeometry != original->m_instances[0].m_modelGeometry,
+			"a new BLAS generation must replace the scene publication");
+		model->GetCpuMeshes()[0].m_vertices = vertices;
+		Require(model->BuildBLAS(), "the fixture geometry must be restored");
+		publishChange();
+
+		PathTracer tracer;
+		PathTracer::PreparedRaySample sample;
+		for (const auto& scene : { original, narrowed })
+		{
+			Require(tracer.InitializeSceneSnapshot(scene->m_instances, scene->m_materials, scene->m_lights),
+				"retained publications must remain independently traceable");
+			Require(tracer.SamplePreparedSceneVisibility(vec3(0.75f, 0, 3), vec3(0, 0, -1), 10, sample) &&
+				sample.m_bHit == (scene == original), "retained geometry must not follow later changes to the live model");
+		}
+		PathTracer::Params params{};
+		params.m_maxBounces = 1;
+		params.m_bIncludeDirectLighting = false;
+		params.m_bIncludeEnvironment = false;
+		for (const auto& scene : { original, edited })
+		{
+			Require(tracer.InitializeSceneSnapshot(scene->m_instances, scene->m_materials, scene->m_lights) &&
+				tracer.SamplePreparedSceneRay(vec3(0, 0, 3), vec3(0, 0, -1), 10, params, 1, sample) && sample.m_bHit &&
+				length(sample.m_radiance - scene->m_materials[0]->m_parameters.m_emissiveFactor) < 1e-5f,
+				"old and new material publications must produce their own radiance after further edits");
+		}
+		proxy->SetEnabled(false);
+		Require(publishChange()->m_instances.IsEmpty(), "removing the last proxy must publish an empty scene");
+		proxy->SetEnabled(true);
+		Require(publishChange()->m_instances.Num() == 1, "re-enabling a proxy must republish its instance");
+		proxy->SetRebuildEveryFrame(true);
+		publishChange();
+		publishChange();
+		proxy->SetRebuildEveryFrame(false);
+		const auto stable = publishChange();
+		world.Publish(view);
+		Require(view->m_pathTracerScene == stable, "disabling forced rebuild must restore publication reuse");
+		std::cout << "Tracer scene publication: 64 warm frames, two cameras, off/on, materials, lights, models and retained rays passed\n";
+	}
+
+	void SetTracerMaterial(RHI::RHISceneViewSnapshot& snapshot, MaterialPtr material)
+	{
+		auto scene = TSharedPtr<RHI::RHIPathTracerScene>::Make(*snapshot.m_pathTracerScene);
+		scene->m_materials = PathTracer::CaptureMaterials({ material });
+		++scene->m_revision;
+		snapshot.m_pathTracerScene = std::move(scene);
+	}
+
+	class ScenePublicationNode final : public Framegraph::RHINodeDefault
+	{
+	public:
+		std::array<RHI::RHIPathTracerScenePtr, 2> m_scenes;
+		std::array<uint32_t, 2> m_visits{};
+
+		void Process(RHI::RHIFrameGraphPtr, RHI::RHICommandListPtr, RHI::RHICommandListPtr,
+			const RHI::RHISceneViewSnapshot& scene) override
+		{
+			m_scenes.at(scene.m_cameraIndex) = scene.m_pathTracerScene;
+			++m_visits.at(scene.m_cameraIndex);
+		}
+	};
+
+	void TestRendererTracerDemand(ModelPtr model)
+	{
+		using namespace RHI;
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		Require(renderer->EnsureFrameGraph(), "the real renderer must have a graph for demand testing");
+		auto graph = renderer->GetFrameGraph()->GetRHI();
+		auto originalNodes = std::move(graph->GetGraph());
+		const auto originalMode = App::GetEditorRenderMode();
+		auto observer = TRefPtr<ScenePublicationNode>::Make();
+		auto tracer = TRefPtr<Framegraph::CPUPathTracerNode>::Make();
+		tracer->SetTag("AuthoredTracer");
+		graph->GetGraph() = { observer };
+		auto world = TSharedPtr<World>::Make("Tracer demand", static_cast<uint8_t>(EWorldBehaviourBit::EcsTickable));
+		world->Instantiate("First camera")->AddComponent<CameraComponent>();
+		world->Instantiate("Second camera")->AddComponent<CameraComponent>();
+		auto object = world->Instantiate("Traced quad");
+		object->AddComponent<MeshRendererComponent>()->GetData().SetModel(model);
+		object->AddComponent<PathTracerProxyComponent>()->SetEnabled(true);
+		uint64_t tick = 0;
+		auto push = [&](bool expected)
+		{
+			observer->m_scenes = {};
+			observer->m_visits = {};
+			Sailor::FrameState frame(world.GetRawPtr(), static_cast<int64_t>(++tick * 16), {}, { 32, 24 });
+			world->Tick(frame);
+			Require(renderer->PushFrame(frame), "the real renderer must accept the demand test frame");
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			scheduler->ProcessTasksOnMainThread();
+			for (size_t i = 0; i < 2; ++i)
+			{
+				Require(observer->m_visits[i] == 1 && static_cast<bool>(observer->m_scenes[i]) == expected,
+					"renderer demand must reach both camera snapshots in the current frame");
+			}
+			Require(observer->m_scenes[0] == observer->m_scenes[1], "actual camera submissions must share tracer data");
+			return observer->m_scenes[0];
+		};
+		App::SetEditorRenderMode(ESceneViewRenderMode::Lit);
+		push(false);
+		graph->GetGraph() = { tracer, observer };
+		push(false);
+		tracer->SetFloat("enabled", 1);
+		const auto original = push(true);
+		Require(original->m_instances.Num() == 1 && push(true) == original,
+			"the renderer must prepare the first enabled frame and reuse unchanged data");
+		App::SetEditorRenderMode(ESceneViewRenderMode::Cascades);
+		push(false);
+		App::SetEditorRenderMode(ESceneViewRenderMode::Lit);
+		Require(push(true) == original, "returning from debug visualization must reuse an unchanged scene");
+		tracer->SetFloat("enabled", 0);
+		object->GetTransformComponent().SetPosition(vec3(7, 0, 0));
+		push(false);
+		tracer->SetFloat("enabled", 1);
+		const auto edited = push(true);
+		Require(edited != original && edited->m_instances[0].m_worldMatrix[3].x == 7 &&
+			original->m_instances[0].m_worldMatrix[3].x == 0,
+			"reenabling the actual graph must capture deferred changes without altering in-flight data");
+		auto disabled = TRefPtr<Framegraph::CPUPathTracerNode>::Make();
+		graph->GetGraph() = { disabled, tracer, observer };
+		Require(push(true) == edited, "an inactive first tracer must not hide another enabled consumer");
+		graph->GetGraph() = { disabled, observer };
+		push(false);
+		graph->GetGraph() = std::move(originalNodes);
+		App::SetEditorRenderMode(originalMode);
+		world->Clear();
+		std::cout << "Tracer renderer demand: absent, disabled, enabled, debug, deferred changes and multiple nodes passed\n";
+	}
 
 	RecordedComposite RecordComposite(ImageNode& node, RHI::RHIFrameGraphPtr graph, RHI::RHISceneViewSnapshot& scene,
 		ivec2 extent = ivec2(32))
@@ -305,12 +561,12 @@ namespace
 		secondContext->BeginSubmission(4, 1);
 		scene.m_cameraIndex = 0;
 		scene.m_cameraTransform.m_position.x = 0;
-		scene.m_pathTracerMaterials[0] = firstMaterial;
+		SetTracerMaterial(scene, firstMaterial);
 		scene.m_submissionContext = firstContext;
 		auto first = RecordComposite(node, graph, scene);
 		auto firstUpload = node.Resources(scene)->m_uploadBuffer;
 		scene.m_cameraTransform.m_position.x = 0.125f;
-		scene.m_pathTracerMaterials[0] = secondMaterial;
+		SetTracerMaterial(scene, secondMaterial);
 		scene.m_submissionContext = secondContext;
 		auto second = RecordComposite(node, graph, scene);
 		Require(node.Resources(scene)->m_uploadBuffer != firstUpload, "unretired flights must not share mutable upload storage");
@@ -335,7 +591,7 @@ namespace
 
 		firstContext->BeginSubmission(6, 0);
 		scene.m_cameraTransform.m_position.x = 0.25f;
-		scene.m_pathTracerMaterials[0] = firstMaterial;
+		SetTracerMaterial(scene, firstMaterial);
 		auto refused = RecordComposite(node, graph, scene);
 		firstContext->InvalidateSubmissionResources();
 		firstContext->BeginSubmission(7, 0);
@@ -464,19 +720,8 @@ namespace
 		mesh->GetMaterials() = { material };
 		auto proxy = object->AddComponent<PathTracerProxyComponent>();
 		proxy->SetEnabled(true);
-		auto view = RHISceneViewPtr::Make();
-		view->m_world = &world;
-		view->m_submissionContext = RHIRenderSubmissionContextPtr::Make();
-		view->m_cameras.Resize(1);
-		view->m_cameras[0].SetAspect(1);
-		view->m_cameras[0].SetFov(glm::degrees(0.8f));
-		view->m_cameraTransforms.Resize(1);
-		view->m_cameraTransforms[0].m_position = vec4(0, 0, 3, 1);
-		view->m_shadowMapsToUpdate.Resize(1);
-		view->m_shadowMapsToBlit.Resize(1);
-		view->m_shadowIndices.Resize(1);
-		view->m_shadowAtlasTiles.Resize(1);
-		view->m_shadowMatrices.Resize(1);
+		world.GetECS<PathTracerECS>()->SetPathTracingEnabled(true);
+		auto view = CreateTracerView(world);
 		auto node = TRefPtr<ImageNode>::Make();
 		node->m_pShader = shader;
 		node->SetFloat("enabled", 1);
@@ -495,13 +740,15 @@ namespace
 			world.Publish(view);
 			auto& scene = view->m_snapshots[0];
 			scene.m_frameBindings = frameBindings;
-			scene.m_pathTracerLights = { sun };
+			auto traced = TSharedPtr<RHIPathTracerScene>::Make(*scene.m_pathTracerScene);
+			traced->m_lights = { sun };
+			scene.m_pathTracerScene = std::move(traced);
 			auto frame = RecordComposite(*node, graph, scene, extent);
 			Require(Renderer::GetDriver()->SubmitCommandList_Immediate(frame.command), "the capped image must complete");
 			return frame;
 		};
 		RequireComposite(draw(), vec3(2, 0.5f, 0.125f));
-		Require(view->m_snapshots[0].m_pathTracerTLASInstances.Num() == 1, "the real ECS must publish the fixture model");
+		Require(view->m_snapshots[0].m_pathTracerScene->m_instances.Num() == 1, "the real ECS must publish the fixture model");
 		const auto revision = node->Camera().m_imageRevision;
 		RequireComposite(draw(), vec3(2, 0.5f, 0.125f));
 		Require(node->Camera().m_imageRevision == revision, "unchanged input must preserve capped accumulation");
@@ -558,7 +805,7 @@ namespace
 		otherProxy->SetEnabled(true);
 		proxy->SetEnabled(false);
 		RequireComposite(draw(), vec3(0));
-		Require(view->m_snapshots[0].m_pathTracerTLASInstances.Num() == 1,
+		Require(view->m_snapshots[0].m_pathTracerScene->m_instances.Num() == 1,
 			"replacing the active tracer subset must keep the same instance count");
 		otherProxy->SetEnabled(false);
 		proxy->SetEnabled(true);
@@ -634,17 +881,18 @@ namespace
 					scene.m_camera->SetAspect(1);
 					scene.m_camera->SetFov(glm::degrees(0.8f));
 					scene.m_cameraTransform.m_position = vec4(0, 0, 3, 1);
-					scene.m_pathTracerProxies.Resize(1);
+					auto traced = TSharedPtr<RHIPathTracerScene>::Make();
 					PathTracer::TLASInstance instance;
 					instance.m_model = model;
 					instance.m_worldBounds = Math::AABB(vec3(0), vec3(1, 1, 0));
-					scene.m_pathTracerTLASInstances.Add(instance);
-					scene.m_pathTracerMaterials.Add(material);
+					traced->m_instances.Add(instance);
+					traced->m_materials = PathTracer::CaptureMaterials({ material });
 					LightProxy light;
 					light.m_type = ELightType::Directional;
 					light.m_direction = vec3(0, 0, -1);
 					light.m_intensity = vec3(0);
-					scene.m_pathTracerLights.Add(light);
+					traced->m_lights.Add(light);
+					scene.m_pathTracerScene = std::move(traced);
 					scene.m_frameBindings = driver->CreateShaderBindings();
 					auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 					commands->BeginCommandList(command, true);
@@ -731,7 +979,7 @@ namespace
 					auto secondMaterial = MaterialPtr::Make(allocator, FileId::Invalid);
 					secondMaterial->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
 					secondMaterial->SetUniform("material.emissiveFactor", vec4(0.25f, 2, 0.5f, 0));
-					scene.m_pathTracerMaterials[0] = secondMaterial;
+					SetTracerMaterial(scene, secondMaterial);
 					scene.m_cameraIndex = 1;
 					scene.m_cameraTransform.m_position.x = 0.1f;
 					node->SetRHIResource("color", secondTarget);
@@ -762,6 +1010,8 @@ namespace
 		task->Run();
 		task->Wait();
 		if (!task->GetResult().empty()) throw std::runtime_error(task->GetResult());
+		TestTracerSceneDemand(model);
+		TestRendererTracerDemand(model);
 	}
 
 	void TestPreparedParity(const Tests::TempDirectory& workspace, const TVector<u8vec4>& png)

@@ -323,6 +323,12 @@ void CPUPathTracerNode::QueueEnvironmentReadback(CameraState& camera, TRefPtr<Su
 	camera.m_lastQueuedFrame = sceneView.m_frame;
 }
 
+bool CPUPathTracerNode::IsEnabled(RHI::ESceneViewRenderMode mode) const
+{
+	const float* enabled = nullptr;
+	return !IsSceneViewDebugVisualization(mode) && m_floatParams.Find("enabled", enabled) && *enabled > 0.5f;
+}
+
 void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -334,8 +340,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		return m_floatParams.ContainsKey(key) ? m_floatParams[key] : defaultValue;
 	};
 
-	if (getFloatParam("enabled", 0.0f) <= 0.5f || IsSceneViewDebugVisualization(sceneView.m_renderMode) ||
-		!sceneView.m_submissionContext || !sceneView.m_camera)
+	if (!IsEnabled(sceneView.m_renderMode) || !sceneView.m_submissionContext || !sceneView.m_camera)
 	{
 		return;
 	}
@@ -349,7 +354,8 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	auto& driver = Renderer::GetDriver();
 	auto commands = Renderer::GetDriverCommands();
 	auto& camera = GetCameraState(sceneView.m_cameraIndex);
-	if (sceneView.m_pathTracerTLASInstances.IsEmpty())
+	const auto& tracedScene = sceneView.m_pathTracerScene;
+	if (!tracedScene || tracedScene->m_instances.IsEmpty())
 	{
 		camera.m_accumulatedImage.Clear();
 		camera.m_accumulatedSamples = 0;
@@ -403,7 +409,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	key.m_cameraAspect = params.m_runtimeAspectRatio;
 	key.m_cameraHFov = params.m_runtimeHFov;
 	key.m_outputExtent = uvec2(dst->GetExtent());
-	key.m_sceneRevision = sceneView.m_pathTracerSceneRevision;
+	key.m_sceneRevision = tracedScene->m_revision;
 	key.m_lightingRevision = sceneView.m_lightingRevision;
 	key.m_environmentHash = camera.m_environmentHash;
 	key.m_samplesPerFrame = spp;
@@ -423,8 +429,16 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 	if (bShouldRenderNewSamples)
 	{
-		if (!camera.m_pathTracer.InitializeScene(sceneView.m_pathTracerTLASInstances, sceneView.m_pathTracerMaterials, sceneView.m_pathTracerLights) ||
-			!camera.m_pathTracer.RenderPreparedScene(params))
+		if (camera.m_scene != tracedScene)
+		{
+			if (!camera.m_pathTracer.InitializeSceneSnapshot(tracedScene->m_instances, tracedScene->m_materials, tracedScene->m_lights))
+			{
+				commands->EndDebugRegion(commandList);
+				return;
+			}
+			camera.m_scene = tracedScene;
+		}
+		if (!camera.m_pathTracer.RenderPreparedScene(params))
 		{
 			commands->EndDebugRegion(commandList);
 			return;

@@ -172,6 +172,7 @@ namespace Sailor
 		SAILOR_API virtual uint32_t GetOrder() const override { return 150; }
 
 		SAILOR_API void GetLightProxies(TVector<Raytracing::LightProxy>& outLights) const;
+		uint64_t GetLightingRevision() const { return m_lightingRevision; }
 		SAILOR_API void GetGlobalIlluminationBakeLightProxies(
 			TVector<Raytracing::LightProxy>& outLights) const;
 		void FillLightingData(RHI::RHISceneViewPtr& sceneView);

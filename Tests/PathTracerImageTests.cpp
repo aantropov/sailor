@@ -3,12 +3,16 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <type_traits>
+#include <utility>
 
 using namespace Sailor;
 using namespace Sailor::Raytracing;
 
 namespace
 {
+	static_assert(std::is_same_v<decltype(std::declval<RHI::RHIPathTracerScenePtr>().GetRawPtr()), const RHI::RHIPathTracerScene*>);
+
 	void Require(bool condition, const char* message)
 	{
 		if (!condition) throw std::runtime_error(message);
@@ -191,9 +195,9 @@ namespace
 		jittered.m_cameraPosition.x += 1e-5f;
 		Require(key == jittered, "the existing camera tolerance must be preserved");
 		RHI::RHISceneViewSnapshot snapshot;
-		snapshot.m_pathTracerSceneRevision = 7;
+		snapshot.m_pathTracerScene = TSharedPtr<RHI::RHIPathTracerScene>::Make();
 		snapshot.ResetForReuse();
-		Require(snapshot.m_pathTracerSceneRevision == 0, "snapshot reuse must clear the previous tracer scene stamp");
+		Require(!snapshot.m_pathTracerScene, "snapshot reuse must release the previous tracer scene publication");
 	}
 }
 

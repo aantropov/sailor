@@ -25,6 +25,7 @@
 #include "ECS/PathTracerECS.h"
 #include "Settings/GraphicsSettings.h"
 #include "FrameGraph/EditorReadbackNode.h"
+#include "FrameGraph/CPUPathTracerNode.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -526,10 +527,18 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		rhiSceneView = GetOrAddSceneView(world);
 
 		rhiSceneView->m_world = world;
+		rhiSceneView->m_renderMode = App::GetEditorRenderMode();
 		world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
 		world->GetECS<LandscapeECS>()->AppendSceneView(rhiSceneView);
 		if (auto* pathTracerEcs = world->GetECS<PathTracerECS>())
 		{
+			const bool tracing = std::any_of(rhiFrameGraph->GetGraph().begin(), rhiFrameGraph->GetGraph().end(),
+				[mode = rhiSceneView->m_renderMode](const auto& node)
+				{
+					const auto* tracer = dynamic_cast<const Framegraph::CPUPathTracerNode*>(node.GetRawPtr());
+					return tracer && tracer->IsEnabled(mode);
+				});
+			pathTracerEcs->SetPathTracingEnabled(tracing);
 			pathTracerEcs->CopySceneView(rhiSceneView);
 		}
 		rhiSceneView->m_globalIlluminationMode =
@@ -553,7 +562,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		rhiSceneView->m_deltaTime = frame.GetDeltaTime();
 		rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();
-		rhiSceneView->m_renderMode = App::GetEditorRenderMode();
 	}
 
 	const uint64_t sceneRevision = rhiSceneView->m_sceneRevision;

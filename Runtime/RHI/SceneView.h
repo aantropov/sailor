@@ -307,15 +307,14 @@ namespace Sailor::RHI
 
 	using RHISpatialSceneVersionPtr = TSharedPtr<RHISpatialSceneVersion>;
 
-	struct RHIPathTracerProxy
+	struct RHIPathTracerScene
 	{
-		ModelPtr m_model{};
-		Math::AABB m_worldBounds{};
-		glm::mat4 m_worldMatrix{ 1.0f };
-		glm::mat4 m_inverseWorldMatrix{ 1.0f };
-		TVector<MaterialPtr> m_materials{};
-		uint64_t m_frameLastChange = 0ull;
+		TVector<Raytracing::PathTracer::TLASInstance> m_instances;
+		Raytracing::PathTracer::MaterialSnapshots m_materials;
+		TVector<Raytracing::LightProxy> m_lights;
+		uint64_t m_revision = 0;
 	};
+	using RHIPathTracerScenePtr = TSharedPtr<const RHIPathTracerScene>;
 
 	struct RHIUpdateShadowMapCommand
 	{
@@ -451,11 +450,7 @@ namespace Sailor::RHI
 		// Camera-selected meshes shared by main, depth and every shadow pass.
 		TVector<RHIMeshPtr> m_lodMeshes{};
 		TVector<uint32_t> m_instancedLodOffsets{};
-		TVector<RHIPathTracerProxy> m_pathTracerProxies{};
-		TVector<Sailor::Raytracing::PathTracer::TLASInstance> m_pathTracerTLASInstances{};
-		TVector<MaterialPtr> m_pathTracerMaterials{};
-		TVector<Sailor::Raytracing::LightProxy> m_pathTracerLights{};
-		uint64_t m_pathTracerSceneRevision = 0;
+		RHIPathTracerScenePtr m_pathTracerScene;
 
 		uint32_t m_totalNumLights = 0;
 		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate{};
@@ -533,11 +528,7 @@ namespace Sailor::RHI
 
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;
-		TVector<RHIPathTracerProxy> m_pathTracerProxies;
-		TVector<Sailor::Raytracing::PathTracer::TLASInstance> m_pathTracerTLASInstances;
-		TVector<MaterialPtr> m_pathTracerMaterials;
-		TVector<Sailor::Raytracing::LightProxy> m_pathTracerLights;
-		uint64_t m_pathTracerSceneRevision = 0;
+		RHIPathTracerScenePtr m_pathTracerScene;
 
 		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui;
 		TVector<Tasks::TaskPtr<RHI::RHICommandListPtr>> m_debugDraw;
