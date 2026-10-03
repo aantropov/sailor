@@ -2,6 +2,7 @@
 #include "Memory/Memory.h"
 #include "Memory/UniquePtr.hpp"
 #include "Containers/ConcurrentMap.h"
+#include <mutex>
 #include <type_traits>
 
 using namespace Sailor;
