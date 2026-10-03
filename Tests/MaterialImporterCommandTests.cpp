@@ -966,6 +966,89 @@ namespace
 		std::cout << "Material CPU capture: Main updates, immutable cache reuse and inline Render caller passed\n";
 	}
 
+	void TestColdIncludePublication(const std::filesystem::path& workspace, bool fromWorker, bool invalidFirst)
+	{
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		const std::string name = std::string("ColdInclude") + (fromWorker ? "Worker" : "Main") +
+			(invalidFirst ? "Retry" : "Valid");
+		const std::string includeName = name + ".glsl";
+		const auto shaderId = WriteShader(workspace, name.c_str());
+		MaterialFixture fixture(workspace, name.c_str(), {}, shaderId);
+		auto material = fixture.Load();
+		auto shader = material->GetShader();
+		const auto previousStage = shader->GetVertexShaderRHI();
+
+		// An edit may reference a source file that has not arrived yet. Keep the
+		// last working material while that shader compilation is unsuccessful.
+		Require(WriteShader(workspace, name.c_str(), true, false, includeName.c_str()) == shaderId,
+			"editing the shader must preserve its identity");
+		Drain();
+		Require(shader->GetVertexShaderRHI() == previousStage && material->IsReady(),
+			"a missing include must preserve the live shader and material");
+		const auto includePath = workspace / "Content" / includeName;
+		auto writeInclude = [&](bool valid)
+			{
+				std::ofstream output(includePath);
+				output << (valid ? "const float LateMaterialValue = 0.5;\n" : "this is not valid GLSL\n");
+				Require(static_cast<bool>(output), "the missing include fixture must be written");
+			};
+		writeInclude(!invalidFirst);
+
+		const glm::vec4 color(0.25f, 0.5f, 0.75f, 1);
+		FileId includeId;
+		if (fromWorker)
+		{
+			HoldRenderQueue hold;
+			hold.Wait();
+			auto lookup = Tasks::CreateTask<FileId>("Register a late shader include", [registry, includePath]()
+				{
+					return registry->GetOrLoadFile(includePath.string());
+				}, EThreadType::Worker);
+			lookup->Run();
+			lookup->Wait();
+			includeId = lookup->GetResult();
+			Require(static_cast<bool>(includeId), "cold registration must return its ID without waiting for Main or Render");
+			material->SetUniform("material.baseColorFactor", color);
+			const auto revision = material->GetContentRevision();
+			hold.Release();
+			Drain();
+			const bool deferred = shader->GetVertexShaderRHI() == previousStage &&
+				material->GetContentRevision() == revision;
+			const bool pending = registry->IsAssetExpired(registry->GetAssetInfoPtr(includeId));
+
+			scheduler->ProcessTasksOnMainThread();
+			Drain();
+			Require(deferred, "cold include registration must not publish live material changes before Main processes the update");
+			Require(pending, "the include must not be acknowledged before Main processes the update");
+		}
+		else
+		{
+			material->SetUniform("material.baseColorFactor", color);
+			includeId = registry->GetOrLoadFile(includePath.string());
+			Require(static_cast<bool>(includeId), "Main must register the late include");
+		}
+		const auto includeInfo = registry->GetAssetInfoPtr(includeId);
+		if (invalidFirst)
+		{
+			Require(shader->GetVertexShaderRHI() == previousStage && material->IsReady() && Color(material) == color,
+				"a failed include publication must retain the live shader and intervening material edits");
+			Require(registry->IsAssetExpired(includeInfo), "a failed include must remain retryable");
+			Require(registry->GetOrLoadFile(includePath.string()) == includeId && registry->IsAssetExpired(includeInfo),
+				"retrying unchanged invalid source must retain its identity and remain unacknowledged");
+			writeInclude(true);
+			Require(registry->GetOrLoadFile(includePath.string()) == includeId,
+				"repairing the failed include must preserve its identity");
+		}
+		Require(shader->GetVertexShaderRHI() != previousStage && Color(material) == color,
+			"Main must finish publication without overwriting intervening material edits");
+		Require(!registry->IsAssetExpired(includeInfo),
+			"the cold include must be acknowledged after successful publication");
+		Drain();
+		Require(material->IsReady(), "the recovered material must become ready after its GPU upload completes");
+		std::cout << name << ": owner publication, material edits and cache acknowledgement passed\n";
+	}
+
 	void TestShaderPublicationQueue(const std::filesystem::path& workspace)
 	{
 		auto* compiler = App::GetSubmodule<ShaderCompiler>();
@@ -1857,6 +1940,10 @@ namespace Sailor::Tests
 		run("Worker file reload", [&]() { TestWorkerFileReload(workspace); });
 		run("File reload during Main update", [&]() { TestFileReloadDuringMainUpdate(workspace); });
 		run("Queued file reload retry", [&]() { TestQueuedFileReloadRetry(workspace); });
+		run("Cold Worker include publication", [&]() { TestColdIncludePublication(workspace, true, false); });
+		run("Cold Worker include retry", [&]() { TestColdIncludePublication(workspace, true, true); });
+		run("Cold Main include publication", [&]() { TestColdIncludePublication(workspace, false, false); });
+		run("Cold Main include retry", [&]() { TestColdIncludePublication(workspace, false, true); });
 		run("Material capture publication", [&]() { TestMaterialCapturePublication(workspace); });
 		run("Material capture owner updates", [&]() { TestMaterialCaptureOwnerUpdates(workspace); });
 		run("Warm shader permutation", [&]() { TestWarmShaderPermutation(workspace); });

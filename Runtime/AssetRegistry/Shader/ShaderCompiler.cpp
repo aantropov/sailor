@@ -732,7 +732,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 	if (bWasExpired)
 	{
-		OnImportAsset(assetInfo);
+		ProcessAssetUpdate(assetInfo);
 	}
 }
 
@@ -1321,6 +1321,35 @@ bool ShaderCompiler::NormalizeShaderTabs(
 }
 
 void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
+{
+	const std::string extension = NormalizeShaderExtension(assetInfo->GetAssetFilepath());
+	if (extension == "glsl" && !IsCollectingScanChanges())
+	{
+		// A newly discovered include can recover shaders used by live materials.
+		// Publish those changes inside the same Main boundary as an explicit reload.
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		const auto token = registry->BeginAssetProcessing(assetInfo);
+		if (!token) return;
+		auto reload = [registry, token]()
+			{
+				const bool succeeded = App::UpdateAsset(token.m_fileId.ToString().c_str(), true);
+				registry->CompleteAssetProcessing(token, succeeded);
+			};
+		if (App::GetSubmodule<Tasks::Scheduler>()->IsMainThread())
+		{
+			reload();
+		}
+		else
+		{
+			auto update = Tasks::CreateTask("Reload shaders after include import", std::move(reload), EThreadType::Main);
+			update->Run();
+		}
+		return;
+	}
+	ProcessAssetUpdate(assetInfo);
+}
+
+void ShaderCompiler::ProcessAssetUpdate(AssetInfoPtr assetInfo)
 {
 	ReplaceTabsWithSpaces(assetInfo);
 	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();

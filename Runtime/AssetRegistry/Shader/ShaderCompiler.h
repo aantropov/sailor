@@ -182,6 +182,7 @@ namespace Sailor
 		Tasks::TaskPtr<ShaderReloadResults> m_lastScanReload;
 		bool m_bCollectScanChanges = false;
 		bool IsCollectingScanChanges() const;
+		void ProcessAssetUpdate(AssetInfoPtr assetInfo);
 
 		SAILOR_API void UpdateConstantsLibrary();
 
