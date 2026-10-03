@@ -188,12 +188,13 @@ namespace
 		~CaptureAttachments() { FrameGraphNodeTestAccess::ExchangeBeginRendering(*VulkanApi::GetInstance()->GetMainDevice(), originalBeginRendering); }
 	};
 
-	class ImGuiCommandRecorder : public VulkanGraphicsDriver
+	class PassCommandRecorder : public VulkanGraphicsDriver
 	{
 	public:
 		void BeginDebugRegion(RHICommandListPtr, const std::string& title, const glm::vec4&) override
 		{
 			m_regions.push_back(title);
+			++m_regionStarts;
 		}
 
 		void EndDebugRegion(RHICommandListPtr) override
@@ -214,25 +215,65 @@ namespace
 			++m_draws;
 		}
 
+		void ImageMemoryBarrier(RHICommandListPtr, RHITexturePtr, EImageLayout) override {}
+		void BindMaterial(RHICommandListPtr, RHIMaterialPtr) override {}
+		void SetViewport(RHICommandListPtr, float, float, float, float, glm::vec2, glm::vec2, float, float) override {}
+		void BindVertexBuffer(RHICommandListPtr, RHIBufferPtr, uint32_t) override {}
+		void BindIndexBuffer(RHICommandListPtr, RHIBufferPtr, uint32_t, bool) override {}
+
+		void BeginRenderPass(RHICommandListPtr, const TVector<RHITexturePtr>& colors, RHITexturePtr depth,
+			glm::ivec4, glm::ivec2, bool, glm::vec4, float, bool, bool) override
+		{
+			Require(m_regions.size() == 2 && m_regions.back() == LinearizeDepthNode::GetName() && !m_inRenderPass,
+				"linear depth must begin its render pass inside the matching debug region");
+			Require(colors.Num() == 1 && colors[0] && !depth, "linear depth must use one color target and sample depth separately");
+			m_inRenderPass = true;
+			++m_renderPasses;
+		}
+
+		void EndRenderPass(RHICommandListPtr) override
+		{
+			Require(m_inRenderPass, "every render-pass end must have a matching begin");
+			m_inRenderPass = false;
+		}
+
+		bool BindShaderBindings(RHICommandListPtr, RHIMaterialPtr material, const TVector<RHIShaderBindingSetPtr>& bindings) override
+		{
+			Require(m_inRenderPass && material && bindings.Num() == 2 && bindings[0] && bindings[1],
+				"linear depth must bind its frame and sampled-depth sets inside the render pass");
+			return m_acceptBindings;
+		}
+
+		void DrawIndexed(RHICommandListPtr, uint32_t indices, uint32_t instances, uint32_t, uint32_t, uint32_t) override
+		{
+			Require(m_inRenderPass && m_acceptBindings && indices == 6 && instances == 1,
+				"linear depth must record one fullscreen draw only after successful binding");
+			++m_draws;
+		}
+
 		std::vector<std::string> m_regions;
 		RHICommandListPtr m_secondary;
 		uint32_t m_draws = 0;
+		uint32_t m_regionStarts = 0;
+		uint32_t m_renderPasses = 0;
+		bool m_inRenderPass = false;
+		bool m_acceptBindings = true;
 		bool m_unbalanced = false;
 	};
 
-	struct ScopedImGuiRecorder
+	struct ScopedPassRecorder
 	{
-		ScopedImGuiRecorder()
+		ScopedPassRecorder()
 		{
-			auto recorder = TUniquePtr<ImGuiCommandRecorder>::Make();
+			auto recorder = TUniquePtr<PassCommandRecorder>::Make();
 			m_commands = recorder.GetRawPtr();
 			m_driver = std::move(Renderer::GetDriver());
 			Renderer::GetDriver() = std::move(recorder);
 		}
 
-		~ScopedImGuiRecorder() { Renderer::GetDriver() = std::move(m_driver); }
+		~ScopedPassRecorder() { Renderer::GetDriver() = std::move(m_driver); }
 
-		ImGuiCommandRecorder* m_commands = nullptr;
+		PassCommandRecorder* m_commands = nullptr;
 		TUniquePtr<IGraphicsDriver> m_driver;
 	};
 
@@ -274,7 +315,7 @@ namespace
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
 		for (bool empty : { false, true })
 		{
-			ScopedImGuiRecorder recorder;
+			ScopedPassRecorder recorder;
 			auto graph = RHIFrameGraphPtr::Make();
 			auto node = TRefPtr<RenderImGuiNode>::Make();
 			auto color = RHIRenderTargetPtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
@@ -342,7 +383,7 @@ namespace
 
 	void TestImGuiSkippedAttachments()
 	{
-		ScopedImGuiRecorder recorder;
+		ScopedPassRecorder recorder;
 		auto graph = RHIFrameGraphPtr::Make();
 		auto node = TRefPtr<RenderImGuiNode>::Make();
 		auto attachment = RHIRenderTargetPtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
@@ -362,6 +403,78 @@ namespace
 			node->GetDrawCallStats().m_numBatches == 0 && !recorder.m_commands->m_unbalanced,
 			"missing ImGui attachments must skip recording without starting or waiting for the producer");
 		std::cout << "ImGui missing attachments: no producer wait or unmatched debug region passed\n";
+	}
+
+	class LinearizeDepthProbe : public LinearizeDepthNode
+	{
+	public:
+		using LinearizeDepthNode::m_pLinearizeDepthShader;
+
+		LinearizeDepthProbe(ShaderSetPtr shader, RHITexturePtr depth)
+		{
+			m_pLinearizeDepthShader = shader;
+			m_boundDepthAttachment = depth;
+			m_linearizeDepth = RHIShaderBindingSetPtr::Make();
+			m_postEffectMaterial = RHIMaterialPtr::Make(RenderState{}, shader->GetVertexShaderRHI(), shader->GetFragmentShaderRHI());
+		}
+	};
+
+	void TestLinearizeDepthRegions(ShaderSetPtr shader)
+	{
+		// Only control flow is intercepted here. Native pixel tests below exercise
+		// resource creation, binding and depth reconstruction through the real driver.
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto depth = RHIRenderTargetPtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
+		auto target = RHIRenderTargetPtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
+		auto pendingShader = ShaderSetPtr::Make(Memory::ObjectAllocatorPtr::Make(),
+			FileId::CreateNewFileId(), TVector<std::string>{});
+		Require(shader->IsReady() && !pendingShader->IsReady(), "the fixture must distinguish ready and pending shaders");
+		RHISceneViewSnapshot scene;
+		scene.m_frameBindings = RHIShaderBindingSetPtr::Make();
+		ScopedPassRecorder recorder;
+		for (bool named : { false, true })
+		{
+			auto node = TRefPtr<LinearizeDepthProbe>::Make(shader, depth);
+			if (named)
+			{
+				node->SetRHIResource_Unresolved("depthStencil", "Depth");
+				node->SetRHIResource_Unresolved("target", "LinearDepth");
+			}
+			struct Case { bool depth, target, ready, bind; };
+			for (const auto test : { Case{ true, true, true, true }, Case{ false, true, true, true },
+				Case{ true, false, true, true }, Case{ false, false, true, true },
+				Case{ true, true, false, true }, Case{ true, true, true, false }, Case{ true, true, true, true } })
+			{
+				if (named)
+				{
+					graph->SetRenderTarget("Depth", test.depth ? depth : RHIRenderTargetPtr{});
+					graph->SetRenderTarget("LinearDepth", test.target ? target : RHIRenderTargetPtr{});
+				}
+				else
+				{
+					node->SetRHIResource("depthStencil", test.depth ? depth : RHIRenderTargetPtr{});
+					node->SetRHIResource("target", test.target ? target : RHIRenderTargetPtr{});
+				}
+				node->m_pLinearizeDepthShader = test.ready ? shader : pendingShader;
+				auto& commands = *recorder.m_commands;
+				commands.m_acceptBindings = test.bind;
+				commands.BeginDebugRegion({}, "Frame", {});
+				const auto regionsBefore = commands.m_regionStarts;
+				const auto passesBefore = commands.m_renderPasses;
+				const auto drawsBefore = commands.m_draws;
+				node->Process(graph, {}, {}, scene);
+				const uint32_t passes = test.depth && test.target && test.ready ? 1u : 0u;
+				const uint32_t draws = passes && test.bind ? 1u : 0u;
+				Require(commands.m_regions == std::vector<std::string>{ "Frame" } && !commands.m_inRenderPass,
+					"linear depth must close its render/debug regions on ready and skipped paths");
+				Require(commands.m_regionStarts == regionsBefore + passes && commands.m_renderPasses == passesBefore + passes &&
+					commands.m_draws == drawsBefore + draws && node->GetDrawCallStats().m_numBatches == draws,
+					"pending/missing inputs must emit no pass; binding refusal must emit no draw or stale statistics");
+				commands.EndDebugRegion({});
+				Require(commands.m_regions.empty() && !commands.m_unbalanced, "linear depth must preserve the enclosing graph label");
+			}
+		}
+		std::cout << "LinearizeDepth debug regions: ready, pending shader, missing attachments, binding refusal and retry passed\n";
 	}
 
 	std::string WriteShader(const std::filesystem::path& workspace, bool large)
@@ -3572,6 +3685,7 @@ namespace Sailor::Tests
 				try
 				{
 					TestImGuiSkippedAttachments();
+					TestLinearizeDepthRegions(linearDepthShader);
 					TestFullscreenUploadRetry();
 					TestImportedRendering(importedGraphIds);
 					TestGraphLoadFailures(workspace, importedGraphIds[0]);
