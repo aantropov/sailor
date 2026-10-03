@@ -5,7 +5,7 @@
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Containers/Set.h"
 #include "Core/LogMacros.h"
-#include "Core/Utils.h"
+#include "Core/Reflection.h"
 #include "YamlExceptionBoundary.h"
 #include <Components/TestComponent.h>
 #include <ECS/TransformECS.h>

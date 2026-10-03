@@ -764,6 +764,14 @@ namespace Sailor
 	};
 }
 
+namespace Sailor::Utils
+{
+	SAILOR_API bool TryGetComponentInstanceId(
+		const ReflectedData& reflection,
+		InstanceId& outInstanceId,
+		std::string& outDiagnostic);
+}
+
 REFL_AUTO(
 	type(Sailor::IReflectable)
 )

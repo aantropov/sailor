@@ -13,7 +13,7 @@
 #include <utility>
 
 #include "Containers/Octree.h"
-#include "Core/Utils.h"
+#include "Core/YamlUtils.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"

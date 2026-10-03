@@ -1,5 +1,6 @@
 #include "Reflection.h"
-#include "Utils.h"
+#include "Core/YamlUtils.h"
+#include "Engine/InstanceId.h"
 #include "Containers/Containers.h"
 #include "Components/Component.h"
 #include "Containers/ConcurrentMap.h"
@@ -718,6 +719,62 @@ YAML::Node Reflection::ExportEngineTypes()
 	yamlTypes["assetTypes"] = ExportAssetInfoTypes();
 
 	return yamlTypes;
+}
+
+bool Utils::TryGetComponentInstanceId(
+	const ReflectedData& reflection,
+	InstanceId& outInstanceId,
+	std::string& outDiagnostic)
+{
+	outInstanceId = InstanceId::Invalid;
+	outDiagnostic.clear();
+
+	if (!reflection.IsValid())
+	{
+		outDiagnostic = "the reflected component is invalid";
+		return false;
+	}
+
+	const auto& properties = reflection.GetProperties();
+	if (!properties.ContainsKey("instanceId"))
+	{
+		outDiagnostic = "the reflected component has no instanceId";
+		return false;
+	}
+
+	const auto& instanceIdNode = properties["instanceId"];
+	if (!instanceIdNode.IsScalar())
+	{
+		outDiagnostic = "the reflected component has an invalid instanceId: expected a scalar value";
+		return false;
+	}
+
+	InstanceId instanceId;
+	std::string conversionDiagnostic;
+	if (!External::TryConvertYaml(
+			instanceIdNode,
+			instanceId,
+			conversionDiagnostic))
+	{
+		outDiagnostic = "the reflected component has an invalid instanceId";
+		if (!conversionDiagnostic.empty())
+		{
+			outDiagnostic += ": " + conversionDiagnostic;
+		}
+		return false;
+	}
+
+	if (instanceId.ComponentId() == InstanceId::Invalid ||
+		instanceId.GameObjectId() == InstanceId::Invalid)
+	{
+		outDiagnostic =
+			"the reflected component has an invalid instanceId: "
+			"both component and game-object IDs must be valid";
+		return false;
+	}
+
+	outInstanceId = instanceId;
+	return true;
 }
 
 ObjectPtr IReflectable::ResolveAssetDependency(const FileId& fileId, bool bImmediate)

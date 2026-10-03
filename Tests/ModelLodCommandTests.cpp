@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Core/YamlUtils.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureAssetInfo.h"

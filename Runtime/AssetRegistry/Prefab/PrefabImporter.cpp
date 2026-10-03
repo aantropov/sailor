@@ -3,7 +3,7 @@
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "PrefabAssetInfo.h"
-#include "Core/Utils.h"
+#include "Core/Reflection.h"
 #include <filesystem>
 #include <fstream>
 #include <algorithm>

@@ -1,6 +1,6 @@
 #include "PrefabInstance.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
-#include "Core/Utils.h"
+#include "Core/YamlUtils.h"
 #include "YamlExceptionBoundary.h"
 
 using namespace Sailor;

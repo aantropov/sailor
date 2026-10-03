@@ -7,6 +7,7 @@
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Core/Utils.h"
+#include "Core/YamlUtils.h"
 #include "YamlExceptionBoundary.h"
 
 #include <algorithm>

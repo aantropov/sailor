@@ -15,6 +15,7 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Shader/ShaderAssetInfo.h"
 #include "Core/Utils.h"
+#include "Core/YamlUtils.h"
 #include "Core/StringHash.h"
 #include "Raytracing/MaterialUtils.h"
 #include "Raytracing/PathTracer.h"
