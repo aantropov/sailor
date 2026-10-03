@@ -432,7 +432,8 @@ frame:
 		auto valid = YAML::LoadFile(registry->GetAssetInfoPtr(validId)->GetAssetFilepath());
 		valid["frame"].push_back(YAML::Load("{name: ExperimentalParticles, tag: Particles}"));
 
-		for (const std::string failure : { "missing-file", "unknown-node", "texture-decode", "sampler-path", "sampler-id" })
+		for (const std::string failure : { "missing-file", "unknown-node", "texture-decode", "sampler-path", "sampler-id",
+			"zero-width", "invalid-divisor", "invalid-mips" })
 		{
 			auto description = YAML::Clone(valid);
 			const auto path = workspace / "Content" / (failure + ".renderer");
@@ -460,6 +461,9 @@ frame:
 				description["samplers"][0]["fileId"] = FileId::CreateNewFileId().ToString();
 				description["samplers"][0]["path"] = "GraphSample.tga";
 			}
+			else if (failure == "zero-width") description["renderTargets"][0]["width"] = 0;
+			else if (failure == "invalid-divisor") description["renderTargets"][0]["height"] = "RenderHeight/0";
+			else if (failure == "invalid-mips") description["renderTargets"][0]["maxMipLevel"] = -1;
 			auto write = [&](const YAML::Node& data)
 				{
 					std::ofstream output(path);
@@ -471,8 +475,10 @@ frame:
 			const auto id = registry->GetOrLoadFile(path.string());
 			if (failure == "missing-file") std::filesystem::rename(path, unavailable);
 			auto parsed = importer->LoadFrameGraphAsset(id);
-			Require(failure == "missing-file" ? !parsed : static_cast<bool>(parsed),
-				"an unreadable graph must fail to load; invalid build dependencies must still parse");
+			const bool invalidDescription = failure == "missing-file" || failure == "zero-width" ||
+				failure == "invalid-divisor" || failure == "invalid-mips";
+			Require(invalidDescription ? !parsed : static_cast<bool>(parsed),
+				"invalid descriptions must fail to load; invalid build dependencies must still parse");
 			for (uint32_t attempt = 0; attempt < 2; ++attempt)
 			{
 				FrameGraphPtr rejected;
@@ -513,6 +519,59 @@ frame:
 			FrameGraphImporterTestAccess::ReleaseInstance(*importer, instance);
 			std::cout << "FrameGraph load failure: " << failure << ", rejection, retained output and repair retry passed\n";
 		}
+	}
+
+	void TestRelativeAttachmentDimensions(const std::filesystem::path& workspace)
+	{
+		const glm::ivec2 viewport = App::GetMainWindow()->GetRenderArea();
+		const auto render = Settings::ResolveRenderDimensions(
+			static_cast<uint32_t>((std::max)(viewport.x, 1)), static_cast<uint32_t>((std::max)(viewport.y, 1)),
+			App::GetActiveGraphicsSettings().m_resolutionFactor);
+		const std::array<std::pair<const char*, uint32_t>, 4> dimensions = {{
+			{ "RenderWidth", render.m_width }, { "RenderHeight", render.m_height },
+			{ "ViewportWidth", static_cast<uint32_t>((std::max)(viewport.x, 1)) },
+			{ "ViewportHeight", static_cast<uint32_t>((std::max)(viewport.y, 1)) } }};
+		for (const auto& [name, size] : dimensions)
+		{
+			Require(FrameGraphAsset::RenderTarget::ParseUintValue(name) == size,
+				"an exact dimension variable must select the corresponding viewport/render axis");
+			for (const double divisor : { 0.5, 2.0, 2.5, 1000000.0 })
+			{
+				const auto expression = std::string(" ") + name + " / " + std::to_string(divisor) + " ";
+				const auto expected = (std::max)(1u, static_cast<uint32_t>(size / divisor));
+				Require(FrameGraphAsset::RenderTarget::ParseUintValue(expression) == expected,
+					"relative dimensions must support positive fractions, whitespace, truncation and minimum-one extents");
+			}
+			bool rejected = false;
+			try { FrameGraphAsset::RenderTarget::ParseUintValue(std::string(name) + "/1e-100"); }
+			catch (const YAML::Exception&) { rejected = true; }
+			Require(rejected, "a scaled dimension must not overflow the image extent");
+		}
+
+		const auto path = workspace / "Content" / "RelativeDimensions.renderer";
+		std::ofstream output(path);
+		output << R"yaml(
+renderTargets:
+  - {name: Render, width: RenderWidth/4, height: RenderHeight/4, format: R32G32B32A32_SFLOAT, bGenerateMips: true, maxMipLevel: 2}
+  - {name: Viewport, width: ViewportWidth/4, height: ViewportHeight/4, format: R32G32B32A32_SFLOAT, bIsSurface: true}
+)yaml";
+		output.close();
+		Require(static_cast<bool>(output), "the relative-dimension fixture must be written");
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+		auto importer = App::GetSubmodule<FrameGraphImporter>();
+		FrameGraphPtr instance;
+		Require(importer->Instantiate_Immediate(id, instance), "a valid relative-dimension graph must instantiate");
+		auto graph = instance->GetRHI();
+		const glm::ivec2 renderSize((std::max)(1u, render.m_width / 4), (std::max)(1u, render.m_height / 4));
+		const glm::ivec2 viewportSize((std::max)(1, viewport.x / 4), (std::max)(1, viewport.y / 4));
+		Require(graph->GetRenderTarget("Render")->GetExtent() == renderSize &&
+			graph->GetSurface("Viewport")->GetTarget()->GetExtent() == viewportSize &&
+			graph->GetSurface("Viewport")->GetResolved()->GetExtent() == viewportSize,
+			"the importer must allocate texture and Surface images using their resolved declaration sizes");
+		Require(graph->GetRenderTarget("Render")->GetMipLevels() == ((std::max)(renderSize.x, renderSize.y) > 1 ? 2u : 1u),
+			"the authored positive mip limit must reach the native render target");
+		FrameGraphImporterTestAccess::ReleaseInstance(*importer, instance);
+		std::cout << "FrameGraph relative dimensions: variables, divisors, image extents and overflow passed\n";
 	}
 
 	class SceneNode : public RenderSceneNode
@@ -2483,6 +2542,7 @@ namespace Sailor::Tests
 					TestFullscreenUploadRetry();
 					TestImportedRendering(importedGraphIds);
 					TestGraphLoadFailures(workspace, importedGraphIds[0]);
+					TestRelativeAttachmentDimensions(workspace);
 					TestStaticMsaaBindings(workspace);
 					TestGraphMsaaTargets();
 					TestGraphTargetLifetime();

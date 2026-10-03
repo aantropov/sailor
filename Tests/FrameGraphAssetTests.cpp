@@ -123,6 +123,51 @@ frame: [{name: Clear}]
 		std::cout << "FrameGraph path/id references, external names and replacement passed\n";
 	}
 
+	void TestAttachmentDimensions()
+	{
+		for (const char* field : { "width", "height" })
+		{
+			for (const char* value : { "0", "-1", "4294967296", "16junk", "1.5", "8/2", "", "Unknown",
+				"RenderWidthTypo", "RenderWidth/0", "RenderHeight/-2", "ViewportWidth/garbage",
+				"ViewportHeight/2/3", "RenderWidth/1junk", "RenderWidth/nan", "RenderWidth/inf", "RenderWidth/1e-1000" })
+			{
+				YAML::Node target;
+				target["name"] = "InvalidExtent";
+				target[field] = value;
+				YAML::Node document;
+				document["renderTargets"].push_back(target);
+				bool rejected = false;
+				try { FrameGraphAsset asset; asset.Deserialize(document); }
+				catch (const YAML::Exception&) { rejected = true; }
+				Require(rejected, "invalid attachment dimensions must fail parsing before any GPU allocation");
+			}
+		}
+		for (const char* value : { "0", "-1", "2147483648", "1.5" })
+		{
+			bool rejected = false;
+			try
+			{
+				FrameGraphAsset asset;
+				asset.Deserialize(YAML::Load(std::string("renderTargets: [{name: InvalidMips, maxMipLevel: '") + value + "'}]"));
+			}
+			catch (const YAML::Exception&) { rejected = true; }
+			Require(rejected, "an invalid mip limit must not produce a zero-level or wrapped allocation");
+		}
+		FrameGraphAsset asset;
+		asset.Deserialize(YAML::Load(R"(
+renderTargets:
+  - {name: Default}
+  - {name: Explicit, width: ' 17 ', height: '+9', maxMipLevel: 4, bGenerateMips: true}
+)"));
+		Require(asset.m_renderTargets["Default"].m_width == 1 && asset.m_renderTargets["Default"].m_height == 1 &&
+			asset.m_renderTargets["Default"].m_maxMipLevel == 10000,
+			"omitted dimensions and mip limits must retain their defaults");
+		Require(asset.m_renderTargets["Explicit"].m_width == 17 && asset.m_renderTargets["Explicit"].m_height == 9 &&
+			asset.m_renderTargets["Explicit"].m_maxMipLevel == 4 && asset.m_renderTargets["Explicit"].m_bGenerateMips,
+			"positive dimensions and mip limits must preserve authored values");
+		std::cout << "FrameGraph attachment dimensions and mip declarations passed\n";
+	}
+
 	void TestGlobalValues(const FrameGraphImporter& importer)
 	{
 		auto asset = FrameGraphAssetPtr::Make();
@@ -197,6 +242,7 @@ int main()
 		FrameGraphImporter importer(&handler);
 		TestResourceDeclarations();
 		TestSamplerReferences();
+		TestAttachmentDimensions();
 		TestGlobalValues(importer);
 		std::cout << "FrameGraphAssetTests passed\n";
 		return 0;
