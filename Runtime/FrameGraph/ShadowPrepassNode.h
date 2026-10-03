@@ -156,12 +156,34 @@ namespace Sailor
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_maskedShadowMaterials_Pcf{};
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedMaskedShadowMaterials_Evsm{};
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedMaskedShadowMaterials_Pcf{};
+		struct CustomShadowMaterialKey
+		{
+			const RHI::RHIMaterial* m_source = nullptr;
+			RHI::VertexAttributeBits m_vertexAttributes = 0u;
+			RHI::EShadowType m_shadowType = RHI::EShadowType::PCF;
+			bool m_bMasked = false;
+
+			bool operator==(const CustomShadowMaterialKey& rhs) const
+			{
+				return m_source == rhs.m_source && m_vertexAttributes == rhs.m_vertexAttributes &&
+					m_shadowType == rhs.m_shadowType && m_bMasked == rhs.m_bMasked;
+			}
+
+			size_t GetHash() const
+			{
+				size_t result = std::hash<const RHI::RHIMaterial*>{}(m_source);
+				HashCombine(result, m_vertexAttributes, static_cast<uint32_t>(m_shadowType), m_bMasked);
+				return result;
+			}
+		};
+
 		struct CustomShadowMaterialCacheEntry
 		{
 			RHI::RHIMaterialVersionPtr m_sourceVersion{};
 			RHI::RHIMaterialPtr m_material{};
+			uint64_t m_lastUsedFrame = 0u;
 		};
-		TMap<size_t, CustomShadowMaterialCacheEntry> m_customShadowMaterials{};
+		TMap<CustomShadowMaterialKey, CustomShadowMaterialCacheEntry> m_customShadowMaterials{};
 
 		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType, bool bSkinned, bool bMasked);
 		RHI::RHIMaterialPtr GetOrAddCustomShadowMaterial(
@@ -170,7 +192,9 @@ namespace Sailor
 			const RHI::RHIMaterialVersionPtr& sourceMaterialVersion,
 			RHI::RHIVertexDescriptionPtr vertex,
 			RHI::EShadowType shadowType,
-			bool bMasked);
+			bool bMasked,
+			uint64_t frame);
+		void EvictCustomShadowMaterials(uint64_t frame);
 
 		Framegraph::TextureBindingCache m_textureBindingCache{};
 		RHI::TPackedDrawPacketPayloadCache<PerInstanceData> m_packetPayloadCache{};

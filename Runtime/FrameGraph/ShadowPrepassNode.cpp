@@ -87,7 +87,8 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddCustomShadowMaterial(
 	const RHI::RHIMaterialVersionPtr& sourceMaterialVersion,
 	RHI::RHIVertexDescriptionPtr vertexDescription,
 	RHI::EShadowType shadowType,
-	bool bMasked)
+	bool bMasked,
+	uint64_t frame)
 {
 	if (!sourceShader || !sourceMaterial ||
 		!sourceMaterialVersion || !sourceMaterialVersion->GetBindings())
@@ -103,12 +104,13 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddCustomShadowMaterial(
 		return nullptr;
 	}
 
-	size_t cacheKey = reinterpret_cast<size_t>(sourceMaterial.GetRawPtr());
-	HashCombine(cacheKey,
+	const CustomShadowMaterialKey cacheKey{
+		sourceMaterial.GetRawPtr(),
 		vertexDescription->GetVertexAttributeBits(),
-		static_cast<uint32_t>(shadowType),
-		bMasked);
+		shadowType,
+		bMasked };
 	auto& entry = m_customShadowMaterials[cacheKey];
+	entry.m_lastUsedFrame = frame;
 	if (entry.m_sourceVersion == sourceMaterialVersion && entry.m_material)
 	{
 		return entry.m_material;
@@ -166,10 +168,28 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddCustomShadowMaterial(
 	return material;
 }
 
+void ShadowPrepassNode::EvictCustomShadowMaterials(uint64_t frame)
+{
+	constexpr uint64_t RetentionFrames = 5u;
+	TVector<CustomShadowMaterialKey> expired;
+	for (const auto& entry : m_customShadowMaterials)
+	{
+		if (frame > entry.Second()->m_lastUsedFrame && frame - entry.Second()->m_lastUsedFrame > RetentionFrames)
+		{
+			expired.Add(entry.First());
+		}
+	}
+	// Recorded packets and command lists retain their own exact material generations.
+	for (const auto& key : expired)
+	{
+		m_customShadowMaterials.Remove(key);
+	}
+}
+
 Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
-	if (!sceneView.m_submissionContext || sceneView.m_shadowMapsToUpdate.IsEmpty())
+	if (!sceneView.m_submissionContext)
 	{
 		return {};
 	}
@@ -444,7 +464,7 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 										{
 											if (auto customShadowMaterial = GetOrAddCustomShadowMaterial(customDepthShader,
 													customDepthMaterial, customDepthMaterialVersion,
-													mesh->m_vertexDescription, shadowPass.m_shadowType, bMasked))
+													mesh->m_vertexDescription, shadowPass.m_shadowType, bMasked, sceneView.m_frame))
 											{
 												depthMaterial = customShadowMaterial;
 											}
@@ -616,7 +636,7 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 							auto customShadowMaterial = GetOrAddCustomShadowMaterial(shadowMesh.m_customDepthShader,
 								shadowMesh.m_customDepthMaterial,
 								shadowMesh.m_customDepthMaterial->GetVersionForSubmission(materialSubmissionId),
-								mesh->m_vertexDescription, shadowPass.m_shadowType, bMasked);
+								mesh->m_vertexDescription, shadowPass.m_shadowType, bMasked, sceneView.m_frame);
 							if (customShadowMaterial)
 							{
 								depthMaterial = customShadowMaterial;
@@ -734,7 +754,7 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 									customDepthMaterial,
 									customDepthMaterial ? customDepthMaterial->GetVersionForSubmission(materialSubmissionId)
 														: RHIMaterialVersionPtr{},
-									sourceMesh->m_vertexDescription, shadowPass.m_shadowType, bMasked);
+									sourceMesh->m_vertexDescription, shadowPass.m_shadowType, bMasked, sceneView.m_frame);
 								if (customShadowMaterial)
 								{
 									depthMaterial = customShadowMaterial;
@@ -893,6 +913,7 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 				}
 			}
 			m_pagedArenaCache.Evict(sceneView.m_frame);
+			EvictCustomShadowMaterials(sceneView.m_frame);
 			m_syncSharedResources.Unlock();
 		}, EThreadType::RHI);
 }

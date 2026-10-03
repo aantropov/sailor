@@ -125,6 +125,30 @@ namespace
 		}
 	};
 
+	class ShadowCacheProbe : public ShadowPrepassNode
+	{
+	public:
+		size_t GetCachedMaterialCount() const { return m_customShadowMaterials.Num(); }
+
+		RHIMaterialPtr GetCascadeMaterial(const RHIRenderSubmissionContextPtr& context, uint32_t cascade) const
+		{
+			const auto resources = context->GetOrAddFrameGraphResources<SubmissionResources>(this, 0, 0);
+			const auto& groups = resources->m_activeShadowViews[cascade]->m_packet.GetGroups();
+			Require(groups.Num() == 1, "each cache fixture cascade must contain one real draw group");
+			return groups[0].m_batch.m_material;
+		}
+	};
+
+	class CountedMaterialBindings : public RHIShaderBindingSet
+	{
+	public:
+		explicit CountedMaterialBindings(TSharedPtr<uint32_t> live) : m_live(std::move(live)) { ++*m_live; }
+		~CountedMaterialBindings() override { --*m_live; }
+
+	private:
+		TSharedPtr<uint32_t> m_live;
+	};
+
 	PFN_vkCmdBeginRenderingKHR originalBeginRendering = nullptr;
 	VkRenderingAttachmentInfo recordedColor{};
 	VkRenderingAttachmentInfo recordedMotion{};
@@ -1399,6 +1423,164 @@ frame:
 		}
 		std::cout << "Custom masked depth paged=" << paged << " instanced=" << instanced << " skinned=" << skinned
 			<< ": main/depth/shadow silhouettes, two instance strides and material replacement passed\n";
+	}
+
+	void TestCustomShadowCache(ShaderSetPtr shader, bool paged)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto mesh = graph->GetFullscreenNdcQuad();
+		mesh->m_bounds = Math::AABB(glm::vec3(0), glm::vec3(2));
+		auto node = TRefPtr<ShadowCacheProbe>::Make();
+		node->SetString("VirtualizeInstancePayloads", paged ? "true" : "false");
+		node->SetString("GPUCulling", "false");
+		auto liveBindings = TSharedPtr<uint32_t>::Make(0u);
+		TVector<RHIMaterialPtr> retiredSources;
+		RHIRenderSubmissionContextPtr heldContext;
+		RHICommandListPtr heldUpload, heldDraw;
+		std::array<RHIBufferPtr, 3> heldPixels;
+		const RHIShaderBindingSet* heldBindings = nullptr;
+		const auto checkPixels = [](const std::array<RHIBufferPtr, 3>& pixels, uint32_t column)
+		{
+			for (const auto& buffer : pixels)
+			{
+				const auto values = static_cast<const glm::vec4*>(buffer->GetPointer());
+				for (uint32_t y = 0; y < Side; ++y)
+					for (uint32_t x = 0; x < Side; ++x)
+						Require((values[y * Side + x].r > 0.1f) == (y >= 2 && y < 6 && x == column),
+							"every cascade must render the retained custom material parameters");
+			}
+		};
+		for (uint32_t frame = 1; frame <= 24; ++frame)
+		{
+			const glm::vec4 settings(frame % 2 ? 0.25f : 0.0f, 0.75f, 0.5f, 0.5f);
+			auto buffer = driver->CreateBuffer(sizeof(settings), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+			std::memcpy(buffer->GetPointer(), &settings, sizeof(settings));
+			RHIShaderBindingSetPtr bindings = TRefPtr<CountedMaterialBindings>::Make(liveBindings);
+			Require(driver->AddBufferToShaderBindings(bindings, buffer, "material", 0).IsValid(),
+				"counted source bindings must use real native descriptors");
+			const RenderState state(true, true, 0, true, ECullMode::None, EBlendMode::None, EFillMode::Fill, "Masked"_h.GetHash(), true);
+			auto source = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader, bindings);
+			RHISceneViewSnapshot snapshot;
+			snapshot.m_frame = frame;
+			snapshot.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+			snapshot.m_camera = TUniquePtr<CameraData>::Make();
+			snapshot.m_frameBindings = driver->CreateShaderBindings();
+			snapshot.m_rhiLightsData = driver->CreateShaderBindings();
+			UboFrameData frameData{};
+			frameData.m_view = frameData.m_projection = frameData.m_invProjection = glm::mat4(1);
+			auto frameBuffer = driver->CreateBuffer(sizeof(frameData), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
+			std::memcpy(frameBuffer->GetPointer(), &frameData, sizeof(frameData));
+			driver->AddBufferToShaderBindings(snapshot.m_frameBindings, frameBuffer, "frame", 0);
+			RHISceneViewProxy proxy;
+			proxy.m_staticMeshEcs = frame;
+			proxy.m_mobility = EMobilityType::Static;
+			proxy.m_worldMatrix = glm::mat4(1);
+			proxy.m_worldAabb = mesh->m_bounds;
+			proxy.m_meshes = { mesh };
+			proxy.m_overrideMaterials = { source };
+			proxy.m_shadowCaster = RHIShadowCasterProxyPtr::Make();
+			proxy.m_shadowCaster->m_worldAabb = mesh->m_bounds;
+			RHIShadowMeshProxy caster;
+			caster.m_mesh = mesh;
+			caster.m_worldMatrix = glm::mat4(1);
+			caster.m_renderQueueTag = "Masked"_h.GetHash();
+			caster.m_customDepthMaterial = source;
+			caster.m_customDepthShader = shader;
+#if defined(__APPLE__)
+			caster.m_materialTextureSamplers = { 0 };
+#endif
+			proxy.m_shadowCaster->m_meshes.Add(std::move(caster));
+			RHISceneInstanceRecord record;
+			record.m_producerKey = frame;
+			record.m_mobility = EMobilityType::Static;
+			record.m_worldMatrix = glm::mat4(1);
+			record.m_worldBounds = mesh->m_bounds;
+			record.m_topology = RHISceneProxyResourcePtr::Make(std::move(proxy));
+			record.m_renderFlags = 1;
+			auto scene = RHIScenePtr::Make();
+			scene->AddInstance(record);
+			snapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
+			snapshot.m_sceneVersions->Add(scene->PublishVersion());
+			for (uint32_t cascade = 0; cascade < 3; ++cascade)
+			{
+				RHIUpdateShadowMapCommand pass;
+				pass.m_shadowType = EShadowType::PCF;
+				pass.m_lighMatrixIndex = cascade;
+				pass.m_lightMatrix = glm::mat4(1);
+				pass.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+				pass.m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
+				snapshot.ForEachShadowCaster(EMobilityType::Static, [&](const RHIVisibleShadowCaster& item) { pass.m_meshList.Add(item); });
+				snapshot.m_shadowMapsToUpdate.Add(std::move(pass));
+			}
+			snapshot.PrepareLods(glm::mat4(1), glm::mat4(1));
+			const uint64_t submissionId = 178000 + frame;
+			const uint64_t revision = RHIMaterial::BeginSubmissionVersionCapture(submissionId);
+			snapshot.m_submissionContext->BeginSubmission(submissionId, 0, 0, revision);
+			auto prepare = node->Prepare(graph, snapshot);
+			Require(prepare.IsValid(), "shadow cache fixture must prepare its cascades");
+			prepare->Run();
+			prepare->Wait();
+			Require(node->GetCascadeMaterial(snapshot.m_submissionContext, 0) == node->GetCascadeMaterial(snapshot.m_submissionContext, 1) &&
+				node->GetCascadeMaterial(snapshot.m_submissionContext, 0) == node->GetCascadeMaterial(snapshot.m_submissionContext, 2),
+				"three cascades must reuse one derivative for the same source generation");
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			node->Process(graph, upload, draw, snapshot);
+			std::array<RHIBufferPtr, 3> pixels;
+			for (uint32_t cascade = 0; cascade < 3; ++cascade)
+				pixels[cascade] = ReadColor(draw, snapshot.m_shadowMapsToUpdate[cascade].m_shadowMap);
+			if (frame == 1)
+			{
+				heldContext = snapshot.m_submissionContext;
+				heldUpload = upload;
+				heldDraw = draw;
+				heldPixels = pixels;
+				heldBindings = bindings.GetRawPtr();
+			}
+			else
+			{
+				CompleteCommands(upload, draw);
+				checkPixels(pixels, frame % 2 ? 6 : 5);
+			}
+			RHIMaterial::EndSubmissionVersionCapture(submissionId);
+			// Empty shells prevent address reuse without retaining their old bindings.
+			source->SetBindings({});
+			retiredSources.Add(source);
+			driver->TrackResources_ThreadSafe();
+			driver->CollectGarbage_RenderThread();
+			Require(node->GetCachedMaterialCount() <= 6, "unused custom shadow derivatives must retire during preparation");
+			Require(*liveBindings <= 7, "source binding resources must settle while one recorded submission remains held");
+		}
+		retiredSources.Clear();
+		RHISceneViewSnapshot idle;
+		idle.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+		for (uint32_t frame = 25; frame <= 30; ++frame)
+		{
+			idle.m_frame = frame;
+			idle.m_submissionContext->BeginSubmission(178000 + frame, 0);
+			auto prepare = node->Prepare(graph, idle);
+			if (prepare) { prepare->Run(); prepare->Wait(); }
+			driver->TrackResources_ThreadSafe();
+			driver->CollectGarbage_RenderThread();
+			if (frame == 29) Require(node->GetCachedMaterialCount() == 1, "the latest derivative must survive the five-frame reuse window");
+		}
+		Require(node->GetCachedMaterialCount() == 0, "empty shadow frames must retire the remaining abandoned derivatives");
+		Require(*liveBindings == 1, "only the held packet may retain a retired source binding after eviction");
+		Require(node->GetCascadeMaterial(heldContext, 0)->GetVersion()->GetBindingsRaw() == heldBindings,
+			"eviction must not replace the exact binding generation in an already prepared packet");
+		CompleteCommands(heldUpload, heldDraw);
+		checkPixels(heldPixels, 6);
+		driver->TrackResources_ThreadSafe();
+		heldUpload.Clear();
+		heldDraw.Clear();
+		heldContext.Clear();
+		Require(*liveBindings == 0, "retired source bindings must release after the held submission finishes");
+		std::cout << "Custom shadow cache paged=" << paged
+			<< ": 24 generations, three-cascade reuse, bounded bindings, empty-frame eviction and retained pixels passed\n";
 	}
 
 	void DrawDepthPattern(RHICommandListPtr command, RHIFrameGraphPtr graph, RHIRenderTargetPtr depth, ShaderSetPtr shader, uint32_t frame)
@@ -2851,6 +3033,7 @@ namespace Sailor::Tests
 						for (bool instanced : { false, true })
 							for (bool skinned : { false, true })
 								TestCustomDepthSilhouette(customDepthShaders[skinned ? 1 : 0], depthReadback, paged, instanced, skinned);
+					for (bool paged : { false, true }) TestCustomShadowCache(customDepthShaders[0], paged);
 					TestStaticMsaaBindings(workspace);
 					TestGraphMsaaTargets();
 					TestGraphTargetLifetime();

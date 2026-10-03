@@ -57,6 +57,12 @@ namespace
 		using TextureBindingCacheKeyProbe = TextureBindingCacheKey;
 	};
 
+	class ShadowPrepassNodeProbe : public ShadowPrepassNode
+	{
+	public:
+		using MaterialKey = CustomShadowMaterialKey;
+	};
+
 	void Require(bool condition, const std::string& message)
 	{
 		if (!condition)
@@ -1314,6 +1320,33 @@ namespace
 		Require(movedSnapshot.ResolveMesh(movedSnapshot.m_proxies[0], 0u) == baseOnlyMesh,
 			"meshes without an LOD chain must remain drawable with LOD enabled");
 	}
+	void TestCustomShadowMaterialKey()
+	{
+		using Key = ShadowPrepassNodeProbe::MaterialKey;
+		auto first = RHI::RHIMaterialPtr::Make(RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+		auto second = RHI::RHIMaterialPtr::Make(RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+		const Key keys[] = {
+			{ first.GetRawPtr(), 1, RHI::EShadowType::PCF, false },
+			{ second.GetRawPtr(), 1, RHI::EShadowType::PCF, false },
+			{ first.GetRawPtr(), 2, RHI::EShadowType::PCF, false },
+			{ first.GetRawPtr(), 1, RHI::EShadowType::EVSM, false },
+			{ first.GetRawPtr(), 1, RHI::EShadowType::PCF, true }
+		};
+		TMap<Key, uint32_t> entries;
+		for (uint32_t i = 0; i < std::size(keys); ++i)
+		{
+			Require(entries.Insert(keys[i], i), "each source, vertex, shadow-type and masked combination must have its own entry");
+			Require(keys[i] == Key(keys[i]) && keys[i].GetHash() == Key(keys[i]).GetHash(),
+				"equal typed shadow keys must hash equally");
+		}
+		Require(entries.Num() == std::size(keys), "shadow cache identity must retain every typed key field");
+		for (uint32_t i = 0; i < std::size(keys); ++i)
+		{
+			uint32_t* value = nullptr;
+			Require(entries.Find(keys[i], value) && value && *value == i, "shadow key lookup must return the exact requested variant");
+		}
+	}
+
 	void TestBatchTextureBindingIdentityContract()
 	{
 		using TextureBindingCacheKey = RenderSceneNodeProbe::TextureBindingCacheKeyProbe;
@@ -1782,6 +1815,7 @@ int main()
 		{ "InstancedViewLodAndDistanceContract", TestInstancedViewLodAndDistanceContract },
 		{ "SnapshotCameraLodContract", TestSnapshotCameraLodContract },
 		{ "BatchTextureBindingIdentityContract", TestBatchTextureBindingIdentityContract },
+		{ "CustomShadowMaterialKey", TestCustomShadowMaterialKey },
 		{ "RenderResourceVirtualizationContract", TestRenderResourceVirtualizationContract },
 		{ "ShaderReadOnlyBarrierSynchronizesShaderSampling", TestShaderReadOnlyBarrierSynchronizesShaderSampling },
 		{ "DepthSamplingBarrierScopes", TestDepthSamplingBarrierScopes },
