@@ -8,6 +8,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "Raytracing/PathTracer.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "RHI/Material.h"
 #include "RHI/Renderer.h"
@@ -658,6 +659,129 @@ namespace
 		TVector<RHI::RHIShaderPtr> m_stages;
 		bool m_complete = true;
 	};
+
+	void TestMaterialCapturePublication(const std::filesystem::path& workspace)
+	{
+		using Tracer = Raytracing::PathTracer;
+		const auto oldTexture = WriteTexture(workspace, "CaptureOldTexture", true);
+		const auto newTexture = WriteTexture(workspace, "CaptureNewTexture", true);
+		TexturePtr loaded;
+		Require(App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(newTexture, loaded),
+			"replacement capture texture must load");
+		MaterialFixture fixture(workspace, "MaterialCapturePublication", oldTexture);
+		auto material = fixture.Load();
+		auto document = fixture.Read();
+		auto vectors = document["uniformsVec4"].as<TMap<std::string, glm::vec4>>();
+		for (const char* name : { "material.emissiveFactor", "material.emissive", "material.emission" })
+		{
+			vectors[name] = glm::vec4(2, 4, 8, 0);
+		}
+		document["uniformsVec4"] = vectors;
+		auto floats = document["uniformsFloat"].as<TMap<std::string, float>>();
+		floats["material.alphaCutoff"] = 0.25f;
+		document["uniformsFloat"] = floats;
+		auto samplers = document["samplers"].as<TMap<std::string, FileId>>();
+		samplers["baseColorSampler"] = newTexture;
+		document["samplers"] = samplers;
+		fixture.Write(document);
+		Drain();
+
+		HoldRenderQueue hold;
+		hold.Wait();
+		fixture.Reload();
+		auto reload = App::GetSubmodule<MaterialImporter>()->GetLoadPromise(fixture.id);
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		const auto queuedBefore = scheduler->GetNumTasks(EThreadType::Render);
+		Tracer::MaterialSnapshots snapshots;
+		std::atomic<bool> finished{ false };
+		std::jthread capture([&]()
+			{
+				snapshots = Tracer::CaptureMaterials({ material, material, {} });
+				finished = true;
+			});
+		const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+		while (!finished && scheduler->GetNumTasks(EThreadType::Render) == queuedBefore &&
+			std::chrono::steady_clock::now() < until) std::this_thread::yield();
+		const bool queuedCapture = scheduler->GetNumTasks(EThreadType::Render) > queuedBefore;
+		const bool readDuringPublication = finished;
+		hold.Release();
+		capture.join();
+		reload->Wait();
+		Drain();
+		Require(queuedCapture && !readDuringPublication,
+			"material capture must execute on the publication queue while its owner waits");
+		Require(snapshots.Num() == 3 && snapshots[0] == snapshots[1] && !snapshots[2] &&
+			snapshots[0]->m_parameters.m_emissiveFactor == glm::vec3(2, 4, 8) &&
+			snapshots[0]->m_parameters.m_alphaCutoff == 0.25f,
+			"capture must observe the completed material values and retain slot identity");
+		bool replacedSampler = false;
+		for (const auto& sampler : snapshots[0]->m_samplers)
+		{
+			if (sampler.m_first == "baseColorSampler")
+			{
+				replacedSampler = sampler.m_second.m_texture && sampler.m_second.m_texture->m_fileId == newTexture;
+			}
+		}
+		Require(replacedSampler, "material capture must retain the sampler from the same publication");
+		std::cout << "Material CPU capture: queued publication, coherent parameters/samplers and slot identity passed\n";
+	}
+
+	void TestMaterialCaptureOwnerUpdates(const std::filesystem::path& workspace)
+	{
+		using Tracer = Raytracing::PathTracer;
+		MaterialFixture fixture(workspace, "MaterialCaptureOwner", {});
+		auto material = fixture.Load();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		Require(scheduler->IsMainThread(), "material updates must use the real game owner");
+		Tracer::MaterialSnapshotCache cache;
+		auto first = Tracer::CaptureMaterials({ material }, &cache);
+		const auto originalEmission = first[0]->m_parameters.m_emissiveFactor;
+		const auto originalCutoff = first[0]->m_parameters.m_alphaCutoff;
+		HoldRenderQueue hold;
+		hold.Wait();
+		const auto queuedBefore = scheduler->GetNumTasks(EThreadType::Render);
+		Tracer::MaterialSnapshots reused;
+		std::atomic<bool> finished{ false };
+		std::jthread reuse([&]()
+			{
+				reused = Tracer::CaptureMaterials({ material, {}, material }, &cache);
+				finished = true;
+			});
+		const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+		while (!finished && std::chrono::steady_clock::now() < until) std::this_thread::yield();
+		const bool reusedWithoutWaiting = finished && scheduler->GetNumTasks(EThreadType::Render) == queuedBefore;
+		hold.Release();
+		reuse.join();
+		Require(reusedWithoutWaiting && reused[0] == first[0] && !reused[1] && reused[2] == first[0] && cache.Num() == 1,
+			"unchanged material snapshots must return without queue work even while Render is occupied");
+
+		for (uint32_t step = 1; step <= 16; ++step)
+		{
+			const float value = static_cast<float>(step) / 16.0f;
+			for (const char* name : { "material.emissiveFactor", "material.emissive", "material.emission" })
+			{
+				material->SetUniform(name, glm::vec4(value, value * 2, value * 4, 0));
+			}
+			material->SetUniform("material.alphaCutoff", value);
+			const auto captured = Tracer::CaptureMaterials({ material }, &cache);
+			Require(captured[0]->m_parameters.m_emissiveFactor == glm::vec3(value, value * 2, value * 4) &&
+				captured[0]->m_parameters.m_alphaCutoff == value &&
+				first[0]->m_parameters.m_emissiveFactor == originalEmission &&
+				first[0]->m_parameters.m_alphaCutoff == originalCutoff,
+				"successive owner updates must publish coherent captures while retained values remain unchanged");
+		}
+		auto onRender = Tasks::CreateTask<Tracer::MaterialSnapshots>("Capture from Render owner", [material]()
+			{
+				return Tracer::CaptureMaterials({ material });
+			}, EThreadType::Render);
+		onRender->Run();
+		onRender->Wait();
+		Require(onRender->GetResult()[0]->m_parameters.m_emissiveFactor == glm::vec3(1, 2, 4),
+			"a Render caller must capture inline without waiting for its own queue");
+		Require(Tracer::CaptureMaterials({}, &cache).IsEmpty() && cache.IsEmpty(),
+			"an empty owner capture must evict unused material snapshots");
+		std::cout << "Material CPU capture: Main updates, immutable cache reuse and inline Render caller passed\n";
+	}
 
 	void TestShaderPublicationQueue(const std::filesystem::path& workspace)
 	{
@@ -1547,6 +1671,8 @@ namespace Sailor::Tests
 		run("Cold ordering", [&]() { TestOrderedReload(workspace, true); });
 		run("Shader failures", [&]() { TestShaderFailures(workspace); });
 		run("Shader publication queue", [&]() { TestShaderPublicationQueue(workspace); });
+		run("Material capture publication", [&]() { TestMaterialCapturePublication(workspace); });
+		run("Material capture owner updates", [&]() { TestMaterialCaptureOwnerUpdates(workspace); });
 		run("Warm shader permutation", [&]() { TestWarmShaderPermutation(workspace); });
 		run("Shared shader reload", [&]() { TestSharedShaderReload(workspace); });
 		run("Layout and cold parity", [&]() { TestLayoutAndColdParity(workspace); });

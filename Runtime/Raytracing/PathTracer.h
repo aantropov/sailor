@@ -141,7 +141,7 @@ namespace Sailor::Raytracing
 
 		using MaterialSnapshots = TVector<TSharedPtr<const MaterialSnapshot>>;
 		using MaterialSnapshotCache = TMap<MaterialPtr, TSharedPtr<const MaterialSnapshot>>;
-		// Capture on the material owner; texture reads join their importer publication queue.
+		// The material owner waits while Render reads values; texture reads join RHI publication.
 		SAILOR_SHARED_API static MaterialSnapshots CaptureMaterials(const TVector<MaterialPtr>& materials,
 			MaterialSnapshotCache* cache = nullptr);
 

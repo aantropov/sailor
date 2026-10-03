@@ -994,71 +994,109 @@ PathTracer::MaterialSnapshots PathTracer::CaptureMaterials(const TVector<Materia
 	TVector<TSharedPtr<MaterialSnapshot>> createdMaterials;
 	auto* textureImporter = App::GetSubmodule<TextureImporter>();
 	auto* registry = App::GetSubmodule<AssetRegistry>();
-	for (const auto& material : materials)
+	auto canReuse = [cache](const MaterialPtr& material)
 	{
-		if (!material)
+		TSharedPtr<const MaterialSnapshot>* previous = nullptr;
+		return !material || (cache && cache->Find(material, previous) &&
+			(*previous)->m_contentRevision == material->GetContentRevision() &&
+			(*previous)->m_surfaceRevision == material->GetSurfaceRevision());
+	};
+	if (std::all_of(materials.begin(), materials.end(), canReuse))
+	{
+		for (const auto& material : materials)
 		{
-			result.Add({});
-			continue;
-		}
-		TSharedPtr<const MaterialSnapshot>* existing = nullptr;
-		if (capturedMaterials.Find(material, existing))
-		{
-			result.Add(*existing);
-			continue;
-		}
-
-		if (cache && cache->Find(material, existing) &&
-			(*existing)->m_surfaceRevision == material->GetSurfaceRevision())
-		{
-			auto captured = *existing;
-			if (captured->m_contentRevision != material->GetContentRevision())
+			if (!material)
 			{
-				auto changed = TSharedPtr<MaterialSnapshot>::Make(*captured);
-				changed->m_contentRevision = material->GetContentRevision();
-				changed->m_parameters = CaptureMaterialParameters(*material);
-				captured = std::move(changed);
+				result.Add({});
+				continue;
 			}
-			result.Add(captured);
-			capturedMaterials.Add(material, std::move(captured));
-			continue;
+			auto snapshot = (*cache)[material];
+			result.Add(snapshot);
+			capturedMaterials.Add(material, std::move(snapshot));
 		}
+		if (cache) *cache = std::move(capturedMaterials);
+		return result;
+	}
 
-		auto snapshot = TSharedPtr<MaterialSnapshot>::Make();
-		snapshot->m_fileId = material->GetFileId();
-		snapshot->m_contentRevision = material->GetContentRevision();
-		snapshot->m_surfaceRevision = material->GetSurfaceRevision();
-		snapshot->m_parameters = CaptureMaterialParameters(*material);
-		for (const auto& sampler : material->GetSamplers())
+	auto captureValues = [&]()
+	{
+		for (const auto& material : materials)
 		{
-			SamplerSnapshot binding;
-			TexturePtr texture = sampler.m_second;
-			if (texture)
+			if (!material)
 			{
-				const FileId fileId = texture->GetFileId();
-				const std::string sourceKey = fileId ? fileId.ToString() :
-					"runtime:" + std::to_string(reinterpret_cast<uintptr_t>(texture.GetRawPtr()));
-				size_t* index = nullptr;
-				if (textureIndices.Find(sourceKey, index))
-				{
-					binding.m_texture = textureSnapshots[*index];
-				}
-				else
-				{
-					auto source = TSharedPtr<TextureSnapshot>::Make();
-					source->m_fileId = fileId;
-					source->m_sourceKey = sourceKey;
-					textureIndices.Add(sourceKey, textures.Num());
-					textures.Add(texture);
-					textureSnapshots.Add(source);
-					binding.m_texture = std::move(source);
-				}
+				result.Add({});
+				continue;
 			}
-			snapshot->m_samplers.Add({ sampler.m_first, std::move(binding) });
+			TSharedPtr<const MaterialSnapshot>* existing = nullptr;
+			if (capturedMaterials.Find(material, existing))
+			{
+				result.Add(*existing);
+				continue;
+			}
+
+			if (cache && cache->Find(material, existing) &&
+				(*existing)->m_surfaceRevision == material->GetSurfaceRevision())
+			{
+				auto captured = *existing;
+				if (captured->m_contentRevision != material->GetContentRevision())
+				{
+					auto changed = TSharedPtr<MaterialSnapshot>::Make(*captured);
+					changed->m_contentRevision = material->GetContentRevision();
+					changed->m_parameters = CaptureMaterialParameters(*material);
+					captured = std::move(changed);
+				}
+				result.Add(captured);
+				capturedMaterials.Add(material, std::move(captured));
+				continue;
+			}
+
+			auto snapshot = TSharedPtr<MaterialSnapshot>::Make();
+			snapshot->m_fileId = material->GetFileId();
+			snapshot->m_contentRevision = material->GetContentRevision();
+			snapshot->m_surfaceRevision = material->GetSurfaceRevision();
+			snapshot->m_parameters = CaptureMaterialParameters(*material);
+			for (const auto& sampler : material->GetSamplers())
+			{
+				SamplerSnapshot binding;
+				TexturePtr texture = sampler.m_second;
+				if (texture)
+				{
+					const FileId fileId = texture->GetFileId();
+					const std::string sourceKey = fileId ? fileId.ToString() :
+						"runtime:" + std::to_string(reinterpret_cast<uintptr_t>(texture.GetRawPtr()));
+					size_t* index = nullptr;
+					if (textureIndices.Find(sourceKey, index))
+					{
+						binding.m_texture = textureSnapshots[*index];
+					}
+					else
+					{
+						auto source = TSharedPtr<TextureSnapshot>::Make();
+						source->m_fileId = fileId;
+						source->m_sourceKey = sourceKey;
+						textureIndices.Add(sourceKey, textures.Num());
+						textures.Add(texture);
+						textureSnapshots.Add(source);
+						binding.m_texture = std::move(source);
+					}
+				}
+				snapshot->m_samplers.Add({ sampler.m_first, std::move(binding) });
+			}
+			createdMaterials.Add(snapshot);
+			result.Add(snapshot);
+			capturedMaterials.Add(material, std::move(snapshot));
 		}
-		createdMaterials.Add(snapshot);
-		result.Add(snapshot);
-		capturedMaterials.Add(material, std::move(snapshot));
+	};
+	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	if (scheduler && !scheduler->IsRendererThread())
+	{
+		auto capture = Tasks::CreateTask("Capture material CPU state", captureValues, EThreadType::Render);
+		capture->Run();
+		capture->Wait();
+	}
+	else
+	{
+		captureValues();
 	}
 
 	TVector<TextureImporter::CpuTextureSnapshot> pixels;
