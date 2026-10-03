@@ -278,7 +278,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TSet<string> supportedDeviceExtensions{};
 
 		// Stats
-		uint32_t m_numSubmittedCommandBuffersAcc = 0;
+		std::atomic<uint32_t> m_numSubmittedCommandBuffersAcc = 0;
 		uint32_t m_numSubmittedCommandBuffers = 0;
 
 		std::atomic<bool> m_bIsDeviceLost = false;

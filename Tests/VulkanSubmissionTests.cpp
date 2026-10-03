@@ -496,6 +496,87 @@ namespace
 		if (!error.empty()) throw std::runtime_error(error);
 	}
 
+	void TestConcurrentSubmissionStatistics()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto* driver = Renderer::GetDriver().GetRawPtr();
+		OnRender([&]()
+			{
+				Require(device->SubmitFrameWithoutPresent({}, {}), "statistics setup must finish attachment initialization");
+				Require(device->SubmitFrameWithoutPresent({}, {}) && driver->GetNumSubmittedCommandBuffers() == 0u,
+					"an empty frame must clear earlier upload statistics");
+			});
+
+		constexpr uint32_t uploadsPerWorker = 128u;
+		constexpr uint32_t frames = 32u;
+		const uint32_t workers = App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads();
+		TVector<Tasks::TaskPtr<std::string>> uploads;
+		for (uint32_t worker = 0; worker < workers; ++worker)
+		{
+			auto task = Tasks::CreateTaskWithResult<std::string>("Concurrent native upload statistics", [driver, worker]()
+				{
+					try
+					{
+						for (uint32_t i = 0; i < uploadsPerWorker; ++i)
+						{
+							auto upload = RecordFrame(worker * uploadsPerWorker + i);
+							Require(driver->SubmitCommandList_Immediate(upload.command), "concurrent upload must complete");
+							CheckReadback(upload, true);
+						}
+						return std::string{};
+					}
+					catch (const std::exception& error) { return std::string(error.what()); }
+				}, EThreadType::RHI);
+			uploads.Add(task);
+			task->Run();
+		}
+
+		uint32_t submitted = 0;
+		OnRender([&]()
+			{
+				for (uint32_t i = 0; i < frames; ++i)
+				{
+					auto first = RecordFrame(1000u + i);
+					auto second = RecordFrame(2000u + i);
+					auto fence = device->GetCurrentFrameFence();
+					Require(device->SubmitFrameWithoutPresent(
+						{ first.command->m_vulkan.m_commandBuffer, second.command->m_vulkan.m_commandBuffer }, {}),
+						"statistics frame must submit both command buffers");
+					submitted += driver->GetNumSubmittedCommandBuffers();
+					Require(fence->Wait(5000000000ull) == VK_SUCCESS, "statistics frame must finish on the GPU");
+					CheckReadback(first, true);
+					CheckReadback(second, true);
+				}
+			});
+		std::string uploadError;
+		for (auto& task : uploads)
+		{
+			task->Wait();
+			if (!task->GetResult().empty()) uploadError = task->GetResult();
+		}
+		Require(uploadError.empty(), uploadError.c_str());
+		OnRender([&]()
+			{
+				Require(device->SubmitFrameWithoutPresent({}, {}), "the last frame must publish remaining uploads");
+				submitted += driver->GetNumSubmittedCommandBuffers();
+				Require(submitted == workers * uploadsPerWorker + frames * 2u,
+					"frame boundaries must neither lose nor double-count concurrent command buffers");
+
+				auto rejected = RecordFrame(3000u);
+				auto fence = RHIFencePtr::Make();
+				{
+					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_OUT_OF_HOST_MEMORY);
+					Require(!driver->SubmitCommandList(rejected.command, fence) && fence->HasFailed(),
+						"statistics test must reach a rejected native upload");
+				}
+				CheckReadback(rejected, false);
+				Require(device->SubmitFrameWithoutPresent({}, {}) && driver->GetNumSubmittedCommandBuffers() == 0u,
+					"rejected uploads must not increment the next frame's statistics");
+			});
+		std::cout << "Concurrent submission statistics: " << workers * uploadsPerWorker <<
+			" uploads, 32 two-command frames, readback and rejected upload passed\n";
+	}
+
 	struct RecordedEditorReadback
 	{
 		RHICommandListPtr command;
@@ -2192,7 +2273,8 @@ namespace
 		{
 			Require(App::IsRendererInitialized(), "fence test requires an initialized renderer");
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
-			if (mode == "--gpu-editor-readback") TestEditorReadback();
+			if (mode == "--gpu-submission-statistics") TestConcurrentSubmissionStatistics();
+			else if (mode == "--gpu-editor-readback") TestEditorReadback();
 #if defined(__APPLE__)
 			else if (mode == "--gpu-metal-export") OnRender([]() { TestMetalTextureExport(); });
 			else if (mode == "--gpu-metal-retirement") OnRender([]() { TestMetalTextureRetirement(); });
@@ -2357,6 +2439,7 @@ int main(int argc, const char** argv)
 		if (mode == "--gpu-host-shutdown-acquire") return RunShutdownGpu(argc, argv, false, true);
 		if (mode == "--gpu-host-shutdown-idle") return RunShutdownGpu(argc, argv, true, true);
 		if (mode == "--gpu-editor-readback" || mode == "--gpu-editor-readback-refused" || mode == "--gpu-editor-readback-lost" ||
+			mode == "--gpu-submission-statistics" ||
 			mode == "--gpu-frame-completion" ||
 			mode == "--gpu-fence-poll-loss" || mode == "--gpu-fence-wait-loss" || mode == "--gpu-fence-completion" ||
 			mode == "--gpu-immediate" || mode == "--gpu-immediate-lost" || mode == "--gpu-immediate-binding-lost" ||

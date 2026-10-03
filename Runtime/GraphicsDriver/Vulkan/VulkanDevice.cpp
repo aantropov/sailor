@@ -477,7 +477,7 @@ bool VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 		return false;
 	}
 
-	m_numSubmittedCommandBuffersAcc++;
+	m_numSubmittedCommandBuffersAcc.fetch_add(1u, std::memory_order_relaxed);
 	return true;
 }
 
@@ -1138,7 +1138,7 @@ bool VulkanDevice::SubmitFrame(const VkSubmitInfo& submitInfo)
 	m_bLastFrameSubmitSuccessful = m_frameSubmissionError == VK_SUCCESS;
 	if (m_bLastFrameSubmitSuccessful)
 	{
-		m_numSubmittedCommandBuffersAcc += submitInfo.commandBufferCount;
+		m_numSubmittedCommandBuffersAcc.fetch_add(submitInfo.commandBufferCount, std::memory_order_relaxed);
 		m_bDepthBufferInitialized = true;
 		m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
 	}
@@ -1150,8 +1150,8 @@ bool VulkanDevice::SubmitFrame(const VkSubmitInfo& submitInfo)
 		if (m_frameSubmissionError == VK_ERROR_DEVICE_LOST) m_bIsDeviceLost = true;
 		SAILOR_LOG_ERROR("Vulkan frame submission failed: %d", static_cast<int>(m_frameSubmissionError));
 	}
-	m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc;
-	m_numSubmittedCommandBuffersAcc = 0;
+	// RHI uploads can finish while Render publishes this frame's statistics.
+	m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc.exchange(0u, std::memory_order_relaxed);
 	return m_bLastFrameSubmitSuccessful;
 }
 
