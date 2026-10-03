@@ -197,7 +197,6 @@ namespace Sailor
 		void EvictCustomShadowMaterials(uint64_t frame);
 
 		Framegraph::TextureBindingCache m_textureBindingCache{};
-		RHI::TPackedDrawPacketPayloadCache<PerInstanceData> m_packetPayloadCache{};
 		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache{};
 		SpinLock m_syncSharedResources{};
 

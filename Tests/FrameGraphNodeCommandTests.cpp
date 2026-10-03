@@ -1215,7 +1215,7 @@ frame:
 	}
 
 	void TestCustomDepthSilhouette(ShaderSetPtr shader, const std::array<ShaderSetPtr, 4>& depthReadback,
-		bool paged, bool instanced, bool skinned)
+		bool paged, bool instanced, bool skinned, EMobilityType mobility)
 	{
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
@@ -1250,7 +1250,7 @@ frame:
 		Require(material && material->GetVersion(), "custom masked material must have a complete version");
 		RHISceneViewProxy source;
 		source.m_staticMeshEcs = 1;
-		source.m_mobility = EMobilityType::Static;
+		source.m_mobility = mobility;
 		source.m_worldMatrix = glm::mat4(1);
 		source.m_worldAabb = Math::AABB(glm::vec3(0), glm::vec3(3));
 		source.m_shadowCaster = RHIShadowCasterProxyPtr::Make();
@@ -1304,7 +1304,7 @@ frame:
 		auto topology = RHISceneProxyResourcePtr::Make(std::move(source));
 		RHISceneInstanceRecord record;
 		record.m_producerKey = 1;
-		record.m_mobility = EMobilityType::Static;
+		record.m_mobility = mobility;
 		record.m_worldMatrix = glm::mat4(1);
 		record.m_worldBounds = topology->m_proxy.m_worldAabb;
 		record.m_topology = topology;
@@ -1340,12 +1340,12 @@ frame:
 			snapshot.m_boneMatrices = driver->CreateShaderBindings();
 			driver->AddBufferToShaderBindings(snapshot.m_boneMatrices, buffer, "bones", 0);
 		}
-		snapshot.ForEachSceneProxy(EMobilityType::Static, [&](const RHIVisibleSceneProxy& proxy) { snapshot.m_proxies.Add(proxy); });
+		snapshot.ForEachSceneProxy(mobility, [&](const RHIVisibleSceneProxy& proxy) { snapshot.m_proxies.Add(proxy); });
 		RHIUpdateShadowMapCommand shadowPass;
 		shadowPass.m_shadowType = EShadowType::PCF;
 		shadowPass.m_lightMatrix = glm::mat4(1);
 		shadowPass.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
-		snapshot.ForEachShadowCaster(EMobilityType::Static, [&](const RHIVisibleShadowCaster& caster) { shadowPass.m_meshList.Add(caster); });
+		snapshot.ForEachShadowCaster(mobility, [&](const RHIVisibleShadowCaster& caster) { shadowPass.m_meshList.Add(caster); });
 		snapshot.m_shadowMapsToUpdate.Add(std::move(shadowPass));
 		snapshot.PrepareLods(glm::mat4(1), glm::mat4(1));
 		auto color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
@@ -1377,52 +1377,148 @@ frame:
 			const uint64_t submissionId = 177000 + frame;
 			const uint64_t materialRevision = RHIMaterial::BeginSubmissionVersionCapture(submissionId);
 			snapshot.m_submissionContext->BeginSubmission(submissionId, 0, 0, materialRevision);
-			snapshot.m_shadowMapsToUpdate[0].m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
-			for (FrameGraphNodePtr node : { FrameGraphNodePtr(depth), FrameGraphNodePtr(main), FrameGraphNodePtr(shadow) })
+			for (uint32_t camera = 0; camera < 2; ++camera)
 			{
-				auto prepare = node->Prepare(graph, snapshot);
-				if (prepare) { prepare->Run(); prepare->Wait(); }
-			}
-			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
-			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
-			commands->BeginCommandList(upload, true);
-			commands->BeginCommandList(draw, true);
-			depth->Process(graph, upload, draw, snapshot);
-			auto depthPixels = ReadDepth(draw, prepassDepth, depthReadback);
-			commands->BeginRenderPass(draw, TVector<RHITexturePtr>{ color }, mainDepth,
-				glm::ivec4(0, 0, Side, Side), glm::ivec2(0), true, glm::vec4(0), 0, true, true);
-			commands->EndRenderPass(draw);
-			main->Process(graph, upload, draw, snapshot);
-			auto mainPixels = ReadColor(draw, color);
-			shadow->Process(graph, upload, draw, snapshot);
-			auto shadowPixels = ReadColor(draw, snapshot.m_shadowMapsToUpdate[0].m_shadowMap);
-			CompleteCommands(upload, draw);
-			RHIMaterial::EndSubmissionVersionCapture(submissionId);
-			Require(depth->GetDrawCallStats().m_numInstances == 2 && main->GetDrawCallStats().m_numInstances == 2 &&
-				shadow->GetDrawCallStats().m_numInstances == 2, "all three real passes must draw both fixture instances");
-			const auto depths = static_cast<const glm::vec2*>(depthPixels->GetPointer());
-			const auto colors = static_cast<const glm::vec4*>(mainPixels->GetPointer());
-			const auto shadows = static_cast<const glm::vec4*>(shadowPixels->GetPointer());
-			const uint32_t column = (frame < 2 ? 6 : 5) + (skinned ? 1 : 0);
-			for (uint32_t y = 0; y < Side; ++y)
-				for (uint32_t x = 0; x < Side; ++x)
+				snapshot.m_cameraIndex = camera;
+				snapshot.m_shadowMapsToUpdate[0].m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
+				for (FrameGraphNodePtr node : { FrameGraphNodePtr(depth), FrameGraphNodePtr(main), FrameGraphNodePtr(shadow) })
 				{
-					const uint32_t pixel = y * Side + x;
-					const bool covered = y >= 2 && y < 6 && (x == column || x == column - 4);
-					if ((colors[pixel].r > 0.1f) != covered || (depths[pixel].x > 0.1f) != covered ||
-						(shadows[pixel].r > 0.1f) != covered)
-					{
-						std::cerr << "Custom depth paged=" << paged << " instanced=" << instanced << " skinned=" << skinned
-							<< " frame=" << frame << " pixel=" << x << ',' << y << " covered=" << covered
-							<< " main=" << colors[pixel].r << " depth=" << depths[pixel].x << " shadow=" << shadows[pixel].r << '\n';
-					}
-					Require((colors[pixel].r > 0.1f) == covered, "main-pass pixels must show the authored displacement, cutoff and skinning");
-					Require((depths[pixel].x > 0.1f) == covered, "masked custom depth must match the main-pass silhouette");
-					Require((shadows[pixel].r > 0.1f) == covered, "packed custom shadow pixels must match the main-pass silhouette");
+					auto prepare = node->Prepare(graph, snapshot);
+					if (prepare) { prepare->Run(); prepare->Wait(); }
 				}
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+				depth->Process(graph, upload, draw, snapshot);
+				auto depthPixels = ReadDepth(draw, prepassDepth, depthReadback);
+				commands->BeginRenderPass(draw, TVector<RHITexturePtr>{ color }, mainDepth,
+					glm::ivec4(0, 0, Side, Side), glm::ivec2(0), true, glm::vec4(0), 0, true, true);
+				commands->EndRenderPass(draw);
+				main->Process(graph, upload, draw, snapshot);
+				auto mainPixels = ReadColor(draw, color);
+				shadow->Process(graph, upload, draw, snapshot);
+				auto shadowPixels = ReadColor(draw, snapshot.m_shadowMapsToUpdate[0].m_shadowMap);
+				CompleteCommands(upload, draw);
+				Require(depth->GetDrawCallStats().m_numInstances == 2 && main->GetDrawCallStats().m_numInstances == 2 &&
+					shadow->GetDrawCallStats().m_numInstances == 2, "all three real passes must draw both fixture instances");
+				const auto depths = static_cast<const glm::vec2*>(depthPixels->GetPointer());
+				const auto colors = static_cast<const glm::vec4*>(mainPixels->GetPointer());
+				const auto shadows = static_cast<const glm::vec4*>(shadowPixels->GetPointer());
+				const uint32_t column = (frame < 2 ? 6 : 5) + (skinned ? 1 : 0);
+				for (uint32_t y = 0; y < Side; ++y)
+					for (uint32_t x = 0; x < Side; ++x)
+					{
+						const uint32_t pixel = y * Side + x;
+						const bool covered = y >= 2 && y < 6 && (x == column || x == column - 4);
+						if ((colors[pixel].r > 0.1f) != covered || (depths[pixel].x > 0.1f) != covered ||
+							(shadows[pixel].r > 0.1f) != covered)
+						{
+							std::cerr << "Custom depth paged=" << paged << " instanced=" << instanced << " skinned=" << skinned
+								<< " frame=" << frame << " pixel=" << x << ',' << y << " covered=" << covered
+								<< " main=" << colors[pixel].r << " depth=" << depths[pixel].x << " shadow=" << shadows[pixel].r << '\n';
+						}
+						Require((colors[pixel].r > 0.1f) == covered, "main-pass pixels must show the authored displacement, cutoff and skinning");
+						Require((depths[pixel].x > 0.1f) == covered, "masked custom depth must match the main-pass silhouette");
+						Require((shadows[pixel].r > 0.1f) == covered, "packed custom shadow pixels must match the main-pass silhouette");
+					}
+			}
+			RHIMaterial::EndSubmissionVersionCapture(submissionId);
 		}
 		std::cout << "Custom masked depth paged=" << paged << " instanced=" << instanced << " skinned=" << skinned
-			<< ": main/depth/shadow silhouettes, two instance strides and material replacement passed\n";
+			<< " mobility=" << static_cast<uint32_t>(mobility)
+			<< ": main/depth/shadow silhouettes, two cameras, two instance strides and material replacement passed\n";
+	}
+
+	void TestTransparentPacketOrder(ShaderSetPtr shader, bool paged, bool instanced)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto mesh = graph->GetFullscreenNdcQuad();
+		mesh->m_bounds = Math::AABB(glm::vec3(0), glm::vec3(1));
+		auto bindings = driver->CreateShaderBindings();
+		auto buffer = driver->CreateBuffer(sizeof(glm::vec4), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+		std::memset(buffer->GetPointer(), 0, sizeof(glm::vec4));
+		Require(driver->AddBufferToShaderBindings(bindings, buffer, "material", 0).IsValid(), "transparent fixture parameters must bind");
+		const RenderState state(false, false, 0, false, ECullMode::None, EBlendMode::AlphaBlending,
+			EFillMode::Fill, "Translucent"_h.GetHash(), false);
+		auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader, bindings);
+		Require(material && material->GetVersion(), "transparent fixture must have a complete material");
+		auto scene = RHIScenePtr::Make();
+		uint32_t id = 0;
+		for (auto mobility : { EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic })
+		{
+			RHISceneViewProxy source;
+			source.m_staticMeshEcs = ++id;
+			source.m_mobility = mobility;
+			source.m_worldMatrix = glm::translate(glm::mat4(1), glm::vec3(0, 0, -static_cast<float>(id)));
+			source.m_worldAabb = Math::AABB(glm::vec3(0, 0, -static_cast<float>(id)), glm::vec3(1));
+			if (instanced)
+			{
+				RHIInstancedMeshGroup group;
+				group.m_instanceTransforms = { glm::mat4(1) };
+				group.m_meshes = { mesh };
+				group.m_materials = { material };
+				source.m_instancedGroups.Add(std::move(group));
+			}
+			else
+			{
+				source.m_meshes = { mesh };
+				source.m_meshModelMatrices = { source.m_worldMatrix };
+				source.m_overrideMaterials = { material };
+			}
+			RHISceneInstanceRecord record;
+			record.m_producerKey = id;
+			record.m_mobility = mobility;
+			record.m_worldMatrix = source.m_worldMatrix;
+			record.m_worldBounds = source.m_worldAabb;
+			record.m_topology = RHISceneProxyResourcePtr::Make(std::move(source));
+			scene->AddInstance(record);
+		}
+		World cameraWorld("TransparentPacketCamera", 0);
+		auto camera = cameraWorld.Instantiate("Camera")->AddComponent<CameraComponent>();
+		cameraWorld.GetECS<CameraECS>()->Tick(0);
+		auto cameraData = camera->GetData();
+		cameraData.SetOwner({});
+		cameraWorld.Clear();
+		RHISceneViewSnapshot snapshot;
+		snapshot.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+		snapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
+		snapshot.m_sceneVersions->Add(scene->PublishVersion());
+		snapshot.m_camera = TUniquePtr<CameraData>::Make(cameraData);
+		auto node = TRefPtr<SceneNode>::Make();
+		node->SetString("Tag", "Translucent");
+		node->SetString("Sorting", "BackToFront");
+		node->SetString("VirtualizeInstancePayloads", paged ? "true" : "false");
+		const auto firstResources = node->GetResources(snapshot);
+		for (uint32_t cameraIndex = 0; cameraIndex < 2; ++cameraIndex)
+		{
+			snapshot.m_cameraIndex = cameraIndex;
+			snapshot.m_proxies.Clear();
+			for (auto mobility : { EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic })
+				snapshot.ForEachSceneProxy(mobility, [&](const RHIVisibleSceneProxy& proxy)
+				{
+					if (cameraIndex == 0 || proxy.GetSource()->m_staticMeshEcs != 2) snapshot.m_proxies.Add(proxy);
+				});
+			auto prepare = node->Prepare(graph, snapshot);
+			prepare->Run();
+			prepare->Wait();
+			const auto& packet = node->GetResources(snapshot)->m_packet;
+			const TVector<float> expected = cameraIndex == 0 ? TVector<float>{ -3, -2, -1 } : TVector<float>{ -3, -1 };
+			Require(packet.GetNumInstances() == expected.Num() && packet.GetNumStorageInstances() == expected.Num() &&
+				packet.GetGroups().Num() == expected.Num() && !packet.HasSharedImmutablePayload(),
+				"transparent draws from every mobility must stay camera-local even with virtualization enabled");
+			for (uint32_t i = 0; i < expected.Num(); ++i)
+				Require(packet.GetPayload(EMobilityType::Dynamic).m_instances[i].model[3].z == expected[i] &&
+					packet.GetInstanceIndices()[i] == i && packet.GetGroups()[i].m_firstInstance == i &&
+					packet.GetGroups()[i].m_numInstances == 1 && packet.GetGroups()[i].m_batch.m_materialVersion == material->GetVersion(),
+					"back-to-front packet order, indirect offsets and material versions must match each camera's visible set");
+		}
+		Require(firstResources->m_packet.GetNumInstances() == 3 &&
+			firstResources->m_packet.GetPayload(EMobilityType::Dynamic).m_instances[1].model[3].z == -2,
+			"preparing the second camera must not rewrite the first camera's packet");
+		std::cout << "Transparent packet paged=" << paged << " instanced=" << instanced
+			<< ": two cameras, mixed mobility, depth order, indices and material versions passed\n";
 	}
 
 	void TestCustomShadowCache(ShaderSetPtr shader, bool paged)
@@ -3032,8 +3128,11 @@ namespace Sailor::Tests
 					for (bool paged : { false, true })
 						for (bool instanced : { false, true })
 							for (bool skinned : { false, true })
-								TestCustomDepthSilhouette(customDepthShaders[skinned ? 1 : 0], depthReadback, paged, instanced, skinned);
+								for (auto mobility : { EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic })
+									TestCustomDepthSilhouette(customDepthShaders[skinned ? 1 : 0], depthReadback, paged, instanced, skinned, mobility);
 					for (bool paged : { false, true }) TestCustomShadowCache(customDepthShaders[0], paged);
+					for (bool paged : { false, true })
+						for (bool instanced : { false, true }) TestTransparentPacketOrder(customDepthShaders[0], paged, instanced);
 					TestStaticMsaaBindings(workspace);
 					TestGraphMsaaTargets();
 					TestGraphTargetLifetime();

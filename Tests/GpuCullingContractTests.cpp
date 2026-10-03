@@ -484,7 +484,15 @@ namespace
 			}
 
 			RHI::TPackedDrawPacket<TestInstance> nextFlight;
-			nextFlight.UseSharedPayload(EMobilityType::Static, packet.SharePayload(EMobilityType::Static));
+			RHI::TPackedDrawPagedArenaCache<TestInstance> cache;
+			TVector<uint64_t> keys;
+			for (uint32_t index = 0; index < count; ++index) keys.Add(index);
+			cache.BeginUpdate(1u, 1u, 1u);
+			Require(cache.ReplaceRange(1u, 1u, packet.GetPayload(EMobilityType::Static).m_instances, keys),
+				"the active arena must publish the complete sorted instance range");
+			nextFlight.UseSharedArenaPayload(EMobilityType::Static, cache.EndUpdate());
+			for (uint32_t index = 0; index < count; ++index)
+				Require(nextFlight.AddArenaView({}, {}, 1u, index), "every visible arena key must resolve");
 			nextFlight.Finalize(false);
 			validate(nextFlight, count);
 			Require(nextFlight.GetInstanceIndices() == packet.GetInstanceIndices(),
@@ -505,21 +513,26 @@ namespace
 				"transparent draw splitting must preserve the supplied back-to-front order");
 		}
 
-		RHI::TPackedDrawPacket<TestInstance> arena;
+		RHI::TPackedDrawPagedArenaCache<TestInstance> arena;
+		TVector<TestInstance> arenaInstances;
+		TVector<uint64_t> arenaKeys;
 		for (uint32_t index = 0u; index < orderedCount * 2u; ++index)
 		{
-			Require(arena.AddArenaInstance({ index }, index), "arena keys must be unique");
+			arenaInstances.Add({ index });
+			arenaKeys.Add(index);
 		}
+		arena.BeginUpdate(1u, 1u, 1u);
+		Require(arena.ReplaceRange(1u, 1u, arenaInstances, arenaKeys), "the arena must store visible and invisible records");
 		RHI::TPackedDrawPacket<TestInstance> view;
-		view.UseSharedArenaPayload(EMobilityType::Static, arena.ShareArenaPayload(EMobilityType::Static));
+		view.UseSharedArenaPayload(EMobilityType::Static, arena.EndUpdate());
 		for (uint32_t index = orderedCount; index > 0u; --index)
 		{
-			Require(view.AddArenaView({}, {}, (index - 1u) * 2u), "visible keys must resolve");
+			Require(view.AddArenaView({}, {}, 1u, (index - 1u) * 2u), "visible keys must resolve");
 		}
 		view.Finalize(false);
 		validate(view, orderedCount);
-		Require(view.GetNumStorageInstances() == orderedCount * 2u,
-			"splitting must retain invisible records in the shared arena");
+		Require(view.GetNumStorageInstances() == 16384u,
+			"splitting must retain all 8194 records in the shared arena's reserved range");
 		for (uint32_t index = 0u; index < orderedCount; ++index)
 		{
 			Require(view.GetInstanceIndices()[index] == index * 2u,
@@ -641,14 +654,19 @@ namespace
 			source.GetGroups()[2].m_firstInstance == 2u,
 			"combined packet groups must reference contiguous static, stationary, and dynamic ranges");
 
-		auto staticPayload = source.SharePayload(EMobilityType::Static);
-		auto stationaryPayload = source.SharePayload(EMobilityType::Stationary);
-		Require(staticPayload && stationaryPayload && source.HasSharedImmutablePayload(),
-			"static and stationary payloads must be publishable as immutable shared storage");
+		RHI::TPackedDrawPagedArenaCache<TestInstance> sharedCache;
+		sharedCache.BeginUpdate(7u, 101u, 1u);
+		Require(sharedCache.ReplaceRange(1u, 1u, { { 10u } }, { 10ull }), "static range must publish");
+		auto staticPayload = sharedCache.EndUpdate();
+		sharedCache.BeginUpdate(8u, 101u, 1u);
+		Require(sharedCache.ReplaceRange(2u, 1u, { { 20u } }, { 20ull }), "stationary range must publish");
+		auto stationaryPayload = sharedCache.EndUpdate();
 
 		RHI::TPackedDrawPacket<TestInstance> nextFlight;
-		nextFlight.UseSharedPayload(EMobilityType::Static, staticPayload);
-		nextFlight.UseSharedPayload(EMobilityType::Stationary, stationaryPayload);
+		nextFlight.UseSharedArenaPayload(EMobilityType::Static, staticPayload);
+		nextFlight.UseSharedArenaPayload(EMobilityType::Stationary, stationaryPayload);
+		Require(nextFlight.AddArenaView({}, {}, 1u, 10ull, EMobilityType::Static) &&
+			nextFlight.AddArenaView({}, {}, 2u, 20ull, EMobilityType::Stationary), "both shared mobility ranges must resolve");
 		nextFlight.Add({}, {}, { 31u }, 31ull, EMobilityType::Dynamic);
 		nextFlight.Finalize(false);
 		Require(nextFlight.GetSharedPayload(EMobilityType::Static) == staticPayload &&
@@ -658,19 +676,18 @@ namespace
 			!nextFlight.GetSharedPayload(EMobilityType::Dynamic),
 			"dynamic records must remain flight-local and be rebuilt for the new submission");
 
-		RHI::TPackedDrawPacket<TestInstance> arenaSource;
-		Require(arenaSource.AddArenaInstance({ 10u }, 101ull, EMobilityType::Static) &&
-			arenaSource.AddArenaInstance({ 20u }, 102ull, EMobilityType::Static) &&
-			arenaSource.AddArenaInstance({ 30u }, 103ull, EMobilityType::Static),
+		RHI::TPackedDrawPagedArenaCache<TestInstance> arenaSource;
+		arenaSource.BeginUpdate(1u, 1u, 1u);
+		Require(arenaSource.ReplaceRange(1u, 1u, { { 10u }, { 20u }, { 30u } }, { 101ull, 102ull, 103ull }),
 			"a static arena must register immutable records independently of a view");
-		auto arenaPayload = arenaSource.ShareArenaPayload(EMobilityType::Static);
+		auto arenaPayload = arenaSource.EndUpdate();
 		RHI::TPackedDrawPacket<TestInstance> arenaView;
 		arenaView.UseSharedArenaPayload(EMobilityType::Static, arenaPayload);
-		Require(arenaView.AddArenaView({}, {}, 103ull, EMobilityType::Static) &&
-			arenaView.AddArenaView({}, {}, 101ull, EMobilityType::Static),
+		Require(arenaView.AddArenaView({}, {}, 1u, 103ull, EMobilityType::Static) &&
+			arenaView.AddArenaView({}, {}, 1u, 101ull, EMobilityType::Static),
 			"a view packet must resolve visible items through stable arena keys");
 		arenaView.Finalize(false);
-		Require(arenaView.GetNumStorageInstances() == 3u &&
+		Require(arenaView.GetNumStorageInstances() == 4u &&
 			arenaView.GetNumDrawInstances() == 2u &&
 			arenaView.GetInstanceIndices().Num() == 2u &&
 			arenaView.GetInstanceIndices()[0] == 0u &&
@@ -682,13 +699,13 @@ namespace
 		RHI::TPackedDrawPacket<TestInstance> nearView;
 		nearView.UseSharedArenaPayload(EMobilityType::Static, arenaPayload);
 		Require(nearView.AddArenaView(
-			{}, baseLodMesh, 101ull, EMobilityType::Static),
+			{}, baseLodMesh, 1u, 101ull, EMobilityType::Static),
 			"the near view must resolve the shared static record");
 		nearView.Finalize(false);
 		RHI::TPackedDrawPacket<TestInstance> farView;
 		farView.UseSharedArenaPayload(EMobilityType::Static, arenaPayload);
 		Require(farView.AddArenaView(
-			{}, selectedLodMesh, 101ull, EMobilityType::Static),
+			{}, selectedLodMesh, 1u, 101ull, EMobilityType::Static),
 			"the far view must resolve the same shared static record");
 		farView.Finalize(false);
 		Require(nearView.GetSharedPayload(EMobilityType::Static) ==
@@ -704,12 +721,12 @@ namespace
 			EMobilityType::Static,
 			arenaPayload);
 		Require(disjointCameraView.AddArenaView(
-			{}, baseLodMesh, 102ull, EMobilityType::Static),
+			{}, baseLodMesh, 1u, 102ull, EMobilityType::Static),
 			"a disjoint camera must resolve records absent from another camera's visible set");
 		disjointCameraView.Finalize(false);
 		Require(disjointCameraView.GetSharedPayload(EMobilityType::Static) ==
 				arenaView.GetSharedPayload(EMobilityType::Static) &&
-			disjointCameraView.GetNumStorageInstances() == 3u &&
+			disjointCameraView.GetNumStorageInstances() == 4u &&
 			disjointCameraView.GetNumDrawInstances() == 1u &&
 			disjointCameraView.GetInstanceIndices()[0] == 1u,
 			"camera-independent arenas must retain the complete immutable scene while each view owns only compact indices");
@@ -730,19 +747,19 @@ namespace
 			reorderedInstances[2].m_value == 30u,
 			"metadata sorting must reorder the single instance array in place without a duplicate payload");
 
-		RHI::TPackedDrawPacketPayloadCache<TestInstance> cache;
-		cache.Publish(7u, 101u, staticPayload, 1ull);
-		Require(cache.Find(7u, 101u, 2ull) == staticPayload,
+		Require(sharedCache.Find(7u, 101u, 2ull) == staticPayload,
 			"payload cache must preserve immutable identity across flight slots");
-		auto replacementPayload = RHI::TPackedDrawPacketPayloadPtr<TestInstance>::Make();
-		replacementPayload->m_instances.Add({ 91u });
-		cache.Publish(7u, 102u, replacementPayload, 3ull);
-		Require(!cache.Find(7u, 101u, 3ull) &&
-			cache.Find(7u, 102u, 3ull) == replacementPayload &&
-			cache.Num() == 1u,
+		sharedCache.BeginUpdate(7u, 102u, 3u);
+		Require(sharedCache.ReplaceRange(1u, 2u, { { 91u } }, { 10ull }), "replacement range must publish");
+		auto replacementPayload = sharedCache.EndUpdate();
+		Require(!sharedCache.Find(7u, 101u, 3ull) &&
+			sharedCache.Find(7u, 102u, 3ull) == replacementPayload &&
+			staticPayload->m_arenaPages[0]->m_instances[0].m_value == 10u &&
+			replacementPayload->m_arenaPages[0]->m_instances[0].m_value == 91u,
 			"a logical cache slot must retain only its current immutable revision");
-		cache.Evict(12ull, 8ull);
-		Require(!cache.Find(7u, 102u, 12ull),
+		sharedCache.Evict(12ull, 8ull);
+		Require(!sharedCache.Find(7u, 102u, 12ull) &&
+			nextFlight.GetSharedPayload(EMobilityType::Static)->m_arenaPages[0]->m_instances[0].m_value == 10u,
 			"unreferenced payload cache entries must expire after the retention window");
 
 		RHI::TPackedDrawPagedArenaCache<TestInstance> pagedCache;

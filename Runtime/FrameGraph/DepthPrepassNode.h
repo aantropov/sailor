@@ -125,8 +125,6 @@ namespace Sailor
 		// Culling
 		ShaderSetPtr m_pComputeMeshCullingShader{};
 		Framegraph::TextureBindingCache m_textureBindingCache;
-		RHI::TPackedDrawPacketPayloadCache<PerInstanceData> m_packetPayloadCache;
-		RHI::TPackedDrawPacketPayloadCache<CustomPerInstanceData> m_customPacketPayloadCache;
 		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache;
 		RHI::TPackedDrawPagedArenaCache<CustomPerInstanceData> m_customPagedArenaCache;
 

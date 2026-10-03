@@ -109,11 +109,6 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 			constexpr size_t PayloadRevisionSeed = Fnv1aOffsetBasis;
 			std::array<size_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
 				payloadRevisions{};
-			for (size_t index = 0u; index < payloadRevisions.size(); ++index)
-			{
-				payloadRevisions[index] = PayloadRevisionSeed;
-				HashCombine(payloadRevisions[index], index);
-			}
 			const size_t staticPayloadIndex =
 				RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(
 					EMobilityType::Static);
@@ -150,18 +145,12 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 				bBuildPacketPayload{ true, true, true };
 			std::array<bool, RHI::TPackedDrawPacket<CustomPerInstanceData>::NumMobilitySegments>
 				bBuildCustomPayload{ true, true, true };
-			std::array<bool, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
-				bPacketPayloadComplete{ true, true, true };
-			std::array<bool, RHI::TPackedDrawPacket<CustomPerInstanceData>::NumMobilitySegments>
-				bCustomPayloadComplete{ true, true, true };
-			auto buildPayloadCacheSlot = [&](EMobilityType mobility)
+			auto buildArenaCacheSlot = [](EMobilityType mobility)
 				{
 					size_t cacheSlot = PayloadRevisionSeed;
 					const size_t index =
 						RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-					const uint32_t cameraIndex = usesPagedArena(index) ?
-						0u : sceneViewSnapshot.m_cameraIndex;
-					HashCombine(cacheSlot, cameraIndex, index);
+					HashCombine(cacheSlot, 0u, index);
 					return cacheSlot;
 				};
 			if (bVirtualizeInstancePayloads)
@@ -171,47 +160,23 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 				{
 					const size_t index =
 						RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-					const size_t cacheSlot = buildPayloadCacheSlot(mobility);
-					auto packetPayload = usesPagedArena(index) ?
-						m_pagedArenaCache.Find(
-							cacheSlot,
-							payloadRevisions[index],
-							sceneViewSnapshot.m_frame) :
-						m_packetPayloadCache.Find(
-							cacheSlot,
-							payloadRevisions[index],
-							sceneViewSnapshot.m_frame);
+					const size_t cacheSlot = buildArenaCacheSlot(mobility);
+					auto packetPayload = m_pagedArenaCache.Find(
+						cacheSlot,
+						payloadRevisions[index],
+						sceneViewSnapshot.m_frame);
 					if (packetPayload)
 					{
-						if (usesPagedArena(index))
-						{
-							m_packet.UseSharedArenaPayload(mobility, std::move(packetPayload));
-						}
-						else
-						{
-							m_packet.UseSharedPayload(mobility, std::move(packetPayload));
-						}
+						m_packet.UseSharedArenaPayload(mobility, std::move(packetPayload));
 						bBuildPacketPayload[index] = false;
 					}
-					auto customPayload = usesPagedArena(index) ?
-						m_customPagedArenaCache.Find(
-							cacheSlot,
-							payloadRevisions[index],
-							sceneViewSnapshot.m_frame) :
-						m_customPacketPayloadCache.Find(
-							cacheSlot,
-							payloadRevisions[index],
-							sceneViewSnapshot.m_frame);
+					auto customPayload = m_customPagedArenaCache.Find(
+						cacheSlot,
+						payloadRevisions[index],
+						sceneViewSnapshot.m_frame);
 					if (customPayload)
 					{
-						if (usesPagedArena(index))
-						{
-							m_customPacket.UseSharedArenaPayload(mobility, std::move(customPayload));
-						}
-						else
-						{
-							m_customPacket.UseSharedPayload(mobility, std::move(customPayload));
-						}
+						m_customPacket.UseSharedArenaPayload(mobility, std::move(customPayload));
 						bBuildCustomPayload[index] = false;
 					}
 				}
@@ -226,7 +191,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					{
 						continue;
 					}
-					const size_t arenaCacheSlot = buildPayloadCacheSlot(mobility);
+					const size_t arenaCacheSlot = buildArenaCacheSlot(mobility);
 					if (bBuildPacketPayload[arenaPayloadIndex])
 					{
 						m_pagedArenaCache.BeginUpdate(
@@ -243,6 +208,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					auto& customRangeInstances = submissionResources->m_customArenaRangeInstances;
 					auto& customRangeStableKeys = submissionResources->m_customArenaRangeStableKeys;
 					auto& customRangeMaterialVersionRuns = submissionResources->m_customArenaRangeMaterialVersionRuns;
+					bool bPacketPayloadComplete = true;
+					bool bCustomPayloadComplete = true;
 					bool bBuildPacketRange = false;
 					bool bBuildCustomRange = false;
 					auto addArenaDepthInstance = [&](const RHIVisibleSceneProxy& proxy,
@@ -269,11 +236,11 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						{
 							if (bRequiredCustomDepth)
 							{
-								bCustomPayloadComplete[arenaPayloadIndex] = false;
+								bCustomPayloadComplete = false;
 							}
 							else
 							{
-								bPacketPayloadComplete[arenaPayloadIndex] = false;
+								bPacketPayloadComplete = false;
 							}
 							return;
 						}
@@ -289,11 +256,11 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						{
 							if (bRequiredCustomDepth)
 							{
-								bCustomPayloadComplete[arenaPayloadIndex] = false;
+								bCustomPayloadComplete = false;
 							}
 							else
 							{
-								bPacketPayloadComplete[arenaPayloadIndex] = false;
+								bPacketPayloadComplete = false;
 							}
 							return;
 						}
@@ -465,7 +432,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 									rangeStableKeys,
 									&rangeMaterialVersionRuns))
 							{
-								bPacketPayloadComplete[arenaPayloadIndex] = false;
+								bPacketPayloadComplete = false;
 							}
 							if (bBuildCustomRange &&
 								!m_customPagedArenaCache.ReplaceRange(rangeKey,
@@ -474,19 +441,19 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 									customRangeStableKeys,
 									&customRangeMaterialVersionRuns))
 							{
-								bCustomPayloadComplete[arenaPayloadIndex] = false;
+								bCustomPayloadComplete = false;
 							}
 						});
 
 					if (bBuildPacketPayload[arenaPayloadIndex])
 					{
-						auto packetPayload = m_pagedArenaCache.EndUpdate(bPacketPayloadComplete[arenaPayloadIndex]);
+						auto packetPayload = m_pagedArenaCache.EndUpdate(bPacketPayloadComplete);
 						m_packet.UseSharedArenaPayload(mobility, std::move(packetPayload));
 					}
 					if (bBuildCustomPayload[arenaPayloadIndex])
 					{
 						auto customPayload =
-							m_customPagedArenaCache.EndUpdate(bCustomPayloadComplete[arenaPayloadIndex]);
+							m_customPagedArenaCache.EndUpdate(bCustomPayloadComplete);
 						m_customPacket.UseSharedArenaPayload(mobility, std::move(customPayload));
 					}
 					rangeInstances.Clear(false);
@@ -495,13 +462,9 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					customRangeInstances.Clear(false);
 					customRangeStableKeys.Clear(false);
 					customRangeMaterialVersionRuns.Clear(false);
-					bBuildPacketPayload[arenaPayloadIndex] = false;
-					bBuildCustomPayload[arenaPayloadIndex] = false;
 				}
 			}
 			Framegraph::Details::EvictTextureBindingCache(m_textureBindingCache, sceneViewSnapshot.m_frame);
-			m_packetPayloadCache.Evict(sceneViewSnapshot.m_frame);
-			m_customPacketPayloadCache.Evict(sceneViewSnapshot.m_frame);
 			m_pagedArenaCache.Evict(sceneViewSnapshot.m_frame);
 			m_customPagedArenaCache.Evict(sceneViewSnapshot.m_frame);
 			for (const auto& proxy : sceneViewSnapshot.m_proxies)
@@ -515,11 +478,6 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 				const size_t payloadIndex =
 					RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(payloadMobility);
 				const bool bArenaView = usesPagedArena(payloadIndex);
-				if (!bBuildPacketPayload[payloadIndex] &&
-					!bBuildCustomPayload[payloadIndex] && !bArenaView)
-				{
-					continue;
-				}
 				for (size_t i = 0; i < source->m_meshes.Num(); i++)
 				{
 					const bool bHasMaterial = source->GetMaterials().Num() > i;
@@ -541,16 +499,6 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					const auto& mesh = sceneViewSnapshot.ResolveMesh(proxy, i);
 					if (!mesh)
 					{
-						const bool bExpectedCustomDepth =
-							sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
-						if (bExpectedCustomDepth)
-						{
-							bCustomPayloadComplete[payloadIndex] = false;
-						}
-						else
-						{
-							bPacketPayloadComplete[payloadIndex] = false;
-						}
 						continue;
 					}
 
@@ -562,26 +510,12 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 
 					const bool bRequiredCustomDepth =
 						sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
-					if (!bArenaView &&
-						((bRequiredCustomDepth && !bBuildCustomPayload[payloadIndex]) ||
-						(!bRequiredCustomDepth && !bBuildPacketPayload[payloadIndex])))
-					{
-						continue;
-					}
 					const bool bIsDepthMaterialReady = depthMaterial &&
 						preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders &&
 						depthMaterial->GetRenderState().IsEnabledZWrite();
 
 					if (!bIsDepthMaterialReady)
 					{
-						if (bRequiredCustomDepth)
-						{
-							bCustomPayloadComplete[payloadIndex] = false;
-						}
-						else
-						{
-							bPacketPayloadComplete[payloadIndex] = false;
-						}
 						continue;
 					}
 					RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
@@ -616,8 +550,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					if (bRequiredCustomDepth || bMaskedQueue)
 					{
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
-						bool bCurrentTextureBindings = false;
 #if defined(__APPLE__)
+						bool bCurrentTextureBindings = false;
 						const auto& requestedTextures =
 							source->m_materialTextureSamplers.Num() > i ?
 							source->m_materialTextureSamplers[i] :
@@ -630,20 +564,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							bCurrentTextureBindings);
 #else
 						batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
-						bCurrentTextureBindings = batch.m_textureBindings.IsValid();
 #endif
 						batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
-						if (!bCurrentTextureBindings)
-						{
-							if (bRequiredCustomDepth)
-							{
-								bCustomPayloadComplete[payloadIndex] = false;
-							}
-							else
-							{
-								bPacketPayloadComplete[payloadIndex] = false;
-							}
-						}
 						if (!batch.m_textureBindings)
 						{
 							continue;
@@ -657,35 +579,17 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						0u);
 					if (bArenaView)
 					{
-						const bool bAdded = bRequiredCustomDepth ?
-							m_customPacket.AddArenaView(
-								std::move(batch),
-								mesh,
-								BuildPackedDrawRangeKey(
-									proxy.m_handle,
-									source->m_staticMeshEcs,
-									proxy.m_resource),
-								stableKey,
-								payloadMobility) :
-							m_packet.AddArenaView(
-								std::move(batch),
-								mesh,
-								BuildPackedDrawRangeKey(
-									proxy.m_handle,
-									source->m_staticMeshEcs,
-									proxy.m_resource),
-								stableKey,
-								payloadMobility);
-						if (!bAdded)
+						const uint64_t rangeKey = BuildPackedDrawRangeKey(
+							proxy.m_handle, source->m_staticMeshEcs, proxy.m_resource);
+						if (bRequiredCustomDepth)
 						{
-							if (bRequiredCustomDepth)
-							{
-								bCustomPayloadComplete[payloadIndex] = false;
-							}
-							else
-							{
-								bPacketPayloadComplete[payloadIndex] = false;
-							}
+							m_customPacket.AddArenaView(
+								std::move(batch), mesh, rangeKey, stableKey, payloadMobility);
+						}
+						else
+						{
+							m_packet.AddArenaView(
+								std::move(batch), mesh, rangeKey, stableKey, payloadMobility);
 						}
 						continue;
 					}
@@ -738,16 +642,6 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						const auto& sourceMesh = group.m_meshes[meshIndex];
 						if (!sourceMesh)
 						{
-							const bool bExpectedCustomDepth =
-								sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
-							if (bExpectedCustomDepth)
-							{
-								bCustomPayloadComplete[payloadIndex] = false;
-							}
-							else
-							{
-								bPacketPayloadComplete[payloadIndex] = false;
-							}
 							continue;
 						}
 
@@ -759,25 +653,11 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							sourceMaterial, sourceMesh->m_vertexDescription, bSkinned);
 						const bool bRequiredCustomDepth =
 							sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
-						if (!bArenaView &&
-							((bRequiredCustomDepth && !bBuildCustomPayload[payloadIndex]) ||
-							(!bRequiredCustomDepth && !bBuildPacketPayload[payloadIndex])))
-						{
-							continue;
-						}
 						const bool bIsDepthMaterialReady = depthMaterial &&
 							preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders &&
 							depthMaterial->GetRenderState().IsEnabledZWrite();
 						if (!bIsDepthMaterialReady)
 						{
-							if (bRequiredCustomDepth)
-							{
-								bCustomPayloadComplete[payloadIndex] = false;
-							}
-							else
-							{
-								bPacketPayloadComplete[payloadIndex] = false;
-							}
 							continue;
 						}
 
@@ -806,8 +686,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						if (bRequiredCustomDepth || bMaskedQueue)
 						{
 							uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
-							bool bCurrentTextureBindings = false;
 #if defined(__APPLE__)
+							bool bCurrentTextureBindings = false;
 							const auto& requestedTextures =
 								meshIndex < group.m_materialTextureSamplers.Num() ?
 								group.m_materialTextureSamplers[meshIndex] :
@@ -820,20 +700,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 								bCurrentTextureBindings);
 #else
 							batchTemplate.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
-							bCurrentTextureBindings = batchTemplate.m_textureBindings.IsValid();
 #endif
 							batchTemplate.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
-							if (!bCurrentTextureBindings)
-							{
-								if (bRequiredCustomDepth)
-								{
-									bCustomPayloadComplete[payloadIndex] = false;
-								}
-								else
-								{
-									bPacketPayloadComplete[payloadIndex] = false;
-								}
-							}
 							if (!batchTemplate.m_textureBindings)
 							{
 								continue;
@@ -856,14 +724,6 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 								proxy, groupIndex, instanceIndex, meshIndex);
 							if (!mesh)
 							{
-								if (bRequiredCustomDepth)
-								{
-									bCustomPayloadComplete[payloadIndex] = false;
-								}
-								else
-								{
-									bPacketPayloadComplete[payloadIndex] = false;
-								}
 								continue;
 							}
 							const uint64_t stableKey = BuildPackedDrawStableKey(
@@ -876,35 +736,17 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							batch.m_mesh = mesh;
 							if (bArenaView)
 							{
-								const bool bAdded = bRequiredCustomDepth ?
-								m_customPacket.AddArenaView(
-									std::move(batch),
-									mesh,
-									BuildPackedDrawRangeKey(
-										proxy.m_handle,
-										source->m_staticMeshEcs,
-										proxy.m_resource),
-									stableKey,
-									payloadMobility) :
-								m_packet.AddArenaView(
-									std::move(batch),
-									mesh,
-									BuildPackedDrawRangeKey(
-										proxy.m_handle,
-										source->m_staticMeshEcs,
-										proxy.m_resource),
-									stableKey,
-										payloadMobility);
-								if (!bAdded)
+								const uint64_t rangeKey = BuildPackedDrawRangeKey(
+									proxy.m_handle, source->m_staticMeshEcs, proxy.m_resource);
+								if (bRequiredCustomDepth)
 								{
-									if (bRequiredCustomDepth)
-									{
-										bCustomPayloadComplete[payloadIndex] = false;
-									}
-									else
-									{
-										bPacketPayloadComplete[payloadIndex] = false;
-									}
+									m_customPacket.AddArenaView(
+										std::move(batch), mesh, rangeKey, stableKey, payloadMobility);
+								}
+								else
+								{
+									m_packet.AddArenaView(
+										std::move(batch), mesh, rangeKey, stableKey, payloadMobility);
 								}
 								continue;
 							}
@@ -954,34 +796,6 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 			}
 			m_packet.Finalize(false);
 			m_customPacket.Finalize(false);
-			for (const EMobilityType mobility :
-				{ EMobilityType::Static, EMobilityType::Stationary })
-			{
-				const size_t index =
-					RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-				if (usesPagedArena(index))
-				{
-					continue;
-				}
-				if (bVirtualizeInstancePayloads &&
-					bBuildPacketPayload[index] && bPacketPayloadComplete[index])
-				{
-					m_packetPayloadCache.Publish(
-						buildPayloadCacheSlot(mobility),
-						payloadRevisions[index],
-						m_packet.SharePayload(mobility),
-						sceneViewSnapshot.m_frame);
-				}
-				if (bVirtualizeInstancePayloads &&
-					bBuildCustomPayload[index] && bCustomPayloadComplete[index])
-				{
-					m_customPacketPayloadCache.Publish(
-						buildPayloadCacheSlot(mobility),
-						payloadRevisions[index],
-						m_customPacket.SharePayload(mobility),
-						sceneViewSnapshot.m_frame);
-				}
-			}
 			syncSharedResources.Unlock();
 		}, EThreadType::RHI);
 
@@ -1217,8 +1031,6 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 void DepthPrepassNode::Clear()
 {
 	m_textureBindingCache.Clear();
-	m_packetPayloadCache.Clear();
-	m_customPacketPayloadCache.Clear();
 	m_pagedArenaCache.Clear();
 	m_customPagedArenaCache.Clear();
 }

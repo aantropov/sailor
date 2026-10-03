@@ -227,23 +227,11 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 						(payloadIndex == staticPayloadIndex ||
 							payloadIndex == stationaryPayloadIndex);
 				};
-			auto buildPayloadCacheSlot = [&](
-				uint64_t viewKey,
-				EShadowType shadowType,
-				EMobilityType mobility)
+			auto buildArenaCacheSlot = [](EShadowType shadowType, EMobilityType mobility)
 				{
-					const size_t index =
-						RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-					size_t cacheSlot = usesPagedArena(index) ?
-						Fnv1aOffsetBasis : viewKey;
-					if (usesPagedArena(index))
-					{
-						HashCombine(cacheSlot, static_cast<uint32_t>(shadowType), index);
-					}
-					else
-					{
-						HashCombine(cacheSlot, sceneView.m_cameraIndex, index);
-					}
+					size_t cacheSlot = Fnv1aOffsetBasis;
+					HashCombine(cacheSlot, static_cast<uint32_t>(shadowType),
+						RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility));
 					return cacheSlot;
 				};
 			submissionResources->m_activeShadowViews.Clear(false);
@@ -274,20 +262,8 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 				viewResources->Begin(viewKey);
 				submissionResources->m_activeShadowViews.Add(viewResources);
 
-				for (size_t index = 0u; index < shadowPayloadRevisions[passIndex].size(); ++index)
-				{
-					auto& revision = shadowPayloadRevisions[passIndex][index];
-					revision = Fnv1aOffsetBasis;
-					HashCombine(
-						revision,
-						index,
-						shadowPass.m_lighMatrixIndex,
-						static_cast<uint32_t>(shadowPass.m_shadowType),
-						std::hash<glm::mat4>{}(shadowPass.m_lightMatrix),
-						std::hash<glm::vec3>{}(glm::vec3(sceneView.m_cameraTransform.m_position)));
-					bBuildShadowPayloads[passIndex][index] = true;
-					bShadowPayloadComplete[passIndex][index] = true;
-				}
+				bBuildShadowPayloads[passIndex].fill(true);
+				bShadowPayloadComplete[passIndex].fill(true);
 				if (bUsesPagedArenas)
 				{
 					for (const EMobilityType mobility :
@@ -314,33 +290,16 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 					{
 						const size_t index =
 							RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-						const size_t cacheSlot = buildPayloadCacheSlot(
-							viewKey,
+						const size_t cacheSlot = buildArenaCacheSlot(
 							shadowPass.m_shadowType,
 							mobility);
-						auto payload = usesPagedArena(index) ?
-							m_pagedArenaCache.Find(
-								cacheSlot,
-								shadowPayloadRevisions[passIndex][index],
-								sceneView.m_frame) :
-							m_packetPayloadCache.Find(
-								cacheSlot,
-								shadowPayloadRevisions[passIndex][index],
-								sceneView.m_frame);
+						auto payload = m_pagedArenaCache.Find(
+							cacheSlot,
+							shadowPayloadRevisions[passIndex][index],
+							sceneView.m_frame);
 						if (payload)
 						{
-							if (usesPagedArena(index))
-							{
-								viewResources->m_packet.UseSharedArenaPayload(
-									mobility,
-									std::move(payload));
-							}
-							else
-							{
-								viewResources->m_packet.UseSharedPayload(
-									mobility,
-									std::move(payload));
-							}
+							viewResources->m_packet.UseSharedArenaPayload(mobility, std::move(payload));
 							bBuildShadowPayloads[passIndex][index] = false;
 						}
 					}
@@ -348,7 +307,6 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 			}
 
 			Framegraph::Details::EvictTextureBindingCache(m_textureBindingCache, sceneView.m_frame);
-			m_packetPayloadCache.Evict(sceneView.m_frame);
 
 			TVector<Tasks::TaskPtr<void, void>> finalizeTasks;
 			finalizeTasks.Reserve(NumShadowPasses);
@@ -369,12 +327,11 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 							continue;
 						}
 						const size_t arenaCacheSlot =
-							buildPayloadCacheSlot(viewResources.m_viewKey, shadowPass.m_shadowType, mobility);
+							buildArenaCacheSlot(shadowPass.m_shadowType, mobility);
 						if (auto payload = m_pagedArenaCache.Find(
 								arenaCacheSlot, shadowPayloadRevisions[passIndex][arenaPayloadIndex], sceneView.m_frame))
 						{
 							viewResources.m_packet.UseSharedArenaPayload(mobility, std::move(payload));
-							bBuildShadowPayloads[passIndex][arenaPayloadIndex] = false;
 						}
 						else
 						{
@@ -575,7 +532,6 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 							rangeInstances.Clear(false);
 							rangeStableKeys.Clear(false);
 							rangeMaterialVersionRuns.Clear(false);
-							bBuildShadowPayloads[passIndex][arenaPayloadIndex] = false;
 						}
 					}
 				}
@@ -588,10 +544,6 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 					}
 					const EMobilityType payloadMobility = proxy.GetMobility();
 					const size_t payloadIndex = RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(payloadMobility);
-					if (!bBuildShadowPayloads[passIndex][payloadIndex] && !usesPagedArena(payloadIndex))
-					{
-						continue;
-					}
 
 					for (size_t shadowMeshIndex = 0u; shadowMeshIndex < source->m_meshes.Num(); ++shadowMeshIndex)
 					{
@@ -876,8 +828,6 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 			for (uint32_t passIndex = 0u; passIndex < NumShadowPasses; ++passIndex)
 			{
 				const auto& shadowPass = sceneView.m_shadowMapsToUpdate[passIndex];
-				const auto& viewResources = *submissionResources->m_activeShadowViews[passIndex];
-				auto& packet = submissionResources->m_activeShadowViews[passIndex]->m_packet;
 				bool bPassPayloadComplete = true;
 				for (bool bPayloadComplete : bShadowPayloadComplete[passIndex])
 				{
@@ -887,29 +837,6 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 				{
 					shadowPass.m_payloadCompletionToken->Complete(
 						bPassPayloadComplete);
-				}
-				for (const EMobilityType mobility :
-					{ EMobilityType::Static, EMobilityType::Stationary })
-				{
-					const size_t index =
-						RHI::TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
-					if (usesPagedArena(index))
-					{
-						continue;
-					}
-					if (bVirtualizeInstancePayloads &&
-						bBuildShadowPayloads[passIndex][index] &&
-						bShadowPayloadComplete[passIndex][index])
-					{
-						m_packetPayloadCache.Publish(
-							buildPayloadCacheSlot(
-								viewResources.m_viewKey,
-								shadowPass.m_shadowType,
-								mobility),
-							shadowPayloadRevisions[passIndex][index],
-							packet.SharePayload(mobility),
-							sceneView.m_frame);
-					}
 				}
 			}
 			m_pagedArenaCache.Evict(sceneView.m_frame);
@@ -1379,7 +1306,6 @@ void ShadowPrepassNode::Clear()
 	m_skinnedMaskedShadowMaterials_Evsm.Clear();
 	m_customShadowMaterials.Clear();
 	m_textureBindingCache.Clear();
-	m_packetPayloadCache.Clear();
 	m_pagedArenaCache.Clear();
 }
 
