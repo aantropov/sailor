@@ -17,7 +17,9 @@
 #include "GlobalIllumination/GIProbesBinary.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
+#include "Memory/UniquePtr.hpp"
 #include "RHI/CommandList.h"
+#include "RHI/Renderer.h"
 #include "Settings/GraphicsSettings.h"
 
 #include <array>
@@ -101,6 +103,17 @@ namespace
 		}
 	}
 
+	void WaitMaterialReady(const MaterialPtr& material)
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		while (!material->IsReady() && std::chrono::steady_clock::now() < deadline)
+		{
+			RHI::Renderer::GetDriver()->TrackResources_ThreadSafe();
+			std::this_thread::yield();
+		}
+		Require(material->IsReady(), "GI fixture material upload must complete");
+	}
+
 	class GIWorld final : public World
 	{
 	public:
@@ -120,8 +133,8 @@ namespace
 			TVector<MaterialPtr> materials;
 			auto loadMaterials = App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(info->GetFileId(), materials);
 			loadMaterials->Wait();
-			Require(loadMaterials->GetResult() && !materials.IsEmpty() && materials[0]->IsReady(),
-				"GI fixture must use a fully loaded material");
+			Require(loadMaterials->GetResult() && !materials.IsEmpty(), "GI fixture material must load");
+			WaitMaterialReady(materials[0]);
 			m_material = materials[0];
 			renderer->GetMaterials() = { m_material };
 			object->GetTransformComponent().SetPosition(glm::vec3(0, 0, -2));
@@ -296,6 +309,42 @@ namespace
 		bool m_bWaitedForPrevious = false;
 	};
 
+	void WriteColorTexture(const std::filesystem::path& path, uint8_t red, uint8_t blue)
+	{
+		std::array<uint8_t, 21> bytes{};
+		bytes[2] = 2;
+		bytes[12] = bytes[14] = 1;
+		bytes[16] = 24;
+		bytes[18] = blue;
+		bytes[20] = red;
+		std::ofstream output(path, std::ios::binary);
+		output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+		Require(static_cast<bool>(output), "GI texture fixture must be written");
+	}
+
+	TexturePtr LoadColorTexture(const std::filesystem::path& path, uint8_t red, uint8_t blue)
+	{
+		WriteColorTexture(path, red, blue);
+		TextureAssetInfo info;
+		auto metadata = info.Serialize();
+		const auto id = FileId::CreateNewFileId();
+		metadata["fileId"] = id;
+		metadata["filename"] = path.filename().string();
+		metadata["bShouldKeepCpuBuffers"] = true;
+		metadata["bShouldGenerateMips"] = false;
+		{
+			std::ofstream output(path.string() + ".asset");
+			output << metadata;
+			Require(static_cast<bool>(output), "GI texture metadata must be written");
+		}
+		Require(App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string()) == id,
+			"GI texture fixture must register");
+		TexturePtr texture;
+		Require(App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(id, texture) && texture->HasCpuData(),
+			"GI texture fixture must load its real CPU/GPU resources");
+		return texture;
+	}
+
 	void TestTargetedAssetCapture(const std::filesystem::path& workspace)
 	{
 		GIWorld world;
@@ -312,34 +361,8 @@ namespace
 		const auto oldEmission = oldScene->m_materials[0]->m_parameters.m_emissiveFactor;
 
 		const auto imagePath = workspace / "Content/Reload.tga";
-		auto writeTexture = [&](uint8_t red, uint8_t blue)
-		{
-			std::array<uint8_t, 21> bytes{};
-			bytes[2] = 2;
-			bytes[12] = bytes[14] = 1;
-			bytes[16] = 24;
-			bytes[18] = blue;
-			bytes[20] = red;
-			std::ofstream output(imagePath, std::ios::binary);
-			output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-			Require(static_cast<bool>(output), "reload texture must be written");
-		};
-		writeTexture(255, 0);
-		TextureAssetInfo textureInfo;
-		auto textureMetadata = textureInfo.Serialize();
-		const auto textureId = FileId::CreateNewFileId();
-		textureMetadata["fileId"] = textureId;
-		textureMetadata["filename"] = "Reload.tga";
-		textureMetadata["bShouldKeepCpuBuffers"] = true;
-		textureMetadata["bShouldGenerateMips"] = false;
-		{
-			std::ofstream metadata(imagePath.string() + ".asset");
-			metadata << textureMetadata;
-		}
-		Require(registry->GetOrLoadFile(imagePath.string()) == textureId, "reload texture must register");
-		TexturePtr texture;
-		Require(textures->LoadTexture_Immediate(textureId, texture) && texture->HasCpuData(),
-			"reload fixture needs a fully loaded CPU/GPU texture");
+		const auto texture = LoadColorTexture(imagePath, 255, 0);
+		const auto textureId = texture->GetFileId();
 		const auto textureSlot = textures->GetTextureIndex(textureId);
 
 		auto document = YAML::LoadFile(materialPath.string());
@@ -383,7 +406,7 @@ namespace
 		Require(oldScene->m_materials[0]->m_parameters.m_emissiveFactor == oldEmission,
 			"in-flight GI must retain its old material values across reload");
 
-		writeTexture(0, 255);
+		WriteColorTexture(imagePath, 0, 255);
 		{
 			ReloadTaskProbe publication(*registry->GetAssetInfoPtr(textureId));
 			publication.Update([&]() { return App::UpdateAsset(textureId.ToString().c_str()); });
@@ -416,7 +439,7 @@ namespace
 			direct[0]->m_parameters.m_alphaCutoff == 0.25f &&
 			updated[0]->m_parameters.m_emissiveFactor == glm::vec3(7, 3, 1),
 			"Main LoadFile must finish material publication and preserve earlier GI snapshots");
-		writeTexture(127, 31);
+		WriteColorTexture(imagePath, 127, 31);
 		{
 			ReloadTaskProbe publication(*registry->GetAssetInfoPtr(textureId));
 			publication.Update([&]() { return registry->GetOrLoadFile(imagePath.string()) == textureId; });
@@ -426,6 +449,145 @@ namespace
 			(*directTexture->m_data)[2] == 31 && (*blueTexture->m_data)[2] == 255,
 			"Main LoadFile must finish texture and dependent material publication without changing retained pixels");
 		std::cout << "Direct LoadFile: Main reader fences, material/texture publication and retained GI snapshots passed\n";
+	}
+
+	void TestMaterialPreparationStress(const std::filesystem::path& workspace)
+	{
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		Require(scheduler->IsMainThread(), "live material edits must run on the world owner");
+		const std::array<TexturePtr, 2> textures{
+			LoadColorTexture(workspace / "Content/StressRed.tga", 255, 0),
+			LoadColorTexture(workspace / "Content/StressBlue.tga", 0, 255) };
+		auto world = TUniquePtr<GIWorld>::Make();
+		world->WaitReady();
+		world->GI().SetRuntimeGIProbesWorkAllowed(false);
+		auto material = world->m_material;
+		const auto path = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(material->GetFileId())->GetAssetFilepath();
+		Require(std::filesystem::canonical(path).generic_string().starts_with(
+			std::filesystem::canonical(workspace / "Content").generic_string() + "/"),
+			"stress reload may only modify its temporary workspace");
+		auto document = YAML::LoadFile(path);
+		GIProbesSceneCaptureRequest request;
+		request.m_settings.m_bIncludeSky = false;
+		request.m_settings.m_bIncludeDirectLighting = false;
+		request.m_settings.m_bounceCount = 1;
+		request.m_fallbackEnvironment = glm::vec3(0);
+		TVector<GIProbesSceneSnapshotPtr> snapshots;
+		TVector<Tasks::TaskPtr<std::string>> preparations;
+
+		auto checkSnapshot = [&](const GIProbesSceneSnapshot& scene, uint32_t step)
+		{
+			const float value = static_cast<float>(step) / 16.0f;
+			Require(scene.m_materials.Num() == 2 && scene.m_materials[0] && scene.m_materials[0] == scene.m_materials[1],
+				"both stress instances must retain the same captured material");
+			const auto& captured = *scene.m_materials[0];
+			Require(captured.m_parameters.m_emissiveFactor == glm::vec3(value, value * 2, value * 4) &&
+				captured.m_parameters.m_alphaCutoff == (step % 2 ? 0.25f : 0.75f),
+				"each capture must retain a completed emission/alpha state");
+			bool found = false;
+			for (const auto& sampler : captured.m_samplers)
+			{
+				if (sampler.m_first != "emissiveSampler") continue;
+				const auto texture = sampler.m_second.m_texture;
+				found = texture && texture->m_fileId == textures[step % 2]->GetFileId() &&
+					texture->m_data && texture->m_data->Num() == 4 &&
+					(*texture->m_data)[step % 2 ? 2 : 0] == 255;
+			}
+			Require(found, "the retained sampler and pixels must belong to the same material state");
+		};
+		auto prepare = [&](GIProbesSceneSnapshotPtr snapshot, uint32_t step,
+			Raytracing::PathTracer::ScenePreparationProgressCallback progress = {})
+		{
+			auto task = Tasks::CreateTask<std::string>("Stress immutable GI preparation",
+				[snapshot, step, settings = request.m_settings, progress]()
+				{
+					try
+					{
+						Require(App::GetSubmodule<Tasks::Scheduler>()->GetCurrentThreadType() == EThreadType::Background,
+							"stress must use the real Background queue");
+						GIProbesPreparedScene prepared;
+						std::string diagnostic;
+						Require(PrepareGIProbesScene(*snapshot, settings, nullptr, prepared, diagnostic, progress), diagnostic);
+						GIProbeBakeRaySample sample;
+						Require(prepared.m_sampler->Sample(glm::vec3(0), glm::vec3(0, 0, -1), 20, step, sample, diagnostic), diagnostic);
+						const float value = static_cast<float>(step) / 16.0f;
+						const auto expected = step % 2 ? glm::vec3(0, 0, value * 4) : glm::vec3(value, 0, 0);
+						Require(sample.m_bHit && std::abs(sample.m_distance - 2) < 1e-4f &&
+							glm::length(sample.m_radiance - expected) < 1e-4f,
+							"Background rays must use the captured emission and sampler, not later live values");
+						return std::string{};
+					}
+					catch (const std::exception& error) { return std::string(error.what()); }
+				}, EThreadType::Background);
+			task->Run();
+			return task;
+		};
+
+		constexpr uint32_t iterations = 256;
+		for (uint32_t step = 1; step <= iterations; ++step)
+		{
+			const float value = static_cast<float>(step) / 16.0f;
+			const glm::vec4 emission(value, value * 2, value * 4, 0);
+			const float cutoff = step % 2 ? 0.25f : 0.75f;
+			const auto texture = textures[step % 2];
+			if (step % 13 == 0)
+			{
+				auto vectors = document["uniformsVec4"].as<TMap<std::string, glm::vec4>>();
+				auto scalars = document["uniformsFloat"].as<TMap<std::string, float>>();
+				auto samplers = document["samplers"].as<TMap<std::string, FileId>>();
+				vectors["material.emissiveFactor"] = emission;
+				scalars["material.alphaCutoff"] = cutoff;
+				samplers["emissiveSampler"] = texture->GetFileId();
+				document["uniformsVec4"] = vectors;
+				document["uniformsFloat"] = scalars;
+				document["samplers"] = samplers;
+				{
+					std::ofstream output(path);
+					output << document;
+					Require(static_cast<bool>(output), "stress material update must be written");
+				}
+				Require(App::UpdateAsset(material->GetFileId().ToString().c_str()), "stress material reload must complete");
+				WaitMaterialReady(material);
+			}
+			else
+			{
+				material->SetUniform("material.emissiveFactor", emission);
+				material->SetUniform("material.alphaCutoff", cutoff);
+				material->SetSampler("emissiveSampler", texture);
+			}
+			auto snapshot = GIProbesSceneSnapshotPtr::Make();
+			std::string diagnostic;
+			Require(CaptureGIProbesScene(world.GetRawPtr(), request, *snapshot, diagnostic), diagnostic);
+			checkSnapshot(*snapshot, step);
+			snapshots.Add(snapshot);
+			preparations.Add(prepare(snapshot, step));
+		}
+		for (auto& task : preparations)
+		{
+			task->Wait();
+			Require(task->GetResult().empty(), task->GetResult());
+		}
+		for (uint32_t step = 1; step <= iterations; ++step) checkSnapshot(*snapshots[step - 1], step);
+
+		std::atomic<bool> entered{ false }, release{ false };
+		auto afterClose = prepare(*snapshots.Last(), iterations, [&](const auto&)
+			{
+				entered = true;
+				const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+				while (!release && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+				return release.load();
+			});
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+		while (!entered && !afterClose->IsFinished() && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+		const bool preparingAtClose = entered && !afterClose->IsFinished();
+		world.Clear();
+		material.Clear();
+		release = true;
+		afterClose->Wait();
+		Require(preparingAtClose && afterClose->GetResult().empty(),
+			"retained GI preparation must finish after the captured world is destroyed: " + afterClose->GetResult());
+		for (uint32_t step = 1; step <= iterations; ++step) checkSnapshot(*snapshots[step - 1], step);
+		std::cout << "GI material stress: 256 owner updates, 19 reloads, coherent Background rays and world-close retention passed\n";
 	}
 
 	void TestContributorMaterialRevision()
@@ -1081,6 +1243,7 @@ namespace Sailor::Tests
 			run("Importer retry after GC", [&]() { TestImporterRetry(workspace, *data, true); });
 		}
 		run("Targeted asset capture", [&]() { TestTargetedAssetCapture(workspace); });
+		run("Material preparation stress", [&]() { TestMaterialPreparationStress(workspace); });
 		Require(failures.empty(), failures);
 		std::cout << "GI restart, preparation recovery and importer retry tests passed\n";
 	}
