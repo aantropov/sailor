@@ -552,6 +552,56 @@ void main() {
 		return compiled;
 	}
 
+	void TestStaticMsaaBindings(const std::filesystem::path& workspace)
+	{
+		const auto path = workspace / "Content" / "StaticMsaaBindings.renderer";
+		std::ofstream output(path);
+		output << R"yaml(
+renderTargets:
+  - {name: Color, width: 8, height: 8, format: R32G32B32A32_SFLOAT}
+  - {name: Motion, width: 8, height: 8, format: R32G32B32A32_SFLOAT}
+  - {name: Other, width: 8, height: 8, format: R32G32B32A32_SFLOAT}
+frame:
+  - {name: Clear, tag: ClearColor, renderTargets: [{target: Color}]}
+  - {name: RenderScene, tag: First, renderTargets: [{color: Color}, {motionVectors: Motion}]}
+  - {name: RenderScene, tag: Second, renderTargets: [{color: Other}]}
+  - {name: RenderScene, tag: External, renderTargets: [{color: Remote}, {motionVectors: Motion}]}
+)yaml";
+		output.close();
+		Require(static_cast<bool>(output), "the static MSAA graph fixture must be written");
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+		auto importer = App::GetSubmodule<FrameGraphImporter>();
+		FrameGraphPtr firstInstance, secondInstance;
+		Require(importer->Instantiate_Immediate(id, firstInstance) && importer->Instantiate_Immediate(id, secondInstance),
+			"both static MSAA graph instances must load");
+		const auto samples = App::GetSubmodule<Renderer>()->GetMsaaSamples();
+		for (auto instance : { firstInstance, secondInstance })
+		{
+			auto graph = instance->GetRHI();
+			auto first = graph->GetGraphNode("First");
+			auto color = first->GetTargetAttachment("color", graph.GetRawPtr());
+			auto motion = first->GetTargetAttachment("motionVectors", graph.GetRawPtr());
+			Require(color->GetMsaaSamples() == samples && motion->GetMsaaSamples() == samples,
+				"static MSAA attachments must be ready when the importer returns, before the first Process");
+			Require(color == graph->GetGraphNode("ClearColor")->GetTargetAttachment("target", graph.GetRawPtr()) && color != motion &&
+				color != graph->GetGraphNode("Second")->GetTargetAttachment("color", graph.GetRawPtr()),
+				"static binding must share declared aliases without sharing independent outputs");
+			Require(!graph->GetGraphNode("External")->GetRHIResource("color", graph.GetRawPtr()),
+				"binding static targets must not require an unpublished external color");
+			auto original = first->GetResolvedAttachment("color", graph.GetRawPtr());
+			graph->SetRenderTarget("Color", graph->GetRenderTarget("Other"));
+			Require(first->GetTargetAttachment("color", graph.GetRawPtr()) == color &&
+				first->GetResolvedAttachment("color", graph.GetRawPtr()) == original,
+				"static bindings must retain their image when a publication name is replaced");
+		}
+		Require(firstInstance->GetRHI()->GetGraphNode("First")->GetTargetAttachment("color", firstInstance->GetRHI().GetRawPtr()) !=
+			secondInstance->GetRHI()->GetGraphNode("First")->GetTargetAttachment("color", secondInstance->GetRHI().GetRawPtr()),
+			"separate imported graphs must not share implicit MSAA images");
+		FrameGraphImporterTestAccess::ReleaseInstance(*importer, firstInstance);
+		FrameGraphImporterTestAccess::ReleaseInstance(*importer, secondInstance);
+		std::cout << "FrameGraph static MSAA binding: import-time attachments, aliases and independent instances passed\n";
+	}
+
 	void TestGraphMsaaTargets()
 	{
 		auto& driver = Renderer::GetDriver();
@@ -615,6 +665,39 @@ void main() {
 		prepare();
 		Require(second->GetTargetAttachment("color", graph.GetRawPtr()) == declared->GetTarget(),
 			"a resolved output must reuse the Surface supplied to its clear pass");
+		clear->SetVec4("clearColor", glm::vec4(0.5f));
+		prepare();
+		Require(second->GetTargetAttachment("color", graph.GetRawPtr()) == declared->GetTarget(),
+			"changing a clear value must retain the prepared static attachments");
+		second->SetRHIResource("color", unused);
+		prepare();
+		Require(second->GetResolvedAttachment("color", graph.GetRawPtr()) == unused,
+			"a static resource setter must update an already prepared graph");
+		auto alias = driver->CreateSurface(unused);
+		graph->SetSurface("Alias", alias);
+		prepare();
+		Require(second->GetTargetAttachment("color", graph.GetRawPtr()) == alias->GetTarget(),
+			"publishing an explicit Surface must update its prepared resolved alias");
+		second->SetRHIResource_Unresolved("color", "Changed");
+		graph->SetRenderTarget("Changed", firstOutput);
+		prepare();
+		Require(second->GetResolvedAttachment("color", graph.GetRawPtr()) == firstOutput,
+			"switching a static input to external must join external refresh");
+		second->SetRHIResource("color", unused);
+		prepare();
+		graph->SetRenderTarget("Changed", secondOutput);
+		prepare();
+		Require(second->GetResolvedAttachment("color", graph.GetRawPtr()) == unused,
+			"switching an external input back to static must stop following its old name");
+		auto replacement = TRefPtr<RenderSceneNode>::Make();
+		replacement->SetRHIResource("color", firstOutput);
+		graph->GetGraph()[1] = replacement;
+		prepare();
+		Require(replacement->GetTargetAttachment("color", graph.GetRawPtr())->GetMsaaSamples() ==
+			App::GetSubmodule<Renderer>()->GetMsaaSamples(), "replacing a node at the same index must rebuild its bindings");
+		graph->GetGraph().RemoveLast();
+		prepare();
+		Require(graph->ResolveResource(firstOutput) == firstOutput, "removing the last producer must retire its implicit Surface");
 		graph->Clear();
 		Require(graph->ResolveResource(secondOutput) == secondOutput, "clearing the graph must discard its MSAA associations");
 		std::cout << "FrameGraph MSAA ownership: independent outputs, reuse, replacement, withdrawal, aliases and Clear passed\n";
@@ -2400,6 +2483,7 @@ namespace Sailor::Tests
 					TestFullscreenUploadRetry();
 					TestImportedRendering(importedGraphIds);
 					TestGraphLoadFailures(workspace, importedGraphIds[0]);
+					TestStaticMsaaBindings(workspace);
 					TestGraphMsaaTargets();
 					TestGraphTargetLifetime();
 					TestSceneMrt(mrtShader, true, false, false, true, true);

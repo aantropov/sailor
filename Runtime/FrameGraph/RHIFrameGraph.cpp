@@ -989,6 +989,11 @@ void RHIFrameGraph::Clear()
 	m_surfaces.Clear();
 	m_msaaSources.Clear();
 	m_msaaSurfaces.Clear();
+	m_numStaticMsaaSources = 0;
+	m_boundSurfaces.Clear();
+	m_boundNodes.Clear();
+	m_externalRenderPasses.Clear();
+	++m_surfaceRevision;
 }
 
 FrameGraphNodePtr RHIFrameGraph::GetGraphNode(const std::string& tag)
@@ -1014,7 +1019,12 @@ void RHIFrameGraph::SetRenderTarget(const std::string& name, RHI::RHIRenderTarge
 
 void RHIFrameGraph::SetSurface(const std::string& name, RHI::RHISurfacePtr surface)
 {
-	m_surfaces[name] = surface;
+	auto& current = m_surfaces[name];
+	if (current != surface)
+	{
+		current = std::move(surface);
+		++m_surfaceRevision;
+	}
 }
 
 glm::ivec2 RHIFrameGraph::GetSceneRenderExtent()
@@ -1153,26 +1163,67 @@ TVector<Sailor::Tasks::ITaskPtr> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhi
 void RHIFrameGraph::PrepareRenderTargets()
 {
 	SAILOR_PROFILE_FUNCTION();
-	m_msaaSources.Clear(false);
-	if (App::GetSubmodule<Renderer>()->GetMsaaSamples() != EMsaaSamples::Samples_1)
+	const auto samples = App::GetSubmodule<Renderer>()->GetMsaaSamples();
+	bool bindingsChanged = m_boundMsaaSamples != samples || m_boundNodes.Num() != m_graph.Num();
+	for (size_t i = 0; i < m_graph.Num() && !bindingsChanged; ++i)
 	{
+		bindingsChanged = m_boundNodes[i].m_first != m_graph[i] ||
+			m_boundNodes[i].m_second != m_graph[i]->m_resourceRevision;
+	}
+	if (!bindingsChanged && m_externalRenderPasses.IsEmpty() && m_boundSurfaceRevision == m_surfaceRevision) return;
+
+	const auto collectTargets = [&](FrameGraphNodePtr node, TVector<RHIRenderTargetPtr>& sources)
+	{
+		auto color = node->GetRHIResource("color", this);
+		const auto colorSurface = color.DynamicCast<RHISurface>();
+		if (!color || (colorSurface && !colorSurface->NeedsResolve())) return;
+		for (const char* name : { "color", "motionVectors" })
+		{
+			auto resource = node->GetRHIResource(name, this);
+			auto surface = resource.DynamicCast<RHISurface>();
+			auto target = surface ? surface->GetResolved() : resource.DynamicCast<RHIRenderTarget>();
+			if (!target || target->GetMsaaSamples() != EMsaaSamples::Samples_1) continue;
+			if (surface) m_msaaSurfaces[target.GetRawPtr()] = surface;
+			if (!sources.Contains(target)) sources.Add(target);
+		}
+	};
+
+	if (bindingsChanged)
+	{
+		m_msaaSources.Clear(false);
+		m_boundSurfaces.Clear(false);
+		m_boundNodes.Clear(false);
+		m_externalRenderPasses.Clear(false);
+		m_boundMsaaSamples = samples;
 		for (auto& node : m_graph)
 		{
-			if (!node.DynamicCast<RenderSceneNode>()) continue;
-			auto color = node->GetRHIResource("color", this);
-			const auto colorSurface = color.DynamicCast<RHISurface>();
-			if (!color || (colorSurface && !colorSurface->NeedsResolve())) continue;
-			for (const char* name : { "color", "motionVectors" })
+			m_boundNodes.Emplace(node, node->m_resourceRevision);
+			for (const auto& parameter : node->m_resourceParams)
 			{
-				auto resource = node->GetRHIResource(name, this);
-				auto surface = resource.DynamicCast<RHISurface>();
-				auto target = surface ? surface->GetResolved() : resource.DynamicCast<RHIRenderTarget>();
-				if (!target || target->GetMsaaSamples() != EMsaaSamples::Samples_1) continue;
-				if (surface) m_msaaSurfaces[target.GetRawPtr()] = surface;
-				if (!m_msaaSources.Contains(target)) m_msaaSources.Add(target);
+				auto resource = *parameter.m_second;
+				if (auto surface = resource.DynamicCast<RHISurface>(); surface && !m_boundSurfaces.Contains(surface))
+				{
+					m_boundSurfaces.Add(surface);
+				}
+			}
+			if (!node.DynamicCast<RenderSceneNode>() || samples == EMsaaSamples::Samples_1) continue;
+			if (node->m_unresolvedResourceParams.ContainsKey("color") ||
+				node->m_unresolvedResourceParams.ContainsKey("motionVectors"))
+			{
+				m_externalRenderPasses.Add(node);
+			}
+			else
+			{
+				collectTargets(node, m_msaaSources);
 			}
 		}
+		m_numStaticMsaaSources = m_msaaSources.Num();
 	}
+
+	// Keep the static prefix; revisit only passes with external outputs.
+	m_msaaSources.Resize(m_numStaticMsaaSources);
+	for (auto& node : m_externalRenderPasses) collectTargets(node, m_msaaSources);
+	m_boundSurfaceRevision = m_surfaceRevision;
 
 	if (m_msaaSources.IsEmpty())
 	{
@@ -1189,14 +1240,7 @@ void RHIFrameGraph::PrepareRenderTargets()
 		}
 	};
 	for (const auto& surface : m_surfaces) useSurface(*surface.m_second);
-	for (const auto& node : m_graph)
-	{
-		for (const auto& parameter : node->m_resourceParams)
-		{
-			auto resource = *parameter.m_second;
-			useSurface(resource.DynamicCast<RHISurface>());
-		}
-	}
+	for (auto& surface : m_boundSurfaces) useSurface(surface);
 
 	if (m_msaaSources.Num() == m_msaaSurfaces.Num() &&
 		std::all_of(m_msaaSources.begin(), m_msaaSources.end(),

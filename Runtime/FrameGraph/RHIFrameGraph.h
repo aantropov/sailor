@@ -10,6 +10,7 @@ using namespace Sailor::Framegraph;
 
 namespace Sailor
 {
+	class FrameGraphImporter;
 	class FrameGraphImporterTestAccess;
 }
 
@@ -86,6 +87,7 @@ namespace Sailor::RHI
 
 	protected:
 
+		friend class Sailor::FrameGraphImporter;
 		friend class Sailor::FrameGraphImporterTestAccess;
 
 		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime);
@@ -96,6 +98,12 @@ namespace Sailor::RHI
 		TMap<std::string, RHI::RHISurfacePtr> m_surfaces;
 		TMap<RHI::RHIRenderTarget*, RHI::RHISurfacePtr> m_msaaSurfaces;
 		TVector<RHI::RHIRenderTargetPtr> m_msaaSources;
+		size_t m_numStaticMsaaSources = 0;
+		TVector<RHI::RHISurfacePtr> m_boundSurfaces;
+		TVector<TPair<Framegraph::FrameGraphNodePtr, uint64_t>> m_boundNodes;
+		TVector<Framegraph::FrameGraphNodePtr> m_externalRenderPasses;
+		RHI::EMsaaSamples m_boundMsaaSamples = RHI::EMsaaSamples::Samples_1;
+		uint64_t m_surfaceRevision = 0, m_boundSurfaceRevision = 0;
 		TMap<std::string, glm::vec4> m_values;
 		TVector<Framegraph::FrameGraphNodePtr> m_graph;
 		// Cleared for every recorded view, including multiple cameras in one frame.

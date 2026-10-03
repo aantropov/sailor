@@ -41,6 +41,7 @@ void BaseFrameGraphNode::SetRHIResource_Unresolved(const std::string& name, cons
 	m_unresolvedResourceParams[name] = value;
 	m_resourceParams.Remove(name);
 	++m_parameterRevision;
+	++m_resourceRevision;
 }
 
 void BaseFrameGraphNode::SetRHIResource(const std::string& name, RHIResourcePtr value)
@@ -48,6 +49,7 @@ void BaseFrameGraphNode::SetRHIResource(const std::string& name, RHIResourcePtr 
 	m_resourceParams[name] = value;
 	m_unresolvedResourceParams.Remove(name);
 	++m_parameterRevision;
+	++m_resourceRevision;
 }
 
 RHITexturePtr BaseFrameGraphNode::GetResolvedAttachment(const std::string& name, const RHIFrameGraph* frameGraph) const

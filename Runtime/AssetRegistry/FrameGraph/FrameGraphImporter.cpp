@@ -218,6 +218,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 		graph.Add(pNewNode);
 	}
 
+	if (!graph.IsEmpty()) pRhiFrameGraph->PrepareRenderTargets();
 	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
 	pFrameGraph->m_frameGraph = pRhiFrameGraph;
 

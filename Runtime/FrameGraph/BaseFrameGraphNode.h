@@ -56,6 +56,7 @@ namespace Sailor::Framegraph
 		TMap<std::string, RHI::RHIResourcePtr> m_resourceParams;
 		TMap<std::string, std::string> m_unresolvedResourceParams;
 		uint64_t m_parameterRevision = 0;
+		uint64_t m_resourceRevision = 0;
 		RHI::DrawCallStats m_drawCallStats{};
 
 		std::string m_tag{};
