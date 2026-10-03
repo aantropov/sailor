@@ -12,6 +12,7 @@
 #include "FrameGraph/DepthHighZNode.h"
 #include "FrameGraph/DepthPrepassNode.h"
 #include "FrameGraph/DebugDrawNode.h"
+#include "FrameGraph/EnvironmentNode.h"
 #include "FrameGraph/LinearizeDepthNode.h"
 #include "FrameGraph/LightCullingNode.h"
 #include "FrameGraph/PostProcessNode.h"
@@ -35,6 +36,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -1521,6 +1523,171 @@ frame:
 			"fullscreen upload and draw must submit");
 		Require(finished->Wait(5000000000ull) == EFenceStatus::Finished && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
 			"fullscreen pixel readback must finish");
+	}
+
+	void TestAuthoredEnvironmentReload(const std::filesystem::path& workspace)
+	{
+		const auto path = workspace / "Content" / "AuthoredEnvironment.hdr";
+		const auto writeHdr = [&](std::array<uint8_t, 4> rgbe)
+		{
+			const auto previous = std::filesystem::exists(path) ? std::filesystem::last_write_time(path) :
+				std::filesystem::file_time_type{};
+			std::ofstream output(path, std::ios::binary);
+			output << "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 2 +X 4\n";
+			for (uint32_t i = 0; i < 8; ++i) output.write(reinterpret_cast<const char*>(rgbe.data()), rgbe.size());
+			output.close();
+			Require(static_cast<bool>(output), "the authored HDR fixture must be written");
+			if (std::filesystem::last_write_time(path) <= previous)
+				std::filesystem::last_write_time(path, previous + std::chrono::seconds(1));
+		};
+		writeHdr({ 128, 16, 8, 131 }); // (4, 0.5, 0.25), including radiance above one.
+		TextureAssetInfo defaults;
+		auto metadata = defaults.Serialize();
+		const FileId id = FileId::CreateNewFileId();
+		metadata["fileId"] = id;
+		metadata["filename"] = path.filename().string();
+		metadata["format"] = ETextureFormat::R32G32B32A32_SFLOAT;
+		metadata["bShouldGenerateMips"] = false;
+		{
+			std::ofstream output(path.string() + ".asset");
+			output << metadata;
+			Require(static_cast<bool>(output), "the HDR metadata must be written");
+		}
+		auto registry = App::GetSubmodule<AssetRegistry>();
+		auto importer = App::GetSubmodule<TextureImporter>();
+		Require(registry->GetOrLoadFile(path.string()) == id, "the authored HDR must register");
+		TexturePtr texture;
+		Require(importer->LoadTexture_Immediate(id, texture), "the authored HDR must load");
+		const auto originalSource = texture->GetRHI();
+		auto node = TRefPtr<EnvironmentNode>::Make();
+		node->SetString("EnvironmentMap", path.filename().string());
+		auto graph = RHIFrameGraphPtr::Make();
+		constexpr const char* names[] = { "g_rawEnvCubemap", "g_envCubemap", "g_irradianceCubemap", "g_sheenEnvCubemap" };
+		auto retained = RHIFrameGraphPtr::Make();
+		constexpr uint32_t levels[] = { EnvironmentNode::EnvMapLevels, EnvironmentNode::EnvMapLevels, 1, EnvironmentNode::SheenEnvMapLevels };
+		const auto onRender = [](const std::function<void()>& action)
+		{
+			auto task = Tasks::CreateTaskWithResult<std::string>("Authored environment regression", [&]() -> std::string
+			{
+				try { action(); return {}; }
+				catch (const std::exception& error) { return error.what(); }
+			}, EThreadType::Render);
+			task->Run();
+			task->Wait();
+			Require(task->GetResult().empty(), task->GetResult().c_str());
+		};
+		const auto process = [&]()
+		{
+			auto& driver = Renderer::GetDriver();
+			auto commands = Renderer::GetDriverCommands();
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			node->Process(graph, upload, draw, {});
+			CompleteCommands(upload, draw);
+			driver->TrackResources_ThreadSafe();
+		};
+		const auto checkPixels = [&](RHIFrameGraphPtr source, glm::vec3 expected)
+		{
+			auto& driver = Renderer::GetDriver();
+			auto commands = Renderer::GetDriverCommands();
+			for (uint32_t channel = 0; channel < std::size(names); ++channel)
+			{
+				auto cube = source->GetSampler(names[channel]);
+				Require(cube && cube->GetFormat() == EFormat::R16G16B16A16_SFLOAT, "all four HDR outputs must be available");
+				for (uint32_t mip = 0; mip < levels[channel]; ++mip)
+				{
+					if (mip != 0 && mip != levels[channel] / 2 && mip != levels[channel] - 1) continue;
+					const auto size = glm::max(cube->GetExtent() >> static_cast<int32_t>(mip), glm::ivec2(1));
+					for (uint32_t face = 0; face < 6; ++face)
+					{
+						auto buffer = driver->CreateBuffer(size.x * size.y * 8u, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+						auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+						commands->BeginCommandList(command, true);
+						commands->ImageMemoryBarrier(command, cube, EImageLayout::TransferSrcOptimal);
+						command->m_vulkan.m_commandBuffer->CopyImageToBuffer(*buffer->m_vulkan.m_buffer->Get(),
+							cube->m_vulkan.m_image, size.x, size.y, 1, mip, face);
+						commands->ImageMemoryBarrier(command, cube, EImageLayout::ShaderReadOnlyOptimal);
+						commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+							static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+						commands->EndCommandList(command);
+						Require(driver->SubmitCommandList_Immediate(command), "HDR pixel readback must complete");
+						const auto pixels = static_cast<const uint32_t*>(buffer->GetPointer());
+						for (int32_t i = 0; i < size.x * size.y; ++i)
+						{
+							const glm::vec3 actual(glm::vec4(glm::unpackHalf2x16(pixels[2 * i]), glm::unpackHalf2x16(pixels[2 * i + 1])));
+							if (!glm::all(glm::lessThan(glm::abs(actual - expected), glm::vec3(0.02f))))
+								throw std::runtime_error(std::string(names[channel]) + " must match the current authored HDR; actual red " +
+									std::to_string(actual.r) + ", expected " + std::to_string(expected.r));
+						}
+					}
+				}
+			}
+		};
+		onRender([&]()
+		{
+			for (uint32_t frame = 0; frame < 16 && !graph->GetSampler(names[0]); ++frame) process();
+			checkPixels(graph, { 4, 0.5f, 0.25f });
+			for (const char* name : names) retained->SetSampler(name, graph->GetSampler(name));
+		});
+		writeHdr({ 16, 128, 32, 130 }); // (0.25, 2, 0.5).
+		Require(App::UpdateAsset(id.ToString().c_str()), "the real HDR reload must complete");
+		Require(importer->GetLoadedTexture(id) == texture && texture->GetRHI() != originalSource,
+			"hot reload must retain the Texture object while replacing its published GPU image");
+		onRender([&]()
+		{
+			const auto previousRaw = graph->GetSampler(names[0]);
+			node->MarkDirty();
+			for (uint32_t frame = 0; frame < 16 && graph->GetSampler(names[0]) == previousRaw; ++frame)
+			{
+				process();
+				if (graph->GetSampler(names[0]) == previousRaw)
+					for (const char* name : names)
+						Require(graph->GetSampler(name) == retained->GetSampler(name), "pending upload must retain the entire previous environment");
+			}
+			Require(graph->GetSampler(names[0]) != previousRaw, "completed HDR upload must replace the environment");
+			checkPixels(graph, { 0.25f, 2, 0.5f });
+			checkPixels(retained, { 4, 0.5f, 0.25f });
+			std::array<RHITexturePtr, 4> stable;
+			for (uint32_t channel = 0; channel < stable.size(); ++channel) stable[channel] = graph->GetSampler(names[channel]);
+			const auto brdf = graph->GetSampler("g_brdfSampler");
+			for (uint32_t repeat = 0; repeat < 32; ++repeat)
+			{
+				node->MarkDirty();
+				process();
+				for (uint32_t channel = 0; channel < stable.size(); ++channel)
+					Require(graph->GetSampler(names[channel]) == stable[channel], "unchanged HDR invalidation must reuse raw and filtered resources");
+				Require(graph->GetSampler("g_brdfSampler") == brdf, "HDR invalidation must not regenerate the independent BRDF LUT");
+			}
+			checkPixels(graph, { 0.25f, 2, 0.5f });
+		});
+		{
+			std::ofstream invalid(path);
+			invalid << "invalid HDR";
+		}
+		Require(!App::UpdateAsset(id.ToString().c_str()), "malformed HDR reload must fail");
+		onRender([&]()
+		{
+			node->MarkDirty();
+			process();
+			checkPixels(graph, { 0.25f, 2, 0.5f });
+		});
+		writeHdr({ 128, 16, 8, 131 });
+		Require(App::UpdateAsset(id.ToString().c_str()) && importer->GetLoadedTexture(id) == texture,
+			"repair must reload the same Texture object");
+		onRender([&]()
+		{
+			const auto previousRaw = graph->GetSampler(names[0]);
+			node->MarkDirty();
+			for (uint32_t frame = 0; frame < 16 && graph->GetSampler(names[0]) == previousRaw; ++frame) process();
+			Require(graph->GetSampler(names[0]) != previousRaw, "repaired HDR must replace the last good environment");
+			checkPixels(graph, { 4, 0.5f, 0.25f });
+			checkPixels(retained, { 4, 0.5f, 0.25f });
+			SkyParameters sky;
+			Require(!node->GetEnvironmentSkyParams(sky), "authored HDR must not publish unrelated analytic Sky lighting");
+		});
+		std::cout << "Authored HDR reload: four-map pixels, retained consumers, failed reload/repair and 32 warm invalidations passed\n";
 	}
 
 	void TestGraphTargetLifetime()
@@ -3644,6 +3811,7 @@ namespace Sailor::Tests
 {
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace)
 	{
+		TestAuthoredEnvironmentReload(workspace);
 		const auto smallShader = WriteShader(workspace, false);
 		const auto largeShader = WriteShader(workspace, true);
 		const auto depthReadback = WriteDepthReadbackShader(workspace);

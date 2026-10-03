@@ -91,6 +91,8 @@ namespace Sailor::Framegraph
 		RHI::RHITexturePtr m_brdfSampler{};
 
 		TexturePtr m_envMapTexture;
+		RHI::RHITexturePtr m_authoredSource;
+		RHI::RHICubemapPtr m_authoredRawCubemap;
 		SkyParameters m_environmentSkyParams{};
 		bool m_environmentUsesSky = false;
 

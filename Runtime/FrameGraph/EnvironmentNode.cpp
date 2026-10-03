@@ -165,10 +165,27 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 
 		RHI::RHICubemapPtr rawEnvCubemap{};
+		RHI::RHITexturePtr authoredSource;
 		bool bLoadedEnvironmentMap = false;
 
 		if (m_envMapTexture)
 		{
+			if (!m_envMapTexture->IsReady())
+			{
+				commands->EndDebugRegion(commandList);
+				return;
+			}
+
+			// Reload preserves the Texture object but publishes a new RHI image.
+			authoredSource = m_envMapTexture->GetRHI();
+			if (authoredSource == m_authoredSource && TryRestoreEnvironment(frameGraph, {}, m_authoredRawCubemap))
+			{
+				m_environmentUsesSky = false;
+				m_bIsDirty = false;
+				commands->EndDebugRegion(commandList);
+				return;
+			}
+
 			bLoadedEnvironmentMap = true;
 			rawEnvCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(EnvMapSize, EnvMapSize),
 				EnvMapLevels,
@@ -185,7 +202,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			commands->BeginDebugRegion(commandList, "Generate Raw Env Cubemap from Equirect", DebugContext::Color_CmdCompute);
 			{
 				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::ComputeWrite);
-				commands->ConvertEquirect2Cubemap(commandList, m_envMapTexture->GetRHI(), rawEnvCubemap);
+				commands->ConvertEquirect2Cubemap(commandList, authoredSource, rawEnvCubemap);
 				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::TransferDstOptimal);
 
 				commands->GenerateMipMaps(commandList, rawEnvCubemap);
@@ -220,7 +237,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			}
 		}
 
-		if (TryRestoreEnvironment(frameGraph, skyHash, rawEnvCubemap))
+		if (!bLoadedEnvironmentMap && TryRestoreEnvironment(frameGraph, skyHash, rawEnvCubemap))
 		{
 			m_bIsDirty = false;
 			commands->EndDebugRegion(commandList);
@@ -427,6 +444,14 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		frameGraph->SetSampler("g_envCubemap", envCubemap);
 		frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
 		frameGraph->SetSampler("g_sheenEnvCubemap", sheenEnvCubemap);
+		if (bLoadedEnvironmentMap)
+		{
+			// Authored revisions replace the previous bundle; sky states retain their LRU.
+			m_environmentCache = {};
+			m_numCachedEnvironments = 0;
+			m_authoredSource = std::move(authoredSource);
+			m_authoredRawCubemap = rawEnvCubemap;
+		}
 		CacheEnvironment(skyHash, std::move(maps));
 		m_bIsDirty = false;
 	}
