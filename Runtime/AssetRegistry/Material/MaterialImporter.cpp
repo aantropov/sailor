@@ -618,9 +618,16 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 	{
 		return;
 	}
+	auto* registry = App::GetSubmodule<AssetRegistry>();
+	const auto token = registry->BeginAssetProcessing(assetInfo);
+	if (!token)
+	{
+		return;
+	}
 	auto asset = LoadMaterialAsset(uid);
 	if (!asset)
 	{
+		registry->CompleteAssetProcessing(token, false);
 		return;
 	}
 
@@ -628,7 +635,16 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 	promise = CreateMaterialTask(material, asset, true, promise);
 	auto task = promise;
 	m_promises.Unlock(uid);
+	auto acknowledge = Tasks::CreateTask<bool>("Acknowledge material reload", [registry, token, task]()
+		{
+			const bool succeeded = task->GetResult().IsValid();
+			registry->CompleteAssetProcessing(token, succeeded);
+			return succeeded;
+		});
+	acknowledge->Join(task);
+	registry->TrackScanProcessingTask(acknowledge);
 	task->Run();
+	acknowledge->Run();
 }
 
 bool MaterialImporter::IsMaterialLoaded(FileId uid) const

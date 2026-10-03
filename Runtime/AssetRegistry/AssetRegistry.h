@@ -180,6 +180,8 @@ namespace Sailor
 			TVector<AssetInfoPtr>& outAffectedAssets, bool bReimport = false);
 		// Check the same update's assets after the importer tasks have finished.
 		SAILOR_API bool CompleteAssetUpdate(const TVector<AssetInfoPtr>& affectedAssets) const;
+		// Existing engine assets reload synchronously on Main. Other queues return
+		// the current ID and request an update on Main without waiting for it.
 		SAILOR_API const FileId& GetOrLoadFile(const std::string& filepath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
@@ -267,6 +269,7 @@ namespace Sailor
 		SAILOR_API TObjectPtr<Object> LoadAsset(IAssetInfoHandler* assetInfoHandler, const FileId& id, bool bImmediate);
 
 		SAILOR_API const FileId& LoadFile(const std::string& filepath);
+		void RequestAssetUpdate(const FileId& fileId);
 
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
@@ -323,6 +326,7 @@ namespace Sailor
 		};
 		std::mutex m_assetProcessingMutex;
 		TMap<FileId, AssetProcessingState> m_assetProcessingStates;
+		TSet<FileId> m_pendingAssetUpdates;
 		TVector<Tasks::TaskPtr<bool>> m_scanProcessingTasks;
 		TSet<FileId> m_scanInvalidatedAssets;
 		bool m_bCollectScanProcessingTasks = false;

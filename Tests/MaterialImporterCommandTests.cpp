@@ -23,6 +23,7 @@
 #include <glm/gtc/packing.hpp>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -659,6 +660,188 @@ namespace
 		TVector<RHI::RHIShaderPtr> m_stages;
 		bool m_complete = true;
 	};
+
+	class AssetUpdateObserver final : public IAssetInfoHandlerListener
+	{
+	public:
+		explicit AssetUpdateObserver(AssetInfo& info) : m_handler(*info.GetHandler()), m_fileId(info.GetFileId())
+		{
+			m_handler.Subscribe(this);
+		}
+		~AssetUpdateObserver() { m_handler.Unsubscribe(this); }
+		void OnImportAsset(AssetInfoPtr) override {}
+		void OnUpdateAssetInfo(AssetInfoPtr info, bool) override
+		{
+			if (info->GetFileId() != m_fileId) return;
+			++m_notifications;
+			if (!App::GetSubmodule<Tasks::Scheduler>()->IsMainThread()) m_wrongThread = true;
+			if (m_afterNotification) m_afterNotification->Run();
+		}
+		std::atomic<uint32_t> m_notifications{ 0 };
+		std::atomic<bool> m_wrongThread{ false };
+		Tasks::ITaskPtr m_afterNotification;
+	private:
+		IAssetInfoHandler& m_handler;
+		FileId m_fileId;
+	};
+
+	void TestWorkerFileReload(const std::filesystem::path& workspace)
+	{
+		MaterialFixture fixture(workspace, "WorkerFileReload", {});
+		auto material = fixture.Load();
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		AssetUpdateObserver observer(*fixture.info);
+		const auto oldColor = Color(material);
+		const auto oldRevision = material->GetContentRevision();
+		const glm::vec4 newColor(0.125f, 0.75f, 0.5f, 1);
+		auto document = fixture.Read();
+		SetColor(document, newColor);
+		fixture.Write(document);
+		const auto pendingBefore = scheduler->GetNumTasks(EThreadType::Main);
+
+		HoldRenderQueue hold;
+		hold.Wait();
+		TVector<Tasks::TaskPtr<bool>> lookups;
+		for (uint32_t caller = 0; caller < 4; ++caller)
+		{
+			auto lookup = Tasks::CreateTask<bool>("Request live asset from Worker", [&]()
+				{
+					bool sameId = true;
+					for (uint32_t i = 0; i < 16; ++i)
+					{
+						sameId &= registry->GetOrLoadFile(fixture.path.string()) == fixture.id;
+					}
+					return sameId;
+				});
+			lookup->Run();
+			lookups.Add(lookup);
+		}
+		bool sameIds = true;
+		for (const auto& lookup : lookups)
+		{
+			lookup->Wait();
+			sameIds &= lookup->GetResult();
+		}
+		const bool deferred = observer.m_notifications == 0;
+		const bool coalesced = scheduler->GetNumTasks(EThreadType::Main) == pendingBefore + 1;
+		const bool unchanged = Color(material) == oldColor && material->GetContentRevision() == oldRevision;
+		hold.Release();
+		scheduler->ProcessTasksOnMainThread();
+		Drain();
+
+		Require(sameIds && deferred && coalesced && unchanged,
+			"Worker LoadFile must return the stable ID and coalesce a Main update without notifying from Worker");
+		Require(observer.m_notifications == 1 && !observer.m_wrongThread && Color(material) == newColor &&
+			App::GetSubmodule<MaterialImporter>()->GetLoadedMaterial(fixture.id) == material,
+			"the queued Main update must publish the changed material once and preserve its identity");
+		CheckGpuColor(material->GetShaderBindings(), ReadGpu(material->GetShaderBindings()), newColor);
+		std::cout << "Direct LoadFile: 64 Worker requests coalesce, defer notifications and retain material identity passed\n";
+	}
+
+	void TestFileReloadDuringMainUpdate(const std::filesystem::path& workspace)
+	{
+		MaterialFixture trigger(workspace, "MainUpdateTrigger", {});
+		MaterialFixture target(workspace, "MainUpdateTarget", {});
+		auto first = trigger.Load();
+		auto second = target.Load();
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		AssetUpdateObserver triggerObserver(*trigger.info), targetObserver(*target.info);
+		const auto oldColor = Color(second);
+		const glm::vec4 newColor(0.75f, 0.25f, 0.5f, 1);
+		for (const auto* fixture : { &trigger, &target })
+		{
+			auto document = fixture->Read();
+			SetColor(document, newColor);
+			fixture->Write(document);
+		}
+		auto lookup = Tasks::CreateTask<bool>("Lookup during Main asset dispatch", [&]()
+			{
+				return registry->GetOrLoadFile(target.path.string()) == target.id;
+			});
+		triggerObserver.m_afterNotification = lookup;
+		const bool updated = App::UpdateAsset(trigger.id.ToString().c_str());
+		const bool deferred = targetObserver.m_notifications == 0 && Color(second) == oldColor;
+		App::GetSubmodule<Tasks::Scheduler>()->ProcessTasksOnMainThread();
+		Drain();
+		Require(updated && lookup->IsFinished() && lookup->GetResult() && deferred,
+			"a Worker requested by Main reload must finish without waiting for Main dispatch");
+		Require(triggerObserver.m_notifications == 1 && targetObserver.m_notifications == 1 &&
+			!triggerObserver.m_wrongThread && !targetObserver.m_wrongThread &&
+			Color(first) == newColor && Color(second) == newColor,
+			"the second asset must update on Main after the triggering reload completes");
+		std::cout << "Direct LoadFile: Worker lookup inside Main reload dispatch completes without deadlock passed\n";
+	}
+
+	void TestQueuedFileReloadRetry(const std::filesystem::path& workspace)
+	{
+		MaterialFixture fixture(workspace, "QueuedFileRetry", {});
+		auto material = fixture.Load();
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		AssetUpdateObserver observer(*fixture.info);
+		const auto oldColor = Color(material);
+		const auto oldRevision = material->GetContentRevision();
+		auto document = fixture.Read();
+		auto invalid = YAML::Clone(document);
+		invalid["shaderUid"] = FileId::CreateNewFileId();
+		fixture.Write(invalid);
+		auto reload = [&](EThreadType thread)
+		{
+			const auto notifications = observer.m_notifications.load();
+			auto lookup = Tasks::CreateTask<bool>("Request asset retry", [&]()
+				{
+					return registry->GetOrLoadFile(fixture.path.string()) == fixture.id;
+				}, thread);
+			lookup->Run();
+			lookup->Wait();
+			const bool deferred = observer.m_notifications == notifications;
+			scheduler->ProcessTasksOnMainThread();
+			Drain();
+			Require(lookup->GetResult() && deferred && !observer.m_wrongThread &&
+				observer.m_notifications == notifications + 1,
+				"each off-Main lookup must defer its single notification to Main");
+		};
+		reload(EThreadType::Worker);
+		Require(material->IsReady() && Color(material) == oldColor &&
+			material->GetContentRevision() == oldRevision,
+			"a failed queued reload must retain the last good material");
+		Require(registry->IsAssetExpired(fixture.info),
+			"a failed material publication must not acknowledge the source revision in the asset cache");
+		reload(EThreadType::Worker);
+		Require(material->GetContentRevision() == oldRevision && registry->IsAssetExpired(fixture.info),
+			"the same failed source must remain retryable without touching its file");
+		{
+			std::ofstream output(fixture.path);
+			output << "uniformsVec4: [";
+		}
+		reload(EThreadType::Worker);
+		Require(Color(material) == oldColor && material->GetContentRevision() == oldRevision &&
+			registry->IsAssetExpired(fixture.info),
+			"a parse failure before publication must also retain the material and leave the source retryable");
+
+		uint32_t attempt = 0;
+		for (const auto thread : { EThreadType::Render, EThreadType::RHI, EThreadType::Background })
+		{
+			const glm::vec4 color(0.25f * ++attempt, 0.5f, 0.75f, 1);
+			SetColor(document, color);
+			fixture.Write(document);
+			reload(thread);
+			Require(Color(material) == color && !registry->IsAssetExpired(fixture.info) &&
+				App::GetSubmodule<MaterialImporter>()->GetLoadedMaterial(fixture.id) == material,
+				"later requests must repair or update the same material and acknowledge only a successful revision");
+		}
+		const auto revision = material->GetContentRevision();
+		const auto queued = scheduler->GetNumTasks(EThreadType::Main);
+		HoldRenderQueue hold;
+		hold.Wait();
+		const bool unchanged = registry->GetOrLoadFile(fixture.path.string()) == fixture.id;
+		hold.Release();
+		Require(unchanged && scheduler->GetNumTasks(EThreadType::Main) == queued &&
+			observer.m_notifications == 6 && material->GetContentRevision() == revision,
+			"unchanged lookup must not queue work or wait for the occupied Render queue");
+		std::cout << "Direct LoadFile: failed parsing/publication, retry, Render/RHI/Background callers and warm lookup passed\n";
+	}
 
 	void TestMaterialCapturePublication(const std::filesystem::path& workspace)
 	{
@@ -1671,6 +1854,9 @@ namespace Sailor::Tests
 		run("Cold ordering", [&]() { TestOrderedReload(workspace, true); });
 		run("Shader failures", [&]() { TestShaderFailures(workspace); });
 		run("Shader publication queue", [&]() { TestShaderPublicationQueue(workspace); });
+		run("Worker file reload", [&]() { TestWorkerFileReload(workspace); });
+		run("File reload during Main update", [&]() { TestFileReloadDuringMainUpdate(workspace); });
+		run("Queued file reload retry", [&]() { TestQueuedFileReloadRetry(workspace); });
 		run("Material capture publication", [&]() { TestMaterialCapturePublication(workspace); });
 		run("Material capture owner updates", [&]() { TestMaterialCaptureOwnerUpdates(workspace); });
 		run("Warm shader permutation", [&]() { TestWarmShaderPermutation(workspace); });

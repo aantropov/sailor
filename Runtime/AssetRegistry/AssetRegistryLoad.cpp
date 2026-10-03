@@ -4,6 +4,7 @@
 #include "AssetRegistry/AssetFactory.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "Core/Utils.h"
+#include "Tasks/Scheduler.h"
 
 #include <filesystem>
 #include <mutex>
@@ -90,6 +91,33 @@ const FileId& AssetRegistry::GetOrLoadFile(const std::string& assetFilepath)
 	return LoadFile(assetFilepath);
 }
 
+void AssetRegistry::RequestAssetUpdate(const FileId& fileId)
+{
+	if (m_scheduler->IsMainThread())
+	{
+		App::UpdateAsset(fileId.ToString().c_str());
+		return;
+	}
+
+	{
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		if (m_pendingAssetUpdates.Contains(fileId)) return;
+		m_pendingAssetUpdates.Insert(fileId);
+	}
+
+	// Main may be waiting for this caller. Enqueue without entering App's
+	// synchronous dispatch, and leave the live asset unchanged until Main runs.
+	auto update = Tasks::CreateTask(*m_scheduler, "Reload requested asset", [this, fileId]()
+		{
+			{
+				std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+				m_pendingAssetUpdates.Remove(fileId);
+			}
+			App::UpdateAsset(fileId.ToString().c_str());
+		}, EThreadType::Main);
+	update->Run();
+}
+
 const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 {
 	AssetReadLocation location;
@@ -108,6 +136,12 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 			(loadedInfo->IsMetaExpired() || loadedInfo->IsAssetExpired() ||
 				loadedInfo->m_bPendingWasExpired || IsAssetExpired(loadedInfo)))
 		{
+			if (m_scheduler && App::GetSubmodule<AssetRegistry>() == this)
+			{
+				RequestAssetUpdate(loadedInfo->GetFileId());
+				return loadedInfo->GetFileId();
+			}
+
 			SAILOR_LOG("Reload asset info: %s", loadedInfo->GetMetaFilepath().c_str());
 			if (!GetAssetInfoHandler(*loadedInfo)->ReloadAssetInfo(loadedInfo, true, false))
 			{
@@ -119,7 +153,7 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 				CacheAsset(loadedInfo);
 			}
 		}
-		return physicalId.Value();
+		return loadedInfo ? loadedInfo->GetFileId() : physicalId.Value();
 	}
 
 	if (Extension(location.m_physicalPath.string()) == MetaFileExtension)

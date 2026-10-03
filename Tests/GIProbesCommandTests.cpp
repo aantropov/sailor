@@ -251,7 +251,8 @@ namespace
 			worker->Run();
 		}
 
-		void Update()
+		template<typename TUpdate>
+		void Update(TUpdate&& update)
 		{
 			std::latch entered(1), release(1);
 			auto previous = Tasks::CreateTask("Reload test: previous render reader", [&]()
@@ -274,14 +275,14 @@ namespace
 					std::this_thread::sleep_for(std::chrono::milliseconds(50));
 					m_releaseAfter.count_down();
 				});
-			const bool bUpdated = App::UpdateAsset(m_fileId.ToString().c_str());
+			const bool bUpdated = update();
 			const bool bCompletedOnReturn = m_completed.load();
 			unblock.join();
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(
 				{ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
-			Require(bUpdated && m_notifications == 1, "targeted update must notify the changed asset once");
+			Require(bUpdated && m_notifications == 1, "asset update must notify the changed asset once");
 			Require(m_bWaitedForPrevious && bCompletedOnReturn,
-				"targeted update must fence previous readers and finish its cross-queue publication before returning");
+				"asset update must fence previous readers and finish its cross-queue publication before returning");
 		}
 
 		uint32_t m_notifications = 0;
@@ -357,7 +358,7 @@ namespace
 		}
 		{
 			ReloadTaskProbe publication(*materialInfo);
-			publication.Update();
+			publication.Update([&]() { return App::UpdateAsset(material->GetFileId().ToString().c_str()); });
 			const auto unchangedRevision = material->GetContentRevision();
 			Require(App::UpdateAsset(material->GetFileId().ToString().c_str()) &&
 				publication.m_notifications == 1 && material->GetContentRevision() == unchangedRevision,
@@ -385,7 +386,7 @@ namespace
 		writeTexture(0, 255);
 		{
 			ReloadTaskProbe publication(*registry->GetAssetInfoPtr(textureId));
-			publication.Update();
+			publication.Update([&]() { return App::UpdateAsset(textureId.ToString().c_str()); });
 		}
 		const auto updated = Raytracing::PathTracer::CaptureMaterials({ material });
 		const auto blueTexture = findTexture(updated);
@@ -397,6 +398,34 @@ namespace
 		Require(!App::UpdateAsset(nullptr) && !App::UpdateAsset("") &&
 			!App::UpdateAsset(FileId::CreateNewFileId().ToString().c_str()),
 			"invalid targeted updates must remain rejected");
+
+		vectors["material.emissiveFactor"] = glm::vec4(9, 5, 2, 0);
+		scalars["material.alphaCutoff"] = 0.25f;
+		document["uniformsVec4"] = vectors;
+		document["uniformsFloat"] = scalars;
+		{
+			std::ofstream output(materialPath);
+			output << document;
+		}
+		{
+			ReloadTaskProbe publication(*materialInfo);
+			publication.Update([&]() { return registry->GetOrLoadFile(materialPath.string()) == material->GetFileId(); });
+		}
+		const auto direct = Raytracing::PathTracer::CaptureMaterials({ material });
+		Require(direct[0]->m_parameters.m_emissiveFactor == glm::vec3(9, 5, 2) &&
+			direct[0]->m_parameters.m_alphaCutoff == 0.25f &&
+			updated[0]->m_parameters.m_emissiveFactor == glm::vec3(7, 3, 1),
+			"Main LoadFile must finish material publication and preserve earlier GI snapshots");
+		writeTexture(127, 31);
+		{
+			ReloadTaskProbe publication(*registry->GetAssetInfoPtr(textureId));
+			publication.Update([&]() { return registry->GetOrLoadFile(imagePath.string()) == textureId; });
+		}
+		const auto directTexture = findTexture(Raytracing::PathTracer::CaptureMaterials({ material }));
+		Require(directTexture && directTexture->m_data && (*directTexture->m_data)[0] == 127 &&
+			(*directTexture->m_data)[2] == 31 && (*blueTexture->m_data)[2] == 255,
+			"Main LoadFile must finish texture and dependent material publication without changing retained pixels");
+		std::cout << "Direct LoadFile: Main reader fences, material/texture publication and retained GI snapshots passed\n";
 	}
 
 	void TestContributorMaterialRevision()
