@@ -129,7 +129,7 @@ namespace Sailor::Framegraph
 		bool m_bStarsRequested = false;
 		SAILOR_API Tasks::TaskPtr<RHI::RHIMeshPtr, StarsMeshData> CreateStarsMesh();
 		SAILOR_API static StarsMeshData ParseStarsMesh(const std::string& temperatures,
-			const TVector<uint8_t>& starCatalogueData, std::string& diagnostic);
+			const TVector<uint8_t>& starCatalogueData);
 
 		static uint32_t MorganKeenanToTemperature(char spectral_type, char sub_type);
 

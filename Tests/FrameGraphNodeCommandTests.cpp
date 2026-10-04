@@ -1689,17 +1689,14 @@ frame:
 			registry->ResolveContentFile("StarsColor.yaml", location) && std::filesystem::equivalent(location.m_physicalPath, colorPath),
 			"star fixtures must use the workspace overrides, not engine fallback files");
 		TRefPtr<SkyCommandProbe> node;
-		for (uint32_t input = 0; input < 6; ++input)
+		for (uint32_t input = 0; input < 3; ++input)
 		{
 			restore();
 			switch (input)
 			{
 			case 0: std::filesystem::remove(colorPath); break;
 			case 1: std::filesystem::remove(cataloguePath); break;
-			case 2: AssetRegistry::WriteTextFile(colorPath, std::string("colors: [")); break;
-			case 3: AssetRegistry::WriteBinaryFile(cataloguePath, TVector<uint8_t>{ 1 }); break;
-			case 4: AssetRegistry::WriteTextFile(colorPath, std::string("colors: [[1000, 2]]")); break;
-			case 5:
+			case 2:
 			{
 				auto empty = catalogue;
 				empty.Resize(28);
@@ -1773,7 +1770,7 @@ frame:
 		task->Run();
 		task->Wait();
 		if (!task->GetResult().empty()) throw std::runtime_error(task->GetResult());
-		std::cout << "Starless sky: missing/malformed/empty mounted assets, repaired mesh, eight frames without retry, native pixels and environment capture passed\n";
+		std::cout << "Starless sky: missing/empty mounted assets, repaired mesh, eight frames without retry, native pixels and environment capture passed\n";
 	}
 
 

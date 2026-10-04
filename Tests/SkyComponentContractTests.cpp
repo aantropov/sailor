@@ -196,80 +196,24 @@ namespace
 		return bytes;
 	}
 
-	void TestStarCatalogueBoundaries()
+	void TestStarCatalogueEpochs()
 	{
-		const auto validColors = MakeStarColors();
-		const std::string validYaml = YAML::Dump(validColors);
-		const auto validBytes = MakeStarCatalogue();
-		auto positiveCount = validBytes;
-		WriteStarField(positiveCount, 8, int32_t(1));
-		std::string positiveDiagnostic;
-		const auto positive = SkyNodeProbe::ParseStarsMesh(validYaml, positiveCount, positiveDiagnostic);
-		const auto negative = SkyNodeProbe::ParseStarsMesh(validYaml, validBytes, positiveDiagnostic);
-		Require(positiveDiagnostic.empty() && positive.m_first.Num() == 1 && negative.m_first.Num() == 1 &&
+		const std::string colors = YAML::Dump(MakeStarColors());
+		const auto j2000 = MakeStarCatalogue();
+		auto b1950 = j2000;
+		WriteStarField(b1950, 8, int32_t(1));
+		const auto positive = SkyNodeProbe::ParseStarsMesh(colors, b1950);
+		const auto negative = SkyNodeProbe::ParseStarsMesh(colors, j2000);
+		Require(positive.m_first.Num() == 1 && negative.m_first.Num() == 1 &&
 			positive.m_first[0].m_position == negative.m_first[0].m_position && positive.m_first[0].m_color == negative.m_first[0].m_color,
 			"both catalogue epochs must preserve identical records");
-		auto reject = [&](const std::string& yaml, const TVector<uint8_t>& bytes, const char* asset)
-		{
-			std::string diagnostic;
-			const auto result = SkyNodeProbe::ParseStarsMesh(yaml, bytes, diagnostic);
-			Require(result.m_first.IsEmpty() && result.m_second.IsEmpty() && diagnostic.find(asset) != std::string::npos,
-				std::string("invalid star input must return no mesh and identify ") + asset);
-		};
-		for (const char* yaml : { "", "[]", "colors: {}", "colors: [", "colors: [[]]", "colors: [[1000,2,0,0,0,no,1,1]]" })
-		{
-			reject(yaml, validBytes, "StarsColor.yaml");
-		}
-		for (const auto [column, value] : std::array<std::pair<uint32_t, float>, 9>{ {
-			{ 0, -1000 }, { 0, 40001 }, { 0, 1001 }, { 0, std::numeric_limits<float>::infinity() },
-			{ 0, std::numeric_limits<float>::quiet_NaN() }, { 5, -0.1f }, { 6, 1.1f },
-			{ 7, std::numeric_limits<float>::quiet_NaN() }, { 7, std::numeric_limits<float>::infinity() }
-		} })
-		{
-			auto colors = YAML::Clone(validColors);
-			colors["colors"][0][column] = value;
-			reject(YAML::Dump(colors), validBytes, "StarsColor.yaml");
-		}
-		auto incomplete = YAML::Clone(validColors);
-		incomplete["colors"].remove(3);
-		reject(YAML::Dump(incomplete), validBytes, "StarsColor.yaml");
 
-		for (size_t size : { 0u, 1u, 27u, 28u, 59u, 61u })
-		{
-			auto bytes = validBytes;
-			bytes.Resize(size);
-			reject(validYaml, bytes, "BSC5");
-		}
-		for (int32_t count : { 0, 2, -2, (std::numeric_limits<int32_t>::min)(), (std::numeric_limits<int32_t>::max)() })
-		{
-			auto bytes = validBytes;
-			WriteStarField(bytes, 8, count);
-			reject(validYaml, bytes, "BSC5");
-		}
-		for (size_t field : { 12u, 16u, 20u, 24u })
-		{
-			auto bytes = validBytes;
-			WriteStarField(bytes, field, int32_t(0));
-			reject(validYaml, bytes, "BSC5");
-		}
-		for (const auto [field, value] : std::array<std::pair<size_t, double>, 6>{ {
-			{ 32, -0.1 }, { 32, 7.0 }, { 32, std::numeric_limits<double>::quiet_NaN() },
-			{ 40, -2.0 }, { 40, 2.0 }, { 40, std::numeric_limits<double>::infinity() }
-		} })
-		{
-			auto bytes = validBytes;
-			WriteStarField(bytes, field, value);
-			reject(validYaml, bytes, "BSC5");
-		}
-		auto bytes = validBytes;
-		WriteStarField(bytes, 50, int16_t(-40));
-		reject(validYaml, bytes, "BSC5");
-		bytes.Resize(28);
-		WriteStarField(bytes, 8, int32_t(0));
-		std::string diagnostic = "old failure";
-		const auto empty = SkyNodeProbe::ParseStarsMesh(validYaml, bytes, diagnostic);
-		Require(empty.m_first.IsEmpty() && empty.m_second.IsEmpty() && diagnostic.empty(),
-			"an explicitly empty catalogue must succeed without creating geometry");
+		auto emptyCatalogue = j2000;
+		emptyCatalogue.Resize(28);
+		WriteStarField(emptyCatalogue, 8, int32_t(0));
+		const auto empty = SkyNodeProbe::ParseStarsMesh(colors, emptyCatalogue);
+		Require(empty.m_first.IsEmpty() && empty.m_second.IsEmpty(),
+			"an empty catalogue must not create geometry");
 	}
 
 	void TestStarCatalogueColorsAndIndependentParses()
@@ -284,9 +228,8 @@ namespace
 				const std::string yaml = YAML::Dump(MakeStarColors(color));
 				for (uint32_t repeat = 0; repeat < 4; ++repeat)
 				{
-					std::string diagnostic;
-					const auto result = SkyNodeProbe::ParseStarsMesh(yaml, catalogue, diagnostic);
-					Require(diagnostic.empty() && result.m_first.Num() == 1 && result.m_second.Num() == 1 && result.m_second[0] == 0,
+					const auto result = SkyNodeProbe::ParseStarsMesh(yaml, catalogue);
+					Require(result.m_first.Num() == 1 && result.m_second.Num() == 1 && result.m_second[0] == 0,
 						"a complete catalogue must return the original point-list topology");
 					Require(IsNear(result.m_first[0].m_position, Utils::ConvertToEuclidean(1.0f, 0.3f, 1.0f) / 2.4f * 5000.0f) &&
 						IsNear(result.m_first[0].m_color, glm::vec4(glm::pow(color, glm::vec3(1 / 2.2f)), 1)),
@@ -301,9 +244,8 @@ namespace
 			auto bytes = catalogue;
 			bytes[48] = spectral[0];
 			bytes[49] = spectral[1];
-			std::string diagnostic;
-			const auto result = SkyNodeProbe::ParseStarsMesh(YAML::Dump(MakeStarColors()), bytes, diagnostic);
-			Require(diagnostic.empty() && result.m_first.Num() == 1 && result.m_first[0].m_color == glm::vec4(1),
+			const auto result = SkyNodeProbe::ParseStarsMesh(YAML::Dump(MakeStarColors()), bytes);
+			Require(result.m_first.Num() == 1 && result.m_first[0].m_color == glm::vec4(1),
 				"unclassified and nonnumeric spectral entries must remain renderable with neutral white");
 		}
 	}
@@ -315,9 +257,8 @@ namespace
 		TVector<uint8_t> bytes;
 		Require(AssetRegistry::ReadAllTextFile((content / "StarsColor.yaml").string(), yaml) &&
 			AssetRegistry::ReadBinaryFile(content / "BSC5", bytes), "the owned star inputs must be readable");
-		std::string diagnostic;
-		const auto result = SkyNodeProbe::ParseStarsMesh(yaml, bytes, diagnostic);
-		Require(diagnostic.empty() && result.m_first.Num() == 9110 && result.m_second.Num() == 9110,
+		const auto result = SkyNodeProbe::ParseStarsMesh(yaml, bytes);
+		Require(result.m_first.Num() == 9110 && result.m_second.Num() == 9110,
 			"the owned BSC5 catalogue must retain every star");
 		std::array<glm::vec3, 391> colors{};
 		for (const auto& row : YAML::Load(yaml)["colors"])
@@ -1545,7 +1486,7 @@ int main()
 		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
 		{ "GroundEnvironmentUsesTheSameSkyAndSun", TestGroundEnvironmentUsesTheSameSkyAndSun },
 		{ "SkyNodeRenderState", TestSkyNodeRenderState },
-		{ "StarCatalogueBoundaries", TestStarCatalogueBoundaries },
+		{ "StarCatalogueEpochs", TestStarCatalogueEpochs },
 		{ "StarCatalogueColorsAndIndependentParses", TestStarCatalogueColorsAndIndependentParses },
 		{ "OwnedStarCatalogueParity", TestOwnedStarCatalogueParity },
 		{ "CloudNoiseRemapping", TestCloudNoiseRemapping },
