@@ -3,6 +3,7 @@
 
 #include <barrier>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <exception>
 #include <iostream>
@@ -132,6 +133,84 @@ namespace
 		return std::memcmp(lhs.m_irradiance.data(), rhs.m_irradiance.data(), sizeof(lhs.m_irradiance)) == 0;
 	}
 
+	void TestWorkAndPublicationProgress()
+	{
+		class MixedValiditySampler final : public IGIProbeBakeRaySampler
+		{
+		public:
+			explicit MixedValiditySampler(uint32_t embeddedProbeCount) : m_embeddedProbeCount(embeddedProbeCount) {}
+			bool Sample(const glm::vec3& origin, const glm::vec3& direction, float distance, uint32_t,
+				GIProbeBakeRaySample& sample, std::string&) const override
+			{
+				sample = {};
+				sample.m_bHit = m_embeddedProbeCount == 8 || (m_embeddedProbeCount == 4 && origin.x < 0.0f);
+				sample.m_bBackFace = sample.m_bHit;
+				sample.m_distance = sample.m_bHit ? 0.01f : distance;
+				sample.m_radiance = glm::vec3(0.5f) + direction * 0.25f;
+				return true;
+			}
+		private:
+			uint32_t m_embeddedProbeCount;
+		};
+
+		for (uint32_t embeddedProbeCount : { 0u, 4u, 8u })
+		{
+			RuntimeGIProbesService service;
+			auto request = MakeRequest();
+			request.m_sampler = TSharedPtr<MixedValiditySampler>::Make(embeddedProbeCount);
+			WarmGrid(service, request);
+			auto publication = Access::Capture(service);
+			Require(Access::Prepare(publication).empty(), "mixed-validity publication must validate");
+			Access::Commit(service, publication, {});
+			const auto retained = service.GetPublishedData();
+			const auto original = *retained;
+			uint32_t invalidCount = 0;
+			for (const auto& probe : retained->m_probes) invalidCount += probe.m_validity <= 0.05f;
+			Require(invalidCount == embeddedProbeCount, "the fixture must contain zero, four or eight embedded probes");
+
+			const uint32_t remainingBatches = (8 - invalidCount) * 2;
+			for (uint32_t batch = 0; batch <= remainingBatches; ++batch)
+			{
+				const auto status = service.GetStatus();
+				const float expected = float(invalidCount * 48 + (8 - invalidCount) * 16 + batch * 16) / (8 * 48);
+				Require(std::abs(status.m_refinement - expected) < 0.000001f &&
+					status.m_readyProbeCount == 8 && status.m_coverage == 1.0f,
+					"coverage and refinement must account for valid samples and terminal embedded probes independently");
+				Require(status.m_lifecycle == (batch == remainingBatches ? ERuntimeGIProbesLifecycle::Ready : ERuntimeGIProbesLifecycle::Tracing),
+					"full initial coverage must not report Ready before the final refinement batch commits");
+				if (batch == remainingBatches) break;
+				auto job = Access::TakeJob(service);
+				Require(service.GetStatus().m_refinement == status.m_refinement,
+					"taking a job must not count samples that have not been committed");
+				Access::CompleteJob(service, job);
+			}
+			for (size_t i = 0; i < retained->m_probes.Num(); ++i)
+			{
+				Require(SameLighting(retained->m_probes[i], original.m_probes[i]) &&
+					retained->m_probes[i].m_position == original.m_probes[i].m_position,
+					"working accumulators and resolved results must not mutate an already published snapshot");
+			}
+
+			std::string diagnostic;
+			service.SetWorkAllowed(false);
+			Require(service.Start(request, diagnostic), diagnostic);
+			service.SetWorkAllowed(true);
+			Require(service.GetStatus().m_lifecycle == ERuntimeGIProbesLifecycle::Ready && service.GetStatus().m_refinement == 1.0f,
+				"reusing a completed generation must reconstruct exact progress without tracing again");
+			service.SetWorkAllowed(false);
+			++request.m_lightingGeneration;
+			Require(service.Start(request, diagnostic), diagnostic);
+			service.SetWorkAllowed(true);
+			const auto relighting = service.GetStatus();
+			Require(relighting.m_readyProbeCount == invalidCount && relighting.m_refinement == float(invalidCount) / 8 &&
+				relighting.m_lifecycle == (invalidCount == 8 ? ERuntimeGIProbesLifecycle::Ready : ERuntimeGIProbesLifecycle::Tracing) &&
+				service.GetPublishedData() == retained,
+				"relighting must reuse terminal transport, reset irradiance progress and retain the prior snapshot");
+			service.Disable();
+		}
+		std::cout << "Runtime GI progress: valid/embedded probes, every refinement batch, retained snapshots and reused lighting passed\n";
+	}
+
 	void WaitForPublication(RuntimeGIProbesService& service, uint64_t previousRevision)
 	{
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -171,7 +250,7 @@ namespace
 		WarmGrid(service, MakeRequest());
 		auto job = Access::TakeJob(service);
 		auto publication = Access::Capture(service);
-		const auto capturedData = publication.m_data;
+		const auto capturedData = publication.m_snapshot;
 		std::barrier captured(2);
 		std::exception_ptr workerError;
 		std::jthread worker([&]()
@@ -218,13 +297,13 @@ namespace
 		Access::CompleteJob(service, job);
 		auto newer = Access::Capture(service);
 		Require(Access::Prepare(newer).empty(), "the newer capture must be valid");
-		const auto newData = newer.m_data;
+		const auto newData = newer.m_snapshot;
 		Access::Commit(service, newer, {});
 		const auto revision = service.GetStatus().m_publishedRevision;
 		Access::Commit(service, older, {});
 		Require(service.GetPublishedData() == newData && service.GetStatus().m_publishedRevision == revision,
 			"an older publication must not replace a newer snapshot of the same generation");
-		older.m_data->m_probes[0].m_irradiance[0].x = std::numeric_limits<float>::quiet_NaN();
+		older.m_snapshot->m_probes[0].m_irradiance[0].x = std::numeric_limits<float>::quiet_NaN();
 		auto diagnostic = Access::Prepare(older);
 		Require(!diagnostic.empty(), "an invalid late payload must fail actual validation");
 		Access::Commit(service, older, std::move(diagnostic));
@@ -252,7 +331,7 @@ namespace
 		WarmGrid(service, request);
 		auto current = Access::Capture(service);
 		Require(Access::Prepare(current).empty(), "the replacement capture must prepare");
-		const auto currentData = current.m_data;
+		const auto currentData = current.m_snapshot;
 		Access::Commit(service, current, {});
 		const auto revision = service.GetStatus().m_publishedRevision;
 		Access::Commit(service, older, {});
@@ -288,7 +367,7 @@ namespace
 		RuntimeGIProbesService invalid;
 		WarmGrid(invalid, MakeRequest());
 		auto badData = Access::Capture(invalid);
-		badData.m_data->m_probes[0].m_irradiance[0].x = std::numeric_limits<float>::quiet_NaN();
+		badData.m_snapshot->m_probes[0].m_irradiance[0].x = std::numeric_limits<float>::quiet_NaN();
 		diagnostic = Access::Prepare(badData);
 		Require(!diagnostic.empty(), "non-finite captured lighting must fail preparation");
 		Access::Commit(invalid, badData, std::move(diagnostic));
@@ -357,6 +436,7 @@ int main()
 		TestReplacedAndDisabledPublication();
 		TestFailedPublication();
 		TestPackedPublicationBudget();
+		TestWorkAndPublicationProgress();
 		std::cout << "Runtime GI publication tests passed\n";
 		return 0;
 	}

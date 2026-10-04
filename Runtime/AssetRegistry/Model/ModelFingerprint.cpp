@@ -24,6 +24,7 @@
 #include <utility>
 
 #include <tiny_gltf.h>
+#include <stb_image.h>
 #include <stb_image_write.h>
 
 using namespace Sailor;

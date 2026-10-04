@@ -38,7 +38,6 @@ namespace Sailor
 		}
 
 		const bool bWasReady = current.m_bReady;
-		const bool bWasRefined = current.m_bRefined;
 		const uint32_t previousProgress = GetProgressSampleCount(*generation, current);
 		current = job.m_work;
 		generation->m_progressSampleCount += GetProgressSampleCount(*generation, current) - previousProgress;
@@ -46,13 +45,9 @@ namespace Sailor
 		{
 			++generation->m_readyCount;
 		}
-		if (!bWasRefined && current.m_bRefined)
-		{
-			++generation->m_refinedCount;
-		}
 		if (current.m_bReady)
 		{
-			generation->m_data->m_probes[job.m_probeIndex] = current.m_probe;
+			generation->m_workingData->m_probes[job.m_probeIndex] = current.m_probe;
 			++generation->m_dataRevision;
 		}
 		if (!current.m_bReady)
@@ -104,7 +99,7 @@ namespace Sailor
 		}
 		else
 		{
-			m_status.m_lifecycle = generation.m_refinedCount == generation.m_probes.size()
+			m_status.m_lifecycle = generation.IsFullyRefined()
 									   ? ERuntimeGIProbesLifecycle::Ready
 									   : ERuntimeGIProbesLifecycle::Tracing;
 		}
@@ -144,12 +139,12 @@ namespace Sailor
 		}
 
 		outPublication.m_generation = m_generation;
-		outPublication.m_data = GIProbesDataPtr::Make(*m_generation->m_data);
+		outPublication.m_snapshot = GIProbesDataPtr::Make(*m_generation->m_workingData);
 		outPublication.m_dataRevision = m_generation->m_dataRevision;
-		auto& diagnostics = outPublication.m_data->m_diagnostics;
+		auto& diagnostics = outPublication.m_snapshot->m_diagnostics;
 		diagnostics.m_bakeDurationSeconds =
 			static_cast<float>(std::chrono::duration<double>(now - m_generation->m_started).count());
-		diagnostics.m_message = m_generation->m_refinedCount == probeCount
+		diagnostics.m_message = m_generation->IsFullyRefined()
 			? "runtime GI probes reached the target sample count"
 			: "runtime GI probes are refining with environment fallback for missing cells";
 		return true;
@@ -158,7 +153,7 @@ namespace Sailor
 	std::string RuntimeGIProbesService::Impl::PreparePublication(Publication& publication)
 	{
 		SAILOR_PROFILE_FUNCTION();
-		GIProbesData& data = *publication.m_data;
+		GIProbesData& data = *publication.m_snapshot;
 		const uint32_t probeCount = static_cast<uint32_t>(data.m_probes.Num());
 		publication.m_uploadBytes = RuntimeGIProbesInternal::GetPublicationUploadBytes(probeCount);
 		if (publication.m_uploadBytes > publication.m_generation->m_request.m_qualitySettings.m_maxDirtyUploadBytesPerFrame)
@@ -205,10 +200,10 @@ namespace Sailor
 			return;
 		}
 
-		publication.m_data->m_lightingHash = (m_generation->m_request.m_lightingGeneration << 32u) ^ m_nextPublishedRevision;
-		m_status.m_diagnostic = publication.m_data->m_diagnostics.m_message;
+		publication.m_snapshot->m_lightingHash = (m_generation->m_request.m_lightingGeneration << 32u) ^ m_nextPublishedRevision;
+		m_status.m_diagnostic = publication.m_snapshot->m_diagnostics.m_message;
 		// The caller releases the previous snapshot after leaving the service lock.
-		std::swap(m_publishedData, publication.m_data);
+		std::swap(m_publishedData, publication.m_snapshot);
 		m_generation->m_publishedDataRevision = publication.m_dataRevision;
 		m_status.m_publishedRevision = m_nextPublishedRevision++;
 		m_status.m_publishedBytes = publication.m_uploadBytes;

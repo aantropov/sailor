@@ -30,6 +30,7 @@ namespace Sailor
 		{
 			RuntimeGIProbesInternal::ProbeCellKey m_key{};
 			GIProbeIrradianceAccumulator m_accumulator{};
+			// Transport and the last resolved coefficients; the accumulator may be further ahead.
 			GIProbe m_probe{};
 			glm::vec3 m_layoutPosition{};
 			uint32_t m_brickIndex = 0u;
@@ -41,7 +42,8 @@ namespace Sailor
 		struct Generation final
 		{
 			RuntimeGIProbesStartRequest m_request{};
-			GIProbesDataPtr m_data{};
+			// Ready results only; unfinished probes remain environment-fallback slots.
+			GIProbesDataPtr m_workingData{};
 			std::vector<ProbeWork> m_probes{};
 			std::vector<uint32_t> m_initialQueue{};
 			std::deque<uint32_t> m_warmingQueue{};
@@ -53,11 +55,16 @@ namespace Sailor
 			uint32_t m_effectiveCapacity = 0u;
 			size_t m_initialCursor = 0u;
 			uint32_t m_readyCount = 0u;
-			uint32_t m_refinedCount = 0u;
 			uint64_t m_dataRevision = 0u;
 			uint64_t m_publishedDataRevision = 0u;
 			uint64_t m_progressSampleCount = 0u;
 			bool m_bFailed = false;
+
+			bool IsFullyRefined() const noexcept
+			{
+				return m_progressSampleCount ==
+					static_cast<uint64_t>(m_probes.size()) * m_request.m_qualitySettings.m_targetSamplesPerProbe;
+			}
 		};
 
 		struct Job final
@@ -76,7 +83,8 @@ namespace Sailor
 		struct Publication final
 		{
 			TSharedPtr<Generation> m_generation;
-			GIProbesDataPtr m_data;
+			// A captured revision, prepared outside the service lock and then retained by frames.
+			GIProbesDataPtr m_snapshot;
 			uint64_t m_dataRevision = 0u;
 			uint64_t m_uploadBytes = 0u;
 		};

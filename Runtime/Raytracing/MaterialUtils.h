@@ -1,14 +1,12 @@
 #pragma once
 #include "Core/Defines.h"
 #include "Containers/Vector.h"
-#include "Tasks/Scheduler.h"
-
 #include "Math/Math.h"
-#include "Math/Bounds.h"
+#include "Memory/LockFreeHeapAllocator.h"
 
-#include <stb_image.h>
-
-#include <filesystem>
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <type_traits>
 
 using namespace Sailor;
@@ -233,92 +231,5 @@ namespace Sailor::Raytracing
 	SAILOR_API uint PackVec3ToByte(vec3 v);
 	SAILOR_API vec3 UnpackByteToVec3(uint byte);
 
-	/*SAILOR_API void ProcessNode_Assimp(TVector<Math::Triangle>& outScene, aiNode* node, const aiScene* scene, const glm::mat4& matrix);
-	SAILOR_API void ProcessMesh_Assimp(aiMesh* mesh, TVector<Math::Triangle>& outScene, const aiScene* scene, const glm::mat4& matrix);
-
-	SAILOR_API mat4 GetWorldTransformMatrix(const aiScene* scene, const char* name);*/
-
 	SAILOR_API void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv);
-
-	/*template<typename T>
-	Tasks::ITaskPtr LoadTexture_Task(TVector<TSharedPtr<CombinedSampler2D>>& m_textures,
-		const std::filesystem::path& sceneFile,
-		const aiScene* scene,
-		uint32_t textureIndex,
-		const std::string& filename,
-		aiTextureMapMode clamping,
-		bool bConvertToLinear,
-		bool bNormalMap = false)
-	{
-		auto ptr = m_textures[textureIndex] = TSharedPtr<CombinedSampler2D>::Make();
-		ptr->m_clampingU = ptr->m_clampingV = clamping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-
-		if constexpr (IsSame<vec4, T>)
-		{
-			ptr->m_channels = 4;
-		}
-		else if constexpr (IsSame<vec3, T>)
-		{
-			ptr->m_channels = 3;
-		}
-
-		Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
-			[scene = scene,
-			pTexture = ptr,
-			sceneFile = sceneFile,
-			fileName = filename,
-			bConvertToLinear = bConvertToLinear,
-			bNormalMap = bNormalMap
-			]() mutable
-			{
-				int32_t texChannels = 0;
-				void* pixels = nullptr;
-
-				auto LoadTextureData = [&](const stbi_uc* data, int length) -> bool
-					{
-						if (stbi_is_hdr_from_memory(data, length))
-						{
-							pixels = (void*)stbi_loadf_from_memory(data, length, &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha);
-							return true;
-						}
-						else
-						{
-							pixels = (void*)stbi_load_from_memory(data, length, &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha);
-							return false;
-						}
-					};
-
-				bool bIsHDR = false;
-				if (fileName[0] == '*')
-				{
-					const uint32 texIndex = atoi(&fileName[1]);
-					aiTexture* pAITexture = scene->mTextures[texIndex];
-					bIsHDR = LoadTextureData((stbi_uc*)pAITexture->pcData, pAITexture->mWidth);
-				}
-				else
-				{
-					sceneFile.replace_filename(fileName);
-					bIsHDR = stbi_is_hdr(sceneFile.string().c_str());
-					pixels = bIsHDR
-						? (void*)stbi_loadf(sceneFile.string().c_str(), &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha)
-						: (void*)stbi_load(sceneFile.string().c_str(), &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha);
-				}
-
-				if (bIsHDR)
-				{
-					pTexture->Initialize<T, vec4>((vec4*)pixels, bConvertToLinear, bNormalMap);
-				}
-				else
-				{
-					pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, bNormalMap);
-				}
-
-				if (pixels)
-				{
-					stbi_image_free(pixels);
-				}
-			})->Run();
-
-			return task;
-	};*/
 }
