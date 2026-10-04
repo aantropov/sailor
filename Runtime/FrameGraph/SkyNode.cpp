@@ -656,7 +656,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		driver->AddSamplerToShaderBindings(m_pBlitCloudsBindings, "colorSampler", m_pCloudsTexture, 0);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0, false, ECullMode::Back, EBlendMode::AlphaBlending, EFillMode::Fill, 0, false };
+		RenderState renderState{ false, false, 0, false, ECullMode::Back, EBlendMode::AlphaBlendingPreserveAlpha, EFillMode::Fill, 0, false };
 		m_pBlitCloudsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlitShader, m_pBlitCloudsBindings);
 	}
 

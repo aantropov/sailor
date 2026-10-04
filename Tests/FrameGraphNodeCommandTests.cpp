@@ -21,6 +21,7 @@
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/ShadowPrepassNode.h"
 #include "FrameGraph/SkyNode.h"
+#include "Math/Noise.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
@@ -1527,7 +1528,7 @@ frame:
 			"fullscreen pixel readback must finish");
 	}
 
-	class StarsSkyProbe : public SkyNode
+	class SkyCommandProbe : public SkyNode
 	{
 	public:
 		void LoadShaders()
@@ -1558,6 +1559,49 @@ frame:
 		}
 
 		bool HasNoStarsOrPendingLoad() const { return m_bStarsRequested && !m_starsMesh && !m_loadMeshTask; }
+
+		using SkyNode::AreCloudsResourcesReady;
+
+		void LoadClouds()
+		{
+			auto registry = App::GetSubmodule<AssetRegistry>();
+			auto info = registry->GetAssetInfoPtr("Shaders/Sky.shader");
+			Require(info && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(info->GetFileId(), m_pCloudsShader, { "CLOUDS" }) &&
+				m_pCloudsShader->IsReady(), "the production cloud shader must compile");
+			auto weather = registry->GetAssetInfoPtr("Textures/CloudsMap.png");
+			Require(weather && App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(weather->GetFileId(), m_clouds),
+				"the production cloud weather map must load");
+			m_pCloudsMapTexture = m_clouds->GetRHI();
+			m_bStarsRequested = true;
+		}
+
+		void PrepareCloudReadback()
+		{
+			const auto& profile = App::GetActiveGraphicsSettings();
+			const auto viewport = App::GetMainWindow()->GetRenderArea();
+			const auto render = Settings::ResolveRenderDimensions(viewport.x, viewport.y, profile.m_resolutionFactor);
+			float multiplier = 1.0f;
+#if defined(__APPLE__)
+			multiplier = 0.5f;
+#endif
+			const auto extent = Settings::ResolveCloudsExtent(render.m_width, render.m_height, profile, multiplier);
+			m_pCloudsTexture = Renderer::GetDriver()->CreateRenderTarget(glm::ivec2(extent.m_width, extent.m_height), 1,
+				EFormat::R16G16B16A16_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp,
+				ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit |
+				ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::TextureTransferSrc_Bit);
+		}
+
+		RHITexturePtr GetCloudsTexture() const { return m_pCloudsTexture; }
+		ShaderSetPtr GetBlitShader() const { return m_pBlitShader; }
+		std::array<Tasks::TaskPtr<TVector<uint8_t>>, 2> GetNoiseTasks() const { return { m_createNoiseLow, m_createNoiseHigh }; }
+		std::array<RHITexturePtr, 2> GetNoiseTextures() const { return { m_pCloudsNoiseLowTexture, m_pCloudsNoiseHighTexture }; }
+		void SetNoiseTextures(const std::array<RHITexturePtr, 2>& textures)
+		{
+			m_pCloudsNoiseLowTexture = textures[0];
+			m_pCloudsNoiseHighTexture = textures[1];
+		}
+		void ResetNoise() { m_pCloudsNoiseLowTexture.Clear(); m_pCloudsNoiseHighTexture.Clear(); }
+
 
 		void SetEmptyClouds()
 		{
@@ -1593,7 +1637,7 @@ frame:
 		Require(registry->ResolveContentFile("BSC5", location) && std::filesystem::equivalent(location.m_physicalPath, cataloguePath) &&
 			registry->ResolveContentFile("StarsColor.yaml", location) && std::filesystem::equivalent(location.m_physicalPath, colorPath),
 			"star fixtures must use the workspace overrides, not engine fallback files");
-		TRefPtr<StarsSkyProbe> node;
+		TRefPtr<SkyCommandProbe> node;
 		for (uint32_t input = 0; input < 6; ++input)
 		{
 			restore();
@@ -1614,11 +1658,11 @@ frame:
 				break;
 			}
 			}
-			node = TRefPtr<StarsSkyProbe>::Make();
+			node = TRefPtr<SkyCommandProbe>::Make();
 			Require(!node->LoadStars(), "failed or empty star assets must not allocate an RHI mesh");
 		}
 		restore();
-		Require(TRefPtr<StarsSkyProbe>::Make()->LoadStars(), "a new sky node must load a repaired catalogue");
+		Require(TRefPtr<SkyCommandProbe>::Make()->LoadStars(), "a new sky node must load a repaired catalogue");
 		node->LoadShaders();
 		auto task = Tasks::CreateTaskWithResult<std::string>("Sky without a star mesh", [&]() -> std::string
 		{
@@ -1679,6 +1723,336 @@ frame:
 		task->Wait();
 		if (!task->GetResult().empty()) throw std::runtime_error(task->GetResult());
 		std::cout << "Starless sky: missing/malformed/empty mounted assets, repaired mesh, eight frames without retry, native pixels and environment capture passed\n";
+	}
+
+
+
+	void TestSkyOverlayBlending(ShaderSetPtr shader, TRefPtr<TestGraph> graph, RHIShaderBindingSetPtr frame)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto mesh = graph->GetFullscreenNdcQuad();
+		auto target = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+		for (auto mode : { EBlendMode::Multiply, EBlendMode::AlphaBlendingPreserveAlpha })
+			for (float sourceAlpha : { 0.0f, 0.35f, 1.0f })
+				for (float destinationAlpha : { 0.0f, 0.4f, 1.0f })
+				{
+					const glm::vec4 destination(0.25f, 0.75f, 2.0f, destinationAlpha);
+					const glm::vec3 tint(0.2f, 0.5f, 0.7f);
+					const glm::vec4 source(mode == EBlendMode::Multiply ? tint * sourceAlpha : tint, sourceAlpha);
+					auto texture = driver->CreateImage_Immediate(&source, sizeof(source), glm::ivec3(1), 1,
+						ETextureType::Texture2D, EFormat::R32G32B32A32_SFLOAT);
+					Require(static_cast<bool>(texture), "overlay test pixels must upload");
+					auto bindings = driver->CreateShaderBindings();
+					driver->AddSamplerToShaderBindings(bindings, "colorSampler", texture, 0);
+					const RenderState state{ false, false, 0, false, ECullMode::None, mode, EFillMode::Fill, 0, false };
+					auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader, bindings);
+					auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(upload, true);
+					commands->BeginCommandList(draw, true);
+					ClearColor(draw, target, destination);
+					commands->ImageMemoryBarrier(draw, target, EImageLayout::ColorAttachmentOptimal);
+					commands->BeginRenderPass(draw, { target }, nullptr, glm::vec4(0, 0, Side, Side),
+						glm::ivec2(0), false, glm::vec4(0), 0, false);
+					commands->SetViewport(draw, 0, 0, Side, Side, glm::vec2(0), glm::vec2(Side), 0, 1);
+					commands->BindMaterial(draw, material);
+					Require(commands->BindShaderBindings(draw, material, { frame, bindings }), "sky overlay bindings must bind");
+					commands->BindVertexBuffer(draw, mesh->m_vertexBuffer, 0);
+					commands->BindIndexBuffer(draw, mesh->m_indexBuffer, 0);
+					commands->DrawIndexed(draw, 6, 1, 0, 0, 0);
+					commands->EndRenderPass(draw);
+					auto pixels = ReadColor(draw, target);
+					CompleteCommands(upload, draw);
+					const glm::vec3 rgb = mode == EBlendMode::Multiply ?
+						glm::vec3(destination) * (glm::vec3(1 - sourceAlpha) + glm::vec3(source)) :
+						glm::vec3(destination) * (1 - sourceAlpha) + tint * sourceAlpha;
+					const glm::vec4 expected(rgb, destinationAlpha);
+					const auto actual = static_cast<const glm::vec4*>(pixels->GetPointer());
+					for (uint32_t pixel = 0; pixel < Side * Side; ++pixel)
+						for (uint32_t c = 0; c < 4; ++c)
+							Require(std::isfinite(actual[pixel][c]) && std::abs(actual[pixel][c] - expected[c]) < 0.00001f,
+								"cloud and shaft overlays must blend HDR RGB while preserving destination alpha");
+				}
+		std::cout << "Sky overlay blending: transparent/partial/opaque sources, HDR RGB and three destination alpha masks passed\n";
+	}
+
+	struct BackgroundPause
+	{
+		std::latch entered{ 1 }, release{ 1 };
+		Tasks::TaskPtr<void> task;
+		bool resumed = false;
+
+		BackgroundPause()
+		{
+			task = Tasks::CreateTask("Hold cloud generation", [&]()
+			{
+				entered.count_down();
+				release.wait();
+			}, EThreadType::Background);
+			task->Run();
+			entered.wait();
+		}
+
+		void Resume()
+		{
+			if (!resumed)
+			{
+				resumed = true;
+				release.count_down();
+				task->Wait();
+			}
+		}
+
+		~BackgroundPause() { Resume(); }
+	};
+
+	void TestGeneratedCloudNoise(const std::filesystem::path& workspace)
+	{
+		Require(std::filesystem::equivalent(AssetRegistry::GetCacheFolder(), workspace / "Cache"),
+			"cloud noise must use the temporary workspace cache");
+		const std::array names{ "PerlinWorleyCloudsNoiseLow.bin", "PerlinWorleyCloudsNoiseHigh.bin" };
+		const std::array obsoleteNames{ "CloudsNoiseLow.bin", "CloudsNoiseHigh.bin" };
+		const std::array<uint32_t, 2> sizes{ 128, 32 };
+		for (auto name : names)
+			Require(!std::filesystem::exists(workspace / "Cache" / name), "the cloud fixture must start cold");
+		for (uint32_t n = 0; n < sizes.size(); ++n)
+		{
+			TVector<uint8_t> obsolete(size_t(sizes[n]) * sizes[n] * sizes[n]);
+			std::fill_n(obsolete.GetData(), obsolete.Num(), uint8_t(0));
+			const auto path = workspace / "Cache" / obsoleteNames[n];
+			AssetRegistry::WriteBinaryFile(path, obsolete);
+			Require(std::filesystem::file_size(path) == obsolete.Num(),
+				"obsolete cloud cache fixtures must be written in the temporary workspace");
+		}
+
+		auto node = TRefPtr<SkyCommandProbe>::Make();
+		node->LoadShaders();
+		node->LoadClouds();
+		const auto onRender = [](const std::function<void()>& action)
+		{
+			auto task = Tasks::CreateTaskWithResult<std::string>("Cloud noise GPU contracts", [&]() -> std::string
+			{
+				try { action(); return {}; }
+				catch (const std::exception& error) { return error.what(); }
+			}, EThreadType::Render);
+			task->Run();
+			task->Wait();
+			if (!task->GetResult().empty()) throw std::runtime_error(task->GetResult());
+		};
+
+		TRefPtr<TestGraph> graph;
+		RHIRenderTargetPtr color, depth, linearDepth;
+		RHISceneViewSnapshot scene;
+		UboFrameData frameData{};
+		frameData.m_view = glm::rotate(glm::mat4(1), glm::radians(-45.0f), Math::vec3_Right);
+		frameData.m_projection = Math::PerspectiveRH(glm::radians(80.0f), 1.0f, 0.1f, 100000.0f);
+		frameData.m_invProjection = glm::inverse(frameData.m_projection);
+		frameData.m_cameraPosition = glm::vec4(0, 100, 0, 1);
+		frameData.m_viewportSize = glm::ivec2(Side);
+		frameData.m_cameraZNearZFar = glm::vec2(0.1f, 100000);
+		onRender([&]()
+		{
+			auto& driver = Renderer::GetDriver();
+			graph = TRefPtr<TestGraph>::Make();
+			graph->SetSampler("g_ditherPatternSampler", driver->GetDefaultTexture());
+			graph->SetSampler("g_noiseSampler", driver->GetDefaultTexture());
+			color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R16G16B16A16_SFLOAT);
+			depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT);
+			linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
+			graph->SetRenderTarget("DepthBuffer", depth);
+			node->SetRHIResource("color", color);
+			node->SetRHIResource("linearDepth", linearDepth);
+			node->PrepareCloudReadback();
+			scene.m_frameBindings = driver->CreateShaderBindings();
+			driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData", sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
+			auto params = node->GetSkyParams();
+			params.m_cloudsCoverage = 0.8f;
+			params.m_sunShaftsIntensity = 0;
+			node->SetSkyParams(params);
+			TestSkyOverlayBlending(node->GetBlitShader(), graph, scene.m_frameBindings);
+		});
+
+		std::vector<glm::vec4> clouds;
+		const auto render = [&](bool expectClouds = false)
+		{
+			onRender([&]()
+			{
+				auto& driver = Renderer::GetDriver();
+				auto commands = Renderer::GetDriverCommands();
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+				ClearColor(draw, color, glm::vec4(-1, -1, -1, 1));
+				ClearColor(draw, linearDepth, glm::vec4(frameData.m_cameraZNearZFar.y));
+				commands->ImageMemoryBarrier(draw, linearDepth, EImageLayout::ShaderReadOnlyOptimal);
+				commands->ImageMemoryBarrier(draw, depth, EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(draw, depth, 1.0f, 0);
+				commands->UpdateShaderBinding(upload, scene.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
+				Require(!expectClouds || node->AreCloudsResourcesReady(), "cloud comparison requires completed uploads before recording");
+				node->Process(graph, upload, draw, scene);
+				auto output = ReadColor(draw, color);
+				auto texture = node->GetCloudsTexture();
+				const auto extent = texture->GetExtent();
+				auto pixels = driver->CreateBuffer(size_t(extent.x) * extent.y * 8, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				commands->ImageMemoryBarrier(draw, texture, EImageLayout::TransferSrcOptimal);
+				commands->CopyImageToBuffer(draw, texture, pixels);
+				commands->ImageMemoryBarrier(draw, texture, texture->GetDefaultLayout());
+				CompleteCommands(upload, draw);
+				const auto composite = static_cast<const uint16_t*>(output->GetPointer());
+				for (uint32_t i = 0; i < Side * Side * 4; ++i)
+				{
+					const float value = glm::unpackHalf1x16(composite[i]);
+					if (!std::isfinite(value) || value < 0 || (i % 4 == 3 && value > 1))
+						throw std::runtime_error("sky composition while noise loads: component=" + std::to_string(i) +
+							", value=" + std::to_string(value) + ", draws=" + std::to_string(node->GetDrawCallStats().m_numBatches));
+				}
+				clouds.resize(size_t(extent.x) * extent.y);
+				const auto values = static_cast<const uint16_t*>(pixels->GetPointer());
+				for (size_t i = 0; i < clouds.size(); ++i)
+					for (uint32_t c = 0; c < 4; ++c)
+					{
+						clouds[i][c] = glm::unpackHalf1x16(values[i * 4 + c]);
+						Require(std::isfinite(clouds[i][c]) && clouds[i][c] >= 0,
+							"generated clouds must contain finite nonnegative radiance and opacity");
+					}
+				driver->TrackResources_ThreadSafe();
+			});
+		};
+
+		BackgroundPause pause;
+		std::array<Tasks::TaskPtr<TVector<uint8_t>>, 2> noiseTasks;
+		for (uint32_t frame = 0; frame < 3; ++frame)
+		{
+			render();
+			onRender([&]()
+			{
+				noiseTasks = node->GetNoiseTasks();
+				Require(noiseTasks[0] && noiseTasks[1] && !noiseTasks[0]->IsFinished() && !noiseTasks[1]->IsFinished(),
+					"held Background generation must remain pending after rendering");
+				Require(!node->AreCloudsResourcesReady(), "pending generation must not enable clouds");
+			});
+			Require(std::all_of(clouds.begin(), clouds.end(), [](auto pixel) { return pixel == glm::vec4(0); }),
+				"pending cloud frames must be cleared to transparent black");
+		}
+		std::cout << "Cloud noise pending: three completed GPU frames while Background is held passed\n";
+		pause.Resume();
+		const auto started = std::chrono::steady_clock::now();
+		for (auto task : noiseTasks) task->Wait();
+		std::cout << "Cloud noise cold generation: " <<
+			std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() << " s\n";
+		render();
+		onRender([&]() { App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::RHI); });
+		render(true);
+
+		std::array<RHITexturePtr, 2> generated;
+		std::array<std::filesystem::file_time_type, 2> written;
+		onRender([&]()
+		{
+			Require(node->AreCloudsResourcesReady(), "both completed noise uploads must enable clouds");
+			generated = node->GetNoiseTextures();
+			auto& driver = Renderer::GetDriver();
+			for (uint32_t n = 0; n < sizes.size(); ++n)
+			{
+				TVector<uint8_t> cached;
+				const auto path = workspace / "Cache" / names[n];
+				Require(AssetRegistry::ReadBinaryFile(path, cached) && cached.Num() == size_t(sizes[n]) * sizes[n] * sizes[n],
+					"real cloud generation must save the complete derived volume");
+				written[n] = std::filesystem::last_write_time(path);
+				const auto& generatedBytes = noiseTasks[n]->GetResult();
+				Require(cached.Num() == generatedBytes.Num() &&
+					std::memcmp(cached.GetData(), generatedBytes.GetData(), cached.Num()) == 0,
+					"the persisted noise must equal the actual Background task result");
+				auto pixels = driver->CreateBuffer(cached.Num(), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto commands = Renderer::GetDriverCommands();
+				commands->BeginCommandList(draw, true);
+				commands->ImageMemoryBarrier(draw, generated[n], EImageLayout::TransferSrcOptimal);
+				draw->m_vulkan.m_commandBuffer->CopyImageToBuffer(*pixels->m_vulkan.m_buffer->Get(),
+					generated[n]->m_vulkan.m_image, sizes[n], sizes[n], sizes[n]);
+				commands->ImageMemoryBarrier(draw, generated[n], generated[n]->GetDefaultLayout());
+				commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+					static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+				commands->EndCommandList(draw);
+				Require(driver->SubmitCommandList_Immediate(draw), "the 3D cloud readback must complete");
+				Require(std::memcmp(cached.GetData(), pixels->GetPointer(), cached.Num()) == 0,
+					"every uploaded cloud voxel must match the generated cache bytes");
+				std::array<bool, 256> histogram{};
+				for (auto value : cached) histogram[value] = true;
+				const auto distinct = std::count(histogram.begin(), histogram.end(), true);
+				Require(distinct > 32, "real cloud noise must retain a useful range of densities");
+				std::cout << "Cloud noise " << sizes[n] << "^3: " << distinct << " distinct values; CPU/cache/GPU bytes identical\n";
+			}
+		});
+		const auto reference = clouds;
+		float minimum = 1, maximum = 0;
+		for (auto pixel : reference)
+		{
+			minimum = std::min(minimum, pixel.a);
+			maximum = std::max(maximum, pixel.a);
+			Require(pixel.a <= 1, "cloud opacity must stay normalized");
+		}
+		std::cout << "Cloud opacity range [" << minimum << ", " << maximum << "]; " << reference.size() << " pixels\n";
+		if (maximum <= 0.05f || maximum - minimum <= 0.05f)
+			throw std::runtime_error("real cloud opacity range [" + std::to_string(minimum) + ", " + std::to_string(maximum) + "]");
+
+		std::array<RHITexturePtr, 2> withoutWorley;
+		std::array<TVector<uint8_t>, 2> perlinOnly;
+		for (uint32_t n = 0; n < sizes.size(); ++n)
+		{
+			const auto size = sizes[n];
+			auto& bytes = perlinOnly[n];
+			bytes.Resize(size_t(size) * size * size);
+			for (uint32_t z = 0; z < size; ++z)
+				for (uint32_t y = 0; y < size; ++y)
+					for (uint32_t x = 0; x < size; ++x)
+					{
+						const auto uv = (glm::vec3(x, y, z) + (n == 0 ? 0.5f : 0.0f)) / float(size);
+						const float perlin = (Math::fBmTiledPerlin(uv * 5.0f, 4, 5) + 1) * 0.5f;
+						// The original magnitude bug reduced the Worley contribution to zero.
+						const float value = n == 0 ? (perlin + 1) * 0.5f : perlin * 0.625f;
+						bytes[x + y * size + z * size * size] = uint8_t(value * 255);
+					}
+		}
+		onRender([&]()
+		{
+			for (uint32_t n = 0; n < sizes.size(); ++n)
+			{
+				const auto& bytes = perlinOnly[n];
+				withoutWorley[n] = Renderer::GetDriver()->CreateTexture(bytes.GetData(), bytes.Num(), glm::ivec3(sizes[n]), 1,
+					ETextureType::Texture3D, EFormat::R8_UNORM, ETextureFiltration::Linear, ETextureClamping::Repeat,
+					ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
+			}
+			node->SetNoiseTextures(withoutWorley);
+			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::RHI);
+		});
+		render();
+		render(true);
+		size_t changed = 0;
+		for (size_t i = 0; i < reference.size(); ++i)
+			if (std::abs(reference[i].a - clouds[i].a) > 0.005f) ++changed;
+		Require(changed > reference.size() / 20, "Worley must change the rendered cloud silhouette, not only CPU bytes");
+		onRender([&]() { node->SetNoiseTextures(generated); });
+		render(true);
+		Require(reference == clouds, "restoring the generated noise must restore the same cloud pixels");
+		std::cout << "Cloud noise rendering: opacity [" << minimum << ", " << maximum << "], " << changed << "/" <<
+			reference.size() << " pixels changed without Worley; restored output identical passed\n";
+
+		onRender([&]() { node->ResetNoise(); });
+		BackgroundPause warmPause;
+		render();
+		onRender([&]() { noiseTasks = node->GetNoiseTasks(); });
+		warmPause.Resume();
+		for (auto task : noiseTasks) { Require(static_cast<bool>(task), "warm reload must schedule the real cache task"); task->Wait(); }
+		render();
+		onRender([&]() { App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::RHI); });
+		render(true);
+		Require(reference == clouds, "warm cloud cache reuse must preserve the rendered output");
+		for (uint32_t n = 0; n < sizes.size(); ++n)
+			Require(std::filesystem::last_write_time(workspace / "Cache" / names[n]) == written[n],
+				"warm noise loading must not regenerate or rewrite derived data");
+		std::cout << "Cloud noise cache: cold generation, complete 3D upload and warm pixel parity passed\n";
 	}
 
 	void TestAuthoredEnvironmentReload(const std::filesystem::path& workspace)
@@ -3980,6 +4354,11 @@ frame:
 
 namespace Sailor::Tests
 {
+	void RunCloudNoiseCommandTests(const std::filesystem::path& workspace)
+	{
+		TestGeneratedCloudNoise(workspace);
+	}
+
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace)
 	{
 		TestSkyWithoutStars(workspace);

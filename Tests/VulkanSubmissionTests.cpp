@@ -68,6 +68,7 @@ using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
 namespace Sailor::Tests { int RunPathTracerCommandTests(int argc, const char** argv); }
+namespace Sailor::Tests { int RunCloudNoiseGpu(int argc, const char** argv); }
 namespace Sailor::Tests { void RunLoggingWithoutAppTests(); }
 
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
@@ -2450,6 +2451,7 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
+		if (mode == "--gpu-cloud-noise") return Tests::RunCloudNoiseGpu(argc, argv);
 		if (mode == "--gpu-editor-protocol-host" && i + 1 < argc) return RunEditorProtocolHost(argv[i + 1]);
 #if defined(__APPLE__)
 		if (mode == "--gpu-editor-readback-graph") return RunEditorReadbackGraphGpu(argc, argv);
