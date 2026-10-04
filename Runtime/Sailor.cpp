@@ -79,6 +79,7 @@ namespace
 	std::atomic<RHI::ESceneViewRenderMode> g_editorRenderMode{ RHI::ESceneViewRenderMode::Lit };
 }
 
+App::App() = default;
 App::~App() = default;
 
 App* App::GetInstance()

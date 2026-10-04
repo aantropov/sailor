@@ -329,7 +329,7 @@ namespace Sailor
 		App(const App&) = delete;
 		App(App&&) = delete;
 
-		App() = default;
+		App();
 		~App();
 	};
 }
