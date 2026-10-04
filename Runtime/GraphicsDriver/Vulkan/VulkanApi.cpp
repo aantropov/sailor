@@ -342,12 +342,13 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 #endif
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
-	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation", "VK_LAYER_KHRONOS_synchronization2" };
+	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 
 	if (s_pInstance->bIsEnabledValidationLayers)
 	{
 		if (CheckValidationLayerSupport(validationLayers))
 		{
+			SAILOR_LOG("Requesting Vulkan validation: %s (using the layer's settings).", validationLayers[0]);
 			extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #ifndef _SHIPPING
 			extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
@@ -357,11 +358,11 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 			createInfo.enabledLayerCount = (uint32_t)validationLayers.Num();
 
 			PopulateDebugMessengerCreateInfo(debugCreateInfo);
-			createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+			createInfo.pNext = &debugCreateInfo;
 		}
 		else
 		{
-			SAILOR_LOG("Not all debug layers are supported. Validation layers will be disabled.");
+			SAILOR_LOG("Requested Vulkan validation layer %s is unavailable; continuing without validation.", validationLayers[0]);
 			s_pInstance->bIsEnabledValidationLayers = false;
 			createInfo.ppEnabledLayerNames = nullptr;
 			createInfo.enabledLayerCount = 0;
@@ -369,6 +370,7 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	}
 	else
 	{
+		SAILOR_LOG("Vulkan validation is disabled by the caller.");
 		createInfo.ppEnabledLayerNames = nullptr;
 		createInfo.enabledLayerCount = 0;
 	}

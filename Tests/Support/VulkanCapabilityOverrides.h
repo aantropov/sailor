@@ -11,6 +11,11 @@ namespace Sailor::Tests
 		SampledImageIndexing, VariableDescriptorCount, PartiallyBound, DynamicRendering
 	};
 
+	enum class ValidationLayerInventory
+	{
+		Native, None, Primary, Compatibility, Both
+	};
+
 	struct VulkanCapabilityOverrides
 	{
 		std::atomic<uint32_t> missingRenderingCommands{ 0 };
@@ -31,6 +36,12 @@ namespace Sailor::Tests
 		std::atomic<uint32_t> khrRenderingLookups{ 0 };
 		std::atomic<uint32_t> instanceTarget{ 0 };
 		std::atomic<bool> enabledKhrRendering{ false };
+		std::atomic<ValidationLayerInventory> validationLayers{ ValidationLayerInventory::Native };
+		std::atomic<uint32_t> layerEnumerationCalls{ 0 };
+		std::atomic<uint32_t> requestedLayerCount{ 0 };
+		std::atomic<bool> requestedPrimaryValidation{ false };
+		std::atomic<bool> requestedCompatibilityLayer{ false };
+		std::atomic<bool> requestedDebugMessenger{ false };
 	};
 
 	VulkanCapabilityOverrides& GetVulkanCapabilityOverrides();

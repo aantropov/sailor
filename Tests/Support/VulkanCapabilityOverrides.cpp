@@ -15,6 +15,35 @@ namespace
 {
 	using Sailor::Tests::GetVulkanCapabilityOverrides;
 	using Sailor::Tests::MissingVulkanFeature;
+	using Sailor::Tests::ValidationLayerInventory;
+
+	VKAPI_ATTR VkResult VKAPI_CALL EnumerateLayers(uint32_t* count, VkLayerProperties* properties)
+	{
+		auto& overrides = GetVulkanCapabilityOverrides();
+		const auto inventory = overrides.validationLayers.load();
+		if (inventory == ValidationLayerInventory::Native) return vkEnumerateInstanceLayerProperties(count, properties);
+		++overrides.layerEnumerationCalls;
+		const char* names[2]{};
+		uint32_t available = 0;
+		if (inventory == ValidationLayerInventory::Primary || inventory == ValidationLayerInventory::Both)
+			names[available++] = "VK_LAYER_KHRONOS_validation";
+		if (inventory == ValidationLayerInventory::Compatibility || inventory == ValidationLayerInventory::Both)
+			names[available++] = "VK_LAYER_KHRONOS_synchronization2";
+		if (!properties)
+		{
+			*count = available;
+			return VK_SUCCESS;
+		}
+		const uint32_t written = *count < available ? *count : available;
+		for (uint32_t i = 0; i < written; ++i)
+		{
+			properties[i] = {};
+			std::strcpy(properties[i].layerName, names[i]);
+			properties[i].specVersion = VK_API_VERSION_1_3;
+		}
+		*count = written;
+		return written == available ? VK_SUCCESS : VK_INCOMPLETE;
+	}
 
 	VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL GetDeviceProc(VkDevice device, const char* name)
 	{
@@ -111,6 +140,28 @@ namespace
 		auto& overrides = GetVulkanCapabilityOverrides();
 		++overrides.instanceCreateCalls;
 		overrides.instanceTarget = info->pApplicationInfo->apiVersion;
+		if (overrides.validationLayers != ValidationLayerInventory::Native)
+		{
+			overrides.requestedLayerCount = info->enabledLayerCount;
+			overrides.requestedPrimaryValidation = false;
+			overrides.requestedCompatibilityLayer = false;
+			overrides.requestedDebugMessenger = false;
+			for (uint32_t i = 0; i < info->enabledLayerCount; ++i)
+			{
+				if (std::strcmp(info->ppEnabledLayerNames[i], "VK_LAYER_KHRONOS_validation") == 0)
+					overrides.requestedPrimaryValidation = true;
+				if (std::strcmp(info->ppEnabledLayerNames[i], "VK_LAYER_KHRONOS_synchronization2") == 0)
+					overrides.requestedCompatibilityLayer = true;
+			}
+			for (auto* next = static_cast<const VkBaseInStructure*>(info->pNext); next; next = next->pNext)
+			{
+				if (next->sType == VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT)
+					overrides.requestedDebugMessenger = reinterpret_cast<const VkDebugUtilsMessengerCreateInfoEXT*>(next)->pfnUserCallback != nullptr;
+			}
+			// Observe configuration without asking a real driver to load fictional layers.
+			*instance = VK_NULL_HANDLE;
+			return VK_ERROR_INITIALIZATION_FAILED;
+		}
 		return vkCreateInstance(info, allocator, instance);
 	}
 
@@ -143,6 +194,7 @@ namespace
 	// dyld interposes other images, leaving this library's calls to Vulkan intact.
 	__attribute__((used, section("__DATA,__interpose,interposing")))
 	const struct { const void* replacement; const void* original; } interpose[] = {
+		{ reinterpret_cast<const void*>(&EnumerateLayers), reinterpret_cast<const void*>(&vkEnumerateInstanceLayerProperties) },
 		{ reinterpret_cast<const void*>(&GetDeviceProc), reinterpret_cast<const void*>(&vkGetDeviceProcAddr) },
 		{ reinterpret_cast<const void*>(&GetInstanceProc), reinterpret_cast<const void*>(&vkGetInstanceProcAddr) },
 		{ reinterpret_cast<const void*>(&GetProperties), reinterpret_cast<const void*>(&vkGetPhysicalDeviceProperties) },

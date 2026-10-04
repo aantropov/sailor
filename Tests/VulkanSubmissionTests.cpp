@@ -1667,6 +1667,29 @@ namespace
 			if (capabilityTests)
 			{
 				auto& overrides = Sailor::Tests::GetVulkanCapabilityOverrides();
+				using Layers = Sailor::Tests::ValidationLayerInventory;
+				for (auto inventory : { Layers::None, Layers::Primary, Layers::Compatibility, Layers::Both })
+				{
+					for (bool debug : { false, true })
+					{
+						const uint32_t enumerations = overrides.layerEnumerationCalls, creates = overrides.instanceCreateCalls;
+						const uint32_t devices = overrides.deviceCreateCalls;
+						overrides.validationLayers = inventory;
+						BootstrapDriver driver(0u, VK_SUCCESS, false);
+						driver.Initialize(window.GetRawPtr(), EMsaaSamples::Samples_1, debug);
+						overrides.validationLayers = Layers::Native;
+						const bool expected = debug && (inventory == Layers::Primary || inventory == Layers::Both);
+						Require(overrides.instanceCreateCalls == creates + 1u && (overrides.layerEnumerationCalls > enumerations) == debug,
+							"validation fixture must observe actual layer enumeration and instance configuration");
+						Require(overrides.requestedPrimaryValidation == expected && overrides.requestedLayerCount == (expected ? 1u : 0u) &&
+							!overrides.requestedCompatibilityLayer,
+							"an installed primary validation layer must not depend on the synchronization2 compatibility layer");
+						Require(overrides.requestedDebugMessenger == expected, "the debug callback must follow the selected validation configuration");
+						Require(!driver.IsInitialized() && !VulkanApi::GetInstance() && overrides.deviceCreateCalls == devices && driver.imageCalls == 0,
+							"fake layer configuration must stop before creating a native instance or device");
+					}
+				}
+				std::cout << "Vulkan validation selection: debug off/on, no/primary/compatibility/both inventories and debug callbacks passed\n";
 				const auto expectFailure = [&](uint32_t deviceCreates, uint32_t deviceDestroys, uint32_t instances = 1u)
 				{
 					const uint32_t creates = overrides.deviceCreateCalls, destroys = overrides.deviceDestroyCalls;
