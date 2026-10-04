@@ -324,7 +324,14 @@ target_link_libraries(VulkanSubmissionTests PRIVATE Sailor::Runtime ixwebsocket:
 if(APPLE)
     find_package(Protobuf CONFIG REQUIRED)
     target_sources(VulkanSubmissionTests PRIVATE Support/MacViewportPresentation.mm)
-    target_link_libraries(VulkanSubmissionTests PRIVATE protobuf::libprotobuf "-framework IOSurface" "-framework CoreFoundation"
+    add_library(VulkanCapabilityOverrides SHARED Support/VulkanCapabilityOverrides.cpp)
+    target_link_libraries(VulkanCapabilityOverrides PRIVATE Sailor::Runtime)
+    get_target_property(sailor_runtime_definitions Sailor::Runtime INTERFACE_COMPILE_DEFINITIONS)
+    if("SAILOR_VULKAN_DIRECT_MOLTENVK_FALLBACK" IN_LIST sailor_runtime_definitions)
+        find_library(SAILOR_TEST_MOLTENVK_LIBRARY NAMES MoltenVK PATHS /opt/homebrew/lib /usr/local/lib REQUIRED)
+        target_link_libraries(VulkanCapabilityOverrides PRIVATE ${SAILOR_TEST_MOLTENVK_LIBRARY})
+    endif()
+    target_link_libraries(VulkanSubmissionTests PRIVATE VulkanCapabilityOverrides protobuf::libprotobuf "-framework IOSurface" "-framework CoreFoundation"
         "-framework QuartzCore" "-framework Metal")
 endif()
 # GPU scenarios are explicit command-line modes; default CTest needs no device.

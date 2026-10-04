@@ -59,6 +59,72 @@ namespace
 		return TRefPtr<PushConstantStageProbe>::Make(TVector<VkPushConstantRange>(ranges));
 	}
 
+	void TestRequiredDeviceFeatures()
+	{
+		VulkanDeviceFeatures features;
+		features.m_apiVersion = VK_API_VERSION_1_2;
+		features.m_base.features.samplerAnisotropy = VK_TRUE;
+		features.m_base.features.drawIndirectFirstInstance = VK_TRUE;
+		features.m_base.features.independentBlend = VK_TRUE;
+		features.m_core12.runtimeDescriptorArray = VK_TRUE;
+		features.m_core12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+		features.m_core12.descriptorBindingVariableDescriptorCount = VK_TRUE;
+		features.m_core12.descriptorBindingPartiallyBound = VK_TRUE;
+		features.m_rendering.dynamicRendering = VK_TRUE;
+		Require(!features.GetMissingRequirement(), "Vulkan 1.2 with required rendering features must be accepted");
+		for (uint32_t version : { VK_API_VERSION_1_0, VK_API_VERSION_1_1 })
+		{
+			features.m_apiVersion = version;
+			Require(features.GetMissingRequirement(), "a successful instance must not imply an unsupported device API is usable");
+		}
+		features.m_apiVersion = VK_API_VERSION_1_3;
+		Require(!features.GetMissingRequirement(), "core dynamic rendering must preserve the supported path");
+		const std::pair<VkBool32*, const char*> required[] = {
+			{ &features.m_base.features.samplerAnisotropy, "samplerAnisotropy" },
+			{ &features.m_base.features.drawIndirectFirstInstance, "drawIndirectFirstInstance" },
+			{ &features.m_base.features.independentBlend, "independentBlend" },
+			{ &features.m_core12.runtimeDescriptorArray, "runtimeDescriptorArray" },
+			{ &features.m_core12.shaderSampledImageArrayNonUniformIndexing, "shaderSampledImageArrayNonUniformIndexing" },
+			{ &features.m_core12.descriptorBindingVariableDescriptorCount, "descriptorBindingVariableDescriptorCount" },
+			{ &features.m_core12.descriptorBindingPartiallyBound, "descriptorBindingPartiallyBound" },
+			{ &features.m_rendering.dynamicRendering, "dynamicRendering" }
+		};
+		for (const auto& [feature, name] : required)
+		{
+			*feature = VK_FALSE;
+			const char* missing = features.GetMissingRequirement();
+			Require(missing && std::string(missing) == name, "missing required features must produce a specific initialization error");
+			*feature = VK_TRUE;
+		}
+		features.Enable();
+		Require(!features.GetMissingRequirement(), "device enabling must preserve the required features");
+		Require(!features.m_core12.samplerFilterMinmax && !features.m_core12.hostQueryReset &&
+			!features.m_core12.descriptorBindingUpdateUnusedWhilePending && !features.m_base.features.multiDrawIndirect,
+			"optional features must not become required or enabled without support");
+
+		for (uint32_t version : { VK_API_VERSION_1_2, VK_API_VERSION_1_3 })
+		{
+			const auto extensions = VulkanApi::GetRequiredDeviceExtensions(version);
+			const auto requiresExtension = [&](const char* name)
+			{
+				return std::any_of(extensions.begin(), extensions.end(), [&](const char* value) { return std::strcmp(value, name) == 0; });
+			};
+			Require(requiresExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME), "all device paths require swapchain support");
+			Require(requiresExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) == (version < VK_API_VERSION_1_3),
+				"only the Vulkan 1.2 path requires the KHR dynamic rendering extension name");
+			Require(!requiresExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) &&
+				!requiresExtension(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME), "promoted core features must not require obsolete extension names");
+			Require(!requiresExtension(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME) &&
+				!requiresExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME), "optional shader and submission extensions must stay optional");
+#if defined(_WIN32)
+			Require(requiresExtension(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME) &&
+				requiresExtension(VK_KHR_WIN32_KEYED_MUTEX_EXTENSION_NAME), "Windows viewport interop extensions must remain required");
+#elif defined(__APPLE__)
+			Require(requiresExtension(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME), "Apple device creation must retain portability support");
+#endif
+		}
+	}
+
 	void TestPushConstantRangesUseReflectedStagesAndDeviceLimit()
 	{
 		TVector<VkPushConstantRange> ranges;
@@ -633,6 +699,7 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "RequiredDeviceFeatures", TestRequiredDeviceFeatures },
 		{ "PushConstantRangesUseReflectedStagesAndDeviceLimit",
 			TestPushConstantRangesUseReflectedStagesAndDeviceLimit },
 		{ "PushConstantUpdatesClipPaddingAndPreservePartialWrites",

@@ -106,8 +106,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		static void ExchangeBeginRendering(VulkanDevice& device, PFN_vkCmdBeginRenderingKHR& dispatch)
 		{
-			auto& active = device.pVkCmdBeginRenderingKHR ? device.pVkCmdBeginRenderingKHR : device.pVkCmdBeginRendering;
-			std::swap(active, dispatch);
+			std::swap(device.pVkCmdBeginRendering, dispatch);
 		}
 	};
 }

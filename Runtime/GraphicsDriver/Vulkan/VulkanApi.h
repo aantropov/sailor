@@ -115,6 +115,25 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VkPresentModeKHR> m_presentModes;
 	};
 
+	struct VulkanDeviceFeatures
+	{
+		static constexpr uint32_t TargetApiVersion = VK_API_VERSION_1_3;
+		static constexpr uint32_t MinimumApiVersion = VK_API_VERSION_1_2;
+
+		uint32_t m_apiVersion = 0;
+		VkPhysicalDeviceFeatures2 m_base{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+		VkPhysicalDeviceVulkan11Features m_core11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+		VkPhysicalDeviceVulkan12Features m_core12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+		VkPhysicalDeviceDynamicRenderingFeatures m_rendering{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES };
+		VkPhysicalDeviceMaintenance4Features m_maintenance4{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES };
+		VkPhysicalDeviceSynchronization2Features m_synchronization2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES };
+		VkPhysicalDeviceShaderAtomicFloatFeaturesEXT m_atomicFloat{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT };
+
+		SAILOR_API void Query(VkPhysicalDevice device, const TSet<std::string>& extensions);
+		SAILOR_API const char* GetMissingRequirement() const;
+		SAILOR_API void Enable();
+	};
+
 	class VulkanApi : public TSingleton<VulkanApi>
 	{
 	public:
@@ -146,33 +165,31 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
 
 		SAILOR_API static VkPhysicalDevice PickPhysicalDevice(VulkanSurfacePtr surface);
-		SAILOR_API static void GetRequiredExtensions(TVector<const char*>& requiredDeviceExtensions, TVector<const char*>& requiredInstanceExtensions)
+		SAILOR_API static TVector<const char*> GetRequiredDeviceExtensions(uint32_t apiVersion)
 		{
-			requiredDeviceExtensions =
+			TVector<const char*> extensions =
 			{
 				VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 			};
 
-#if !defined(__APPLE__)
-			requiredDeviceExtensions.Add(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
-			requiredDeviceExtensions.Add("VK_KHR_dynamic_rendering");
+			if (apiVersion < VK_API_VERSION_1_3)
+			{
+				extensions.Add(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+			}
 
-			// Relax interface matching rules for vector widths.
-			requiredDeviceExtensions.Add(VK_KHR_MAINTENANCE_4_EXTENSION_NAME);
-			requiredDeviceExtensions.Add(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
-			requiredDeviceExtensions.Add(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
-			requiredDeviceExtensions.Add(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+#if !defined(__APPLE__)
+			extensions.Add(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
 #endif
 
 #if defined(_WIN32)
-			requiredDeviceExtensions.Add(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
-			requiredDeviceExtensions.Add(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
-			requiredDeviceExtensions.Add(VK_KHR_WIN32_KEYED_MUTEX_EXTENSION_NAME);
+			extensions.Add(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+			extensions.Add(VK_KHR_WIN32_KEYED_MUTEX_EXTENSION_NAME);
 #endif
 
 #if defined(__APPLE__)
-			requiredDeviceExtensions.Add(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+			extensions.Add(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
 #endif
+			return extensions;
 		}
 
 		SAILOR_API static VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);
@@ -284,7 +301,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static uint32_t GetNumSupportedExtensions();
 		SAILOR_API static void PrintSupportedExtensions();
 
-		SAILOR_API static bool CheckDeviceExtensionSupport(VkPhysicalDevice device);
 		SAILOR_API static bool CheckValidationLayerSupport(const TVector<const char*>& validationLayers);
 
 		SAILOR_API static bool IsDeviceSuitable(VkPhysicalDevice device, VulkanSurfacePtr surface);

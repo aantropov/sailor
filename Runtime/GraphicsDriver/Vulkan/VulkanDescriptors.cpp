@@ -170,13 +170,11 @@ void VulkanDescriptorSetLayout::Compile()
 		bindingFlagsStorage.Resize(layoutInfo.bindingCount);
 		for (uint32_t i = 0; i < bindingFlagsStorage.Num(); i++)
 		{
-			VkDescriptorBindingFlags flag =
-				VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-				VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+			VkDescriptorBindingFlags flag = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
 
 			if (bUseUpdateAfterBind)
 			{
-				flag |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+				flag |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
 			}
 
 			if ((int32_t)m_descriptorSetLayoutBindings[i].binding == m_variableDescriptorBinding)

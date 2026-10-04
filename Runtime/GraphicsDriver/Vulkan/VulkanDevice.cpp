@@ -92,16 +92,14 @@ VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples reques
 	if (m_physicalDevice == VK_NULL_HANDLE)
 	{
 		SAILOR_LOG_ERROR("Failed to pick a Vulkan physical device.");
-		std::abort();
+		return;
 	}
 
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProperties);
 
 	m_maxAllowedMsaaSamples = CalculateMaxAllowedMSAASamples(m_physicalDeviceProperties.limits.framebufferColorSampleCounts & m_physicalDeviceProperties.limits.framebufferDepthSampleCounts);
 	m_currentMsaaSamples = (VkSampleCountFlagBits)(std::min((uint8_t)requestMsaa, (uint8_t)m_maxAllowedMsaaSamples));
-	m_bSupportsMultiDrawIndirect = m_physicalDeviceProperties.limits.maxDrawIndirectCount > 1;
-
-	CreateLogicalDevice(m_physicalDevice);
+	if (!CreateLogicalDevice(m_physicalDevice)) return;
 
 	SAILOR_LOG("maxDescriptorSetSampledImages = %d", (int32_t)m_physicalDeviceProperties.limits.maxDescriptorSetSampledImages);
 	SAILOR_LOG("maxSamplerAnisotropy = %.2f", m_physicalDeviceProperties.limits.maxSamplerAnisotropy);
@@ -152,57 +150,17 @@ VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples reques
 
 void VulkanDevice::vkCmdBeginRenderingKHR(VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo)
 {
-	if (pVkCmdBeginRenderingKHR)
-	{
-		pVkCmdBeginRenderingKHR(commandBuffer, pRenderingInfo);
-		return;
-	}
-
-	if (pVkCmdBeginRendering)
-	{
-		pVkCmdBeginRendering(commandBuffer, pRenderingInfo);
-		return;
-	}
-
-	if (!m_bLoggedMissingBeginRendering)
-	{
-		SAILOR_LOG_ERROR(
-			"Dynamic rendering begin is unavailable. Both vkCmdBeginRenderingKHR and vkCmdBeginRendering are null. "
-			"core13=%d, khrExtension=%d",
-			(int32_t)m_bSupportsDynamicRenderingCore13,
-			(int32_t)m_bSupportsDynamicRenderingKHR);
-		m_bLoggedMissingBeginRendering = true;
-	}
+	pVkCmdBeginRendering(commandBuffer, pRenderingInfo);
 }
 
 void VulkanDevice::vkCmdEndRenderingKHR(VkCommandBuffer commandBuffer)
 {
-	if (pVkCmdEndRenderingKHR)
-	{
-		pVkCmdEndRenderingKHR(commandBuffer);
-		return;
-	}
-
-	if (pVkCmdEndRendering)
-	{
-		pVkCmdEndRendering(commandBuffer);
-		return;
-	}
-
-	if (!m_bLoggedMissingEndRendering)
-	{
-		SAILOR_LOG_ERROR(
-			"Dynamic rendering end is unavailable. Both vkCmdEndRenderingKHR and vkCmdEndRendering are null. "
-			"core13=%d, khrExtension=%d",
-			(int32_t)m_bSupportsDynamicRenderingCore13,
-			(int32_t)m_bSupportsDynamicRenderingKHR);
-		m_bLoggedMissingEndRendering = true;
-	}
+	pVkCmdEndRendering(commandBuffer);
 }
 
 VulkanDevice::~VulkanDevice()
 {
-	vkDestroyDevice(m_device, nullptr);
+	if (m_device) vkDestroyDevice(m_device, nullptr);
 }
 
 bool VulkanDevice::BeginConditionalDestroy()
@@ -569,42 +527,29 @@ bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 	return true;
 }
 
-template<typename T>
-void AddFeature(TVector<TVector<uint8_t>>& bytes, typename TFunction<void, T&>::type init)
-{
-	T newFeature{};
-	newFeature.pNext = nullptr;
-
-	init(newFeature);
-
-	TVector<uint8_t> byteRepresentation(reinterpret_cast<uint8_t*>(&newFeature), sizeof(T));
-	bytes.Emplace(std::move(byteRepresentation));
-
-	if (bytes.Num() > 1)
-	{
-		// Link previous
-		((T*)(bytes[bytes.Num() - 2].GetData()))->pNext = bytes[bytes.Num() - 1].GetData();
-	}
-}
-
-
 void VulkanDevice::CreateFrameDependencies()
 {
 	m_frameDeps.Resize(VulkanApi::MaxFramesInFlight);
 }
 
-void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
+bool VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 {
-	m_queueFamilies = VulkanApi::FindQueueFamilies(physicalDevice, m_surface);
+	supportedDeviceExtensions = VulkanApi::GetSupportedDeviceExtensions(physicalDevice);
+	VulkanDeviceFeatures features;
+	features.Query(physicalDevice, supportedDeviceExtensions);
+	if (const char* missing = features.GetMissingRequirement())
+	{
+		SAILOR_LOG_ERROR("Cannot create Vulkan device: required feature %s is unavailable.", missing);
+		return false;
+	}
 
+	m_queueFamilies = VulkanApi::FindQueueFamilies(physicalDevice, m_surface);
 	TVector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	TSet<uint32_t> uniqueQueueFamilies = { m_queueFamilies.m_graphicsFamily.value(),
 		m_queueFamilies.m_presentFamily.value(),
 		m_queueFamilies.m_transferFamily.value(),
 		m_queueFamilies.m_computeFamily.value() };
-
 	float queuePriority = 1.0f;
-
 	for (uint32_t queueFamily : uniqueQueueFamilies)
 	{
 		VkDeviceQueueCreateInfo queueCreateInfo{ VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
@@ -614,214 +559,89 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		queueCreateInfos.Add(queueCreateInfo);
 	}
 
-	TVector<const char*> deviceExtensions;
-	TVector<const char*> instanceExtensions;
-	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
-	supportedDeviceExtensions = VulkanApi::GetSupportedDeviceExtensions(physicalDevice);
-
-#ifndef _SHIPPING
-	if (supportedDeviceExtensions.Contains(std::string(VK_EXT_DEBUG_MARKER_EXTENSION_NAME)))
-	{
-		deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
-	}
-#endif
-
-	TVector<TVector<uint8_t>> features;
+	auto deviceExtensions = VulkanApi::GetRequiredDeviceExtensions(features.m_apiVersion);
 	const auto hasDeviceExtension = [&](const char* extensionName)
 	{
 		return supportedDeviceExtensions.Contains(std::string(extensionName));
 	};
-
+#ifndef _SHIPPING
+	if (hasDeviceExtension(VK_EXT_DEBUG_MARKER_EXTENSION_NAME)) deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
+#endif
 #if defined(__APPLE__)
 	m_bSupportsMetalObjects = hasDeviceExtension(VK_EXT_METAL_OBJECTS_EXTENSION_NAME);
 	if (m_bSupportsMetalObjects) deviceExtensions.Add(VK_EXT_METAL_OBJECTS_EXTENSION_NAME);
 #endif
-
-	VkPhysicalDeviceFeatures2 supportedFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-	VkPhysicalDeviceVulkan11Features supportedCore11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-	VkPhysicalDeviceVulkan12Features supportedCore12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-	VkPhysicalDeviceVulkan13Features supportedCore13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
-	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT supportedAtomicFloat{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT };
-	VkPhysicalDeviceProperties2 supportedProperties2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-	VkPhysicalDeviceVulkan12Properties supportedCore12Properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES };
-
-	supportedFeatures2.pNext = &supportedCore11;
-	supportedCore11.pNext = &supportedCore12;
-	supportedCore12.pNext = &supportedCore13;
-	supportedCore13.pNext = &supportedAtomicFloat;
-	supportedAtomicFloat.pNext = nullptr;
-
-	supportedProperties2.pNext = &supportedCore12Properties;
-	supportedCore12Properties.pNext = nullptr;
-
-	vkGetPhysicalDeviceFeatures2(physicalDevice, &supportedFeatures2);
-	vkGetPhysicalDeviceProperties2(physicalDevice, &supportedProperties2);
-
-	m_depthStencilResolveProperties.supportedDepthResolveModes = supportedCore12Properties.supportedDepthResolveModes;
-	m_depthStencilResolveProperties.supportedStencilResolveModes = supportedCore12Properties.supportedStencilResolveModes;
-	m_depthStencilResolveProperties.independentResolveNone = supportedCore12Properties.independentResolveNone;
-	m_depthStencilResolveProperties.independentResolve = supportedCore12Properties.independentResolve;
-
-	m_bSupportsDynamicRenderingCore13 =
-		(VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion) > 1 ||
-		(VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion) == 1 && VK_VERSION_MINOR(m_physicalDeviceProperties.apiVersion) >= 3)) &&
-		(supportedCore13.dynamicRendering == VK_TRUE);
-	m_bSupportsDynamicRenderingKHR = hasDeviceExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
-
-	SAILOR_LOG(
-		"Dynamic rendering capabilities: core13=%d (api=%u.%u.%u, feature=%d), extension VK_KHR_dynamic_rendering=%d",
-		(int32_t)m_bSupportsDynamicRenderingCore13,
-		VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion),
-		VK_VERSION_MINOR(m_physicalDeviceProperties.apiVersion),
-		VK_VERSION_PATCH(m_physicalDeviceProperties.apiVersion),
-		(int32_t)supportedCore13.dynamicRendering,
-		(int32_t)m_bSupportsDynamicRenderingKHR);
-
-	if (!m_bSupportsDynamicRenderingCore13 && !m_bSupportsDynamicRenderingKHR)
+	if (features.m_apiVersion < VK_API_VERSION_1_3)
 	{
-		SAILOR_LOG_ERROR("Dynamic rendering is not supported by the selected device. Rendering may fail.");
-	}
-
-	/*
-	AddFeature<VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT>(features, [](auto& unusedAttachments)
+		for (const char* extension : { VK_KHR_MAINTENANCE_4_EXTENSION_NAME, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME })
 		{
-			unusedAttachments.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_FEATURES_EXT;
-			unusedAttachments.dynamicRenderingUnusedAttachments = VK_TRUE;
-		});
-	*/
-
-	// We need multiply blending for clouds shadows
-	// The extension is not supported in DEBUG configuration for some reason
-	if (hasDeviceExtension(VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME))
-	{
-		AddFeature<VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT>(features, [](auto& features)
-			{
-				features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT;
-				features.advancedBlendCoherentOperations = VK_TRUE;
-			});
-
-		deviceExtensions.Add(VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME);
+			if (hasDeviceExtension(extension)) deviceExtensions.Add(extension);
+		}
 	}
-
-	// Create device that supports VK_EXT_shader_atomic_float (GL_EXT_shader_atomic_float)
-	// this allows to perform atomic operations on storage buffers
 	if (hasDeviceExtension(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME))
 	{
-		AddFeature<VkPhysicalDeviceShaderAtomicFloatFeaturesEXT>(features, [&](auto& floatFeatures)
-			{
-				floatFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
-				floatFeatures.shaderBufferFloat32AtomicAdd = supportedAtomicFloat.shaderBufferFloat32AtomicAdd;
-			});
+		deviceExtensions.Add(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
 	}
 
-	AddFeature<VkPhysicalDeviceFeatures2 >(features, [&](auto& physicalDeviceFeatures2)
-		{
-			physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-			physicalDeviceFeatures2.features = supportedFeatures2.features;
-			physicalDeviceFeatures2.features.sampleRateShading = VK_FALSE;
-			physicalDeviceFeatures2.features.multiDrawIndirect = supportedFeatures2.features.multiDrawIndirect;
+	VkPhysicalDeviceVulkan12Properties core12Properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES };
+	VkPhysicalDeviceProperties2 properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &core12Properties };
+	vkGetPhysicalDeviceProperties2(physicalDevice, &properties);
+	m_depthStencilResolveProperties.supportedDepthResolveModes = core12Properties.supportedDepthResolveModes;
+	m_depthStencilResolveProperties.supportedStencilResolveModes = core12Properties.supportedStencilResolveModes;
+	m_depthStencilResolveProperties.independentResolveNone = core12Properties.independentResolveNone;
+	m_depthStencilResolveProperties.independentResolve = core12Properties.independentResolve;
 
-#ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
-			physicalDeviceFeatures2.features.sampleRateShading = supportedFeatures2.features.sampleRateShading;
-#endif
-		});
-
-	AddFeature<VkPhysicalDeviceVulkan13Features>(features, [&](auto& core13)
-		{
-			core13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-			core13.maintenance4 = supportedCore13.maintenance4;
-			core13.dynamicRendering = supportedCore13.dynamicRendering;
-			core13.synchronization2 = supportedCore13.synchronization2;
-		});
-
-	AddFeature<VkPhysicalDeviceVulkan11Features>(features, [&](auto& core11)
-		{
-			core11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
-			core11.shaderDrawParameters = supportedCore11.shaderDrawParameters;
-		});
-
+	features.Enable();
+	const auto& core12 = features.m_core12;
 	m_bSupportsDescriptorUpdateAfterBind =
-		supportedCore12.descriptorIndexing &&
-		supportedCore12.descriptorBindingPartiallyBound &&
-		supportedCore12.descriptorBindingUpdateUnusedWhilePending &&
-		supportedCore12.descriptorBindingSampledImageUpdateAfterBind &&
-		supportedCore12.descriptorBindingStorageBufferUpdateAfterBind &&
-		supportedCore12.descriptorBindingUniformBufferUpdateAfterBind &&
-		supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
-	m_bSupportsHostQueryReset = supportedCore12.hostQueryReset == VK_TRUE;
-	m_bSupportsSamplerFilterMinmax = supportedCore12.samplerFilterMinmax == VK_TRUE;
-
-
-	AddFeature<VkPhysicalDeviceVulkan12Features>(features, [&](auto& core12)
-		{
-			core12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-			core12.samplerFilterMinmax = supportedCore12.samplerFilterMinmax;
-			core12.runtimeDescriptorArray = supportedCore12.runtimeDescriptorArray;
-			core12.shaderSampledImageArrayNonUniformIndexing = supportedCore12.shaderSampledImageArrayNonUniformIndexing;
-			core12.shaderStorageBufferArrayNonUniformIndexing = supportedCore12.shaderStorageBufferArrayNonUniformIndexing;
-			core12.shaderStorageImageArrayNonUniformIndexing = supportedCore12.shaderStorageImageArrayNonUniformIndexing;
-			core12.shaderUniformBufferArrayNonUniformIndexing = supportedCore12.shaderUniformBufferArrayNonUniformIndexing;
-			core12.descriptorBindingSampledImageUpdateAfterBind = supportedCore12.descriptorBindingSampledImageUpdateAfterBind;
-			core12.descriptorBindingPartiallyBound = supportedCore12.descriptorBindingPartiallyBound;
-			core12.descriptorBindingStorageBufferUpdateAfterBind = supportedCore12.descriptorBindingStorageBufferUpdateAfterBind;
-			core12.descriptorBindingUniformBufferUpdateAfterBind = supportedCore12.descriptorBindingUniformBufferUpdateAfterBind;
-			core12.descriptorBindingStorageImageUpdateAfterBind = supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
-			core12.descriptorBindingVariableDescriptorCount = supportedCore12.descriptorBindingVariableDescriptorCount;
-			core12.descriptorIndexing = supportedCore12.descriptorIndexing;
-			core12.descriptorBindingUpdateUnusedWhilePending = supportedCore12.descriptorBindingUpdateUnusedWhilePending;
-			core12.hostQueryReset = supportedCore12.hostQueryReset;
-		});
-
-	SAILOR_LOG("m_bSupportsDescriptorUpdateAfterBind = %d", (int32_t)m_bSupportsDescriptorUpdateAfterBind);
-	SAILOR_LOG("m_bSupportsHostQueryReset = %d", (int32_t)m_bSupportsHostQueryReset);
-	SAILOR_LOG("maxDescriptorSetUpdateAfterBindSamplers = %d", (int32_t)supportedCore12Properties.maxDescriptorSetUpdateAfterBindSamplers);
+		core12.descriptorIndexing &&
+		core12.descriptorBindingPartiallyBound &&
+		core12.descriptorBindingUpdateUnusedWhilePending &&
+		core12.descriptorBindingSampledImageUpdateAfterBind &&
+		core12.descriptorBindingStorageBufferUpdateAfterBind &&
+		core12.descriptorBindingUniformBufferUpdateAfterBind &&
+		core12.descriptorBindingStorageImageUpdateAfterBind;
+	m_bSupportsHostQueryReset = core12.hostQueryReset == VK_TRUE;
+	m_bSupportsSamplerFilterMinmax = core12.samplerFilterMinmax == VK_TRUE;
+	m_bSupportsMultiDrawIndirect = features.m_base.features.multiDrawIndirect &&
+		m_physicalDeviceProperties.limits.maxDrawIndirectCount > 1;
 
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
 	createInfo.ppEnabledExtensionNames = deviceExtensions.GetData();
 	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.Num());
 	createInfo.pQueueCreateInfos = queueCreateInfos.GetData();
-	createInfo.pEnabledFeatures = VK_NULL_HANDLE;
+	createInfo.pNext = &features.m_base;
 
-	createInfo.pNext = features[0].GetData();
-
-	// Compatibility with older Vulkan drivers
-	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
-	if (VulkanApi::GetInstance()->IsEnabledValidationLayers())
+	VkDevice device = VK_NULL_HANDLE;
+	const VkResult result = vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
+	if (result != VK_SUCCESS)
 	{
-		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.Num());
-		createInfo.ppEnabledLayerNames = validationLayers.GetData();
-	}
-	else
-	{
-		createInfo.enabledLayerCount = 0;
+		SAILOR_LOG_ERROR("Failed to create Vulkan device: %d", static_cast<int32_t>(result));
+		return false;
 	}
 
-	VK_CHECK(vkCreateDevice(physicalDevice, &createInfo, nullptr, &m_device));
+	const bool coreRendering = features.m_apiVersion >= VK_API_VERSION_1_3;
+	const auto beginRendering = reinterpret_cast<PFN_vkCmdBeginRendering>(
+		vkGetDeviceProcAddr(device, coreRendering ? "vkCmdBeginRendering" : "vkCmdBeginRenderingKHR"));
+	const auto endRendering = reinterpret_cast<PFN_vkCmdEndRendering>(
+		vkGetDeviceProcAddr(device, coreRendering ? "vkCmdEndRendering" : "vkCmdEndRenderingKHR"));
+	if (!beginRendering || !endRendering)
+	{
+		SAILOR_LOG_ERROR("Required Vulkan %s dynamic rendering commands are unavailable (begin=%d, end=%d).",
+			coreRendering ? "core" : "KHR", beginRendering != nullptr, endRendering != nullptr);
+		vkDestroyDevice(device, nullptr);
+		return false;
+	}
+
+	m_device = device;
+	pVkCmdBeginRendering = beginRendering;
+	pVkCmdEndRendering = endRendering;
 	m_getFenceStatus = reinterpret_cast<PFN_vkGetFenceStatus>(vkGetDeviceProcAddr(m_device, "vkGetFenceStatus"));
 	m_waitForFences = reinterpret_cast<PFN_vkWaitForFences>(vkGetDeviceProcAddr(m_device, "vkWaitForFences"));
-
-	pVkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdBeginRenderingKHR");
-	pVkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdEndRenderingKHR");
-	pVkCmdBeginRendering = (PFN_vkCmdBeginRendering)vkGetDeviceProcAddr(m_device, "vkCmdBeginRendering");
-	pVkCmdEndRendering = (PFN_vkCmdEndRendering)vkGetDeviceProcAddr(m_device, "vkCmdEndRendering");
-
-	SAILOR_LOG(
-		"Dynamic rendering proc addresses: vkCmdBeginRenderingKHR=%d, vkCmdEndRenderingKHR=%d, vkCmdBeginRendering=%d, vkCmdEndRendering=%d",
-		(int32_t)(pVkCmdBeginRenderingKHR != nullptr),
-		(int32_t)(pVkCmdEndRenderingKHR != nullptr),
-		(int32_t)(pVkCmdBeginRendering != nullptr),
-		(int32_t)(pVkCmdEndRendering != nullptr));
-
-	if (!pVkCmdBeginRenderingKHR && !pVkCmdBeginRendering)
-	{
-		SAILOR_LOG_ERROR("Failed to load Vulkan dynamic rendering begin function pointers.");
-	}
-
-	if (!pVkCmdEndRenderingKHR && !pVkCmdEndRendering)
-	{
-		SAILOR_LOG_ERROR("Failed to load Vulkan dynamic rendering end function pointers.");
-	}
+	SAILOR_LOG("Vulkan dynamic rendering: %s", coreRendering ? "core 1.3" : "KHR 1.2");
+	SAILOR_LOG("m_bSupportsDescriptorUpdateAfterBind = %d", static_cast<int32_t>(m_bSupportsDescriptorUpdateAfterBind));
+	SAILOR_LOG("m_bSupportsHostQueryReset = %d", static_cast<int32_t>(m_bSupportsHostQueryReset));
 
 	// A VkQueue requires external synchronization. Queue families commonly alias
 	// the same family/index on MoltenVK, so all aliases must share one wrapper and
@@ -856,6 +676,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	m_computeQueue = getOrCreateQueue(m_queueFamilies.m_computeFamily.value());
 	m_transferQueue = getOrCreateQueue(m_queueFamilies.m_transferFamily.value());
 	m_presentQueue = getOrCreateQueue(m_queueFamilies.m_presentFamily.value());
+	return true;
 }
 
 void VulkanDevice::CreateWin32Surface(const Platform::Window* viewport)

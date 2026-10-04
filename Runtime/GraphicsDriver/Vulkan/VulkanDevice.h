@@ -167,7 +167,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();
 
-		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
+		SAILOR_API bool CreateLogicalDevice(VkPhysicalDevice physicalDevice);
 		SAILOR_API void CreateWin32Surface(const Platform::Window* pViewport);
 		SAILOR_API bool CreateSwapchain(Platform::Window* pViewport);
 		SAILOR_API bool RecreateSwapchain(Platform::Window* pViewport);
@@ -265,12 +265,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Dynamic rendering extension
 		PFN_vkCmdBeginRendering pVkCmdBeginRendering{};
 		PFN_vkCmdEndRendering pVkCmdEndRendering{};
-		PFN_vkCmdBeginRenderingKHR pVkCmdBeginRenderingKHR{};
-		PFN_vkCmdEndRenderingKHR pVkCmdEndRenderingKHR{};
-		bool m_bSupportsDynamicRenderingCore13 = false;
-		bool m_bSupportsDynamicRenderingKHR = false;
-		bool m_bLoggedMissingBeginRendering = false;
-		bool m_bLoggedMissingEndRendering = false;
 
 		PFN_vkSetDebugUtilsObjectNameEXT m_pSetDebugUtilsObjectNameEXT{};
 		PFN_vkCmdDebugMarkerBeginEXT m_pCmdDebugMarkerBegin{};

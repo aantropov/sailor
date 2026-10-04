@@ -10,6 +10,7 @@
 #include <ixwebsocket/IXNetSystem.h>
 #if defined(__APPLE__)
 #include "Support/MacViewportPresentation.h"
+#include "Support/VulkanCapabilityOverrides.h"
 #endif
 #include "FrameGraph/ParticlesNode.h"
 #include "FrameGraph/EditorReadbackNode.h"
@@ -61,6 +62,7 @@ extern "C" VKAPI_ATTR VkResult VKAPI_CALL vkDeviceWaitIdle(VkDevice device)
 	++deviceIdleCalls;
 	return nativeWait ? nativeWait(device) : VK_ERROR_INITIALIZATION_FAILED;
 }
+
 #endif
 
 using namespace Sailor;
@@ -1641,7 +1643,7 @@ namespace
 		TUniquePtr<SubmitOverride> m_submit;
 	};
 
-	int RunBootstrapGpu(int argc, const char** argv, bool waitFailure, bool lost)
+	int RunBootstrapGpu(int argc, const char** argv, bool waitFailure, bool lost, bool capabilityTests = false)
 	{
 		int result = 1;
 		try
@@ -1660,6 +1662,73 @@ namespace
 			window = TUniquePtr<Win32::Window>::Make();
 			window->Create("VulkanBootstrapTests", "VulkanBootstrapTests", 320, 240, false, false, 0);
 			window->Show(false);
+
+#if defined(__APPLE__)
+			if (capabilityTests)
+			{
+				auto& overrides = Sailor::Tests::GetVulkanCapabilityOverrides();
+				const auto expectFailure = [&](uint32_t deviceCreates, uint32_t deviceDestroys, uint32_t instances = 1u)
+				{
+					const uint32_t creates = overrides.deviceCreateCalls, destroys = overrides.deviceDestroyCalls;
+					const uint32_t instanceCreates = overrides.instanceCreateCalls, instanceDestroys = overrides.instanceDestroyCalls;
+					const uint32_t surfaces = overrides.surfaceDestroyCalls;
+					const uint32_t samplers = overrides.samplerCreateCalls, buffers = overrides.bufferCreateCalls;
+					BootstrapDriver driver(0u, VK_SUCCESS, false);
+					driver.Initialize(window.GetRawPtr(), EMsaaSamples::Samples_1, false);
+					Require(!driver.IsInitialized() && driver.imageCalls == 0 && !driver.HasAnyDefault(),
+						"unsupported capabilities must stop initialization before fallback resources");
+					Require(!VulkanApi::GetInstance(), "failed capability initialization must release the Vulkan instance");
+					Require(overrides.deviceCreateCalls == creates + deviceCreates && overrides.deviceDestroyCalls == destroys + deviceDestroys,
+						"failed initialization must destroy exactly the logical devices it successfully created");
+					Require(overrides.instanceCreateCalls == instanceCreates + instances && overrides.instanceDestroyCalls == instanceDestroys + instances &&
+						overrides.surfaceDestroyCalls == surfaces + instances, "failed initialization must release its native instance and surface");
+					Require(overrides.samplerCreateCalls == samplers && overrides.bufferCreateCalls == buffers,
+						"capability refusal must precede self-retaining sampler caches and buffer creation");
+				};
+				for (uint32_t version : { VK_API_VERSION_1_2, VK_API_VERSION_1_3 })
+				{
+					overrides.deviceApiVersion = version;
+					for (uint32_t missing : { 1u, 2u, 3u })
+					{
+						overrides.hiddenRenderingCommands = 0;
+						overrides.missingRenderingCommands = missing;
+						expectFailure(1u, 1u);
+						overrides.missingRenderingCommands = 0;
+						Require(overrides.hiddenRenderingCommands > 0, "capability fixture must intercept the actual device dispatch lookup");
+					}
+					using Missing = Sailor::Tests::MissingVulkanFeature;
+					for (auto missing : { Missing::Anisotropy, Missing::FirstInstance, Missing::IndependentBlend, Missing::RuntimeArray,
+						Missing::SampledImageIndexing, Missing::VariableDescriptorCount, Missing::PartiallyBound, Missing::DynamicRendering })
+					{
+						const uint32_t queries = overrides.featureQueries;
+						overrides.missingFeature = missing;
+						expectFailure(0u, 0u);
+						overrides.missingFeature = Missing::None;
+						Require(overrides.featureQueries > queries, "capability fixture must intercept the actual feature query");
+					}
+				}
+				for (uint32_t version : { VK_API_VERSION_1_0, VK_API_VERSION_1_1 })
+				{
+					overrides.deviceApiVersion = version;
+					const uint32_t queries = overrides.featureQueries;
+					expectFailure(0u, 0u);
+					Require(overrides.featureQueries == queries, "old device APIs must be rejected before querying newer feature structures");
+				}
+				overrides.deviceApiVersion = 0;
+				for (VkResult result : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+				{
+					overrides.deviceCreationResult = result;
+					expectFailure(1u, 0u);
+				}
+				overrides.deviceCreationResult = VK_SUCCESS;
+				overrides.loaderApiVersion = VK_API_VERSION_1_0;
+				expectFailure(0u, 0u, 0u);
+				overrides.loaderApiVersion = 0;
+				std::cout << "Native Vulkan capabilities: 27 refusals release native objects before caches and uploads\n";
+			}
+#else
+			(void)capabilityTests;
+#endif
 
 			for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
 			{
@@ -2469,6 +2538,25 @@ int main(int argc, const char** argv)
 		}
 #endif
 		if (mode == "--gpu-bootstrap-submit") return RunBootstrapGpu(argc, argv, false, false);
+#if defined(__APPLE__)
+		if (mode == "--gpu-capabilities") return RunBootstrapGpu(argc, argv, false, false, true);
+		if (mode == "--gpu-pathtracer-khr")
+		{
+			auto& overrides = Tests::GetVulkanCapabilityOverrides();
+			overrides.deviceApiVersion = VK_API_VERSION_1_2;
+			overrides.loaderApiVersion = VK_API_VERSION_1_1;
+			const int result = Tests::RunPathTracerCommandTests(argc, argv);
+			if (result != 0) return result;
+			if (!overrides.khrRenderingLookups || overrides.coreRenderingLookups || !overrides.enabledKhrRendering ||
+				overrides.instanceTarget != VK_API_VERSION_1_3)
+			{
+				std::cerr << "Vulkan 1.2 device must render through enabled KHR commands with the application's 1.3 target\n";
+				return 1;
+			}
+			std::cout << "Native Vulkan KHR rendering passed with a simulated 1.1 loader and 1.2 device\n";
+			return 0;
+		}
+#endif
 		if (mode == "--gpu-initialization") return RunInitializationGpu(argc, argv);
 		if (mode == "--gpu-pathtracer" || mode == "--gpu-pathtracer-1x" || mode == "--gpu-gi-shutdown")
 			return Tests::RunPathTracerCommandTests(argc, argv);
