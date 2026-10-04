@@ -6255,6 +6255,147 @@ components:
 			"the mesh using the unresolved material must not leak fallback shading into the bake");
 	}
 
+	void TestCombinedSamplerTexelCentres()
+	{
+		const glm::vec4 pixels[] = {
+			{ 4.0f, 0.0f, 0.0f, 1.0f }, { 0.0f, 2.0f, 0.0f, 0.5f },
+			{ 0.0f, 0.0f, 3.0f, 0.25f }, { 2.0f, 4.0f, 8.0f, 0.0f }
+		};
+		Raytracing::CombinedSampler2D sampler;
+		const auto initialize = [&](Raytracing::SamplerClamping clamping)
+		{
+			sampler.Initialize<glm::vec4>(2u, 2u, 4u, clamping);
+			sampler.Initialize<glm::vec4, glm::vec4>(pixels, false);
+		};
+		const auto requireSample = [&](glm::vec2 uv, glm::vec4 expected)
+		{
+			const glm::vec4 actual = sampler.Sample<glm::vec4>(uv);
+			Require(glm::length(actual - expected) < 0.00001f,
+				"linear texture sample at (" + std::to_string(uv.x) + ", " +
+				std::to_string(uv.y) + ") must match texel-centre filtering; red " +
+				std::to_string(actual.r) + ", expected " + std::to_string(expected.r));
+		};
+
+		initialize(Raytracing::SamplerClamping::Clamp);
+		for (uint32_t y = 0u; y < 2u; ++y)
+		{
+			for (uint32_t x = 0u; x < 2u; ++x)
+			{
+				requireSample((glm::vec2(x, y) + 0.5f) / 2.0f, pixels[x + y * 2u]);
+			}
+		}
+		requireSample({ 0.0f, 0.5f }, (pixels[0] + pixels[2]) * 0.5f);
+		requireSample({ 1.0f, 0.5f }, (pixels[1] + pixels[3]) * 0.5f);
+		requireSample({ 0.5f, 0.0f }, (pixels[0] + pixels[1]) * 0.5f);
+		requireSample({ 0.5f, 1.0f }, (pixels[2] + pixels[3]) * 0.5f);
+		requireSample({ -2.0f, -3.0f }, pixels[0]);
+		requireSample({ 3.0f, -2.0f }, pixels[1]);
+		requireSample({ -2.0f, 3.0f }, pixels[2]);
+		requireSample({ 2.0f, 3.0f }, pixels[3]);
+		const glm::vec4 average = (pixels[0] + pixels[1] + pixels[2] + pixels[3]) * 0.25f;
+		requireSample({ 0.5f, 0.5f }, average);
+
+		initialize(Raytracing::SamplerClamping::Repeat);
+		for (float edge : { 0.0f, 1.0f, -1.0f })
+		{
+			requireSample({ edge, 0.25f }, (pixels[0] + pixels[1]) * 0.5f);
+			requireSample({ edge, 0.75f }, (pixels[2] + pixels[3]) * 0.5f);
+			requireSample({ 0.25f, edge }, (pixels[0] + pixels[2]) * 0.5f);
+			requireSample({ 0.75f, edge }, (pixels[1] + pixels[3]) * 0.5f);
+			requireSample({ edge, edge }, average);
+		}
+		requireSample({ -0.25f, 0.25f }, pixels[1]);
+		requireSample({ 0.25f, -0.25f }, pixels[2]);
+		requireSample({ -2.25f, 3.75f }, pixels[3]);
+		requireSample({ 0.125f, 0.25f }, pixels[0] * 0.75f + pixels[1] * 0.25f);
+		requireSample({ 0.875f, 0.25f }, pixels[1] * 0.75f + pixels[0] * 0.25f);
+
+		sampler.m_clampingV = Raytracing::SamplerClamping::Clamp;
+		requireSample({ -0.25f, -2.0f }, pixels[1]);
+		requireSample({ 1.25f, 2.0f }, pixels[2]);
+		requireSample({ 0.0f, 0.0f }, (pixels[0] + pixels[1]) * 0.5f);
+		requireSample({ 1.0f, 1.0f }, (pixels[2] + pixels[3]) * 0.5f);
+		sampler.m_clampingU = Raytracing::SamplerClamping::Clamp;
+		sampler.m_clampingV = Raytracing::SamplerClamping::Repeat;
+		requireSample({ -2.0f, -0.25f }, pixels[2]);
+		requireSample({ 2.0f, 1.25f }, pixels[1]);
+		requireSample({ 0.0f, 0.0f }, (pixels[0] + pixels[2]) * 0.5f);
+		requireSample({ 1.0f, 1.0f }, (pixels[1] + pixels[3]) * 0.5f);
+
+		for (auto mode : { Raytracing::SamplerClamping::Clamp, Raytracing::SamplerClamping::Repeat })
+		{
+			sampler.Initialize<glm::vec4>(1u, 1u, 4u, mode);
+			sampler.SetPixel(0u, 0u, pixels[0]);
+			for (glm::vec2 uv : { glm::vec2(0.0f), glm::vec2(0.5f), glm::vec2(1.0f), glm::vec2(-2.5f, 3.0f) })
+			{
+				requireSample(uv, pixels[0]);
+			}
+		}
+		for (bool horizontal : { false, true })
+		{
+			sampler.Initialize<glm::vec4>(horizontal ? 3u : 1u, horizontal ? 1u : 3u,
+				4u, Raytracing::SamplerClamping::Repeat);
+			for (uint32_t i = 0u; i < 3u; ++i)
+			{
+				sampler.SetPixel(horizontal ? i : 0u, horizontal ? 0u : i, pixels[i]);
+			}
+			for (uint32_t i = 0u; i < 3u; ++i)
+			{
+				const float centre = (static_cast<float>(i) + 0.5f) / 3.0f;
+				requireSample(horizontal ? glm::vec2(centre, -2.0f) : glm::vec2(3.0f, centre), pixels[i]);
+			}
+			requireSample(glm::vec2(0.0f), (pixels[0] + pixels[2]) * 0.5f);
+		}
+	}
+
+	void TestEnvironmentLatitudeClamping()
+	{
+		const glm::vec3 north(4.0f, 0.5f, 0.25f);
+		const glm::vec3 south(0.25f, 2.0f, 0.5f);
+		TVector<glm::vec4> image;
+		image.Resize(4u);
+		image[0] = image[1] = glm::vec4(north, 1.0f);
+		image[2] = image[3] = glm::vec4(south, 1.0f);
+		InspectablePathTracer pathTracer;
+		pathTracer.SetRuntimeEnvironmentLinear(image, glm::uvec2(2u));
+		const auto requireRadiance = [](glm::vec3 actual, glm::vec3 expected, const char* source)
+		{
+			Require(glm::length(actual - expected) < 0.00001f,
+				std::string(source) + " must clamp latitude; red " + std::to_string(actual.r) +
+				", expected " + std::to_string(expected.r));
+		};
+		requireRadiance(pathTracer.DirectEnvironmentRadiance({ 0.0f, 1.0f, 0.0f }), north, "raw north pole");
+		requireRadiance(pathTracer.DirectEnvironmentRadiance({ 0.0f, -1.0f, 0.0f }), south, "raw south pole");
+		requireRadiance(pathTracer.DirectEnvironmentRadiance({ 1.0f, 0.0f, 0.0f }),
+			(north + south) * 0.5f, "raw equator");
+
+		std::swap(image[0], image[2]);
+		std::swap(image[1], image[3]);
+		InspectablePathTracer diffusePathTracer;
+		diffusePathTracer.SetRuntimeDiffuseEnvironmentLinear(image, glm::uvec2(2u));
+		requireRadiance(diffusePathTracer.DirectEnvironmentRadiance({ 0.0f, 1.0f, 0.0f }), south, "diffuse north pole");
+		requireRadiance(diffusePathTracer.DirectEnvironmentRadiance({ 0.0f, -1.0f, 0.0f }), north, "diffuse south pole");
+		pathTracer.SetRuntimeDiffuseEnvironmentLinear(image, glm::uvec2(2u));
+		requireRadiance(pathTracer.DirectEnvironmentRadiance({ 0.0f, -1.0f, 0.0f }), south,
+			"raw lighting after diffuse publication");
+
+		image[0] = glm::vec4(4.0f, 0.0f, 0.0f, 1.0f);
+		image[1] = glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
+		image[2] = glm::vec4(0.0f, 0.0f, 3.0f, 1.0f);
+		image[3] = glm::vec4(2.0f, 4.0f, 8.0f, 1.0f);
+		pathTracer.SetRuntimeEnvironmentLinear(image, glm::uvec2(2u));
+		const glm::vec3 average = glm::vec3(image[0] + image[1] + image[2] + image[3]) * 0.25f;
+		for (float z : { -0.000001f, -0.0f, 0.0f, 0.000001f })
+		{
+			requireRadiance(pathTracer.DirectEnvironmentRadiance({ -1.0f, 0.0f, z }), average,
+				"raw longitude seam");
+		}
+		requireRadiance(pathTracer.DirectEnvironmentRadiance({ 0.0f, 0.0f, -1.0f }),
+			glm::vec3(image[0] + image[2]) * 0.5f, "negative Z longitude");
+		requireRadiance(pathTracer.DirectEnvironmentRadiance({ 0.0f, 0.0f, 1.0f }),
+			glm::vec3(image[1] + image[3]) * 0.5f, "positive Z longitude");
+	}
+
 	void TestFloatTextureNormalizationAndLandscapeLayerSampling()
 	{
 		Raytracing::CombinedSampler2D floatTexture;
@@ -6266,6 +6407,18 @@ components:
 			false);
 		Require(floatTexture.Sample<glm::vec4>(glm::vec2(0.5f)) == source,
 			"decoded floating-point textures must not be normalized as byte data");
+		const glm::u8vec4 bytes(128u, 64u, 32u, 255u);
+		floatTexture.Initialize<glm::vec4, glm::u8vec4>(&bytes, false);
+		Require(glm::length(floatTexture.Sample<glm::vec4>(glm::vec2(0.5f)) -
+			glm::vec4(bytes) / 255.0f) < 0.00001f, "byte textures must be normalized once");
+		floatTexture.Initialize<glm::vec4, glm::u8vec4>(&bytes, true);
+		Require(glm::length(glm::vec3(floatTexture.Sample<glm::vec4>(glm::vec2(0.5f))) -
+			Utils::SRGBToLinear(glm::vec3(bytes) / 255.0f)) < 0.00001f,
+			"sRGB bytes must be linearized after normalization");
+		floatTexture.Initialize<glm::vec3, glm::u8vec4>(&bytes, false, true);
+		Require(glm::length(floatTexture.Sample<glm::vec3>(glm::vec2(0.5f)) -
+			(glm::vec3(bytes) * (2.0f / 255.0f) - 1.0f)) < 0.00001f,
+			"normal-map components must retain signed decoding");
 
 		MaterialSamplingPathTracer pathTracer;
 		const Raytracing::LightingModel::SampledData sampled =
@@ -8167,6 +8320,8 @@ int main(int argc, char** argv)
 		RunTest(
 			"ProbeBakeSkipsUnavailableMeshAndMaterialInstances",
 			TestProbeBakeSkipsUnavailableMeshAndMaterialInstances);
+		RunTest("CombinedSamplerTexelCentres", TestCombinedSamplerTexelCentres);
+		RunTest("EnvironmentLatitudeClamping", TestEnvironmentLatitudeClamping);
 		RunTest("FloatTextureNormalizationAndLandscapeLayerSampling", TestFloatTextureNormalizationAndLandscapeLayerSampling);
 		RunTest(
 			"MobilityAndLightModeContributionPolicy",

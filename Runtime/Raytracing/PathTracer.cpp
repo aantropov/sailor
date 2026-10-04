@@ -720,7 +720,8 @@ namespace
 			sampler->m_width = width;
 			sampler->m_height = height;
 			sampler->m_channels = channels;
-			sampler->m_clamping = clamping == RHI::ETextureClamping::Repeat ? SamplerClamping::Repeat : SamplerClamping::Clamp;
+			sampler->m_clampingU = sampler->m_clampingV = clamping == RHI::ETextureClamping::Repeat ?
+				SamplerClamping::Repeat : SamplerClamping::Clamp;
 
 			const size_t pixelCount = static_cast<size_t>(width) * height;
 			const bool bIsFloatTexture = sourceData->Num() ==
@@ -1653,6 +1654,7 @@ void PathTracer::SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::
 	}
 
 	m_runtimeEnvironment.Initialize<vec3>(extent.x, extent.y, 3, SamplerClamping::Repeat);
+	m_runtimeEnvironment.m_clampingV = SamplerClamping::Clamp;
 	for (uint32_t y = 0; y < extent.y; y++)
 	{
 		for (uint32_t x = 0; x < extent.x; x++)
@@ -1675,6 +1677,7 @@ void PathTracer::SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const g
 	}
 
 	m_runtimeEnvironment.Initialize<vec3>(extent.x, extent.y, 3, SamplerClamping::Repeat);
+	m_runtimeEnvironment.m_clampingV = SamplerClamping::Clamp;
 	for (uint32_t y = 0; y < extent.y; y++)
 	{
 		for (uint32_t x = 0; x < extent.x; x++)
@@ -1696,6 +1699,7 @@ void PathTracer::SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, 
 	}
 
 	m_runtimeDiffuseEnvironment.Initialize<vec3>(extent.x, extent.y, 3, SamplerClamping::Repeat);
+	m_runtimeDiffuseEnvironment.m_clampingV = SamplerClamping::Clamp;
 	for (uint32_t y = 0; y < extent.y; y++)
 	{
 		for (uint32_t x = 0; x < extent.x; x++)
@@ -1715,14 +1719,14 @@ void PathTracer::ClearRuntimeEnvironment()
 	m_runtimeEnvironment.m_width = 0;
 	m_runtimeEnvironment.m_height = 0;
 	m_runtimeEnvironment.m_channels = 3;
-	m_runtimeEnvironment.m_clamping = SamplerClamping::Clamp;
+	m_runtimeEnvironment.m_clampingU = m_runtimeEnvironment.m_clampingV = SamplerClamping::Clamp;
 	m_bHasRuntimeEnvironment = false;
 
 	m_runtimeDiffuseEnvironment.m_data.Clear();
 	m_runtimeDiffuseEnvironment.m_width = 0;
 	m_runtimeDiffuseEnvironment.m_height = 0;
 	m_runtimeDiffuseEnvironment.m_channels = 3;
-	m_runtimeDiffuseEnvironment.m_clamping = SamplerClamping::Clamp;
+	m_runtimeDiffuseEnvironment.m_clampingU = m_runtimeDiffuseEnvironment.m_clampingV = SamplerClamping::Clamp;
 	m_bHasRuntimeDiffuseEnvironment = false;
 	m_runtimeEnvironmentImportanceCdf.Clear();
 	m_runtimeEnvironmentImportancePdf.Clear();
