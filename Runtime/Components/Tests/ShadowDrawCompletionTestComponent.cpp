@@ -633,7 +633,6 @@ namespace
 			}
 		}
 
-		// Positive cold/growth/reuse coverage only: no deterministic SSBO failure seam.
 		auto node = TRefPtr<ShadowProbe>::Make();
 		node->m_pBlurHorizontalShader = state.m_shaders[5];
 		node->m_pBlurVerticalShader = state.m_shaders[6];
@@ -647,10 +646,13 @@ namespace
 		RHIShaderBindingSetPtr previousSet;
 		VulkanDescriptorSetPtr previousNative;
 		RHIShaderBindingSetPtr coldSet;
-		for (uint32_t phase = 0u; phase < 3u; ++phase)
+		auto readback = driver->CreateBuffer(64u * sizeof(uint16_t), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+		std::array<uint16_t, 64> expectedPixels{};
+		for (uint32_t phase = 0u; phase < 5u; ++phase)
 		{
-			const uint32_t count = phase ? 3u : 1u;
-			if (phase == 1u)
+			const bool reject = phase == 0u || phase == 2u;
+			const uint32_t count = phase < 2u ? 1u : 3u;
+			if (phase == 2u)
 			{
 				auto larger = CreateCaster(state.m_graph->GetFullscreenNdcQuad(), 0u, 3u);
 				snapshot.m_shadowMapsToUpdate.Clear(false);
@@ -659,18 +661,54 @@ namespace
 			Prepare(*node, state.m_graph, snapshot);
 			if (!Tokens(snapshot, { true }) || resources->m_activeShadowViews[0] != view || view->m_packet.GetNumStorageInstances() != count ||
 				view->m_packet.GetNumDrawInstances() != count || view->m_packet.GetGroups().Num() != 1u) return "SSBO growth did not use one real same-view packed run";
-			if (auto error = Record(*node, state.m_graph, snapshot, 1u, { true }, {}, count); !error.empty()) return "SSBO cold/growth/reuse: " + error;
+			const size_t previousBytes = view->m_sizePerInstanceData;
+			const size_t previousIndices = view->m_sizeInstanceIndices;
+			const uint64_t previousRevision = previousSet ? previousSet->GetDescriptorRevision() : 0u;
+			auto& pool = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentThreadContext().m_descriptorPool;
+			auto savedPool = pool;
+			if (!savedPool) return "SSBO refusal needs the existing Render descriptor pool";
+			if (reject) pool.Clear();
+			std::string error;
+			try
+			{
+				error = Record(*node, state.m_graph, snapshot, reject ? 0u : 1u, { !reject }, readback, reject ? 0u : count);
+			}
+			catch (...)
+			{
+				pool = std::move(savedPool);
+				throw;
+			}
+			pool = std::move(savedPool);
+			if (!error.empty()) return "SSBO cold/growth/reuse: " + error;
+			const auto* pixels = static_cast<const uint16_t*>(readback->GetPointer());
+			if (reject)
+			{
+				if (view->m_perInstanceData != previousSet || view->m_sizePerInstanceData != previousBytes ||
+					view->m_sizeInstanceIndices != previousIndices || view->m_packet.m_metrics.m_instanceUploadBytes != 0u ||
+					(previousSet && (previousSet->m_vulkan.m_descriptorSet != previousNative || previousSet->GetDescriptorRevision() != previousRevision)))
+					return "rejected SSBO publication changed the retained pair, capacities or revision";
+				if (!std::all_of(pixels, pixels + 64u, [](uint16_t value) { return value == 0u; }))
+					return "rejected SSBO publication drew with absent or undersized storage";
+				continue;
+			}
+			if (phase == 1u)
+			{
+				std::copy_n(pixels, expectedPixels.size(), expectedPixels.begin());
+				if (std::none_of(expectedPixels.begin(), expectedPixels.end(), [](uint16_t value) { return value > 0u; }))
+					return "accepted SSBO retry must draw actual PCF depth";
+			}
+			else if (!std::equal(expectedPixels.begin(), expectedPixels.end(), pixels)) return "grown and reused SSBOs changed the retained PCF pixels";
 			const size_t dataBytes = sizeof(ShadowPrepassNode::PerInstanceData) * count;
 			const size_t indexBytes = sizeof(uint32_t) * count;
 			auto set = view->m_perInstanceData;
-			if (phase < 2u && view->m_packet.m_metrics.m_instanceUploadBytes != dataBytes)
+			if (phase < 4u && view->m_packet.m_metrics.m_instanceUploadBytes != dataBytes)
 				return "cold/grown SSBO must upload the complete instance payload";
 			if (view->m_sizePerInstanceData != dataBytes || view->m_sizeInstanceIndices != indexBytes ||
 				!HasPublishedBuffer(set, "data", 0u, EShaderBindingType::StorageBuffer, dataBytes) ||
 				!HasPublishedBuffer(set, "indices", 1u, EShaderBindingType::StorageBuffer, indexBytes)) return "SSBO pair/capacity/native publication is incomplete";
-			if (phase == 1u && (set == previousSet || set->m_vulkan.m_descriptorSet == previousNative)) return "larger packet did not publish a fresh SSBO pair";
-			if (phase == 2u && (set != previousSet || set->m_vulkan.m_descriptorSet != previousNative)) return "same-size packet unnecessarily replaced its SSBO pair";
-			if (!phase) coldSet = set;
+			if (phase == 3u && (set == previousSet || set->m_vulkan.m_descriptorSet == previousNative)) return "larger packet did not publish a fresh SSBO pair";
+			if (phase == 4u && (set != previousSet || set->m_vulkan.m_descriptorSet != previousNative)) return "same-size packet unnecessarily replaced its SSBO pair";
+			if (phase == 1u) coldSet = set;
 			previousSet = set;
 			previousNative = set->m_vulkan.m_descriptorSet;
 		}
@@ -1075,7 +1113,7 @@ void ShadowDrawCompletionTestComponent::Tick(float)
 	AddJournalEvent("ShadowBlurEvidence", "Actual empty EVSM Prepare/Process: horizontal reject 0, vertical reject 1, each restored retry 2 blur draws; all 1024 float pixels checked per submission with five-second fence bounds");
 	AddJournalEvent("ShadowBlurRadiusEvidence", "Command recorder: zero/threshold EVSM and PCF record zero blur draws and create no blur resources; positive EVSM records two. Cold/empty/warm submissions, single-lobe/fractional radii, all 1024 reverse-Z clear pixels and isolated 8x8 atlas tile verified");
 	AddJournalEvent("ShadowBlurPublicationEvidence", "Own unused buffer 31 caused actual H sampler producer refusal: A32 retained sampler/view/native/revision/hash, B16 recorded zero with failed token and all 256 clear pixels; exact range restoration retried B with two draws and all 256 blurred pixels, retaining native A; no V-only producer-failure coverage");
-	AddJournalEvent("ShadowColdPublicationEvidence", "Preloaded-shader owner latch completed/reused template plus H/V and flight UBO; real reflected Storage-vs-Uniform rejected template/fresh-flight candidates, each retained node publication and allowed one independent PCF caster draw; same-owner retries accepted two normal blur draws plus PCF and all 1024 EVSM pixels; real SSBO 1/3/3 storage+candidates grew then reused one view, retaining the original pair; positive SSBO coverage is not failure rollback proof");
+	AddJournalEvent("ShadowColdPublicationEvidence", "Preloaded-shader owner latch completed/reused template plus H/V and flight UBO; real reflected Storage-vs-Uniform rejected template/fresh-flight candidates, each retained node publication and allowed one independent PCF caster draw; same-owner retries accepted two normal blur draws plus PCF and all 1024 EVSM pixels; absent Render descriptor pool rejects cold/growing SSBO publication with zero draws/uploads and unchanged pair/capacities/revision; restored same-view 1/3-instance retries and warm reuse preserve all 64 PCF pixels and the retained original pair");
 	AddJournalEvent("ShadowDrawCompletionScope", "Recorded candidates, existing completion tokens and blur pixels; not CSM atlas/matrix atomic publication, visual quality, performance or Windows GPU coverage");
 	MarkPassed();
 }

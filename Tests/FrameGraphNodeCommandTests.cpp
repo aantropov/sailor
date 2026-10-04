@@ -139,6 +139,10 @@ namespace
 	class ShadowCacheProbe : public ShadowPrepassNode
 	{
 	public:
+		using ShadowPrepassNode::m_pBlurHorizontalShader;
+		using ShadowPrepassNode::m_pBlurVerticalShader;
+		using ShadowPrepassNode::m_pBlurHorizontalMaterial;
+		using ShadowPrepassNode::m_pBlurVerticalMaterial;
 		size_t GetCachedMaterialCount() const { return m_customShadowMaterials.Num(); }
 
 		TRefPtr<SubmissionResources> GetResources(const RHISceneViewSnapshot& scene)
@@ -166,6 +170,7 @@ namespace
 	};
 
 	PFN_vkCmdBeginRenderingKHR originalBeginRendering = nullptr;
+	std::function<void()> renderingObserver;
 	VkRenderingAttachmentInfo recordedColor{};
 	VkRenderingAttachmentInfo recordedMotion{};
 	VkRenderingAttachmentInfo recordedDepth{};
@@ -180,19 +185,25 @@ namespace
 		if (recordedColorCount) recordedColor = info->pColorAttachments[0];
 		if (recordedColorCount > 1) recordedMotion = info->pColorAttachments[1];
 		originalBeginRendering(command, info);
+		if (renderingObserver) renderingObserver();
 	}
 
 	struct CaptureAttachments
 	{
-		CaptureAttachments()
+		explicit CaptureAttachments(std::function<void()> observer = {})
 		{
 			// No App::Start; the scheduler queues are drained before installing the observer.
 			auto device = VulkanApi::GetInstance()->GetMainDevice();
+			renderingObserver = std::move(observer);
 			originalBeginRendering = CaptureRendering;
 			FrameGraphNodeTestAccess::ExchangeBeginRendering(*device, originalBeginRendering);
 			Require(originalBeginRendering != nullptr, "native dynamic-rendering dispatch must be available");
 		}
-		~CaptureAttachments() { FrameGraphNodeTestAccess::ExchangeBeginRendering(*VulkanApi::GetInstance()->GetMainDevice(), originalBeginRendering); }
+		~CaptureAttachments()
+		{
+			renderingObserver = {};
+			FrameGraphNodeTestAccess::ExchangeBeginRendering(*VulkanApi::GetInstance()->GetMainDevice(), originalBeginRendering);
+		}
 	};
 
 	class PassCommandRecorder : public VulkanGraphicsDriver
@@ -2958,6 +2969,163 @@ frame:
 			<< " mobility=" << static_cast<uint32_t>(mobility) << ": empty/visible cameras, exact compact records and alpha policy passed\n";
 	}
 
+	void TestShadowVerticalPublication(const std::array<ShaderSetPtr, 4>& shaders)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<ShadowCacheProbe>::Make();
+		node->m_pBlurHorizontalShader = shaders[2];
+		node->m_pBlurVerticalShader = shaders[3];
+		RHISceneViewSnapshot scene;
+		scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+		scene.m_submissionContext->BeginSubmission(217000, 0);
+		scene.m_camera = TUniquePtr<CameraData>::Make();
+		scene.m_frameBindings = driver->CreateShaderBindings();
+		UboFrameData frame{};
+		frame.m_view = frame.m_projection = frame.m_invProjection = glm::mat4(1);
+		auto frameBuffer = driver->CreateBuffer(sizeof(frame), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
+		std::memcpy(frameBuffer->GetPointer(), &frame, sizeof(frame));
+		driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "frame", 0);
+		driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "previousFrame", 1);
+		RHIUpdateShadowMapCommand pass;
+		pass.m_shadowType = EShadowType::EVSM;
+		pass.m_lightMatrix = glm::mat4(1);
+		pass.m_blurRadius = glm::vec2(1);
+		pass.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(2 * Side), 1, EFormat::R32G32B32A32_SFLOAT);
+		pass.m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
+		scene.m_shadowMapsToUpdate.Add(std::move(pass));
+		auto resources = node->GetResources(scene);
+		RHIShaderBindingSetPtr bindings;
+		RHIShaderBindingPtr sampler, data;
+		VulkanDescriptorSetPtr nativeA;
+		VulkanImageViewPtr viewA;
+		RHITexturePtr temporaryA;
+		const auto readPixels = [&](RHICommandListPtr draw, RHITexturePtr texture)
+		{
+			const auto size = texture->GetExtent();
+			auto pixels = driver->CreateBuffer(size.x * size.y * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+			commands->ImageMemoryBarrier(draw, texture, EImageLayout::TransferSrcOptimal);
+			commands->CopyImageToBuffer(draw, texture, pixels);
+			return pixels;
+		};
+		const auto checkPixels = [](RHIBufferPtr pixels, size_t count, glm::vec4 expected)
+		{
+			const auto values = static_cast<const glm::vec4*>(pixels->GetPointer());
+			for (size_t pixel = 0; pixel < count; ++pixel)
+				for (uint32_t channel = 0; channel < 4; ++channel)
+					Require(std::isfinite(values[pixel][channel]) && std::abs(values[pixel][channel] - expected[channel]) < 0.00001f,
+						"rejected vertical blur must retain clear output, completed H pixels and the previous image; retry must apply both filters");
+		};
+		for (uint32_t phase = 0; phase < 5; ++phase)
+		{
+			const bool reject = phase == 2;
+			auto& request = scene.m_shadowMapsToUpdate[0];
+			if (phase == 1)
+			{
+				const RenderState state(false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false);
+				node->m_pBlurHorizontalMaterial = driver->CreateMaterial(graph->GetFullscreenNdcQuad()->m_vertexDescription,
+					EPrimitiveTopology::TriangleList, state, shaders[0]);
+				node->m_pBlurVerticalMaterial = driver->CreateMaterial(graph->GetFullscreenNdcQuad()->m_vertexDescription,
+					EPrimitiveTopology::TriangleList, state, shaders[1]);
+				Require(node->m_pBlurHorizontalMaterial && node->m_pBlurVerticalMaterial, "both blur observation materials must compile");
+			}
+			if (reject) request.m_shadowMap = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+			auto prepare = node->Prepare(graph, scene);
+			if (prepare) { prepare->Run(); prepare->Wait(); }
+			Require(request.m_payloadCompletionToken->IsSuccessful(), "blur publication must start with a complete empty packet");
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			auto& pool = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentThreadContext().m_descriptorPool;
+			auto savedPool = pool;
+			Require(static_cast<bool>(savedPool), "vertical refusal needs the existing Render descriptor pool");
+			VulkanDescriptorSetPtr nativeH;
+			uint64_t revisionH = 0;
+			uint32_t renderPasses = 0;
+			try
+			{
+				CaptureAttachments capture([&]()
+				{
+					++renderPasses;
+					if (!reject) return;
+					if (renderPasses == 2)
+					{
+						Require(recordedColor.imageView != static_cast<VkImageView>(*request.m_shadowMap->m_vulkan.m_imageView),
+							"horizontal blur must render into its temporary image");
+						nativeH = bindings->m_vulkan.m_descriptorSet;
+						revisionH = bindings->GetDescriptorRevision();
+						Require(sampler->GetTextureBinding() == request.m_shadowMap && nativeH != nativeA,
+							"horizontal publication must precede vertical producer refusal");
+						// Warm the normal projection before taking the pool away from the next AddSampler.
+						auto sets = nativeDriver->GetCompatibleDescriptorSets(node->m_pBlurHorizontalMaterial->m_vulkan.m_pipelines[0]->m_layout,
+							{ scene.m_frameBindings, bindings });
+						Require(sets.Num() == 2 && sets[1] && sets[1]->IsCompiled(), "horizontal blur projection must be available");
+						pool.Clear();
+					}
+					else if (renderPasses == 3)
+					{
+						Require(!pool && bindings->m_vulkan.m_descriptorSet == nativeH && bindings->GetDescriptorRevision() == revisionH &&
+							sampler->GetTextureBinding() == request.m_shadowMap && nativeH->ReferencesImageView(1, 0, request.m_shadowMap->m_vulkan.m_imageView),
+							"vertical producer refusal must preserve the exact horizontal publication");
+						pool = savedPool;
+					}
+				});
+				node->Process(graph, upload, draw, scene);
+			}
+			catch (...)
+			{
+				pool = std::move(savedPool);
+				throw;
+			}
+			const bool poolRestored = pool == savedPool;
+			pool = std::move(savedPool);
+			Require(poolRestored && renderPasses == 3 && request.m_payloadCompletionToken->IsSuccessful() == !reject &&
+				node->GetDrawCallStats().m_numBatches == (reject ? 1u : 2u) &&
+				draw->GetRecordedDrawCallStats().m_numBatches == (reject ? 1u : 2u),
+				"vertical producer refusal must skip only V, fail the payload and restore the pool before submission");
+			if (!phase)
+			{
+				bindings = resources->m_blurShaderBindings;
+				sampler = bindings->GetOrAddShaderBinding("colorSampler");
+				data = bindings->GetOrAddShaderBinding("data");
+			}
+			Require(resources->m_blurShaderBindings == bindings && bindings->GetOrAddShaderBinding("data") == data &&
+				bindings->GetOrAddShaderBinding("colorSampler") == sampler, "blur retries must retain their flight binding identities");
+			const auto size = request.m_shadowMap->GetExtent();
+			const size_t pixelCount = size.x * size.y;
+			auto pixels = readPixels(draw, request.m_shadowMap);
+			RHIBufferPtr horizontalPixels, retainedPixels;
+			if (reject)
+			{
+				auto temporary = driver->GetOrAddTemporaryRenderTarget(request.m_shadowMap->GetFormat(), size, 1);
+				Require(temporary != request.m_shadowMap && temporary->m_vulkan.m_imageView != viewA,
+					"failed V must leave a distinct current horizontal image");
+				horizontalPixels = readPixels(draw, temporary);
+				driver->ReleaseTemporaryRenderTarget(temporary);
+			}
+			if (phase == 3) retainedPixels = readPixels(draw, temporaryA);
+			CompleteCommands(upload, draw);
+			const glm::vec4 expected = !phase || reject ? glm::vec4(1, 1, -1, 1) : glm::vec4(1.25f, 1.5f, -1, 1);
+			checkPixels(pixels, pixelCount, expected);
+			if (horizontalPixels) checkPixels(horizontalPixels, pixelCount, { 1.25f, 1, -1, 1 });
+			if (retainedPixels) checkPixels(retainedPixels, 4 * Side * Side, { 1.25f, 1, -1, 1 });
+			if (phase == 1)
+			{
+				nativeA = bindings->m_vulkan.m_descriptorSet;
+				temporaryA = sampler->GetTextureBinding();
+				viewA = temporaryA->m_vulkan.m_imageView;
+			}
+			if (phase >= 2) Require(nativeA->IsCompiled() && nativeA->ReferencesImageView(1, 0, viewA),
+				"replacing the shadow map must retain the previous native sampler image");
+			if (phase >= 3) Require(sampler->GetTextureBinding() != request.m_shadowMap &&
+				sampler->GetTextureBinding()->GetExtent() == glm::ivec2(Side), "retry must publish the new horizontal temporary for V");
+		}
+		std::cout << "Shadow vertical producer: completed H, refused V, retained publication, same-target retry and full pixels passed\n";
+	}
+
 	void TestCustomShadowCache(ShaderSetPtr shader, bool paged)
 	{
 		auto& driver = Renderer::GetDriver();
@@ -4546,6 +4714,17 @@ namespace Sailor::Tests
 		const auto importedGraphIds = WriteImportedGraph(workspace);
 		const auto mrtShader = WriteMrtShader(workspace);
 		const auto customDepthShaders = WriteCustomDepthShader(workspace);
+		std::array<ShaderSetPtr, 4> shadowBlurShaders;
+		for (uint32_t i = 0; i < shadowBlurShaders.size(); ++i)
+		{
+			const auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(i < 2 ? "Tests/Shaders/ShadowDrawCompletion.shader" : "Shaders/Blur.shader");
+			TVector<std::string> defines;
+			if (i % 2 == 0) defines.Add("HORIZONTAL");
+			else if (i >= 2) defines.Add("VERTICAL");
+			if (i >= 2) defines.Add("EVSM");
+			Require(info && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(info->GetFileId(), shadowBlurShaders[i], defines) && shadowBlurShaders[i]->IsReady(),
+				"shadow publication shaders must compile before recording");
+		}
 		const std::array<size_t, 4> storageSizes{ 16, 100, 140, 292 };
 		std::array<ShaderSetPtr, 4> storageShaders;
 		for (size_t i = 0; i < storageSizes.size(); ++i)
@@ -4602,6 +4781,7 @@ namespace Sailor::Tests
 							for (bool skinned : { false, true })
 								for (auto mobility : { EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic })
 									TestCustomDepthSilhouette(customDepthShaders[skinned ? 1 : 0], depthReadback, paged, instanced, skinned, mobility);
+					TestShadowVerticalPublication(shadowBlurShaders);
 					for (bool paged : { false, true }) TestCustomShadowCache(customDepthShaders[0], paged);
 					for (bool paged : { false, true })
 						for (bool instanced : { false, true }) TestTransparentPacketOrder(customDepthShaders[0], paged, instanced);
