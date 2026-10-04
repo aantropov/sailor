@@ -80,7 +80,7 @@ namespace Sailor
 		void UpdateUniforms(RHI::RHICommandListPtr cmdList);
 
 		// Publishes initial CPU state; GPU readiness is checked separately.
-		std::atomic<bool> m_initialized{ false };
+		std::atomic<bool> m_bIsInitialized{ false };
 		std::atomic<bool> m_bIsDirty{};
 		std::atomic<uint64_t> m_contentRevision{};
 		// Emission RGB changes lighting, but leaves the transport surface intact.
