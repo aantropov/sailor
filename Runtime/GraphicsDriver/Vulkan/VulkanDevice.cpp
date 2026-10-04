@@ -749,6 +749,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		supportedCore12.descriptorBindingUniformBufferUpdateAfterBind &&
 		supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
 	m_bSupportsHostQueryReset = supportedCore12.hostQueryReset == VK_TRUE;
+	m_bSupportsSamplerFilterMinmax = supportedCore12.samplerFilterMinmax == VK_TRUE;
 
 
 	AddFeature<VkPhysicalDeviceVulkan12Features>(features, [&](auto& core12)

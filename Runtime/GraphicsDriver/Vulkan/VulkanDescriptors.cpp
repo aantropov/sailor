@@ -701,7 +701,7 @@ VulkanDescriptorCombinedImage::VulkanDescriptorCombinedImage(uint32_t dstBinding
 {
 	m_imageInfo.imageLayout = m_imageLayout;
 	m_imageInfo.imageView = *m_imageView;
-	m_imageInfo.sampler = *m_sampler;
+	m_imageInfo.sampler = m_sampler ? *m_sampler : VK_NULL_HANDLE;
 }
 
 void VulkanDescriptorCombinedImage::SetImageView(VulkanImageViewPtr imageView)

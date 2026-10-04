@@ -95,7 +95,6 @@ renderTargets:
   height: RenderHeight/2
   bIsCompatibleWithComputeShaders: true
   bGenerateMips: true
-  reduction: Min
 
 - name: AO
   format: R8_UNORM

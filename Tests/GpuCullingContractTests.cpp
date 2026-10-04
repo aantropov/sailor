@@ -232,6 +232,20 @@ namespace
 	{
 		const std::filesystem::path contentRoot =
 			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		for (const char* rendererPath : { "DefaultRenderer.renderer", "EditorRenderer.renderer", "ExperimentalRenderer.renderer" })
+		{
+			const auto renderer = YAML::LoadFile((contentRoot / rendererPath).string());
+			uint32_t pyramids = 0;
+			for (const auto& target : renderer["renderTargets"])
+			{
+				if (target["name"].as<std::string>() != "DepthHighZ") continue;
+				Require(target["reduction"].as<std::string>("Average") == "Average" && target["bGenerateMips"].as<bool>() &&
+					target["bIsCompatibleWithComputeShaders"].as<bool>() && target["format"].as<std::string>() == "R32_SFLOAT",
+					"the explicitly reduced depth pyramid must not require optional hardware min/max filtering");
+				++pyramids;
+			}
+			Require(pyramids == 1, std::string(rendererPath) + " must declare one depth pyramid");
+		}
 		const char* rendererPaths[] =
 		{
 			"DefaultRenderer.renderer",

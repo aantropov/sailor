@@ -91,6 +91,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool IsMultiDrawIndirectSupported() const { return m_bSupportsMultiDrawIndirect; };
 		SAILOR_API bool IsDescriptorUpdateAfterBindSupported() const { return m_bSupportsDescriptorUpdateAfterBind; }
 		SAILOR_API bool IsHostQueryResetSupported() const { return m_bSupportsHostQueryReset; }
+		SAILOR_API bool IsSamplerFilterMinmaxSupported() const { return m_bSupportsSamplerFilterMinmax; }
 		SAILOR_API bool IsMetalObjectsSupported() const { return m_bSupportsMetalObjects; }
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_physicalDeviceProperties.limits.maxSamplerAnisotropy; };
 		SAILOR_API VkSampleCountFlagBits GetMaxAllowedMsaaSamples() const { return m_maxAllowedMsaaSamples; };
@@ -188,6 +189,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		bool m_bSupportsMultiDrawIndirect = false;
 		bool m_bSupportsDescriptorUpdateAfterBind = false;
 		bool m_bSupportsHostQueryReset = false;
+		bool m_bSupportsSamplerFilterMinmax = false;
 		bool m_bSupportsMetalObjects = false;
 
 		VkMemoryRequirements m_memoryRequirements_StagingBuffer;

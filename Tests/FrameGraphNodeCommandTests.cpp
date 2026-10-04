@@ -84,6 +84,26 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class FrameGraphNodeTestAccess
 	{
 	public:
+		static void WithoutSamplerMinmax(VulkanDevice& device, const std::function<void()>& test)
+		{
+			const bool supported = device.m_bSupportsSamplerFilterMinmax;
+			auto saved = std::move(device.m_samplers);
+			device.m_bSupportsSamplerFilterMinmax = false;
+			try
+			{
+				device.m_samplers = TUniquePtr<VulkanSamplerCache>::Make(VulkanDevicePtr(&device));
+				test();
+			}
+			catch (...)
+			{
+				device.m_samplers = std::move(saved);
+				device.m_bSupportsSamplerFilterMinmax = supported;
+				throw;
+			}
+			device.m_samplers = std::move(saved);
+			device.m_bSupportsSamplerFilterMinmax = supported;
+		}
+
 		static void ExchangeBeginRendering(VulkanDevice& device, PFN_vkCmdBeginRenderingKHR& dispatch)
 		{
 			auto& active = device.pVkCmdBeginRenderingKHR ? device.pVkCmdBeginRenderingKHR : device.pVkCmdBeginRendering;
@@ -2131,6 +2151,51 @@ frame:
 		driver->TrackResources_ThreadSafe();
 		nativeDriver->CollectGarbage_RenderThread();
 		std::cout << "Concurrent descriptors: " << workers << " RHI workers, 32 direct/projected replacements each, refusal, Render cache collection and complete A/B/A reads passed\n";
+	}
+
+	void TestSamplerReductionCache()
+	{
+		const auto device = VulkanApi::GetInstance()->GetMainDevice();
+		for (auto filter : { ETextureFiltration::Nearest, ETextureFiltration::Linear })
+			for (auto clamping : { ETextureClamping::Repeat, ETextureClamping::Clamp })
+				for (bool mips : { false, true })
+					for (auto reduction : { ESamplerReductionMode::Average, ESamplerReductionMode::Min, ESamplerReductionMode::Max })
+					{
+						const auto sampler = device->GetSamplers()->GetSampler(filter, clamping, mips, reduction);
+						const bool supported = reduction == ESamplerReductionMode::Average || device->IsSamplerFilterMinmaxSupported();
+						Require(bool(sampler) == supported,
+							"the sampler cache must not create min/max variants without samplerFilterMinmax");
+						if (sampler) Require(VkSampler(*sampler) != VK_NULL_HANDLE, "supported samplers must have native handles");
+						Require(sampler == device->GetSamplers()->GetSampler(filter, clamping, mips, reduction),
+							"repeated sampler requests must reuse the cached variant");
+					}
+		auto& driver = Renderer::GetDriver();
+		for (auto reduction : { ESamplerReductionMode::Min, ESamplerReductionMode::Max })
+		{
+			auto texture = RHITexturePtr::Make(ETextureFiltration::Linear, ETextureClamping::Clamp, false,
+				EImageLayout::ShaderReadOnlyOptimal, reduction);
+			texture->m_vulkan = driver->GetDefaultTexture()->m_vulkan;
+			for (bool replacement : { false, true })
+			{
+				auto bindings = driver->CreateShaderBindings();
+				if (replacement) Require(bool(driver->AddSamplerToShaderBindings(bindings, "source", driver->GetDefaultTexture(), 0)),
+					"average sampling must work before min/max replacement");
+				const auto previous = bindings->m_vulkan.m_descriptorSet;
+				const auto revision = bindings->GetDescriptorRevision();
+				const bool prepared = bool(driver->AddSamplerToShaderBindings(bindings, "source", texture, 0));
+				Require(prepared == device->IsSamplerFilterMinmaxSupported(),
+					"min/max preparation must fail when the sampler is unavailable, not use average filtering");
+				if (!prepared)
+				{
+					Require(bindings->m_vulkan.m_descriptorSet == previous && bindings->GetDescriptorRevision() == revision,
+						"rejected sampler preparation must preserve the published set and revision");
+					Require(bool(driver->AddSamplerToShaderBindings(bindings, "source", driver->GetDefaultTexture(), 0)),
+						"a rejected min/max request must allow an ordinary sampling retry");
+				}
+			}
+		}
+		std::cout << "Sampler reduction cache: minmax=" << device->IsSamplerFilterMinmaxSupported() << ", all 24 variants checked\n";
+		std::cout << "Sampler reduction publication: minmax=" << device->IsSamplerFilterMinmaxSupported() << ", cold/replacement Min/Max, revision and retry passed\n";
 	}
 
 	void TestSkyOverlayBlending(ShaderSetPtr shader, TRefPtr<TestGraph> graph, RHIShaderBindingSetPtr frame)
@@ -4981,6 +5046,13 @@ namespace Sailor::Tests
 			{
 				try
 				{
+					TestSamplerReductionCache();
+					FrameGraphNodeTestAccess::WithoutSamplerMinmax(*VulkanApi::GetInstance()->GetMainDevice(), [&]()
+						{
+							TestSamplerReductionCache();
+							TestDepthHighZ(depthPatterns[0], depthReadback, EFormat::D32_SFLOAT, DepthInput::Default, true, true, false);
+							std::cout << "DepthHighZ: complete odd/even/MSAA mip readbacks with minmax=false passed\n";
+						});
 					for (size_t i = 0; i < storageShaders.size(); ++i) TestIndexedStorageBindings(storageShaders[i], storageSizes[i], false);
 					// The production pool skips a block after its first small allocation.
 					// Also exercise nonzero buffer offsets using the same allocator with a smaller average element size.
