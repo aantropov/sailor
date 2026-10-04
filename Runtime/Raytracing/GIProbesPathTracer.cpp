@@ -142,6 +142,14 @@ void GIProbesPathTracer::SetEnvironmentLinear(
 	m_pathTracer.SetRuntimeEnvironmentLinear(image, extent);
 }
 
+bool GIProbesPathTracer::SetEnvironmentLinear(const TVector<glm::vec4>& image, const glm::uvec2& extent,
+	const std::function<bool()>& shouldContinue)
+{
+	if (m_pathTracer.SetRuntimeEnvironmentLinear(image, extent, shouldContinue)) return true;
+	m_bInitialized = false;
+	return false;
+}
+
 bool GIProbesPathTracer::SamplePrimaryDirection(
 	const glm::vec3& uniformDirection,
 	uint32_t,

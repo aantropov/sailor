@@ -44,12 +44,20 @@ namespace Sailor::Raytracing
 		template<typename TOutputData, typename TInputData>
 		void Initialize(const TInputData* data, bool bConvertToLinear, bool bNormalMap = false)
 		{
+			Initialize<TOutputData, TInputData>(data, bConvertToLinear, bNormalMap, []() { return true; });
+		}
+
+		template<typename TOutputData, typename TInputData, typename TContinue>
+		bool Initialize(const TInputData* data, bool bConvertToLinear, bool bNormalMap, const TContinue& shouldContinue)
+		{
 			SAILOR_PROFILE_FUNCTION();
 
+			if (!shouldContinue()) return false;
 			m_data.Resize(m_width * m_height * sizeof(TOutputData));
 
 			for (uint32_t i = 0; i < (uint32_t)m_width * m_height; i++)
 			{
+				if (i % 1024u == 0u && !shouldContinue()) return false;
 				TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * i);
 				const TInputData* src = data + i;
 				const TOutputData normalized =
@@ -68,6 +76,7 @@ namespace Sailor::Raytracing
 						normalized;
 				}
 			}
+			return shouldContinue();
 		}
 
 		template<typename T>

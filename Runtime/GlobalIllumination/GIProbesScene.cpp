@@ -809,11 +809,13 @@ bool Sailor::PrepareGIProbesScene(
 	effectiveSettings.m_skyIndirectIntensity =
 		scene.m_environment.m_type == EEnvironmentSource::Sky ? scene.m_environment.m_skyIndirectIntensity : 1.0f;
 	auto sampler = TSharedPtr<Raytracing::GIProbesPathTracer>::Make();
+	bool bCancelled = false;
 	const auto guardedProgress =
-		[&progress, &isCancelled](
+		[&progress, &isCancelled, &bCancelled](
 			const Raytracing::PathTracer::ScenePreparationProgress& state)
 		{
-			return !isCancelled() && (!progress || progress(state)) && !isCancelled();
+			bCancelled = bCancelled || isCancelled() || (progress && !progress(state)) || isCancelled();
+			return !bCancelled;
 		};
 	const bool bReuseGeometry = previous && previous->m_sampler &&
 		previous->m_geometryHash == scene.m_geometryHash;
@@ -825,14 +827,29 @@ bool Sailor::PrepareGIProbesScene(
 			guardedProgress, warning);
 	if (!bInitialized)
 	{
-		outDiagnostic = isCancelled() ?
+		outDiagnostic = bCancelled || isCancelled() ?
 			"GI scene preparation was cancelled while building the CPU path tracer" :
 			"the CPU path tracer could not prepare any valid GI geometry";
 		return false;
 	}
 
+	const auto continueEnvironment = [&]()
+	{
+		if (guardedProgress({ Raytracing::PathTracer::EScenePreparationStage::Materials,
+			scene.m_materials.Num(), scene.m_materials.Num() })) return true;
+		outDiagnostic = "GI scene preparation was cancelled while preparing the environment";
+		return false;
+	};
+	const auto setEnvironment = [&](const TVector<glm::vec4>& image, const glm::uvec2& extent)
+	{
+		if (sampler->SetEnvironmentLinear(image, extent, continueEnvironment)) return true;
+		if (!bCancelled) outDiagnostic = "the CPU path tracer could not prepare the captured environment";
+		return false;
+	};
+
 	if (effectiveSettings.m_bIncludeSky && scene.m_environment.m_type == EEnvironmentSource::Texture)
 	{
+		if (!continueEnvironment()) return false;
 		const auto& source = scene.m_environment;
 		const auto& captured = scene.m_environmentPixels;
 		TextureImporter::ByteCode decoded;
@@ -841,7 +858,9 @@ bool Sailor::PrepareGIProbesScene(
 		uint32_t mipLevels = 1u;
 		if (!pixels)
 		{
-			if (!TextureImporter::DecodeTextureCpu(source.m_texture, decoded, width, height, mipLevels))
+			const bool bDecoded = TextureImporter::DecodeTextureCpu(source.m_texture, decoded, width, height, mipLevels);
+			if (!continueEnvironment()) return false;
+			if (!bDecoded)
 			{
 				outDiagnostic = "cannot decode the captured environment texture '" + source.m_texture.m_filepath + "'";
 				return false;
@@ -852,6 +871,7 @@ bool Sailor::PrepareGIProbesScene(
 		environment.Resize(static_cast<size_t>(width) * height);
 		for (size_t i = 0u; i < environment.Num(); ++i)
 		{
+			if (i % 1024u == 0u && !continueEnvironment()) return false;
 			if (source.m_texture.m_bDecodeAsFloat)
 				std::memcpy(&environment[i], pixels->GetData() + i * sizeof(glm::vec4), sizeof(glm::vec4));
 			else
@@ -862,7 +882,7 @@ bool Sailor::PrepareGIProbesScene(
 					environment[i] = Utils::SRGBToLinear(environment[i]);
 			}
 		}
-		sampler->SetEnvironmentLinear(environment, glm::uvec2(width, height));
+		if (!setEnvironment(environment, glm::uvec2(width, height))) return false;
 	}
 	else if (effectiveSettings.m_bIncludeSky && scene.m_environment.m_type == EEnvironmentSource::Sky)
 	{
@@ -875,27 +895,25 @@ bool Sailor::PrepareGIProbesScene(
 				scene.m_environment.m_sky,
 				environmentExtent,
 				transientSkyEnvironment,
-				[&isCancelled](uint32_t, uint32_t)
+				[&continueEnvironment](uint32_t, uint32_t)
 				{
-					return !isCancelled();
+					return continueEnvironment();
 				});
-		if (!bGenerated || isCancelled())
+		if (!bGenerated)
 		{
-			outDiagnostic = isCancelled() ?
-				"GI scene preparation was cancelled while generating the sky environment" :
-				"the transient SkyComponent environment could not be generated";
+			if (!bCancelled) outDiagnostic = "the transient SkyComponent environment could not be generated";
 			return false;
 		}
-		for (glm::vec4& pixel : transientSkyEnvironment)
+		for (size_t index = 0u; index < transientSkyEnvironment.Num(); ++index)
 		{
+			if (index % 1024u == 0u && !continueEnvironment()) return false;
+			auto& pixel = transientSkyEnvironment[index];
 			pixel = glm::vec4(
 				glm::max(glm::vec3(pixel), glm::vec3(0.0f)) *
 					effectiveSettings.m_skyIndirectIntensity,
 				pixel.a);
 		}
-		sampler->SetEnvironmentLinear(
-			transientSkyEnvironment,
-			environmentExtent);
+		if (!setEnvironment(transientSkyEnvironment, environmentExtent)) return false;
 	}
 	if (isCancelled())
 	{

@@ -726,21 +726,23 @@ namespace
 			const size_t pixelCount = static_cast<size_t>(width) * height;
 			const bool bIsFloatTexture = sourceData->Num() ==
 				pixelCount * sizeof(glm::vec4);
+			const auto continueConversion = [&]() { return reportMaterialProgress(completedMaterials); };
+			bool bConverted = false;
 			if (bIsFloatTexture)
 			{
 				if (channels == 4)
 				{
-					sampler->Initialize<vec4, vec4>(
+					bConverted = sampler->Initialize<vec4, vec4>(
 						reinterpret_cast<const vec4*>(sourceData->GetData()),
 						bLinear,
-						bNormalMap);
+						bNormalMap, continueConversion);
 				}
 				else
 				{
-					sampler->Initialize<vec3, vec4>(
+					bConverted = sampler->Initialize<vec3, vec4>(
 						reinterpret_cast<const vec4*>(sourceData->GetData()),
 						bLinear,
-						bNormalMap);
+						bNormalMap, continueConversion);
 				}
 			}
 			else
@@ -753,21 +755,21 @@ namespace
 				}
 				if (channels == 4)
 				{
-					sampler->Initialize<vec4, u8vec4>(
+					bConverted = sampler->Initialize<vec4, u8vec4>(
 						reinterpret_cast<const u8vec4*>(sourceData->GetData()),
 						bLinear,
-						bNormalMap);
+						bNormalMap, continueConversion);
 				}
 				else
 				{
-					sampler->Initialize<vec3, u8vec4>(
+					bConverted = sampler->Initialize<vec3, u8vec4>(
 						reinterpret_cast<const u8vec4*>(sourceData->GetData()),
 						bLinear,
-						bNormalMap);
+						bNormalMap, continueConversion);
 				}
 			}
 
-			if (!reportMaterialProgress(completedMaterials))
+			if (!bConverted || !reportMaterialProgress(completedMaterials))
 			{
 				return false;
 			}
@@ -1272,9 +1274,13 @@ void PathTracer::UsePreparedGeometry(const PathTracer& source)
 bool PathTracer::UpdatePreparedEmission(const MaterialSnapshots& materials,
 	const ScenePreparationProgressCallback& progress)
 {
+	const ScenePreparationProgress preparingEmission{ EScenePreparationStage::Geometry,
+		0u, m_geometry->m_tracedInstances.Num() };
 	bool bChanged = false;
 	for (size_t index = 0; index < materials.Num(); ++index)
 	{
+		if (index % 64u == 0u && progress &&
+			!progress(preparingEmission)) return false;
 		bChanged |= materials[index] && materials[index]->m_parameters.m_emissiveFactor !=
 			m_preparedMaterials->m_materials[index].m_emissiveFactor;
 	}
@@ -1287,6 +1293,8 @@ bool PathTracer::UpdatePreparedEmission(const MaterialSnapshots& materials,
 	m_preparedMaterials = TSharedPtr<PreparedMaterials>::Make(*m_preparedMaterials);
 	for (size_t index = 0; index < materials.Num(); ++index)
 	{
+		if (index % 64u == 0u && progress &&
+			!progress(preparingEmission)) return false;
 		if (materials[index])
 		{
 			m_preparedMaterials->m_materials[index].m_emissiveFactor =
@@ -1302,11 +1310,16 @@ bool PathTracer::UpdatePreparedEmission(const MaterialSnapshots& materials,
 		{
 			return false;
 		}
-		AppendEmissiveTriangles(m_geometry->m_tracedInstances[index]);
+		if (!AppendEmissiveTriangles(m_geometry->m_tracedInstances[index], progress,
+			{ EScenePreparationStage::Geometry, index, m_geometry->m_tracedInstances.Num() }))
+		{
+			return false;
+		}
 	}
 	m_lastScenePreparationStats.m_emissiveTriangleCount = m_emissiveTriangles->Num();
 	m_lastScenePreparationStats.m_emissiveSamplingWeight = m_totalEmissiveWeight;
-	return true;
+	return !progress || progress({ EScenePreparationStage::Geometry,
+		m_geometry->m_tracedInstances.Num(), m_geometry->m_tracedInstances.Num() });
 }
 
 bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
@@ -1540,8 +1553,10 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 			auto& localMaterialSlots = referencedMaterialSlots[triangles];
 			if (localMaterialSlots.IsEmpty())
 			{
-				for (const Math::Triangle& triangle : *triangles)
+				for (size_t triangleIndex = 0u; triangleIndex < triangles->Num(); ++triangleIndex)
 				{
+					if (triangleIndex != 0u && triangleIndex % 1024u == 0u && progress && !progress(preparedMaterials)) return false;
+					const auto& triangle = (*triangles)[triangleIndex];
 					if (std::find(
 							localMaterialSlots.begin(),
 							localMaterialSlots.end(),
@@ -1627,7 +1642,10 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 			glm::max(integerExtents, glm::ivec3(1)),
 			i);
 		m_geometry->m_tracedInstances.Add(static_cast<uint32_t>(i));
-		AppendEmissiveTriangles(static_cast<uint32_t>(i));
+		if (!AppendEmissiveTriangles(static_cast<uint32_t>(i), progress, preparedMaterials))
+		{
+			return false;
+		}
 	}
 	if (progress && !progress(preparedMaterials))
 	{
@@ -1674,24 +1692,35 @@ void PathTracer::SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::
 
 void PathTracer::SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent)
 {
+	SetRuntimeEnvironmentLinear(image, extent, {});
+}
+
+bool PathTracer::SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent,
+	const std::function<bool()>& shouldContinue)
+{
 	if (image.Num() == 0 || extent.x == 0 || extent.y == 0 || image.Num() < (size_t)extent.x * (size_t)extent.y)
 	{
-		return;
+		return false;
 	}
 
+	m_bHasRuntimeEnvironment = false;
+	m_bUseRuntimeEnvironmentImportance = false;
+	if (shouldContinue && !shouldContinue()) return false;
 	m_runtimeEnvironment.Initialize<vec3>(extent.x, extent.y, 3, SamplerClamping::Repeat);
 	m_runtimeEnvironment.m_clampingV = SamplerClamping::Clamp;
-	for (uint32_t y = 0; y < extent.y; y++)
+	for (size_t index = 0u; index < static_cast<size_t>(extent.x) * extent.y; ++index)
 	{
-		for (uint32_t x = 0; x < extent.x; x++)
-		{
-			const vec4 src = image[x + y * extent.x];
-			m_runtimeEnvironment.SetPixel(x, y, vec3(src));
-		}
+		if (index % 1024u == 0u && shouldContinue && !shouldContinue()) return false;
+		reinterpret_cast<vec3*>(m_runtimeEnvironment.m_data.GetData())[index] = vec3(image[index]);
 	}
 
 	m_bHasRuntimeEnvironment = true;
-	RebuildRuntimeEnvironmentImportance();
+	if (!RebuildRuntimeEnvironmentImportance(shouldContinue))
+	{
+		ClearRuntimeEnvironment();
+		return false;
+	}
+	return true;
 }
 
 void PathTracer::SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent)
@@ -1775,11 +1804,12 @@ vec3 PathTracer::SampleRuntimeDirectEnvironment(const vec3& direction) const
 		SampleRuntimeDiffuseEnvironment(direction);
 }
 
-void PathTracer::RebuildRuntimeEnvironmentImportance()
+bool PathTracer::RebuildRuntimeEnvironmentImportance(const std::function<bool()>& shouldContinue)
 {
 	m_runtimeEnvironmentImportanceCdf.Clear();
 	m_runtimeEnvironmentImportancePdf.Clear();
 	m_bUseRuntimeEnvironmentImportance = false;
+	if (shouldContinue && !shouldContinue()) return false;
 
 	const CombinedSampler2D* source = m_bHasRuntimeEnvironment ?
 		&m_runtimeEnvironment :
@@ -1787,14 +1817,14 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 			&m_runtimeDiffuseEnvironment : nullptr);
 	if (!source || source->m_width <= 0 || source->m_height <= 0)
 	{
-		return;
+		return true;
 	}
 
 	const size_t pixelCount = static_cast<size_t>(source->m_width) *
 		static_cast<size_t>(source->m_height);
 	if (source->m_data.Num() < pixelCount * sizeof(vec3))
 	{
-		return;
+		return true;
 	}
 
 	const vec3* pixels = reinterpret_cast<const vec3*>(
@@ -1820,6 +1850,7 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 			const size_t index = static_cast<size_t>(x) +
 				static_cast<size_t>(y) *
 				static_cast<size_t>(source->m_width);
+			if (index % 1024u == 0u && shouldContinue && !shouldContinue()) return false;
 			const vec3 radiance = SanitizeRadiance(pixels[index]);
 			const double luminance = static_cast<double>(glm::dot(
 				radiance,
@@ -1833,7 +1864,7 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 	if (!std::isfinite(totalLuminanceWeight) ||
 		totalLuminanceWeight <= 0.0)
 	{
-		return;
+		return !shouldContinue || shouldContinue();
 	}
 
 	const double sphereSolidAngle = 4.0 * static_cast<double>(Pi);
@@ -1844,7 +1875,7 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 	// HDR features such as the solar aureole and bright emissive texels.
 	if (maximumLuminance <= averageLuminance * 4.0)
 	{
-		return;
+		return !shouldContinue || shouldContinue();
 	}
 
 	const double uniformFloor = averageLuminance * 0.01;
@@ -1852,7 +1883,7 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 		uniformFloor * sphereSolidAngle;
 	if (!std::isfinite(totalWeight) || totalWeight <= 0.0)
 	{
-		return;
+		return !shouldContinue || shouldContinue();
 	}
 
 	m_runtimeEnvironmentImportanceCdf.Resize(pixelCount);
@@ -1873,6 +1904,7 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 			const size_t index = static_cast<size_t>(x) +
 				static_cast<size_t>(y) *
 				static_cast<size_t>(source->m_width);
+			if (index % 1024u == 0u && shouldContinue && !shouldContinue()) return false;
 			const double probability =
 				(solidAngleWeights[index] +
 					uniformFloor * pixelSolidAngle) / totalWeight;
@@ -1883,8 +1915,10 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 				static_cast<float>(probability / pixelSolidAngle);
 		}
 	}
+	if (shouldContinue && !shouldContinue()) return false;
 	m_runtimeEnvironmentImportanceCdf[pixelCount - 1u] = 1.0f;
 	m_bUseRuntimeEnvironmentImportance = true;
+	return true;
 }
 
 float PathTracer::RuntimeEnvironmentImportancePdf(
@@ -2879,11 +2913,12 @@ bool PathTracer::IsThickVolumeAtHit(
 	return material.m_thicknessFactor > 0.0f;
 }
 
-void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
+bool PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex, const ScenePreparationProgressCallback& progress,
+	const ScenePreparationProgress& state)
 {
 	if (instanceIndex >= m_geometry->m_tlasInstances.Num())
 	{
-		return;
+		return true;
 	}
 
 	const TLASInstance& instance = m_geometry->m_tlasInstances[instanceIndex];
@@ -2891,13 +2926,14 @@ void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
 		ResolveInstanceTriangles(instance);
 	if (!triangles)
 	{
-		return;
+		return true;
 	}
 
 	for (uint32_t triangleIndex = 0u;
 		triangleIndex < triangles->Num();
 		++triangleIndex)
 	{
+		if (triangleIndex != 0u && triangleIndex % 256u == 0u && progress && !progress(state)) return false;
 		const Math::Triangle& triangle = (*triangles)[triangleIndex];
 		const int64_t materialIndex =
 			static_cast<int64_t>(instance.m_materialBaseOffset) +
@@ -2984,6 +3020,7 @@ void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
 		source.m_cumulativeWeight = m_totalEmissiveWeight;
 		m_emissiveTriangles->Add(std::move(source));
 	}
+	return true;
 }
 
 vec3 PathTracer::SampleDirectEmissive(

@@ -467,7 +467,8 @@ namespace
 				return false;
 			}
 			std::string sourceDiagnostic;
-			if (!request.m_layoutSource->Validate(sourceDiagnostic))
+			if (!request.m_layoutSource->Validate(sourceDiagnostic, [&]()
+				{ return ReportProgress(request, "Validating reusable probe layout", 0u, totalProbes); }))
 			{
 				outDiagnostic = "layout source is invalid: " + sourceDiagnostic;
 				return false;
@@ -600,8 +601,8 @@ namespace
 		{
 			return false;
 		}
-		data.m_layoutHash = ComputeGIProbesLayoutHash(data);
-		return !IsCancelled(request);
+		return ComputeGIProbesLayoutHash(data, data.m_layoutHash, [&]()
+			{ return ReportProgress(request, "Hashing probe layout"); });
 	}
 
 	uint32_t CalculateRequiredSubdivisionLevel(
@@ -1036,7 +1037,11 @@ GIProbesBakeResult GIProbesBaker::Bake(
 		}
 		if (!bReuseTransport)
 		{
-			data->m_layoutHash = ComputeGIProbesLayoutHash(*data);
+			if (!ComputeGIProbesLayoutHash(*data, data->m_layoutHash, [&]()
+				{ return ReportProgress(request, "Hashing baked probes", totalProbes, totalProbes); }))
+			{
+				return CancelledBake();
+			}
 			if (!ComputeGIProbesTransportHash(*data, data->m_transportHash, request.m_cancel))
 			{
 				return CancelledBake();
@@ -1080,7 +1085,8 @@ GIProbesBakeResult GIProbesBaker::Bake(
 		{
 			return CancelledBake();
 		}
-		const bool bValid = data->Validate(validationDiagnostic);
+		const bool bValid = data->Validate(validationDiagnostic, [&]()
+			{ return ReportProgress(request, "Validating baked probes", totalProbes, totalProbes); });
 		if (IsCancelled(request))
 		{
 			return CancelledBake();

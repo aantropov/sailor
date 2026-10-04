@@ -4888,6 +4888,10 @@ components:
 			{ "Collecting shared probe samples", 2u, true, false },
 			{ "Canonicalizing shared probe samples", 2u, true, false },
 			{ "Canonicalizing shared probe samples", 2u, true, true },
+			{ "Hashing baked probes", 5u, true, false },
+			{ "Validating baked probes", 5u, true, false },
+			{ "Validating reusable probe layout", 4u, false, true },
+			{ "Hashing probe layout", 4u, false, false },
 			{ "Finalizing baked probes", 1u, true, false }
 		};
 		for (const auto& point : points)
@@ -4937,6 +4941,87 @@ components:
 			Require(HasSameProbeBits(retry.m_data->m_probes[i], retained.m_probes[i]),
 				"checkpoints must not change successful probe values or their canonical order");
 		}
+	}
+
+	void TestProbeDataCancellationAndHashCompatibility()
+	{
+		GIProbesData data = MakeVolume(1.0f, 7u);
+		Require(data.m_layoutHash == 337087406027552934ull,
+			"the existing v1 cube layout hash must not change when cancellation is added");
+		const auto cube = data.m_probes;
+		data.m_bricks.Clear();
+		data.m_probes.Clear();
+		data.m_volumeMax = glm::vec3(8.0f);
+		data.m_bakeSettings.m_maxSubdivisionLevel = 3u;
+		for (uint32_t index = 0u; index < 512u; ++index)
+		{
+			GIProbeBrick brick;
+			brick.m_min = glm::vec3(index % 8u, index / 8u % 8u, index / 64u);
+			brick.m_max = brick.m_min + glm::vec3(1.0f);
+			brick.m_subdivisionLevel = 3u;
+			brick.m_firstProbeIndex = static_cast<uint32_t>(data.m_probes.Num());
+			brick.m_probeCounts = glm::uvec3(2u);
+			brick.m_probeCount = 8u;
+			data.m_bricks.Add(brick);
+			for (const auto& source : cube)
+			{
+				auto probe = source;
+				probe.m_position += brick.m_min;
+				data.m_probes.Add(probe);
+			}
+		}
+		data.m_layoutHash = ComputeGIProbesLayoutHash(data);
+		const GIProbesData retained = data;
+		std::string diagnostic;
+		Require(data.Validate(diagnostic), "the multi-batch probe data must be valid: " + diagnostic);
+		uint32_t hashChecks = 0u, validationChecks = 0u;
+		uint64_t hash = 0u;
+		Require(ComputeGIProbesLayoutHash(data, hash, [&]() { ++hashChecks; return true; }) &&
+			hash == data.m_layoutHash && hashChecks > 16u,
+			"cancellable hashing must preserve the existing value and checkpoint both tables");
+		Require(data.Validate(diagnostic, [&]() { ++validationChecks; return true; }) &&
+			diagnostic.empty() && validationChecks > hashChecks,
+			"cancellable validation must include both payload validation and layout hashing");
+		for (uint32_t stop = 1u; stop <= hashChecks; ++stop)
+		{
+			uint32_t seen = 0u;
+			hash = 17u;
+			Require(!ComputeGIProbesLayoutHash(data, hash, [&]() { return ++seen < stop; }) &&
+				seen == stop && hash == 17u,
+				"every hash checkpoint must stop without replacing the caller's complete hash");
+		}
+		for (uint32_t stop = 1u; stop <= validationChecks; ++stop)
+		{
+			uint32_t seen = 0u;
+			Require(!data.Validate(diagnostic, [&]() { return ++seen < stop; }) && seen == stop &&
+				diagnostic == "GI probe validation was cancelled",
+				"every validation checkpoint must report cancellation rather than invalid probe data");
+		}
+		Require(data.Validate(diagnostic) && diagnostic.empty() && ComputeGIProbesLayoutHash(data) == retained.m_layoutHash,
+			"validation and hashing must succeed unchanged after cancellation");
+		for (size_t index = 0u; index < data.m_probes.Num(); ++index)
+			Require(HasSameProbeBits(data.m_probes[index], retained.m_probes[index]),
+				"cancelled validation and hashing must not change retained probe values");
+
+		uint64_t transport = 0u;
+		Require(ComputeGIProbesTransportHash(data, transport), "the reference transport hash must be computed");
+		data.m_layoutHash = 0u;
+		Require(ComputeGIProbesTransportHash(data, hash) && hash == transport,
+			"transport hashing must preserve its result when the layout hash is absent");
+		std::atomic<bool> cancel{ true };
+		hash = 17u;
+		Require(!ComputeGIProbesTransportHash(data, hash, &cancel) && hash == 17u && data.m_layoutHash == 0u,
+			"cancelled transport hashing must not publish the fallback layout or a partial transport hash");
+		cancel.store(false, std::memory_order_release);
+		Require(ComputeGIProbesTransportHash(data, hash, &cancel) && hash == transport,
+			"transport hashing with an absent layout hash must support retry");
+
+		data.m_probes.Last()->m_validity = -1.0f;
+		std::string ordinaryDiagnostic;
+		Require(!data.Validate(ordinaryDiagnostic) &&
+			!data.Validate(diagnostic, []() { return true; }) && ordinaryDiagnostic == diagnostic &&
+			diagnostic == "a probe has invalid position, relocation, validity, or flags",
+			"validation must still detect a bad last probe and retain its existing diagnostic");
 	}
 
 	void TestBakeCancellationDuringSorting()
@@ -5889,7 +5974,11 @@ components:
 
 		TVector<Raytracing::PathTracer::TLASInstance> cheapInstances;
 		auto reused = fixture.m_instances[0];
-		reused.m_blas = fixture.m_blas;
+		auto cheapTriangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		cheapTriangles->Add((*fixture.m_triangles)[0]);
+		reused.m_triangles = cheapTriangles;
+		reused.m_blas = TSharedPtr<Raytracing::BVH>::Make(1u);
+		reused.m_blas->BuildBVH(*cheapTriangles);
 		for (uint32_t i = 0u; i < 256u; ++i)
 		{
 			cheapInstances.Add(i < 128u ? reused : Raytracing::PathTracer::TLASInstance{});
@@ -6329,6 +6418,303 @@ components:
 			}, warning) && cancel.load(std::memory_order_acquire) && !prepared.m_sampler &&
 			warnings == 0u && diagnostic.find("cancelled") != std::string::npos,
 			"Prepare must recheck a callback-set cancellation before attempting the now-missing texture");
+	}
+
+	void TestGiCancellationInsideEmitterRefresh()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		for (uint32_t index = 0u; index < 8192u; ++index)
+			triangles->Add((*fixture.m_triangles)[0]);
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(static_cast<uint32_t>(triangles->Num()));
+		blas->BuildBVH(*triangles);
+		fixture.m_instances[0].m_triangles = triangles;
+		fixture.m_instances[0].m_blas = blas;
+		GIProbesSceneSnapshot scene;
+		scene.m_instances = fixture.m_instances;
+		scene.m_materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		scene.m_geometryHash = 17u;
+		GIProbesBakeSettings settings;
+		settings.m_bIncludeSky = false;
+		settings.m_bIncludeDirectLighting = false;
+		GIProbesPreparedScene previous;
+		std::string diagnostic;
+		Require(PrepareGIProbesScene(scene, settings, nullptr, previous, diagnostic), diagnostic);
+		const auto sample = [&](const GIProbesPreparedScene& prepared)
+		{
+			GIProbeBakeRaySample ray;
+			const auto& vertices = (*triangles)[0].m_vertices;
+			const glm::vec3 origin = (vertices[0] + vertices[1] + vertices[2]) / 3.0f + glm::vec3(0, 20, 0);
+			Require(prepared.m_sampler->Sample(origin, { 0, -1, 0 }, 100.0f, 41u, ray, diagnostic), diagnostic);
+			Require(ray.m_bHit, "the emitter cancellation fixture must hit retained geometry");
+			return ray;
+		};
+		const auto original = sample(previous);
+		auto emissive = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*scene.m_materials[0]);
+		emissive->m_parameters.m_emissiveFactor = glm::vec3(2.0f, 4.0f, 8.0f);
+		scene.m_materials[0] = emissive;
+		uint32_t reports = 0u;
+		std::atomic<bool> cancel{ false };
+		GIProbesPreparedScene replacement;
+		Require(!PrepareGIProbesScene(scene, settings, &cancel, replacement, diagnostic,
+			[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Geometry && ++reports == 8u)
+					cancel.store(true, std::memory_order_release);
+				return true;
+			}, {}, &previous) && reports == 8u && !replacement.m_sampler && diagnostic.find("cancelled") != std::string::npos,
+			"emission-only refresh must cancel inside one large instance without publishing its partial emitter table");
+		Require(previous.m_sampler->GetLastScenePreparationStats().m_emissiveTriangleCount == 0u &&
+			sample(previous).m_radiance == original.m_radiance && sample(previous).m_distance == original.m_distance,
+			"cancelled emitter refresh must leave the retained distribution unchanged");
+		cancel.store(false, std::memory_order_release);
+		Require(PrepareGIProbesScene(scene, settings, &cancel, replacement, diagnostic, {}, {}, &previous), diagnostic);
+		Require(replacement.m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0u &&
+			replacement.m_sampler->GetLastScenePreparationStats().m_emissiveTriangleCount == triangles->Num() &&
+			sample(replacement).m_radiance == emissive->m_parameters.m_emissiveFactor &&
+			sample(replacement).m_distance == original.m_distance,
+			"emission refresh must retry with the retained BLAS and a complete emitter distribution");
+	}
+
+	void TestPathTracerCancellationInsidePixelConversion()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		auto pixels = TSharedPtr<TVector<uint8_t>>::Make(256u * 64u * 4u);
+		for (size_t index = 0u; index < pixels->Num(); index += 4u)
+		{
+			(*pixels)[index] = 128u;
+			(*pixels)[index + 3u] = 255u;
+		}
+		auto texture = TSharedPtr<Raytracing::PathTracer::TextureSnapshot>::Make();
+		texture->m_sourceKey = "resident-cancellation-pixels";
+		texture->m_width = 256;
+		texture->m_height = 64;
+		texture->m_data = pixels;
+		auto material = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*materials[0]);
+		Raytracing::PathTracer::SamplerSnapshot binding;
+		binding.m_texture = texture;
+		material->m_samplers.Add({ "baseColorSampler", binding });
+		materials[0] = material;
+		Raytracing::GIProbesPathTracer tracer;
+		uint32_t reports = 0u, warnings = 0u;
+		Require(!tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, {}, glm::vec3(0.0f),
+			[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				return progress.m_stage != Raytracing::PathTracer::EScenePreparationStage::Materials ||
+					progress.m_completed != 0u || ++reports < 8u;
+			}, [&](const std::string&) { ++warnings; }) && reports == 8u && warnings == 0u &&
+			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == 0u,
+			"cancellation must interrupt one resident texture conversion without publishing a material or warning");
+		Require(tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, {}) &&
+			tracer.GetLastScenePreparationStats().m_uniqueTextureCount == 1u &&
+			tracer.GetLastScenePreparationStats().m_decodedTextureCount == 0u && (*pixels)[0] == 128u,
+			"texture conversion must retry from the unchanged retained pixels without decoding");
+	}
+
+	template<typename TOutput, typename TInput>
+	void CheckPixelConversionCancellation(const TVector<TInput>& pixels)
+	{
+		for (bool linear : { false, true })
+		for (bool normal : { false, true })
+		{
+			Raytracing::CombinedSampler2D baseline, converted;
+			baseline.Initialize<TOutput>(static_cast<uint32_t>(pixels.Num()), 1u);
+			converted.Initialize<TOutput>(static_cast<uint32_t>(pixels.Num()), 1u);
+			baseline.Initialize<TOutput, TInput>(pixels.GetData(), linear, normal);
+			uint32_t checkpoints = 0u;
+			Require(converted.Initialize<TOutput, TInput>(pixels.GetData(), linear, normal,
+				[&]() { ++checkpoints; return true; }) && checkpoints > 3u,
+				"large pixel conversion must report intermediate cancellation checkpoints");
+			for (size_t index = 0u; index < pixels.Num(); ++index)
+			{
+				const TOutput normalized = std::is_floating_point_v<typename TInput::value_type> ?
+					TOutput(pixels[index]) : TOutput(pixels[index]) * (1.0f / 255.0f);
+				const TOutput expected = normal ? normalized * 2.0f - 1.0f :
+					linear ? TOutput(Utils::SRGBToLinear(normalized)) : normalized;
+				Require(reinterpret_cast<const TOutput*>(converted.m_data.GetData())[index] == expected,
+					"float, byte, linear and normal-map conversion must retain the established numeric values");
+			}
+			for (uint32_t cutoff = 1u; cutoff <= checkpoints; ++cutoff)
+			{
+				uint32_t reports = 0u;
+				Require(!converted.Initialize<TOutput, TInput>(pixels.GetData(), linear, normal,
+					[&]() { return ++reports < cutoff; }) && reports == cutoff,
+					"pixel conversion must stop at every accepted cancellation checkpoint");
+				Require(converted.Initialize<TOutput, TInput>(pixels.GetData(), linear, normal, []() { return true; }) &&
+					converted.m_data.Num() == baseline.m_data.Num() &&
+					std::memcmp(converted.m_data.GetData(), baseline.m_data.GetData(), baseline.m_data.Num()) == 0,
+					"a cancelled pixel conversion must retry with bit-identical output");
+			}
+		}
+	}
+
+	void TestPixelConversionCancellationAndParity()
+	{
+		TVector<glm::u8vec4> bytes;
+		TVector<glm::vec4> floats;
+		for (uint32_t index = 0u; index < 2049u; ++index)
+		{
+			bytes.Add(glm::u8vec4(index % 256u, (index * 7u) % 256u, 128u, 255u));
+			floats.Add(glm::vec4(float(index % 17u) * 0.125f, 0.5f, 4.0f, 1.0f));
+		}
+		CheckPixelConversionCancellation<glm::vec3>(bytes);
+		CheckPixelConversionCancellation<glm::vec4>(bytes);
+		CheckPixelConversionCancellation<glm::vec3>(floats);
+		CheckPixelConversionCancellation<glm::vec4>(floats);
+	}
+
+	void TestEnvironmentPreparationCancellation()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		GIProbesBakeSettings settings;
+		settings.m_bIncludeDirectLighting = settings.m_bIncludeEmissive = false;
+		const glm::uvec2 extent(256u, 64u);
+		for (bool concentrated : { false, true })
+		{
+			TVector<glm::vec4> image;
+			image.Resize(extent.x * extent.y);
+			for (auto& pixel : image) pixel = glm::vec4(0.25f, 0.5f, 2.0f, 1.0f);
+			if (concentrated) image[extent.x * 16u + 31u] = glm::vec4(65504.0f);
+			Raytracing::GIProbesPathTracer baseline, pending;
+			Require(baseline.InitializeSnapshot(fixture.m_instances, materials, {}, settings), "prepare reference environment tracer");
+			baseline.SetEnvironmentLinear(image, extent);
+			Require(pending.InitializeSnapshot(fixture.m_instances, materials, {}, settings), "prepare cancellable environment tracer");
+			uint32_t checkpoints = 0u;
+			Require(pending.SetEnvironmentLinear(image, extent, [&]() { ++checkpoints; return true; }) && checkpoints > 32u,
+				"environment conversion and importance preparation must both poll large maps");
+			std::string diagnostic;
+			const auto compare = [&]()
+			{
+				for (uint32_t seed = 0u; seed < 16u; ++seed)
+				{
+					glm::vec3 expectedDirection, direction;
+					float expectedPdf = 0.0f, pdf = 0.0f;
+					Require(baseline.SamplePrimaryDirection({ 0, 1, 0 }, 0u, 1u, seed, expectedDirection, expectedPdf, diagnostic) &&
+						pending.SamplePrimaryDirection({ 0, 1, 0 }, 0u, 1u, seed, direction, pdf, diagnostic) &&
+						direction == expectedDirection && pdf == expectedPdf,
+						"retry must preserve environment sample directions and their PDFs exactly");
+					GIProbeBakeRaySample expected, actual;
+					Require(baseline.Sample({ 0, 10000, 0 }, direction, 20.0f, seed, expected, diagnostic) &&
+						pending.Sample({ 0, 10000, 0 }, direction, 20.0f, seed, actual, diagnostic) &&
+						!actual.m_bHit && actual.m_radiance == expected.m_radiance,
+						"retry and retained environment readers must preserve linear radiance");
+				}
+			};
+			compare();
+			for (uint32_t cutoff : { 1u, checkpoints / 3u, checkpoints * 2u / 3u, checkpoints - 1u, checkpoints })
+			{
+				uint32_t reports = 0u;
+				Require(!pending.SetEnvironmentLinear(image, extent, [&]() { return ++reports < cutoff; }) && reports == cutoff,
+					"conversion and importance cancellation must not complete a partial environment");
+				GIProbeBakeRaySample ray;
+				Require(!pending.Sample({ 0, 10000, 0 }, { 0, 1, 0 }, 20.0f, 1u, ray, diagnostic),
+					"a cancelled private GI tracer must not accept bake rays");
+				Require(pending.InitializeSnapshot(fixture.m_instances, materials, {}, settings) &&
+					pending.SetEnvironmentLinear(image, extent, []() { return true; }), "retry environment preparation");
+				compare();
+			}
+		}
+	}
+
+	void TestCapturedEnvironmentCancellationAndRetry()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		GIProbesSceneSnapshot scene;
+		scene.m_instances = fixture.m_instances;
+		scene.m_materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		scene.m_geometryHash = 23u;
+		scene.m_environment.m_type = EEnvironmentSource::Texture;
+		scene.m_environmentPixels.m_width = 256;
+		scene.m_environmentPixels.m_height = 64;
+		GIProbesBakeSettings settings;
+		settings.m_bIncludeDirectLighting = settings.m_bIncludeEmissive = false;
+		for (bool floatingPoint : { false, true })
+		{
+			scene.m_environment.m_texture.m_bDecodeAsFloat = floatingPoint;
+			scene.m_environment.m_format = floatingPoint ? RHI::ETextureFormat::R32G32B32A32_SFLOAT : RHI::ETextureFormat::R8G8B8A8_SRGB;
+			auto pixels = TSharedPtr<TextureImporter::ByteCode>::Make();
+			pixels->Resize(256u * 64u * (floatingPoint ? sizeof(glm::vec4) : sizeof(glm::u8vec4)));
+			const glm::vec4 hdr(0.25f, 0.5f, 2.0f, 1.0f);
+			const glm::u8vec4 ldr(128u, 64u, 192u, 255u);
+			for (size_t index = 0u; index < 256u * 64u; ++index)
+			{
+				if (floatingPoint) std::memcpy(pixels->GetData() + index * sizeof(hdr), &hdr, sizeof(hdr));
+				else std::memcpy(pixels->GetData() + index * sizeof(ldr), &ldr, sizeof(ldr));
+			}
+			scene.m_environmentPixels.m_pixels = pixels;
+			GIProbesPreparedScene previous, prepared;
+			std::string diagnostic;
+			Require(PrepareGIProbesScene(scene, settings, nullptr, previous, diagnostic), diagnostic);
+			const glm::vec3 expected = floatingPoint ? glm::vec3(hdr) :
+				Utils::SRGBToLinear(glm::vec3(ldr) * (1.0f / 255.0f));
+			const auto checkRadiance = [&](const GIProbesPreparedScene& value)
+			{
+				GIProbeBakeRaySample ray;
+				Require(value.m_sampler->Sample({ 0, 10000, 0 }, { 0, 1, 0 }, 20.0f, 1u, ray, diagnostic) &&
+					!ray.m_bHit && glm::length(ray.m_radiance - expected) < 0.00001f,
+					"retained environment pixels and source encoding must preserve known radiance");
+			};
+			uint32_t checkpoints = 0u;
+			Require(PrepareGIProbesScene(scene, settings, nullptr, prepared, diagnostic,
+				[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+				{
+					if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Materials) ++checkpoints;
+					return true;
+				}, {}, &previous) && checkpoints > 40u, "large captured environments need batched cancellation");
+			for (bool atomicCancellation : { false, true })
+			for (uint32_t cutoff : { 8u, checkpoints / 2u, checkpoints })
+			{
+				std::atomic<bool> cancel{ false };
+				uint32_t reports = 0u, warnings = 0u;
+				Require(!PrepareGIProbesScene(scene, settings, &cancel, prepared, diagnostic,
+					[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+					{
+						if (progress.m_stage != Raytracing::PathTracer::EScenePreparationStage::Materials || ++reports < cutoff) return true;
+						if (atomicCancellation) cancel.store(true, std::memory_order_release);
+						return atomicCancellation;
+					}, [&](const std::string&) { ++warnings; }, &previous) && reports == cutoff &&
+					!prepared.m_sampler && warnings == 0u && diagnostic.find("cancelled") != std::string::npos,
+					"captured environment cancellation must neither publish partial state nor report a missing asset");
+				checkRadiance(previous);
+				cancel.store(false, std::memory_order_release);
+				Require(PrepareGIProbesScene(scene, settings, &cancel, prepared, diagnostic, {}, {}, &previous), diagnostic);
+				checkRadiance(prepared);
+			}
+		}
+
+		GIProbesPreparedScene previous, prepared;
+		std::string diagnostic;
+		Require(PrepareGIProbesScene(scene, settings, nullptr, previous, diagnostic), diagnostic);
+		scene.m_environment.m_type = EEnvironmentSource::Sky;
+		uint32_t rows = 0u;
+		Require(!PrepareGIProbesScene(scene, settings, nullptr, prepared, diagnostic,
+			[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				return progress.m_stage != Raytracing::PathTracer::EScenePreparationStage::Materials || ++rows < 8u;
+			}, {}, &previous) && rows == 8u && !prepared.m_sampler && diagnostic.find("cancelled") != std::string::npos,
+			"sky generation must honor callback-only cancellation as well as an atomic flag");
+		Require(PrepareGIProbesScene(scene, settings, nullptr, prepared, diagnostic, {}, {}, &previous), diagnostic);
+
+		Tests::TempDirectory files("gi-cancel-environment-decode");
+		const auto path = files.Path("environment.tga");
+		auto source = MakeCapturedRedTexture(path);
+		scene.m_environment.m_type = EEnvironmentSource::Texture;
+		scene.m_environment.m_format = RHI::ETextureFormat::R8G8B8A8_UNORM;
+		scene.m_environment.m_texture = source->m_decodeRequest;
+		scene.m_environmentPixels = {};
+		Require(std::filesystem::remove(path), "remove only the owned environment decode fixture");
+		uint32_t reports = 0u;
+		Require(!PrepareGIProbesScene(scene, settings, nullptr, prepared, diagnostic,
+			[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				return progress.m_stage != Raytracing::PathTracer::EScenePreparationStage::Materials || ++reports < 2u;
+			}, {}, &previous) && reports == 2u && !prepared.m_sampler && diagnostic.find("cancelled") != std::string::npos,
+			"cancellation after an opaque decode must take priority over a missing-texture error");
+		source = MakeCapturedRedTexture(path);
+		scene.m_environment.m_texture = source->m_decodeRequest;
+		Require(PrepareGIProbesScene(scene, settings, nullptr, prepared, diagnostic, {}, {}, &previous), diagnostic);
 	}
 
 	void TestProbeBakeSkipsUnavailableMeshAndMaterialInstances()
@@ -8466,6 +8852,7 @@ int main(int argc, char** argv)
 		RunTest("BakeWorkerFailureDiagnostics", TestBakeWorkerFailureDiagnostics);
 		RunTest("BakeProgressCallbackThrows", TestBakeProgressCallbackThrows);
 		RunTest("BakeCancellationBetweenPhases", TestBakeCancellationBetweenPhases);
+		RunTest("ProbeDataCancellationAndHashCompatibility", TestProbeDataCancellationAndHashCompatibility);
 		RunTest("BakeCancellationDuringSorting", TestBakeCancellationDuringSorting);
 		RunTest(
 			"PrimaryDirectionPdfWeighting",
@@ -8542,6 +8929,11 @@ int main(int argc, char** argv)
 		RunTest("BvhCancellationAndRetry", TestBvhCancellationAndRetry);
 		RunTest("PathTracerCancellationBetweenBlasBuilds", TestPathTracerCancellationBetweenBlasBuilds);
 		RunTest("PathTracerCancellationDuringTexturePreparation", TestPathTracerCancellationDuringTexturePreparation);
+		RunTest("PathTracerCancellationInsidePixelConversion", TestPathTracerCancellationInsidePixelConversion);
+		RunTest("GiCancellationInsideEmitterRefresh", TestGiCancellationInsideEmitterRefresh);
+		RunTest("PixelConversionCancellationAndParity", TestPixelConversionCancellationAndParity);
+		RunTest("EnvironmentPreparationCancellation", TestEnvironmentPreparationCancellation);
+		RunTest("CapturedEnvironmentCancellationAndRetry", TestCapturedEnvironmentCancellationAndRetry);
 		RunTest("GiLightingReusesPreparedTransport", TestGiLightingReusesPreparedTransport);
 		RunTest("AuthoredEnvironmentWithoutRenderer", TestAuthoredEnvironmentWithoutRenderer);
 		RunTest("GiEmissionReusesPreparedTransport", TestGiEmissionReusesPreparedTransport);

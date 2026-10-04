@@ -7,6 +7,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -157,6 +158,7 @@ namespace Sailor
 		TVector<GIProbe> m_probes{};
 
 		bool Validate(std::string& outDiagnostic) const;
+		bool Validate(std::string& outDiagnostic, const std::function<bool()>& shouldContinue) const;
 		bool IsCompositionCompatibleWith(
 			const GIProbesData& rhs,
 			std::string& outDiagnostic) const;
@@ -166,6 +168,8 @@ namespace Sailor
 
 	SAILOR_SHARED_API uint64_t ComputeGIProbesLayoutHash(
 		const GIProbesData& data) noexcept;
+	SAILOR_SHARED_API bool ComputeGIProbesLayoutHash(const GIProbesData& data,
+		uint64_t& outHash, const std::function<bool()>& shouldContinue);
 	SAILOR_SHARED_API bool ComputeGIProbesTransportHash(
 		const GIProbesData& data,
 		uint64_t& outHash,

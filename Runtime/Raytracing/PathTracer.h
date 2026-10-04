@@ -163,6 +163,9 @@ namespace Sailor::Raytracing
 			const ScenePreparationWarningCallback& warning = {});
 		void SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::uvec2& extent);
 		SAILOR_SHARED_API void SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
+		// Cancellable preparation uses disposable state, never a published tracer.
+		SAILOR_SHARED_API bool SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent,
+			const std::function<bool()>& shouldContinue);
 		SAILOR_SHARED_API void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		void ClearRuntimeEnvironment();
 		SAILOR_SHARED_API bool RenderPreparedScene(const Params& params);
@@ -267,7 +270,8 @@ namespace Sailor::Raytracing
 			float m_cumulativeWeight = 0.0f;
 		};
 
-		void AppendEmissiveTriangles(uint32_t instanceIndex);
+		bool AppendEmissiveTriangles(uint32_t instanceIndex, const ScenePreparationProgressCallback& progress,
+			const ScenePreparationProgress& state);
 		vec3 SampleDirectEmissive(
 			const TLASHit& receiverHit,
 			const LightingModel::SampledData& receiverMaterial,
@@ -284,7 +288,7 @@ namespace Sailor::Raytracing
 		vec3 SampleRuntimeEnvironment(const vec3& direction) const;
 		vec3 SampleRuntimeDiffuseEnvironment(const vec3& direction) const;
 		SAILOR_SHARED_API vec3 SampleRuntimeDirectEnvironment(const vec3& direction) const;
-		void RebuildRuntimeEnvironmentImportance();
+		bool RebuildRuntimeEnvironmentImportance(const std::function<bool()>& shouldContinue = {});
 		float RuntimeEnvironmentImportancePdf(
 			const vec3& direction) const;
 		bool SampleRuntimeEnvironmentImportance(

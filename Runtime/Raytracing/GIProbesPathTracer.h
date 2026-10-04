@@ -37,6 +37,9 @@ namespace Sailor::Raytracing
 		void SetEnvironmentLinear(
 			const TVector<glm::vec4>& image,
 			const glm::uvec2& extent);
+		// Cancellation invalidates this private preparation; initialize it again before retrying.
+		bool SetEnvironmentLinear(const TVector<glm::vec4>& image, const glm::uvec2& extent,
+			const std::function<bool()>& shouldContinue);
 
 		const PathTracer::ScenePreparationStats&
 			GetLastScenePreparationStats() const
