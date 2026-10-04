@@ -50,6 +50,7 @@
 #include <latch>
 #include <limits>
 #include <stdexcept>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -1901,6 +1902,235 @@ frame:
 			"the indexed fixture must exercise nonzero buffer placements and nonzero suballocations");
 		std::cout << "Indexed storage " << (suballocated ? "suballocated" : "default") << " stride " << stride <<
 			": generic/indexed/offset allocations, direct/projected sets, rejection, A/B/A GPU words and owner release passed\n";
+	}
+
+	struct DescriptorReadback
+	{
+		RHIBufferPtr m_buffer;
+		uint32_t m_seed;
+
+		void Check() const
+		{
+			const auto* words = static_cast<const uint32_t*>(m_buffer->GetPointer());
+			for (uint32_t i = 0; i < 8; ++i)
+				Require(words[i] == m_seed + i * 17, "retained descriptors must read every word of their own generation");
+		}
+	};
+
+	DescriptorReadback RecordDescriptorReadback(RHICommandListPtr draw, ShaderSetPtr shader,
+		VulkanComputePipelinePtr pipeline, VulkanDescriptorSetPtr input, uint32_t seed)
+	{
+		auto& driver = Renderer::GetDriver();
+		constexpr size_t size = 8 * sizeof(uint32_t);
+		auto output = driver->CreateBuffer(size, EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit,
+			EMemoryPropertyBit::DeviceLocal);
+		auto bindings = driver->CreateShaderBindings();
+		Require(static_cast<bool>(driver->AddBufferToShaderBindings(bindings, output, "outputValue", 0)),
+			"descriptor readback output must bind");
+		auto native = draw->m_vulkan.m_commandBuffer;
+		native->BindPipeline(pipeline);
+		native->AddDependency(shader->GetComputeShaderRHI());
+		native->BindDescriptorSet(pipeline->m_layout, { input, bindings->m_vulkan.m_descriptorSet }, VK_PIPELINE_BIND_POINT_COMPUTE);
+		const uint32_t index = 0;
+		native->PushConstants(pipeline->m_layout, 0, sizeof(index), &index);
+		native->Dispatch(8, 1, 1);
+		native->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		auto result = driver->CreateBuffer(size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+		std::memset(result->GetPointer(), 0xcd, size);
+		native->CopyBuffer(*output->m_vulkan.m_buffer->Get(), *result->m_vulkan.m_buffer->Get(), size);
+		return { result, seed };
+	}
+
+	class DescriptorPoolProbe final : public VulkanDescriptorPool
+	{
+	public:
+		DescriptorPoolProbe(VulkanDevicePtr device, bool& destroyed) :
+			VulkanDescriptorPool(std::move(device), 128, { { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 256 } }),
+			m_destroyed(destroyed) {}
+		~DescriptorPoolProbe() override { m_destroyed = true; }
+
+		using VulkanDescriptorPool::CreatePool;
+		VulkanDescriptorPoolPagePtr GetPage() const { return m_currentPage; }
+
+	private:
+		bool& m_destroyed;
+	};
+
+	void TestDescriptorPoolLifetime(ShaderSetPtr shader)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
+		auto pipeline = nativeDriver->GetOrAddComputePipeline(shader->GetComputeShaderRHI());
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& context = device->GetCurrentThreadContext();
+		auto savedPool = context.m_descriptorPool;
+		for (bool observePages : { true, false })
+			for (bool projected : { false, true })
+			{
+				bool ownerDestroyed = false;
+				auto pool = TRefPtr<DescriptorPoolProbe>::Make(device, ownerDestroyed);
+				context.m_descriptorPool = pool;
+				try
+				{
+					auto firstPage = observePages ? pool->GetPage() : VulkanDescriptorPoolPagePtr{};
+					const VkDescriptorPool firstHandle = *pool;
+					auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(upload, true);
+					commands->BeginCommandList(draw, true);
+					auto inputs = driver->CreateShaderBindings();
+					const auto prepare = [&](uint32_t seed)
+					{
+						auto binding = driver->AddSsboToShaderBindings(inputs, "source", 16, 2, 0, true);
+						Require(static_cast<bool>(binding), "pool lifetime input must prepare");
+						std::array<uint32_t, 8> words;
+						for (uint32_t i = 0; i < words.size(); ++i) words[i] = seed + i * 17;
+						commands->UpdateShaderBinding(upload, binding, words.data(), sizeof(words));
+						if (projected)
+							Require(static_cast<bool>(driver->AddShaderBinding(inputs, binding, "unused", 31)),
+								"pool lifetime projection must have an extra binding");
+						auto sets = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
+						Require(sets.Num() == 1 && sets[0] && sets[0]->IsCompiled() &&
+							(projected ? sets[0] != inputs->m_vulkan.m_descriptorSet : sets[0] == inputs->m_vulkan.m_descriptorSet),
+							"pool lifetime must exercise the requested direct or projected path");
+						const auto warm = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
+						Require(warm.Num() == 1 && warm[0] == sets[0],
+							"an unchanged descriptor request must reuse the native set");
+						return sets[0];
+					};
+					auto first = prepare(0x12340000u);
+					const auto firstRead = RecordDescriptorReadback(draw, shader, pipeline, first, 0x12340000u);
+					Require(pool->CreatePool() == VK_SUCCESS && static_cast<VkDescriptorPool>(*pool) != firstHandle,
+						"page replacement must create a different live native pool");
+					auto secondPage = observePages ? pool->GetPage() : VulkanDescriptorPoolPagePtr{};
+					auto second = prepare(0x56780000u);
+					const auto secondRead = RecordDescriptorReadback(draw, shader, pipeline, second, 0x56780000u);
+					const auto retainedRead = RecordDescriptorReadback(draw, shader, pipeline, first, 0x12340000u);
+					first.Clear();
+					second.Clear();
+					inputs.Clear();
+					nativeDriver->CollectGarbage_RenderThread();
+					context.m_descriptorPool = savedPool;
+					Require(pool.NumRefs() == 1, "compiled sets must retain their page, not the allocating pool owner");
+					pool.Clear();
+					Require(ownerDestroyed, "the allocating pool owner must be destroyed before submission");
+					if (observePages)
+						Require(firstPage.NumRefs() > 1 && secondPage.NumRefs() > 1,
+							"recorded descriptors must retain both retired pool pages");
+					CompleteCommands(upload, draw);
+					for (const auto& result : { firstRead, secondRead, retainedRead }) result.Check();
+					upload->m_vulkan.m_commandBuffer->Reset();
+					draw->m_vulkan.m_commandBuffer->Reset();
+					driver->TrackResources_ThreadSafe();
+					nativeDriver->CollectGarbage_RenderThread();
+					if (observePages)
+						Require(firstPage.NumRefs() == 1 && secondPage.NumRefs() == 1,
+							"completed commands must release both pages to the observation handles");
+				}
+				catch (...)
+				{
+					context.m_descriptorPool = savedPool;
+					throw;
+				}
+			}
+		std::cout << "Descriptor pool lifetime: direct/projected pages, owner release, command-only A/B/A reads and final page release passed\n";
+	}
+
+	void TestConcurrentDescriptorPublication(ShaderSetPtr shader)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
+		auto pipeline = nativeDriver->GetOrAddComputePipeline(shader->GetComputeShaderRHI());
+		const uint32_t workers = App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads();
+		constexpr uint32_t iterations = 32;
+		std::latch ready(workers), start(1), done(workers);
+		std::vector<DWORD> threadIds(workers);
+		TVector<Tasks::TaskPtr<std::string>> tasks;
+		for (uint32_t worker = 0; worker < workers; ++worker)
+		{
+			auto task = Tasks::CreateTaskWithResult<std::string>("Concurrent descriptor publication", [&, worker]() -> std::string
+			{
+				threadIds[worker] = GetCurrentThreadId();
+				ready.count_down();
+				start.wait();
+				std::string error;
+				try
+				{
+					for (uint32_t iteration = 0; iteration < iterations; ++iteration)
+					{
+						auto inputs = driver->CreateShaderBindings();
+						auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+						auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+						commands->BeginCommandList(upload, true);
+						commands->BeginCommandList(draw, true);
+						const auto prepare = [&](uint32_t seed)
+						{
+							auto binding = driver->AddSsboToShaderBindings(inputs, "source", 16, 2, 0, true);
+							Require(static_cast<bool>(binding), "concurrent storage preparation must succeed");
+							std::array<uint32_t, 8> words;
+							for (uint32_t i = 0; i < words.size(); ++i) words[i] = seed + i * 17;
+							commands->UpdateShaderBinding(upload, binding, words.data(), sizeof(words));
+							if (iteration % 2)
+								Require(static_cast<bool>(driver->AddShaderBinding(inputs, binding, "unused", 31)),
+									"concurrent projection must have an extra binding");
+							auto sets = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
+							Require(sets.Num() == 1 && sets[0] && sets[0]->IsCompiled() &&
+								(iteration % 2 ? sets[0] != inputs->m_vulkan.m_descriptorSet : sets[0] == inputs->m_vulkan.m_descriptorSet),
+								"concurrent publication must return a complete native set");
+							return sets[0];
+						};
+						const uint32_t seed = 0x10000000u + worker * 0x100000u + iteration * 0x100u;
+						auto first = prepare(seed);
+						const auto firstRead = RecordDescriptorReadback(draw, shader, pipeline, first, seed);
+						const auto revision = inputs->GetDescriptorRevision();
+						if (iteration % 8 == 0)
+						{
+							const auto published = inputs->m_vulkan.m_descriptorSet;
+							Require(!driver->AddBufferToShaderBindings(inputs, "source", 32, 0, EShaderBindingType::UniformBuffer) &&
+								inputs->GetDescriptorRevision() == revision && inputs->m_vulkan.m_descriptorSet == published,
+								"a rejected concurrent replacement must not publish a revision");
+						}
+						auto second = prepare(seed + 0x01000000u);
+						Require(first != second && inputs->GetDescriptorRevision() == revision + (iteration % 2 ? 2 : 1),
+							"replacement must publish a new set while the recorded generation remains alive");
+						const auto secondRead = RecordDescriptorReadback(draw, shader, pipeline, second, seed + 0x01000000u);
+						const auto retainedRead = RecordDescriptorReadback(draw, shader, pipeline, first, seed);
+						first.Clear();
+						second.Clear();
+						inputs.Clear();
+						CompleteCommands(upload, draw);
+						for (const auto& result : { firstRead, secondRead, retainedRead }) result.Check();
+						upload->m_vulkan.m_commandBuffer->Reset();
+						draw->m_vulkan.m_commandBuffer->Reset();
+					}
+				}
+				catch (const std::exception& failure) { error = failure.what(); }
+				done.count_down();
+				return error;
+			}, EThreadType::RHI);
+			tasks.Add(task);
+			task->Run();
+		}
+		ready.wait();
+		start.count_down();
+		uint32_t collections = 0;
+		while (!done.try_wait())
+		{
+			nativeDriver->CollectGarbage_RenderThread();
+			++collections;
+			std::this_thread::yield();
+		}
+		for (auto& task : tasks) task->Wait();
+		for (auto& task : tasks) Require(task->GetResult().empty(), task->GetResult().c_str());
+		Require(collections > 0, "Render cache collection must overlap active RHI tasks");
+		for (uint32_t i = 0; i < workers; ++i)
+			for (uint32_t j = 0; j < i; ++j)
+				Require(threadIds[i] != threadIds[j], "publication stress must use distinct real RHI workers");
+		driver->TrackResources_ThreadSafe();
+		nativeDriver->CollectGarbage_RenderThread();
+		std::cout << "Concurrent descriptors: " << workers << " RHI workers, 32 direct/projected replacements each, refusal, Render cache collection and complete A/B/A reads passed\n";
 	}
 
 	void TestSkyOverlayBlending(ShaderSetPtr shader, TRefPtr<TestGraph> graph, RHIShaderBindingSetPtr frame)
@@ -4770,6 +5000,8 @@ namespace Sailor::Tests
 						throw;
 					}
 					storageAllocator = std::move(savedAllocator);
+					TestDescriptorPoolLifetime(storageShaders[0]);
+					TestConcurrentDescriptorPublication(storageShaders[0]);
 					TestImGuiSkippedAttachments();
 					TestLinearizeDepthRegions(linearDepthShader);
 					TestFullscreenUploadRetry();
