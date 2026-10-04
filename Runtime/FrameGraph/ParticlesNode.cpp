@@ -83,6 +83,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 			RHI::ETextureUsageBit::Sampled_Bit;
 
 		m_shadowMap = driver->CreateRenderTarget(glm::ivec2(4096, 4096), 1, RHI::EFormat::R32_SFLOAT, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
+		if (!m_shadowMap) return;
 
 		m_shadowMapBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 		Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_shadowMapBinding, "shadowMapSampler", m_shadowMap, 0);

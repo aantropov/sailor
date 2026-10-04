@@ -1,6 +1,7 @@
 #include "Sailor.h"
 #include "Engine/Frame.h"
 #include "Engine/EngineLoop.h"
+#include "ECS/LightingECS.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Support/TempDirectory.h"
 #include "EditorEngineProtocolInternal.h"
@@ -15,6 +16,7 @@
 #include "FrameGraph/ParticlesNode.h"
 #include "FrameGraph/ClearNode.h"
 #include "FrameGraph/DepthHighZNode.h"
+#include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/EditorReadbackNode.h"
 #include "Editor/EditorRuntimeBridge.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
@@ -173,6 +175,7 @@ namespace
 	thread_local bool capturedFenceCompleted = false;
 	thread_local uint32_t waitsBeforeCapture = 0u;
 	thread_local VkFence lastSubmittedFence = VK_NULL_HANDLE;
+	thread_local uint32_t nativeSubmitAttempts = 0;
 	PFN_vkCmdBeginRendering forwardBeginRendering = nullptr;
 	PFN_vkCmdEndRendering forwardEndRendering = nullptr;
 	uint32_t nativePassBegins = 0u, nativePassEnds = 0u;
@@ -301,6 +304,7 @@ namespace
 
 	VKAPI_ATTR VkResult VKAPI_CALL NativeSubmit(VkQueue queue, uint32_t count, const VkSubmitInfo* info, VkFence fence)
 	{
+		if (rejectNativeSubmit) ++nativeSubmitAttempts;
 		if (rejectNativeSubmit && submitsBeforeFailure > 0u)
 		{
 			--submitsBeforeFailure;
@@ -1796,9 +1800,366 @@ namespace
 		std::cout << "MSAA depth consumers: refused Clear/HiZ preserve pixels, command recording and pyramid publication passed\n";
 	}
 
-	int RunMsaaCacheGpu(int argc, const char** argv)
+	void TestSurfacePending()
 	{
-		Tests::TempDirectory workspace("msaa-cache");
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver();
+		for (bool targetFirst : { false, true })
+		{
+			if (targetFirst && device->GetCurrentMsaaSamples() == VK_SAMPLE_COUNT_1_BIT) continue;
+			RHISurfacePtr surface;
+			{
+				FenceDispatchOverride completion(*device);
+				SubmitOverride accepted(VulkanSubmissionTestAccess::UploadQueue(*device), VK_SUCCESS);
+				auto resolved = driver.CreateRenderTarget(glm::ivec2(29, 21), 1, ETextureFormat::R8G8B8A8_UNORM);
+				observedFences[0] = lastSubmittedFence;
+				fenceResults[0] = VK_NOT_READY;
+				surface = driver.CreateSurface(resolved);
+				if (surface->NeedsResolve())
+				{
+					observedFences[1] = lastSubmittedFence;
+					fenceResults[1] = VK_NOT_READY;
+				}
+				driver.TrackResources_ThreadSafe();
+				std::cout << "Surface pending: samples=" << device->GetCurrentMsaaSamples()
+					<< ", resolvedReady=" << resolved->IsReady() << ", surfaceReady=" << surface->IsReady() << '\n';
+				Require(!resolved->IsReady() && !surface->IsReady(), "a Surface must not report ready while a child attachment is pending");
+				for (size_t step = 0; step < observedFences.size(); ++step)
+				{
+					const size_t i = targetFirst ? 1 - step : step;
+					if (!observedFences[i]) continue;
+					Require(forwardFenceWait(*device, 1, &observedFences[i], VK_TRUE, 5000000000ull) == VK_SUCCESS,
+						"accepted Surface initialization must complete on the native GPU");
+					fenceResults[i] = VK_SUCCESS;
+					driver.TrackResources_ThreadSafe();
+					if (!step && surface->NeedsResolve())
+						Require(!surface->IsReady() && surface->GetTarget()->IsReady() == targetFirst &&
+							surface->GetResolved()->IsReady() != targetFirst,
+							"completing either child alone must not make the Surface ready");
+				}
+				driver.TrackResources_ThreadSafe();
+			}
+			Require(surface->IsReady() && surface->GetTarget()->IsReady() && surface->GetResolved()->IsReady(),
+				"a Surface must become ready when both accepted attachments complete");
+		}
+		std::cout << "Surface ownership: accepted pending children and completed readiness passed\n";
+	}
+
+	void CheckAttachmentPixels(RHIRenderTargetPtr resolved, RHISurfacePtr surface = {})
+	{
+		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		const auto extent = resolved->GetExtent();
+		const bool depth = IsDepthFormat(resolved->GetFormat());
+		auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+		driver.BeginCommandList(command, true);
+		if (surface && surface->NeedsResolve())
+		{
+			TVector<VulkanImageViewPtr> colors, resolves;
+			if (!depth)
+			{
+				colors.Add(surface->GetTarget()->m_vulkan.m_imageView);
+				resolves.Add(resolved->GetMipLayer(0)->m_vulkan.m_imageView);
+			}
+			command->m_vulkan.m_commandBuffer->BeginRenderPassEx(colors, resolves,
+				depth ? surface->GetTarget()->m_vulkan.m_imageView : nullptr,
+				depth ? resolved->GetMipLayer(0)->m_vulkan.m_imageView : nullptr,
+				{ {}, { static_cast<uint32_t>(extent.x), static_cast<uint32_t>(extent.y) } }, 0, {}, true,
+				VulkanRenderPassClearValues(glm::vec4(0x43 / 255.0f, 0x67 / 255.0f, 0xab / 255.0f, 1), 0.375f), true);
+			driver.EndRenderPass(command);
+		}
+		for (uint32_t mip = surface && surface->NeedsResolve() ? 1u : 0u; mip < resolved->GetMipLevels(); ++mip)
+		{
+			auto target = resolved->GetMipLayer(mip);
+			driver.ImageMemoryBarrier(command, target, EImageLayout::TransferDstOptimal);
+			if (depth) driver.ClearDepthStencil(command, target, 0.375f, 0);
+			else driver.ClearImage(command, target, glm::vec4(0x43 / 255.0f, 0x67 / 255.0f, 0xab / 255.0f, 1));
+		}
+		driver.RestoreImageBarriers(command);
+		driver.EndCommandList(command);
+		Require(driver.SubmitCommandList_Immediate(command), "retried attachments must execute actual GPU rendering");
+		for (uint32_t mip = 0; mip < resolved->GetMipLevels(); ++mip)
+		{
+			const auto actual = ReadImage(driver, resolved->m_vulkan.m_image, mip);
+			Require(std::all_of(actual.begin(), actual.end(), [&](uint32_t value) { return value == (depth ? 0x3ec00000u : 0xffab6743u); }),
+				"every resolved pixel and mip of the retried attachment must match");
+		}
+	}
+
+	void TestRenderTargetRefusal()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver();
+		for (auto format : { ETextureFormat::R8G8B8A8_UNORM, ETextureFormat::D32_SFLOAT })
+		{
+			const auto usage = (IsDepthFormat(format) ? ETextureUsageBit::DepthStencilAttachment_Bit : ETextureUsageBit::ColorAttachment_Bit) |
+				ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit;
+			for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			{
+				const auto create = [&]() { return driver.CreateRenderTarget(glm::ivec2(23, 17), 2, format,
+					ETextureFiltration::Nearest, ETextureClamping::Clamp, usage); };
+				{
+					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+					const auto before = nativeSubmitAttempts;
+					auto rejected = create();
+					Require(nativeSubmitAttempts == before + 1, "the fixture must refuse the target's actual initialization submission");
+					std::cout << "Render target refusal: format=" << static_cast<uint32_t>(format) << ", error=" << error
+						<< ", published=" << static_cast<bool>(rejected) << ", failed=" << (rejected && rejected->HasInitializationFailed()) << '\n';
+					Require(!rejected, "a rejected render-target initialization must not publish a texture");
+				}
+				auto retry = create();
+				Require(retry && retry->GetMipLevels() == 2 && retry->GetFiltration() == ETextureFiltration::Nearest &&
+					retry->GetClamping() == ETextureClamping::Clamp, "a direct target retry must retain its requested properties");
+				CheckAttachmentPixels(retry);
+				const bool msaa = device->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+				for (uint32_t step = 0; step < (msaa ? 2u : 1u); ++step)
+				{
+					{
+						SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error, false, step);
+						const auto before = nativeSubmitAttempts;
+						auto rejected = driver.CreateSurface(glm::ivec2(23, 17), 2, format,
+							ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+						Require(!rejected && nativeSubmitAttempts == before + step + 1,
+							"a Surface must stop at its first refused child without publishing partial state");
+					}
+					auto surface = driver.CreateSurface(glm::ivec2(23, 17), 2, format,
+						ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+					Require(surface && surface->NeedsResolve() == msaa && surface->GetResolved()->GetMipLevels() == 2 &&
+						(surface->GetTarget() == surface->GetResolved()) == !msaa, "Surface retry must preserve its resolve topology and mips");
+					CheckAttachmentPixels(surface->GetResolved(), surface);
+				}
+				if (msaa)
+				{
+					{
+						SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+						Require(!driver.CreateSurface(retry), "the retained-resolved overload must reject a failed MSAA child");
+					}
+					auto surface = driver.CreateSurface(retry);
+					Require(surface && surface->GetResolved() == retry, "Surface retry must keep the caller's resolved identity");
+					CheckAttachmentPixels(retry, surface);
+				}
+			}
+		}
+		std::cout << "Attachment factories: samples=" << device->GetCurrentMsaaSamples()
+			<< "; color/depth OOM, direct and first/second Surface refusal, retained-resolved retries and all mip pixels passed\n";
+	}
+
+	void TestPreparedSurfaceRetry()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		if (device->GetCurrentMsaaSamples() == VK_SAMPLE_COUNT_1_BIT) return;
+		auto& driver = *Renderer::GetDriver();
+		auto graph = RHIFrameGraphPtr::Make();
+		auto view = RHISceneViewPtr::Make();
+		TVector<RHICommandListPtr> transfers, graphics;
+		RHISemaphorePtr output;
+		Require(graph->Process(view, transfers, graphics, {}, output), "the graph must prepare its shared fullscreen mesh before the cache fixture");
+		auto node = TRefPtr<Framegraph::RenderSceneNode>::Make();
+		auto color = driver.CreateRenderTarget(glm::ivec2(31, 19), 1, ETextureFormat::R8G8B8A8_UNORM);
+		auto motion = driver.CreateRenderTarget(glm::ivec2(31, 19), 1, ETextureFormat::R8G8B8A8_UNORM);
+		node->SetRHIResource("color", color);
+		node->SetRHIResource("motionVectors", motion);
+		graph->GetGraph().Add(node);
+		auto input = driver.CreateWaitSemaphore();
+		{
+			SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_OUT_OF_HOST_MEMORY, false, 1);
+			const auto before = nativeSubmitAttempts;
+			Require(!graph->Process(view, transfers, graphics, input, output) && nativeSubmitAttempts == before + 2 &&
+				transfers.IsEmpty() && graphics.IsEmpty() && output == input,
+				"a partially prepared Surface set must reject the graph before consuming its semaphore or recording work");
+		}
+		auto first = graph->ResolveResource(color).DynamicCast<RHISurface>();
+		Require(first && graph->ResolveResource(motion) == motion, "only an accepted prepared Surface may enter the graph cache");
+		{
+			SubmitOverride observe(VulkanSubmissionTestAccess::UploadQueue(*device), VK_SUCCESS);
+			const auto before = nativeSubmitAttempts;
+			Require(graph->Process(view, transfers, graphics, input, output) && nativeSubmitAttempts == before + 1,
+				"unchanged static bindings must retry only the missing Surface");
+		}
+		auto second = graph->ResolveResource(motion).DynamicCast<RHISurface>();
+		Require(second && graph->ResolveResource(color) == first, "retry must retain the previously accepted Surface identity");
+		{
+			SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_OUT_OF_HOST_MEMORY);
+			const auto before = nativeSubmitAttempts;
+			for (uint32_t repeat = 0; repeat < 16; ++repeat)
+				Require(graph->Process(view, transfers, graphics, input, output) && graph->ResolveResource(color) == first &&
+					graph->ResolveResource(motion) == second, "unchanged prepared Surfaces must remain reusable");
+			Require(nativeSubmitAttempts == before, "warm static preparation must not submit any initialization work");
+		}
+		CheckAttachmentPixels(color, first);
+		CheckAttachmentPixels(motion, second);
+		std::cout << "Prepared Surfaces: partial refusal, retained owner, unchanged-binding retry, semaphore and 16 warm frames passed\n";
+	}
+
+	struct AttachmentGraphCase
+	{
+		FileId id;
+		uint32_t rejectAt;
+		uint32_t attempts;
+		VkResult error;
+	};
+
+	std::vector<AttachmentGraphCase> WriteAttachmentGraphs(const std::filesystem::path& workspace, bool msaa)
+	{
+		std::vector<AttachmentGraphCase> cases;
+		auto registry = App::GetSubmodule<AssetRegistry>();
+		for (const std::string kind : { "texture", "surface", "prepared" })
+		{
+			const uint32_t submissions = msaa && kind != "texture" ? 4 : 2;
+			for (uint32_t step = 0; step < submissions; ++step)
+			{
+				for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+				{
+					auto description = YAML::Load(R"yaml(
+renderTargets:
+  - {name: Color, width: 23, height: 17, format: R8G8B8A8_UNORM}
+  - {name: Motion, width: 23, height: 17, format: R8G8B8A8_UNORM}
+frame: []
+)yaml");
+					if (kind == "surface")
+						for (uint32_t target = 0; target < 2; ++target) description["renderTargets"][target]["bIsSurface"] = true;
+					if (kind == "prepared")
+						description["frame"].push_back(YAML::Load("{name: RenderScene, renderTargets: [{color: Color}, {motionVectors: Motion}]}"));
+					const auto path = workspace / "Content" / ("Attachment-" + std::to_string(cases.size()) + ".renderer");
+					std::ofstream(path) << description;
+					// Preparation visits the complete Surface set before reporting an incomplete graph.
+					const uint32_t attempts = kind == "prepared" && step >= 2 ? submissions : step + 1;
+					cases.push_back({ registry->GetOrLoadFile(path.string()), step, attempts, error });
+				}
+			}
+		}
+		return cases;
+	}
+
+	void TestImportedAttachmentRefusal(const std::vector<AttachmentGraphCase>& cases)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto importer = App::GetSubmodule<FrameGraphImporter>();
+		FrameGraphPtr previous;
+		for (const auto& test : cases)
+		{
+			for (bool retainPrevious : { false, true })
+			{
+				auto output = retainPrevious ? previous : FrameGraphPtr{};
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), test.error, false, test.rejectAt);
+				const auto before = nativeSubmitAttempts;
+				const bool loaded = importer->LoadFrameGraph_Immediate(test.id, output);
+				Require(!loaded && output == (retainPrevious ? previous : FrameGraphPtr{}) &&
+					nativeSubmitAttempts == before + test.attempts,
+					"an imported graph must reject every failed attachment stage without replacing caller state or entering its cache");
+			}
+			FrameGraphPtr repaired, cached;
+			Require(importer->LoadFrameGraph_Immediate(test.id, repaired) && repaired, "the same graph asset must retry after attachment refusal");
+			{
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), test.error);
+				const auto before = nativeSubmitAttempts;
+				Require(importer->LoadFrameGraph_Immediate(test.id, cached) && cached == repaired && nativeSubmitAttempts == before,
+					"a successfully imported graph must retain its warm cache identity without resubmission");
+			}
+			auto graph = repaired->GetRHI();
+			for (const char* name : { "Color", "Motion" })
+			{
+				auto target = graph->GetRenderTarget(name);
+				auto surface = graph->GetSurface(name);
+				if (!surface) surface = graph->ResolveResource(target).DynamicCast<RHISurface>();
+				CheckAttachmentPixels(target, surface);
+			}
+			previous = repaired;
+		}
+		std::cout << "Imported attachments: " << cases.size()
+			<< " native fault stages, retained caller state, cache rejection/retry and complete two-target pixels passed\n";
+	}
+
+	void TestAttachmentTerminalLoss()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver();
+		auto resolved = driver.CreateRenderTarget(glm::ivec2(11, 7), 1, ETextureFormat::R8G8B8A8_UNORM);
+		CheckAttachmentPixels(resolved);
+		SubmitOverride loss(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_DEVICE_LOST);
+		const auto before = nativeSubmitAttempts;
+		Require(!driver.CreateSurface(glm::ivec2(13, 7), 1, ETextureFormat::R8G8B8A8_UNORM) &&
+			device->IsDeviceLost() && nativeSubmitAttempts == before + 1,
+			"terminal loss must stop Surface creation at its refused resolved attachment");
+		Require(!driver.CreateSurface(resolved) &&
+			!driver.CreateRenderTarget(glm::ivec2(13, 7), 1, ETextureFormat::R8G8B8A8_UNORM) && nativeSubmitAttempts == before + 1,
+			"terminal loss must not submit more work or wrap an existing attachment as a new Surface");
+		std::cout << "Attachment terminal loss: first refusal, existing-resolved rejection and no further submissions passed\n";
+	}
+
+	void TestParticleShadowInitialization();
+
+	class LightingPublicationNode : public Framegraph::ClearNode
+	{
+	public:
+		void Process(RHIFrameGraphPtr, RHICommandListPtr, RHICommandListPtr, const RHISceneViewSnapshot& scene) override
+		{
+			shadowMaps.Clear();
+			if (scene.m_rhiLightsData) scene.m_rhiLightsData->GetShaderBindings().TryGet("shadowMaps", shadowMaps);
+			++frames;
+		}
+
+		RHIShaderBindingPtr shadowMaps;
+		uint32_t frames = 0;
+	};
+
+	void TestLightingShadowInitialization()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto renderer = App::GetSubmodule<Renderer>();
+		auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		Require(renderer->EnsureFrameGraph(), "the lighting fixture requires its empty renderer graph");
+		auto observer = TRefPtr<LightingPublicationNode>::Make();
+		renderer->GetFrameGraph()->GetRHI()->GetGraph().Add(observer);
+		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			auto world = App::GetSubmodule<EngineLoop>()->CreateEmptyWorld("Default shadow initialization",
+				static_cast<uint8_t>(EWorldBehaviourBit::EcsTickable));
+			Sailor::FrameState first(world.GetRawPtr(), 16, {}, { 32, 24 });
+			{
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+				const auto before = nativeSubmitAttempts;
+				world->Tick(first);
+				Require(nativeSubmitAttempts == before + 1, "world startup must encounter the refused default shadow initialization");
+			}
+			auto push = [&](Sailor::FrameState& frame)
+			{
+				const auto before = observer->frames;
+				Require(renderer->PushFrame(frame), "the real renderer must accept the lighting fixture frame");
+				scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+				scheduler->ProcessTasksOnMainThread();
+				Require(observer->frames == before + 1, "the lighting snapshot must reach the actual render graph");
+			};
+			{
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+				push(first);
+				Require(!observer->shadowMaps, "failed default shadow initialization must not publish null sampler elements");
+			}
+			Sailor::FrameState retry(world.GetRawPtr(), 32, {}, { 32, 24 });
+			world->Tick(retry);
+			push(retry);
+			Require(observer->shadowMaps && observer->shadowMaps->GetTextureBindings().Num() == LightingECS::MaxShadowMapSamplers,
+				"the unchanged world must publish all default shadow samplers on retry");
+			auto target = observer->shadowMaps->GetTextureBinding();
+			Require(target && target->GetExtent() == glm::ivec2(1) && target->GetFormat() == LightingECS::ShadowMapFormat,
+				"the recovered shadow fallback must have its original extent and format");
+			for (const auto& texture : observer->shadowMaps->GetTextureBindings())
+				Require(texture == target, "every unused shadow slot must retain the accepted fallback");
+			Sailor::FrameState warm(world.GetRawPtr(), 48, {}, { 32, 24 });
+			world->Tick(warm);
+			{
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+				const auto before = nativeSubmitAttempts;
+				push(warm);
+				Require(nativeSubmitAttempts == before && observer->shadowMaps->GetTextureBinding() == target,
+					"warm lighting must reuse its accepted default shadow without initialization submissions");
+			}
+		}
+		std::cout << "Lighting fallback: world startup refusal, absent publication, frame retry and all 128 warm shadow samplers passed\n";
+	}
+
+	int RunAttachmentGpu(int argc, const char** argv, bool cachedMsaa)
+	{
+		Tests::TempDirectory workspace(cachedMsaa ? "msaa-cache" : "render-targets");
 		int result = 1;
 		try
 		{
@@ -1806,6 +2167,7 @@ namespace
 			for (int i = 1; i + 1 < argc; ++i)
 				if (std::string_view(argv[i]) == "--workspace") enginePath = argv[i + 1];
 			std::filesystem::create_directory(workspace.Path("Content"));
+			if (!cachedMsaa) std::ofstream(workspace.Path("Content/EditorRenderer.renderer")) << "renderTargets: []\nframe: []\n";
 			YAML::Node manifest;
 			manifest["manifestVersion"] = 1;
 			manifest["workspaceId"] = "00000000-0000-0000-0000-000000000223";
@@ -1825,18 +2187,31 @@ namespace
 			const std::string root = workspace.Get().string();
 			std::vector<const char*> arguments(argv, argv + argc);
 			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--world", "", "--editor", "--port", "0", "--new-world" });
-			for (uint32_t samples : { 2u, 4u })
+			for (uint32_t samples : { 1u, 2u, 4u })
 			{
+				if (cachedMsaa && samples == 1) continue;
 				for (const char* preset : { "Ultra", "High", "Medium", "Low", "VeryLow" })
 					settings["graphics"]["presets"][preset]["msaaSamples"] = samples;
 				std::ofstream(workspace.Path("ProjectSettings.yaml")) << settings;
 				Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready,
 					"the MSAA fixture must initialize a hidden native App");
 				App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+				const auto graphs = cachedMsaa ? std::vector<AttachmentGraphCase>{} : WriteAttachmentGraphs(workspace.Get(), samples > 1);
+				if (!cachedMsaa && samples == 1) TestLightingShadowInitialization();
 				OnRender([&]()
 					{
 						Require(static_cast<uint32_t>(VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples()) == samples,
-							"the native MSAA fixture requires actual 2x and 4x support");
+							"the native attachment fixture requires the requested sample count");
+						if (!cachedMsaa)
+						{
+							TestSurfacePending();
+							TestRenderTargetRefusal();
+							TestPreparedSurfaceRetry();
+							TestImportedAttachmentRefusal(graphs);
+							if (samples == 1) TestParticleShadowInitialization();
+							TestAttachmentTerminalLoss();
+							return;
+						}
 						TestMsaaCacheRefusal();
 						TestMsaaPassRefusal();
 						TestMsaaDepthConsumers();
@@ -1858,7 +2233,8 @@ namespace
 				App::Stop();
 				Require(App::Shutdown(), "each native MSAA configuration must release its App");
 			}
-			std::cout << "Native MSAA cache and render-pass failure tests passed at 2x and 4x\n";
+			std::cout << (cachedMsaa ? "Native MSAA cache and render-pass failure tests passed at 2x and 4x\n" :
+				"Native render-target and Surface factory tests passed at 1x, 2x and 4x\n");
 			result = 0;
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
@@ -2378,7 +2754,59 @@ namespace
 		using ParticlesNode::m_particlesDataBinary;
 		using ParticlesNode::m_perInstanceData;
 		using ParticlesNode::m_numInstances;
+		using ParticlesNode::m_particlesHeader;
+		using ParticlesNode::m_shadowMap;
+		using ParticlesNode::m_shadowMapBinding;
 	};
+
+	void TestParticleShadowInitialization()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			ParticleBufferNode node;
+			node.m_particlesHeader.m_bIsLoaded = true;
+			node.m_particlesDataBinary.Resize(1);
+			node.m_particlesDataBinary[0] = {};
+			node.m_particlesDataBinary[0].m_x2 = 3.5f;
+			auto graph = RHIFrameGraphPtr::Make();
+			auto draw = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+			driver.BeginCommandList(draw, true);
+			{
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+				const auto before = nativeSubmitAttempts;
+				node.Process(graph, draw, draw, {});
+				Require(nativeSubmitAttempts == before + 1 && !node.m_shadowMap && !node.m_shadowMapBinding &&
+					draw->GetNumRecordedCommands() == 0 && node.GetDrawCallStats().m_numBatches == 0 &&
+					node.m_particlesHeader.m_bIsLoaded && node.m_particlesDataBinary.Num() == 1 &&
+					node.m_particlesDataBinary[0].m_x2 == 3.5f,
+					"a refused particle shadow target must retain the loaded source without publishing or drawing");
+			}
+			node.Process(graph, draw, draw, {});
+			const auto target = node.m_shadowMap;
+			auto bindings = node.m_shadowMapBinding;
+			Require(target && bindings && target->GetExtent() == glm::ivec2(4096) &&
+				bindings->GetOrAddShaderBinding("shadowMapSampler")->GetTextureBinding() == target,
+				"the same particle node must retry and publish its real shadow image");
+			{
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+				const auto before = nativeSubmitAttempts;
+				node.Process(graph, draw, draw, {});
+				Require(nativeSubmitAttempts == before && node.m_shadowMap == target && node.m_shadowMapBinding == bindings,
+					"warm particle setup must retain the accepted image and descriptor identities");
+			}
+			driver.ImageMemoryBarrier(draw, target, EImageLayout::TransferDstOptimal);
+			driver.ClearImage(draw, target, glm::vec4(0.375f));
+			driver.RestoreImageBarriers(draw);
+			driver.EndCommandList(draw);
+			Require(driver.SubmitCommandList_Immediate(draw), "the recovered particle image must accept GPU writes");
+			const auto pixels = ReadImage(driver, target->m_vulkan.m_image);
+			Require(std::all_of(pixels.begin(), pixels.end(), [](uint32_t pixel) { return pixel == 0x3ec00000u; }),
+				"all recovered particle shadow pixels must contain the submitted value");
+		}
+		std::cout << "Particle shadow target: native refusal, retained source, same-node retry, warm bindings and complete pixels passed\n";
+	}
 
 	void TestParticleBufferPublication()
 	{
@@ -2992,14 +3420,14 @@ namespace
 
 namespace Sailor::Tests
 {
-	void RequireMsaaInitializationRefusal(const std::function<void()>& record)
+	void RequireAttachmentInitializationRefusal(const std::function<void()>& record, uint32_t precedingSubmits, VkResult error)
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
 		RenderingDispatchOverride rendering(*device);
-		SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_OUT_OF_HOST_MEMORY);
-		const auto before = submitCalls;
+		SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error, false, precedingSubmits);
+		const auto before = nativeSubmitAttempts;
 		record();
-		Require(submitCalls == before + 1 && nativePassBegins == 0 && nativePassEnds == 0,
+		Require(nativeSubmitAttempts == before + precedingSubmits + 1 && nativePassBegins == 0 && nativePassEnds == 0,
 			"a refused node attachment must record neither a native pass nor an unmatched end");
 	}
 
@@ -3035,7 +3463,8 @@ int main(int argc, const char** argv)
 	{
 		const std::string_view mode(argv[i]);
 		if (mode == "--gpu-cloud-noise") return Tests::RunCloudNoiseGpu(argc, argv);
-		if (mode == "--gpu-msaa-cache") return RunMsaaCacheGpu(argc, argv);
+		if (mode == "--gpu-msaa-cache") return RunAttachmentGpu(argc, argv, true);
+		if (mode == "--gpu-render-targets") return RunAttachmentGpu(argc, argv, false);
 		if (mode == "--gpu-editor-protocol-host" && i + 1 < argc) return RunEditorProtocolHost(argv[i + 1]);
 #if defined(__APPLE__)
 		if (mode == "--gpu-editor-readback-graph") return RunEditorReadbackGraphGpu(argc, argv);

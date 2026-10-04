@@ -64,7 +64,8 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 namespace Sailor::Tests
 {
 	void RequireRejectedNativeSubmission(RHICommandListPtr command);
-	void RequireMsaaInitializationRefusal(const std::function<void()>& record);
+	void RequireAttachmentInitializationRefusal(const std::function<void()>& record,
+		uint32_t precedingSubmits = 0, VkResult error = VK_ERROR_OUT_OF_HOST_MEMORY);
 	void RequireRejectedGraphicsSubmission(const std::function<bool()>& submit);
 }
 
@@ -2641,8 +2642,24 @@ frame:
 		};
 		onRender([&]()
 		{
+			for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			{
+				auto& driver = Renderer::GetDriver();
+				auto commands = Renderer::GetDriverCommands();
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+				Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, {}); }, 0, error);
+				Require(!graph->GetSampler("g_brdfSampler") && !graph->GetSampler(names[0]) &&
+					draw->GetNumRecordedCommands() == 0 && upload->GetNumRecordedCommands() == 0,
+					"a refused BRDF target must not publish a sampler or record dependent environment work");
+				CompleteCommands(upload, draw);
+			}
 			for (uint32_t frame = 0; frame < 16 && !graph->GetSampler(names[0]); ++frame) process();
 			checkPixels(graph, { 4, 0.5f, 0.25f });
+			Require(graph->GetSampler("g_brdfSampler").IsValid(), "the same Environment node must retry its BRDF target");
+			std::cout << "Environment BRDF target: native refusal, no dependent publication and same-node HDR pixel recovery passed\n";
 			for (const char* name : names) retained->SetSampler(name, graph->GetSampler(name));
 		});
 		writeHdr({ 16, 128, 32, 130 }); // (0.25, 2, 0.5).
@@ -3057,7 +3074,7 @@ frame:
 						auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 						commands->BeginCommandList(upload, true);
 						commands->BeginCommandList(draw, true);
-						Tests::RequireMsaaInitializationRefusal([&]() { node->Process(graph, upload, draw, snapshot); });
+						Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, snapshot); });
 						Require(node->GetDrawCallStats().m_numBatches == 0 && node->GetDrawCallStats().m_numInstances == 0,
 							"a refused depth or scene pass must not report packed draws");
 						CompleteCommands(upload, draw);
@@ -3457,6 +3474,115 @@ frame:
 				sampler->GetTextureBinding()->GetExtent() == glm::ivec2(Side), "retry must publish the new horizontal temporary for V");
 		}
 		std::cout << "Shadow vertical producer: completed H, refused V, retained publication, same-target retry and full pixels passed\n";
+	}
+
+	void TestShadowAttachmentRefusal(const std::array<ShaderSetPtr, 4>& shaders)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		uint32_t caseIndex = 0;
+		for (uint32_t failedAttachment : { 0u, 1u })
+		{
+			for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			{
+				const glm::ivec2 size(37 + 2 * caseIndex++, 19);
+				auto graph = TRefPtr<TestGraph>::Make();
+				auto node = TRefPtr<ShadowCacheProbe>::Make();
+				node->m_pBlurHorizontalShader = shaders[2];
+				node->m_pBlurVerticalShader = shaders[3];
+				RHISceneViewSnapshot scene;
+				scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+				scene.m_submissionContext->BeginSubmission(224000 + caseIndex, 0);
+				scene.m_camera = TUniquePtr<CameraData>::Make();
+				scene.m_frameBindings = driver->CreateShaderBindings();
+				UboFrameData frame{};
+				frame.m_view = frame.m_projection = frame.m_invProjection = glm::mat4(1);
+				auto frameBuffer = driver->CreateBuffer(sizeof(frame), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
+				std::memcpy(frameBuffer->GetPointer(), &frame, sizeof(frame));
+				driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "frame", 0);
+				driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "previousFrame", 1);
+				RHIUpdateShadowMapCommand pass;
+				pass.m_shadowType = EShadowType::EVSM;
+				pass.m_lightMatrix = glm::mat4(1);
+				pass.m_blurRadius = glm::vec2(1);
+				pass.m_shadowMap = driver->CreateRenderTarget(size, 1, EFormat::R32G32B32A32_SFLOAT);
+				pass.m_payloadCompletionToken = RHISubmissionCompletionTokenPtr::Make();
+				scene.m_shadowMapsToUpdate.Add(std::move(pass));
+				auto& request = scene.m_shadowMapsToUpdate[0];
+				for (bool reject : { true, false })
+				{
+					auto prepare = node->Prepare(graph, scene);
+					if (prepare) { prepare->Run(); prepare->Wait(); }
+					Require(request.m_payloadCompletionToken->IsSuccessful(), "the prepared empty shadow packet must be complete");
+					auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(upload, true);
+					commands->BeginCommandList(draw, true);
+					ClearColor(draw, request.m_shadowMap, glm::vec4(-8));
+					if (reject)
+						Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, scene); }, failedAttachment, error);
+					else node->Process(graph, upload, draw, scene);
+					Require(request.m_payloadCompletionToken->IsSuccessful() == !reject &&
+						node->GetDrawCallStats().m_numBatches == (reject ? 0u : 2u) &&
+						draw->GetRecordedDrawCallStats().m_numBatches == (reject ? 0u : 2u),
+						"a missing depth or blur attachment must fail the shadow payload and record no draws; retry must record both filters");
+					auto pixels = driver->CreateBuffer(size.x * size.y * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+					commands->ImageMemoryBarrier(draw, request.m_shadowMap, EImageLayout::TransferSrcOptimal);
+					commands->CopyImageToBuffer(draw, request.m_shadowMap, pixels);
+					CompleteCommands(upload, draw);
+					const auto values = static_cast<const glm::vec4*>(pixels->GetPointer());
+					const glm::vec4 expected = reject ? glm::vec4(-8) : glm::vec4(1, 1, -1, 1);
+					for (int32_t pixel = 0; pixel < size.x * size.y; ++pixel)
+						for (uint32_t channel = 0; channel < 4; ++channel)
+							Require(std::isfinite(values[pixel][channel]) && std::abs(values[pixel][channel] - expected[channel]) < 0.00001f,
+								"rejected shadow attachments must preserve every sentinel pixel; retry must produce filtered EVSM output");
+				}
+			}
+		}
+		std::cout << "Shadow attachments: depth/blur native refusal, failed payload, no draws and same-target filtered pixel recovery passed\n";
+	}
+
+	void TestShadowBlitInitialization()
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		int32_t halfWidth = 13;
+		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			const glm::ivec2 size(2 * halfWidth, 11);
+			auto graph = RHIFrameGraphPtr::Make();
+			auto node = TRefPtr<ShadowPrepassNode>::Make();
+			auto target = driver->CreateRenderTarget(size, 1, EFormat::R32G32B32A32_SFLOAT);
+			RHISceneViewSnapshot scene;
+			scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+			scene.m_submissionContext->BeginSubmission(224100 + halfWidth, 0);
+			scene.m_shadowMapsToBlit.Add({ target, target, { 0, 0, halfWidth, size.y }, { halfWidth, 0, halfWidth, size.y } });
+			for (bool reject : { true, false })
+			{
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+				commands->ImageMemoryBarrier(draw, target, EImageLayout::ColorAttachmentOptimal);
+				Require(commands->BeginRenderPass(draw, TVector<RHITexturePtr>{ target }, {}, { 0, 0, size.x, size.y }, {},
+					true, glm::vec4(0.25f), 0, false), "the self-blit fixture must initialize its two distinct regions");
+				commands->ClearAttachments(draw, { halfWidth, 0, halfWidth, size.y }, glm::vec4(0.75f), 0);
+				commands->EndRenderPass(draw);
+				if (reject) Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, scene); }, 0, error);
+				else node->Process(graph, upload, draw, scene);
+				auto pixels = driver->CreateBuffer(size.x * size.y * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				commands->ImageMemoryBarrier(draw, target, EImageLayout::TransferSrcOptimal);
+				commands->CopyImageToBuffer(draw, target, pixels);
+				CompleteCommands(upload, draw);
+				const auto values = static_cast<const glm::vec4*>(pixels->GetPointer());
+				for (int32_t y = 0; y < size.y; ++y)
+					for (int32_t x = 0; x < size.x; ++x)
+						Require(values[y * size.x + x] == glm::vec4(reject && x >= halfWidth ? 0.75f : 0.25f),
+							"a refused self-blit scratch image must preserve both regions; retry must copy the source into the destination");
+			}
+			halfWidth += 2;
+		}
+		std::cout << "Shadow self-blit: native scratch refusal, unchanged regions and same-command pixel recovery passed\n";
 	}
 
 	void TestCustomShadowCache(ShaderSetPtr shader, bool paged)
@@ -5124,6 +5250,8 @@ namespace Sailor::Tests
 								for (auto mobility : { EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic })
 									TestCustomDepthSilhouette(customDepthShaders[skinned ? 1 : 0], depthReadback, paged, instanced, skinned, mobility);
 					TestShadowVerticalPublication(shadowBlurShaders);
+					TestShadowAttachmentRefusal(shadowBlurShaders);
+					TestShadowBlitInitialization();
 					for (bool paged : { false, true }) TestCustomShadowCache(customDepthShaders[0], paged);
 					for (bool paged : { false, true })
 						for (bool instanced : { false, true }) TestTransparentPacketOrder(customDepthShaders[0], paged, instanced);

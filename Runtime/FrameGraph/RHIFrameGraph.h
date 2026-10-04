@@ -91,7 +91,7 @@ namespace Sailor::RHI
 		friend class Sailor::FrameGraphImporterTestAccess;
 
 		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime);
-		void PrepareRenderTargets();
+		bool PrepareRenderTargets();
 		void PublishGlobalIlluminationRenderStats(const RHIGlobalIlluminationRenderStats& stats);
 
 		TMap<std::string, RHI::RHITexturePtr> m_samplers;

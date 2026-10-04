@@ -160,7 +160,7 @@ RHI::RHIRenderTargetPtr IGraphicsDriver::GetOrAddTemporaryRenderTarget(RHI::EFor
 	}
 
 	auto rt = CreateRenderTarget(extent, mipLevels, textureFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
-	SetDebugName(rt, "Temporary render target");
+	if (rt) SetDebugName(rt, "Temporary render target");
 
 	return rt;
 }

@@ -1772,6 +1772,8 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::ETextureUsageFlags usage,
 	RHI::ESamplerReductionMode reduction)
 {
+	if (m_vkInstance->GetMainDevice()->IsDeviceLost()) return nullptr;
+
 	// Update layout
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Render Target");
@@ -1793,7 +1795,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::Renderer::GetDriver()->SetDebugName(fenceUpdateRes, "Create Render Target");
 
 	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
-	SubmitCommandList(cmdList, fenceUpdateRes);
+	if (!SubmitCommandList(cmdList, fenceUpdateRes)) return nullptr;
 
 	return outTexture;
 }
@@ -1898,12 +1900,14 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(RHI::RHIRenderTargetPtr resolved)
 {
 	SAILOR_PROFILE_FUNCTION();
+	auto device = m_vkInstance->GetMainDevice();
+	if (!resolved || resolved->HasInitializationFailed() || device->IsDeviceLost()) return nullptr;
+
 	const auto extent = resolved->GetExtent();
 	const auto format = resolved->GetFormat();
 	const auto filtration = resolved->GetFiltration();
 	const auto clamping = resolved->GetClamping();
 	auto usage = resolved->m_vulkan.m_image->m_usage;
-	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::RHIRenderTargetPtr target = resolved;
 
@@ -1952,7 +1956,7 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(RHI::RHIRenderTargetPtr r
 		RHI::Renderer::GetDriver()->SetDebugName(fenceUpdateRes, "Create Surface");
 
 		TrackDelayedInitialization(target.GetRawPtr(), fenceUpdateRes);
-		SubmitCommandList(cmdList, fenceUpdateRes);
+		if (!SubmitCommandList(cmdList, fenceUpdateRes)) return nullptr;
 	}
 
 	return  RHI::RHISurfacePtr::Make(target, resolved, bNeedsResolved);

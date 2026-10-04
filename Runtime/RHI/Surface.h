@@ -1,5 +1,6 @@
 #pragma once
 #include "Memory/RefPtr.hpp"
+#include "RenderTarget.h"
 #include "GraphicsDriver/Vulkan/VulkanBuffer.h"
 #include "Types.h"
 
@@ -19,6 +20,10 @@ namespace Sailor::RHI
 		SAILOR_API RHIRenderTargetPtr GetTarget() const { return m_target; }
 		SAILOR_API RHIRenderTargetPtr GetResolved() const { return m_resolved; }
 		SAILOR_API bool NeedsResolve() const { return m_bNeedsResolve; }
+		SAILOR_API bool IsReady() const override
+		{
+			return IDelayedInitialization::IsReady() && m_target->IsReady() && m_resolved->IsReady();
+		}
 
 	private:
 

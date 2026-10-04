@@ -123,6 +123,11 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		m_brdfSampler = RHI::Renderer::GetDriver()->CreateRenderTarget(ivec2(BrdfLutSize, BrdfLutSize), 1,
 			RHI::EFormat::R16G16B16A16_SFLOAT, RHI::ETextureFiltration::Linear,
 			RHI::ETextureClamping::Clamp, usage);
+		if (!m_brdfSampler)
+		{
+			commands->EndDebugRegion(commandList);
+			return;
+		}
 
 		commands->ImageMemoryBarrier(commandList, m_brdfSampler, EImageLayout::ShaderReadOnlyOptimal);
 		m_brdfSampler->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);

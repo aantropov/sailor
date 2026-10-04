@@ -173,6 +173,11 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 		{
 			RHI::RHISurfacePtr rhiSurface = RHI::Renderer::GetDriver()->CreateSurface(glm::vec2(renderTarget.m_second->m_width, renderTarget.m_second->m_height),
 				numMips, renderTarget.m_second->m_format, filtration, clamping, defaultUsage);
+			if (!rhiSurface)
+			{
+				SAILOR_LOG_ERROR("Cannot initialize frame graph surface '%s'.", renderTarget.m_first.c_str());
+				return {};
+			}
 
 			pRhiFrameGraph->SetSurface(renderTarget.m_first, rhiSurface);
 			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiSurface->GetResolved());
@@ -184,6 +189,11 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 		{
 			RHI::RHIRenderTargetPtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec2(renderTarget.m_second->m_width, renderTarget.m_second->m_height),
 				numMips, renderTarget.m_second->m_format, filtration, clamping, defaultUsage, reduction);
+			if (!rhiRenderTarget)
+			{
+				SAILOR_LOG_ERROR("Cannot initialize frame graph render target '%s'.", renderTarget.m_first.c_str());
+				return {};
+			}
 
 			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
 
@@ -271,7 +281,11 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 		graph.Add(pNewNode);
 	}
 
-	if (!graph.IsEmpty()) pRhiFrameGraph->PrepareRenderTargets();
+	if (!graph.IsEmpty() && !pRhiFrameGraph->PrepareRenderTargets())
+	{
+		SAILOR_LOG_ERROR("Cannot initialize frame graph MSAA attachments.");
+		return {};
+	}
 	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
 	pFrameGraph->m_frameGraph = pRhiFrameGraph;
 

@@ -103,11 +103,6 @@ void LightingECS::BeginPlay()
 	auto& driver = Sailor::RHI::Renderer::GetDriver();
 	m_lightsData = driver->CreateShaderBindings();
 
-	const auto usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit |
-					   RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit;
-
-	m_defaultShadowMap = driver->CreateRenderTarget(
-		glm::ivec2(1, 1), 1, ShadowMapFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
 	m_csmShadowMaps.Resize(NumCascades);
 	m_shadowFlightResources.Resize((std::max)(1u, RHI::Renderer::GetDriver()->GetMaxFramesInFlight()));
 
@@ -134,6 +129,22 @@ void LightingECS::PublishShadowMapBindings()
 	}
 
 	auto& driver = Sailor::RHI::Renderer::GetDriver();
+	if (!m_defaultShadowMap)
+	{
+		const auto usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+			RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit;
+		m_defaultShadowMap = driver->CreateRenderTarget(glm::ivec2(1, 1), 1, ShadowMapFormat,
+			RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
+		if (!m_defaultShadowMap)
+		{
+			m_bShadowMapBindingsDirty = true;
+			return;
+		}
+		for (auto& texture : m_shadowMapTextures)
+		{
+			if (!texture) texture = m_defaultShadowMap;
+		}
+	}
 	auto immutableTemplate = driver->CreateShaderBindings();
 	auto shadowMaps = driver->AddSamplerToShaderBindings(immutableTemplate, "shadowMaps", m_shadowMapTextures, 9u);
 	if (!shadowMaps)

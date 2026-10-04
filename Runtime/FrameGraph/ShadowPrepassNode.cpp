@@ -877,6 +877,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					blit.m_source->GetFormat(),
 					glm::ivec2(blit.m_destinationArea.z, blit.m_destinationArea.w),
 					1);
+				if (!scratch) continue;
 				commands->ImageMemoryBarrier(
 					commandList, blit.m_source, EImageLayout::TransferSrcOptimal);
 				commands->ImageMemoryBarrier(
@@ -986,6 +987,22 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				driver->GetDepthBuffer()->GetFormat(),
 				shadowExtent,
 				1);
+			const bool bRequiresBlur = requiresBlur(shadowPass);
+			RHI::RHIRenderTargetPtr blurAttachment;
+			if (depthAttachment && bRequiresBlur && blurShaderBindings)
+			{
+				blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowExtent, 1);
+			}
+			if (!depthAttachment || (bRequiresBlur && blurShaderBindings && !blurAttachment))
+			{
+				if (shadowPass.m_payloadCompletionToken) shadowPass.m_payloadCompletionToken->Complete(false);
+				for (uint32_t dependency : shadowPass.m_internalCommandsList)
+				{
+					if (auto token = sceneView.m_shadowMapsToUpdate[dependency].m_payloadCompletionToken) token->Complete(false);
+				}
+				if (depthAttachment) driver->ReleaseTemporaryRenderTarget(depthAttachment);
+				continue;
+			}
 
 			commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 			{
@@ -1091,7 +1108,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 				commands->EndRenderPass(commandList);
 
-				const bool bRequiresBlur = requiresBlur(shadowPass);
 				if (bRequiresBlur && blurShaderBindings)
 				{
 					auto fullscreenMesh = frameGraph->GetFullscreenNdcQuad();
@@ -1099,7 +1115,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					const uint32_t vertexOffset = (uint32_t)fullscreenMesh->m_vertexBuffer->GetOffset() / (uint32_t)fullscreenMesh->m_vertexDescription->GetVertexStride();
 					commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
 					commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
-					RHI::RHIRenderTargetPtr blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 1);
 					RHIShaderBindingPtr blurDataBinding = blurShaderBindings->GetOrAddShaderBinding("data");
 					// The flight reuses this UBO for every shadow map.
 					commands->MemoryBarrier(commandList, static_cast<EAccessFlags>(EAccessBit::UniformRead_Bit), static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit));

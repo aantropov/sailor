@@ -608,7 +608,7 @@ TVector<Sailor::Tasks::ITaskPtr> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhi
 	return res;
 }
 
-void RHIFrameGraph::PrepareRenderTargets()
+bool RHIFrameGraph::PrepareRenderTargets()
 {
 	SAILOR_PROFILE_FUNCTION();
 	const auto samples = App::GetSubmodule<Renderer>()->GetMsaaSamples();
@@ -618,7 +618,8 @@ void RHIFrameGraph::PrepareRenderTargets()
 		bindingsChanged = m_boundNodes[i].m_first != m_graph[i] ||
 			m_boundNodes[i].m_second != m_graph[i]->m_resourceRevision;
 	}
-	if (!bindingsChanged && m_externalRenderPasses.IsEmpty() && m_boundSurfaceRevision == m_surfaceRevision) return;
+	if (!bindingsChanged && m_externalRenderPasses.IsEmpty() && m_boundSurfaceRevision == m_surfaceRevision &&
+		m_msaaSources.Num() == m_msaaSurfaces.Num()) return true;
 
 	const auto collectTargets = [&](FrameGraphNodePtr node, TVector<RHIRenderTargetPtr>& sources)
 	{
@@ -676,7 +677,7 @@ void RHIFrameGraph::PrepareRenderTargets()
 	if (m_msaaSources.IsEmpty())
 	{
 		if (!m_msaaSurfaces.IsEmpty()) m_msaaSurfaces.Clear();
-		return;
+		return true;
 	}
 
 	// A pass may bind a Surface while another binds its resolved texture.
@@ -694,16 +695,18 @@ void RHIFrameGraph::PrepareRenderTargets()
 		std::all_of(m_msaaSources.begin(), m_msaaSources.end(),
 			[&](const auto& source) { return m_msaaSurfaces.ContainsKey(source.GetRawPtr()); }))
 	{
-		return;
+		return true;
 	}
 
 	auto previous = std::move(m_msaaSurfaces);
 	for (auto& source : m_msaaSources)
 	{
 		const RHISurfacePtr* surface = nullptr;
-		m_msaaSurfaces[source.GetRawPtr()] = previous.Find(source.GetRawPtr(), surface) ?
+		auto prepared = previous.Find(source.GetRawPtr(), surface) ?
 			*surface : Renderer::GetDriver()->CreateSurface(source);
+		if (prepared) m_msaaSurfaces[source.GetRawPtr()] = std::move(prepared);
 	}
+	return m_msaaSources.Num() == m_msaaSurfaces.Num();
 }
 
 bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
@@ -715,7 +718,8 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	SAILOR_PROFILE_FUNCTION();
 	m_drawCallStats = {};
 	RHIGlobalIlluminationRenderStats globalIlluminationRenderStats;
-	PrepareRenderTargets();
+	outWaitSemaphore = inSignalSemaphore;
+	if (!PrepareRenderTargets()) return false;
 
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
 	auto& driver = RHI::Renderer::GetDriver();
@@ -723,7 +727,6 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	RHISemaphorePtr frameGraphChainSemaphore = inSignalSemaphore;
 	auto submissionProgress = TSharedPtr<RHISubmissionProgress>::Make();
 	submissionProgress->SetLastSuccessfulSemaphore(inSignalSemaphore);
-	outWaitSemaphore = inSignalSemaphore;
 
 	if (!rhiSceneView->m_snapshots.IsEmpty() &&
 		rhiSceneView->m_snapshots[0].m_submissionContext)
