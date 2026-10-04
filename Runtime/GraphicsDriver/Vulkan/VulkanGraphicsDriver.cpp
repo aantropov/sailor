@@ -1585,6 +1585,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	const RHI::EImageLayout layout = RHI::EImageLayout::ShaderReadOnlyOptimal;
 
 	auto device = m_vkInstance->GetMainDevice();
+	if (device->IsDeviceLost()) return nullptr;
 	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1, layout);
 
 	VkExtent3D vkExtent;
@@ -1656,7 +1657,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	RHI::Renderer::GetDriver()->SetDebugName(fenceUpdateRes, "Create Texture");
 
 	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
-	SubmitCommandList(cmdList, fenceUpdateRes);
+	if (!SubmitCommandList(cmdList, fenceUpdateRes)) return nullptr;
 
 	return outTexture;
 }
@@ -1685,7 +1686,9 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 	}
 
 	auto device = m_vkInstance->GetMainDevice();
+	if (device->IsDeviceLost()) return nullptr;
 	RHI::RHICubemapPtr outCubemap = RHI::RHICubemapPtr::Make(filtration, clamping, mipLevels > 1, (RHI::EImageLayout)layout, reduction);
+	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
@@ -1717,6 +1720,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 			res->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
 			res->m_vulkan.m_imageView->m_subresourceRange.levelCount = 1;
 			res->m_vulkan.m_imageView->Compile();
+			TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateRes);
 
 			outCubemap->m_mipLevels.Add(res);
 		}
@@ -1733,6 +1737,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 			target->m_vulkan.m_imageView->m_subresourceRange.baseArrayLayer = face;
 			target->m_vulkan.m_imageView->m_subresourceRange.layerCount = 1;
 			target->m_vulkan.m_imageView->Compile();
+			TrackDelayedInitialization(target.GetRawPtr(), fenceUpdateRes);
 
 			res->m_faces.Emplace(target);
 		}
@@ -1754,11 +1759,10 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
-	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
 	RHI::Renderer::GetDriver()->SetDebugName(fenceUpdateRes, "Create Cubemap");
 
 	TrackDelayedInitialization(outCubemap.GetRawPtr(), fenceUpdateRes);
-	SubmitCommandList(cmdList, fenceUpdateRes);
+	if (!SubmitCommandList(cmdList, fenceUpdateRes)) return nullptr;
 
 	return outCubemap;
 }

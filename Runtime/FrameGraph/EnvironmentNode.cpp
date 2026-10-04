@@ -180,7 +180,9 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		{
 			if (!m_envMapTexture || m_envMapTexture->GetFileId() != source.m_texture.m_fileId)
 			{
-				App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(source.m_texture.m_fileId, m_envMapTexture);
+				TexturePtr texture;
+				if (App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(source.m_texture.m_fileId, texture))
+					m_envMapTexture = std::move(texture);
 				commands->EndDebugRegion(commandList);
 				return;
 			}
@@ -221,6 +223,11 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				RHI::ETextureClamping::Clamp,
 				usage);
 
+			if (!rawEnvCubemap)
+			{
+				commands->EndDebugRegion(commandList);
+				return;
+			}
 			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::ShaderReadOnlyOptimal);
 			rawEnvCubemap->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
 
@@ -247,6 +254,11 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			}
 			rawEnvCubemap = driver->CreateCubemap(ivec2(EnvMapSize), EnvMapLevels,
 				EFormat::R16G16B16A16_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
+			if (!rawEnvCubemap)
+			{
+				commands->EndDebugRegion(commandList);
+				return;
+			}
 			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::TransferDstOptimal);
 			commands->ClearImage(commandList, rawEnvCubemap, glm::vec4(source.m_constant, 1.0f));
 			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::ShaderReadOnlyOptimal);
@@ -290,6 +302,11 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				RHI::ETextureClamping::Clamp,
 				usage);
 
+			if (!envCubemap)
+			{
+				commands->EndDebugRegion(commandList);
+				return;
+			}
 			RHI::Renderer::GetDriver()->SetDebugName(envCubemap, "g_envCubemap");
 
 			commands->ImageMemoryBarrier(commandList, envCubemap, EImageLayout::General);
@@ -351,6 +368,11 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				RHI::ETextureClamping::Clamp,
 				usage);
 			
+			if (!irradianceCubemap)
+			{
+				commands->EndDebugRegion(commandList);
+				return;
+			}
 			commands->ImageMemoryBarrier(commandList, irradianceCubemap, EImageLayout::ShaderReadOnlyOptimal);
 			irradianceCubemap->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
 
@@ -391,6 +413,11 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				RHI::ETextureClamping::Clamp,
 				usage);
 
+			if (!sheenEnvCubemap)
+			{
+				commands->EndDebugRegion(commandList);
+				return;
+			}
 			commands->ImageMemoryBarrier(
 				commandList,
 				sheenEnvCubemap,
@@ -563,15 +590,19 @@ void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICom
 			ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
 	};
 	auto raw = createCube();
+	if (!raw) return;
+	auto specular = createCube();
+	if (!specular) return;
+	auto sheen = createCube();
+	if (!sheen) return;
 	commands->BeginDebugRegion(commandList, "Local scene reflection", DebugContext::Color_CmdCompute);
 	commands->ImageMemoryBarrier(commandList, raw, EImageLayout::ComputeWrite);
 	commands->ConvertEquirect2Cubemap(commandList, m_localUploadTexture, raw);
 	commands->ImageMemoryBarrier(commandList, raw, EImageLayout::TransferDstOptimal);
 	commands->GenerateMipMaps(commandList, raw);
 
-	const auto prefilter = [&](bool sheen)
+	const auto prefilter = [&](RHICubemapPtr filtered, bool sheen)
 	{
-		auto filtered = createCube();
 		auto bindings = driver->CreateShaderBindings();
 		if (!sheen)
 		{
@@ -602,10 +633,9 @@ void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICom
 				groups, groups, 6u, { bindings }, &push, sizeof(push));
 		}
 		commands->ImageMemoryBarrier(commandList, filtered, EImageLayout::ShaderReadOnlyOptimal);
-		return filtered;
 	};
-	auto specular = prefilter(false);
-	auto sheen = prefilter(true);
+	prefilter(specular, false);
+	prefilter(sheen, true);
 	frameGraph->SetSampler("g_localEnvCubemap", specular);
 	frameGraph->SetSampler("g_localSheenEnvCubemap", sheen);
 	m_localParameters = m_localReflection->m_parameters;

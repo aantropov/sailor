@@ -10,13 +10,21 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <latch>
 #include <stdexcept>
 #include <thread>
 #include <utility>
+#include <vector>
 
 using namespace Sailor;
+
+namespace Sailor::Tests
+{
+	void RequireWorkerImageInitializationRefusal(const std::function<void()>& load, VkResult error);
+	void RequireTexturePixels(RHI::RHITexturePtr texture, const std::vector<uint32_t>& expected);
+}
 
 namespace
 {
@@ -314,6 +322,57 @@ namespace
 			importer->GetTextureIndex(fixture.m_id) == slot && importer->GetTextureSamplersCount() == slots,
 			"an obsolete CPU decode must not overwrite a newer hot reload");
 		decode.CheckWorker(2);
+	}
+
+	void TestNativeUploadFailure(const std::filesystem::path& workspace)
+	{
+		auto* importer = App::GetSubmodule<TextureImporter>();
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			TextureFixture fixture(workspace, ("NativeUploadFailure" + std::to_string(error)).c_str());
+			fixture.KeepCpu(true);
+			fixture.SaveMetadata();
+			const auto slots = importer->GetTextureSamplersCount();
+			TexturePtr texture;
+			Tests::RequireWorkerImageInitializationRefusal([&]()
+			{
+				Require(!importer->LoadTexture_Immediate(fixture.m_id, texture), "native upload refusal must fail the actual cold texture task");
+			}, error);
+			Require(texture && !texture->GetRHI() && !texture->HasCpuData() && importer->GetTextureSamplersCount() == slots,
+				"refused cold upload must not publish GPU/CPU data or reserve a sampler slot");
+			const auto retained = texture;
+			Require(importer->LoadTexture_Immediate(fixture.m_id, texture) && texture == retained && texture->HasCpuData() &&
+				importer->GetTextureSamplersCount() == slots + 1, "unchanged cold input must retry on the same Texture object");
+			const auto image = texture->GetRHI();
+			Tests::RequireTexturePixels(image, { 0xff0000ffu });
+			const auto slot = static_cast<uint32_t>(importer->GetTextureIndex(fixture.m_id));
+			const auto before = importer->GetTextureSamplersSnapshot({ slot });
+			const auto cpuPixels = texture->GetDecodedData().GetData();
+			fixture.Write(0, 255, 3);
+			Tests::RequireWorkerImageInitializationRefusal([&]()
+			{
+				Require(!App::UpdateAsset(fixture.m_id.ToString().c_str()), "native upload refusal must fail the actual registry reload");
+			}, error);
+			const auto failed = importer->GetTextureSamplersSnapshot({ slot });
+			Require(texture->GetRHI() == image && texture->GetDecodedData().GetData() == cpuPixels && texture->GetWidth() == 1 &&
+				importer->GetTextureIndex(fixture.m_id) == slot && importer->GetTextureSamplersCount() == slots + 1 &&
+				failed.m_descriptorRevision == before.m_descriptorRevision &&
+				failed.m_slots[0].m_contentRevision == before.m_slots[0].m_contentRevision && registry->IsAssetExpired(fixture.m_info),
+				"refused reload must retain CPU/GPU pixels, dimensions, slot and descriptor revisions without acknowledging the source");
+			Tests::RequireTexturePixels(image, { 0xff0000ffu });
+			Require(App::UpdateAsset(fixture.m_id.ToString().c_str()) && importer->GetLoadedTexture(fixture.m_id) == texture &&
+				texture->GetRHI() != image && texture->GetWidth() == 3 && texture->GetDecodedData().Num() == 12 &&
+				texture->GetDecodedData()[2] == 255 && !registry->IsAssetExpired(fixture.m_info),
+				"unchanged reload input must publish the replacement and acknowledge it only after successful native initialization");
+			Tests::RequireTexturePixels(texture->GetRHI(), std::vector<uint32_t>(3, 0xffff0000u));
+			Tests::RequireTexturePixels(image, { 0xff0000ffu });
+			TexturePtr warm;
+			Require(importer->LoadTexture_Immediate(fixture.m_id, warm) && warm == texture &&
+				importer->GetTextureIndex(fixture.m_id) == slot && importer->GetTextureSamplersCount() == slots + 1,
+				"warm loads must reuse the accepted Texture object and sampler slot");
+		}
+		std::cout << "Texture importer native initialization: cold/reload refusal, retained CPU/GPU/descriptors, same-source retry and all pixels passed\n";
 	}
 
 	void TestColdFailureRetry(const std::filesystem::path& workspace)
@@ -705,6 +764,7 @@ namespace Sailor::Tests
 		run("Missing source ordering", [&]() { TestReloadOrdering(workspace, true); });
 		run("Enrichment and reload", [&]() { TestEnrichmentAndReload(workspace); });
 		run("Cold failure retry", [&]() { TestColdFailureRetry(workspace); });
+		run("Native upload failure", [&]() { TestNativeUploadFailure(workspace); });
 		run("First CPU publication", [&]() { TestFirstCpuPublication(workspace); });
 		run("Source mismatch and failure", [&]() { TestSourceMismatchAndFailure(workspace); });
 		run("Registry texture reload failure", [&]() { TestRegistryReloadFailure(workspace); });

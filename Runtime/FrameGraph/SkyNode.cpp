@@ -434,6 +434,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			ETextureFiltration::Linear,
 			ETextureClamping::Repeat,
 			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
+		if (!texture) return;
 		driver->SetDebugName(texture, name);
 		task.Clear();
 	};
@@ -454,6 +455,11 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			ETextureFiltration::Linear,
 			ETextureClamping::Repeat,
 			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
+		if (!m_pCloudsNoiseFallbackTexture)
+		{
+			commands->EndDebugRegion(commandList);
+			return;
+		}
 		driver->SetDebugName(m_pCloudsNoiseFallbackTexture, "PendingCloudsNoise");
 	}
 	const bool bCloudsReady = AreCloudsResourcesReady();
@@ -965,6 +971,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		if (!cubemap)
 		{
 			cubemap = RHI::Renderer::GetDriver()->CreateCubemap(glm::ivec2(EnvCubemapSize, EnvCubemapSize), 8, RHI::EFormat::R16G16B16A16_SFLOAT);
+			if (!cubemap) return;
 			RHI::Renderer::GetDriver()->SetDebugName(cubemap, "g_skyCubemap");
 
 			commands->ImageMemoryBarrier(commandList, cubemap, EImageLayout::ShaderReadOnlyOptimal);

@@ -132,6 +132,7 @@ namespace Sailor
 		// Forward Declarations
 		SAILOR_API static Data* ImGui_GetBackendData();
 		SAILOR_API static bool ImGui_Init(InitInfo* info);
+		static void ImGui_CreateFontsTexture();
 		SAILOR_API static void ImGui_Shutdown();
 		SAILOR_API static void ImGui_UpdateDrawData(PreparedFrame& frame, RHI::RHICommandListPtr transferCmdList);
 		SAILOR_API static void ImGui_RenderDrawData(const PreparedFrame& frame, RHI::RHICommandListPtr drawCmdList);

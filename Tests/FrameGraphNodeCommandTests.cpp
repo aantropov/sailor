@@ -66,6 +66,9 @@ namespace Sailor::Tests
 	void RequireRejectedNativeSubmission(RHICommandListPtr command);
 	void RequireAttachmentInitializationRefusal(const std::function<void()>& record,
 		uint32_t precedingSubmits = 0, VkResult error = VK_ERROR_OUT_OF_HOST_MEMORY);
+	void RequireImageInitializationRefusal(const std::function<void()>& record,
+		uint32_t precedingSubmits, uint32_t refusals, VkResult error);
+	void RequireWorkerImageInitializationRefusal(const std::function<void()>& load, VkResult error);
 	void RequireRejectedGraphicsSubmission(const std::function<bool()>& submit);
 }
 
@@ -2359,7 +2362,7 @@ frame:
 		});
 
 		std::vector<glm::vec4> clouds;
-		const auto render = [&](bool expectClouds = false)
+		const auto render = [&](bool expectClouds = false, VkResult uploadError = VK_SUCCESS, uint32_t refusedUploads = 2)
 		{
 			onRender([&]()
 			{
@@ -2376,7 +2379,9 @@ frame:
 				commands->ClearDepthStencil(draw, depth, 1.0f, 0);
 				commands->UpdateShaderBinding(upload, scene.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
 				Require(!expectClouds || node->AreCloudsResourcesReady(), "cloud comparison requires completed uploads before recording");
-				node->Process(graph, upload, draw, scene);
+				if (uploadError != VK_SUCCESS)
+					Tests::RequireImageInitializationRefusal([&]() { node->Process(graph, upload, draw, scene); }, 0, refusedUploads, uploadError);
+				else node->Process(graph, upload, draw, scene);
 				auto output = ReadColor(draw, color);
 				auto texture = node->GetCloudsTexture();
 				const auto extent = texture->GetExtent();
@@ -2408,6 +2413,22 @@ frame:
 
 		BackgroundPause pause;
 		std::array<Tasks::TaskPtr<TVector<uint8_t>>, 2> noiseTasks;
+		onRender([&]()
+		{
+			for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			{
+				auto& driver = Renderer::GetDriver();
+				auto commands = Renderer::GetDriverCommands();
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+				Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, scene); }, 0, error);
+				Require(draw->GetNumRecordedCommands() == 0 && !graph->GetSampler("g_skyCubemap"),
+					"refused fallback noise must not draw the sky or publish an environment");
+				CompleteCommands(upload, draw);
+			}
+		});
 		for (uint32_t frame = 0; frame < 3; ++frame)
 		{
 			render();
@@ -2427,9 +2448,20 @@ frame:
 		for (auto task : noiseTasks) task->Wait();
 		std::cout << "Cloud noise cold generation: " <<
 			std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() << " s\n";
+		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			render(false, error);
+			onRender([&]()
+			{
+				const auto textures = node->GetNoiseTextures();
+				Require(node->GetNoiseTasks() == noiseTasks && !textures[0] && !textures[1] && !node->AreCloudsResourcesReady(),
+					"refused noise uploads must retain both completed CPU tasks for the next frame");
+			});
+		}
 		render();
 		onRender([&]() { App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::RHI); });
 		render(true);
+		std::cout << "Cloud noise initialization: fallback refusal, retained generated tasks and same-node GPU retry passed\n";
 
 		std::array<RHITexturePtr, 2> generated;
 		std::array<std::filesystem::file_time_type, 2> written;
@@ -2538,6 +2570,36 @@ frame:
 			Require(std::filesystem::last_write_time(workspace / "Cache" / names[n]) == written[n],
 				"warm noise loading must not regenerate or rewrite derived data");
 		std::cout << "Cloud noise cache: cold generation, complete 3D upload and warm pixel parity passed\n";
+		RHITexturePtr previousSky;
+		SkyParameters captured, replacement;
+		onRender([&]()
+		{
+			previousSky = graph->GetSampler("g_skyCubemap");
+			Require(previousSky && node->GetEnvironmentSkyParams(captured), "capture refusal needs a completed sky environment");
+			replacement = node->GetSkyParams();
+			replacement.m_sunIlluminance *= 0.5f;
+			node->SetSkyParams(replacement);
+		});
+		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			render(true, error, 1);
+			onRender([&]()
+			{
+				SkyParameters visible;
+				Require(graph->GetSampler("g_skyCubemap") == previousSky && node->GetEnvironmentSkyParams(visible) &&
+					visible.GetEnvironmentKey() == captured.GetEnvironmentKey(),
+					"failed sky capture initialization must retain the old cubemap and its matching lighting parameters");
+			});
+		}
+		for (uint32_t frame = 0; frame < 8; ++frame) render(true);
+		onRender([&]()
+		{
+			SkyParameters visible;
+			Require(graph->GetSampler("g_skyCubemap") != previousSky && node->GetEnvironmentSkyParams(visible) &&
+				visible.GetEnvironmentKey() == replacement.GetEnvironmentKey(),
+				"the unchanged pending sky capture must finish and publish its matching lighting parameters");
+		});
+		std::cout << "Sky capture initialization: native refusal, retained cubemap/lighting pair and same-capture recovery passed\n";
 	}
 
 	void TestAuthoredEnvironmentReload(const std::filesystem::path& workspace)
@@ -2571,9 +2633,6 @@ frame:
 		auto registry = App::GetSubmodule<AssetRegistry>();
 		auto importer = App::GetSubmodule<TextureImporter>();
 		Require(registry->GetOrLoadFile(path.string()) == id, "the authored HDR must register");
-		TexturePtr texture;
-		Require(importer->LoadTexture_Immediate(id, texture), "the authored HDR must load");
-		const auto originalSource = texture->GetRHI();
 		auto node = TRefPtr<EnvironmentNode>::Make();
 		node->SetString("EnvironmentMap", path.filename().string());
 		auto graph = RHIFrameGraphPtr::Make();
@@ -2656,12 +2715,32 @@ frame:
 					"a refused BRDF target must not publish a sampler or record dependent environment work");
 				CompleteCommands(upload, draw);
 			}
+			node->SetString("EnvironmentMap", "MissingEnvironmentFixture.hdr");
+			process();
+			Require(graph->GetSampler("g_brdfSampler").IsValid() && !graph->GetSampler(names[0]),
+				"the BRDF must be ready before isolating the cold source upload");
+			node->SetString("EnvironmentMap", path.filename().string());
+		});
+		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			Tests::RequireWorkerImageInitializationRefusal([&]() { onRender(process); }, error);
+			onRender([&]()
+			{
+				for (const char* name : names) Require(!graph->GetSampler(name), "failed source upload must not publish dependent environment maps");
+			});
+		}
+		onRender([&]()
+		{
 			for (uint32_t frame = 0; frame < 16 && !graph->GetSampler(names[0]); ++frame) process();
 			checkPixels(graph, { 4, 0.5f, 0.25f });
 			Require(graph->GetSampler("g_brdfSampler").IsValid(), "the same Environment node must retry its BRDF target");
 			std::cout << "Environment BRDF target: native refusal, no dependent publication and same-node HDR pixel recovery passed\n";
 			for (const char* name : names) retained->SetSampler(name, graph->GetSampler(name));
 		});
+		const auto texture = importer->GetLoadedTexture(id);
+		Require(texture && texture->GetRHI(), "the unchanged Environment node must retry its failed TextureImporter source");
+		const auto originalSource = texture->GetRHI();
+		std::cout << "Environment source initialization: cold RHI-task refusal, no partial maps and unchanged-node HDR pixel recovery passed\n";
 		writeHdr({ 16, 128, 32, 130 }); // (0.25, 2, 0.5).
 		Require(App::UpdateAsset(id.ToString().c_str()), "the real HDR reload must complete");
 		Require(importer->GetLoadedTexture(id) == texture && texture->GetRHI() != originalSource,
@@ -2670,6 +2749,24 @@ frame:
 		{
 			const auto previousRaw = graph->GetSampler(names[0]);
 			node->MarkDirty();
+			Renderer::GetDriver()->WaitIdle();
+			Renderer::GetDriver()->TrackResources_ThreadSafe();
+			for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			for (uint32_t stage = 0; stage < 4; ++stage)
+			{
+				auto& driver = Renderer::GetDriver();
+				auto commands = Renderer::GetDriverCommands();
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+				Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, {}); }, stage, error);
+				for (const char* name : names)
+					Require(graph->GetSampler(name) == retained->GetSampler(name),
+						"a refused raw, specular, irradiance or sheen replacement must retain the entire published bundle");
+				CompleteCommands(upload, draw);
+			}
+			checkPixels(retained, { 4, 0.5f, 0.25f });
 			for (uint32_t frame = 0; frame < 16 && graph->GetSampler(names[0]) == previousRaw; ++frame)
 			{
 				process();
@@ -2680,6 +2777,7 @@ frame:
 			Require(graph->GetSampler(names[0]) != previousRaw, "completed HDR upload must replace the environment");
 			checkPixels(graph, { 0.25f, 2, 0.5f });
 			checkPixels(retained, { 4, 0.5f, 0.25f });
+			std::cout << "Environment image initialization: all four native refusals, retained HDR bundle and unchanged-source pixel recovery passed\n";
 			std::array<RHITexturePtr, 4> stable;
 			for (uint32_t channel = 0; channel < stable.size(); ++channel) stable[channel] = graph->GetSampler(names[channel]);
 			const auto brdf = graph->GetSampler("g_brdfSampler");
@@ -2719,8 +2817,25 @@ frame:
 			Require(!node->GetEnvironmentSkyParams(sky), "authored HDR must not publish unrelated analytic Sky lighting");
 			node->SetString("EnvironmentMap", "");
 			node->MarkDirty();
+			std::array<RHITexturePtr, 4> authored;
+			for (uint32_t i = 0; i < authored.size(); ++i) authored[i] = graph->GetSampler(names[i]);
+			for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			for (uint32_t stage = 0; stage < 4; ++stage)
+			{
+				auto& driver = Renderer::GetDriver();
+				auto commands = Renderer::GetDriverCommands();
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+				Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, {}); }, stage, error);
+				for (uint32_t i = 0; i < authored.size(); ++i)
+					Require(graph->GetSampler(names[i]) == authored[i], "failed constant fallback must retain the previous authored bundle");
+				CompleteCommands(upload, draw);
+			}
 			process();
 			checkPixels(graph, glm::vec3(0.03f));
+			std::cout << "Constant environment initialization: all four refused stages retain authored maps and recover complete fallback pixels passed\n";
 			const auto fallback = graph->GetSampler(names[0]);
 			for (uint32_t repeat = 0u; repeat < 8u; ++repeat)
 			{
@@ -2733,6 +2848,97 @@ frame:
 			for (uint32_t frame = 0u; frame < 16u && graph->GetSampler(names[0]) == fallback; ++frame) process();
 			checkPixels(graph, { 4, 0.5f, 0.25f });
 		});
+		const std::array localNames{ "g_localEnvCubemap", "g_localSheenEnvCubemap" };
+		const auto publishLocal = [&](uint32_t samples, glm::vec3 radiance)
+		{
+			LocalReflectionImage image;
+			image.m_extent = { 4, 2 };
+			image.m_parameters.m_positionBlend = { 0, 0, 0, 1 };
+			image.m_parameters.m_minEnabled = { -10, -10, -10, 1 };
+			image.m_parameters.m_max = { 10, 10, 10, 0 };
+			image.m_samplesPerPixel = samples;
+			image.m_pixels.Resize(8);
+			for (auto& pixel : image.m_pixels) pixel = glm::vec4(radiance, 1);
+			Require(node->SetLocalReflection(std::move(image)), "the actual local capture must enter the Render queue");
+			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::Render);
+		};
+		const auto checkLocalPixels = [&](glm::vec3 expected)
+		{
+			auto& driver = Renderer::GetDriver();
+			auto commands = Renderer::GetDriverCommands();
+			for (const char* name : localNames)
+			{
+				auto cube = graph->GetSampler(name);
+				Require(cube.IsValid(), "both local reflection maps must publish together");
+				for (uint32_t mip = 0; mip < 8; ++mip)
+				for (uint32_t face = 0; face < 6; ++face)
+				{
+					const uint32_t size = 128u >> mip;
+					auto buffer = driver->CreateBuffer(size * size * 8u, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+					auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(command, true);
+					commands->ImageMemoryBarrier(command, cube, EImageLayout::TransferSrcOptimal);
+					command->m_vulkan.m_commandBuffer->CopyImageToBuffer(*buffer->m_vulkan.m_buffer->Get(),
+						cube->m_vulkan.m_image, size, size, 1, mip, face);
+					commands->ImageMemoryBarrier(command, cube, cube->GetDefaultLayout());
+					commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+						static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+					commands->EndCommandList(command);
+					Require(driver->SubmitCommandList_Immediate(command), "local reflection readback must complete");
+					const auto pixels = static_cast<const uint16_t*>(buffer->GetPointer());
+					for (uint32_t i = 0; i < size * size; ++i)
+					for (uint32_t channel = 0; channel < 3; ++channel)
+						Require(std::abs(glm::unpackHalf1x16(pixels[4 * i + channel]) - expected[channel]) < 0.02f,
+							"every local reflection face/mip pixel must match the accepted capture");
+				}
+			}
+		};
+		publishLocal(1, { 1, 0.5f, 0.25f });
+		onRender([&]()
+		{
+			for (uint32_t frame = 0; frame < 16 && !node->IsLocalReflectionReady(); ++frame) process();
+			Require(node->GetLocalReflectionSamples() == 1, "the initial local capture must publish");
+			checkLocalPixels({ 1, 0.5f, 0.25f });
+		});
+		uint32_t samples = 1;
+		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			++samples;
+			const glm::vec3 radiance(0.25f, float(samples), 0.5f);
+			std::array<RHITexturePtr, 2> previous;
+			onRender([&]() { for (uint32_t i = 0; i < previous.size(); ++i) previous[i] = graph->GetSampler(localNames[i]); });
+			publishLocal(samples, radiance);
+			onRender([&]()
+			{
+				const auto reject = [&](uint32_t stage)
+				{
+					auto& driver = Renderer::GetDriver();
+					auto commands = Renderer::GetDriverCommands();
+					auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(upload, true);
+					commands->BeginCommandList(draw, true);
+					Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, {}); }, stage, error);
+					Require(draw->GetNumRecordedCommands() == 0 && node->GetLocalReflectionSamples() == samples - 1 &&
+						node->IsLocalReflectionReady(), "failed local replacement must retain the previous ready capture and record no filter work");
+					for (uint32_t i = 0; i < previous.size(); ++i)
+						Require(graph->GetSampler(localNames[i]) == previous[i], "failed local replacement must retain both published map owners");
+					CompleteCommands(upload, draw);
+				};
+				reject(0); // Upload.
+				process();
+				for (uint32_t stage = 0; stage < 3; ++stage) reject(stage);
+				for (uint32_t frame = 0; frame < 16 && node->GetLocalReflectionSamples() != samples; ++frame) process();
+				Require(node->GetLocalReflectionSamples() == samples, "the pending local capture must retry without another SetLocalReflection");
+				checkLocalPixels(radiance);
+				std::array<RHITexturePtr, 2> accepted;
+				for (uint32_t i = 0; i < accepted.size(); ++i) accepted[i] = graph->GetSampler(localNames[i]);
+				for (uint32_t frame = 0; frame < 8; ++frame) process();
+				for (uint32_t i = 0; i < accepted.size(); ++i)
+					Require(graph->GetSampler(localNames[i]) == accepted[i], "warm local reflection frames must retain the accepted pair");
+			});
+		}
+		std::cout << "Local reflection initialization: upload/three-map refusal, retained capture, Render-queue retry and all face/mip pixels passed\n";
 		std::cout << "Authored HDR reload: four-map pixels, retained consumers, failed reload/repair and 32 warm invalidations passed\n";
 	}
 

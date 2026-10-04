@@ -57,6 +57,8 @@ namespace Sailor::Tests
 	void RunPrefabImporterCommandTests(const std::filesystem::path& workspace);
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace);
 	void RunCloudNoiseCommandTests(const std::filesystem::path& workspace);
+	void RequireImageInitializationRefusal(const std::function<void()>& record,
+		uint32_t precedingSubmits, uint32_t refusals, VkResult error);
 }
 
 namespace
@@ -786,7 +788,32 @@ namespace
 		node->SetFloat("maxAccumulatedSamples", 2);
 		unchanged = node->Camera().m_imageRevision;
 		extent = ivec2(64);
+		const auto& resizeScene = view->m_snapshots[0];
+		const auto resizedResources = node->Resources(resizeScene);
+		const auto previousTexture = resizedResources->m_runtimeTexture;
+		const auto previousUploadRevision = resizedResources->m_imageRevision;
+		uint64_t pendingRevision = 0;
+		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			RecordedComposite refused;
+			Tests::RequireImageInitializationRefusal([&]()
+				{ refused = RecordComposite(*node, graph, view->m_snapshots[0], extent); }, 0, 1, error);
+			Require(resizedResources->m_runtimeTexture == previousTexture &&
+				resizedResources->m_imageRevision == previousUploadRevision && node->Camera().m_extent == uvec2(64),
+				"failed tracer image resize must retain its last GPU owner/revision and the new CPU result");
+			if (pendingRevision) Require(node->Camera().m_imageRevision == pendingRevision,
+				"retrying a refused upload must not retrace an unchanged capped CPU image");
+			pendingRevision = node->Camera().m_imageRevision;
+			Require(Renderer::GetDriver()->SubmitCommandList_Immediate(refused.command), "a refused tracer composite must leave valid commands");
+			const auto* pixels = static_cast<const uint32_t*>(refused.readback->GetPointer());
+			Require(std::all_of(pixels, pixels + extent.x * extent.y * 2, [](uint32_t pixel) { return pixel == 0; }),
+				"a refused tracer upload must preserve every cleared output pixel instead of drawing stale or failed data");
+		}
 		RequireComposite(draw(), vec3(1, 3, 0.25f));
+		Require(resizedResources->m_runtimeTexture != previousTexture &&
+			resizedResources->m_imageRevision == node->Camera().m_imageRevision && node->Camera().m_imageRevision == pendingRevision,
+			"the unchanged tracer resize must publish its retained CPU result without retracing");
+		std::cout << "CPU tracer image initialization: retained GPU owner/CPU result, refused resize pixels and same-input recovery passed\n";
 		Require(node->Camera().m_extent == uvec2(64) && node->Camera().m_imageRevision > unchanged,
 			"same-aspect output resize must restart a capped image");
 

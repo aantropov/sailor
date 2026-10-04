@@ -247,7 +247,7 @@ void ImGuiApi::NewFrame()
 
 	Data* bd = ImGui_GetBackendData();
 	IM_ASSERT(bd != nullptr && "Did you call ImGui_Init()?");
-	IM_UNUSED(bd);
+	if (!bd->FontTexture) ImGui_CreateFontsTexture();
 
 #if defined(_WIN32)
 	ImGui_ImplWin32_NewFrame();
@@ -303,8 +303,9 @@ ImGuiApi::PreparedFramePtr ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transfe
 {
 	SAILOR_PROFILE_FUNCTION();
 	ImGui::Render();
-	auto frame = TSharedPtr<PreparedFrame>::Make(ImGui::GetDrawData());
 	const Data* bd = ImGui_GetBackendData();
+	if (!bd->FontTexture) return {};
+	auto frame = TSharedPtr<PreparedFrame>::Make(ImGui::GetDrawData());
 	frame->Material = bd->Material;
 	frame->ShaderBindings = bd->ShaderBindings;
 	// ImTextureID stores an RHITexture pointer. Retain each texture through its
@@ -544,6 +545,28 @@ void ImGuiApi::ImGui_RenderDrawData(const PreparedFrame& frame, RHI::RHICommandL
 	}
 }
 
+void ImGuiApi::ImGui_CreateFontsTexture()
+{
+	ImGuiIO& io = ImGui::GetIO();
+	Data* bd = ImGui_GetBackendData();
+	unsigned char* pixels;
+	int width, height;
+	io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+	auto texture = RHI::Renderer::GetDriver()->CreateTexture(pixels,
+		size_t(width) * height * 4,
+		glm::ivec3(width, height, 1),
+		1,
+		RHI::ETextureType::Texture2D,
+		RHI::ETextureFormat::R8G8B8A8_UNORM,
+		RHI::ETextureFiltration::Linear,
+		RHI::ETextureClamping::Repeat,
+		RHI::ETextureUsageBit::Sampled_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit);
+	if (!texture) return;
+	if (!RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(bd->ShaderBindings, "sTexture", texture, 0)) return;
+	bd->FontTexture = std::move(texture);
+	io.Fonts->SetTexID((ImTextureID)(bd->FontTexture.GetRawPtr()));
+}
+
 bool ImGuiApi::ImGui_Init(InitInfo* info)
 {
 	ImGuiIO& io = ImGui::GetIO();
@@ -561,25 +584,8 @@ bool ImGuiApi::ImGui_Init(InitInfo* info)
 	bd->InitInfo = *info;
 	bd->Subpass = info->Subpass;
 
-	unsigned char* pixels;
-	int width, height;
-	io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-	size_t upload_size = width * height * 4 * sizeof(char);
-
-	bd->FontTexture = RHI::Renderer::GetDriver()->CreateTexture(pixels,
-		upload_size,
-		glm::ivec3(width, height, 1),
-		1,
-		RHI::ETextureType::Texture2D,
-		RHI::ETextureFormat::R8G8B8A8_UNORM,
-		RHI::ETextureFiltration::Linear,
-		RHI::ETextureClamping::Repeat,
-		RHI::ETextureUsageBit::Sampled_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit);
-
-	io.Fonts->SetTexID((ImTextureID)(bd->FontTexture.GetRawPtr()));
-
 	bd->ShaderBindings = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-	RHI::RHIShaderBindingPtr textureSampler = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(bd->ShaderBindings, "sTexture", bd->FontTexture, 0);
+	ImGui_CreateFontsTexture();
 
 	if (auto uiShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ImGuiUI.shader"))
 	{

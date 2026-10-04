@@ -20,6 +20,7 @@
 #include "FrameGraph/EditorReadbackNode.h"
 #include "Editor/EditorRuntimeBridge.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
+#include "Submodules/ImGuiApi.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
@@ -36,6 +37,7 @@
 #include "RHI/RenderTarget.h"
 #include "RHI/Surface.h"
 #include "RHI/Texture.h"
+#include "RHI/Cubemap.h"
 #include "Tasks/Tasks.h"
 #if defined(_WIN32)
 #include <Windows.h>
@@ -46,6 +48,7 @@
 #include <iterator>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -361,6 +364,46 @@ namespace
 			rejectNativeSubmit = false;
 		}
 
+	private:
+		VulkanQueuePtr m_queue;
+		PFN_vkQueueSubmit m_previous;
+	};
+
+	std::atomic<VkResult> workerSubmitResult{ VK_SUCCESS };
+	std::atomic<uint32_t> workerSubmitRefusals{ 0 };
+	std::atomic<bool> workerSubmitWasOffCaller{ false };
+	std::thread::id uploadCaller;
+	PFN_vkQueueSubmit forwardWorkerSubmit = nullptr;
+
+	VKAPI_ATTR VkResult VKAPI_CALL RefuseWorkerUpload(VkQueue queue, uint32_t count, const VkSubmitInfo* info, VkFence fence)
+	{
+		const auto error = workerSubmitResult.exchange(VK_SUCCESS);
+		if (error != VK_SUCCESS)
+		{
+			++workerSubmitRefusals;
+			workerSubmitWasOffCaller.store(std::this_thread::get_id() != uploadCaller);
+			return error;
+		}
+		return forwardWorkerSubmit(queue, count, info, fence);
+	}
+
+	class WorkerUploadRefusal
+	{
+	public:
+		explicit WorkerUploadRefusal(VkResult error) :
+			m_queue(VulkanSubmissionTestAccess::UploadQueue(*VulkanApi::GetInstance()->GetMainDevice()))
+		{
+			workerSubmitResult.store(error);
+			workerSubmitRefusals.store(0);
+			workerSubmitWasOffCaller.store(false);
+			uploadCaller = std::this_thread::get_id();
+			m_previous = VulkanSubmissionTestAccess::ExchangeSubmit(*m_queue, RefuseWorkerUpload, &forwardWorkerSubmit);
+		}
+		~WorkerUploadRefusal()
+		{
+			VulkanSubmissionTestAccess::ExchangeSubmit(*m_queue, m_previous);
+			workerSubmitResult.store(VK_SUCCESS);
+		}
 	private:
 		VulkanQueuePtr m_queue;
 		PFN_vkQueueSubmit m_previous;
@@ -2243,6 +2286,202 @@ frame: []
 		return result;
 	}
 
+	void TestAsynchronousImagePublication(bool cubemap)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		const auto usage = ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferSrc_Bit |
+			ETextureUsageBit::TextureTransferDst_Bit;
+		uint32_t cases = 0, pixelsRead = 0;
+		for (auto type : { ETextureType::Texture1D, ETextureType::Texture2D, ETextureType::Texture3D, ETextureType::Cubemap })
+		{
+			if (cubemap && type != ETextureType::Cubemap) continue;
+			const glm::ivec3 extent(8, type == ETextureType::Texture1D ? 1 : 8, type == ETextureType::Texture3D ? 8 : 1);
+			const uint32_t layers = type == ETextureType::Cubemap ? 6 : 1;
+			const size_t layerSize = size_t(extent.x) * extent.y * extent.z;
+			std::vector<uint32_t> data(layerSize * layers);
+			for (uint32_t face = 0; face < layers; ++face)
+				std::fill_n(data.begin() + layerSize * face, layerSize, 0xff123420u + 17u * face);
+			for (uint32_t levels : { 1u, 4u })
+			for (bool upload : { false, true })
+			{
+				if (cubemap && upload) continue;
+				const auto create = [&]() -> RHITexturePtr
+				{
+					if (cubemap) return driver.CreateCubemap(glm::ivec2(extent), levels, EFormat::R8G8B8A8_UNORM,
+						ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+					return driver.CreateTexture(upload ? data.data() : nullptr, upload ? data.size() * sizeof(uint32_t) : 0,
+						extent, levels, type, EFormat::R8G8B8A8_UNORM, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+				};
+				for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+				{
+					{
+						SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+						const auto before = nativeSubmitAttempts;
+						auto rejected = create();
+						std::cout << "Asynchronous image refusal: cubemap=" << cubemap << ", published=" << bool(rejected)
+							<< ", failed=" << (rejected && rejected->HasInitializationFailed()) << '\n';
+						Require(!rejected && nativeSubmitAttempts == before + 1,
+							"a refused asynchronous image initialization must not publish its texture or cubemap");
+					}
+					RHITexturePtr accepted;
+					{
+						FenceDispatchOverride completion(*device);
+						SubmitOverride submission(VulkanSubmissionTestAccess::UploadQueue(*device), VK_SUCCESS);
+						accepted = create();
+						Require(accepted.IsValid(), "the unchanged image request must retry successfully");
+						observedFences[0] = lastSubmittedFence;
+						fenceResults[0] = VK_NOT_READY;
+						driver.TrackResources_ThreadSafe();
+						Require(!accepted->IsReady() && !accepted->HasInitializationFailed(),
+							"accepted pending image work must stay distinct from a refused initialization");
+						Require(forwardFenceWait(*device, 1, &observedFences[0], VK_TRUE, 5000000000ull) == VK_SUCCESS,
+							"accepted image initialization must finish on the native GPU");
+						fenceResults[0] = VK_SUCCESS;
+						driver.TrackResources_ThreadSafe();
+					}
+					Require(accepted->IsReady() && accepted->GetFiltration() == ETextureFiltration::Nearest &&
+						accepted->GetClamping() == ETextureClamping::Clamp && accepted->HasMipMaps() == (levels > 1) &&
+						accepted->GetFormat() == EFormat::R8G8B8A8_UNORM &&
+						accepted->m_vulkan.m_image->m_mipLevels == levels && accepted->m_vulkan.m_image->m_arrayLayers == layers &&
+						accepted->m_vulkan.m_image->m_extent.depth == uint32_t(extent.z),
+						"retry must retain the requested image shape, sampling properties and mip/layer count");
+					if (!upload)
+					{
+						auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+						driver.BeginCommandList(command, true);
+						driver.ImageMemoryBarrier(command, accepted, EImageLayout::TransferDstOptimal);
+						driver.ClearImage(command, accepted, glm::vec4(0x43 / 255.0f, 0x67 / 255.0f, 0xab / 255.0f, 1));
+						driver.RestoreImageBarriers(command);
+						driver.EndCommandList(command);
+						Require(driver.SubmitCommandList_Immediate(command), "the retried empty image must accept native commands");
+					}
+					for (uint32_t mip = 0; mip < levels; ++mip)
+					for (uint32_t face = 0; face < layers; ++face)
+					{
+						const auto pixels = ReadImage(driver, accepted->m_vulkan.m_image, mip, face);
+						const uint32_t expected = upload ? data[face * layerSize] : 0xffab6743u;
+						Require(std::all_of(pixels.begin(), pixels.end(), [&](auto value) { return value == expected; }),
+							"every retried image voxel, face and generated mip must contain the expected pixels");
+						pixelsRead += static_cast<uint32_t>(pixels.size());
+					}
+					++cases;
+				}
+			}
+		}
+		std::cout << "Asynchronous image factories: cubemap=" << cubemap << ", " << cases
+			<< " refused/retried cases, " << pixelsRead << " complete mip/face/volume pixels passed\n";
+		{
+			SubmitOverride loss(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_DEVICE_LOST);
+			const auto before = nativeSubmitAttempts;
+			RHITexturePtr rejected = cubemap ? driver.CreateCubemap(glm::ivec2(8), 1, EFormat::R8G8B8A8_UNORM) :
+				driver.CreateTexture(nullptr, 0, glm::ivec3(8, 8, 1), 1, ETextureType::Texture2D, EFormat::R8G8B8A8_UNORM);
+			Require(!rejected && device->IsDeviceLost() && nativeSubmitAttempts == before + 1,
+				"terminal initialization loss must not publish an asynchronous image");
+			Require(!driver.CreateCubemap(glm::ivec2(8), 1, EFormat::R8G8B8A8_UNORM) &&
+				!driver.CreateTexture(nullptr, 0, glm::ivec3(8, 8, 1), 1, ETextureType::Texture2D, EFormat::R8G8B8A8_UNORM) &&
+				nativeSubmitAttempts == before + 1,
+				"a lost device must reject both image factories without another native submission");
+		}
+		std::cout << "Asynchronous image terminal loss: first refusal and both factory short-circuits passed\n";
+	}
+
+	void TestCubemapPending()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver();
+		RHICubemapPtr cube;
+		{
+			FenceDispatchOverride completion(*device);
+			SubmitOverride accepted(VulkanSubmissionTestAccess::UploadQueue(*device), VK_SUCCESS);
+			cube = driver.CreateCubemap(glm::ivec2(8), 4u, EFormat::R8G8B8A8_UNORM);
+			observedFences[0] = lastSubmittedFence;
+			fenceResults[0] = VK_NOT_READY;
+			driver.TrackResources_ThreadSafe();
+			std::cout << "Cubemap pending: parent=" << cube->IsReady() << ", face=" << cube->GetFace(0)->IsReady()
+				<< ", mip=" << cube->GetMipLevel(1)->IsReady() << '\n';
+			Require(!cube->IsReady(), "the accepted cubemap must stay pending while initialization is held");
+			for (uint32_t mip = 0; mip < 4; ++mip)
+			{
+				if (mip) Require(!cube->GetMipLevel(mip)->IsReady(), "pending cubemap mip views must not report ready");
+				for (uint32_t face = 0; face < 6; ++face)
+					Require(!cube->GetFace(face, mip)->IsReady(), "pending cubemap face views must not report ready");
+			}
+			Require(forwardFenceWait(*device, 1, &observedFences[0], VK_TRUE, 5000000000ull) == VK_SUCCESS,
+				"accepted cubemap initialization must finish on the native GPU");
+			fenceResults[0] = VK_SUCCESS;
+			driver.TrackResources_ThreadSafe();
+		}
+		Require(cube->IsReady(), "the completed cubemap must become ready");
+		for (uint32_t mip = 0; mip < 4; ++mip)
+		{
+			if (mip) Require(cube->GetMipLevel(mip)->IsReady(), "completed cubemap mip views must become ready");
+			for (uint32_t face = 0; face < 6; ++face)
+				Require(cube->GetFace(face, mip)->IsReady(), "completed cubemap face views must become ready");
+		}
+		std::cout << "Cubemap ownership: accepted pending parent, all face/mip views and native completion passed\n";
+	}
+
+	class ImGuiFontProbe : public ImGuiApi
+	{
+	public:
+		static auto Backend() { return ImGui_GetBackendData(); }
+		static void Reinitialize()
+		{
+			auto info = ImGui_GetBackendData()->InitInfo;
+			ImGui_Shutdown();
+			ImGui::GetIO().Fonts->SetTexID(0);
+			Require(ImGui_Init(&info), "the renderer backend must initialize even while font upload is pending");
+		}
+	};
+
+	void TestImGuiFontInitialization()
+	{
+		ImGui::SetCurrentContext(ImGuiApi::GetCurrentContext());
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver();
+		auto* engine = App::GetSubmodule<EngineLoop>();
+		{
+			Sailor::FrameState frame;
+			engine->ProcessCpuFrame(frame);
+			frame.GetDrawImGuiTask()->Wait();
+			driver.WaitIdle();
+			driver.TrackResources_ThreadSafe();
+		}
+		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			{
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+				const auto before = nativeSubmitAttempts;
+				ImGuiFontProbe::Reinitialize();
+				Sailor::FrameState frame;
+				engine->ProcessCpuFrame(frame);
+				frame.GetDrawImGuiTask()->Wait();
+				Require(nativeSubmitAttempts == before + 2 && !ImGuiFontProbe::Backend()->FontTexture &&
+					ImGui::GetIO().Fonts->TexID == 0 && frame.GetDrawImGuiTask()->GetResult()->GetNumRecordedCommands() == 0,
+					"refused startup and next-frame font uploads must publish no texture ID or UI draw commands");
+			}
+			Sailor::FrameState retry;
+			engine->ProcessCpuFrame(retry);
+			retry.GetDrawImGuiTask()->Wait();
+			driver.WaitIdle();
+			driver.TrackResources_ThreadSafe();
+			const auto font = ImGuiFontProbe::Backend()->FontTexture;
+			Require(font && font->IsReady() && ImGui::GetIO().Fonts->TexID == reinterpret_cast<ImTextureID>(font.GetRawPtr()),
+				"the unchanged backend must publish a completed font texture on the next CPU frame");
+			{
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+				const auto before = nativeSubmitAttempts;
+				Sailor::FrameState warm;
+				engine->ProcessCpuFrame(warm);
+				warm.GetDrawImGuiTask()->Wait();
+				Require(nativeSubmitAttempts == before && ImGuiFontProbe::Backend()->FontTexture == font,
+					"warm CPU frames must reuse the accepted font image without initialization uploads");
+			}
+		}
+		std::cout << "ImGui font initialization: startup/frame refusal, no rejected UI draws, next-frame recovery and warm reuse passed\n";
+	}
+
 	void TestImmediateImageContents()
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
@@ -3305,6 +3544,7 @@ frame: []
 		std::vector<const char*> arguments(argv, argv + argc);
 		const bool editorReadback = mode.starts_with("--gpu-editor-readback") || mode.starts_with("--gpu-metal-");
 		if (editorReadback) arguments.insert(arguments.end(), { "--editor", "--port", "0" });
+		if (mode == "--gpu-imgui-fonts") arguments.insert(arguments.end(), { "--editor", "--port", "0", "--world", "", "--new-world" });
 		App::Initialize(arguments.data(), static_cast<int>(arguments.size()));
 		int result = 1;
 		try
@@ -3312,6 +3552,7 @@ frame: []
 			Require(App::IsRendererInitialized(), "fence test requires an initialized renderer");
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 			if (mode == "--gpu-submission-statistics") TestConcurrentSubmissionStatistics();
+			else if (mode == "--gpu-imgui-fonts") TestImGuiFontInitialization();
 			else if (mode == "--gpu-editor-readback") TestEditorReadback();
 #if defined(__APPLE__)
 			else if (mode == "--gpu-metal-export") OnRender([]() { TestMetalTextureExport(); });
@@ -3329,6 +3570,9 @@ frame: []
 #endif
 					else if (mode == "--gpu-immediate-image-create") TestImmediateImageCreation(false);
 					else if (mode == "--gpu-immediate-images") TestImmediateImageContents();
+					else if (mode == "--gpu-textures") TestAsynchronousImagePublication(false);
+					else if (mode == "--gpu-cubemaps") TestAsynchronousImagePublication(true);
+					else if (mode == "--gpu-cubemap-pending") TestCubemapPending();
 					else if (mode == "--gpu-immediate-image-create-lost") TestImmediateImageCreation(true);
 					else if (mode == "--gpu-immediate-buffer-create") TestImmediateBufferCreation();
 					else if (mode == "--gpu-immediate-buffers")
@@ -3420,6 +3664,35 @@ frame: []
 
 namespace Sailor::Tests
 {
+	void RequireWorkerImageInitializationRefusal(const std::function<void()>& load, VkResult error)
+	{
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		WorkerUploadRefusal refusal(error);
+		load();
+		Require(workerSubmitRefusals.load() == 1 && workerSubmitWasOffCaller.load(),
+			"the texture task must reach exactly one native initialization refusal off the calling thread");
+	}
+
+	void RequireTexturePixels(RHITexturePtr texture, const std::vector<uint32_t>& expected)
+	{
+		OnRender([&]()
+			{
+				Require(ReadImage(*Renderer::GetDriver(), texture->m_vulkan.m_image) == expected,
+					"every published texture pixel must match the accepted importer revision");
+			});
+	}
+
+	void RequireImageInitializationRefusal(const std::function<void()>& record,
+		uint32_t precedingSubmits, uint32_t refusals, VkResult error)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error, false, precedingSubmits);
+		const auto before = nativeSubmitAttempts;
+		record();
+		Require(nativeSubmitAttempts == before + precedingSubmits + refusals,
+			"the consumer must reach the requested native image initialization refusal");
+	}
+
 	void RequireAttachmentInitializationRefusal(const std::function<void()>& record, uint32_t precedingSubmits, VkResult error)
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
@@ -3526,6 +3799,8 @@ int main(int argc, const char** argv)
 			mode == "--gpu-immediate-buffer-create" || mode == "--gpu-immediate-buffers" ||
 			mode == "--gpu-immediate-image-create" || mode == "--gpu-immediate-image-create-lost" ||
 			mode == "--gpu-immediate-images" ||
+			mode == "--gpu-textures" || mode == "--gpu-cubemaps" || mode == "--gpu-cubemap-pending" ||
+			mode == "--gpu-imgui-fonts" ||
 			mode == "--gpu-extended-submit" || mode == "--gpu-extended-submit-lost" ||
 			mode == "--gpu-immediate-buffer-create-lost" || mode == "--gpu-immediate-buffer-copy-lost")
 			return RunFenceGpu(argc, argv, mode);

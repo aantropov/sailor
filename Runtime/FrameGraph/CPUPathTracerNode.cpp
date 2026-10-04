@@ -482,7 +482,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			(uint32_t)resources->m_runtimeTexture->GetExtent().x != camera.m_extent.x ||
 			(uint32_t)resources->m_runtimeTexture->GetExtent().y != camera.m_extent.y)
 		{
-			resources->m_runtimeTexture = driver->CreateTexture(
+			auto texture = driver->CreateTexture(
 				nullptr,
 				0,
 				glm::ivec3((int32_t)camera.m_extent.x, (int32_t)camera.m_extent.y, 1),
@@ -492,11 +492,12 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				ETextureFiltration::Nearest,
 				ETextureClamping::Clamp,
 				ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
-			if (!resources->m_runtimeTexture)
+			if (!texture)
 			{
 				commands->EndDebugRegion(commandList);
 				return;
 			}
+			resources->m_runtimeTexture = std::move(texture);
 		}
 
 		commands->ImageMemoryBarrier(commandList, resources->m_runtimeTexture, EImageLayout::TransferDstOptimal);
