@@ -1,6 +1,6 @@
 #pragma once
 
-#include "FrameGraph/SkyParameters.h"
+#include "FrameGraph/EnvironmentSource.h"
 #include "GlobalIllumination/GIProbesData.h"
 #include "Math/Bounds.h"
 #include "Raytracing/GIProbesPathTracer.h"
@@ -38,15 +38,13 @@ namespace Sailor
 		Raytracing::PathTracer::MaterialSnapshots m_materials{};
 		TVector<Raytracing::LightProxy> m_lights{};
 		TVector<Math::AABB> m_geometryBounds{};
-		SkyParameters m_skyParameters{};
+		EnvironmentSource m_environment;
+		TextureImporter::CpuTextureSnapshot m_environmentPixels;
 		Math::AABB m_worldBounds{};
-		glm::vec3 m_fallbackEnvironment{ 0.03f };
-		float m_skyIndirectIntensity = 1.0f;
 		uint64_t m_geometryHash = 0u;
 		uint64_t m_lightingHash = 0u;
 		uint64_t m_sourceWorldHash = 0u;
 		GIProbesSceneRevision m_observedRevision{};
-		bool m_bHasSkyEnvironment = false;
 	};
 
 	// Owner-thread validation is separate from the values consumed by background work.

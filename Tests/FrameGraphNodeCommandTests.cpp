@@ -1686,6 +1686,21 @@ frame:
 			checkPixels(retained, { 4, 0.5f, 0.25f });
 			SkyParameters sky;
 			Require(!node->GetEnvironmentSkyParams(sky), "authored HDR must not publish unrelated analytic Sky lighting");
+			node->SetString("EnvironmentMap", "");
+			node->MarkDirty();
+			process();
+			checkPixels(graph, glm::vec3(0.03f));
+			const auto fallback = graph->GetSampler(names[0]);
+			for (uint32_t repeat = 0u; repeat < 8u; ++repeat)
+			{
+				node->MarkDirty();
+				process();
+				Require(graph->GetSampler(names[0]) == fallback, "constant fallback must reuse its raw cubemap");
+			}
+			node->SetString("EnvironmentMap", path.filename().string());
+			node->MarkDirty();
+			for (uint32_t frame = 0u; frame < 16u && graph->GetSampler(names[0]) == fallback; ++frame) process();
+			checkPixels(graph, { 4, 0.5f, 0.25f });
 		});
 		std::cout << "Authored HDR reload: four-map pixels, retained consumers, failed reload/repair and 32 warm invalidations passed\n";
 	}

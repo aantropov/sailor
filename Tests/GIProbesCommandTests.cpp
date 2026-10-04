@@ -4,6 +4,7 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Components/CameraComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/SkyComponent.h"
@@ -15,10 +16,12 @@
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "GlobalIllumination/GIProbesBinary.h"
+#include "GlobalIllumination/GIProbesSampling.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
 #include "Memory/UniquePtr.hpp"
 #include "RHI/CommandList.h"
+#include "RHI/Cubemap.h"
 #include "RHI/Renderer.h"
 #include "Settings/GraphicsSettings.h"
 
@@ -860,6 +863,331 @@ namespace
 			"a changed sun must invalidate lighting without invalidating geometry");
 	}
 
+	void RequireGpuEnvironment(const FileId& id, const GIProbesPreparedScene& scene)
+	{
+		TexturePtr texture;
+		Require(App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(id, texture), "the GPU environment must load");
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		while (!texture->IsReady() && std::chrono::steady_clock::now() < deadline)
+		{
+			RHI::Renderer::GetDriver()->TrackResources_ThreadSafe();
+			std::this_thread::yield();
+		}
+		Require(texture->IsReady(), "the GPU environment upload must complete");
+		auto task = Tasks::CreateTaskWithResult<std::string>("Environment CPU/GPU parity", [&]() -> std::string
+		{
+			try
+			{
+				using namespace RHI;
+				auto& driver = Renderer::GetDriver();
+				auto commands = Renderer::GetDriverCommands();
+				constexpr int32_t side = 32;
+				auto cube = driver->CreateCubemap(glm::ivec2(side), 1, EFormat::R16G16B16A16_SFLOAT,
+					ETextureFiltration::Linear, ETextureClamping::Clamp,
+					ETextureUsageBit::Storage_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferSrc_Bit);
+				auto convert = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(convert, true);
+				commands->ImageMemoryBarrier(convert, cube, EImageLayout::ComputeWrite);
+				commands->ConvertEquirect2Cubemap(convert, texture->GetRHI(), cube);
+				commands->ImageMemoryBarrier(convert, cube, EImageLayout::ShaderReadOnlyOptimal);
+				cube->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
+				commands->EndCommandList(convert);
+				Require(driver->SubmitCommandList_Immediate(convert), "the HDR conversion must complete");
+				for (uint32_t face = 0u; face < 6u; ++face)
+				{
+					auto buffer = driver->CreateBuffer(side * side * 8u, EBufferUsageBit::BufferTransferDst_Bit,
+						EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+					auto read = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(read, true);
+					commands->ImageMemoryBarrier(read, cube, EImageLayout::TransferSrcOptimal);
+					read->m_vulkan.m_commandBuffer->CopyImageToBuffer(*buffer->m_vulkan.m_buffer->Get(),
+						cube->m_vulkan.m_image, side, side, 1, 0, face);
+					commands->ImageMemoryBarrier(read, cube, EImageLayout::ShaderReadOnlyOptimal);
+					commands->MemoryBarrier(read, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+						static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+					commands->EndCommandList(read);
+					Require(driver->SubmitCommandList_Immediate(read), "the environment readback must complete");
+					const auto pixels = static_cast<const uint32_t*>(buffer->GetPointer());
+					for (int32_t y : { 0, side / 2 - 1, side / 2, side - 1 })
+						for (int32_t x : { 0, side / 2 - 1, side / 2, side - 1 })
+						{
+							const float u = 2.0f * (x + 0.5f) / side - 1.0f;
+							const float v = 1.0f - 2.0f * (y + 0.5f) / side;
+							const std::array<glm::vec3, 6> directions{ glm::vec3(1, v, -u), { -1, v, u },
+								{ u, 1, -v }, { u, -1, v }, { u, v, 1 }, { -u, v, -1 } };
+							GIProbeBakeRaySample ray;
+							std::string diagnostic;
+							Require(scene.m_sampler->Sample({ 0, 0, 40 }, glm::normalize(directions[face]),
+								20.0f, 1u, ray, diagnostic) && !ray.m_bHit, diagnostic);
+							const int32_t index = 2 * (y * side + x);
+							const glm::vec3 actual(glm::vec4(glm::unpackHalf2x16(pixels[index]), glm::unpackHalf2x16(pixels[index + 1])));
+							Require(glm::length(actual - ray.m_radiance) < 0.01f,
+								"CPU/GPU environment direction mismatch at face " + std::to_string(face) +
+								", pixel " + std::to_string(x) + "," + std::to_string(y) + ": GPU red " +
+								std::to_string(actual.r) + ", CPU red " + std::to_string(ray.m_radiance.r));
+						}
+				}
+				return {};
+			}
+			catch (const std::exception& error) { return error.what(); }
+		}, EThreadType::Render);
+		task->Run();
+		task->Wait();
+		Require(task->GetResult().empty(), task->GetResult());
+	}
+
+	void TestAuthoredEnvironmentCapture(const std::filesystem::path& workspace)
+	{
+		const auto path = workspace / "Content" / "GIEnvironment.hdr";
+		const auto rendererPath = workspace / "Content" /
+			(App::HasEditor() ? "EditorRenderer.renderer" : "DefaultRenderer.renderer");
+		Require(!std::filesystem::exists(rendererPath), "the GI fixture must own its renderer override");
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		struct RestoreRenderer
+		{
+			std::filesystem::path m_path;
+			std::string m_text;
+			~RestoreRenderer() { std::ofstream(m_path) << m_text; }
+		} restoreRenderer{ rendererPath, {} };
+		Require(AssetRegistry::ReadAllTextFile(registry->GetAssetInfoPtr(rendererPath.filename().string())->GetAssetFilepath(),
+			restoreRenderer.m_text), "the previous renderer configuration must be retained");
+		const auto writeEnvironment = [&](bool reversed)
+		{
+			const auto previous = std::filesystem::exists(path) ? std::filesystem::last_write_time(path) :
+				std::filesystem::file_time_type{};
+			std::ofstream output(path, std::ios::binary);
+			output << "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 4 +X 4\n";
+			for (uint32_t y = 0u; y < 4u; ++y)
+			{
+				for (uint32_t x = 0u; x < 4u; ++x)
+				{
+					const uint32_t row = reversed ? 3u - y : y;
+					const std::array<uint8_t, 4> rgbe = row == 0u ? std::array<uint8_t, 4>{ 128, 16, 8, 131 } :
+						row == 3u ? std::array<uint8_t, 4>{ 16, 128, 32, 130 } :
+						(x < 2u) != reversed ? std::array<uint8_t, 4>{ 64, 16, 192, 130 } :
+						std::array<uint8_t, 4>{ 32, 192, 8, 130 };
+					output.write(reinterpret_cast<const char*>(rgbe.data()), rgbe.size());
+				}
+			}
+			output.close();
+			Require(static_cast<bool>(output), "the GI HDR fixture must be written");
+			if (std::filesystem::last_write_time(path) <= previous)
+				std::filesystem::last_write_time(path, previous + std::chrono::seconds(1));
+		};
+		writeEnvironment(false);
+		TextureAssetInfo defaults;
+		auto metadata = defaults.Serialize();
+		const FileId id = FileId::CreateNewFileId();
+		metadata["fileId"] = id;
+		metadata["filename"] = path.filename().string();
+		metadata["format"] = RHI::ETextureFormat::R32G32B32A32_SFLOAT;
+		metadata["bShouldGenerateMips"] = false;
+		metadata["bShouldKeepCpuBuffers"] = true;
+		{
+			std::ofstream output(path.string() + ".asset");
+			output << metadata;
+			Require(static_cast<bool>(output), "the GI HDR metadata must be written");
+		}
+		{
+			std::ofstream output(rendererPath);
+			output << "frame:\n- name: Environment\n  string:\n  - EnvironmentMap: GIEnvironment.hdr\n";
+			Require(static_cast<bool>(output), "the GI renderer fixture must be written");
+		}
+		Require(registry->GetOrLoadFile(path.string()) == id, "the GI HDR must register");
+		const FileId rendererId = registry->GetOrLoadFile(rendererPath.string());
+		Require(rendererId && registry->GetAssetInfoPtr(rendererPath.filename().string())->GetFileId() == rendererId,
+			"the workspace renderer must be the effective renderer asset");
+		GIWorld world;
+		world.Step();
+		GIProbesSceneCaptureRequest request;
+		request.m_settings.m_bIncludeSky = true;
+		request.m_settings.m_bIncludeDirectLighting = false;
+		request.m_settings.m_bIncludeEmissive = false;
+		request.m_settings.m_bounceCount = 1u;
+		const auto capture = [&]()
+		{
+			GIProbesSceneSnapshot scene;
+			GIProbesPreparedScene prepared;
+			std::string diagnostic;
+			Require(CaptureGIProbesScene(&world, request, scene, diagnostic), diagnostic);
+			Require(PrepareGIProbesScene(scene, request.m_settings, nullptr, prepared, diagnostic), diagnostic);
+			return prepared;
+		};
+		const auto requireRadiance = [&](const GIProbesPreparedScene& scene, glm::vec3 direction, glm::vec3 expected)
+		{
+			GIProbeBakeRaySample ray;
+			std::string diagnostic;
+			Require(scene.m_sampler->Sample(glm::vec3(0.0f), direction, 20.0f, 1u, ray, diagnostic), diagnostic);
+			Require(!ray.m_bHit && glm::length(ray.m_radiance - expected) < 0.0001f,
+				"GI must sample the selected HDR instead of sky/fallback; red " + std::to_string(ray.m_radiance.r) +
+				", expected " + std::to_string(expected.r));
+		};
+		const glm::vec3 north(4.0f, 0.5f, 0.25f), south(0.25f, 2.0f, 0.5f);
+		const auto requireProbeDirection = [](const GIProbesData& data, bool reversed, const std::string& label)
+		{
+			glm::vec3 up(0.0f), down(0.0f);
+			Require(!data.m_probes.IsEmpty(), label + " must contain probes");
+			for (const auto& probe : data.m_probes)
+			{
+				up += EvaluateProbeIrradianceSH(probe.m_irradiance, { 0, 1, 0 });
+				down += EvaluateProbeIrradianceSH(probe.m_irradiance, { 0, -1, 0 });
+			}
+			const glm::vec3 difference = (up - down) * (reversed ? -1.0f : 1.0f) / static_cast<float>(data.m_probes.Num());
+			Require(difference.r > 0.1f && difference.g < -0.1f,
+				label + " must follow HDR direction and color; red difference " + std::to_string(difference.r) +
+				", green difference " + std::to_string(difference.g));
+		};
+		const auto bake = [&](const GIProbesPreparedScene& prepared, bool reversed)
+		{
+			GIProbesBakeRequest bakeRequest;
+			bakeRequest.m_stateName = "Authored environment";
+			bakeRequest.m_volumeMin = { 0, 0, 30 };
+			bakeRequest.m_volumeMax = { 1, 1, 31 };
+			bakeRequest.m_settings = prepared.m_effectiveSettings;
+			bakeRequest.m_settings.m_raysPerProbe = 512u;
+			bakeRequest.m_settings.m_minProbeSpacing = 8.0f;
+			bakeRequest.m_settings.m_maxSubdivisionLevel = 0u;
+			const auto result = GIProbesBaker::Bake(bakeRequest, *prepared.m_sampler);
+			Require(result.IsSuccess(), result.m_diagnostic);
+			requireProbeDirection(*result.m_data, reversed, "baked probes");
+		};
+		const auto first = capture();
+		requireRadiance(first, { 0.0f, 1.0f, 0.0f }, north);
+		requireRadiance(first, { 0.0f, -1.0f, 0.0f }, south);
+		RequireGpuEnvironment(id, first);
+		bake(first, false);
+		auto runtimeSettings = world.GI().GetWorldSettings();
+		runtimeSettings.m_runtimeProbes.m_bIncludeSky = true;
+		runtimeSettings.m_runtimeProbes.m_bIncludeEmissive = false;
+		runtimeSettings.m_runtimeProbes.m_bIncludeDirectLighting = false;
+		std::string diagnostic;
+		Require(world.GI().ApplyWorldSettings(runtimeSettings, diagnostic), diagnostic);
+		world.WaitReady();
+		const auto firstRuntime = world.GI().GetActiveSnapshot();
+		Require(!firstRuntime->m_states.IsEmpty(), "runtime probes must publish their HDR lighting state");
+		requireProbeDirection(*firstRuntime->m_states[0].m_data, false, "runtime probes");
+		const uint64_t firstRuntimeRevision = world.GI().GetRuntimeGIProbesStatus().m_publishedRevision;
+		auto sky = world.Instantiate("Ignored sky")->AddComponent<SkyComponent>();
+		sky->SetGiIndirectIntensity(12.0f);
+		const auto withSky = capture();
+		requireRadiance(withSky, { 0.0f, 1.0f, 0.0f }, north);
+		Require(withSky.m_lightingHash == first.m_lightingHash,
+			"an overridden SkyComponent must not change authored environment energy or revision");
+		GIProbesSceneSnapshot retainedCapture;
+		Require(CaptureGIProbesScene(&world, request, retainedCapture, diagnostic), diagnostic);
+		Require(static_cast<bool>(retainedCapture.m_environmentPixels.m_pixels),
+			"the owner capture must retain the loaded HDR pixels for Background preparation");
+		writeEnvironment(true);
+		Require(App::UpdateAsset(id.ToString().c_str()), "the changed GI HDR must update");
+		const auto second = capture();
+		Require(second.m_geometryHash == first.m_geometryHash && second.m_lightingHash != first.m_lightingHash,
+			"an HDR source edit must invalidate lighting but retain geometry");
+		requireRadiance(second, { 0.0f, 1.0f, 0.0f }, south);
+		requireRadiance(second, { 0.0f, -1.0f, 0.0f }, north);
+		requireRadiance(first, { 0.0f, 1.0f, 0.0f }, north);
+		auto background = Tasks::CreateTaskWithResult<std::pair<GIProbesPreparedScene, std::string>>(
+			"Prepare retained HDR", [retainedCapture, settings = request.m_settings]()
+			{
+				std::pair<GIProbesPreparedScene, std::string> result;
+				if (PrepareGIProbesScene(retainedCapture, settings, nullptr, result.first, result.second)) result.second.clear();
+				return result;
+			}, EThreadType::Worker);
+		background->Run();
+		background->Wait();
+		Require(background->GetResult().second.empty(), background->GetResult().second);
+		requireRadiance(background->GetResult().first, { 0, 1, 0 }, north);
+		RequireGpuEnvironment(id, second);
+		bake(second, true);
+		world.Step(0.6f);
+		world.WaitReady(firstRuntimeRevision);
+		const auto secondRuntime = world.GI().GetActiveSnapshot();
+		Require(secondRuntime->m_lightingHash != firstRuntime->m_lightingHash,
+			"runtime HDR edits must publish a new lighting revision");
+		requireProbeDirection(*secondRuntime->m_states[0].m_data, true, "updated runtime probes");
+		requireProbeDirection(*firstRuntime->m_states[0].m_data, false, "retained runtime probes");
+		world.GI().SetRuntimeGIProbesWorkAllowed(false);
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		uint32_t rendererReads = 0u;
+		auto previousObserver = AssetRegistry::ExchangeTextReadObserverForTests([&](const std::filesystem::path& readPath)
+			{ if (readPath == rendererPath) ++rendererReads; });
+		bool stableRevision = true;
+		for (uint32_t i = 0u; i < 32u; ++i)
+		{
+			GIProbesSceneRevision revision;
+			stableRevision &= ObserveGIProbesSceneRevision(&world, request, revision, diagnostic) &&
+				revision == second.m_observedRevision;
+		}
+		AssetRegistry::ExchangeTextReadObserverForTests(std::move(previousObserver));
+		Require(stableRevision && rendererReads == 0u, "warm GI observations must not reread renderer YAML");
+#endif
+		const auto selectEnvironment = [&](const std::string& filename)
+		{
+			std::ofstream output(rendererPath);
+			output << "frame:\n- name: Environment\n  string:\n  - EnvironmentMap: '" << filename << "'\n";
+			output.close();
+			Require(static_cast<bool>(output) && App::UpdateAsset(rendererId.ToString().c_str()),
+				"the renderer environment selection must update");
+		};
+		const auto ldrPath = workspace / "Content" / "GIEnvironment.tga";
+		std::array<uint8_t, 30> tga{};
+		tga[2] = 2u;
+		tga[12] = tga[14] = 2u;
+		tga[16] = 24u;
+		for (uint32_t i = 18u; i < tga.size(); i += 3u)
+		{
+			tga[i] = 32u;
+			tga[i + 1u] = 64u;
+			tga[i + 2u] = 128u;
+		}
+		{
+			std::ofstream output(ldrPath, std::ios::binary);
+			output.write(reinterpret_cast<const char*>(tga.data()), tga.size());
+		}
+		const FileId ldrId = FileId::CreateNewFileId();
+		metadata["fileId"] = ldrId;
+		metadata["filename"] = ldrPath.filename().string();
+		metadata["format"] = RHI::ETextureFormat::R8G8B8A8_SRGB;
+		{ std::ofstream(ldrPath.string() + ".asset") << metadata; }
+		Require(registry->GetOrLoadFile(ldrPath.string()) == ldrId, "the LDR environment must register");
+		selectEnvironment(ldrPath.filename().string());
+		const glm::vec3 encoded(128.0f / 255.0f, 64.0f / 255.0f, 32.0f / 255.0f);
+		const auto srgb = capture();
+		requireRadiance(srgb, { 0, 1, 0 }, Utils::SRGBToLinear(encoded));
+		RequireGpuEnvironment(ldrId, srgb);
+		metadata["format"] = RHI::ETextureFormat::R8G8B8A8_UNORM;
+		{ std::ofstream(ldrPath.string() + ".asset") << metadata; }
+		Require(App::UpdateAsset(ldrId.ToString().c_str()), "the LDR encoding change must update");
+		const auto linear = capture();
+		Require(linear.m_lightingHash != srgb.m_lightingHash && linear.m_geometryHash == srgb.m_geometryHash,
+			"texture encoding changes must invalidate lighting only");
+		requireRadiance(linear, { 0, 1, 0 }, encoded);
+		RequireGpuEnvironment(ldrId, linear);
+
+		selectEnvironment("");
+		GIProbesSceneSnapshot skyScene;
+		Require(CaptureGIProbesScene(&world, request, skyScene, diagnostic), diagnostic);
+		Require(skyScene.m_environment.m_type == EEnvironmentSource::Sky &&
+			skyScene.m_environment.m_skyIndirectIntensity == 12.0f,
+			"removing the authored map must select the world sky again");
+		GIWorld withoutSky;
+		withoutSky.Step();
+		GIProbesSceneSnapshot constantScene;
+		GIProbesPreparedScene constant;
+		Require(CaptureGIProbesScene(&withoutSky, request, constantScene, diagnostic), diagnostic);
+		Require(constantScene.m_environment.m_type == EEnvironmentSource::Constant,
+			"a world without HDR or sky must select the constant source");
+		Require(PrepareGIProbesScene(constantScene, request.m_settings, nullptr, constant, diagnostic), diagnostic);
+		requireRadiance(constant, { 0, 1, 0 }, glm::vec3(0.03f));
+		selectEnvironment("MissingEnvironment.hdr");
+		Require(!CaptureGIProbesScene(&world, request, skyScene, diagnostic) && !diagnostic.empty(),
+			"a missing authored map must report failure instead of silently substituting the sky");
+		request.m_settings.m_bIncludeSky = false;
+		Require(CaptureGIProbesScene(&world, request, skyScene, diagnostic), diagnostic);
+		Require(PrepareGIProbesScene(skyScene, request.m_settings, nullptr, constant, diagnostic), diagnostic);
+		requireRadiance(constant, { 0, 1, 0 }, glm::vec3(0.0f));
+		std::cout << "Authored HDR GI capture: CPU/GPU directions, baked/runtime probes, retained Background pixels, encodings, cached configuration and source transitions passed\n";
+	}
+
 	void TestGpuLayoutUploads(const GIProbesDataPtr& data, uint64_t publishedBytes)
 	{
 		auto task = Tasks::CreateTaskWithResult<std::string>("GI layout upload validation", [data, publishedBytes]()
@@ -1244,6 +1572,7 @@ namespace Sailor::Tests
 		}
 		run("Targeted asset capture", [&]() { TestTargetedAssetCapture(workspace); });
 		run("Material preparation stress", [&]() { TestMaterialPreparationStress(workspace); });
+		run("Authored environment capture", [&]() { TestAuthoredEnvironmentCapture(workspace); });
 		Require(failures.empty(), failures);
 		std::cout << "GI restart, preparation recovery and importer retry tests passed\n";
 	}

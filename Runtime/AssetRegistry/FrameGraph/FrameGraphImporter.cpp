@@ -33,6 +33,59 @@ void FrameGraphImporter::OnImportAsset(AssetInfoPtr assetInfo)
 
 void FrameGraphImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
+	if (assetInfo->GetFileId() == m_environmentRenderer)
+		m_environmentRendererRevision = {};
+}
+
+const char* FrameGraphImporter::GetRendererAssetPath()
+{
+	return App::HasEditor() ? "EditorRenderer.renderer" : "DefaultRenderer.renderer";
+}
+
+bool FrameGraphImporter::GetEnvironmentMap(std::string& outPath, std::string& outDiagnostic)
+{
+	outPath.clear();
+	outDiagnostic.clear();
+	const auto* asset = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(GetRendererAssetPath());
+	FileRevision revision;
+	if (!asset || !Utils::TryGetFileRevision(asset->GetAssetFilepath(), revision))
+	{
+		outDiagnostic = "cannot read the active renderer configuration";
+		return false;
+	}
+	if (asset->GetFileId() != m_environmentRenderer || revision != m_environmentRendererRevision)
+	{
+		std::string text;
+		if (!AssetRegistry::ReadAllTextFile(asset->GetAssetFilepath(), text))
+		{
+			outDiagnostic = "cannot read renderer '" + asset->GetAssetFilepath() + "'";
+			return false;
+		}
+		std::string environmentMap;
+		try
+		{
+			const auto document = YAML::Load(text);
+			for (const auto& entry : document["frame"])
+			{
+				FrameGraphAsset::Node node;
+				node.Deserialize(entry);
+				if (node.m_name != "Environment") continue;
+				if (const auto it = node.m_values.Find("EnvironmentMap"); it != node.m_values.end())
+					environmentMap = it->m_second->GetString();
+				break;
+			}
+		}
+		catch (const YAML::Exception& error)
+		{
+			outDiagnostic = "cannot read renderer '" + asset->GetAssetFilepath() + "': " + error.what();
+			return false;
+		}
+		m_environmentRenderer = asset->GetFileId();
+		m_environmentRendererRevision = revision;
+		m_environmentMap = std::move(environmentMap);
+	}
+	outPath = m_environmentMap;
+	return true;
 }
 
 FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)

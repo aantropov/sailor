@@ -92,7 +92,7 @@ namespace Sailor::Framegraph
 
 		TexturePtr m_envMapTexture;
 		RHI::RHITexturePtr m_authoredSource;
-		RHI::RHICubemapPtr m_authoredRawCubemap;
+		RHI::RHICubemapPtr m_staticRawCubemap;
 		SkyParameters m_environmentSkyParams{};
 		bool m_environmentUsesSky = false;
 

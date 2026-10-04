@@ -1,6 +1,7 @@
 #include "GlobalIllumination/GIProbesScene.h"
 
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/SkyComponent.h"
 #include "Containers/Hash.h"
@@ -16,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 using namespace Sailor;
@@ -161,14 +163,6 @@ namespace
 		HashLightingSettings(outLightingHash, request.m_settings);
 	}
 
-	void HashSkyParameters(uint64_t& hash, const SkyParameters& sky) noexcept
-	{
-		HashVec3(hash, glm::vec3(sky.m_lightDirection));
-		HashVec3(hash, glm::vec3(sky.m_sunIlluminance));
-		HashVec3(hash, glm::vec3(sky.m_groundRadiance));
-		HashValue(hash, Math::AllFinite(sky.m_groundRadiance));
-	}
-
 	void HashLightProxies(
 		uint64_t& hash,
 		const TVector<Raytracing::LightProxy>& lights) noexcept
@@ -224,6 +218,27 @@ namespace
 		{
 			warning(diagnostic);
 		}
+	}
+
+	bool CaptureSceneEnvironment(World* world, const GIProbesSceneCaptureRequest& request,
+		EnvironmentSource& outSource, std::string& outDiagnostic,
+		const GIProbesSceneWarningCallback& warning = {})
+	{
+		std::string environmentMap;
+		ObservedSky sky;
+		if (request.m_settings.m_bIncludeSky)
+		{
+			if (auto* importer = App::GetSubmodule<FrameGraphImporter>())
+				if (!importer->GetEnvironmentMap(environmentMap, outDiagnostic)) return false;
+			if (environmentMap.empty()) sky = ResolveObservedSky(world);
+		}
+		if (!CaptureEnvironmentSource(environmentMap,
+			sky.m_componentCount ? &sky.m_parameters : nullptr, outSource, outDiagnostic)) return false;
+		outSource.m_constant = glm::max(request.m_fallbackEnvironment, glm::vec3(0.0f));
+		outSource.m_skyIndirectIntensity = sky.m_indirectIntensity;
+		if (sky.m_componentCount > 1u)
+			ReportWarning(warning, "multiple SkyComponents are present; GI tracing uses '" + sky.m_selectedName + "'");
+		return true;
 	}
 
 	bool ResolveFrozenModelGeometry(
@@ -354,61 +369,55 @@ namespace
 		}
 		return true;
 	}
+
+	GIProbesSceneRevision ObserveSceneRevision(
+		World* world,
+		const GIProbesSceneCaptureRequest& request,
+		const EnvironmentSource& environment)
+	{
+		uint64_t geometry = 0u;
+		uint64_t lighting = 0u;
+		InitializeSceneHashes(
+			request,
+			world->GetName(),
+			geometry,
+			lighting);
+		if (const auto* meshes = world->GetECS<StaticMeshRendererECS>())
+		{
+			HashValue(geometry, meshes->GetGlobalIlluminationGeometryRevision());
+			HashValue(lighting, meshes->GetGlobalIlluminationContributorRevision());
+		}
+		if (const auto* landscape = world->GetECS<LandscapeECS>())
+		{
+			HashValue(geometry, landscape->GetGlobalIlluminationGeometryRevision());
+			HashValue(lighting, landscape->GetGlobalIlluminationContributorRevision());
+		}
+
+		TVector<Raytracing::LightProxy> lights;
+		if (const auto* lightingEcs = world->GetECS<LightingECS>())
+		{
+			lightingEcs->GetGlobalIlluminationBakeLightProxies(lights);
+		}
+		HashLightProxies(lighting, lights);
+		HashValue(lighting, environment.GetRevision());
+		return { geometry, lighting };
+	}
 }
 
-bool Sailor::ObserveGIProbesSceneRevision(
-	World* world,
-	const GIProbesSceneCaptureRequest& request,
-	GIProbesSceneRevision& outRevision,
+bool Sailor::ObserveGIProbesSceneRevision(World* world,
+	const GIProbesSceneCaptureRequest& request, GIProbesSceneRevision& outRevision,
 	std::string& outDiagnostic)
 {
 	SAILOR_PROFILE_FUNCTION();
 	outRevision = {};
-	outDiagnostic.clear();
 	if (!world)
 	{
 		outDiagnostic = "a loaded world is required to observe GI contributors";
 		return false;
 	}
-
-	uint64_t geometry = 0u;
-	uint64_t lighting = 0u;
-	InitializeSceneHashes(
-		request,
-		world->GetName(),
-		geometry,
-		lighting);
-	if (const auto* meshes = world->GetECS<StaticMeshRendererECS>())
-	{
-		HashValue(geometry, meshes->GetGlobalIlluminationGeometryRevision());
-		HashValue(lighting, meshes->GetGlobalIlluminationContributorRevision());
-	}
-	if (const auto* landscape = world->GetECS<LandscapeECS>())
-	{
-		HashValue(geometry, landscape->GetGlobalIlluminationGeometryRevision());
-		HashValue(lighting, landscape->GetGlobalIlluminationContributorRevision());
-	}
-
-	TVector<Raytracing::LightProxy> lights;
-	if (const auto* lightingEcs = world->GetECS<LightingECS>())
-	{
-		lightingEcs->GetGlobalIlluminationBakeLightProxies(lights);
-	}
-	HashLightProxies(lighting, lights);
-	HashVec3(lighting, glm::max(request.m_fallbackEnvironment, glm::vec3(0.0f)));
-	if (request.m_settings.m_bIncludeSky)
-	{
-		const ObservedSky sky = ResolveObservedSky(world);
-		const bool bHasSky = sky.m_componentCount > 0u;
-		HashValue(lighting, bHasSky);
-		if (bHasSky)
-		{
-			HashSkyParameters(lighting, sky.m_parameters);
-			HashValue(lighting, sky.m_indirectIntensity);
-		}
-	}
-	outRevision.m_geometry = geometry;
-	outRevision.m_lighting = lighting;
+	EnvironmentSource environment;
+	if (!CaptureSceneEnvironment(world, request, environment, outDiagnostic)) return false;
+	outRevision = ObserveSceneRevision(world, request, environment);
 	outDiagnostic = "observed Static and Stationary GI contributor revisions";
 	return true;
 }
@@ -449,27 +458,21 @@ bool Sailor::CaptureGIProbesSceneLighting(
 		outDiagnostic = "GI lighting capture requires a world and a finite fallback environment";
 		return false;
 	}
-	outScene.m_fallbackEnvironment = glm::max(request.m_fallbackEnvironment, glm::vec3(0.0f));
-	outScene.m_skyParameters = {};
-	outScene.m_skyIndirectIntensity = 1.0f;
-	outScene.m_bHasSkyEnvironment = false;
+	if (!CaptureSceneEnvironment(world, request, outScene.m_environment, outDiagnostic, warning)) return false;
+	outScene.m_environmentPixels = {};
 	outScene.m_lights.Clear();
 
-	if (request.m_settings.m_bIncludeSky)
+	if (outScene.m_environment.m_type == EEnvironmentSource::Texture)
 	{
-		const ObservedSky sky = ResolveObservedSky(world);
-		if (sky.m_componentCount > 0u)
+		auto* textures = App::GetSubmodule<TextureImporter>();
+		const auto texture = textures->GetLoadedTexture(outScene.m_environment.m_texture.m_fileId);
+		if (texture && texture->HasCpuData())
 		{
-			outScene.m_skyParameters = sky.m_parameters;
-			outScene.m_skyIndirectIntensity = sky.m_indirectIntensity;
-			outScene.m_bHasSkyEnvironment = true;
-		}
-		if (sky.m_componentCount > 1u)
-		{
-			ReportWarning(
-				warning,
-				"multiple SkyComponents are present; GI tracing uses '" +
-					sky.m_selectedName + "'");
+			auto capture = textures->CaptureCpuTextures({ texture });
+			capture->Wait();
+			const auto& pixels = capture->GetResult()[0];
+			if (pixels.m_source == outScene.m_environment.m_texture)
+				outScene.m_environmentPixels = pixels;
 		}
 	}
 
@@ -483,16 +486,13 @@ bool Sailor::CaptureGIProbesSceneLighting(
 		lighting->GetGlobalIlluminationBakeLightProxies(outScene.m_lights);
 	}
 	HashLightProxies(lightingHash, outScene.m_lights);
-	HashVec3(lightingHash, outScene.m_fallbackEnvironment);
-	HashValue(lightingHash, outScene.m_bHasSkyEnvironment);
-	if (outScene.m_bHasSkyEnvironment)
+	HashValue(lightingHash, outScene.m_environment.GetRevision());
+	if (outScene.m_environment.m_type == EEnvironmentSource::Sky)
 	{
 		constexpr uint32_t SkyEnvironmentGeneratorVersion = 1u;
 		HashValue(lightingHash, SkyEnvironmentGeneratorVersion);
 		HashValue(lightingHash, Raytracing::ProbeBakeSkyEnvironmentWidth);
 		HashValue(lightingHash, Raytracing::ProbeBakeSkyEnvironmentHeight);
-		HashSkyParameters(lightingHash, outScene.m_skyParameters);
-		HashValue(lightingHash, outScene.m_skyIndirectIntensity);
 	}
 
 	HashMaterials(lightingHash, outScene.m_materials);
@@ -500,7 +500,9 @@ bool Sailor::CaptureGIProbesSceneLighting(
 	outScene.m_sourceWorldHash = Fnv1aOffsetBasis;
 	HashValue(outScene.m_sourceWorldHash, outScene.m_geometryHash);
 	HashValue(outScene.m_sourceWorldHash, lightingHash);
-	return ObserveGIProbesSceneRevision(world, request, outScene.m_observedRevision, outDiagnostic);
+	outScene.m_observedRevision = ObserveSceneRevision(world, request, outScene.m_environment);
+	outDiagnostic = "captured GI lighting and its environment source revision";
+	return true;
 }
 
 bool Sailor::CaptureGIProbesScene(
@@ -529,9 +531,6 @@ bool Sailor::CaptureGIProbesScene(
 			"the GI fallback environment must contain finite values";
 		return false;
 	}
-	outScene.m_fallbackEnvironment = glm::max(
-		request.m_fallbackEnvironment,
-		glm::vec3(0.0f));
 
 	TVector<MaterialPtr> runtimeMaterials;
 	TVector<MeshCandidate> candidates;
@@ -808,7 +807,7 @@ bool Sailor::PrepareGIProbesScene(
 
 	GIProbesBakeSettings effectiveSettings = settings;
 	effectiveSettings.m_skyIndirectIntensity =
-		scene.m_bHasSkyEnvironment ? scene.m_skyIndirectIntensity : 1.0f;
+		scene.m_environment.m_type == EEnvironmentSource::Sky ? scene.m_environment.m_skyIndirectIntensity : 1.0f;
 	auto sampler = TSharedPtr<Raytracing::GIProbesPathTracer>::Make();
 	const auto guardedProgress =
 		[&progress, &isCancelled](
@@ -820,9 +819,9 @@ bool Sailor::PrepareGIProbesScene(
 		previous->m_geometryHash == scene.m_geometryHash;
 	const bool bInitialized = bReuseGeometry ?
 		sampler->InitializeLighting(*previous->m_sampler, scene.m_materials, scene.m_lights,
-			effectiveSettings, scene.m_fallbackEnvironment, guardedProgress) :
+			effectiveSettings, scene.m_environment.m_constant, guardedProgress) :
 		sampler->InitializeSnapshot(scene.m_instances, scene.m_materials,
-			scene.m_lights, effectiveSettings, scene.m_fallbackEnvironment,
+			scene.m_lights, effectiveSettings, scene.m_environment.m_constant,
 			guardedProgress, warning);
 	if (!bInitialized)
 	{
@@ -832,8 +831,40 @@ bool Sailor::PrepareGIProbesScene(
 		return false;
 	}
 
-	if (effectiveSettings.m_bIncludeSky &&
-		scene.m_bHasSkyEnvironment)
+	if (effectiveSettings.m_bIncludeSky && scene.m_environment.m_type == EEnvironmentSource::Texture)
+	{
+		const auto& source = scene.m_environment;
+		const auto& captured = scene.m_environmentPixels;
+		TextureImporter::ByteCode decoded;
+		const auto* pixels = captured.m_pixels.GetRawPtr();
+		int32_t width = captured.m_width, height = captured.m_height;
+		uint32_t mipLevels = 1u;
+		if (!pixels)
+		{
+			if (!TextureImporter::DecodeTextureCpu(source.m_texture, decoded, width, height, mipLevels))
+			{
+				outDiagnostic = "cannot decode the captured environment texture '" + source.m_texture.m_filepath + "'";
+				return false;
+			}
+			pixels = &decoded;
+		}
+		TVector<glm::vec4> environment;
+		environment.Resize(static_cast<size_t>(width) * height);
+		for (size_t i = 0u; i < environment.Num(); ++i)
+		{
+			if (source.m_texture.m_bDecodeAsFloat)
+				std::memcpy(&environment[i], pixels->GetData() + i * sizeof(glm::vec4), sizeof(glm::vec4));
+			else
+			{
+				const uint8_t* pixel = pixels->GetData() + i * 4u;
+				environment[i] = glm::vec4(pixel[0], pixel[1], pixel[2], pixel[3]) / 255.0f;
+				if (RHI::IsSrgbFormat(source.m_format))
+					environment[i] = Utils::SRGBToLinear(environment[i]);
+			}
+		}
+		sampler->SetEnvironmentLinear(environment, glm::uvec2(width, height));
+	}
+	else if (effectiveSettings.m_bIncludeSky && scene.m_environment.m_type == EEnvironmentSource::Sky)
 	{
 		TVector<glm::vec4> transientSkyEnvironment;
 		const glm::uvec2 environmentExtent(
@@ -841,7 +872,7 @@ bool Sailor::PrepareGIProbesScene(
 			Raytracing::ProbeBakeSkyEnvironmentHeight);
 		const bool bGenerated =
 			Raytracing::GenerateSkyEnvironmentEquirectangular(
-				scene.m_skyParameters,
+				scene.m_environment.m_sky,
 				environmentExtent,
 				transientSkyEnvironment,
 				[&isCancelled](uint32_t, uint32_t)

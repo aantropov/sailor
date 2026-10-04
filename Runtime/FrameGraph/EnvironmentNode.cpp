@@ -10,6 +10,7 @@
 #include "Engine/GameObject.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "FrameGraph/SkyNode.h"
+#include "FrameGraph/EnvironmentSource.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "Tasks/Tasks.h"
 
@@ -150,23 +151,45 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	if (m_bIsDirty)
 	{
-		if (!m_envMapTexture)
+		std::string environmentMap;
+		TryGetString("EnvironmentMap", environmentMap);
+		TRefPtr<SkyNode> skyNode;
+		SkyParameters skyParameters;
+		if (environmentMap.empty())
 		{
-			string envMapFilepath;
-			if (TryGetString("EnvironmentMap", envMapFilepath))
+			if (auto node = frameGraph->GetGraphNode("Sky")) skyNode = node.DynamicCast<SkyNode>();
+			if (skyNode && !skyNode->GetEnvironmentSkyParams(skyParameters))
 			{
-				if (const auto& assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(envMapFilepath))
-				{
-					App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetFileId(), m_envMapTexture);
-				}
 				commands->EndDebugRegion(commandList);
 				return;
 			}
 		}
+		EnvironmentSource source;
+		std::string diagnostic;
+		if (!CaptureEnvironmentSource(environmentMap, skyNode ? &skyParameters : nullptr, source, diagnostic))
+		{
+			commands->EndDebugRegion(commandList);
+			return;
+		}
+		if (source.m_type == EEnvironmentSource::Texture)
+		{
+			if (!m_envMapTexture || m_envMapTexture->GetFileId() != source.m_texture.m_fileId)
+			{
+				App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(source.m_texture.m_fileId, m_envMapTexture);
+				commands->EndDebugRegion(commandList);
+				return;
+			}
+		}
+		else if (m_envMapTexture)
+		{
+			m_envMapTexture.Clear();
+			m_authoredSource.Clear();
+			m_staticRawCubemap.Clear();
+			m_numCachedEnvironments = 0u;
+		}
 
 		RHI::RHICubemapPtr rawEnvCubemap{};
 		RHI::RHITexturePtr authoredSource;
-		bool bLoadedEnvironmentMap = false;
 
 		if (m_envMapTexture)
 		{
@@ -178,7 +201,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 			// Reload preserves the Texture object but publishes a new RHI image.
 			authoredSource = m_envMapTexture->GetRHI();
-			if (authoredSource == m_authoredSource && TryRestoreEnvironment(frameGraph, {}, m_authoredRawCubemap))
+			if (authoredSource == m_authoredSource && TryRestoreEnvironment(frameGraph, {}, m_staticRawCubemap))
 			{
 				m_environmentUsesSky = false;
 				m_bIsDirty = false;
@@ -186,7 +209,6 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				return;
 			}
 
-			bLoadedEnvironmentMap = true;
 			rawEnvCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(EnvMapSize, EnvMapSize),
 				EnvMapLevels,
 				RHI::EFormat::R16G16B16A16_SFLOAT,
@@ -209,6 +231,22 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			}
 			commands->EndDebugRegion(commandList);
 		}
+		else if (source.m_type == EEnvironmentSource::Constant)
+		{
+			m_environmentUsesSky = false;
+			if (m_staticRawCubemap && TryRestoreEnvironment(frameGraph, {}, m_staticRawCubemap))
+			{
+				m_bIsDirty = false;
+				commands->EndDebugRegion(commandList);
+				return;
+			}
+			rawEnvCubemap = driver->CreateCubemap(ivec2(EnvMapSize), EnvMapLevels,
+				EFormat::R16G16B16A16_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
+			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::TransferDstOptimal);
+			commands->ClearImage(commandList, rawEnvCubemap, glm::vec4(source.m_constant, 1.0f));
+			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::ShaderReadOnlyOptimal);
+			rawEnvCubemap->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
+		}
 		else if (auto g_skyCubemap = frameGraph->GetSampler("g_skyCubemap").DynamicCast<RHICubemap>())
 		{
 			rawEnvCubemap = g_skyCubemap;
@@ -220,24 +258,14 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 
 		SkyEnvironmentKey skyHash{};
-		m_environmentUsesSky = false;
-		TRefPtr<SkyNode> pSkyNode{};
-		if (auto node = frameGraph->GetGraphNode("Sky"))
+		m_environmentUsesSky = source.m_type == EEnvironmentSource::Sky;
+		if (m_environmentUsesSky)
 		{
-			pSkyNode = node.DynamicCast<SkyNode>();
-			if (!bLoadedEnvironmentMap && pSkyNode)
-			{
-				if (!pSkyNode->GetEnvironmentSkyParams(m_environmentSkyParams))
-				{
-					commands->EndDebugRegion(commandList);
-					return;
-				}
-				m_environmentUsesSky = true;
-				skyHash = m_environmentSkyParams.GetEnvironmentKey();
-			}
+			m_environmentSkyParams = source.m_sky;
+			skyHash = m_environmentSkyParams.GetEnvironmentKey();
 		}
 
-		if (!bLoadedEnvironmentMap && TryRestoreEnvironment(frameGraph, skyHash, rawEnvCubemap))
+		if (m_environmentUsesSky && TryRestoreEnvironment(frameGraph, skyHash, rawEnvCubemap))
 		{
 			m_bIsDirty = false;
 			commands->EndDebugRegion(commandList);
@@ -444,13 +472,13 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		frameGraph->SetSampler("g_envCubemap", envCubemap);
 		frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
 		frameGraph->SetSampler("g_sheenEnvCubemap", sheenEnvCubemap);
-		if (bLoadedEnvironmentMap)
+		if (source.m_type != EEnvironmentSource::Sky)
 		{
 			// Authored revisions replace the previous bundle; sky states retain their LRU.
 			m_environmentCache = {};
 			m_numCachedEnvironments = 0;
 			m_authoredSource = std::move(authoredSource);
-			m_authoredRawCubemap = rawEnvCubemap;
+			m_staticRawCubemap = rawEnvCubemap;
 		}
 		CacheEnvironment(skyHash, std::move(maps));
 		m_bIsDirty = false;

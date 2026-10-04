@@ -5788,6 +5788,82 @@ components:
 		return texture;
 	}
 
+	void TestAuthoredEnvironmentWithoutRenderer()
+	{
+		Require(!App::GetSubmodule<RHI::Renderer>(), "the headless environment fixture must not initialize a renderer");
+		Tests::TempDirectory files("headless-environment");
+		const auto path = files.Path("environment.hdr");
+		const auto writeHdr = [&](std::array<uint8_t, 4> pixel)
+		{
+			const auto previous = std::filesystem::exists(path) ? std::filesystem::last_write_time(path) :
+				std::filesystem::file_time_type{};
+			std::ofstream output(path, std::ios::binary);
+			output << "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 1 +X 1\n";
+			output.write(reinterpret_cast<const char*>(pixel.data()), pixel.size());
+			output.close();
+			Require(static_cast<bool>(output), "the headless HDR must be written");
+			if (std::filesystem::last_write_time(path) <= previous)
+				std::filesystem::last_write_time(path, previous + std::chrono::seconds(1));
+		};
+		writeHdr({ 128, 16, 8, 131 });
+		TextureAssetInfo info;
+		auto metadata = info.Serialize();
+		metadata["fileId"] = FileId::CreateNewFileId();
+		metadata["filename"] = path.string();
+		metadata["format"] = RHI::ETextureFormat::R32G32B32A32_SFLOAT;
+		metadata["bShouldGenerateMips"] = false;
+		info.Deserialize(metadata);
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		GIProbesSceneSnapshot scene;
+		scene.m_instances = fixture.m_instances;
+		scene.m_materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		scene.m_geometryHash = 1u;
+		scene.m_environment.m_type = EEnvironmentSource::Texture;
+		scene.m_environment.m_format = info.GetFormat();
+		Require(TextureImporter::CaptureCpuDecodeRequest(info, scene.m_environment.m_texture),
+			"headless preparation must capture the HDR source revision");
+		scene.m_lightingHash = scene.m_environment.GetRevision();
+		GIProbesBakeSettings settings;
+		settings.m_bounceCount = 1u;
+		settings.m_bIncludeDirectLighting = settings.m_bIncludeEmissive = false;
+		GIProbesPreparedScene first, second;
+		std::string diagnostic;
+		Require(PrepareGIProbesScene(scene, settings, nullptr, first, diagnostic), diagnostic);
+		const auto requireColor = [&](const GIProbesPreparedScene& prepared, glm::vec3 expected)
+		{
+			GIProbeBakeRaySample sample;
+			Require(prepared.m_sampler->Sample({ 0, 10000, 0 }, { 0, 1, 0 }, 20.0f, 1u, sample, diagnostic), diagnostic);
+			Require(!sample.m_bHit && glm::length(sample.m_radiance - expected) < 0.0001f,
+				"headless HDR sampling must preserve linear radiance above one");
+			GIProbesBakeRequest request;
+			request.m_stateName = "Headless HDR";
+			request.m_volumeMin = { 0, 10000, 0 };
+			request.m_volumeMax = { 1, 10001, 1 };
+			request.m_settings = settings;
+			request.m_settings.m_minProbeSpacing = 8.0f;
+			request.m_settings.m_maxSubdivisionLevel = 0u;
+			const auto baked = GIProbesBaker::Bake(request, *prepared.m_sampler);
+			Require(baked.IsSuccess(), baked.m_diagnostic);
+			// Probe SH stores irradiance divided by pi, matching the raster diffuse term.
+			for (const auto& probe : baked.m_data->m_probes)
+				Require(glm::length(EvaluateProbeIrradianceSH(probe.m_irradiance, { 0, 1, 0 }) -
+					expected) < 0.03f * glm::length(expected),
+					"headless baked probes must integrate the selected HDR energy");
+		};
+		requireColor(first, { 4, 0.5f, 0.25f });
+		writeHdr({ 16, 128, 32, 130 });
+		Require(!PrepareGIProbesScene(scene, settings, nullptr, second, diagnostic),
+			"an uncached captured revision must not decode newer bytes under the old identity");
+		Require(TextureImporter::CaptureCpuDecodeRequest(info, scene.m_environment.m_texture),
+			"the next headless capture must observe the new HDR revision");
+		scene.m_lightingHash = scene.m_environment.GetRevision();
+		Require(scene.m_lightingHash != first.m_lightingHash, "a headless HDR edit must invalidate lighting");
+		Require(PrepareGIProbesScene(scene, settings, nullptr, second, diagnostic, {}, {}, &first), diagnostic);
+		requireColor(second, { 0.25f, 2, 0.5f });
+		requireColor(first, { 4, 0.5f, 0.25f });
+		Require(!App::GetSubmodule<RHI::Renderer>(), "headless HDR baking must not create a renderer");
+	}
+
 	void TestGiLightingReusesPreparedTransport()
 	{
 		Tests::TempDirectory files("gi-lighting-reuse");
@@ -5806,7 +5882,7 @@ components:
 		scene.m_worldBounds = fixture.m_bounds;
 		scene.m_geometryHash = 1;
 		scene.m_lightingHash = 1;
-		scene.m_fallbackEnvironment = glm::vec3(0.125f, 0.25f, 0.5f);
+		scene.m_environment.m_constant = glm::vec3(0.125f, 0.25f, 0.5f);
 		GIProbesBakeSettings settings;
 		settings.m_bounceCount = 2;
 		settings.m_bIncludeEmissive = false;
@@ -5860,7 +5936,7 @@ components:
 		{
 			const float intensity = 1.0f + static_cast<float>(refresh + 1) / 16.0f;
 			scene.m_lights[0].m_intensity = fixture.m_lights[0].m_intensity * intensity;
-			scene.m_fallbackEnvironment = glm::vec3(0.125f, 0.25f, 0.5f) * intensity;
+			scene.m_environment.m_constant = glm::vec3(0.125f, 0.25f, 0.5f) * intensity;
 			++scene.m_lightingHash;
 			Require(PrepareGIProbesScene(scene, settings, nullptr, latest, diagnostic, {}, {}, &first),
 				"light refresh must not reopen the removed texture source: " + diagnostic);
@@ -8315,6 +8391,7 @@ int main(int argc, char** argv)
 		RunTest("PathTracerCancellationBetweenBlasBuilds", TestPathTracerCancellationBetweenBlasBuilds);
 		RunTest("PathTracerCancellationDuringTexturePreparation", TestPathTracerCancellationDuringTexturePreparation);
 		RunTest("GiLightingReusesPreparedTransport", TestGiLightingReusesPreparedTransport);
+		RunTest("AuthoredEnvironmentWithoutRenderer", TestAuthoredEnvironmentWithoutRenderer);
 		RunTest("GiEmissionReusesPreparedTransport", TestGiEmissionReusesPreparedTransport);
 		RunTest("GiMaterialSnapshotCache", TestGiMaterialSnapshotCache);
 		RunTest(

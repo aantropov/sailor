@@ -427,7 +427,7 @@ bool Renderer::EnsureFrameGraph()
 	++m_frameGraphResourceGeneration;
 	m_frameGraph.Clear();
 
-	const char* frameGraphAssetPath = App::HasEditor() ? "EditorRenderer.renderer" : "DefaultRenderer.renderer";
+	const char* frameGraphAssetPath = FrameGraphImporter::GetRendererAssetPath();
 	if (auto frameGraphFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(frameGraphAssetPath))
 	{
 		App::GetSubmodule<FrameGraphImporter>()->Instantiate_Immediate(frameGraphFileId->GetFileId(), m_frameGraph);
