@@ -865,8 +865,10 @@ namespace
 				}
 			};
 
-			for (const auto& sampler : pMaterial->m_samplers)
+			for (size_t samplerIndex = 0u; samplerIndex < pMaterial->m_samplers.Num(); ++samplerIndex)
 			{
+				if (samplerIndex != 0u && samplerIndex % 256u == 0u && !reportMaterialProgress(completedMaterials)) return false;
+				const auto& sampler = pMaterial->m_samplers[samplerIndex];
 				const std::string& samplerName = sampler.m_first;
 				const auto& pTexture = sampler.m_second;
 
@@ -1358,8 +1360,11 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 	// Older light generations may still be tracing the previous transport.
 	m_geometry = TSharedPtr<PreparedGeometry>::Make();
 	m_lastScenePreparationStats = {};
-	for (const auto& source : instances)
+	for (size_t index = 0u; index < instances.Num(); ++index)
 	{
+		if (index % 1024u == 0u && progress &&
+			!progress({ EScenePreparationStage::Geometry, 0u, instances.Num() })) return false;
+		const auto& source = instances[index];
 		const auto* geometry = source.m_modelGeometry ? source.m_modelGeometry.GetRawPtr() :
 			(source.m_model ? source.m_model->GetBLASGeometry().GetRawPtr() : nullptr);
 		m_lastScenePreparationStats.m_instanceCount += geometry && !source.m_triangles ?
@@ -1372,8 +1377,10 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 	};
 	if (!reportGeometryProgress(0u)) return false;
 	m_geometry->m_tlasInstances.Reserve(m_lastScenePreparationStats.m_instanceCount);
-	for (const auto& source : instances)
+	for (size_t index = 0u; index < instances.Num(); ++index)
 	{
+		if (index != 0u && index % 1024u == 0u && !reportGeometryProgress(0u)) return false;
+		const auto& source = instances[index];
 		const auto geometry = source.m_modelGeometry ? source.m_modelGeometry :
 			(source.m_model ? source.m_model->GetBLASGeometry() : TSharedPtr<const Model::BLASGeometry>{});
 		if (!geometry || source.m_triangles || geometry->GetInstances(source.m_meshIndex).IsEmpty())
@@ -1567,8 +1574,10 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 					}
 				}
 			}
-			for (uint32_t localMaterialSlot : localMaterialSlots)
+			for (size_t slotIndex = 0u; slotIndex < localMaterialSlots.Num(); ++slotIndex)
 			{
+				if (slotIndex != 0u && slotIndex % 256u == 0u && progress && !progress(preparedMaterials)) return false;
+				const uint32_t localMaterialSlot = localMaterialSlots[slotIndex];
 				const int64_t globalSlot =
 					static_cast<int64_t>(instance.m_materialBaseOffset) +
 					static_cast<int64_t>(localMaterialSlot);

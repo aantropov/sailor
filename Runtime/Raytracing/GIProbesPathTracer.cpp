@@ -12,12 +12,15 @@ namespace
 	constexpr float ProbeBakeRayNormalBias = 0.0001f;
 	constexpr float ProbeBakeRayDirectionBias = 0.0003f;
 
-	TVector<LightProxy> GetIndirectLights(const TVector<LightProxy>& lights)
+	bool GetIndirectLights(const TVector<LightProxy>& lights, TVector<LightProxy>& bakedLights,
+		const PathTracer::ScenePreparationProgressCallback& progress, const PathTracer::ScenePreparationProgress& state)
 	{
-		TVector<LightProxy> bakedLights;
+		if (progress && !progress(state)) return false;
 		bakedLights.Reserve(lights.Num());
-		for (const LightProxy& source : lights)
+		for (size_t index = 0u; index < lights.Num(); ++index)
 		{
+			if (index != 0u && index % 256u == 0u && progress && !progress(state)) return false;
+			const LightProxy& source = lights[index];
 			if (!std::isfinite(source.m_indirectLightingIntensity) ||
 				source.m_indirectLightingIntensity <= 0.0f)
 			{
@@ -27,7 +30,7 @@ namespace
 			light.m_intensity *= light.m_indirectLightingIntensity;
 			bakedLights.Add(std::move(light));
 		}
-		return bakedLights;
+		return !progress || progress(state);
 	}
 }
 
@@ -91,13 +94,17 @@ bool GIProbesPathTracer::InitializeLighting(
 	{
 		return false;
 	}
+	m_bInitialized = false;
 	m_pathTracer.UsePreparedGeometry(source.m_pathTracer);
-	m_bInitialized = m_pathTracer.UpdatePreparedEmission(materials, progress);
-	if (!m_bInitialized)
+	if (!m_pathTracer.UpdatePreparedEmission(materials, progress))
 	{
 		return false;
 	}
-	m_pathTracer.m_lightProxies = GetIndirectLights(lights);
+	TVector<LightProxy> bakedLights;
+	const size_t instanceCount = m_pathTracer.GetLastScenePreparationStats().m_geometryInstanceCount;
+	if (!GetIndirectLights(lights, bakedLights, progress,
+		{ PathTracer::EScenePreparationStage::Geometry, instanceCount, instanceCount })) return false;
+	m_pathTracer.m_lightProxies = std::move(bakedLights);
 	m_pathTracer.ClearRuntimeEnvironment();
 	ConfigureParameters(settings, fallbackEnvironment);
 	m_bInitialized = true;
@@ -115,7 +122,10 @@ bool GIProbesPathTracer::InitializeInternal(
 	const PathTracer::ScenePreparationWarningCallback& warning)
 {
 	SAILOR_PROFILE_FUNCTION();
-	const auto bakedLights = GetIndirectLights(lights);
+	m_bInitialized = false;
+	TVector<LightProxy> bakedLights;
+	if (!GetIndirectLights(lights, bakedLights, progress,
+		{ PathTracer::EScenePreparationStage::Geometry, 0u, instances.Num() })) return false;
 	ConfigureParameters(settings, fallbackEnvironment);
 	const auto reportWarning = [&warning](const std::string& diagnostic)
 	{

@@ -5920,6 +5920,173 @@ components:
 				10.0f, 1u, after, diagnostic), "a cancelled generation must support a complete retry");
 	}
 
+	void TestGiCancellationDuringInstancePreparation()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		triangles->Add((*fixture.m_triangles)[0]);
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(1u);
+		blas->BuildBVH(*triangles);
+		fixture.m_instances[0].m_triangles = triangles;
+		fixture.m_instances[0].m_blas = blas;
+		const auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		TVector<Raytracing::PathTracer::TLASInstance> instances;
+		for (uint32_t index = 0u; index < 4096u; ++index) instances.Add(fixture.m_instances[0]);
+		GIProbesBakeSettings settings;
+		settings.m_bIncludeSky = settings.m_bIncludeDirectLighting = false;
+		Raytracing::GIProbesPathTracer retained;
+		Require(retained.InitializeSnapshot(fixture.m_instances, materials, {}, settings), "prepare retained instance reader");
+		const auto& vertices = (*triangles)[0].m_vertices;
+		const glm::vec3 origin = (vertices[0] + vertices[1] + vertices[2]) / 3.0f + glm::vec3(0, 20, 0);
+		std::string diagnostic;
+		const auto sample = [&](const Raytracing::GIProbesPathTracer& tracer)
+		{
+			GIProbeBakeRaySample result;
+			Require(tracer.Sample(origin, { 0, -1, 0 }, 100.0f, 41u, result, diagnostic) && result.m_bHit,
+				"prepared instance reader must hit the shared triangle");
+			return result;
+		};
+		const auto original = sample(retained);
+		for (bool duringCopy : { false, true })
+		{
+			Raytracing::GIProbesPathTracer pending;
+			uint32_t copyReports = 0u;
+			bool cancelled = false;
+			Require(!pending.InitializeSnapshot(instances, materials, {}, settings, glm::vec3(0.0f),
+				[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+				{
+					const auto count = pending.GetLastScenePreparationStats().m_instanceCount;
+					if (progress.m_stage != Raytracing::PathTracer::EScenePreparationStage::Geometry) return true;
+					cancelled = duringCopy ? count == instances.Num() && progress.m_completed == 0u && ++copyReports == 2u :
+						count > 0u && count < instances.Num();
+					return !cancelled;
+				}) && cancelled,
+				duringCopy ? "cancellation must interrupt direct instance copying before BLAS/material preparation" :
+				"cancellation must interrupt the initial instance count, not wait for the complete table");
+			const auto& stats = pending.GetLastScenePreparationStats();
+			Require(stats.m_builtBlasCount == 0u && stats.m_reusedBlasCount == 0u && stats.m_uniqueMaterialCount == 0u,
+				"initial instance cancellation must not advance to geometry or material preparation");
+			GIProbeBakeRaySample ray;
+			Require(!pending.Sample(origin, { 0, -1, 0 }, 100.0f, 41u, ray, diagnostic) &&
+				sample(retained).m_distance == original.m_distance && sample(retained).m_radiance == original.m_radiance,
+				"a cancelled instance table must remain private while retained readers stay usable");
+			Require(pending.InitializeSnapshot(instances, materials, {}, settings) &&
+				pending.GetLastScenePreparationStats().m_geometryInstanceCount == instances.Num() &&
+				pending.GetLastScenePreparationStats().m_builtBlasCount == 0u &&
+				sample(pending).m_distance == original.m_distance && sample(pending).m_radiance == original.m_radiance,
+				"instance preparation must retry completely without changing shared geometry or ray results");
+		}
+	}
+
+	void TestGiCancellationDuringLightPreparation()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		const auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		GIProbesBakeSettings settings;
+		settings.m_bIncludeSky = settings.m_bIncludeEmissive = false;
+		settings.m_bounceCount = 1u;
+		TVector<Raytracing::LightProxy> lights;
+		for (uint32_t index = 0u; index < 4096u; ++index)
+		{
+			auto light = fixture.m_lights[0];
+			light.m_indirectLightingIntensity = index % 2u == 0u ? 1.0f : 0.0f;
+			light.m_intensity /= 2048.0f;
+			lights.Add(light);
+		}
+		Raytracing::GIProbesPathTracer retained, reference;
+		Require(retained.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings) &&
+			reference.InitializeSnapshot(fixture.m_instances, materials, lights, settings), "prepare light cancellation reference readers");
+		std::string diagnostic;
+		const auto sample = [&](const Raytracing::GIProbesPathTracer& tracer)
+		{
+			GIProbeBakeRaySample ray;
+			Require(tracer.Sample({ -20, 20, -20 }, { 0, -1, 0 }, 100.0f, 41u, ray, diagnostic) && ray.m_bHit,
+				"the light preparation fixture must hit its receiver");
+			return ray;
+		};
+		const auto original = sample(retained);
+		const auto expected = sample(reference);
+		Require(glm::length(expected.m_radiance) > 0.0f &&
+			glm::length(expected.m_radiance - original.m_radiance) < 0.001f * glm::length(original.m_radiance),
+			"filtered half-strength light batches must preserve the known total illumination");
+		for (bool lightingOnly : { false, true })
+		{
+			Raytracing::GIProbesPathTracer pending;
+			Require(pending.InitializeLighting(retained, materials, fixture.m_lights, settings, {}), "prepare a previously usable tracer");
+			uint32_t reports = 0u;
+			const auto progress = [&](const Raytracing::PathTracer::ScenePreparationProgress& state)
+			{
+				return state.m_stage != Raytracing::PathTracer::EScenePreparationStage::Geometry ||
+					state.m_completed != (lightingOnly ? fixture.m_instances.Num() : 0u) || ++reports < 3u;
+			};
+			const bool prepared = lightingOnly ?
+				pending.InitializeLighting(retained, materials, lights, settings, {}, progress) :
+				pending.InitializeSnapshot(fixture.m_instances, materials, lights, settings, {}, progress);
+			Require(!prepared && reports == 3u,
+				"initial and lighting-only preparation must accept cancellation within the light table");
+			GIProbeBakeRaySample ray;
+			Require(!pending.Sample({ -20, 20, -20 }, { 0, -1, 0 }, 100.0f, 41u, ray, diagnostic) &&
+				sample(retained).m_radiance == original.m_radiance,
+				"light preparation cancellation must invalidate the pending tracer, not the retained generation");
+			Require(lightingOnly ? pending.InitializeLighting(retained, materials, lights, settings, {}) :
+				pending.InitializeSnapshot(fixture.m_instances, materials, lights, settings), "retry the complete light preparation");
+			Require(sample(pending).m_radiance == expected.m_radiance && sample(pending).m_distance == expected.m_distance,
+				"light retry must reproduce every retained light contribution and visibility result exactly");
+		}
+	}
+
+	void TestGiCancellationInsideMaterialTables()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		auto material = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*materials[0]);
+		for (uint32_t index = 0u; index < 4096u; ++index)
+			material->m_samplers.Add({ "customSampler" + std::to_string(index), {} });
+		materials[0] = material;
+		Raytracing::GIProbesPathTracer tracer;
+		uint32_t reports = 0u, warnings = 0u;
+		Require(!tracer.InitializeSnapshot(fixture.m_instances, materials, {}, {}, {},
+			[&](const Raytracing::PathTracer::ScenePreparationProgress& state)
+			{
+				return state.m_stage != Raytracing::PathTracer::EScenePreparationStage::Materials ||
+					state.m_completed != 0u || ++reports < 3u;
+			}, [&](const std::string&) { ++warnings; }) && reports == 3u && warnings == 0u &&
+			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == 0u,
+			"cancellation must interrupt a large sampler table even when its bindings are not used by the CPU tracer");
+		Require(tracer.InitializeSnapshot(fixture.m_instances, materials, {}, {}) &&
+			tracer.GetLastScenePreparationStats().m_uniqueTextureCount == 0u,
+			"unused sampler bindings must remain ignored on a complete retry");
+
+		material->m_samplers.Clear();
+		materials.Clear();
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		for (uint32_t index = 0u; index < 4096u; ++index)
+		{
+			auto triangle = (*fixture.m_triangles)[0];
+			triangle.m_materialIndex = index;
+			triangles->Add(triangle);
+			materials.Add(material);
+		}
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(static_cast<uint32_t>(triangles->Num()));
+		blas->BuildBVH(*triangles);
+		fixture.m_instances[0].m_triangles = triangles;
+		fixture.m_instances[0].m_blas = blas;
+		reports = 0u;
+		Require(!tracer.InitializeSnapshot(fixture.m_instances, materials, {}, {}, {},
+			[&](const Raytracing::PathTracer::ScenePreparationProgress& state)
+			{
+				return state.m_stage != Raytracing::PathTracer::EScenePreparationStage::Materials ||
+					state.m_completed != materials.Num() || ++reports < 6u ||
+					tracer.GetLastScenePreparationStats().m_geometryInstanceCount != 0u;
+			}) && reports == 6u && tracer.GetLastScenePreparationStats().m_geometryInstanceCount == 0u,
+			"cancellation must interrupt per-instance material-slot validation before registering geometry");
+		Require(tracer.InitializeSnapshot(fixture.m_instances, materials, {}, {}) &&
+			tracer.GetLastScenePreparationStats().m_geometryInstanceCount == 1u &&
+			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == 1u &&
+			tracer.GetLastScenePreparationStats().m_reusedMaterialCount == 4095u,
+			"large slot validation must retry without changing material identity or deduplication");
+	}
+
 	void TestPathTracerCancellationBetweenBlasBuilds()
 	{
 		auto fixture = MakeEveningLandscapeRaytracingFixture();
@@ -8927,6 +9094,9 @@ int main(int argc, char** argv)
 			TestPathTracerPreparationDeduplicationAndProgress);
 		RunTest("PathTracerCancellationInsideBlasBuild", TestPathTracerCancellationInsideBlasBuild);
 		RunTest("BvhCancellationAndRetry", TestBvhCancellationAndRetry);
+		RunTest("GiCancellationDuringInstancePreparation", TestGiCancellationDuringInstancePreparation);
+		RunTest("GiCancellationDuringLightPreparation", TestGiCancellationDuringLightPreparation);
+		RunTest("GiCancellationInsideMaterialTables", TestGiCancellationInsideMaterialTables);
 		RunTest("PathTracerCancellationBetweenBlasBuilds", TestPathTracerCancellationBetweenBlasBuilds);
 		RunTest("PathTracerCancellationDuringTexturePreparation", TestPathTracerCancellationDuringTexturePreparation);
 		RunTest("PathTracerCancellationInsidePixelConversion", TestPathTracerCancellationInsidePixelConversion);

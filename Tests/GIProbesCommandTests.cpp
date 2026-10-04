@@ -20,6 +20,7 @@
 #include "FrameGraph/RHIFrameGraph.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
 #include "Memory/UniquePtr.hpp"
+#include "Memory/WeakPtr.hpp"
 #include "RHI/CommandList.h"
 #include "RHI/Cubemap.h"
 #include "RHI/Renderer.h"
@@ -591,6 +592,108 @@ namespace
 			"retained GI preparation must finish after the captured world is destroyed: " + afterClose->GetResult());
 		for (uint32_t step = 1; step <= iterations; ++step) checkSnapshot(*snapshots[step - 1], step);
 		std::cout << "GI material stress: 256 owner updates, 19 reloads, coherent Background rays and world-close retention passed\n";
+	}
+
+	void TestBackgroundPreparationCancellation()
+	{
+		GIWorld world;
+		world.WaitReady();
+		GIProbesSceneCaptureRequest request;
+		request.m_settings.m_bIncludeSky = false;
+		request.m_settings.m_bounceCount = 1u;
+		auto captured = GIProbesSceneSnapshotPtr::Make();
+		std::string diagnostic;
+		Require(CaptureGIProbesScene(&world, request, *captured, diagnostic), diagnostic);
+		GIProbesPreparedScene retained;
+		Require(PrepareGIProbesScene(*captured, request.m_settings, nullptr, retained, diagnostic), diagnostic);
+		GIProbeBakeRaySample original;
+		Require(retained.m_sampler->Sample({ 0, 0, 0 }, { 0, 0, -1 }, 20.0f, 41u, original, diagnostic) && original.m_bHit,
+			"the retained Background cancellation reader must hit its captured quad");
+
+		auto pending = GIProbesSceneSnapshotPtr::Make(*captured);
+		const auto instance = pending->m_instances[0];
+		pending->m_instances.Clear();
+		for (uint32_t index = 0u; index < 4096u; ++index) pending->m_instances.Add(instance);
+		TWeakPtr<GIProbesSceneSnapshot> pendingInput(pending);
+		std::atomic<bool> entered{ false }, cancel{ false };
+		std::latch resume(1);
+		auto task = Tasks::CreateTask<std::string>("Cancel captured GI preparation",
+			[pending, settings = request.m_settings, &entered, &cancel, &resume]()
+			{
+				try
+				{
+					Require(App::GetSubmodule<Tasks::Scheduler>()->GetCurrentThreadType() == EThreadType::Background,
+						"cancelled preparation must execute on the real Background queue");
+					GIProbesPreparedScene prepared;
+					std::string error;
+					uint32_t reports = 0u;
+					const bool completed = PrepareGIProbesScene(*pending, settings, &cancel, prepared, error,
+						[&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+						{
+							if (progress.m_stage == Raytracing::PathTracer::EScenePreparationStage::Geometry &&
+								progress.m_completed == 0u && ++reports == 9u)
+							{
+								entered.store(true, std::memory_order_release);
+								resume.wait();
+							}
+							return true;
+						});
+					Require(!completed && !prepared.m_sampler && error.find("cancelled") != std::string::npos,
+						"a cancelled Background task must not return a partially prepared scene");
+					return std::string{};
+				}
+				catch (const std::exception& error) { return std::string(error.what()); }
+			}, EThreadType::Background);
+		task->Run();
+		pending.Clear();
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+		while (!entered.load(std::memory_order_acquire) && !task->IsFinished() && std::chrono::steady_clock::now() < deadline)
+			std::this_thread::yield();
+		const bool preparing = entered.load(std::memory_order_acquire) && !task->IsFinished();
+		GIProbeBakeRaySample concurrent;
+		const bool retainedReadable = retained.m_sampler->Sample({ 0, 0, 0 }, { 0, 0, -1 }, 20.0f, 41u, concurrent, diagnostic);
+		cancel.store(true, std::memory_order_release);
+		resume.count_down();
+		task->Wait();
+		Require(preparing && task->GetResult().empty(), "Background preparation cancellation failed: " + task->GetResult());
+		Require(retainedReadable && concurrent.m_bHit && concurrent.m_distance == original.m_distance &&
+			concurrent.m_radiance == original.m_radiance, "retained rays must remain usable during cancelled preparation");
+		task.Clear();
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::Background);
+		Require(!pendingInput.TryLock(), "the completed cancelled task must release its captured scene");
+
+		auto next = Tasks::CreateTask<std::string>("Bake after cancelled GI preparation",
+			[captured, settings = request.m_settings, original]()
+			{
+				try
+				{
+					Require(App::GetSubmodule<Tasks::Scheduler>()->GetCurrentThreadType() == EThreadType::Background,
+						"the replacement solve must execute on Background");
+					GIProbesPreparedScene prepared;
+					std::string error;
+					Require(PrepareGIProbesScene(*captured, settings, nullptr, prepared, error), error);
+					GIProbeBakeRaySample ray;
+					Require(prepared.m_sampler->Sample({ 0, 0, 0 }, { 0, 0, -1 }, 20.0f, 41u, ray, error) &&
+						ray.m_bHit && ray.m_distance == original.m_distance && ray.m_radiance == original.m_radiance,
+						"the replacement preparation must preserve captured ray results");
+					GIProbesBakeRequest bake;
+					bake.m_stateName = "After cancellation";
+					bake.m_volumeMin = glm::vec3(-1.0f);
+					bake.m_volumeMax = glm::vec3(1.0f);
+					bake.m_settings = settings;
+					bake.m_settings.m_minProbeSpacing = 8.0f;
+					bake.m_settings.m_maxSubdivisionLevel = 0u;
+					bake.m_settings.m_raysPerProbe = 8u;
+					const auto result = GIProbesBaker::Bake(bake, *prepared.m_sampler);
+					Require(result.IsSuccess() && result.m_data->Validate(error), result.m_diagnostic + error);
+					return std::string{};
+				}
+				catch (const std::exception& error) { return std::string(error.what()); }
+			}, EThreadType::Background);
+		next->Run();
+		next->Wait();
+		Require(next->GetResult().empty(), next->GetResult());
+		std::cout << "Background GI cancellation: retained rays, released snapshot and replacement bake passed\n";
 	}
 
 	void TestContributorMaterialRevision()
@@ -1572,6 +1675,7 @@ namespace Sailor::Tests
 		}
 		run("Targeted asset capture", [&]() { TestTargetedAssetCapture(workspace); });
 		run("Material preparation stress", [&]() { TestMaterialPreparationStress(workspace); });
+		run("Background preparation cancellation", [&]() { TestBackgroundPreparationCancellation(); });
 		run("Authored environment capture", [&]() { TestAuthoredEnvironmentCapture(workspace); });
 		Require(failures.empty(), failures);
 		std::cout << "GI restart, preparation recovery and importer retry tests passed\n";
