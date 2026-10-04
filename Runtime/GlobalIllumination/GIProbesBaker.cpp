@@ -2,6 +2,7 @@
 #include "GlobalIllumination/GIProbesTracing.h"
 
 #include "Containers/Hash.h"
+#include "Containers/Sort.h"
 #include "Platform/Time.h"
 #include "Math/Math.h"
 
@@ -191,7 +192,11 @@ namespace
 		{
 			return false;
 		}
-		std::sort(entries.begin(), entries.end(), SharedProbeEntryLess);
+		if (!CancellableStableSort(entries.begin(), entries.end(), SharedProbeEntryLess, [&]()
+			{ return ReportProgress(request, "Sorting shared probe samples", totalProbes, totalProbes); }))
+		{
+			return false;
+		}
 		if (!ReportProgress(request, "Canonicalizing shared probe samples", totalProbes, totalProbes))
 		{
 			return false;

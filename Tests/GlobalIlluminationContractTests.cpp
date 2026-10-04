@@ -4939,6 +4939,59 @@ components:
 		}
 	}
 
+	void TestBakeCancellationDuringSorting()
+	{
+		GIProbesBakeRequest request;
+		request.m_stateName = "Sorting cancellation";
+		request.m_volumeMin = glm::vec3(0.0f);
+		request.m_volumeMax = glm::vec3(8.0f);
+		request.m_settings.m_raysPerProbe = 8u;
+		request.m_settings.m_bounceCount = 1u;
+		request.m_settings.m_maxSubdivisionLevel = 3u;
+		request.m_settings.m_minProbeSpacing = 1.0f;
+		Math::AABB geometry;
+		geometry.Extend(request.m_volumeMin);
+		geometry.Extend(request.m_volumeMax);
+		request.m_sceneGeometryBounds.Add(geometry);
+		const ConstantBakeRaySampler sampler(glm::vec3(1.0f));
+		uint32_t sortingReports = 0u;
+		request.m_progress = [&](const GIProbesBakeProgress& progress)
+		{
+			if (progress.m_stage == "Sorting shared probe samples") ++sortingReports;
+		};
+		const auto baseline = GIProbesBaker::Bake(request, sampler);
+		Require(baseline.IsSuccess() && baseline.m_data->m_probes.Num() == 4096u && sortingReports > 16u,
+			"the sorting fixture must cover multiple sorted runs and merge batches");
+		const GIProbesData retained = *baseline.m_data;
+		for (uint32_t stop : { 3u, sortingReports / 2u, sortingReports - 1u })
+		{
+			std::atomic<bool> cancel{ false };
+			uint32_t seen = 0u;
+			auto cancelled = request;
+			cancelled.m_cancel = &cancel;
+			cancelled.m_layoutSource = baseline.m_data.GetRawPtr();
+			cancelled.m_progress = [&](const GIProbesBakeProgress& progress)
+			{
+				if (progress.m_stage == "Sorting shared probe samples" && ++seen == stop)
+					cancel.store(true, std::memory_order_release);
+			};
+			const auto result = GIProbesBaker::Bake(cancelled, sampler);
+			Require(result.m_status == EGIProbesBakeStatus::Cancelled && !result.m_data && seen == stop,
+				"cancellation within final sorting must discard the new result immediately");
+			for (size_t index = 0u; index < retained.m_probes.Num(); ++index)
+				Require(HasSameProbeBits(retained.m_probes[index], baseline.m_data->m_probes[index]),
+					"cancelling final sorting must not modify the retained source");
+		}
+		request.m_progress = {};
+		const auto retry = GIProbesBaker::Bake(request, sampler);
+		Require(retry.IsSuccess() && retry.m_data->m_layoutHash == retained.m_layoutHash &&
+			retry.m_data->m_transportHash == retained.m_transportHash && retry.m_data->m_lightingHash == retained.m_lightingHash,
+			"sorting cancellation must leave a deterministic retry possible");
+		for (size_t index = 0u; index < retained.m_probes.Num(); ++index)
+			Require(HasSameProbeBits(retained.m_probes[index], retry.m_data->m_probes[index]),
+				"batched sorting must preserve every probe value and canonical order");
+	}
+
 	void TestDeterministicBakeSeedsAndReusedLayoutValidation()
 	{
 		GIProbesBakeRequest request;
@@ -5684,6 +5737,102 @@ components:
 				}) &&
 			bCancellationRequested,
 			"path-tracer preparation must stop when its progress callback requests cancellation");
+	}
+
+	void TestBvhCancellationAndRetry()
+	{
+		for (bool overlapping : { false, true })
+		{
+			TVector<Math::Triangle> triangles;
+			for (uint32_t index = 0u; index < 4099u; ++index)
+			{
+				const glm::vec3 center = overlapping ? glm::vec3(0.0f) :
+					glm::vec3(float(index % 64u) * 8.0f, 0.0f, float(index / 64u) * 8.0f);
+				const float scale = overlapping ? 0.5f + float(index % 17u) * 0.0625f : 1.0f;
+				Math::Triangle triangle{};
+				triangle.m_vertices[0] = center + scale * glm::vec3(-1.0f, 0.0f, -1.0f);
+				triangle.m_vertices[1] = center + scale * glm::vec3(0.0f, 0.0f, 2.0f);
+				triangle.m_vertices[2] = center + scale * glm::vec3(1.0f, 0.0f, -1.0f);
+				triangle.m_centroid = center;
+				triangles.Add(triangle);
+			}
+			Raytracing::BVH baseline(static_cast<uint32_t>(triangles.Num()));
+			uint32_t checkpoints = 0u;
+			Require(baseline.BuildBVH(triangles, [&]() { ++checkpoints; return true; }) && checkpoints > 32u,
+				"both subdivided geometry and one large leaf must offer bounded build checkpoints");
+			for (uint32_t stop : { 2u, checkpoints / 3u, checkpoints * 2u / 3u, checkpoints - 1u, checkpoints })
+			{
+				Raytracing::BVH interrupted(static_cast<uint32_t>(triangles.Num()));
+				uint32_t seen = 0u;
+				Require(!interrupted.BuildBVH(triangles, [&]() { return ++seen < stop; }) && seen == stop,
+					"BVH building must return as soon as cancellation is accepted, including late copy/sort work");
+				Require(interrupted.BuildBVH(triangles, []() { return true; }),
+					"the same BVH must support rebuilding after an early or late cancellation");
+				for (uint32_t index = 0u; index < triangles.Num(); index += 97u)
+				{
+					const Math::Ray ray(triangles[index].m_centroid + glm::vec3(0.0f, 4.0f, 0.0f),
+						glm::vec3(0.0f, -1.0f, 0.0f));
+					Math::RaycastHit expected{}, actual{};
+					Require(baseline.IntersectBVH(ray, expected, 0u) && interrupted.IntersectBVH(ray, actual, 0u) &&
+						actual.m_triangleIndex == expected.m_triangleIndex && actual.m_rayLenght == expected.m_rayLenght &&
+						IsNear(actual.m_rayLenght, 4.0f) && (overlapping || actual.m_triangleIndex == index),
+						"retries must preserve spatial hits, triangle identities and equal-distance ordering");
+				}
+			}
+		}
+	}
+
+	void TestPathTracerCancellationInsideBlasBuild()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		const auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+		GIProbesBakeSettings settings;
+		Raytracing::GIProbesPathTracer previous;
+		Require(previous.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings),
+			"the retained generation must prepare before cancellation");
+		GIProbeBakeRaySample before;
+		std::string diagnostic;
+		Require(previous.Sample(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f),
+			10.0f, 1u, before, diagnostic), "the retained generation must remain traceable");
+
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		Math::AABB bounds;
+		for (uint32_t index = 0u; index < 16384u; ++index)
+		{
+			Math::Triangle triangle = (*fixture.m_triangles)[0];
+			const glm::vec3 offset(float(index % 128u) * 32.0f, 0.0f, float(index / 128u) * 32.0f);
+			for (auto& vertex : triangle.m_vertices)
+			{
+				vertex += offset;
+				bounds.Extend(vertex);
+			}
+			triangle.m_centroid += offset;
+			triangles->Add(triangle);
+		}
+		fixture.m_instances[0].m_triangles = triangles;
+		fixture.m_instances[0].m_blas.Clear();
+		fixture.m_instances[0].m_worldBounds = bounds;
+		Raytracing::GIProbesPathTracer tracer;
+		uint32_t buildReports = 0u;
+		Require(!tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings,
+			glm::vec3(0.0f), [&](const Raytracing::PathTracer::ScenePreparationProgress& progress)
+			{
+				return progress.m_stage != Raytracing::PathTracer::EScenePreparationStage::Geometry ||
+					progress.m_completed != 0u || ++buildReports < 64u;
+			}) && buildReports == 64u && tracer.GetLastScenePreparationStats().m_builtBlasCount == 0u,
+			"cancellation must interrupt one large BLAS before it completes, not wait for the next instance");
+		Require(!fixture.m_instances[0].m_blas && tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == 0u,
+			"cancelled BLAS preparation must not publish into the captured geometry or continue to materials");
+		GIProbeBakeRaySample after;
+		Require(!tracer.Sample(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f),
+			10.0f, 1u, after, diagnostic), "the cancelled generation must not expose a partial BLAS");
+		Require(previous.Sample(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f),
+			10.0f, 1u, after, diagnostic) && before.m_radiance == after.m_radiance,
+			"cancelling a new BLAS must leave the retained generation unchanged");
+		Require(tracer.InitializeSnapshot(fixture.m_instances, materials, fixture.m_lights, settings) &&
+			tracer.GetLastScenePreparationStats().m_builtBlasCount == 1u &&
+			tracer.Sample(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f),
+				10.0f, 1u, after, diagnostic), "a cancelled generation must support a complete retry");
 	}
 
 	void TestPathTracerCancellationBetweenBlasBuilds()
@@ -8317,6 +8466,7 @@ int main(int argc, char** argv)
 		RunTest("BakeWorkerFailureDiagnostics", TestBakeWorkerFailureDiagnostics);
 		RunTest("BakeProgressCallbackThrows", TestBakeProgressCallbackThrows);
 		RunTest("BakeCancellationBetweenPhases", TestBakeCancellationBetweenPhases);
+		RunTest("BakeCancellationDuringSorting", TestBakeCancellationDuringSorting);
 		RunTest(
 			"PrimaryDirectionPdfWeighting",
 			TestPrimaryDirectionPdfWeighting);
@@ -8388,6 +8538,8 @@ int main(int argc, char** argv)
 		RunTest(
 			"PathTracerPreparationDeduplicationAndProgress",
 			TestPathTracerPreparationDeduplicationAndProgress);
+		RunTest("PathTracerCancellationInsideBlasBuild", TestPathTracerCancellationInsideBlasBuild);
+		RunTest("BvhCancellationAndRetry", TestBvhCancellationAndRetry);
 		RunTest("PathTracerCancellationBetweenBlasBuilds", TestPathTracerCancellationBetweenBlasBuilds);
 		RunTest("PathTracerCancellationDuringTexturePreparation", TestPathTracerCancellationDuringTexturePreparation);
 		RunTest("GiLightingReusesPreparedTransport", TestGiLightingReusesPreparedTransport);

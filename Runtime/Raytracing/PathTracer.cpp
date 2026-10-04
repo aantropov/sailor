@@ -1421,7 +1421,10 @@ bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
 				}
 				auto blas = TSharedPtr<BVH>::Make(
 					static_cast<uint32_t>(triangles->Num()));
-				blas->BuildBVH(*triangles);
+				if (!blas->BuildBVH(*triangles, [&]() { return reportGeometryProgress(i); }))
+				{
+					return false;
+				}
 				++m_lastScenePreparationStats.m_builtBlasCount;
 				if (!reportGeometryProgress(i + 1u))
 				{

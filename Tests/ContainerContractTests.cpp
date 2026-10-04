@@ -11,6 +11,7 @@
 
 #include "Memory/Memory.h"
 #include "Containers/Vector.h"
+#include "Containers/Sort.h"
 #include "Containers/List.h"
 #include "Containers/Map.h"
 #include "Containers/Octree.h"
@@ -157,6 +158,49 @@ namespace
 						CheckLifetime(0);
 					}
 				}
+			}
+		}
+	}
+
+	void TestCancellableStableSort()
+	{
+		using Entry = std::pair<int, std::string>;
+		for (size_t count : { 0u, 1u, 7u, 1023u, 1024u, 1025u, 4099u })
+		{
+			TVector<Entry> input;
+			for (size_t index = 0u; index < count; ++index)
+				input.Emplace(static_cast<int>((count - index) % 37u), std::to_string(index));
+			std::vector<Entry> expected;
+			for (const auto& entry : input) expected.push_back(entry);
+			std::stable_sort(expected.begin(), expected.end(),
+				[](const Entry& lhs, const Entry& rhs) { return lhs.first < rhs.first; });
+			size_t comparisons = 0u, lastComparisons = 0u, maxBatchComparisons = 0u, checkpoints = 0u;
+			const auto compare = [&](const Entry& lhs, const Entry& rhs)
+			{
+				++comparisons;
+				return lhs.first < rhs.first;
+			};
+			auto sorted = input;
+			Require(CancellableStableSort(sorted.begin(), sorted.end(), compare, [&]()
+				{
+					maxBatchComparisons = std::max(maxBatchComparisons, comparisons - lastComparisons);
+					lastComparisons = comparisons;
+					++checkpoints;
+					return true;
+				}) && std::equal(sorted.begin(), sorted.end(), expected.begin(), expected.end()),
+				"cancellable sorting must preserve stable order and nontrivial values, including uneven merge tails");
+			Require(maxBatchComparisons < 65536u && checkpoints > 0u,
+				"sorting must offer cancellation between bounded comparison batches");
+			for (size_t stop = 1u; stop <= checkpoints; ++stop)
+			{
+				auto cancelled = input;
+				size_t seen = 0u, comparisonsAtCancellation = 0u;
+				Require(!CancellableStableSort(cancelled.begin(), cancelled.end(), compare, [&]()
+					{
+						comparisonsAtCancellation = comparisons;
+						return ++seen < stop;
+					}) && seen == stop && comparisons == comparisonsAtCancellation,
+					"each sorting boundary must stop immediately when cancellation is accepted");
 			}
 		}
 	}
@@ -604,6 +648,7 @@ int main()
 		TestVectorEraseRanges<MoveOnly>();
 		TestVectorEraseRanges<CopyOnly>();
 		TestVectorConstructionAndAssignment();
+		TestCancellableStableSort();
 		TestContainerAlignment();
 		TestVectorInsertionAndRemoveFirst<int>();
 		TestVectorInsertionAndRemoveFirst<CopyOnly>();
