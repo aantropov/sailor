@@ -378,7 +378,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	m_currentDepthAttachment = depthStencilAttachment ? depthStencilAttachment->m_format : VkFormat::VK_FORMAT_UNDEFINED;
 }
 
-void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+bool VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
 	VulkanImageViewPtr depthStencilAttachment,
 	VkRect2D renderArea,
 	VkRenderingFlags renderingFlags,
@@ -399,13 +399,17 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		if (depthStencilAttachment)
 		{
 			const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
-			msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView;
+			auto target = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents);
+			if (!target) return false;
+			msaaDepthStencilTarget = target->m_vulkan.m_imageView;
 		}
 
 		for (uint32_t i = 0u; i < colorAttachments.Num(); ++i)
 		{
 			const auto extents = glm::ivec2(colorAttachments[i]->GetImage()->m_extent.width, colorAttachments[i]->GetImage()->m_extent.height);
-			msaaColorTargets.Add(vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)colorAttachments[i]->m_format, extents, i)->m_vulkan.m_imageView);
+			auto target = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)colorAttachments[i]->m_format, extents, i);
+			if (!target) return false;
+			msaaColorTargets.Add(target->m_vulkan.m_imageView);
 		}
 
 		BeginRenderPassEx(msaaColorTargets,
@@ -432,6 +436,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 			clearValues,
 			bStoreDepth);
 	}
+	return true;
 }
 
 void VulkanCommandBuffer::EndRenderPassEx()

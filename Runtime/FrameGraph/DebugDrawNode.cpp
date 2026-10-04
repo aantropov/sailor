@@ -53,11 +53,10 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	}
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
 
-	m_drawCallStats += debugDrawCommandList->GetRecordedDrawCallStats();
-
+	bool rendered;
 	if (colorAttachmentSurface)
 	{
-		commands->RenderSecondaryCommandBuffers(commandList,
+		rendered = commands->RenderSecondaryCommandBuffers(commandList,
 			TVector<RHI::RHICommandListPtr> {debugDrawCommandList},
 			TVector<RHI::RHISurfacePtr>{ colorAttachmentSurface },
 			depthAttachment,
@@ -70,7 +69,7 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	}
 	else
 	{
-		commands->RenderSecondaryCommandBuffers(commandList,
+		rendered = commands->RenderSecondaryCommandBuffers(commandList,
 			TVector<RHI::RHICommandListPtr> {debugDrawCommandList},
 			TVector<RHI::RHITexturePtr>{ target },
 			depthAttachment,
@@ -81,6 +80,7 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 			0.0f,
 			false);
 	}
+	if (rendered) m_drawCallStats += debugDrawCommandList->GetRecordedDrawCallStats();
 
 	commands->EndDebugRegion(commandList);
 }

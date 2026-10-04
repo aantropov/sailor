@@ -1065,9 +1065,9 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				attachments.Add(motionAttachment);
 				resolves.Add(motionSurface && motionSurface->NeedsResolve() ? motionSurface->GetResolved() : nullptr);
 			}
-			commands->BeginRenderPass(commandList, attachments, resolves, depthAttachment, renderArea,
+			bRenderPassStarted = commands->BeginRenderPass(commandList, attachments, resolves, depthAttachment, renderArea,
 				glm::ivec2(0), false, glm::vec4(0), 0.0f, !colorSurface || colorSurface->NeedsResolve(), true);
-			bRenderPassStarted = true;
+			return bRenderPassStarted;
 		};
 
 	auto& cullingBindings = resources->m_cullingDispatchBindings;
@@ -1103,9 +1103,8 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			cullingBindings,
 			beginRenderPass);
 	}
-	else
+	else if (beginRenderPass())
 	{
-		beginRenderPass();
 		m_drawCallStats = RHIRecordPackedDrawPacket(
 			resources->m_packet,
 			commandList,

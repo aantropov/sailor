@@ -58,6 +58,7 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 		RHI::IsDepthFormat(resolved->GetFormat()) && renderer->GetMsaaSamples() != EMsaaSamples::Samples_1)
 	{
 		auto msaaDepth = renderer->GetDriver()->GetOrAddMsaaFramebufferRenderTarget(resolved->GetFormat(), resolved->GetExtent());
+		if (!msaaDepth) return;
 		clearTexture(msaaDepth, "Clear internal MSAA depth render target");
 		const auto layout = RHI::IsDepthStencilFormat(resolved->GetFormat()) ?
 			EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;

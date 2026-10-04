@@ -13,6 +13,8 @@
 #include "Support/VulkanCapabilityOverrides.h"
 #endif
 #include "FrameGraph/ParticlesNode.h"
+#include "FrameGraph/ClearNode.h"
+#include "FrameGraph/DepthHighZNode.h"
 #include "FrameGraph/EditorReadbackNode.h"
 #include "Editor/EditorRuntimeBridge.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
@@ -103,6 +105,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 		}
 
 		static size_t Flight(const VulkanDevice& device) { return device.m_currentFrame; }
+		static void ExchangeRendering(VulkanDevice& device, PFN_vkCmdBeginRendering& begin, PFN_vkCmdEndRendering& end)
+		{
+			std::swap(device.pVkCmdBeginRendering, begin);
+			std::swap(device.pVkCmdEndRendering, end);
+		}
 		static PFN_vkQueueWaitIdle ExchangeQueueWait(VulkanQueue& queue, PFN_vkQueueWaitIdle wait)
 		{
 			queue.m_lock.Lock();
@@ -165,6 +172,39 @@ namespace
 	thread_local bool captureNextFenceWait = false;
 	thread_local bool capturedFenceCompleted = false;
 	thread_local uint32_t waitsBeforeCapture = 0u;
+	thread_local VkFence lastSubmittedFence = VK_NULL_HANDLE;
+	PFN_vkCmdBeginRendering forwardBeginRendering = nullptr;
+	PFN_vkCmdEndRendering forwardEndRendering = nullptr;
+	uint32_t nativePassBegins = 0u, nativePassEnds = 0u;
+
+	VKAPI_ATTR void VKAPI_CALL ObserveBeginRendering(VkCommandBuffer command, const VkRenderingInfo* info)
+	{
+		++nativePassBegins;
+		forwardBeginRendering(command, info);
+	}
+
+	VKAPI_ATTR void VKAPI_CALL ObserveEndRendering(VkCommandBuffer command)
+	{
+		if (nativePassEnds < nativePassBegins) forwardEndRendering(command);
+		++nativePassEnds;
+	}
+
+	class RenderingDispatchOverride
+	{
+	public:
+		explicit RenderingDispatchOverride(VulkanDevice& device) : m_device(device)
+		{
+			VulkanSubmissionTestAccess::ExchangeRendering(device, m_begin, m_end);
+			forwardBeginRendering = m_begin;
+			forwardEndRendering = m_end;
+			nativePassBegins = nativePassEnds = 0;
+		}
+		~RenderingDispatchOverride() { VulkanSubmissionTestAccess::ExchangeRendering(m_device, m_begin, m_end); }
+	private:
+		VulkanDevice& m_device;
+		PFN_vkCmdBeginRendering m_begin = ObserveBeginRendering;
+		PFN_vkCmdEndRendering m_end = ObserveEndRendering;
+	};
 
 	VKAPI_ATTR VkResult VKAPI_CALL NativeQueueWait(VkQueue queue)
 	{
@@ -269,6 +309,7 @@ namespace
 		if (rejectNativeSubmit)
 		{
 			StubSubmit(queue, count, info, fence);
+			lastSubmittedFence = fence;
 			lastCommandCount = count ? info[0].commandBufferCount : 0u;
 			lastSubmitNext = count ? info[0].pNext : nullptr;
 			lastWait = count && info[0].waitSemaphoreCount ? info[0].pWaitSemaphores[info[0].waitSemaphoreCount - 1u] : VK_NULL_HANDLE;
@@ -1531,6 +1572,301 @@ namespace
 		return result;
 	}
 
+	void TestMsaaCacheRefusal()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		uint32_t caseIndex = 0;
+		for (auto format : { ETextureFormat::R8G8B8A8_UNORM, ETextureFormat::D32_SFLOAT })
+		{
+			for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			{
+				const glm::ivec2 extent(43 + caseIndex++, 27);
+				RHITexturePtr rejected;
+				{
+					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+					const auto before = submitCalls;
+					rejected = driver.GetOrAddMsaaFramebufferRenderTarget(format, extent);
+					Require(submitCalls == before + 1u && lastCommandCount == 1u,
+						"the MSAA fixture must reject the target's actual initialization command");
+				}
+				RHITexturePtr retry;
+				{
+					FenceDispatchOverride completion(*device);
+					{
+						SubmitOverride accepted(VulkanSubmissionTestAccess::UploadQueue(*device), VK_SUCCESS);
+						retry = driver.GetOrAddMsaaFramebufferRenderTarget(format, extent);
+						observedFences[0] = lastSubmittedFence;
+						fenceResults[0] = VK_NOT_READY;
+					}
+					std::cout << "MSAA cache refusal: format=" << static_cast<uint32_t>(format) << ", error=" << error
+						<< ", rejectedPublished=" << static_cast<bool>(rejected) << ", retryReusedRejected=" << (retry == rejected) << '\n';
+					Require(retry && retry != rejected && !retry->HasInitializationFailed(),
+						"a rejected MSAA initialization must not poison the same-key cache retry");
+					Require(!rejected, "a refused MSAA initialization must not publish an attachment");
+					Require(driver.GetOrAddMsaaFramebufferRenderTarget(format, extent) == retry,
+						"an accepted pending MSAA target must retain its warm cache identity");
+					driver.TrackResources_ThreadSafe();
+					Require(!retry->IsReady() && !retry->HasInitializationFailed(),
+						"pending MSAA work must remain owned without false readiness or a replacement");
+					Require(forwardFenceWait(*device, 1, &observedFences[0], VK_TRUE, 5000000000ull) == VK_SUCCESS,
+						"the accepted MSAA initialization must complete on the native GPU");
+					fenceResults[0] = VK_SUCCESS;
+					driver.TrackResources_ThreadSafe();
+					Require(retry->IsReady() && driver.GetOrAddMsaaFramebufferRenderTarget(format, extent) == retry,
+						"completion must keep the original MSAA cache identity");
+				}
+
+				const bool depth = IsDepthFormat(format);
+				auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+				driver.BeginCommandList(command, true);
+				const auto usage = (depth ? ETextureUsageBit::DepthStencilAttachment_Bit : ETextureUsageBit::ColorAttachment_Bit) |
+					ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit;
+				auto resolved = driver.CreateRenderTarget(command, extent, 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+				if (depth) driver.ImageMemoryBarrier(command, resolved, EImageLayout::DepthAttachmentOptimal);
+				TVector<VulkanImageViewPtr> colors, resolves;
+				if (!depth)
+				{
+					colors.Add(retry->m_vulkan.m_imageView);
+					resolves.Add(resolved->m_vulkan.m_imageView);
+				}
+				command->m_vulkan.m_commandBuffer->BeginRenderPassEx(colors, resolves,
+					depth ? retry->m_vulkan.m_imageView : nullptr, depth ? resolved->m_vulkan.m_imageView : nullptr,
+					{ {}, { static_cast<uint32_t>(extent.x), static_cast<uint32_t>(extent.y) } }, 0, {}, true,
+					VulkanRenderPassClearValues(glm::vec4(0x43 / 255.0f, 0x67 / 255.0f, 0xab / 255.0f, 1), 0.375f), true);
+				driver.EndRenderPass(command);
+				driver.RestoreImageBarriers(command);
+				driver.EndCommandList(command);
+				Require(driver.SubmitCommandList_Immediate(command), "a retried MSAA attachment must support real rendering and resolve");
+				Require(ReadImage(driver, resolved->m_vulkan.m_image) ==
+					std::vector<uint32_t>(extent.x * extent.y, depth ? 0x3ec00000u : 0xffab6743u),
+					"every retried color/depth MSAA pixel must resolve to the expected value");
+			}
+		}
+		std::cout << "MSAA cache: samples=" << device->GetCurrentMsaaSamples()
+			<< "; color/depth refusal, retained pending/completed identity and 4806 resolved pixels passed\n";
+	}
+
+	enum class MsaaPassPath
+	{
+		Color, Depth, MixedColor, MixedDepth, Surface, SecondaryColor, SecondaryDepth, SecondarySurface
+	};
+
+	void TestMsaaPassRefusal()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		RenderingDispatchOverride recording(*device);
+		for (auto path : { MsaaPassPath::Color, MsaaPassPath::Depth, MsaaPassPath::MixedColor, MsaaPassPath::MixedDepth,
+			MsaaPassPath::Surface, MsaaPassPath::SecondaryColor, MsaaPassPath::SecondaryDepth, MsaaPassPath::SecondarySurface })
+		{
+			for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			{
+				const glm::ivec2 extent(61 + static_cast<uint32_t>(path) * 2 + (error == VK_ERROR_OUT_OF_DEVICE_MEMORY), 29);
+				const glm::ivec4 area(0, 0, extent.x, extent.y);
+				const bool depthOnly = path == MsaaPassPath::Depth || path == MsaaPassPath::MixedDepth || path == MsaaPassPath::SecondaryDepth;
+				const bool surface = path == MsaaPassPath::Surface || path == MsaaPassPath::SecondarySurface;
+				const bool secondary = path == MsaaPassPath::SecondaryColor || path == MsaaPassPath::SecondaryDepth || path == MsaaPassPath::SecondarySurface;
+				auto setup = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+				driver.BeginCommandList(setup, true);
+				auto color = driver.CreateRenderTarget(setup, extent, 1, ETextureFormat::R8G8B8A8_UNORM);
+				auto depth = driver.CreateRenderTarget(setup, extent, 1, ETextureFormat::D32_SFLOAT,
+					ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit |
+					ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
+				driver.ImageMemoryBarrier(setup, depth, EImageLayout::DepthAttachmentOptimal);
+				RHISurfacePtr colorSurface;
+				if (surface)
+				{
+					auto target = driver.GetOrAddMsaaFramebufferRenderTarget(color->GetFormat(), extent).StaticCast<RHIRenderTarget>();
+					colorSurface = RHISurfacePtr::Make(target, color, true);
+				}
+				driver.RestoreImageBarriers(setup);
+				driver.EndCommandList(setup);
+				Require(driver.SubmitCommandList_Immediate(setup), "MSAA pass fixture inputs must finish initialization");
+				TVector<RHITexturePtr> colors = depthOnly ? TVector<RHITexturePtr>{} : TVector<RHITexturePtr>{color};
+				TVector<RHITexturePtr> resolves(colors.Num());
+				RHIRenderTargetPtr extraColor;
+				if (path == MsaaPassPath::MixedColor)
+				{
+					auto target = driver.GetOrAddMsaaFramebufferRenderTarget(color->GetFormat(), extent, 1).StaticCast<RHIRenderTarget>();
+					extraColor = driver.CreateRenderTarget(extent, 1, color->GetFormat());
+					colors.Add(target);
+					resolves.Add(extraColor);
+				}
+				RHITexturePtr depthInput = depthOnly || surface ? RHITexturePtr(depth) : RHITexturePtr{};
+				const glm::vec4 clearColor(0x43 / 255.0f, 0x67 / 255.0f, 0xab / 255.0f, 1);
+				TVector<RHICommandListPtr> secondaryCommands;
+				if (secondary)
+				{
+					auto command = driver.CreateCommandList(true, ECommandListQueue::Graphics);
+					command->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(
+						depthOnly ? TVector<VkFormat>{} : TVector<VkFormat>{ VK_FORMAT_R8G8B8A8_UNORM },
+						depthInput ? VK_FORMAT_D32_SFLOAT : VK_FORMAT_UNDEFINED,
+						VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT);
+					driver.ClearAttachments(command, area, glm::vec4(0x56 / 255.0f, 0x78 / 255.0f, 0x9a / 255.0f, 1), 0.625f);
+					driver.EndCommandList(command);
+					secondaryCommands.Add(command);
+				}
+				const auto record = [&](RHICommandListPtr command)
+					{
+						if (path == MsaaPassPath::Surface) return driver.BeginRenderPass(command, TVector<RHISurfacePtr>{colorSurface}, depth,
+							area, glm::ivec2(0), true, clearColor, 0.375f, true);
+						if (path == MsaaPassPath::SecondarySurface) return driver.RenderSecondaryCommandBuffers(command, secondaryCommands, TVector<RHISurfacePtr>{colorSurface}, depth,
+							area, glm::ivec2(0), true, clearColor, 0.375f, true);
+						if (secondary) return driver.RenderSecondaryCommandBuffers(command, secondaryCommands, colors, depthInput,
+							area, glm::ivec2(0), true, clearColor, 0.375f, true, true);
+						if (path == MsaaPassPath::MixedColor || path == MsaaPassPath::MixedDepth) return driver.BeginRenderPass(command, colors,
+							resolves, depthInput, area, glm::ivec2(0), true, clearColor, 0.375f, true, true);
+						return driver.BeginRenderPass(command, colors, depthInput, area, glm::ivec2(0), true, clearColor, 0.375f, true, true);
+					};
+				auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+				driver.BeginCommandList(command, true);
+				const auto begins = nativePassBegins, ends = nativePassEnds;
+				{
+					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
+					const auto submissions = submitCalls;
+					Require(!record(command) && submitCalls == submissions + 1,
+						"the actual MSAA pass overload must propagate its initialization refusal");
+				}
+				Require(nativePassBegins == begins && nativePassEnds == ends && command->GetNumRecordedCommands() == 0,
+					"an unavailable MSAA attachment must record no native begin, unmatched end or secondary execution");
+				Require(record(command), "the same MSAA pass inputs and command must succeed after refusal is removed");
+				if (!secondary) driver.EndRenderPass(command);
+				Require(nativePassBegins == begins + 1 && nativePassEnds == ends + 1,
+					"the retry must record exactly one complete native pass");
+				driver.RestoreImageBarriers(command);
+				driver.EndCommandList(command);
+				Require(driver.SubmitCommandList_Immediate(command), "the retried MSAA pass must execute");
+				if (!depthOnly) Require(ReadImage(driver, color->m_vulkan.m_image) ==
+					std::vector<uint32_t>(extent.x * extent.y, secondary ? 0xff9a7856u : 0xffab6743u),
+					"the retried MSAA color pass must preserve every resolved pixel");
+				if (extraColor) Require(ReadImage(driver, extraColor->m_vulkan.m_image) == std::vector<uint32_t>(extent.x * extent.y, 0xffab6743u),
+					"mixed MRT retry must retain and resolve the supplied MSAA attachment too");
+				if (depthInput) Require(ReadImage(driver, depth->m_vulkan.m_image) ==
+					std::vector<uint32_t>(extent.x * extent.y, secondary ? 0x3f200000u : 0x3ec00000u),
+					"the retried MSAA depth pass must preserve every resolved pixel");
+			}
+		}
+		std::cout << "MSAA passes: samples=" << device->GetCurrentMsaaSamples()
+			<< "; 16 primary/mixed/Surface/secondary refusals, balanced same-command retries and full color/depth pixels passed\n";
+	}
+
+	void TestMsaaDepthConsumers()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		for (bool highZ : { false, true })
+		{
+			const glm::ivec2 extent(highZ ? 113 : 111, 19);
+			auto graph = RHIFrameGraphPtr::Make();
+			auto depth = driver.CreateRenderTarget(extent, 1, ETextureFormat::D32_SFLOAT,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit |
+				ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
+			auto pyramid = driver.CreateRenderTarget(extent, 1, ETextureFormat::R32_SFLOAT);
+			graph->SetRenderTarget("DepthBuffer", depth);
+			Framegraph::FrameGraphNodePtr node = highZ ? Framegraph::FrameGraphNodePtr(TRefPtr<Framegraph::DepthHighZNode>::Make()) :
+				Framegraph::FrameGraphNodePtr(TRefPtr<Framegraph::ClearNode>::Make());
+			node->SetRHIResource(highZ ? "src" : "target", depth);
+			node->SetRHIResource("dst", pyramid);
+			node->SetFloat("clearDepth", 0.375f);
+			auto setup = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+			driver.BeginCommandList(setup, true);
+			driver.ImageMemoryBarrier(setup, depth, EImageLayout::TransferDstOptimal);
+			driver.ClearDepthStencil(setup, depth, 0.75f, 0);
+			driver.ImageMemoryBarrier(setup, pyramid, EImageLayout::TransferDstOptimal);
+			driver.ClearImage(setup, pyramid, glm::vec4(-8));
+			driver.RestoreImageBarriers(setup);
+			driver.EndCommandList(setup);
+			Require(driver.SubmitCommandList_Immediate(setup), "depth consumer fixture must initialize its sentinel pixels");
+			auto draw = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+			driver.BeginCommandList(draw, true);
+			{
+				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_OUT_OF_HOST_MEMORY);
+				const auto before = submitCalls;
+				node->Process(graph, {}, draw, {});
+				Require(submitCalls == before + 1 && draw->GetNumRecordedCommands() == 0 && !graph->HasCurrentDepthPyramid(pyramid),
+					"a missing MSAA depth attachment must not record a clear, dispatch, or current pyramid");
+			}
+			driver.EndCommandList(draw);
+			Require(driver.SubmitCommandList_Immediate(draw), "the refused node must leave a valid empty command list");
+			Require(ReadImage(driver, depth->m_vulkan.m_image) == std::vector<uint32_t>(extent.x * extent.y, 0x3f400000u) &&
+				ReadImage(driver, pyramid->m_vulkan.m_image) == std::vector<uint32_t>(extent.x * extent.y, 0xc1000000u),
+				"refused Clear and HiZ nodes must preserve every sentinel depth and pyramid pixel");
+		}
+		std::cout << "MSAA depth consumers: refused Clear/HiZ preserve pixels, command recording and pyramid publication passed\n";
+	}
+
+	int RunMsaaCacheGpu(int argc, const char** argv)
+	{
+		Tests::TempDirectory workspace("msaa-cache");
+		int result = 1;
+		try
+		{
+			std::string enginePath = std::filesystem::current_path().string();
+			for (int i = 1; i + 1 < argc; ++i)
+				if (std::string_view(argv[i]) == "--workspace") enginePath = argv[i + 1];
+			std::filesystem::create_directory(workspace.Path("Content"));
+			YAML::Node manifest;
+			manifest["manifestVersion"] = 1;
+			manifest["workspaceId"] = "00000000-0000-0000-0000-000000000223";
+			manifest["name"] = "MSAA cache test";
+			manifest["enginePath"] = enginePath;
+			manifest["engineReferenceKind"] = "source";
+			manifest["contentPath"] = "Content";
+			manifest["sourcePath"] = "Source";
+			manifest["generatedProjectPath"] = "Generated";
+			manifest["cachePath"] = "Cache";
+			manifest["buildPath"] = "Cache/Build";
+			manifest["logicOutputPath"] = "Binaries";
+			manifest["logicModuleName"] = "MsaaCacheTest";
+			std::ofstream(workspace.Path("workspace.sailor")) << manifest;
+			auto settings = YAML::LoadFile((std::filesystem::path(enginePath) / "ProjectSettings.yaml").string());
+			settings["graphics"]["defaultQuality"] = "High";
+			const std::string root = workspace.Get().string();
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--world", "", "--editor", "--port", "0", "--new-world" });
+			for (uint32_t samples : { 2u, 4u })
+			{
+				for (const char* preset : { "Ultra", "High", "Medium", "Low", "VeryLow" })
+					settings["graphics"]["presets"][preset]["msaaSamples"] = samples;
+				std::ofstream(workspace.Path("ProjectSettings.yaml")) << settings;
+				Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready,
+					"the MSAA fixture must initialize a hidden native App");
+				App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+				OnRender([&]()
+					{
+						Require(static_cast<uint32_t>(VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples()) == samples,
+							"the native MSAA fixture requires actual 2x and 4x support");
+						TestMsaaCacheRefusal();
+						TestMsaaPassRefusal();
+						TestMsaaDepthConsumers();
+						auto device = VulkanApi::GetInstance()->GetMainDevice();
+						auto& driver = *Renderer::GetDriver();
+						const glm::ivec2 extent(43, 27);
+						Require(driver.GetOrAddMsaaFramebufferRenderTarget(ETextureFormat::R8G8B8A8_UNORM, extent).IsValid(),
+							"the loss fixture needs an accepted warm target");
+						SubmitOverride loss(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_DEVICE_LOST);
+						const auto before = submitCalls;
+						Require(!driver.GetOrAddMsaaFramebufferRenderTarget(ETextureFormat::R8G8B8A8_UNORM, glm::ivec2(91, 37)) &&
+							device->IsDeviceLost() && submitCalls == before + 1,
+							"a lost-device initialization must not publish its target");
+						Require(!driver.GetOrAddMsaaFramebufferRenderTarget(ETextureFormat::R8G8B8A8_UNORM, extent) &&
+							!driver.GetOrAddMsaaFramebufferRenderTarget(ETextureFormat::D32_SFLOAT, glm::ivec2(93, 37)) && submitCalls == before + 1,
+							"terminal loss must reject warm and cold lookups without another native submission");
+						std::cout << "MSAA terminal loss: warm/cold rejection without resubmission passed\n";
+					});
+				App::Stop();
+				Require(App::Shutdown(), "each native MSAA configuration must release its App");
+			}
+			std::cout << "Native MSAA cache and render-pass failure tests passed at 2x and 4x\n";
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		App::Stop();
+		if (!App::Shutdown()) result = 1;
+		return result;
+	}
+
 	void TestImmediateImageContents()
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
@@ -2656,6 +2992,17 @@ namespace
 
 namespace Sailor::Tests
 {
+	void RequireMsaaInitializationRefusal(const std::function<void()>& record)
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		RenderingDispatchOverride rendering(*device);
+		SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_OUT_OF_HOST_MEMORY);
+		const auto before = submitCalls;
+		record();
+		Require(submitCalls == before + 1 && nativePassBegins == 0 && nativePassEnds == 0,
+			"a refused node attachment must record neither a native pass nor an unmatched end");
+	}
+
 	void RequireRejectedComputeSubmission(const std::function<bool()>& submit)
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
@@ -2688,6 +3035,7 @@ int main(int argc, const char** argv)
 	{
 		const std::string_view mode(argv[i]);
 		if (mode == "--gpu-cloud-noise") return Tests::RunCloudNoiseGpu(argc, argv);
+		if (mode == "--gpu-msaa-cache") return RunMsaaCacheGpu(argc, argv);
 		if (mode == "--gpu-editor-protocol-host" && i + 1 < argc) return RunEditorProtocolHost(argv[i + 1]);
 #if defined(__APPLE__)
 		if (mode == "--gpu-editor-readback-graph") return RunEditorReadbackGraphGpu(argc, argv);

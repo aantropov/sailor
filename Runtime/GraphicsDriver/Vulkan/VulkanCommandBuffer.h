@@ -78,7 +78,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			const VulkanRenderPassClearValues& clearValues = {},
 			bool bStoreDepth = true);
 
-		SAILOR_API void BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+		SAILOR_API bool BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
 			VulkanImageViewPtr depthStencilAttachment,
 			VkRect2D renderArea,
 			VkRenderingFlags renderingFlags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,

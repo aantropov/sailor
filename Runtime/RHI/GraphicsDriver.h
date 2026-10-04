@@ -297,7 +297,7 @@ namespace Sailor::RHI
 			RHI::RHICommandListPtr cmdList,
 			uint32_t query) = 0;
 
-		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
+		SAILOR_API virtual bool RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
 			TVector<RHI::RHICommandListPtr> secondaryCmds,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
@@ -309,7 +309,7 @@ namespace Sailor::RHI
 			bool bSupportMultisampling = true,
 			bool bStoreDepth = true) = 0;
 
-		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
+		SAILOR_API virtual bool RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
 			TVector<RHI::RHICommandListPtr> secondaryCmds,
 			const TVector<RHI::RHISurfacePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
@@ -320,7 +320,8 @@ namespace Sailor::RHI
 			float clearDepth,
 			bool bStoreDepth = true) = 0;
 
-		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+		// A refused attachment initialization records no pass; only end a successful begin.
+		SAILOR_API virtual bool BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
@@ -331,7 +332,7 @@ namespace Sailor::RHI
 			bool bSupportMultisampling = true,
 			bool bStoreDepth = true) = 0;
 
-		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+		SAILOR_API virtual bool BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHISurfacePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
@@ -342,7 +343,7 @@ namespace Sailor::RHI
 			bool bStoreDepth) = 0;
 
 		// One optional resolve per color target, preserving explicit MSAA targets in mixed MRT passes.
-		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+		SAILOR_API virtual bool BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			const TVector<RHI::RHITexturePtr>& colorAttachmentResolves,
 			RHI::RHITexturePtr depthStencilAttachment,

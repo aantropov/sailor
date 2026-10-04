@@ -293,7 +293,7 @@ namespace
 		using VulkanGraphicsDriver::BeginRenderPass;
 		using VulkanGraphicsDriver::RenderSecondaryCommandBuffers;
 
-		void BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colors,
+		bool BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colors,
 			RHI::RHITexturePtr depth, glm::ivec4 area, glm::ivec2 offset, bool clear, glm::vec4 color,
 			float clearDepth, bool multisampling, bool storeDepth) override
 		{
@@ -308,14 +308,15 @@ namespace
 			m_multisampling = multisampling;
 			m_storeDepth = storeDepth;
 			++m_calls;
+			return m_accept;
 		}
 
-		void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd, TVector<RHI::RHICommandListPtr> secondary,
+		bool RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd, TVector<RHI::RHICommandListPtr> secondary,
 			const TVector<RHI::RHITexturePtr>& colors, RHI::RHITexturePtr depth, glm::ivec4 area,
 			glm::ivec2 offset, bool clear, glm::vec4 color, float clearDepth, bool multisampling, bool storeDepth) override
 		{
 			m_secondary = std::move(secondary);
-			BeginRenderPass(cmd, colors, depth, area, offset, clear, color, clearDepth, multisampling, storeDepth);
+			return BeginRenderPass(cmd, colors, depth, area, offset, clear, color, clearDepth, multisampling, storeDepth);
 		}
 
 		RHI::RHICommandListPtr m_cmd;
@@ -329,6 +330,7 @@ namespace
 		bool m_clear = false;
 		bool m_multisampling = false;
 		bool m_storeDepth = false;
+		bool m_accept = true;
 		uint32_t m_calls = 0u;
 	};
 
@@ -363,16 +365,19 @@ namespace
 					for (bool renderSecondary : { false, true })
 					{
 						const uint32_t previousCalls = driver.m_calls;
+						driver.m_accept = clear;
 						if (renderSecondary)
 						{
-							driver.RenderSecondaryCommandBuffers(cmd, secondary, surfaces, depth,
-								area, offset, clear, color, 0.375f, storeDepth);
+							Require(driver.RenderSecondaryCommandBuffers(cmd, secondary, surfaces, depth,
+								area, offset, clear, color, 0.375f, storeDepth) == driver.m_accept,
+								"the secondary surface overload must return the actual begin result");
 							Require(driver.m_secondary == secondary,
 								"the actual secondary surface overload must preserve the command list order");
 						}
 						else
 						{
-							driver.BeginRenderPass(cmd, surfaces, depth, area, offset, clear, color, 0.375f, storeDepth);
+							Require(driver.BeginRenderPass(cmd, surfaces, depth, area, offset, clear, color, 0.375f, storeDepth) == driver.m_accept,
+								"the surface overload must return the actual begin result");
 						}
 						Require(driver.m_calls == previousCalls + 1u && driver.m_cmd == cmd &&
 							driver.m_colors == expectedColors && driver.m_depth == depth &&

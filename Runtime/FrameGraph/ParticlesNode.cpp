@@ -223,7 +223,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		const auto viewport = glm::ivec4(0, m_shadowMap->GetExtent().y, m_shadowMap->GetExtent().x, -m_shadowMap->GetExtent().y);
 		const auto scissors = glm::uvec4(0, 0, m_shadowMap->GetExtent().x, m_shadowMap->GetExtent().y);
 
-		commands->BeginRenderPass(commandList,
+		if (!commands->BeginRenderPass(commandList,
 			TVector<RHI::RHITexturePtr>{ m_shadowMap },
 			nullptr,
 			glm::vec4(0, 0, m_shadowMap->GetExtent().x, m_shadowMap->GetExtent().y),
@@ -232,7 +232,11 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 			glm::vec4(0.0f),
 			0.0f,
 			true,
-			true);
+			true))
+		{
+			commands->EndDebugRegion(commandList);
+			return;
+		}
 
 		commands->BindMaterial(commandList, m_shadowMaterial);
 		commands->SetViewport(commandList, (float)viewport.x, (float)viewport.y,
@@ -255,7 +259,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	}
 	//
 
-	commands->BeginRenderPass(commandList,
+	if (!commands->BeginRenderPass(commandList,
 		TVector<RHI::RHISurfacePtr>{ colorAttachment },
 		depthAttachment,
 		glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
@@ -263,7 +267,11 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		false,
 		glm::vec4(0.0f),
 		0.0f,
-		true);
+		true))
+	{
+		commands->EndDebugRegion(commandList);
+		return;
+	}
 
 	const auto viewport = glm::ivec4(0, colorAttachment->GetTarget()->GetExtent().y, colorAttachment->GetTarget()->GetExtent().x, -colorAttachment->GetTarget()->GetExtent().y);
 	const auto scissors = glm::uvec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y);

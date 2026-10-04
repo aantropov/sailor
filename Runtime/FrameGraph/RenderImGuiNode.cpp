@@ -60,8 +60,7 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
 
-	m_drawCallStats += imguiCommandList->GetRecordedDrawCallStats();
-	commands->RenderSecondaryCommandBuffers(commandList,
+	if (commands->RenderSecondaryCommandBuffers(commandList,
 		{ imguiCommandList },
 		TVector<RHI::RHITexturePtr>{ colorAttachment },
 		depthAttachment,
@@ -70,7 +69,10 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		false,
 		glm::vec4(0.0f),
 		0.0f,
-		false);
+		false))
+	{
+		m_drawCallStats += imguiCommandList->GetRecordedDrawCallStats();
+	}
 
 	commands->EndDebugRegion(commandList);
 }

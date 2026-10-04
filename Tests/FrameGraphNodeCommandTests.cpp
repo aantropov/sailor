@@ -64,6 +64,7 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 namespace Sailor::Tests
 {
 	void RequireRejectedNativeSubmission(RHICommandListPtr command);
+	void RequireMsaaInitializationRefusal(const std::function<void()>& record);
 	void RequireRejectedGraphicsSubmission(const std::function<bool()>& submit);
 }
 
@@ -241,7 +242,7 @@ namespace
 			else m_regions.pop_back();
 		}
 
-		void RenderSecondaryCommandBuffers(RHICommandListPtr, TVector<RHICommandListPtr> secondary,
+		bool RenderSecondaryCommandBuffers(RHICommandListPtr, TVector<RHICommandListPtr> secondary,
 			const TVector<RHITexturePtr>& color, RHITexturePtr depth, glm::ivec4, glm::ivec2,
 			bool, glm::vec4, float, bool, bool) override
 		{
@@ -250,7 +251,8 @@ namespace
 			Require(secondary.Num() == 1 && color.Num() == 1 && color[0] && depth,
 				"ImGui must record one complete secondary with both attachments");
 			m_secondary = secondary[0];
-			++m_draws;
+			if (m_acceptSecondary) ++m_draws;
+			return m_acceptSecondary;
 		}
 
 		void ImageMemoryBarrier(RHICommandListPtr, RHITexturePtr, EImageLayout) override {}
@@ -259,7 +261,7 @@ namespace
 		void BindVertexBuffer(RHICommandListPtr, RHIBufferPtr, uint32_t) override {}
 		void BindIndexBuffer(RHICommandListPtr, RHIBufferPtr, uint32_t, bool) override {}
 
-		void BeginRenderPass(RHICommandListPtr, const TVector<RHITexturePtr>& colors, RHITexturePtr depth,
+		bool BeginRenderPass(RHICommandListPtr, const TVector<RHITexturePtr>& colors, RHITexturePtr depth,
 			glm::ivec4, glm::ivec2, bool, glm::vec4, float, bool, bool) override
 		{
 			Require(m_regions.size() == 2 && m_regions.back() == LinearizeDepthNode::GetName() && !m_inRenderPass,
@@ -267,6 +269,7 @@ namespace
 			Require(colors.Num() == 1 && colors[0] && !depth, "linear depth must use one color target and sample depth separately");
 			m_inRenderPass = true;
 			++m_renderPasses;
+			return true;
 		}
 
 		void EndRenderPass(RHICommandListPtr) override
@@ -296,6 +299,7 @@ namespace
 		uint32_t m_renderPasses = 0;
 		bool m_inRenderPass = false;
 		bool m_acceptBindings = true;
+		bool m_acceptSecondary = true;
 		bool m_unbalanced = false;
 	};
 
@@ -415,6 +419,16 @@ namespace
 				"ready and empty ImGui results must balance debug regions");
 			if (!empty) Require(recorder.m_commands->m_secondary == secondary,
 				"ImGui must consume the exact RHIPtr produced on the RHI queue");
+			if (!empty)
+			{
+				recorder.m_commands->m_acceptSecondary = false;
+				recorder.m_commands->BeginDebugRegion({}, "Frame", {});
+				node->Process(graph, {}, {}, scene);
+				recorder.m_commands->EndDebugRegion({});
+				Require(recorder.m_commands->m_draws == 1 && node->GetDrawCallStats().m_numBatches == 0 &&
+					node->GetDrawCallStats().m_numInstances == 0 && !recorder.m_commands->m_unbalanced && recorder.m_commands->m_regions.empty(),
+					"a refused secondary pass must not retain previous-frame ImGui draw statistics or debug regions");
+			}
 		}
 		std::cout << "ImGui delayed producer: task completion wait, pass overlap, single execution and empty result passed\n";
 	}
@@ -3027,6 +3041,31 @@ frame:
 				verifyPacket(mainPacket, expectedMain, true);
 				verifyPacket(depthPacket, expectedDepth, false);
 				verifyPacket(shadowPacket, expectedShadow, false);
+				if (frame == 0 && camera == 1 && !paged && !instanced && !skinned && mobility == EMobilityType::Static &&
+					VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT)
+				{
+					const glm::ivec2 extent(19, 13);
+					auto refusedDepth = driver->CreateRenderTarget(extent, 1, EFormat::D32_SFLOAT,
+						ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit);
+					auto refusedColor = driver->CreateRenderTarget(extent, 1, EFormat::R32G32B32A32_SFLOAT);
+					depth->SetRHIResource("depthStencil", refusedDepth);
+					main->SetRHIResource("depthStencil", refusedDepth);
+					main->SetRHIResource("color", refusedColor);
+					for (FrameGraphNodePtr node : { FrameGraphNodePtr(depth), FrameGraphNodePtr(main) })
+					{
+						auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+						auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+						commands->BeginCommandList(upload, true);
+						commands->BeginCommandList(draw, true);
+						Tests::RequireMsaaInitializationRefusal([&]() { node->Process(graph, upload, draw, snapshot); });
+						Require(node->GetDrawCallStats().m_numBatches == 0 && node->GetDrawCallStats().m_numInstances == 0,
+							"a refused depth or scene pass must not report packed draws");
+						CompleteCommands(upload, draw);
+					}
+					depth->SetRHIResource("depthStencil", prepassDepth);
+					main->SetRHIResource("depthStencil", mainDepth);
+					main->SetRHIResource("color", color);
+				}
 				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				commands->BeginCommandList(upload, true);

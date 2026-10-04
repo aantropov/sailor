@@ -225,7 +225,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void BeginDebugRegion(RHI::RHICommandListPtr cmdList, const std::string& title, const glm::vec4& color) override;
 		SAILOR_API virtual void EndDebugRegion(RHI::RHICommandListPtr cmdList) override;
 
-		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
+		SAILOR_API virtual bool RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
 			TVector<RHI::RHICommandListPtr> secondaryCmds,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
@@ -237,7 +237,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			bool bSupportMultisampling = true,
 			bool bStoreDepth = true) override;
 
-		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
+		SAILOR_API virtual bool RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
 			TVector<RHI::RHICommandListPtr> secondaryCmds,
 			const TVector<RHI::RHISurfacePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
@@ -248,7 +248,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			float clearDepth,
 			bool bStoreDepth = true) override;
 
-		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+		SAILOR_API virtual bool BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHISurfacePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
@@ -258,7 +258,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			float clearDepth,
 			bool bStoreDepth) override;
 
-		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+		SAILOR_API virtual bool BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
@@ -269,7 +269,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			bool bSupportMultisampling = true,
 			bool bStoreDepth = true) override;
 
-		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+		SAILOR_API virtual bool BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			const TVector<RHI::RHITexturePtr>& colorAttachmentResolves,
 			RHI::RHITexturePtr depthStencilAttachment,

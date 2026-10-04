@@ -1507,7 +1507,7 @@ namespace Sailor::RHI
 			commands->EndDebugRegion(cullingCommandList);
 		}
 
-		beforeDraw();
+		if (!beforeDraw()) return stats;
 
 		uint32_t runBegin = 0u;
 		auto& drawBindingSets = packet.m_drawBindingSets;
@@ -1571,7 +1571,7 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr* indirectCommandBufferBinding = nullptr,
 		const TVector<RHIShaderBindingSetPtr>& cullingDispatchBindings = {})
 	{
-		auto beforeDraw = []() {};
+		auto beforeDraw = []() { return true; };
 		return RHIRecordPackedDrawPacketImpl(
 			packet,
 			graphicsCmdList,

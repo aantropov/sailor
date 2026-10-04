@@ -41,6 +41,7 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 		// can lose uncovered samples. The device may clamp the requested MSAA count.
 		auto msaaDepth = driver->GetOrAddMsaaFramebufferRenderTarget(
 			depthAttachment->GetFormat(), depthAttachment->GetExtent());
+		if (!msaaDepth) return;
 		if (msaaDepth->GetMsaaSamples() != EMsaaSamples::Samples_1)
 		{
 			depthAttachment = msaaDepth.StaticCast<RHIRenderTarget>();

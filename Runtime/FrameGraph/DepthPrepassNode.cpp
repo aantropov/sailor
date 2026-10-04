@@ -900,7 +900,7 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthLayout);
 	static const TVector<RHI::RHITexturePtr> NoColorAttachments;
-	commands->BeginRenderPass(
+	if (!commands->BeginRenderPass(
 		commandList,
 		NoColorAttachments,
 		depthAttachment,
@@ -910,7 +910,11 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		glm::vec4(0.0f),
 		0.0f,
 		true,
-		true);
+		true))
+	{
+		commands->EndDebugRegion(commandList);
+		return;
+	}
 
 	if (compactCount > 0u)
 	{
