@@ -124,8 +124,12 @@ namespace Sailor::Framegraph
 		Tasks::TaskPtr<TVector<uint8_t>> m_createNoiseLow{};
 		Tasks::TaskPtr<TVector<uint8_t>> m_createNoiseHigh{};
 
-		Tasks::TaskPtr<RHI::RHIMeshPtr, TPair<TVector<RHI::VertexP3C4>, TVector<uint32_t>>> m_loadMeshTask{};
-		Tasks::TaskPtr<RHI::RHIMeshPtr, TPair<TVector<RHI::VertexP3C4>, TVector<uint32_t>>> CreateStarsMesh();
+		using StarsMeshData = TPair<TVector<RHI::VertexP3C4>, TVector<uint32_t>>;
+		Tasks::TaskPtr<RHI::RHIMeshPtr, StarsMeshData> m_loadMeshTask{};
+		bool m_bStarsRequested = false;
+		SAILOR_API Tasks::TaskPtr<RHI::RHIMeshPtr, StarsMeshData> CreateStarsMesh();
+		SAILOR_API static StarsMeshData ParseStarsMesh(const std::string& temperatures,
+			const TVector<uint8_t>& starCatalogueData, std::string& diagnostic);
 
 		static uint32_t MorganKeenanToTemperature(char spectral_type, char sub_type);
 
@@ -135,10 +139,6 @@ namespace Sailor::Framegraph
 		static constexpr uint32_t s_rgbTemperatureStep = 100;
 		static constexpr uint32_t s_numRgbTemperatures =
 			((s_maxRgbTemperature - s_minRgbTemperature) / s_rgbTemperatureStep) + 1u;
-		static glm::vec3 s_rgbTemperatures[s_numRgbTemperatures];
-
-		static const glm::vec3& TemperatureToColor(uint32_t temperature);
-		static const glm::vec3& MorganKeenanToColor(char spectralType, char subType);
 
 		SAILOR_API static TVector<uint8_t> LoadCloudsNoise(
 			const std::string& path, uint32_t resolution,

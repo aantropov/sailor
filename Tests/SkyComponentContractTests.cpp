@@ -1,8 +1,11 @@
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <filesystem>
+#include <future>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -25,6 +28,7 @@
 #include "Math/Math.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
 #include "RHI/Texture.h"
+#include "RHI/VertexDescription.h"
 
 using namespace Sailor;
 
@@ -148,6 +152,7 @@ namespace
 		using Framegraph::SkyNode::CreateEnvironmentViewMatrices;
 		using Framegraph::SkyNode::LoadCloudsNoise;
 		using Framegraph::SkyNode::AreCloudsResourcesReady;
+		using Framegraph::SkyNode::ParseStarsMesh;
 
 		bool IsEnvironmentDirty() const { return m_bIsDirty; }
 		void ClearEnvironmentDirty() { m_bIsDirty = false; }
@@ -159,6 +164,195 @@ namespace
 			m_pCloudsNoiseHighTexture = high;
 		}
 	};
+
+	YAML::Node MakeStarColors(glm::vec3 color = { 0.25f, 0.5f, 1.0f })
+	{
+		YAML::Node root;
+		for (uint32_t temperature = 1000; temperature <= 40000; temperature += 100)
+		{
+			root["colors"].push_back(std::vector<float>{ float(temperature), 2, 0, 0, 0, color.r, color.g, color.b });
+		}
+		return root;
+	}
+
+	template<typename T>
+	void WriteStarField(TVector<uint8_t>& bytes, size_t offset, const T& value)
+	{
+		std::memcpy(bytes.GetData() + offset, &value, sizeof(value));
+	}
+
+	TVector<uint8_t> MakeStarCatalogue()
+	{
+		TVector<uint8_t> bytes(28 + 32);
+		std::fill_n(bytes.GetData(), bytes.Num(), uint8_t{});
+		const int32_t header[]{ 0, 1, -1, 1, 1, 1, 32 };
+		std::memcpy(bytes.GetData(), header, sizeof(header));
+		WriteStarField(bytes, 28, 1.0f);
+		WriteStarField(bytes, 32, 1.0);
+		WriteStarField(bytes, 40, 0.3);
+		bytes[48] = 'G';
+		bytes[49] = '2';
+		WriteStarField(bytes, 50, int16_t(200));
+		return bytes;
+	}
+
+	void TestStarCatalogueBoundaries()
+	{
+		const auto validColors = MakeStarColors();
+		const std::string validYaml = YAML::Dump(validColors);
+		const auto validBytes = MakeStarCatalogue();
+		auto positiveCount = validBytes;
+		WriteStarField(positiveCount, 8, int32_t(1));
+		std::string positiveDiagnostic;
+		const auto positive = SkyNodeProbe::ParseStarsMesh(validYaml, positiveCount, positiveDiagnostic);
+		const auto negative = SkyNodeProbe::ParseStarsMesh(validYaml, validBytes, positiveDiagnostic);
+		Require(positiveDiagnostic.empty() && positive.m_first.Num() == 1 && negative.m_first.Num() == 1 &&
+			positive.m_first[0].m_position == negative.m_first[0].m_position && positive.m_first[0].m_color == negative.m_first[0].m_color,
+			"both catalogue epochs must preserve identical records");
+		auto reject = [&](const std::string& yaml, const TVector<uint8_t>& bytes, const char* asset)
+		{
+			std::string diagnostic;
+			const auto result = SkyNodeProbe::ParseStarsMesh(yaml, bytes, diagnostic);
+			Require(result.m_first.IsEmpty() && result.m_second.IsEmpty() && diagnostic.find(asset) != std::string::npos,
+				std::string("invalid star input must return no mesh and identify ") + asset);
+		};
+		for (const char* yaml : { "", "[]", "colors: {}", "colors: [", "colors: [[]]", "colors: [[1000,2,0,0,0,no,1,1]]" })
+		{
+			reject(yaml, validBytes, "StarsColor.yaml");
+		}
+		for (const auto [column, value] : std::array<std::pair<uint32_t, float>, 9>{ {
+			{ 0, -1000 }, { 0, 40001 }, { 0, 1001 }, { 0, std::numeric_limits<float>::infinity() },
+			{ 0, std::numeric_limits<float>::quiet_NaN() }, { 5, -0.1f }, { 6, 1.1f },
+			{ 7, std::numeric_limits<float>::quiet_NaN() }, { 7, std::numeric_limits<float>::infinity() }
+		} })
+		{
+			auto colors = YAML::Clone(validColors);
+			colors["colors"][0][column] = value;
+			reject(YAML::Dump(colors), validBytes, "StarsColor.yaml");
+		}
+		auto incomplete = YAML::Clone(validColors);
+		incomplete["colors"].remove(3);
+		reject(YAML::Dump(incomplete), validBytes, "StarsColor.yaml");
+
+		for (size_t size : { 0u, 1u, 27u, 28u, 59u, 61u })
+		{
+			auto bytes = validBytes;
+			bytes.Resize(size);
+			reject(validYaml, bytes, "BSC5");
+		}
+		for (int32_t count : { 0, 2, -2, (std::numeric_limits<int32_t>::min)(), (std::numeric_limits<int32_t>::max)() })
+		{
+			auto bytes = validBytes;
+			WriteStarField(bytes, 8, count);
+			reject(validYaml, bytes, "BSC5");
+		}
+		for (size_t field : { 12u, 16u, 20u, 24u })
+		{
+			auto bytes = validBytes;
+			WriteStarField(bytes, field, int32_t(0));
+			reject(validYaml, bytes, "BSC5");
+		}
+		for (const auto [field, value] : std::array<std::pair<size_t, double>, 6>{ {
+			{ 32, -0.1 }, { 32, 7.0 }, { 32, std::numeric_limits<double>::quiet_NaN() },
+			{ 40, -2.0 }, { 40, 2.0 }, { 40, std::numeric_limits<double>::infinity() }
+		} })
+		{
+			auto bytes = validBytes;
+			WriteStarField(bytes, field, value);
+			reject(validYaml, bytes, "BSC5");
+		}
+		auto bytes = validBytes;
+		WriteStarField(bytes, 50, int16_t(-40));
+		reject(validYaml, bytes, "BSC5");
+		bytes.Resize(28);
+		WriteStarField(bytes, 8, int32_t(0));
+		std::string diagnostic = "old failure";
+		const auto empty = SkyNodeProbe::ParseStarsMesh(validYaml, bytes, diagnostic);
+		Require(empty.m_first.IsEmpty() && empty.m_second.IsEmpty() && diagnostic.empty(),
+			"an explicitly empty catalogue must succeed without creating geometry");
+	}
+
+	void TestStarCatalogueColorsAndIndependentParses()
+	{
+		const auto catalogue = MakeStarCatalogue();
+		std::vector<std::future<void>> parses;
+		for (uint32_t worker = 0; worker < 8; ++worker)
+		{
+			parses.push_back(std::async(std::launch::async, [&, worker]()
+			{
+				const glm::vec3 color(0.125f * worker, 0.5f, 1.0f);
+				const std::string yaml = YAML::Dump(MakeStarColors(color));
+				for (uint32_t repeat = 0; repeat < 4; ++repeat)
+				{
+					std::string diagnostic;
+					const auto result = SkyNodeProbe::ParseStarsMesh(yaml, catalogue, diagnostic);
+					Require(diagnostic.empty() && result.m_first.Num() == 1 && result.m_second.Num() == 1 && result.m_second[0] == 0,
+						"a complete catalogue must return the original point-list topology");
+					Require(IsNear(result.m_first[0].m_position, Utils::ConvertToEuclidean(1.0f, 0.3f, 1.0f) / 2.4f * 5000.0f) &&
+						IsNear(result.m_first[0].m_color, glm::vec4(glm::pow(color, glm::vec3(1 / 2.2f)), 1)),
+						"parallel parses must preserve positions and use only their own color table");
+				}
+			}));
+		}
+		for (auto& parse : parses) parse.get();
+
+		for (const std::string spectral : { "  ", "Ap", "A/", "WN", "pe", "Z0", "a0" })
+		{
+			auto bytes = catalogue;
+			bytes[48] = spectral[0];
+			bytes[49] = spectral[1];
+			std::string diagnostic;
+			const auto result = SkyNodeProbe::ParseStarsMesh(YAML::Dump(MakeStarColors()), bytes, diagnostic);
+			Require(diagnostic.empty() && result.m_first.Num() == 1 && result.m_first[0].m_color == glm::vec4(1),
+				"unclassified and nonnumeric spectral entries must remain renderable with neutral white");
+		}
+	}
+
+	void TestOwnedStarCatalogueParity()
+	{
+		const auto content = std::filesystem::path(__FILE__).parent_path().parent_path() / "Content";
+		std::string yaml;
+		TVector<uint8_t> bytes;
+		Require(AssetRegistry::ReadAllTextFile((content / "StarsColor.yaml").string(), yaml) &&
+			AssetRegistry::ReadBinaryFile(content / "BSC5", bytes), "the owned star inputs must be readable");
+		std::string diagnostic;
+		const auto result = SkyNodeProbe::ParseStarsMesh(yaml, bytes, diagnostic);
+		Require(diagnostic.empty() && result.m_first.Num() == 9110 && result.m_second.Num() == 9110,
+			"the owned BSC5 catalogue must retain every star");
+		std::array<glm::vec3, 391> colors{};
+		for (const auto& row : YAML::Load(yaml)["colors"])
+			colors[(row[0].as<uint32_t>() - 1000) / 100] = { row[5].as<float>(), row[6].as<float>(), row[7].as<float>() };
+		const glm::vec2 ranges[]{
+			{ 7300,10000 }, { 10000,30000 }, { 2400,3200 }, { 100000,1000000 }, { 0,0 }, { 6000,7300 }, { 5300,6000 },
+			{ 0,0 }, { 0,0 }, { 0,0 }, { 3800,5300 }, { 1300,2100 }, { 2500,3800 }, { 0,0 }, { 30000,40000 },
+			{ 0,0 }, { 0,0 }, { 0,0 }, { 2400,3500 }, { 600,1300 }, { 0,0 }, { 0,0 }, { 25000,40000 }, { 0,0 }, { 0,600 }
+		};
+		uint32_t numeric = 0;
+		for (uint32_t i = 0; i < result.m_first.Num(); ++i)
+		{
+			const uint8_t* record = bytes.GetData() + 28 + i * 32;
+			double ra, dec;
+			int16_t magnitude;
+			std::memcpy(&ra, record + 4, sizeof(ra));
+			std::memcpy(&dec, record + 12, sizeof(dec));
+			std::memcpy(&magnitude, record + 22, sizeof(magnitude));
+			const auto position = Utils::ConvertToEuclidean(float(ra), float(dec), 1.0f) / (magnitude / 100.0f + 0.4f) * 5000.0f;
+			Require(result.m_second[i] == i && result.m_first[i].m_position == position,
+				"every owned star must retain its exact original position and index");
+			glm::vec3 color(1);
+			if (record[20] >= 'A' && record[20] <= 'Y' && record[21] >= '0' && record[21] <= '9')
+			{
+				const auto range = ranges[record[20] - 'A'];
+				const uint32_t step = uint32_t((range.y - range.x) / 9);
+				const uint32_t temperature = glm::clamp(uint32_t(range.x + ('9' - record[21]) * step), 1000u, 40000u);
+				color = colors[(temperature - 1000) / 100];
+				++numeric;
+			}
+			const glm::vec4 expected(pow(color.x, 1 / 2.2f), pow(color.y, 1 / 2.2f), pow(color.z, 1 / 2.2f), 1);
+			Require(result.m_first[i].m_color == expected, "numeric classifications must keep the original temperature and gamma mapping");
+		}
+		Require(numeric == 9029, "all 9029 numeric classifications must be covered by exact color parity");
+	}
 
 	void TestCloudsWaitForAllTextureUploads()
 	{
@@ -1351,6 +1545,9 @@ int main()
 		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
 		{ "GroundEnvironmentUsesTheSameSkyAndSun", TestGroundEnvironmentUsesTheSameSkyAndSun },
 		{ "SkyNodeRenderState", TestSkyNodeRenderState },
+		{ "StarCatalogueBoundaries", TestStarCatalogueBoundaries },
+		{ "StarCatalogueColorsAndIndependentParses", TestStarCatalogueColorsAndIndependentParses },
+		{ "OwnedStarCatalogueParity", TestOwnedStarCatalogueParity },
 		{ "CloudNoiseRemapping", TestCloudNoiseRemapping },
 		{ "CloudNoiseCacheRecovery", TestCloudNoiseCacheRecovery },
 		{ "CloudsWaitForAllTextureUploads", TestCloudsWaitForAllTextureUploads },

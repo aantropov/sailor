@@ -20,6 +20,7 @@
 #include "FrameGraph/RenderImGuiNode.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/ShadowPrepassNode.h"
+#include "FrameGraph/SkyNode.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
@@ -49,6 +50,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <glm/gtc/packing.hpp>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -1523,6 +1525,160 @@ frame:
 			"fullscreen upload and draw must submit");
 		Require(finished->Wait(5000000000ull) == EFenceStatus::Finished && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
 			"fullscreen pixel readback must finish");
+	}
+
+	class StarsSkyProbe : public SkyNode
+	{
+	public:
+		void LoadShaders()
+		{
+			auto registry = App::GetSubmodule<AssetRegistry>();
+			auto compiler = App::GetSubmodule<ShaderCompiler>();
+			auto load = [&](const char* path, ShaderSetPtr& shader, const TVector<std::string>& defines = {})
+			{
+				auto info = registry->GetAssetInfoPtr(path);
+				Require(info && compiler->LoadShader_Immediate(info->GetFileId(), shader, defines) && shader->IsReady(),
+					"the production sky shaders must compile before recording");
+			};
+			load("Shaders/Sky.shader", m_pSkyShader, { "FILL" });
+			load("Shaders/Sky.shader", m_pSkyEnvShader);
+			load("Shaders/Sky.shader", m_pSunShader, { "SUN" });
+			load("Shaders/Sky.shader", m_pComposeShader, { "COMPOSE" });
+			load("Shaders/Stars.shader", m_pStarsShader);
+			load("Shaders/SunShafts.shader", m_pSunShaftsShader);
+			load("Shaders/Blit.shader", m_pBlitShader);
+		}
+
+		bool LoadStars()
+		{
+			m_bStarsRequested = true;
+			m_loadMeshTask = CreateStarsMesh();
+			m_loadMeshTask->Wait();
+			return static_cast<bool>(m_loadMeshTask->GetResult());
+		}
+
+		bool HasNoStarsOrPendingLoad() const { return m_bStarsRequested && !m_starsMesh && !m_loadMeshTask; }
+
+		void SetEmptyClouds()
+		{
+			auto& driver = Renderer::GetDriver();
+			const uint8_t empty = 0;
+			m_pCloudsNoiseLowTexture = driver->CreateTexture(&empty, sizeof(empty), glm::ivec3(1), 1,
+				ETextureType::Texture3D, EFormat::R8_UNORM, ETextureFiltration::Linear, ETextureClamping::Repeat,
+				ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
+			m_pCloudsNoiseHighTexture = m_pCloudsNoiseLowTexture;
+			m_pCloudsMapTexture = driver->GetDefaultTexture();
+			m_skyParams.m_cloudsCoverage = 0.0f;
+		}
+	};
+
+	void TestSkyWithoutStars(const std::filesystem::path& workspace)
+	{
+		auto registry = App::GetSubmodule<AssetRegistry>();
+		std::string colors;
+		TVector<uint8_t> catalogue;
+		Require(registry->ReadContentText("StarsColor.yaml", colors) && registry->ReadContentBinary("BSC5", catalogue),
+			"the mounted engine star assets must be readable");
+		const auto colorPath = workspace / "Content" / "StarsColor.yaml";
+		const auto cataloguePath = workspace / "Content" / "BSC5";
+		auto restore = [&]()
+		{
+			AssetRegistry::WriteTextFile(colorPath, colors);
+			AssetRegistry::WriteBinaryFile(cataloguePath, catalogue);
+		};
+		restore();
+		Require(registry->GetOrLoadFile(colorPath.string()) && registry->GetOrLoadFile(cataloguePath.string()),
+			"temporary workspace star overrides must register");
+		AssetRegistry::AssetReadLocation location;
+		Require(registry->ResolveContentFile("BSC5", location) && std::filesystem::equivalent(location.m_physicalPath, cataloguePath) &&
+			registry->ResolveContentFile("StarsColor.yaml", location) && std::filesystem::equivalent(location.m_physicalPath, colorPath),
+			"star fixtures must use the workspace overrides, not engine fallback files");
+		TRefPtr<StarsSkyProbe> node;
+		for (uint32_t input = 0; input < 6; ++input)
+		{
+			restore();
+			switch (input)
+			{
+			case 0: std::filesystem::remove(colorPath); break;
+			case 1: std::filesystem::remove(cataloguePath); break;
+			case 2: AssetRegistry::WriteTextFile(colorPath, std::string("colors: [")); break;
+			case 3: AssetRegistry::WriteBinaryFile(cataloguePath, TVector<uint8_t>{ 1 }); break;
+			case 4: AssetRegistry::WriteTextFile(colorPath, std::string("colors: [[1000, 2]]")); break;
+			case 5:
+			{
+				auto empty = catalogue;
+				empty.Resize(28);
+				const int32_t count = 0;
+				std::memcpy(empty.GetData() + 8, &count, sizeof(count));
+				AssetRegistry::WriteBinaryFile(cataloguePath, empty);
+				break;
+			}
+			}
+			node = TRefPtr<StarsSkyProbe>::Make();
+			Require(!node->LoadStars(), "failed or empty star assets must not allocate an RHI mesh");
+		}
+		restore();
+		Require(TRefPtr<StarsSkyProbe>::Make()->LoadStars(), "a new sky node must load a repaired catalogue");
+		node->LoadShaders();
+		auto task = Tasks::CreateTaskWithResult<std::string>("Sky without a star mesh", [&]() -> std::string
+		{
+			try
+			{
+				auto& driver = Renderer::GetDriver();
+				auto commands = Renderer::GetDriverCommands();
+				auto graph = TRefPtr<TestGraph>::Make();
+				node->SetEmptyClouds();
+				graph->SetSampler("g_ditherPatternSampler", driver->GetDefaultTexture());
+				graph->SetSampler("g_noiseSampler", driver->GetDefaultTexture());
+				auto color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R16G16B16A16_SFLOAT);
+				auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT);
+				auto linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
+				graph->SetRenderTarget("DepthBuffer", depth);
+				node->SetRHIResource("color", color);
+				node->SetRHIResource("linearDepth", linearDepth);
+				for (uint32_t frame = 0; frame < 8; ++frame)
+				{
+					auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(upload, true);
+					commands->BeginCommandList(draw, true);
+					ClearColor(draw, color, glm::vec4(-1));
+					ClearColor(draw, linearDepth, glm::vec4(1000));
+					commands->ImageMemoryBarrier(draw, linearDepth, EImageLayout::ShaderReadOnlyOptimal);
+					commands->ImageMemoryBarrier(draw, depth, EImageLayout::TransferDstOptimal);
+					commands->ClearDepthStencil(draw, depth, 1.0f, 0);
+					RHISceneViewSnapshot scene;
+					scene.m_frameBindings = driver->CreateShaderBindings();
+					UboFrameData frameData{};
+					frameData.m_view = frameData.m_projection = frameData.m_invProjection = glm::mat4(1);
+					frameData.m_viewportSize = glm::ivec2(Side);
+					frameData.m_cameraZNearZFar = glm::vec2(0.1f, 1000);
+					auto binding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData", sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
+					commands->UpdateShaderBinding(upload, binding, &frameData, sizeof(frameData));
+					node->Process(graph, upload, draw, scene);
+					auto pixels = ReadColor(draw, color);
+					CompleteCommands(upload, draw);
+					Require(node->GetDrawCallStats().m_numBatches >= 5, "an absent star mesh must not stop sky, sun or cloud composition");
+					Require(node->HasNoStarsOrPendingLoad(), "an empty catalogue must not retry every frame after its input is repaired");
+					const auto values = static_cast<const uint16_t*>(pixels->GetPointer());
+					for (uint32_t pixel = 0; pixel < Side * Side; ++pixel)
+						for (uint32_t component = 0; component < 3; ++component)
+						{
+							const float value = glm::unpackHalf1x16(values[pixel * 4 + component]);
+							Require(std::isfinite(value) && value >= 0, "the starless sky must replace every cleared pixel with finite radiance");
+						}
+				}
+				SkyParameters captured;
+				Require(graph->GetSampler("g_skyCubemap") && node->GetEnvironmentSkyParams(captured),
+					"the starless sky must still publish its completed environment capture");
+				return {};
+			}
+			catch (const std::exception& error) { return error.what(); }
+		}, EThreadType::Render);
+		task->Run();
+		task->Wait();
+		if (!task->GetResult().empty()) throw std::runtime_error(task->GetResult());
+		std::cout << "Starless sky: missing/malformed/empty mounted assets, repaired mesh, eight frames without retry, native pixels and environment capture passed\n";
 	}
 
 	void TestAuthoredEnvironmentReload(const std::filesystem::path& workspace)
@@ -3826,6 +3982,7 @@ namespace Sailor::Tests
 {
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace)
 	{
+		TestSkyWithoutStars(workspace);
 		TestAuthoredEnvironmentReload(workspace);
 		const auto smallShader = WriteShader(workspace, false);
 		const auto largeShader = WriteShader(workspace, true);
