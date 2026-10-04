@@ -103,6 +103,13 @@ namespace Sailor
 	private:
 		friend class GlobalIlluminationBakeControllerTestAccess;
 
+#if defined(SAILOR_GI_BAKE_TEST_HOOKS)
+		// Barriers for native shutdown tests; absent from non-test builds.
+		static void (*s_preparationObserver)();
+		static void (*s_savingObserver)();
+		static void (*s_waitObserver)();
+#endif
+
 		TSharedPtr<SharedState> m_state{};
 		Tasks::ITaskPtr m_task{};
 	};

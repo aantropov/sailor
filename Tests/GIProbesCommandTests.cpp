@@ -14,7 +14,9 @@
 #include "ECS/StaticMeshRendererECS.h"
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
+#include "Engine/EngineLoop.h"
 #include "Engine/World.h"
+#include "Editor/GlobalIlluminationBakeController.h"
 #include "GlobalIllumination/GIProbesBinary.h"
 #include "GlobalIllumination/GIProbesSampling.h"
 #include "FrameGraph/RHIFrameGraph.h"
@@ -25,6 +27,7 @@
 #include "RHI/Cubemap.h"
 #include "RHI/Renderer.h"
 #include "Settings/GraphicsSettings.h"
+#include "Submodules/Editor.h"
 
 #include <array>
 #include <barrier>
@@ -48,6 +51,22 @@ namespace Sailor::Tests
 
 namespace Sailor
 {
+#if defined(SAILOR_GI_BAKE_TEST_HOOKS)
+	class GlobalIlluminationBakeControllerTestAccess
+	{
+	public:
+		static GlobalIlluminationBakeController& Controller(Editor& editor) { return *editor.m_giProbesBakeController; }
+		static auto State(Editor& editor) { return Controller(editor).m_state; }
+		static TWeakPtr<Tasks::ITask> Task(Editor& editor) { return Controller(editor).m_task; }
+		static void Observe(void (*preparation)(), void (*saving)(), void (*waited)())
+		{
+			GlobalIlluminationBakeController::s_preparationObserver = preparation;
+			GlobalIlluminationBakeController::s_savingObserver = saving;
+			GlobalIlluminationBakeController::s_waitObserver = waited;
+		}
+	};
+#endif
+
 	class GlobalIlluminationECSTestAccess
 	{
 	public:
@@ -117,6 +136,82 @@ namespace
 		}
 		Require(material->IsReady(), "GI fixture material upload must complete");
 	}
+
+#if defined(SAILOR_GI_BAKE_TEST_HOOKS)
+	struct BakeShutdownObservation
+	{
+		std::latch resume{ 1 };
+		std::atomic<bool> entered{ false }, released{ false }, shutdownEntered{ false };
+		bool background = false, waitObserved = false, dependenciesAlive = false, taskReleased = false;
+		bool acceptedCancellation = false;
+		TWeakPtr<Tasks::ITask> task;
+		TWeakPtr<World> world;
+
+		void Release()
+		{
+			if (!released.exchange(true)) resume.count_down();
+		}
+	};
+
+	BakeShutdownObservation* shutdownObservation = nullptr;
+
+	void PauseBakeForShutdown()
+	{
+		auto& observation = *shutdownObservation;
+		if (observation.entered.load(std::memory_order_acquire)) return;
+		observation.background = App::GetSubmodule<Tasks::Scheduler>()->GetCurrentThreadType() == EThreadType::Background;
+		observation.entered.store(true, std::memory_order_release);
+		observation.resume.wait();
+	}
+
+	void ObserveBakeJoinedBeforeDependencies()
+	{
+		auto& observation = *shutdownObservation;
+		if (observation.waitObserved) return;
+		observation.waitObserved = true;
+		observation.dependenciesAlive = App::GetSubmodule<TextureImporter>() && App::GetSubmodule<ModelImporter>() &&
+			App::GetSubmodule<AssetRegistry>() && App::GetSubmodule<EngineLoop>() && observation.world.TryLock();
+		observation.taskReleased = !observation.task.TryLock();
+	}
+
+	EditorGIProbesBakeRequest CreateShutdownBakeScene(const std::filesystem::path& workspace, const char* output)
+	{
+		auto world = App::GetSubmodule<EngineLoop>()->GetWorld();
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		const auto info = registry->GetAssetInfoPtr<ModelAssetInfoPtr>("Quad.gltf");
+		ModelPtr model;
+		Require(info && App::GetSubmodule<ModelImporter>()->LoadModel_Immediate(info->GetFileId(), model),
+			"shutdown fixture must load real captured geometry");
+		TVector<MaterialPtr> materials;
+		auto load = App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(info->GetFileId(), materials);
+		load->Wait();
+		Require(load->GetResult() && !materials.IsEmpty(), "shutdown fixture must load a real material");
+		WaitMaterialReady(materials[0]);
+		auto object = world->Instantiate("Shutdown bake receiver");
+		object->SetMobilityType(EMobilityType::Static);
+		object->GetTransformComponent().SetPosition({ 0, 0, -2 });
+		auto renderer = object->AddComponent<MeshRendererComponent>();
+		renderer->GetData().SetModel(model);
+		renderer->GetMaterials() = { materials[0] };
+		world->GetECS<StaticMeshRendererECS>()->BeginPlay();
+		world->GetECS<TransformECS>()->Tick(0.0f);
+		if (auto task = world->GetECS<StaticMeshRendererECS>()->Tick(0.0f)) task->Wait();
+		const auto document = WorldPrefab::FromWorld(world.GetRawPtr());
+		const auto path = workspace / "Content" / "Shutdown.world";
+		Require(document && document->IsReady() && document->SaveToFile(path.string()), "shutdown fixture world must be saved");
+		EditorGIProbesBakeRequest request;
+		request.m_worldAsset = registry->GetOrLoadFile(path.string());
+		request.m_stateName = "Shutdown lifecycle";
+		request.m_outputVirtualPath = output;
+		request.m_settings.m_bIncludeSky = false;
+		request.m_settings.m_bounceCount = 1u;
+		request.m_settings.m_minProbeSpacing = 8.0f;
+		request.m_settings.m_maxSubdivisionLevel = 1u;
+		request.m_settings.m_raysPerProbe = 8u;
+		Require(static_cast<bool>(request.m_worldAsset), "shutdown fixture world must be registered");
+		return request;
+	}
+#endif
 
 	class GIWorld final : public World
 	{
@@ -1641,6 +1736,108 @@ namespace
 
 namespace Sailor::Tests
 {
+	int RunGIShutdownCommandTests(int argc, const char** argv, const std::filesystem::path& workspace)
+	{
+#if defined(SAILOR_GI_BAKE_TEST_HOOKS)
+		std::string failures;
+		for (uint32_t phase = 0u; phase < 3u; ++phase)
+		{
+			BakeShutdownObservation observation;
+			shutdownObservation = &observation;
+			try
+			{
+				Require(App::Initialize(argv, argc) == EAppInitializationResult::Ready && App::IsRendererInitialized(),
+					"every GI shutdown phase must bootstrap a real native App");
+				auto* editor = App::GetSubmodule<Editor>();
+				Require(editor && editor->GetWorld(), "the hidden native App must own an Editor world");
+				const char* outputs[] = { "CancelledShutdown.probes", "SavingShutdown.probes", "RestartedShutdown.probes" };
+				const auto request = CreateShutdownBakeScene(workspace, outputs[phase]);
+				observation.world = App::GetSubmodule<EngineLoop>()->GetWorld();
+				GlobalIlluminationBakeControllerTestAccess::Observe(phase == 0u ? PauseBakeForShutdown : nullptr,
+					phase == 1u ? PauseBakeForShutdown : nullptr, phase < 2u ? ObserveBakeJoinedBeforeDependencies : nullptr);
+				std::string diagnostic;
+				Require(editor->StartGIProbesBake(request, diagnostic), diagnostic);
+				auto state = GlobalIlluminationBakeControllerTestAccess::State(*editor);
+				observation.task = GlobalIlluminationBakeControllerTestAccess::Task(*editor);
+				if (phase < 2u)
+				{
+					const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+					while (!observation.entered.load(std::memory_order_acquire) &&
+						editor->GetGIProbesBakeStatus().IsRunning() && std::chrono::steady_clock::now() < deadline)
+						std::this_thread::yield();
+					Require(observation.entered.load(std::memory_order_acquire) && observation.background,
+						"the real Background bake must reach its controlled preparation/save boundary: " +
+						editor->GetGIProbesBakeStatus().m_diagnostic);
+					auto marker = Tasks::CreateTask("Observe App shutdown Main drain", [&]()
+						{ observation.shutdownEntered.store(true, std::memory_order_release); }, EThreadType::Main);
+					marker->Run();
+					marker.Clear();
+					std::jthread release([&, state]()
+						{
+							const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+							while (!(phase == 0u ? state->m_cancel.load(std::memory_order_acquire) :
+								observation.shutdownEntered.load(std::memory_order_acquire)) &&
+								std::chrono::steady_clock::now() < until) std::this_thread::yield();
+							observation.acceptedCancellation = state->m_cancel.load(std::memory_order_acquire);
+							observation.Release();
+						});
+					const bool stopped = App::Shutdown();
+					release.join();
+					Require(stopped && !App::GetInstance(), "App shutdown must finish after the bake boundary is released");
+					Require(observation.shutdownEntered && observation.acceptedCancellation == (phase == 0u),
+						"App shutdown must cancel preparation before draining Background, but let atomic Saving finish");
+					Require(observation.waitObserved && observation.dependenciesAlive && observation.taskReleased &&
+						!observation.task.TryLock() && !observation.world.TryLock(),
+						"App shutdown must join and release the bake task before destroying its world or importers");
+				}
+				else
+				{
+					GlobalIlluminationBakeControllerTestAccess::Controller(*editor).Wait();
+					Require(editor->GetGIProbesBakeStatus().m_state == EEditorGIProbesBakeState::Succeeded,
+						"a freshly bootstrapped App must complete a replacement bake: " + editor->GetGIProbesBakeStatus().m_diagnostic);
+					Require(App::Shutdown() && !App::GetInstance(), "the replacement App must shut down normally");
+				}
+				const auto output = workspace / "Content" / outputs[phase];
+				if (phase == 0u)
+					Require(state->m_status.m_state == EEditorGIProbesBakeState::Cancelled && !std::filesystem::exists(output),
+						"cancelled preparation must not publish a probes file");
+				else
+				{
+					const auto loaded = GIProbesBinary::Load(output);
+					Require(!state->m_cancel && state->m_status.m_state == EEditorGIProbesBakeState::Succeeded &&
+						loaded.IsSuccess() && loaded.m_data->Validate(diagnostic) &&
+						loaded.m_data->m_layoutHash == state->m_status.m_layoutHash &&
+						loaded.m_data->m_probes.Num() == state->m_status.m_probeCount && state->m_status.m_probeCount > 0u,
+						"shutdown/restart must retain the complete atomic bake payload: " + diagnostic);
+				}
+				std::cout << "App GI shutdown phase passed: " << phase << '\n';
+			}
+			catch (const std::exception& error)
+			{
+				observation.Release();
+				if (App::GetInstance())
+				{
+					if (auto* editor = App::GetSubmodule<Editor>())
+					{
+						std::string diagnostic;
+						editor->CancelGIProbesBake(diagnostic);
+					}
+					App::Shutdown();
+				}
+				failures += "GI shutdown phase " + std::to_string(phase) + ": " + error.what() + '\n';
+			}
+			GlobalIlluminationBakeControllerTestAccess::Observe(nullptr, nullptr, nullptr);
+			shutdownObservation = nullptr;
+		}
+		if (!failures.empty()) { std::cerr << failures; return 1; }
+		std::cout << "App GI shutdown: preparation cancellation, joined ownership, atomic save and fresh bootstrap passed\n";
+		return 0;
+#else
+		std::cerr << "GI shutdown integration requires the test-enabled runtime\n";
+		return 77;
+#endif
+	}
+
 	void RunGIProbesCommandTests(const std::filesystem::path& workspace)
 	{
 		std::string failures;

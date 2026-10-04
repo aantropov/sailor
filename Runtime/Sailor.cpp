@@ -1212,6 +1212,12 @@ bool App::Shutdown()
 	{
 		scheduler->AttachCurrentThreadAsMainThread();
 		ProcessPendingEngineMainThreadTasks(scheduler);
+		// Cancel preparation before draining Background; an atomic save finishes normally.
+		if (auto* editor = GetSubmodule<Editor>())
+		{
+			std::string diagnostic;
+			editor->CancelGIProbesBake(diagnostic);
+		}
 		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
 			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
 	}

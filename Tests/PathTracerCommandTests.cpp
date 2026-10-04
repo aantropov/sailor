@@ -47,6 +47,7 @@ using namespace Sailor::Raytracing;
 namespace Sailor::Tests
 {
 	void RunGIProbesCommandTests(const std::filesystem::path& workspace);
+	int RunGIShutdownCommandTests(int argc, const char** argv, const std::filesystem::path& workspace);
 	void RunTextureImporterCommandTests(const std::filesystem::path& workspace);
 	void RunMaterialImporterCommandTests(const std::filesystem::path& workspace);
 	void RunAudioCommandTests(const std::filesystem::path& workspace);
@@ -1123,15 +1124,22 @@ namespace Sailor::Tests
 		{
 			std::string enginePath = std::filesystem::current_path().string();
 			uint32_t msaaSamples = 2;
+			bool giShutdown = false;
 			for (int i = 1; i < argc; ++i)
 			{
 				if (std::string_view(argv[i]) == "--workspace" && i + 1 < argc) enginePath = argv[i + 1];
 				if (std::string_view(argv[i]) == "--gpu-pathtracer-1x") msaaSamples = 1;
+				if (std::string_view(argv[i]) == "--gpu-gi-shutdown") giShutdown = true;
 			}
 			WriteScene(workspace, enginePath, msaaSamples);
 			const std::string root = workspace.Get().string();
 			const std::string output = workspace.Path("command.png").string();
 			std::vector<const char*> arguments(argv, argv + argc);
+			if (giShutdown)
+			{
+				arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "" });
+				return RunGIShutdownCommandTests(static_cast<int>(arguments.size()), arguments.data(), workspace.Get());
+			}
 			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--pathtracer",
 				"--in", "Quad.gltf", "--out", output.c_str(), "--camera", "Front", "--height", "16",
 				"--samples", "1", "--ambientSamples", "1", "--bounces", "1", "--ambient", "000000" });

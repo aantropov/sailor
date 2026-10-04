@@ -22,6 +22,12 @@
 
 using namespace Sailor;
 
+#if defined(SAILOR_GI_BAKE_TEST_HOOKS)
+void (*GlobalIlluminationBakeController::s_preparationObserver)() = nullptr;
+void (*GlobalIlluminationBakeController::s_savingObserver)() = nullptr;
+void (*GlobalIlluminationBakeController::s_waitObserver)() = nullptr;
+#endif
+
 namespace
 {
 	struct ProbeBakeScene final
@@ -462,6 +468,9 @@ bool GlobalIlluminationBakeController::Start(
 						}
 						const bool bPreparingGeometry = progress.m_stage ==
 							Raytracing::PathTracer::EScenePreparationStage::Geometry;
+#if defined(SAILOR_GI_BAKE_TEST_HOOKS)
+						if (!bPreparingGeometry && s_preparationObserver) s_preparationObserver();
+#endif
 						const float stageFraction = progress.m_total > 0u ?
 							static_cast<float>(progress.m_completed) /
 								static_cast<float>(progress.m_total) : 1.0f;
@@ -576,6 +585,9 @@ bool GlobalIlluminationBakeController::Start(
 				state->m_status.m_state = EEditorGIProbesBakeState::Saving;
 				state->m_status.m_stage = "Saving one baked state atomically";
 				state->m_lock.Unlock();
+#if defined(SAILOR_GI_BAKE_TEST_HOOKS)
+				if (s_savingObserver) s_savingObserver();
+#endif
 				std::string saveDiagnostic;
 				if (!GIProbesBinary::SaveAtomic(
 						scene->m_outputPath,
@@ -669,4 +681,8 @@ void GlobalIlluminationBakeController::Wait()
 	{
 		m_task->Wait();
 	}
+	m_task.Clear();
+#if defined(SAILOR_GI_BAKE_TEST_HOOKS)
+	if (s_waitObserver) s_waitObserver();
+#endif
 }
