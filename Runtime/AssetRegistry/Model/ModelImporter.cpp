@@ -224,7 +224,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 		else
 		{
 			outModel = loadedModel;
-			auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel, m_scheduler);
+			auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel);
 
 			m_loadedModels.Unlock(uid);
 			m_promises.Unlock(uid);
@@ -246,7 +246,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 			bool m_bIsImported = false;
 		};
 
-		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>(*m_scheduler, "Load model",
+		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>("Load model",
 			[pAssetInfo, pModel
 #if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
 			, this
@@ -441,7 +441,7 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<Mat
 	if (ModelAssetInfoPtr modelInfo = m_assetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		Tasks::TaskPtr<bool> loadingFinished =
-			Tasks::CreateTask<bool>(*m_scheduler, "Load Default Materials", []() { return true; });
+			Tasks::CreateTask<bool>("Load Default Materials", []() { return true; });
 		const TVector<FileId>& defaultMaterials = modelInfo->GetDefaultMaterials();
 		outMaterials.Resize(defaultMaterials.Num());
 
@@ -470,7 +470,7 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<Mat
 		return loadingFinished;
 	}
 
-	return Tasks::TaskPtr<bool>::Make(false, m_scheduler);
+	return Tasks::TaskPtr<bool>::Make(false);
 }
 
 bool ModelImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)

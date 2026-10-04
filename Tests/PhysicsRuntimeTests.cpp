@@ -1,3 +1,4 @@
+#include "Support/TaskTestApp.h"
 #include "Tasks/Tasks.h"
 #include "Components/CollisionShapeComponent.h"
 #include "Components/BuoyancyComponent.h"
@@ -647,7 +648,8 @@ namespace
 
 	void TestContactRemovalAfterBodyDestruction()
 	{
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.Initialize();
 		for (uint32_t removedBodies : { 1u, 2u, 3u })
 		{
@@ -1005,7 +1007,8 @@ namespace
 
 	void TestPendingVelocityCommandsAndLiveBodyReconstruction()
 	{
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.Initialize();
 		auto backend = TUniquePtr<Physics::PhysicsWorld>::Make(scheduler);
 		auto* physicsWorld = backend.GetRawPtr();
@@ -1089,7 +1092,8 @@ namespace
 
 	void TestVelocityQueriesAndRepeatedStopAfterAcceleration()
 	{
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.Initialize();
 		auto backend = TUniquePtr<Physics::PhysicsWorld>::Make(scheduler);
 		auto* physicsWorld = backend.GetRawPtr();
@@ -1151,7 +1155,8 @@ namespace
 
 	void TestKinematicVelocityQueriesFollowAuthoredTargets()
 	{
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.Initialize();
 		auto backend = TUniquePtr<Physics::PhysicsWorld>::Make(scheduler);
 		auto* physicsWorld = backend.GetRawPtr();
@@ -1208,7 +1213,8 @@ namespace
 	{
 		std::atomic<uint32_t> workersStarted = 0;
 		std::atomic<bool> releaseWorkers = false;
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.Initialize();
 		Physics::PhysicsWorld world(scheduler);
 		uint32_t firstBody = ~0u;
@@ -1228,7 +1234,7 @@ namespace
 		TVector<Tasks::ITaskPtr> blockers;
 		for (uint32_t index = 0; index < workerCount; ++index)
 		{
-			auto blocker = Tasks::CreateTask(scheduler, "Hold worker before Jolt step", [&]()
+			auto blocker = Tasks::CreateTask("Hold worker before Jolt step", [&]()
 				{
 					workersStarted.fetch_add(1, std::memory_order_release);
 					releaseWorkers.wait(false, std::memory_order_acquire);
@@ -1243,7 +1249,7 @@ namespace
 		bool stepWaitingForJobs = false;
 		if (allWorkersBlocked)
 		{
-			step = Tasks::CreateTask<bool>(scheduler, "Step real Jolt world", [&]()
+			step = Tasks::CreateTask<bool>("Step real Jolt world", [&]()
 				{
 					return world.Step(c_fixedDeltaTime);
 				}, EThreadType::Physics);

@@ -379,7 +379,7 @@ void AssetRegistry::FinishScanProcessing()
 
 	// Startup scans also commit without an external CompleteScanProcessing call.
 	// Join acknowledgement tasks, not just the work which precedes them.
-	auto commitTask = Tasks::CreateTask<bool>(*m_scheduler, "Commit Asset Scan", std::move(commit));
+	auto commitTask = Tasks::CreateTask<bool>("Commit Asset Scan", std::move(commit));
 	for (const auto& task : processingTasks)
 	{
 		if (task)

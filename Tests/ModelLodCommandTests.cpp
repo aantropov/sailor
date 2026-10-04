@@ -735,7 +735,7 @@ namespace
 				auto load = fresh.m_importer.LoadModel(fixture.m_id, model);
 				const bool reached = started.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
 				const bool pending = !load->IsFinished() && !model->IsStructurallyReady();
-				auto upload = Tasks::CreateTask<bool>(*scheduler, "Independent model-test buffer upload", [&]()
+				auto upload = Tasks::CreateTask<bool>("Independent model-test buffer upload", [&]()
 					{
 						const std::array<uint32_t, 4> data{ 17, 29, 41, 53 };
 						auto& driver = RHI::Renderer::GetDriver();

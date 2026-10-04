@@ -1,3 +1,4 @@
+#include "Support/TaskTestApp.h"
 #include "Tasks/Tasks.h"
 
 #include <array>
@@ -37,14 +38,14 @@ namespace
 	class ObservedPinnedTask final : public Tasks::Task<int>
 	{
 	public:
-		ObservedPinnedTask(Tasks::Scheduler& scheduler, Function function) :
-			Tasks::Task<int>("Pinned dependent", std::move(function), EThreadType::Audio, &scheduler)
+		ObservedPinnedTask(Function function) :
+			Tasks::Task<int>("Pinned dependent", std::move(function), EThreadType::Audio)
 		{
 		}
 
-		static TSharedPtr<ObservedPinnedTask> Create(Tasks::Scheduler& scheduler, Function function)
+		static TSharedPtr<ObservedPinnedTask> Create(Function function)
 		{
-			auto task = TSharedPtr<ObservedPinnedTask>::Make(scheduler, std::move(function));
+			auto task = TSharedPtr<ObservedPinnedTask>::Make(std::move(function));
 			task->m_self = task;
 			return task;
 		}
@@ -97,14 +98,15 @@ namespace
 
 	void TestContinuationsBeforeDuringAndAfterCompletion()
 	{
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		const Result expected = MakeResult(37);
 		std::latch started(1);
 		std::latch finish(1);
 		std::atomic<uint32_t> executions = 0;
 		std::atomic<uint32_t> mismatches = 0;
-		auto parent = Tasks::CreateTask<Result>(scheduler, "Publish result", [&]()
+		auto parent = Tasks::CreateTask<Result>("Publish result", [&]()
 			{
 				++executions;
 				started.count_down();
@@ -171,10 +173,11 @@ namespace
 			std::atomic<uint32_t> parentCalls = 0;
 			std::atomic<uint32_t> mismatches = 0;
 			std::array<std::atomic<uint32_t>, continuationCount> calls{};
-			Tasks::Scheduler scheduler;
+			Tests::TaskTestApp app;
+			auto& scheduler = app.GetScheduler();
 			scheduler.AttachCurrentThreadAsMainThread();
 			std::array<Tasks::ITaskPtr, continuationCount> continuations;
-			auto parent = Tasks::CreateTask<Result>(scheduler, "Concurrent publication", [&]()
+			auto parent = Tasks::CreateTask<Result>("Concurrent publication", [&]()
 				{
 					++parentCalls;
 					return expected;
@@ -240,12 +243,13 @@ namespace
 
 	void TestRunFromLeafRetainsPredecessors()
 	{
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		Tasks::TaskPtr<int> result;
 		TWeakPtr<Tasks::ITask> predecessor;
 		{
-			auto first = Tasks::CreateTask<int>(scheduler, "First result", []() { return 20; }, EThreadType::Main);
+			auto first = Tasks::CreateTask<int>("First result", []() { return 20; }, EThreadType::Main);
 			predecessor = first;
 			result = first->Then<int>([](int value) { return value * 2 + 2; },
 				"Transform result", EThreadType::Main)->ToTaskWithResult();
@@ -262,10 +266,11 @@ namespace
 	{
 		for (bool runFromLeaf : { false, true })
 		{
-			Tasks::Scheduler scheduler;
+			Tests::TaskTestApp app;
+			auto& scheduler = app.GetScheduler();
 			scheduler.AttachCurrentThreadAsMainThread();
 			std::array<uint32_t, 5> calls{};
-			auto root = Tasks::CreateTask<int>(scheduler, "Root", [&]()
+			auto root = Tasks::CreateTask<int>("Root", [&]()
 				{
 					++calls[0];
 					return 40;
@@ -304,9 +309,10 @@ namespace
 	void TestNewContinuationDoesNotAdmitParkedSiblings()
 	{
 		uint32_t parkedCalls = 0;
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
-		auto parent = Tasks::CreateTask<int>(scheduler, "Admitted parent", []() { return 42; }, EThreadType::Main);
+		auto parent = Tasks::CreateTask<int>("Admitted parent", []() { return 42; }, EThreadType::Main);
 		auto parked = parent->Then([&](int) { ++parkedCalls; }, "Parked sibling", EThreadType::Main);
 		scheduler.Run(parent, false);
 
@@ -340,23 +346,21 @@ namespace
 		std::atomic<uint32_t> checksAtMarker = 0;
 		std::atomic<DWORD> executedOn = 0;
 		std::atomic<EThreadType> executedType = EThreadType::Main;
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.Initialize();
-		Tasks::Scheduler prerequisiteScheduler;
-		prerequisiteScheduler.AttachCurrentThreadAsMainThread();
-		auto identifyWorker = Tasks::CreateTask<DWORD>(scheduler, "Identify worker", []() { return GetCurrentThreadId(); });
+		auto identifyWorker = Tasks::CreateTask<DWORD>("Identify worker", []() { return GetCurrentThreadId(); });
 		identifyWorker->Run();
-		Require(WaitForTask(scheduler, identifyWorker), "a real Worker queue must execute without the App singleton");
+		Require(WaitForTask(scheduler, identifyWorker), "the App scheduler must execute tasks on its Worker queue");
 		const std::array<DWORD, 2> targetThreads{ scheduler.GetEditorThreadId(), identifyWorker->GetResult() };
 
 		for (size_t i = 0; i < targetThreads.size(); ++i)
 		{
 			calls = 0;
 			const DWORD targetThread = targetThreads[i];
-			auto& prerequisites = i == 0 ? scheduler : prerequisiteScheduler;
-			auto first = Tasks::CreateTask<int>(prerequisites, "First prerequisite", []() { return 20; }, EThreadType::Main);
-			auto second = Tasks::CreateTask<int>(prerequisites, "Last prerequisite", []() { return 22; }, EThreadType::Main);
-			auto dependent = ObservedPinnedTask::Create(scheduler, [&, first, second]()
+			auto first = Tasks::CreateTask<int>("First prerequisite", []() { return 20; }, EThreadType::Main);
+			auto second = Tasks::CreateTask<int>("Last prerequisite", []() { return 22; }, EThreadType::Main);
+			auto dependent = ObservedPinnedTask::Create([&, first, second]()
 				{
 					++calls;
 					executedOn = GetCurrentThreadId();
@@ -366,11 +370,11 @@ namespace
 				});
 			dependent->Join(first);
 			dependent->Join(second);
-			auto marker = Tasks::CreateTask<>(scheduler, "Ready marker", [&, dependent]()
+			auto marker = Tasks::CreateTask<>("Ready marker", [&, dependent]()
 				{
 					checksAtMarker = dependent->GetBlockedCheckCount();
 				});
-			auto setup = Tasks::CreateTask<>(scheduler, "Queue pinned work", [&, targetThread, marker, dependent]()
+			auto setup = Tasks::CreateTask<>("Queue pinned work", [&, targetThread, marker, dependent]()
 				{
 					scheduler.Run(marker, targetThread, false);
 					// The private queue is LIFO: its last entry must be skipped while blocked.
@@ -382,9 +386,9 @@ namespace
 			Require(dependent->WaitForBlockedCheckAfter(checksAtMarker),
 				"the pinned worker must revisit its blocked queue before waiting for completion");
 
-			prerequisites.Run(first, false);
-			prerequisites.ProcessTasksOnMainThread();
-			auto nextMarker = Tasks::CreateTask<>(scheduler, "One blocker remains", [&, dependent]()
+			scheduler.Run(first, false);
+			scheduler.ProcessTasksOnMainThread();
+			auto nextMarker = Tasks::CreateTask<>("One blocker remains", [&, dependent]()
 				{
 					checksAtMarker = dependent->GetBlockedCheckCount();
 				});
@@ -395,9 +399,9 @@ namespace
 
 			// A second admission attempt must not replace the first queue's affinity.
 			scheduler.Run(dependent, scheduler.GetAudioThreadId(), false);
-			prerequisites.Run(second, false);
-			prerequisites.ProcessTasksOnMainThread();
-			Require(WaitForTask(scheduler, dependent), "completion must wake the pinned worker, not the nominal Audio pool or prerequisite's scheduler");
+			scheduler.Run(second, false);
+			scheduler.ProcessTasksOnMainThread();
+			Require(WaitForTask(scheduler, dependent), "completion must wake the pinned worker, not the nominal Audio pool");
 			Require(calls == 1 && dependent->GetResult() == 42, "pinned execution must observe all prerequisite results exactly once");
 			Require(executedOn == targetThread, "the constructor's worker ID must match its actual execution thread");
 			Require(executedType == (i == 0 ? EThreadType::Editor : EThreadType::Worker),
@@ -409,17 +413,18 @@ namespace
 	{
 		const Result expected = MakeResult(117);
 		std::atomic<DWORD> executedOn = 0;
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.Initialize();
-		auto parent = Tasks::CreateTask<Result>(scheduler, "Publish pinned result", [expected]() { return expected; }, EThreadType::Main);
+		auto parent = Tasks::CreateTask<Result>("Publish pinned result", [expected]() { return expected; }, EThreadType::Main);
 		auto child = parent->Then<Result>([&](Result value)
 			{
 				executedOn = GetCurrentThreadId();
 				return value;
 			}, "Pinned typed continuation", EThreadType::Audio);
-		auto marker = Tasks::CreateTask<>(scheduler, "Ready continuation marker", []() {});
+		auto marker = Tasks::CreateTask<>("Ready continuation marker", []() {});
 		const DWORD editorThread = scheduler.GetEditorThreadId();
-		auto setup = Tasks::CreateTask<>(scheduler, "Queue pinned continuation", [&, child, marker, editorThread]()
+		auto setup = Tasks::CreateTask<>("Queue pinned continuation", [&, child, marker, editorThread]()
 			{
 				scheduler.Run(marker, editorThread, false);
 				scheduler.Run(child, editorThread, false);
@@ -432,7 +437,7 @@ namespace
 			"a real pinned worker must receive the complete continuation result");
 		Require(executedOn == editorThread, "the typed continuation must preserve explicit thread affinity");
 
-		auto workerParent = Tasks::CreateTask<Result>(scheduler, "Publish to main", [expected]() { return expected; }, EThreadType::Editor);
+		auto workerParent = Tasks::CreateTask<Result>("Publish to main", [expected]() { return expected; }, EThreadType::Editor);
 		auto mainChild = workerParent->Then<Result>([&](Result value)
 			{
 				executedOn = GetCurrentThreadId();
@@ -457,9 +462,10 @@ namespace
 		Tasks::TaskPtr<Result> retained;
 		const Result expected = MakeResult(91);
 		{
-			Tasks::Scheduler scheduler;
+			Tests::TaskTestApp app;
+			auto& scheduler = app.GetScheduler();
 			scheduler.AttachCurrentThreadAsMainThread();
-			auto cached = Tasks::TaskPtr<Result>::Make(expected, &scheduler);
+			auto cached = Tasks::TaskPtr<Result>::Make(expected);
 			retained = cached->ToTaskWithResult();
 			auto child = cached->Then<uint64_t>([](Result result) { return result.m_values[7]; },
 				"Read cached result", EThreadType::Main);
@@ -480,18 +486,19 @@ namespace
 
 	void TestJoinExpiredAndFinishedTasks()
 	{
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		TWeakPtr<Tasks::ITask> expired;
 		{
-			auto discarded = Tasks::CreateTask<>(scheduler, "Discarded prerequisite", []() {}, EThreadType::Main);
+			auto discarded = Tasks::CreateTask<>("Discarded prerequisite", []() {}, EThreadType::Main);
 			expired = discarded;
 		}
-		auto completed = Tasks::CreateTask<>(scheduler, "Finished prerequisite", []() {}, EThreadType::Main);
+		auto completed = Tasks::CreateTask<>("Finished prerequisite", []() {}, EThreadType::Main);
 		completed->Run();
 		scheduler.ProcessTasksOnMainThread();
 		uint32_t calls = 0;
-		auto dependent = Tasks::CreateTask<>(scheduler, "Independent task", [&]() { ++calls; }, EThreadType::Main);
+		auto dependent = Tasks::CreateTask<>("Independent task", [&]() { ++calls; }, EThreadType::Main);
 		dependent->Join(expired);
 		dependent->Join(completed);
 		dependent->Run();
@@ -503,14 +510,15 @@ namespace
 	{
 		constexpr size_t prerequisiteCount = 65536;
 		uint32_t calls = 0;
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
-		auto dependent = Tasks::CreateTask<>(scheduler, "Large fan-in", [&]() { ++calls; }, EThreadType::Main);
+		auto dependent = Tasks::CreateTask<>("Large fan-in", [&]() { ++calls; }, EThreadType::Main);
 		std::vector<Tasks::TaskPtr<>> prerequisites;
 		prerequisites.reserve(prerequisiteCount);
 		for (size_t i = 0; i < prerequisiteCount; ++i)
 		{
-			auto prerequisite = Tasks::CreateTask<>(scheduler, "Prerequisite", []() {}, EThreadType::Main);
+			auto prerequisite = Tasks::CreateTask<>("Prerequisite", []() {}, EThreadType::Main);
 			dependent->Join(prerequisite);
 			prerequisites.emplace_back(std::move(prerequisite));
 		}

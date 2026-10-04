@@ -1,3 +1,4 @@
+#include "Support/TaskTestApp.h"
 #include "AssetRegistry/AssetCache.h"
 #include "Core/FileRevision.h"
 #include "AssetRegistry/AssetScanSourceRevisionCache.h"
@@ -873,7 +874,8 @@ namespace
 		TempDirectory directory("scan-listener-boundary");
 		const auto context = CreateWorkspaceContext(directory);
 		WriteScanAssetFixture(context);
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		AssetRegistry registry(context, &scheduler);
 		TargetedUpdateAssetInfoHandler handler;
@@ -895,7 +897,7 @@ namespace
 		content.m_onFinished = [&]()
 		{
 			events.emplace_back("end");
-			auto task = Tasks::CreateTask<bool>(scheduler, "Finish scan listener batch", [&, captured = token, bSucceed]()
+			auto task = Tasks::CreateTask<bool>("Finish scan listener batch", [&, captured = token, bSucceed]()
 			{
 				registry.CompleteAssetProcessing(captured, bSucceed);
 				return bSucceed;
@@ -932,7 +934,7 @@ namespace
 		{
 			if (bCompletionQueued) return Tasks::TaskPtr<bool>::Make(true);
 			bCompletionQueued = true;
-			auto task = Tasks::CreateTask<bool>(scheduler, "Acknowledge previous scan", [&, captured = token]()
+			auto task = Tasks::CreateTask<bool>("Acknowledge previous scan", [&, captured = token]()
 			{
 				registry.CompleteAssetProcessing(captured, true);
 				bCompleted = true;
@@ -994,7 +996,8 @@ namespace
 		{
 			RewriteFileWithNewRevision(paths[i], "source-v2");
 		}
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		AssetRegistry registry(context, bAsync ? &scheduler : nullptr);
 		handler.m_registry = &registry;
@@ -1025,7 +1028,7 @@ namespace
 			}
 			if (bAsync)
 			{
-				auto acknowledge = Tasks::CreateTask<bool>(scheduler, "Acknowledge scan fixture", [&, token]()
+				auto acknowledge = Tasks::CreateTask<bool>("Acknowledge scan fixture", [&, token]()
 				{
 					registry.CompleteAssetProcessing(token, true);
 					return true;
@@ -2720,7 +2723,8 @@ namespace
 			workspaceContext.GetContent() / "Retry.raw.asset";
 
 		bool bMetadataMutatedDuringWait = false;
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		{
 			AssetRegistry registry(workspaceContext, &scheduler);

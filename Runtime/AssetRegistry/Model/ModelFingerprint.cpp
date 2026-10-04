@@ -163,20 +163,20 @@ bool ModelImporter::RequestFingerprint(const FileId& fileId)
 			outputRevision.m_modificationTimeNanoseconds >= request.m_sourceRevision.m_modificationTimeNanoseconds &&
 			outputRevision.m_modificationTimeNanoseconds >= request.m_metadataRevision.m_modificationTimeNanoseconds)
 		{
-			request.m_task = Tasks::TaskPtr<bool>::Make(true, m_scheduler);
+			request.m_task = Tasks::TaskPtr<bool>::Make(true);
 			m_fingerprintRequests[fileId] = std::move(request);
 			return true;
 		}
 	}
 
 	request.m_generation = ++m_nextFingerprintGeneration;
-	auto render = Tasks::CreateTask<TVector<uint8_t>>(*m_scheduler, "Render model fingerprint",
+	auto render = Tasks::CreateTask<TVector<uint8_t>>("Render model fingerprint",
 		[fileId, request]()
 		{
 			return RenderFingerprint(fileId, request.m_sourcePath, request.m_unitScale,
 				request.m_bBatchByMaterial, request.m_bFlipTexcoordY);
 		}, EThreadType::Background);
-	auto publish = Tasks::CreateTask<bool>(*m_scheduler, "Publish model fingerprint",
+	auto publish = Tasks::CreateTask<bool>("Publish model fingerprint",
 		[this, fileId, request, outputPath, render]() mutable
 		{
 			// Completed status must not retain the rendered image.

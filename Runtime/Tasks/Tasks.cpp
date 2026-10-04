@@ -16,9 +16,10 @@ using namespace std;
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-ITask::ITask(const std::string& name, EThreadType thread, Scheduler* scheduler) :
-	m_threadType(thread), m_pScheduler(scheduler), m_name(name)
+ITask::ITask(const std::string& name, EThreadType thread) :
+	m_threadType(thread), m_name(name)
 {
+	auto* scheduler = App::GetSubmodule<Scheduler>();
 	m_pSyncBlock = scheduler ? scheduler->AcquireTaskSyncBlock() : TUniquePtr<TaskSyncBlock>::Make();
 }
 
@@ -94,8 +95,7 @@ void ITask::Join(const TVector<TWeakPtr<ITask>>& jobs)
 ITaskPtr ITask::Run()
 {
 	ITaskPtr res = m_self.Lock();
-	check(m_pScheduler);
-	m_pScheduler->Run(res);
+	App::GetSubmodule<Scheduler>()->Run(res);
 	return res;
 }
 
@@ -130,9 +130,9 @@ void ITask::Complete()
 	{
 		if (auto task = dependency.TryLock())
 		{
-			if (--task->m_numBlockers == 0 && task->m_pScheduler)
+			if (--task->m_numBlockers == 0)
 			{
-				task->m_pScheduler->NotifyTaskReady(*task);
+				App::GetSubmodule<Scheduler>()->NotifyTaskReady(*task);
 			}
 		}
 	}

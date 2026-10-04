@@ -28,16 +28,6 @@ namespace Sailor
 		template<typename TResult = void, typename TArgs = void>
 		using TaskPtr = TSharedPtr<Task<TResult, TArgs>>;
 
-		// The scheduler must outlive scheduling and execution, not retained completed results.
-		template<typename TResult = void, typename TArgs = void>
-		TaskPtr<TResult, TArgs> CreateTask(Scheduler& scheduler, const std::string& name,
-			typename TFunction<TResult, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
-		{
-			auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread, &scheduler);
-			task->m_self = task;
-			return task;
-		}
-
 		template<typename TResult = void, typename TArgs = void>
 		TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
@@ -118,16 +108,13 @@ namespace Sailor
 			SAILOR_API void ChainTasks(const ITaskPtr& nextTask);
 			virtual void SetContinuationArgs(ITask&) const {}
 
-			SAILOR_API ITask(const std::string& name, EThreadType thread,
-				Scheduler* scheduler = App::GetSubmodule<Scheduler>());
+			SAILOR_API ITask(const std::string& name, EThreadType thread);
 
 			EThreadType m_threadType;
 			std::atomic<DWORD> m_threadAffinity{ static_cast<DWORD>(-1) };
 			std::atomic<uint8_t> m_state = 0;
 			std::atomic<uint32_t> m_numBlockers = 0;
 			TUniquePtr<TaskSyncBlock> m_pSyncBlock;
-			// Scheduling, continuations and execution require a live scheduler; Wait and destruction do not.
-			Scheduler* m_pScheduler;
 
 			TWeakPtr<ITask> m_self;
 
@@ -142,9 +129,6 @@ namespace Sailor
 
 			template<typename TResult, typename TArgs>
 			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
-			template<typename TResult, typename TArgs>
-			friend TaskPtr<TResult, TArgs> CreateTask(Scheduler& scheduler, const std::string& name,
-				typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
 		};
 
 		template<typename TResult>
@@ -234,15 +218,14 @@ namespace Sailor
 			}
 
 			template<typename TResult1>
-			Task(TResult1 result, Scheduler* scheduler = App::GetSubmodule<Scheduler>()) requires NotVoid<TResult1>&& NotVoid<TResult>
-				: ITask("TaskResult", EThreadType::Worker, scheduler)
+			Task(TResult1 result) requires NotVoid<TResult1>&& NotVoid<TResult>
+				: ITask("TaskResult", EThreadType::Worker)
 			{
 				ResultBase::m_result = std::move(result);
 				ITask::m_state |= StateMask::IsFinishedBit;
 			}
 
-			Task(const std::string& name, Function function, EThreadType thread,
-				Scheduler* scheduler = App::GetSubmodule<Scheduler>()) : ITask(name, thread, scheduler)
+			Task(const std::string& name, Function function, EThreadType thread) : ITask(name, thread)
 			{
 				m_function = std::move(function);
 			}
@@ -253,8 +236,7 @@ namespace Sailor
 				std::string name = "ChainedTask",
 				EThreadType thread = EThreadType::Worker)
 			{
-				check(ITask::m_pScheduler);
-				auto resultTask = Tasks::CreateTask<TContinuationResult, TResult>(*ITask::m_pScheduler,
+				auto resultTask = Tasks::CreateTask<TContinuationResult, TResult>(
 					name, std::move(function), thread);
 
 				ChainTasks(resultTask);
@@ -265,7 +247,6 @@ namespace Sailor
 
 			SAILOR_API TaskPtr<TResult, void> ToTaskWithResult() requires NotVoid<TResult>
 			{
-				check(ITask::m_pScheduler);
 				typename TFunction<TResult, void>::type function;
 				if (ITask::IsFinished())
 				{
@@ -275,7 +256,7 @@ namespace Sailor
 				{
 					function = [this]() { return ResultBase::m_result; };
 				}
-				auto resultTask = Tasks::CreateTask<TResult>(*ITask::m_pScheduler, "Get result task",
+				auto resultTask = Tasks::CreateTask<TResult>("Get result task",
 					std::move(function), ITask::m_threadType);
 
 				ChainTasks(resultTask);
@@ -302,7 +283,7 @@ namespace Sailor
 				if (ITask::IsInQueue() || ITask::IsStarted() || ITask::IsFinished())
 				{
 					// The parent is already admitted; this new child has no subtree to schedule.
-					ITask::m_pScheduler->Run(task, false);
+					App::GetSubmodule<Scheduler>()->Run(task, false);
 				}
 			}
 

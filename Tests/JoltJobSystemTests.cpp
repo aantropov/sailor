@@ -1,3 +1,4 @@
+#include "Support/TaskTestApp.h"
 #include "Physics/JoltJobSystem.h"
 #include "Memory/WeakPtr.hpp"
 #include "Tasks/Tasks.h"
@@ -50,7 +51,8 @@ namespace
 
 	void TestFinishedWrapperOutlivesJobSystem()
 	{
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		Tasks::ITaskPtr wrapper;
 		TWeakPtr<std::atomic<uint32_t>> completion;
@@ -100,7 +102,8 @@ namespace
 
 	void TestBarrierWinsAndWrapperReleasesJob()
 	{
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		Physics::JoltJobSystem jobs(&scheduler);
 		const auto completion = Physics::JoltJobSystemTestAccess::GetCompletion(jobs);
@@ -134,7 +137,8 @@ namespace
 
 	void TestDependentAndSpawnedJobs()
 	{
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		Physics::JoltJobSystem jobs(&scheduler);
 		const auto completion = Physics::JoltJobSystemTestAccess::GetCompletion(jobs);

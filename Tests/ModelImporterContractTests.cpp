@@ -1,3 +1,4 @@
+#include "Support/TaskTestApp.h"
 // stb is private to the runtime DLL; the test owns its image decoder.
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_IMPLEMENTATION
@@ -95,7 +96,7 @@ namespace Sailor
 		{
 			auto model = ModelPtr::Make(importer.m_allocator, id, TVector<RHI::RHIMeshPtr>{ mesh });
 			model->Flush();
-			importer.m_promises.At_Lock(id) = Tasks::TaskPtr<ModelPtr>::Make(model, importer.m_scheduler);
+			importer.m_promises.At_Lock(id) = Tasks::TaskPtr<ModelPtr>::Make(model);
 			importer.m_loadedModels.At_Lock(id) = model;
 			importer.m_loadedModels.Unlock(id);
 			importer.m_promises.Unlock(id);
@@ -749,7 +750,8 @@ namespace
 		Require(static_cast<bool>(modelId), "the broken model fixture must register its metadata before importing geometry");
 		TUniquePtr<ModelImporter> importerLifetime;
 		// The scheduler drains Main callbacks before importer/metadata teardown, including on failure.
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.Initialize();
 		importerLifetime = TUniquePtr<ModelImporter>::Make(&fixture.m_modelHandler, &scheduler, &fixture.m_registry);
 		auto& importer = *importerLifetime;
@@ -859,7 +861,8 @@ namespace
 		const FileId modelId = fixture.m_registry.GetOrLoadFile("Pending.gltf");
 		Require(static_cast<bool>(modelId), "the pending model fixture must register its metadata before importing geometry");
 		TUniquePtr<ModelImporter> importerLifetime;
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		importerLifetime = TUniquePtr<ModelImporter>::Make(&fixture.m_modelHandler, &scheduler, &fixture.m_registry);
 		auto& importer = *importerLifetime;
@@ -918,7 +921,8 @@ namespace
 		const FileId modelId = fixture.m_registry.GetOrLoadFile("Cached.gltf");
 		Require(static_cast<bool>(modelId), "the cached model fixture must register its metadata");
 		TUniquePtr<ModelImporter> importerLifetime;
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		importerLifetime = TUniquePtr<ModelImporter>::Make(&fixture.m_modelHandler, &scheduler, &fixture.m_registry);
 		auto& importer = *importerLifetime;
@@ -1193,7 +1197,8 @@ namespace
 		CreateAnimationTestModel(workspace.Context().GetContent() / "Ship.gltf", {}, false);
 		AnimationRegistryFixture fixture(workspace.Context());
 		TUniquePtr<ModelImporter> importerLifetime;
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		importerLifetime = TUniquePtr<ModelImporter>::Make(&fixture.m_modelHandler, &scheduler, &fixture.m_registry);
 		auto model = fixture.LoadModel("Ship.gltf");
@@ -1217,7 +1222,8 @@ namespace
 		FileId m_id;
 		std::filesystem::path m_source, m_output;
 		TUniquePtr<ModelImporter> m_importer;
-		Tasks::Scheduler m_scheduler;
+		Tests::TaskTestApp m_app;
+		Tasks::Scheduler& m_scheduler = m_app.GetScheduler();
 
 		explicit ModelFingerprintFixture(bool bProject = true) : m_workspace(bProject), m_assets(m_workspace.Context())
 		{
@@ -1243,7 +1249,14 @@ namespace
 		{
 			Tasks::ITaskPtr task;
 			Require(m_scheduler.TryFetchNextAvailiableTask(task, EThreadType::Background), "a requested preview must enqueue rendering");
-			task->Execute();
+			std::jthread background([task]() { task->Execute(); });
+			// Preview preparation captures material values on the App's Render queue.
+			while (!task->IsFinished())
+			{
+				Tasks::ITaskPtr capture;
+				if (m_scheduler.TryFetchNextAvailiableTask(capture, EThreadType::Render)) capture->Execute();
+				else std::this_thread::yield();
+			}
 		}
 
 		Tasks::TaskPtr<bool> Request()

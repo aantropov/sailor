@@ -54,7 +54,7 @@ void Sailor::LogMessage(ELogSeverity severity, const char* format, ...)
 	if (scheduler && !scheduler->IsMainThread())
 	{
 		const bool bIsRendererThread = scheduler->IsRendererThread();
-		Tasks::CreateTask(*scheduler, severity == ELogSeverity::Error ? "LogError" : "Log",
+		Tasks::CreateTask(severity == ELogSeverity::Error ? "LogError" : "Log",
 			[message = std::string(buffer), severity, bIsRendererThread]()
 			{
 				WriteConsole(severity, message.c_str(), bIsRendererThread);

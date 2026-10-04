@@ -493,7 +493,6 @@ Tasks::ITaskPtr PhysicsECS::Tick(float deltaTime)
 	bool bStepSucceeded = true;
 	auto& scheduler = m_scheduler ? *m_scheduler : *App::GetSubmodule<Tasks::Scheduler>();
 	auto physicsTask = Tasks::CreateTask(
-		scheduler,
 		"Physics fixed step",
 		[this, numSteps, &bStepSucceeded]()
 		{

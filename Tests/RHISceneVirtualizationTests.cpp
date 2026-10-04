@@ -1,3 +1,4 @@
+#include "Support/TaskTestApp.h"
 #include "Engine/World.h"
 #include "FrameGraph/BlitFormatConversion.h"
 #include "FrameGraph/FrameGraphNode.h"
@@ -610,7 +611,8 @@ namespace
 	{
 		for (const bool bIncludeDebugPass : { false, true })
 		{
-			Tasks::Scheduler scheduler;
+			Tests::TaskTestApp app;
+			auto& scheduler = app.GetScheduler();
 			scheduler.AttachCurrentThreadAsMainThread();
 			auto graph = RHIFrameGraphPtr::Make();
 			if (bIncludeDebugPass)
@@ -632,7 +634,7 @@ namespace
 			for (uint32_t camera = 0; camera < 2u; ++camera)
 			{
 				// Main-queue admission lets this test complete each camera independently.
-				sceneView->m_debugDraw.Add(Tasks::CreateTask<RHICommandListPtr>(scheduler,
+				sceneView->m_debugDraw.Add(Tasks::CreateTask<RHICommandListPtr>(
 					"Record retained debug snapshot", [snapshot, &completed]()
 					{
 						DebugContext::DrawDebugMesh({}, glm::mat4(1.0f), snapshot, glm::ivec2(64));
@@ -648,7 +650,7 @@ namespace
 			Require(prerequisites.Num() == 2u,
 				"every camera recording must belong to preparation even without a usable DebugDraw pass");
 			uint32_t completedAtSubmission = 0u;
-			auto frame = Tasks::CreateTask(scheduler, "Submit after all recording",
+			auto frame = Tasks::CreateTask("Submit after all recording",
 				[&]() { completedAtSubmission = completed; }, EThreadType::Main);
 			for (const auto& task : prerequisites)
 			{

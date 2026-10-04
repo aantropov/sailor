@@ -2540,9 +2540,9 @@ components:
 	class ObservedBakeTask final : public Tasks::Task<>
 	{
 	public:
-		ObservedBakeTask(Tasks::Scheduler& scheduler, Function function,
+		ObservedBakeTask(Function function,
 			TSharedPtr<BakeTaskObservation> observation) :
-			Task("Controlled background bake", std::move(function), EThreadType::Background, &scheduler),
+			Task("Controlled background bake", std::move(function), EThreadType::Background),
 			m_observation(std::move(observation))
 		{}
 
@@ -2581,7 +2581,7 @@ components:
 			auto& controller = GlobalIlluminationBakeControllerTestAccess::GetController(editor);
 			auto state = GlobalIlluminationBakeControllerTestAccess::GetState(controller);
 			auto observation = TSharedPtr<BakeTaskObservation>::Make();
-			auto task = TSharedPtr<ObservedBakeTask>::Make(scheduler, [state, observation, terminal]()
+			auto task = TSharedPtr<ObservedBakeTask>::Make([state, observation, terminal]()
 				{
 					state->m_lock.Lock();
 					state->m_status.m_state = terminal;
@@ -2642,7 +2642,7 @@ components:
 		bool prepared = true;
 		GIProbesPreparedScene result;
 		std::string diagnostic;
-		auto task = TSharedPtr<ObservedBakeTask>::Make(scheduler, [snapshot, state, &prepared, &result, &diagnostic]()
+		auto task = TSharedPtr<ObservedBakeTask>::Make([snapshot, state, &prepared, &result, &diagnostic]()
 			{
 				prepared = PrepareGIProbesScene(*snapshot, GIProbesBakeSettings{}, &state->m_cancel,
 					result, diagnostic);
@@ -2692,7 +2692,7 @@ components:
 		auto observation = TSharedPtr<BakeTaskObservation>::Make();
 		bool saved = false;
 		std::string diagnostic;
-		auto task = TSharedPtr<ObservedBakeTask>::Make(scheduler, [state, observation, path, &saved, &diagnostic]()
+		auto task = TSharedPtr<ObservedBakeTask>::Make([state, observation, path, &saved, &diagnostic]()
 			{
 				state->m_lock.Lock();
 				state->m_status.m_state = EEditorGIProbesBakeState::Saving;

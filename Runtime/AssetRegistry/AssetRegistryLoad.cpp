@@ -107,7 +107,7 @@ void AssetRegistry::RequestAssetUpdate(const FileId& fileId)
 
 	// Main may be waiting for this caller. Enqueue without entering App's
 	// synchronous dispatch, and leave the live asset unchanged until Main runs.
-	auto update = Tasks::CreateTask(*m_scheduler, "Reload requested asset", [this, fileId]()
+	auto update = Tasks::CreateTask("Reload requested asset", [this, fileId]()
 		{
 			{
 				std::lock_guard<std::mutex> lock(m_assetProcessingMutex);

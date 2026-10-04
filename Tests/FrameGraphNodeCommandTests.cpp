@@ -342,7 +342,7 @@ namespace
 		bool IsFinished() const override
 		{
 			const bool finished = Tasks::ITask::IsFinished();
-			if (!finished && m_pScheduler->IsRendererThread() && ++m_renderChecks == 2)
+			if (!finished && App::GetSubmodule<Tasks::Scheduler>()->IsRendererThread() && ++m_renderChecks == 2)
 			{
 				m_observed.count_down();
 				m_resume.wait();

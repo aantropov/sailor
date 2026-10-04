@@ -79,7 +79,7 @@ namespace
 		std::vector<std::string> expectedMessages;
 		std::string expectedOutput, expectedErrors;
 		const std::string prefix = producer == EThreadType::Render ? "Renderer thread: " : "";
-		auto task = Tasks::CreateTask(scheduler, "Produce log messages", [&]()
+		auto task = Tasks::CreateTask("Produce log messages", [&]()
 			{
 				for (int i = 0; i < 24; ++i)
 				{
@@ -121,7 +121,7 @@ namespace
 		std::barrier start(static_cast<std::ptrdiff_t>(producers.size()));
 		for (size_t producer = 0; producer < producers.size(); ++producer)
 		{
-			tasks[producer] = Tasks::CreateTask(scheduler, "Concurrent log producer", [&, producer]()
+			tasks[producer] = Tasks::CreateTask("Concurrent log producer", [&, producer]()
 				{
 					start.arrive_and_wait();
 					for (int i = 0; i < 16; ++i)
@@ -208,7 +208,7 @@ namespace Sailor::Tests
 		TestConcurrentProducers(*scheduler);
 		{
 			ConsoleCapture capture;
-			auto pending = Tasks::CreateTask(*scheduler, "Log before editor detach", []()
+			auto pending = Tasks::CreateTask("Log before editor detach", []()
 				{
 					SAILOR_LOG("editor-detach-pending");
 				}, EThreadType::Worker);

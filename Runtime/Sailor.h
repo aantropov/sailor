@@ -16,6 +16,8 @@
 
 namespace Sailor
 {
+	namespace Tests { class TaskTestApp; }
+
 	struct EditorGIProbesBakeRequest;
 	struct EditorGIProbesBakeStatus;
 	struct EditorGlobalIlluminationState;
@@ -295,6 +297,8 @@ namespace Sailor
 		AppArgs m_args{};
 
 	private:
+		friend class Tests::TaskTestApp;
+
 		static bool DispatchOnEngineMainThread(std::function<void()> command);
 		static void QueueAssetReloadTaskLocked(Tasks::Scheduler* scheduler);
 		static void ProcessAssetReloadRequestOnEngineMainThread();

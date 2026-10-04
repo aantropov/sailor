@@ -326,6 +326,7 @@ if(meshoptimizer_FOUND)
 endif()
 
 if(SAILOR_BUILD_TESTS)
+  target_sources(SailorLib PRIVATE "${PROJECT_SOURCE_DIR}/Tests/Support/TaskTestApp.cpp")
   target_compile_definitions(SailorLib PUBLIC
     $<BUILD_INTERFACE:SAILOR_SHADER_CACHE_TEST_HOOKS>
     $<BUILD_INTERFACE:SAILOR_FILE_IO_TEST_HOOKS>
