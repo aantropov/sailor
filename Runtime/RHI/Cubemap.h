@@ -20,8 +20,8 @@ namespace Sailor::RHI
 			RHITexture(filtration, clamping, bShouldGenerateMips, defaultLayout, reduction)
 		{}
 
-		RHITexturePtr GetFace(uint32_t face, uint32_t mipLevel = 0) const;
-		RHICubemapPtr GetMipLevel(uint32_t mipLevel) const;
+		SAILOR_API RHITexturePtr GetFace(uint32_t face, uint32_t mipLevel = 0) const;
+		SAILOR_API RHICubemapPtr GetMipLevel(uint32_t mipLevel) const;
 		uint32_t GetMipLevels() const { return (uint32_t)m_mipLevels.Num(); }
 
 	protected:
