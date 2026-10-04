@@ -47,6 +47,8 @@ using namespace Sailor;
 namespace Sailor::Tests
 {
 	void RequireRejectedComputeSubmission(const std::function<bool()>& submit);
+	void RunRuntimeGIProbesTaskTests();
+	uint64_t CountRuntimeGICompletedSamples(const RuntimeGIProbesService& service);
 }
 
 namespace Sailor
@@ -70,6 +72,11 @@ namespace Sailor
 	class GlobalIlluminationECSTestAccess
 	{
 	public:
+		static const RuntimeGIProbesService& RuntimeProbes(const GlobalIlluminationECS& system)
+		{
+			return system.m_runtimeProbes;
+		}
+
 		static bool FailCurrentPreparation(GlobalIlluminationECS& system)
 		{
 			if (!system.m_runtimeScenePreparationTask)
@@ -310,6 +317,10 @@ namespace
 		const auto published = gi.GetActiveSnapshot();
 		data = published->m_layout;
 		const auto completed = gi.GetRuntimeGIProbesStatus();
+		const auto prepared = GlobalIlluminationECSTestAccess::PreparedScene(gi);
+		const auto preparationCount = GlobalIlluminationECSTestAccess::PreparationCount(gi);
+		const auto& service = GlobalIlluminationECSTestAccess::RuntimeProbes(gi);
+		Require(Tests::CountRuntimeGICompletedSamples(service) > 0, "the initial ECS solve must trace real irradiance samples");
 		publishedBytes = completed.m_publishedBytes;
 		Require(completed.m_activeProbeCount == 8 && completed.m_readyProbeCount == 8,
 			"the ECS fixture must fully refine its eight real probes");
@@ -319,6 +330,8 @@ namespace
 		Require(gi.GetRuntimeGIProbesStatus().m_readyProbeCount == completed.m_readyProbeCount,
 			"ordinary budget changes must retain compatible completed probes");
 		Require(gi.RestartRuntimeGIProbes(diagnostic), diagnostic);
+		Require(Tests::CountRuntimeGICompletedSamples(service) == 0,
+			"explicit ECS restart must clear the actual accumulators, not only the reported progress");
 		Require(gi.GetRuntimeGIProbesStatus().m_readyProbeCount == 0 &&
 			gi.GetRuntimeGIProbesStatus().m_refinement == 0.0f,
 			"explicit ECS restart must discard refined samples even with identical inputs");
@@ -328,6 +341,11 @@ namespace
 		Require(gi.GetActiveSnapshot() != published &&
 			gi.GetRuntimeGIProbesStatus().m_publishedRevision > completed.m_publishedRevision,
 			"the restarted solver must trace and publish a new result");
+		Require(Tests::CountRuntimeGICompletedSamples(service) > 0 &&
+			GlobalIlluminationECSTestAccess::PreparedScene(gi) == prepared &&
+			GlobalIlluminationECSTestAccess::PreparationCount(gi) == preparationCount,
+			"unchanged-scene ECS restart must execute new ray work using the existing prepared scene");
+		std::cout << "ECS Runtime GI restart: unchanged capture, zeroed samples and new GI work passed\n";
 	}
 
 	class ReloadTaskProbe final : public IAssetInfoHandlerListener
@@ -824,7 +842,9 @@ namespace
 		}
 	}
 
-	void TestPreparationRecovery(bool explicitRebuild)
+	enum class PreparationRecovery { MaterialChange, Restart, Rebuild };
+
+	void TestPreparationRecovery(PreparationRecovery recovery)
 	{
 		GIWorld world;
 		world.Step();
@@ -841,7 +861,12 @@ namespace
 		}
 		Require(GlobalIlluminationECSTestAccess::PreparationCount(gi) == attempts,
 			"unchanged failed inputs must not trigger repeated expensive preparation");
-		if (explicitRebuild)
+		if (recovery == PreparationRecovery::Restart)
+		{
+			std::string diagnostic;
+			Require(gi.RestartRuntimeGIProbes(diagnostic), diagnostic);
+		}
+		else if (recovery == PreparationRecovery::Rebuild)
 		{
 			std::string diagnostic;
 			Require(gi.RebuildRuntimeGIProbesScene(diagnostic), diagnostic);
@@ -860,6 +885,12 @@ namespace
 		world.WaitReady();
 		Require(GlobalIlluminationECSTestAccess::PreparationCount(gi) == attempts + 1,
 			"changed inputs or explicit rebuild must retry the failed first preparation once");
+		if (recovery == PreparationRecovery::Restart)
+		{
+			Require(Tests::CountRuntimeGICompletedSamples(GlobalIlluminationECSTestAccess::RuntimeProbes(gi)) > 0,
+				"restart after a failed preparation must execute real sample work before reporting success");
+			std::cout << "Runtime GI failed preparation: explicit restart retries and publishes passed\n";
+		}
 	}
 
 	void TestStalePreparationRecovery()
@@ -1855,10 +1886,12 @@ namespace Sailor::Tests
 		};
 		GIProbesDataPtr data;
 		uint64_t publishedBytes = 0;
+		run("Runtime GI task ownership", [&]() { RunRuntimeGIProbesTaskTests(); });
 		run("Restart", [&]() { TestRestart(data, publishedBytes); });
 		run("Material contributor revision", [&]() { TestContributorMaterialRevision(); });
-		run("Changed-input recovery", [&]() { TestPreparationRecovery(false); });
-		run("Explicit recovery", [&]() { TestPreparationRecovery(true); });
+		run("Changed-input recovery", [&]() { TestPreparationRecovery(PreparationRecovery::MaterialChange); });
+		run("Explicit recovery", [&]() { TestPreparationRecovery(PreparationRecovery::Rebuild); });
+		run("Restart after failed preparation", [&]() { TestPreparationRecovery(PreparationRecovery::Restart); });
 		run("Stale preparation recovery", [&]() { TestStalePreparationRecovery(); });
 		run("Lighting preparation", [&]() { TestLightingPreparation(); });
 		run("Emission preparation", [&]() { TestEmissionPreparation(); });

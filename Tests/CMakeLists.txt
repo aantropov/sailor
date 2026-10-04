@@ -308,6 +308,7 @@ add_executable(VulkanSubmissionTests
     VulkanSubmissionTests.cpp
     PathTracerCommandTests.cpp
     GIProbesCommandTests.cpp
+    RuntimeGIProbesTaskTests.cpp
     TextureImporterCommandTests.cpp
     MaterialImporterCommandTests.cpp
     AudioCommandTests.cpp
