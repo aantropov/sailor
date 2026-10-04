@@ -3,6 +3,7 @@
 #include "Core/Defines.h"
 
 #include <cstdint>
+#include <ctime>
 #include <string>
 
 namespace YAML
@@ -15,8 +16,6 @@ namespace Sailor
 	struct FileRevision final
 	{
 		int64_t m_modificationTimeNanoseconds{};
-		uint64_t m_fileSize{};
-		uint64_t m_contentHash{};
 		bool m_bIsValid = false;
 
 		bool operator==(const FileRevision& rhs) const noexcept
@@ -36,6 +35,7 @@ namespace Sailor
 
 	namespace Utils
 	{
+		SAILOR_API std::time_t GetFileModificationTime(const std::string& filepath);
 		SAILOR_API bool TryGetFileRevision(
 			const std::string& filepath,
 			FileRevision& outRevision) noexcept;

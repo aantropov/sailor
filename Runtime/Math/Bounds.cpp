@@ -19,42 +19,16 @@ const TVector<glm::vec3>& Frustum::GetCorners() const
 
 void Frustum::ExtractFrustumPlanes(const glm::mat4& projectionViewMatrix, bool bNormalizePlanes)
 {
-	// TODO: Find why the code doesn't work
-	/*m_planes[0] = Plane(matrix[3] + matrix[0]);       // left
-	m_planes[1] = Plane(matrix[3] - matrix[0]);       // right
-	m_planes[2] = Plane(matrix[3] - matrix[1]);       // top
-	m_planes[3] = Plane(matrix[3] + matrix[1]);       // bottom
-	m_planes[4] = Plane(matrix[3] + matrix[2]);       // near
-	m_planes[5] = Plane(matrix[3] - matrix[2]);       // far
-	*/
+	// GLM indexes columns; clipping inequalities use projection-view rows.
+	const glm::mat4 rows = glm::transpose(projectionViewMatrix);
+	m_planes[0] = Plane(rows[3] + rows[0]);
+	m_planes[1] = Plane(rows[3] - rows[0]);
+	m_planes[2] = Plane(rows[3] - rows[1]);
+	m_planes[3] = Plane(rows[3] + rows[1]);
+	m_planes[4] = Plane(rows[3] - rows[2]);
+	m_planes[5] = Plane(rows[2]);
 
 	CalculateCorners(projectionViewMatrix, true);
-
-	const glm::vec3 right = glm::normalize(m_corners[0] - m_corners[1]);
-	const glm::vec3 up = glm::normalize(m_corners[0] - m_corners[3]);
-	const glm::vec3 forward = glm::normalize(m_corners[0] - m_corners[4]);
-
-	const glm::vec3 centerFar = 0.5f * (m_corners[0] + m_corners[2]);
-	const glm::vec3 centerNear = 0.5f * (m_corners[4] + m_corners[6]);
-
-	const glm::vec3 centerBottom = 0.5f * (m_corners[2] + m_corners[7]);
-	const glm::vec3 centerTop = 0.5f * (m_corners[0] + m_corners[5]);
-
-	const glm::vec3 centerLeft = 0.5f * (m_corners[1] + m_corners[6]);
-	const glm::vec3 centerRight = 0.5f * (m_corners[0] + m_corners[7]);
-
-	m_planes[4] = Plane(forward, centerNear);
-	m_planes[5] = Plane(-forward, centerFar);
-
-	const glm::vec3 leftNormal = glm::normalize(glm::cross(forward, up));
-	const glm::vec3 rightNormal = glm::normalize(glm::cross(up, forward));
-	m_planes[0] = Plane(leftNormal, centerLeft);
-	m_planes[1] = Plane(rightNormal, centerRight);
-
-	const glm::vec3 bottomNormal = glm::normalize(glm::cross(right, forward));
-	const glm::vec3 topNormal = glm::normalize(glm::cross(forward, right));
-	m_planes[2] = Plane(topNormal, centerTop);
-	m_planes[3] = Plane(bottomNormal, centerBottom);
 
 	if (bNormalizePlanes)
 	{
@@ -306,194 +280,98 @@ bool Frustum::OverlapsAABB(const AABB& aabb) const
 	return bIsInside;
 }
 
-// We're using SSE intrinsincts to significantly speed-up the culling test
-// https://gamedev.ru/code/articles/FrustumCulling
 void Frustum::OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults) const
 {
+	uint32_t i = 0;
 #if SAILOR_USE_X86_SIMD
-	float* pAabbData = reinterpret_cast<float*>(&aabb[0]);
-	int32_t* cullingResSse = &outResults[0];
-
-	__m128 planesX[6];
-	__m128 planesY[6];
-	__m128 planesZ[6];
-	__m128 planesD[6];
-
-	uint32_t i, j;
-	for (i = 0; i < 6; i++)
+	for (; numObjects - i >= 4; i += 4)
 	{
-		planesX[i] = _mm_set1_ps(m_planes[i].m_abcd.x);
-		planesY[i] = _mm_set1_ps(m_planes[i].m_abcd.y);
-		planesZ[i] = _mm_set1_ps(m_planes[i].m_abcd.z);
-		planesD[i] = _mm_set1_ps(m_planes[i].m_abcd.w);
-	}
-
-	__m128 zero = _mm_setzero_ps();
-	for (i = 0; i < numObjects; i += 4)
-	{
-		__m128 aabbMinX = _mm_load_ps(pAabbData);
-		__m128 aabbMinY = _mm_load_ps(pAabbData + 4);
-		__m128 aabbMinZ = _mm_load_ps(pAabbData + 8);
-
-		__m128 aabbMaxX = _mm_load_ps(pAabbData + 12);
-		__m128 aabbMaxY = _mm_load_ps(pAabbData + 16);
-		__m128 aabbMaxZ = _mm_load_ps(pAabbData + 20);
-
-		pAabbData += 24;
-
-		_MM_TRANSPOSE4_PS(aabbMinX, aabbMinY, aabbMinZ, zero);
-		_MM_TRANSPOSE4_PS(aabbMaxX, aabbMaxY, aabbMaxZ, zero);
-
-		__m128 intersectionRes = _mm_setzero_ps();
-		for (j = 0; j < 6; j++)
+		const __m128 minX = _mm_setr_ps(aabb[i].m_min.x, aabb[i + 1].m_min.x, aabb[i + 2].m_min.x, aabb[i + 3].m_min.x);
+		const __m128 minY = _mm_setr_ps(aabb[i].m_min.y, aabb[i + 1].m_min.y, aabb[i + 2].m_min.y, aabb[i + 3].m_min.y);
+		const __m128 minZ = _mm_setr_ps(aabb[i].m_min.z, aabb[i + 1].m_min.z, aabb[i + 2].m_min.z, aabb[i + 3].m_min.z);
+		const __m128 maxX = _mm_setr_ps(aabb[i].m_max.x, aabb[i + 1].m_max.x, aabb[i + 2].m_max.x, aabb[i + 3].m_max.x);
+		const __m128 maxY = _mm_setr_ps(aabb[i].m_max.y, aabb[i + 1].m_max.y, aabb[i + 2].m_max.y, aabb[i + 3].m_max.y);
+		const __m128 maxZ = _mm_setr_ps(aabb[i].m_max.z, aabb[i + 1].m_max.z, aabb[i + 2].m_max.z, aabb[i + 3].m_max.z);
+		const __m128 zero = _mm_setzero_ps();
+		__m128 rejected = zero;
+		for (uint32_t p = 0; p < 6; ++p)
 		{
-			__m128 aabbMin_frustumPlaneX = _mm_mul_ps(aabbMinX, planesX[j]);
-			__m128 aabbMin_frustumPlaneY = _mm_mul_ps(aabbMinY, planesY[j]);
-			__m128 aabbMin_frustumPlaneZ = _mm_mul_ps(aabbMinZ, planesZ[j]);
-
-			__m128 aabbMax_frustumPlaneX = _mm_mul_ps(aabbMaxX, planesX[j]);
-			__m128 aabbMax_frustumPlaneY = _mm_mul_ps(aabbMaxY, planesY[j]);
-			__m128 aabbMax_frustumPlaneZ = _mm_mul_ps(aabbMaxZ, planesZ[j]);
-
-			__m128 resX = _mm_max_ps(aabbMin_frustumPlaneX, aabbMax_frustumPlaneX);
-			__m128 resY = _mm_max_ps(aabbMin_frustumPlaneY, aabbMax_frustumPlaneY);
-			__m128 resZ = _mm_max_ps(aabbMin_frustumPlaneZ, aabbMax_frustumPlaneZ);
-
-			__m128 sumXy = _mm_add_ps(resX, resY);
-			__m128 sumZw = _mm_add_ps(resZ, planesD[j]);
-			__m128 distanceToPlane = _mm_add_ps(sumXy, sumZw);
-
-			__m128 planeRes = _mm_cmple_ps(distanceToPlane, zero);
-			intersectionRes = _mm_or_ps(intersectionRes, planeRes);
+			const __m128 x = _mm_set1_ps(m_planes[p].m_abcd.x);
+			const __m128 y = _mm_set1_ps(m_planes[p].m_abcd.y);
+			const __m128 z = _mm_set1_ps(m_planes[p].m_abcd.z);
+			// MAXPS chooses its second operand on ties/unordered inputs, matching scalar max(min, max).
+			__m128 distance = _mm_max_ps(_mm_mul_ps(maxX, x), _mm_mul_ps(minX, x));
+			distance = _mm_add_ps(distance, _mm_max_ps(_mm_mul_ps(maxY, y), _mm_mul_ps(minY, y)));
+			distance = _mm_add_ps(distance, _mm_max_ps(_mm_mul_ps(maxZ, z), _mm_mul_ps(minZ, z)));
+			distance = _mm_add_ps(distance, _mm_set1_ps(m_planes[p].m_abcd.w));
+			rejected = _mm_or_ps(rejected, _mm_cmpngt_ps(distance, zero));
 		}
-
-		__m128i intersectionResI = _mm_cvtps_epi32(intersectionRes);
-		_mm_store_si128((__m128i*) & cullingResSse[i], intersectionResI);
+		const __m128i results = _mm_and_si128(_mm_castps_si128(rejected), _mm_set1_epi32(1));
+		_mm_storeu_si128(reinterpret_cast<__m128i*>(outResults + i), results);
 	}
-#else
-	for (uint32_t i = 0; i < numObjects; i++)
+#endif
+	for (; i < numObjects; ++i)
 	{
 		outResults[i] = OverlapsAABB(aabb[i]) ? 0 : 1;
 	}
-#endif
 }
 
 void Frustum::ContainsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const
 {
+	uint32_t i = 0;
 #if SAILOR_USE_X86_SIMD
-	float* pSpheres = reinterpret_cast<float*>(&spheres[0]);
-	int* cullingResults = &outResults[0];
-
-	__m128 planesX[6];
-	__m128 planesY[6];
-	__m128 planesZ[6];
-	__m128 planesD[6];
-
-	uint32_t i, j;
-	for (i = 0; i < 6; i++)
+	for (; numObjects - i >= 4; i += 4)
 	{
-		planesX[i] = _mm_set1_ps(m_planes[i].m_abcd.x);
-		planesY[i] = _mm_set1_ps(m_planes[i].m_abcd.y);
-		planesZ[i] = _mm_set1_ps(m_planes[i].m_abcd.z);
-		planesD[i] = _mm_set1_ps(m_planes[i].m_abcd.w);
-	}
-
-	for (i = 0; i < numObjects; i += 4)
-	{
-		__m128 spheresPosX = _mm_load_ps(pSpheres);
-		__m128 spheresPosY = _mm_load_ps(pSpheres + 4);
-		__m128 spheresPosZ = _mm_load_ps(pSpheres + 8);
-		__m128 spheresRadius = _mm_load_ps(pSpheres + 12);
-		pSpheres += 16;
-
-		_MM_TRANSPOSE4_PS(spheresPosX, spheresPosY, spheresPosZ, spheresRadius);
-
-		__m128 intersectionRes = _mm_setzero_ps();
-
-		for (j = 0; j < 6; j++)
+		const __m128 centerX = _mm_setr_ps(spheres[i].m_center.x, spheres[i + 1].m_center.x, spheres[i + 2].m_center.x, spheres[i + 3].m_center.x);
+		const __m128 centerY = _mm_setr_ps(spheres[i].m_center.y, spheres[i + 1].m_center.y, spheres[i + 2].m_center.y, spheres[i + 3].m_center.y);
+		const __m128 centerZ = _mm_setr_ps(spheres[i].m_center.z, spheres[i + 1].m_center.z, spheres[i + 2].m_center.z, spheres[i + 3].m_center.z);
+		const __m128 radius = _mm_setr_ps(spheres[i].m_radius, spheres[i + 1].m_radius, spheres[i + 2].m_radius, spheres[i + 3].m_radius);
+		__m128 rejected = _mm_setzero_ps();
+		for (uint32_t p = 0; p < 6; ++p)
 		{
-			__m128 dotX = _mm_mul_ps(spheresPosX, planesX[j]);
-			__m128 dotY = _mm_mul_ps(spheresPosY, planesY[j]);
-			__m128 dotZ = _mm_mul_ps(spheresPosZ, planesZ[j]);
-
-			__m128 sumXY = _mm_add_ps(dotX, dotY);
-			__m128 sumZW = _mm_add_ps(dotZ, planesD[j]); //z+w
-
-			__m128 distanceToPlane = _mm_add_ps(sumXY, sumZW);
-			__m128 planeRes = _mm_cmpge_ps(distanceToPlane, spheresRadius);
-
-			intersectionRes = _mm_and_ps(intersectionRes, planeRes);
+			__m128 distance = _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.x), centerX);
+			distance = _mm_add_ps(distance, _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.y), centerY));
+			distance = _mm_add_ps(distance, _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.z), centerZ));
+			distance = _mm_add_ps(distance, _mm_set1_ps(m_planes[p].m_abcd.w));
+			rejected = _mm_or_ps(rejected, _mm_cmplt_ps(distance, radius));
 		}
-
-		__m128i intersectionResI = _mm_cvtps_epi32(intersectionRes);
-		_mm_store_si128((__m128i*) & cullingResults[i], intersectionResI);
+		const __m128i results = _mm_andnot_si128(_mm_castps_si128(rejected), _mm_set1_epi32(1));
+		_mm_storeu_si128(reinterpret_cast<__m128i*>(outResults + i), results);
 	}
-#else
-	for (uint32_t i = 0; i < numObjects; i++)
+#endif
+	for (; i < numObjects; ++i)
 	{
 		outResults[i] = ContainsSphere(spheres[i]) ? 1 : 0;
 	}
-#endif
 }
 
 void Frustum::OverlapsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const
 {
+	uint32_t i = 0;
 #if SAILOR_USE_X86_SIMD
-	float* pSpheres = reinterpret_cast<float*>(&spheres[0]);
-	int* cullingResults = &outResults[0];
-
-	__m128 zero_v = _mm_setzero_ps();
-	__m128 planesX[6];
-	__m128 planesY[6];
-	__m128 planesZ[6];
-	__m128 planesD[6];
-
-	uint32_t i, j;
-	for (i = 0; i < 6; i++)
+	for (; numObjects - i >= 4; i += 4)
 	{
-		planesX[i] = _mm_set1_ps(m_planes[i].m_abcd.x);
-		planesY[i] = _mm_set1_ps(m_planes[i].m_abcd.y);
-		planesZ[i] = _mm_set1_ps(m_planes[i].m_abcd.z);
-		planesD[i] = _mm_set1_ps(m_planes[i].m_abcd.w);
-	}
-
-	for (i = 0; i < numObjects; i += 4)
-	{
-		__m128 spheresPosX = _mm_load_ps(pSpheres);
-		__m128 spheresPosY = _mm_load_ps(pSpheres + 4);
-		__m128 spheresPosZ = _mm_load_ps(pSpheres + 8);
-		__m128 spheresRadius = _mm_load_ps(pSpheres + 12);
-		pSpheres += 16;
-
-		_MM_TRANSPOSE4_PS(spheresPosX, spheresPosY, spheresPosZ, spheresRadius);
-
-		__m128 spheresNegRadius = _mm_sub_ps(zero_v, spheresRadius);
-		__m128 intersectionRes = _mm_setzero_ps();
-
-		for (j = 0; j < 6; j++)
+		const __m128 centerX = _mm_setr_ps(spheres[i].m_center.x, spheres[i + 1].m_center.x, spheres[i + 2].m_center.x, spheres[i + 3].m_center.x);
+		const __m128 centerY = _mm_setr_ps(spheres[i].m_center.y, spheres[i + 1].m_center.y, spheres[i + 2].m_center.y, spheres[i + 3].m_center.y);
+		const __m128 centerZ = _mm_setr_ps(spheres[i].m_center.z, spheres[i + 1].m_center.z, spheres[i + 2].m_center.z, spheres[i + 3].m_center.z);
+		const __m128 negativeRadius = _mm_setr_ps(-spheres[i].m_radius, -spheres[i + 1].m_radius, -spheres[i + 2].m_radius, -spheres[i + 3].m_radius);
+		__m128 rejected = _mm_setzero_ps();
+		for (uint32_t p = 0; p < 6; ++p)
 		{
-			__m128 dotX = _mm_mul_ps(spheresPosX, planesX[j]);
-			__m128 dotY = _mm_mul_ps(spheresPosY, planesY[j]);
-			__m128 dotZ = _mm_mul_ps(spheresPosZ, planesZ[j]);
-
-			__m128 sumXY = _mm_add_ps(dotX, dotY);
-			__m128 sumZW = _mm_add_ps(dotZ, planesD[j]); //z+w
-
-			__m128 distanceToPlane = _mm_add_ps(sumXY, sumZW);
-			__m128 planeRes = _mm_cmple_ps(distanceToPlane, spheresNegRadius);
-
-			intersectionRes = _mm_or_ps(intersectionRes, planeRes);
+			__m128 distance = _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.x), centerX);
+			distance = _mm_add_ps(distance, _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.y), centerY));
+			distance = _mm_add_ps(distance, _mm_mul_ps(_mm_set1_ps(m_planes[p].m_abcd.z), centerZ));
+			distance = _mm_add_ps(distance, _mm_set1_ps(m_planes[p].m_abcd.w));
+			rejected = _mm_or_ps(rejected, _mm_cmplt_ps(distance, negativeRadius));
 		}
-
-		__m128i intersectionResI = _mm_cvtps_epi32(intersectionRes);
-		_mm_store_si128((__m128i*) & cullingResults[i], intersectionResI);
+		const __m128i results = _mm_and_si128(_mm_castps_si128(rejected), _mm_set1_epi32(1));
+		_mm_storeu_si128(reinterpret_cast<__m128i*>(outResults + i), results);
 	}
-#else
-	for (uint32_t i = 0; i < numObjects; i++)
+#endif
+	for (; i < numObjects; ++i)
 	{
 		outResults[i] = OverlapsSphere(spheres[i]) ? 0 : 1;
 	}
-#endif
 }
 
 float AABB::Volume() const
@@ -546,17 +424,14 @@ AABB::AABB(glm::vec3 center, glm::vec3 extents)
 
 void AABB::Apply(const glm::mat4& transformMatrix)
 {
-	TVector<glm::vec3> points;
-	GetPoints(points);
-
-	m_max = glm::vec3(std::numeric_limits<float>::lowest());
-	m_min = glm::vec3(std::numeric_limits<float>::max());
-
-	for (auto& point : points)
-	{
-		const auto& transformed = transformMatrix * glm::vec4(point, 1.0f);
-		Extend(transformed);
-	}
+	const glm::vec3 center = transformMatrix * glm::vec4(GetCenter(), 1.0f);
+	const glm::vec3 extents = GetExtents();
+	const glm::vec3 transformedExtents =
+		glm::abs(glm::vec3(transformMatrix[0])) * extents.x +
+		glm::abs(glm::vec3(transformMatrix[1])) * extents.y +
+		glm::abs(glm::vec3(transformMatrix[2])) * extents.z;
+	m_min = center - transformedExtents;
+	m_max = center + transformedExtents;
 }
 
 float Math::Triangle::SquareArea() const
@@ -597,12 +472,6 @@ bool Math::IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit&
 	}
 
 	return outRaycastHit.HasIntersection();
-}
-
-bool Math::IntersectRayTriangle(const Ray& ray, const TVector<Triangle>& tris, RaycastHit& outRaycastHit, float maxRayLength)
-{
-	check(false);
-	return false;
 }
 
 /*

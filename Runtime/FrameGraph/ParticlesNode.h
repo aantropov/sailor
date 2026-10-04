@@ -86,6 +86,8 @@ namespace Sailor::Framegraph
 
 		protected:
 
+			SAILOR_API bool InitializeBuffers(const TVector<PerInstanceData>& instances);
+
 			ParticleInfo m_particlesHeader;
 			TVector<ParticleData> m_particlesDataBinary;
 
@@ -104,9 +106,13 @@ namespace Sailor::Framegraph
 			uint32_t m_numInstances = 0;
 			ShaderSetPtr m_pComputeShader{};
 
-			static const char* m_name;
+			SAILOR_SHARED_API static const char* m_name;
 		};
 	}
 
+#ifdef _SAILOR_IMPORT_
+	extern template class TFrameGraphNode<Experimental::ParticlesNode>;
+#else
 	template class TFrameGraphNode<Experimental::ParticlesNode>;
+#endif
 };

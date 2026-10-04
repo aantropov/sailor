@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include "Containers/Concepts.h"
+#include <utility>
 
 namespace Sailor
 {
@@ -16,25 +17,7 @@ namespace Sailor
 			(Sailor::IsMoveConstructible<TKeyType> || Sailor::IsCopyConstructible<TKeyType>) &&
 			(Sailor::IsCopyConstructible<TValueType> || Sailor::IsMoveConstructible<TValueType>) && 
 			(Sailor::IsMoveConstructible<TKeyType> || Sailor::IsMoveConstructible<TValueType>)
-		{
-			if constexpr (Sailor::IsMoveConstructible<TKeyType>)
-			{
-				m_first = std::move(rhs.m_first);
-			}
-			else
-			{
-				m_first = rhs.m_first;
-			}
-
-			if constexpr (Sailor::IsMoveConstructible<TValueType>)
-			{
-				m_second = std::move(rhs.m_second);
-			}
-			else
-			{
-				m_second = rhs.m_second;
-			}
-		}
+			: m_first(std::move_if_noexcept(rhs.m_first)), m_second(std::move_if_noexcept(rhs.m_second)) {}
 
 		SAILOR_API ~TPair() = default;
 
@@ -50,11 +33,13 @@ namespace Sailor
 		SAILOR_API TPair(TKeyType&& first, TValueType&& second) noexcept requires Sailor::IsMoveConstructible<TKeyType>&& Sailor::IsMoveConstructible<TValueType> :
 			m_first(std::move(first)), m_second(std::move(second)) {}
 
-		TPair& operator=(const TPair&) requires Sailor::IsCopyConstructible<TKeyType>&& Sailor::IsCopyConstructible<TValueType> = default;
+		TPair& operator=(const TPair&) requires Sailor::IsCopyAssignable<TKeyType> && Sailor::IsCopyAssignable<TValueType> = default;
 
-		SAILOR_API TPair& operator=(TPair&& rhs) noexcept requires Sailor::IsMoveConstructible<TKeyType> || Sailor::IsMoveConstructible<TValueType>
+		SAILOR_API TPair& operator=(TPair&& rhs) noexcept requires
+			(Sailor::IsMoveAssignable<TKeyType> || Sailor::IsCopyAssignable<TKeyType>) &&
+			(Sailor::IsMoveAssignable<TValueType> || Sailor::IsCopyAssignable<TValueType>)
 		{
-			if constexpr (Sailor::IsMoveConstructible<TKeyType>)
+			if constexpr (Sailor::IsMoveAssignable<TKeyType>)
 			{
 				m_first = std::move(rhs.m_first);
 			}
@@ -63,7 +48,7 @@ namespace Sailor
 				m_first = rhs.m_first;
 			}
 
-			if constexpr (Sailor::IsMoveConstructible<TValueType>)
+			if constexpr (Sailor::IsMoveAssignable<TValueType>)
 			{
 				m_second = std::move(rhs.m_second);
 			}

@@ -28,14 +28,13 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		Sailor::App::Stop();
 	}
 
-	static void ShutdownEngine(const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	static bool ShutdownEngine(const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
 	{
 		if (dependencies.m_shutdown)
 		{
-			dependencies.m_shutdown(dependencies.m_context);
-			return;
+			return dependencies.m_shutdown(dependencies.m_context);
 		}
-		Sailor::App::Shutdown();
+		return Sailor::App::Shutdown();
 	}
 
 	void SetError(ProtocolResponse& response, const std::string& error)
@@ -157,8 +156,18 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			}
 		}
 
-		Sailor::App::Initialize(arguments.GetRawPtr(), numArguments);
-		SetEmptyResult(response);
+		switch (Sailor::App::Initialize(arguments.GetRawPtr(), numArguments))
+		{
+		case EAppInitializationResult::Ready:
+			SetEmptyResult(response);
+			break;
+		case EAppInitializationResult::Completed:
+			SetError(response, "The command completed without creating an interactive Engine session.");
+			break;
+		case EAppInitializationResult::Failed:
+			SetError(response, "Engine initialization failed. See the engine log for details.");
+			break;
+		}
 	}
 
 	static void DispatchMessages(const sailor::editor::v1::CountRequest& request, ProtocolResponse& response)
@@ -218,8 +227,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kShutdown:
-			ShutdownEngine(dependencies);
-			SetEmptyResult(response);
+			if (ShutdownEngine(dependencies)) SetEmptyResult(response);
+			else SetError(response, "Engine shutdown could not drain GPU work. Retry shutdown before initializing another session.");
 			break;
 
 		case ProtocolRequest::kRequestAssetReload:
@@ -227,7 +236,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kUpdateAsset:
-			SetBoolResult(response, Sailor::App::UpdateAsset(request.update_asset().file_id().c_str()));
+			SetBoolResult(response, Sailor::App::UpdateAsset(
+				request.update_asset().file_id().c_str(), request.update_asset().reimport()));
 			break;
 
 		case ProtocolRequest::kGetAssetReloadState:
@@ -258,6 +268,17 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kPreviewAudioAsset:
 			SetBoolResult(
 				response, Sailor::App::PreviewEditorAudioAsset(request.preview_audio_asset().file_id().c_str()));
+			break;
+
+		case ProtocolRequest::kRequestModelFingerprint:
+			SetBoolResult(response, Sailor::App::RequestModelFingerprint(request.request_model_fingerprint().file_id().c_str()));
+			break;
+
+		case ProtocolRequest::kGetModelFingerprintStatus:
+			SetSuccess(response);
+			response.mutable_model_fingerprint_status_result()->set_status(
+				static_cast<sailor::editor::v1::ModelFingerprintStatus>(
+					Sailor::App::GetModelFingerprintStatus(request.get_model_fingerprint_status().file_id().c_str())));
 			break;
 
 		case ProtocolRequest::kShowMainWindow:

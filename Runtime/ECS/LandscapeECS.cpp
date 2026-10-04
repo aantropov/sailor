@@ -57,7 +57,10 @@ void LandscapeECS::OnComponentUnregistered(size_t, LandscapeData& component)
 	component.m_chunks.Clear();
 	component.m_runtimeMaterial.Clear();
 	++m_shadowCastersRevision;
-	PublishSceneVersion();
+	if (!GetWorld() || !GetWorld()->IsClearing())
+	{
+		PublishSceneVersion();
+	}
 }
 
 void LandscapeECS::DestroyPhysicsBodies(LandscapeData& component)
@@ -440,12 +443,11 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 #if defined(__APPLE__)
 			auto* textureImporter = App::GetSubmodule<TextureImporter>();
 			proxy.m_materialTextureSamplers.Resize(1u);
-			proxy.m_materialTextureSamplers[0].Insert(0u);
 			if (textureImporter)
 			{
 				for (const auto& sampler : data.m_runtimeMaterial->GetSamplers())
 				{
-					proxy.m_materialTextureSamplers[0].Insert(
+					proxy.m_materialTextureSamplers[0].Add(
 						sampler.m_second
 							? static_cast<uint32_t>(textureImporter->GetTextureIndex(sampler.m_second->GetFileId()))
 							: 0u);

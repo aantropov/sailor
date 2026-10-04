@@ -106,6 +106,7 @@ namespace Sailor
 		{
 			m_minSize = minSize;
 			m_root = Memory::New<TNode>(m_allocator);
+			m_numNodes = 1u;
 			m_root->m_size = size;
 			m_root->m_center = center;
 		}
@@ -118,21 +119,23 @@ namespace Sailor
 			m_root = nullptr;
 		}
 
-		TOctree(const TOctree& octree) : TOctree(octree.m_root->m_center, octree.m_root->m_size, octree.m_minSize)
+		TOctree(const TOctree& octree) : m_num(octree.m_num), m_minSize(octree.m_minSize)
 		{
-			m_num = octree.m_num;
-			CopyFrom_Internal(*m_root, *octree.m_root);
+			if (octree.m_root)
+			{
+				m_root = Memory::New<TNode>(m_allocator);
+				m_numNodes = 1u;
+				CopyFrom_Internal(*m_root, *octree.m_root);
+			}
 		}
 
 		TOctree& operator= (const TOctree& octree)
 		{
-			Clear();
-
-			m_num = octree.m_num;
-			m_minSize = octree.m_minSize;
-
-			CopyFrom_Internal(*m_root, *octree.m_root);
-
+			if (this != &octree)
+			{
+				TOctree copy(octree);
+				Swap(*this, copy);
+			}
 			return *this;
 		}
 
@@ -152,6 +155,7 @@ namespace Sailor
 			std::swap(rhs.m_root, lhs.m_root);
 			std::swap(rhs.m_allocator, lhs.m_allocator);
 			std::swap(rhs.m_num, lhs.m_num);
+			std::swap(rhs.m_numNodes, lhs.m_numNodes);
 			std::swap(rhs.m_minSize, lhs.m_minSize);
 			std::swap(rhs.m_map, lhs.m_map);
 		}
@@ -509,6 +513,10 @@ namespace Sailor
 			node.m_size = rhsNode.m_size;
 			node.m_center = rhsNode.m_center;
 			node.m_elements = rhsNode.m_elements;
+			for (const auto& element : node.m_elements)
+			{
+				m_map[element.First()] = &node;
+			}
 
 			if (rhsNode.m_internal != nullptr)
 			{
@@ -585,7 +593,7 @@ namespace Sailor
 										  glm::ivec3(1, 1, -1), glm::ivec3(1, 1, 1), glm::ivec3(-1, 1, -1), glm::ivec3(-1, 1, 1) };
 
 			const int32_t quarterSize = node.m_size / 4;
-			node.m_internal = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode) * 8));
+			node.m_internal = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode) * 8, alignof(TNode)));
 
 			for (uint32_t i = 0; i < 8; i++)
 			{
@@ -612,7 +620,7 @@ namespace Sailor
 		TNode* m_root{};
 		size_t m_num = 0u;
 		uint32_t m_minSize = 1;
-		size_t m_numNodes = 1u;
+		size_t m_numNodes = 0u;
 		TAllocator m_allocator{};
 		TMap<TElementType, TNode*> m_map{};
 	};

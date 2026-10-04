@@ -1,389 +1,12 @@
 #include "Utils.h"
-#include "Core/Reflection.h"
-#include "Engine/InstanceId.h"
-#include "YamlExceptionBoundary.h"
-#include <sys/types.h>
-#include <sys/stat.h>
-#if defined(_WIN32)
-#include <processthreadsapi.h>
-#endif
 
-#ifndef WIN32
-#include <unistd.h>
-#endif
-
-#include <algorithm> 
-#include <functional> 
+#include <algorithm>
 #include <cctype>
-
-#include <filesystem>
 #include <sstream>
-#include <string>
-#include <format>
-#include <chrono>
-#include <limits>
 #include <utility>
-
-#if defined(_WIN32)
-#include <windows.h>
-#endif
-#include "Containers/Vector.h"
-#include "Tasks/Tasks.h"
-#include "Tasks/Scheduler.h"
 
 using namespace Sailor;
 using namespace Sailor::Utils;
-
-namespace
-{
-	constexpr size_t MaxCanonicalYamlDepth = 64;
-	constexpr size_t MaxCanonicalYamlNodes = 262144;
-	constexpr size_t MaxCanonicalYamlBytes = 64 * 1024 * 1024;
-
-	bool AppendCanonicalText(
-		std::string& destination,
-		const std::string& value,
-		size_t& remainingBytes)
-	{
-		if (value.size() > remainingBytes)
-		{
-			return false;
-		}
-
-		destination.append(value);
-		remainingBytes -= value.size();
-		return true;
-	}
-
-	bool AppendCanonicalCharacter(
-		std::string& destination,
-		char value,
-		size_t& remainingBytes)
-	{
-		if (remainingBytes == 0)
-		{
-			return false;
-		}
-
-		destination.push_back(value);
-		--remainingBytes;
-		return true;
-	}
-
-	bool AppendCanonicalField(
-		std::string& destination,
-		const std::string& value,
-		size_t& remainingBytes)
-	{
-		const std::string length = std::to_string(value.size());
-		return AppendCanonicalText(destination, length, remainingBytes) &&
-			AppendCanonicalCharacter(destination, ':', remainingBytes) &&
-			AppendCanonicalText(destination, value, remainingBytes);
-	}
-
-	bool AppendCanonicalTag(
-		const YAML::Node& node,
-		std::string& destination,
-		EYamlCanonicalizationMode mode,
-		size_t& remainingBytes)
-	{
-		return mode == EYamlCanonicalizationMode::SemanticValue ||
-			AppendCanonicalField(destination, node.Tag(), remainingBytes);
-	}
-
-	bool AppendCanonicalYaml(
-		const YAML::Node& node,
-		std::string& destination,
-		EYamlCanonicalizationMode mode,
-		size_t depth,
-		size_t& remainingNodes,
-		size_t& remainingBytes)
-	{
-		if ((mode == EYamlCanonicalizationMode::StrictDocument &&
-				depth > MaxCanonicalYamlDepth) ||
-			remainingNodes == 0)
-		{
-			return false;
-		}
-		--remainingNodes;
-
-		if (!node.IsDefined())
-		{
-			return AppendCanonicalCharacter(destination, 'U', remainingBytes);
-		}
-
-		switch (node.Type())
-		{
-		case YAML::NodeType::Undefined:
-			return AppendCanonicalCharacter(destination, 'U', remainingBytes);
-		case YAML::NodeType::Null:
-			return AppendCanonicalCharacter(destination, 'N', remainingBytes) &&
-				AppendCanonicalTag(node, destination, mode, remainingBytes);
-		case YAML::NodeType::Scalar:
-			return AppendCanonicalCharacter(destination, 'S', remainingBytes) &&
-				AppendCanonicalTag(node, destination, mode, remainingBytes) &&
-				AppendCanonicalField(destination, node.Scalar(), remainingBytes);
-		case YAML::NodeType::Sequence:
-		{
-			if (mode == EYamlCanonicalizationMode::StrictDocument &&
-				node.size() > remainingNodes)
-			{
-				return false;
-			}
-
-			const std::string numElements = std::to_string(node.size());
-			if (!AppendCanonicalCharacter(destination, 'Q', remainingBytes) ||
-				!AppendCanonicalTag(node, destination, mode, remainingBytes) ||
-				!AppendCanonicalText(destination, numElements, remainingBytes) ||
-				!AppendCanonicalCharacter(destination, ':', remainingBytes))
-			{
-				return false;
-			}
-			for (const YAML::Node& element : node)
-			{
-				std::string canonicalElement;
-				if (!AppendCanonicalYaml(
-						element,
-						canonicalElement,
-						mode,
-						depth + 1,
-						remainingNodes,
-						remainingBytes) ||
-					!AppendCanonicalField(
-						destination,
-						canonicalElement,
-						remainingBytes))
-				{
-					return false;
-				}
-			}
-			return true;
-		}
-		case YAML::NodeType::Map:
-		{
-			if (mode == EYamlCanonicalizationMode::StrictDocument &&
-				node.size() > remainingNodes / 2)
-			{
-				return false;
-			}
-
-			TVector<std::pair<std::string, std::string>> entries;
-			entries.Reserve(node.size());
-			for (const auto& entry : node)
-			{
-				std::string canonicalKey;
-				std::string canonicalValue;
-				if (!AppendCanonicalYaml(
-						entry.first,
-						canonicalKey,
-						mode,
-						depth + 1,
-						remainingNodes,
-						remainingBytes) ||
-					!AppendCanonicalYaml(
-						entry.second,
-						canonicalValue,
-						mode,
-						depth + 1,
-						remainingNodes,
-						remainingBytes))
-				{
-					return false;
-				}
-				entries.Add(std::make_pair(
-					std::move(canonicalKey),
-					std::move(canonicalValue)));
-			}
-
-			std::sort(
-				entries.begin(),
-				entries.end(),
-				[](const auto& lhs, const auto& rhs)
-				{
-					return lhs < rhs;
-				});
-			if (mode == EYamlCanonicalizationMode::StrictDocument)
-			{
-				for (size_t index = 1; index < entries.Num(); ++index)
-				{
-					if (entries[index - 1].first == entries[index].first)
-					{
-						return false;
-					}
-				}
-			}
-
-			const std::string numEntries = std::to_string(entries.Num());
-			if (!AppendCanonicalCharacter(destination, 'M', remainingBytes) ||
-				!AppendCanonicalTag(node, destination, mode, remainingBytes) ||
-				!AppendCanonicalText(destination, numEntries, remainingBytes) ||
-				!AppendCanonicalCharacter(destination, ':', remainingBytes))
-			{
-				return false;
-			}
-			for (const auto& entry : entries)
-			{
-				if (!AppendCanonicalField(
-						destination,
-						entry.first,
-						remainingBytes) ||
-					!AppendCanonicalField(
-						destination,
-						entry.second,
-						remainingBytes))
-				{
-					return false;
-				}
-			}
-			return true;
-		}
-		}
-
-		return false;
-	}
-}
-
-bool Utils::CanonicalizeYaml(
-	const YAML::Node& node,
-	std::string& destination,
-	EYamlCanonicalizationMode mode)
-{
-	destination.clear();
-	const bool bBounded =
-		mode == EYamlCanonicalizationMode::StrictDocument;
-	size_t remainingNodes = bBounded
-		? MaxCanonicalYamlNodes
-		: std::numeric_limits<size_t>::max();
-	size_t remainingBytes = bBounded
-		? MaxCanonicalYamlBytes
-		: std::numeric_limits<size_t>::max();
-	return AppendCanonicalYaml(
-		node,
-		destination,
-		mode,
-		0,
-		remainingNodes,
-		remainingBytes);
-}
-
-bool Utils::AreYamlNodesEqual(const YAML::Node& lhs, const YAML::Node& rhs)
-{
-	if (lhs.IsDefined() != rhs.IsDefined())
-	{
-		return false;
-	}
-
-	if (!lhs.IsDefined() || lhs.is(rhs))
-	{
-		return true;
-	}
-
-	std::string canonicalLhs;
-	std::string canonicalRhs;
-	return CanonicalizeYaml(
-			lhs,
-			canonicalLhs,
-			EYamlCanonicalizationMode::SemanticValue) &&
-		CanonicalizeYaml(
-			rhs,
-			canonicalRhs,
-			EYamlCanonicalizationMode::SemanticValue) &&
-		canonicalLhs == canonicalRhs;
-}
-
-bool Utils::TryGetComponentInstanceId(
-	const ReflectedData& reflection,
-	InstanceId& outInstanceId,
-	std::string& outDiagnostic)
-{
-	outInstanceId = InstanceId::Invalid;
-	outDiagnostic.clear();
-
-	if (!reflection.IsValid())
-	{
-		outDiagnostic = "the reflected component is invalid";
-		return false;
-	}
-
-	const auto& properties = reflection.GetProperties();
-	if (!properties.ContainsKey("instanceId"))
-	{
-		outDiagnostic = "the reflected component has no instanceId";
-		return false;
-	}
-
-	const auto& instanceIdNode = properties["instanceId"];
-	if (!instanceIdNode.IsScalar())
-	{
-		outDiagnostic = "the reflected component has an invalid instanceId: expected a scalar value";
-		return false;
-	}
-
-	InstanceId instanceId;
-	std::string conversionDiagnostic;
-	if (!External::TryConvertYaml(
-			instanceIdNode,
-			instanceId,
-			conversionDiagnostic))
-	{
-		outDiagnostic = "the reflected component has an invalid instanceId";
-		if (!conversionDiagnostic.empty())
-		{
-			outDiagnostic += ": " + conversionDiagnostic;
-		}
-		return false;
-	}
-
-	if (instanceId.ComponentId() == InstanceId::Invalid ||
-		instanceId.GameObjectId() == InstanceId::Invalid)
-	{
-		outDiagnostic =
-			"the reflected component has an invalid instanceId: "
-			"both component and game-object IDs must be valid";
-		return false;
-	}
-
-	outInstanceId = instanceId;
-	return true;
-}
-
-glm::vec4 Utils::LinearToSRGB(const glm::u8vec4& linearRGB)
-{
-	return vec4(LinearToSRGB(vec4(linearRGB)));
-}
-
-glm::vec4 Utils::SRGBToLinear(const glm::u8vec4& srgbIn)
-{
-	return vec4(SRGBToLinear(vec4(srgbIn)));
-}
-
-glm::vec4 Utils::LinearToSRGB(const glm::vec4& linearRGB)
-{
-	return vec4(LinearToSRGB(glm::vec3(linearRGB)), linearRGB.a);
-}
-
-glm::vec4 Utils::SRGBToLinear(const glm::vec4& srgbIn)
-{
-	return vec4(SRGBToLinear(glm::vec3(srgbIn)), srgbIn.a);
-}
-
-glm::vec3 Utils::LinearToSRGB(const glm::vec3& linearRGB)
-{
-	auto cutoff = glm::lessThan(linearRGB, glm::vec3(0.0031308f));
-	glm::vec3 higher = glm::vec3(1.055f) * glm::pow(linearRGB, glm::vec3(1.f / 2.4f)) - glm::vec3(0.055f);
-	glm::vec3 lower = linearRGB * glm::vec3(12.92f);
-
-	return glm::mix(higher, lower, cutoff);
-
-	//return vec3(powf(linearRGB.x, 1.0f / 2.2f), powf(linearRGB.y, 1.0f / 2.2f), powf(linearRGB.z, 1.0f / 2.2f));
-}
-
-glm::vec3 Utils::SRGBToLinear(const glm::vec3& srgbIn)
-{
-	glm::vec3 bLess = glm::step(glm::vec3(0.04045f), srgbIn);
-	return glm::mix(srgbIn / glm::vec3(12.92f), glm::pow((srgbIn + glm::vec3(0.055f)) / glm::vec3(1.055f), glm::vec3(2.4f)), bLess);
-	//return vec3(powf(srgbIn.x, 2.2f), powf(srgbIn.y, 2.2f), powf(srgbIn.z, 2.2f));
-}
 
 std::string Utils::wchar_to_UTF8(const wchar_t* in)
 {
@@ -460,86 +83,26 @@ std::wstring Utils::UTF8_to_wchar(const char* in)
 	return out;
 }
 
-DWORD Utils::GetRandomColorHex()
+namespace
 {
-#if defined(_WIN32)
-	COLORREF res = RGB(
-		(BYTE)(rand() % 255), // red component of color
-		(BYTE)(rand() % 255), // green component of color
-		(BYTE)(rand() % 255) // blue component of color
-	);
-
-	return (DWORD)res;
-#else
-	const uint8_t r = (uint8_t)(rand() % 255);
-	const uint8_t g = (uint8_t)(rand() % 255);
-	const uint8_t b = (uint8_t)(rand() % 255);
-	return (DWORD)(r | (g << 8) | (b << 16));
-#endif
-}
-
-std::string Utils::GetCurrentThreadName()
-{
-	if (App::GetSubmodule<Tasks::Scheduler>()->IsMainThread())
+	size_t FindExtensionOffset(const std::string& filename)
 	{
-		return std::string("Thread Main");
+		const size_t separator = filename.find_last_of("/\\");
+		const size_t nameStart = separator == std::string::npos ? 0 : separator + 1;
+		const size_t dot = filename.find_last_of('.');
+		if (dot == std::string::npos || dot <= nameStart ||
+			filename.compare(nameStart, std::string::npos, "..") == 0)
+		{
+			return std::string::npos;
+		}
+		return dot;
 	}
-	else if (App::GetSubmodule<Tasks::Scheduler>()->IsRendererThread())
-	{
-		return std::string("Thread Render");
-	}
-	else
-	{
-		return std::format("Thread {}", GetCurrentThreadId());
-	}
-}
-
-void Utils::SetThreadName(size_t dwThreadID, const std::string& threadName)
-{
-#if defined(_WIN32)
-	SetThreadDescription(
-		(HANDLE)(dwThreadID),
-		UTF8_to_wchar(threadName.c_str()).c_str()
-	);
-#else
-	(void)dwThreadID;
-	(void)threadName;
-#endif
-}
-
-void Utils::SetThreadName(const std::string& threadName)
-{
-#if defined(_WIN32)
-	SetThreadDescription(
-		GetCurrentThread(),
-		UTF8_to_wchar(threadName.c_str()).c_str()
-	);
-#else
-	(void)threadName;
-#endif
-}
-
-void Utils::SetThreadName(std::thread* thread, const std::string& threadName)
-{
-#if defined(_WIN32)
-	SetThreadDescription(
-		(HANDLE)thread->native_handle(),
-		UTF8_to_wchar(threadName.c_str()).c_str()
-	);
-#else
-	(void)thread;
-	(void)threadName;
-#endif
 }
 
 std::string Utils::RemoveFileExtension(const std::string& filename)
 {
 	SAILOR_PROFILE_FUNCTION();
-	size_t lastdot = filename.find_last_of('.');
-	lastdot++;
-	if (lastdot == std::string::npos)
-		return filename;
-	return filename.substr(0, lastdot - 1);
+	return filename.substr(0, FindExtensionOffset(filename));
 }
 
 std::string Utils::GetFileFolder(const std::string& filepath)
@@ -556,11 +119,8 @@ std::string Utils::GetFileFolder(const std::string& filepath)
 std::string Utils::GetFileExtension(const std::string& filename)
 {
 	SAILOR_PROFILE_FUNCTION();
-	size_t lastdot = filename.find_last_of('.');
-	lastdot++;
-	if (lastdot == std::string::npos)
-		return std::string();
-	return filename.substr(lastdot, filename.size() - lastdot);
+	const size_t dot = FindExtensionOffset(filename);
+	return dot == std::string::npos ? std::string() : filename.substr(dot + 1);
 }
 
 TVector<std::string> Utils::SplitStringByLines(const std::string& str)
@@ -598,31 +158,25 @@ TVector<std::string> Utils::SplitString(const std::string& str, const std::strin
 void Utils::ReplaceAll(std::string& str, const std::string& from, const std::string& to, size_t startPosition, size_t endLocation)
 {
 	SAILOR_PROFILE_FUNCTION();
-	while ((startPosition = str.find(from, startPosition)) < endLocation)
+	if (from.empty())
 	{
-		str.replace(startPosition, from.length(), to);
+		return;
+	}
 
-		// Handles case where 'to' is a substring of 'from'
-		startPosition += to.length();
-
-		size_t maxJump = std::string::npos - endLocation;
-		endLocation += std::min(maxJump, to.length() - from.length());
+	endLocation = (std::min)(endLocation, str.size());
+	while ((startPosition = str.find(from, startPosition)) < endLocation &&
+		from.size() <= endLocation - startPosition)
+	{
+		str.replace(startPosition, from.size(), to);
+		endLocation = endLocation - from.size() + to.size();
+		startPosition += to.size();
 	}
 }
 
 void Utils::Erase(std::string& str, const std::string& substr, size_t startPosition, size_t endLocation)
 {
 	SAILOR_PROFILE_FUNCTION();
-	while ((startPosition = str.find(substr, startPosition)) < endLocation)
-	{
-		str = str.erase(startPosition, substr.length());
-
-		// Handles case where 'to' is a substring of 'from'
-		startPosition += substr.length();
-
-		size_t maxJump = std::string::npos - endLocation;
-		endLocation += std::min(maxJump, substr.length());
-	}
+	ReplaceAll(str, substr, {}, startPosition, endLocation);
 }
 
 std::string Utils::SanitizeFilepath(const std::string& filename)
@@ -631,44 +185,6 @@ std::string Utils::SanitizeFilepath(const std::string& filename)
 	ReplaceAll(res, "\\", "/");
 	ReplaceAll(res, "//", "/");
 	return res;
-}
-
-std::time_t Utils::GetFileModificationTime(const std::string& filepath)
-{
-	SAILOR_PROFILE_FUNCTION();
-	struct stat result;
-	if (stat(filepath.c_str(), &result) == 0)
-	{
-		return (std::time_t)result.st_mtime;
-	}
-	return 0;
-}
-
-bool Utils::TryGetFileRevision(
-	const std::string& filepath,
-	FileRevision& outRevision) noexcept
-{
-	outRevision = {};
-	const std::filesystem::path path(filepath);
-	std::error_code error;
-	if (!std::filesystem::is_regular_file(path, error) || error)
-	{
-		return false;
-	}
-
-	const auto modificationTime = std::filesystem::last_write_time(path, error);
-	if (error)
-	{
-		return false;
-	}
-	outRevision.m_modificationTimeNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
-		modificationTime.time_since_epoch()).count();
-	outRevision.m_fileSize = 0;
-	// Content hashing made every registry scan read all source assets in full.
-	// The filesystem timestamp is sufficient for runtime change detection.
-	outRevision.m_contentHash = 0;
-	outRevision.m_bIsValid = true;
-	return true;
 }
 
 void Utils::FindAllOccurances(const std::string& str, const std::string& substr, TVector<size_t>& outLocations, size_t startPosition, size_t endLocation)
@@ -685,177 +201,11 @@ void Utils::FindAllOccurances(const std::string& str, const std::string& substr,
 void Utils::Trim(std::string& s)
 {
 	SAILOR_PROFILE_FUNCTION();
-	s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+	const auto isNotSpace = [](unsigned char ch) {
 		return !std::isspace(ch);
-		}));
-}
-
-int64_t Utils::GetCurrentTimeMs()
-{
-	return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-int64_t Utils::GetCurrentTimeMicro()
-{
-	return (int64_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-int64_t Utils::GetCurrentTimeNano()
-{
-	return (int64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-void Utils::Timer::Start()
-{
-#if defined(_WIN32)
-	LARGE_INTEGER li;
-	if (!QueryPerformanceFrequency(&li))
-	{
-		SAILOR_LOG("QueryPerformanceFrequency failed!");
-	}
-
-	m_pcFrequence = double(li.QuadPart) / 1000.0;
-
-	QueryPerformanceCounter(&li);
-	m_counterStart = li.QuadPart;
-#else
-	m_pcFrequence = 1000.0;
-	m_counterStart = Utils::GetCurrentTimeMicro();
-#endif
-
-	m_bIsStarted = true;
-}
-
-void Utils::Timer::Stop()
-{
-#if defined(_WIN32)
-	LARGE_INTEGER li;
-	QueryPerformanceCounter(&li);
-	m_counterEnd = li.QuadPart;
-#else
-	m_counterEnd = Utils::GetCurrentTimeMicro();
-#endif
-
-	m_counterAcc += m_counterEnd - m_counterStart;
-
-	m_bIsStarted = false;
-}
-
-int64_t Utils::Timer::ResultMs() const
-{
-	if (m_bIsStarted)
-	{
-#if defined(_WIN32)
-		LARGE_INTEGER li;
-		QueryPerformanceCounter(&li);
-		return int64_t(double(li.QuadPart - m_counterStart) / m_pcFrequence);
-#else
-		return int64_t((Utils::GetCurrentTimeMicro() - m_counterStart) / 1000);
-#endif
-	}
-#if defined(_WIN32)
-	return int64_t(double(m_counterEnd - m_counterStart) / m_pcFrequence);
-#else
-	return int64_t((m_counterEnd - m_counterStart) / 1000);
-#endif
-}
-
-int64_t Utils::Timer::ResultAccumulatedMs() const
-{
-	if (m_pcFrequence == 0.0)
-	{
-		return 0;
-	}
-
-	if (m_bIsStarted)
-	{
-#if defined(_WIN32)
-		LARGE_INTEGER li;
-		QueryPerformanceCounter(&li);
-		return int64_t(double(li.QuadPart - m_counterStart + m_counterAcc) / m_pcFrequence);
-#else
-		return int64_t((Utils::GetCurrentTimeMicro() - m_counterStart + m_counterAcc) / 1000);
-#endif
-	}
-
-#if defined(_WIN32)
-	return int64_t((double)m_counterAcc / m_pcFrequence);
-#else
-	return int64_t(m_counterAcc / 1000);
-#endif
-}
-
-void Utils::Timer::Clear()
-{
-	m_counterStart = 0;
-	m_counterEnd = 0;
-	m_counterAcc = 0;
-	m_pcFrequence = 0.0;
-}
-
-// Julian Date
-// Julian dates are in DAYS (and fractions)
-// JulianCalendar calendar = new JulianCalendar();
-// Saturday, A.D. 2017 Jan 28	00:00:00.0	2457781.5
-//    DateTime today = DateTime.Today;
-//    DateTime dateInJulian = calendar.ToDateTime(today.Year, today.Month, today.Day, 0, 0, 0, 0);
-// String ddd = calendar.ToString();
-// float JD = 2457781.5f;
-// T is in Julian centuries
-// float T = ( JD - 2451545.0f ) / 36525.0f;
-
-// From https://en.wikipedia.org/wiki/Julian_day
-// Gregorian Calendar Date to Julian Day Number conversion
-
-// Julian Day Number calculations.
-// https://en.wikipedia.org/wiki/Julian_day
-// https://aa.quae.nl/en/reken/juliaansedag.html
-// https://core2.gsfc.nasa.gov/time/julian.txt
-// http://www.cs.utsa.edu/~cs1063/projects/Spring2011/Project1/jdn-explanation.html
-int32_t Utils::CalculateJulianDayNumber(int32_t year, int32_t month, int32_t day)
-{
-	// Formula coming from Wikipedia.
-	int32_t a = (month - 14) / 12;
-	int32_t jdn = (1461 * (year + 4800 + a)) / 4 +
-		(367 * (month - 2 - 12 * a)) / 12 -
-		(3 * ((year + 4900 + a) / 100)) / 4 +
-		day - 32075;
-
-	// Other formula found online:
-	/*int m, y, leap_days;
-	a = ( ( 14 - month ) / 12 );
-	m = ( month - 3 ) + ( 12 * a );
-	y = year + 4800 - a;
-	leap_days = ( y / 4 ) - ( y / 100 ) + ( y / 400 );
-	int32_t jdn2 = day + ( ( ( 153 * m ) + 2 ) / 5 ) + ( 365 * y ) + leap_days - 32045;*/
-
-	return jdn;
-}
-
-double Utils::CalculateJulianDate(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second)
-{
-	int32_t jdn = CalculateJulianDayNumber(year, month, day);
-
-	double jd = jdn + ((hour - 12.0) / 24.0) + (minute / 1440.0) + (second / 86400.0);
-	return jd;
-}
-
-double Utils::CalculateJulianCenturyDate(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second)
-{
-	double jd = CalculateJulianDate(year, month, day, hour, minute, second);
-	return (jd - s_j2000) / 36525.0;
-}
-
-glm::vec3 Utils::ConvertToEuclidean(float rightAscension, float declination, float radialDistance)
-{
-	const float cosd = cosf(declination);
-	glm::vec3 out{};
-
-	out.x = radialDistance * sinf(rightAscension) * cosd;
-	out.y = radialDistance * cosf(rightAscension) * cosd;
-	out.z = radialDistance * sinf(declination);
-
-	return out;
+	};
+	s.erase(s.begin(), std::find_if(s.begin(), s.end(), isNotSpace));
+	s.erase(std::find_if(s.rbegin(), s.rend(), isNotSpace).base(), s.end());
 }
 
 std::string Utils::GetArgValue(const char** args, int32_t& i, int32_t num)
@@ -879,29 +229,4 @@ std::string Utils::GetArgValue(const char** args, int32_t& i, int32_t num)
 	}
 
 	return value;
-}
-
-WindowSizeAndPosition Utils::GetWindowSizeAndPosition(HWND hwnd)
-{
-	WindowSizeAndPosition result = {};
-
-#if defined(_WIN32)
-	if (GetWindowRect(hwnd, &result.m_windowRect))
-	{
-		result.m_width = result.m_windowRect.right - result.m_windowRect.left;
-		result.m_height = result.m_windowRect.bottom - result.m_windowRect.top;
-		result.m_xPos = result.m_windowRect.left;
-		result.m_yPos = result.m_windowRect.top;
-	}
-
-	if (GetClientRect(hwnd, &result.m_clientRect))
-	{
-		result.m_clientWidth = result.m_clientRect.right - result.m_clientRect.left;
-		result.m_clientHeight = result.m_clientRect.bottom - result.m_clientRect.top;
-	}
-#else
-	(void)hwnd;
-#endif
-
-	return result;
 }

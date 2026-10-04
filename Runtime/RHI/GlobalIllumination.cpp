@@ -122,11 +122,10 @@ namespace
 		TVector<RHIGlobalIlluminationGpuBvhNode> m_nodes{};
 	};
 
-	bool OverlapsFace(
+	float GetOverlapTolerance(
 		const GIProbeBrick& brick,
-		const GIProbeBrick& neighbor,
-		uint32_t axis,
-		bool bMaximumFace) noexcept
+		const glm::vec3& otherMin,
+		const glm::vec3& otherMax) noexcept
 	{
 		const auto maxAbsComponent = [](const glm::vec3& value)
 			{
@@ -140,10 +139,18 @@ namespace
 				glm::max(
 					maxAbsComponent(brick.m_max),
 					glm::max(
-						maxAbsComponent(neighbor.m_min),
-						maxAbsComponent(neighbor.m_max)))));
-		const float tolerance =
-			coordinateMagnitude * std::numeric_limits<float>::epsilon() * 8.0f;
+						maxAbsComponent(otherMin),
+						maxAbsComponent(otherMax)))));
+		return coordinateMagnitude * std::numeric_limits<float>::epsilon() * 8.0f;
+	}
+
+	bool OverlapsFace(
+		const GIProbeBrick& brick,
+		const GIProbeBrick& neighbor,
+		uint32_t axis,
+		bool bMaximumFace) noexcept
+	{
+		const float tolerance = GetOverlapTolerance(brick, neighbor.m_min, neighbor.m_max);
 		const float brickFace =
 			bMaximumFace ? brick.m_max[axis] : brick.m_min[axis];
 		const float neighborFace =
@@ -175,37 +182,48 @@ namespace
 
 	uint32_t FindAdaptiveFaceMask(
 		const GIProbesData& data,
-		uint32_t brickIndex) noexcept
+		const TVector<RHIGlobalIlluminationGpuBvhNode>& nodes,
+		uint32_t brickIndex,
+		uint32_t nodeIndex = 0u) noexcept
 	{
-		if (brickIndex >= data.m_bricks.Num())
-		{
-			return 0x3fu;
-		}
 		const GIProbeBrick& brick = data.m_bricks[brickIndex];
-		uint32_t result = 0u;
-		for (uint32_t neighborIndex = 0u;
-			neighborIndex < data.m_bricks.Num();
-			++neighborIndex)
+		const auto& node = nodes[nodeIndex];
+		const glm::vec3 nodeMin(node.m_minAndLeft);
+		const glm::vec3 nodeMax(node.m_maxAndRight);
+		// Node bounds include each candidate's magnitude, so pruning cannot shrink
+		// the tolerance used by the exact face test below.
+		const glm::vec3 tolerance(GetOverlapTolerance(brick, nodeMin, nodeMax));
+		if (glm::any(glm::greaterThan(nodeMin - brick.m_max, tolerance)) ||
+			glm::any(glm::greaterThan(brick.m_min - nodeMax, tolerance)))
 		{
-			if (neighborIndex == brickIndex)
+			return 0u;
+		}
+		const uint32_t left = std::bit_cast<uint32_t>(node.m_minAndLeft.w);
+		if ((left & LeafBit) == 0u)
+		{
+			uint32_t result = FindAdaptiveFaceMask(data, nodes, brickIndex, left);
+			if (result != 0x3fu)
 			{
-				continue;
+				result |= FindAdaptiveFaceMask(data, nodes, brickIndex, std::bit_cast<uint32_t>(node.m_maxAndRight.w));
 			}
-			const GIProbeBrick& neighbor = data.m_bricks[neighborIndex];
-			if (neighbor.m_subdivisionLevel == brick.m_subdivisionLevel)
+			return result;
+		}
+		const uint32_t neighborIndex = left & ~LeafBit;
+		const GIProbeBrick& neighbor = data.m_bricks[neighborIndex];
+		if (neighborIndex == brickIndex || neighbor.m_subdivisionLevel == brick.m_subdivisionLevel)
+		{
+			return 0u;
+		}
+		uint32_t result = 0u;
+		for (uint32_t axis = 0u; axis < 3u; ++axis)
+		{
+			if (OverlapsFace(brick, neighbor, axis, false))
 			{
-				continue;
+				result |= 1u << (axis * 2u);
 			}
-			for (uint32_t axis = 0u; axis < 3u; ++axis)
+			if (OverlapsFace(brick, neighbor, axis, true))
 			{
-				if (OverlapsFace(brick, neighbor, axis, false))
-				{
-					result |= 1u << (axis * 2u);
-				}
-				if (OverlapsFace(brick, neighbor, axis, true))
-				{
-					result |= 1u << (axis * 2u + 1u);
-				}
+				result |= 1u << (axis * 2u + 1u);
 			}
 		}
 		return result;
@@ -220,12 +238,14 @@ uint64_t Sailor::RHI::ComputeGlobalIlluminationLayoutSignature(
 		return 0u;
 	}
 	uint64_t hash = Fnv1aOffsetBasis;
-	HashValue(hash, snapshot.m_layout->m_layoutHash);
-	HashValue(hash, snapshot.m_layout->m_transportHash);
-	HashValue(
-		hash,
-		static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
-			snapshot.m_layout.GetRawPtr())));
+	const GIProbesData& layout = *snapshot.m_layout;
+	uint64_t transportHash = layout.m_transportHash;
+	if (transportHash == 0u)
+	{
+		ComputeGIProbesTransportHash(layout, transportHash);
+	}
+	HashValue(hash, layout.m_layoutHash != 0u ? layout.m_layoutHash : ComputeGIProbesLayoutHash(layout));
+	HashValue(hash, transportHash);
 	HashValue(hash, static_cast<uint64_t>(snapshot.m_layout->m_bricks.Num()));
 	HashValue(hash, static_cast<uint64_t>(snapshot.m_layout->m_probes.Num()));
 	return hash;
@@ -424,6 +444,7 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 			}
 			const uint32_t adaptiveFaceMask = FindAdaptiveFaceMask(
 				data,
+				outLayout.m_nodes,
 				brickIndex);
 			const uint32_t brickMetadata =
 				(source.m_subdivisionLevel &

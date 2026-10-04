@@ -24,7 +24,8 @@ namespace Sailor::Raytracing
 	struct CombinedSampler2D
 	{
 		uint8_t m_channels = 3;
-		SamplerClamping m_clamping = SamplerClamping::Clamp;
+		SamplerClamping m_clampingU = SamplerClamping::Clamp;
+		SamplerClamping m_clampingV = SamplerClamping::Clamp;
 
 		int32_t m_width{};
 		int32_t m_height{};
@@ -37,18 +38,26 @@ namespace Sailor::Raytracing
 			m_height = height;
 			m_data.Resize(width * height * sizeof(TOutputData));
 			m_channels = channels;
-			m_clamping = clamping;
+			m_clampingU = m_clampingV = clamping;
 		}
 
 		template<typename TOutputData, typename TInputData>
 		void Initialize(const TInputData* data, bool bConvertToLinear, bool bNormalMap = false)
 		{
+			Initialize<TOutputData, TInputData>(data, bConvertToLinear, bNormalMap, []() { return true; });
+		}
+
+		template<typename TOutputData, typename TInputData, typename TContinue>
+		bool Initialize(const TInputData* data, bool bConvertToLinear, bool bNormalMap, const TContinue& shouldContinue)
+		{
 			SAILOR_PROFILE_FUNCTION();
 
+			if (!shouldContinue()) return false;
 			m_data.Resize(m_width * m_height * sizeof(TOutputData));
 
 			for (uint32_t i = 0; i < (uint32_t)m_width * m_height; i++)
 			{
+				if (i % 1024u == 0u && !shouldContinue()) return false;
 				TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * i);
 				const TInputData* src = data + i;
 				const TOutputData normalized =
@@ -67,6 +76,7 @@ namespace Sailor::Raytracing
 						normalized;
 				}
 			}
+			return shouldContinue();
 		}
 
 		template<typename T>
@@ -78,54 +88,40 @@ namespace Sailor::Raytracing
 		}
 
 		template<typename T>
-		const T Sample(const vec2& uv) const
+		T Sample(const vec2& uv) const
 		{
 			SAILOR_PROFILE_FUNCTION();
 
-			vec2 wrappedUV{};
-
-			switch (m_clamping)
+			const auto pixelCoordinate = [](float coordinate, int32_t size, SamplerClamping clamping)
 			{
-			case SamplerClamping::Clamp:
-				wrappedUV.x = std::clamp(uv.x, 0.0f, 1.0f);
-				wrappedUV.y = std::clamp(uv.y, 0.0f, 1.0f);
-				break;
+				coordinate = clamping == SamplerClamping::Repeat ?
+					coordinate - std::floor(coordinate) : std::clamp(coordinate, 0.0f, 1.0f);
+				// Normalized coordinates put texel centres at (i + 0.5) / size.
+				return coordinate * static_cast<float>(size) - 0.5f;
+			};
+			const auto address = [](int32_t index, int32_t size, SamplerClamping clamping)
+			{
+				if (clamping == SamplerClamping::Clamp)
+				{
+					return std::clamp(index, 0, size - 1);
+				}
+				return index < 0 ? size - 1 : index >= size ? 0 : index;
+			};
 
-			case SamplerClamping::Repeat:
-				wrappedUV.x = uv.x - std::floor(uv.x);
-				wrappedUV.y = uv.y - std::floor(uv.y);
-				break;
-			}
-
-			// Convert UV to pixel space once, and compute the required values.
-			const float fx = wrappedUV.x * (m_width - 1);
-			const float fy = wrappedUV.y * (m_height - 1);
-
-			const int32_t tX0 = static_cast<int32_t>(fx);
-			const int32_t tY0 = static_cast<int32_t>(fy);
-			const int32_t tX1 = std::min(tX0 + 1, m_width - 1);
-			const int32_t tY1 = std::min(tY0 + 1, m_height - 1);
-
-			// Compute the fractional parts
-			const float fracX = fx - tX0;
-			const float fracY = fy - tY0;
-
-			T* topLeft;
-			T* topRight;
-			T* bottomLeft;
-			T* bottomRight;
-
-			topLeft = (T*)m_data.GetData() + tX0 + tY0 * m_width;
-			topRight = (T*)m_data.GetData() + tX1 + tY0 * m_width;
-			bottomLeft = (T*)m_data.GetData() + tX0 + tY1 * m_width;
-			bottomRight = (T*)m_data.GetData() + tX1 + tY1 * m_width;
-
-			// Bilinear interpolation using direct memory access
-			const T topMix = *topLeft + fracX * (*topRight - *topLeft);
-			const T bottomMix = *bottomLeft + fracX * (*bottomRight - *bottomLeft);
-			const T finalSample = topMix + fracY * (bottomMix - topMix);
-
-			return finalSample;
+			const float fx = pixelCoordinate(uv.x, m_width, m_clampingU);
+			const float fy = pixelCoordinate(uv.y, m_height, m_clampingV);
+			const int32_t x = static_cast<int32_t>(std::floor(fx));
+			const int32_t y = static_cast<int32_t>(std::floor(fy));
+			const float fracX = fx - x;
+			const float fracY = fy - y;
+			const int32_t x0 = address(x, m_width, m_clampingU);
+			const int32_t x1 = address(x + 1, m_width, m_clampingU);
+			const int32_t y0 = address(y, m_height, m_clampingV);
+			const int32_t y1 = address(y + 1, m_height, m_clampingV);
+			const T* pixels = reinterpret_cast<const T*>(m_data.GetData());
+			const T top = glm::mix(pixels[x0 + y0 * m_width], pixels[x1 + y0 * m_width], fracX);
+			const T bottom = glm::mix(pixels[x0 + y1 * m_width], pixels[x1 + y1 * m_width], fracX);
+			return glm::mix(top, bottom, fracY);
 		}
 
 		CombinedSampler2D() = default;
@@ -255,7 +251,7 @@ namespace Sailor::Raytracing
 		bool bNormalMap = false)
 	{
 		auto ptr = m_textures[textureIndex] = TSharedPtr<CombinedSampler2D>::Make();
-		ptr->m_clamping = clamping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
+		ptr->m_clampingU = ptr->m_clampingV = clamping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 
 		if constexpr (IsSame<vec4, T>)
 		{

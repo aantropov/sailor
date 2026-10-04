@@ -177,7 +177,7 @@ namespace SailorEditor.Services
                 return Task.FromResult(false);
             }
 
-            return _engineService.UpdateAssetAsync(
+            return _engineService.ReimportAssetAsync(
                 assetFile.FileId,
                 cancellationToken);
         }

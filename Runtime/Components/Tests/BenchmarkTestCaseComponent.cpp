@@ -7,7 +7,7 @@
 #include "Sailor.h"
 #include "Containers/Pair.h"
 #include "Memory/Memory.h"
-#include "Core/Utils.h"
+#include "Platform/Time.h"
 #include <sstream>
 
 using namespace Sailor;

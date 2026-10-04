@@ -130,7 +130,7 @@ bool GameObject::RemoveComponent(ComponentPtr component)
 		return false;
 	}
 
-	if (m_components.RemoveFirst(component))
+	if (m_components.RemoveFirst(component) != TVector<ComponentPtr>::InvalidIndex)
 	{
 		m_pWorld->RemovePendingDependencyResolutions(component);
 		component->EndPlay();
@@ -165,15 +165,20 @@ void GameObject::EndPlay()
 
 void GameObject::EditorTick(float deltaTime)
 {
-	check(m_componentsToAdd <= m_components.Num());
-
-	for (uint32_t i = 0; i < m_components.Num() - m_componentsToAdd; i++)
+	const GameObjectPtr self = m_self;
+	const size_t currentFrame = m_pWorld->GetCurrentFrame();
+	TVector<ComponentPtr, Memory::TInlineAllocator<>> components(m_components.GetData(), m_components.Num());
+	for (auto& component : components)
 	{
-		auto& el = m_components[i];
-		el->EditorTick(deltaTime);
+		if (!self || self->m_bPendingDestroy)
+		{
+			break;
+		}
+		if (component && component->m_frameAdded < currentFrame)
+		{
+			component->EditorTick(deltaTime);
+		}
 	}
-
-	m_componentsToAdd = 0;
 }
 
 void GameObject::DrawEditorSelectedGizmo()
@@ -208,21 +213,34 @@ void GameObject::DrawEditorSelectedGizmo()
 
 void GameObject::Tick(float deltaTime)
 {
-	check(m_componentsToAdd <= m_components.Num());
-
-	for (uint32_t i = 0; i < m_components.Num() - m_componentsToAdd; i++)
+	const GameObjectPtr self = m_self;
+	const size_t currentFrame = m_pWorld->GetCurrentFrame();
+	const bool bShouldCallBeginPlay = (m_pWorld->m_mask & (uint8_t)EWorldBehaviourBit::CallBeginPlay) != 0;
+	const bool bShouldTick = (m_pWorld->m_mask & (uint8_t)EWorldBehaviourBit::Tickable) != 0;
+	// Callbacks may remove this object or its components.
+	TVector<ComponentPtr, Memory::TInlineAllocator<>> components(m_components.GetData(), m_components.Num());
+	for (auto& component : components)
 	{
-		auto& el = m_components[i];
-		if (el->m_bBeginPlayCalled)
+		if (!self || self->m_bPendingDestroy)
 		{
-			el->Tick(deltaTime);
+			break;
 		}
-		else
+		// Components added anywhere in this world during the phase wait until the next frame.
+		if (!component || component->m_frameAdded >= currentFrame)
 		{
-			el->BeginPlay();
-			el->m_bBeginPlayCalled = true;
+			continue;
+		}
+		if (!component->m_bBeginPlayCalled)
+		{
+			if (bShouldCallBeginPlay && component->m_bDependenciesResolved)
+			{
+				component->m_bBeginPlayCalled = true;
+				component->BeginPlay();
+			}
+		}
+		else if (bShouldTick)
+		{
+			component->Tick(deltaTime);
 		}
 	}
-
-	m_componentsToAdd = 0;
 }

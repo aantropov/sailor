@@ -101,6 +101,8 @@ namespace Sailor
 		};
 
 	private:
+		friend class GlobalIlluminationBakeControllerTestAccess;
+
 		TSharedPtr<SharedState> m_state{};
 		Tasks::ITaskPtr m_task{};
 	};

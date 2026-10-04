@@ -67,12 +67,12 @@ namespace Sailor::RHI
 		SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
 		SAILOR_API virtual ~IGraphicsDriver() = default;
 
-		SAILOR_API virtual void BeginConditionalDestroy() = 0;
+		SAILOR_API virtual bool BeginConditionalDestroy() = 0;
 
 		SAILOR_API virtual bool StartGpuTracking() = 0;
 		SAILOR_API virtual RHI::GpuStats FinishGpuTracking() = 0;
 		SAILOR_API virtual bool SupportsGpuFrameTimeQueries() const = 0;
-		SAILOR_API virtual bool BeginGpuFrameTimeQuery() = 0;
+		SAILOR_API virtual bool BeginGpuFrameTimeQuery(uint64_t generation) = 0;
 		SAILOR_API virtual uint32_t BeginGpuFrameTimeRange(
 			RHICommandListPtr commandList) = 0;
 		SAILOR_API virtual void EndGpuFrameTimeRange(
@@ -81,7 +81,8 @@ namespace Sailor::RHI
 		SAILOR_API virtual void EndGpuFrameTimeQuery() = 0;
 		SAILOR_API virtual void CommitGpuFrameTimeQuery() = 0;
 		SAILOR_API virtual void CancelGpuFrameTimeQuery() = 0;
-		SAILOR_API virtual bool TryGetGpuFrameTimeMs(float& outMilliseconds) const = 0;
+		// Render thread only. No result means pending; an invalid result is explicit.
+		SAILOR_API virtual std::optional<GpuTimingResult> TakeGpuTimingResult() = 0;
 
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const = 0;
 
@@ -94,12 +95,14 @@ namespace Sailor::RHI
 		SAILOR_API virtual uint32_t GetMaxFramesInFlight() const = 0;
 
 		SAILOR_API virtual bool AcquireNextImage() = 0;
-		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,
+		// Submit the flight acquired by BeginRenderSubmission/AcquireNextImage.
+		// Optional completion is one-shot: the native flight fence may be reused.
+		SAILOR_API virtual FrameSubmissionResult PresentFrame(const Sailor::FrameState& state,
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
-			const TVector<RHISemaphorePtr>& waitSemaphores = {}) = 0;
-		SAILOR_API virtual bool SubmitFrameWithoutPresent(
+			const TVector<RHISemaphorePtr>& waitSemaphores = {}, RHIFencePtr completion = {}) = 0;
+		SAILOR_API virtual FrameSubmissionResult SubmitFrameWithoutPresent(
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
-			const TVector<RHISemaphorePtr>& waitSemaphores = {}) = 0;
+			const TVector<RHISemaphorePtr>& waitSemaphores = {}, RHIFencePtr completion = {}) = 0;
 
 		SAILOR_API virtual void SetDebugName(RHIResourcePtr resource, const std::string& name) = 0;
 		SAILOR_API virtual void WaitIdle() = 0;
@@ -157,6 +160,8 @@ namespace Sailor::RHI
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit) = 0;
 
+		SAILOR_API virtual RHI::RHISurfacePtr CreateSurface(RHI::RHIRenderTargetPtr resolved) = 0;
+
 		SAILOR_API virtual RHI::RHICubemapPtr CreateCubemap(
 			glm::ivec2 extent,
 			uint32_t mipMapLevel = 1,
@@ -185,8 +190,8 @@ namespace Sailor::RHI
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, const std::string& name, uint32_t shaderBinding) = 0;
 		SAILOR_API virtual bool FillShadersLayout(RHI::RHIShaderBindingSetPtr& pShaderBindings, const TVector<RHIShaderPtr>& shaders, uint32_t setNum) = 0;
 
-		// Used for full binding update
-		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHITexturePtr value, uint32_t index = 0) = 0;
+		// Returns true when the requested texture binding is current.
+		SAILOR_API virtual bool UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHITexturePtr value, uint32_t index = 0) = 0;
 
 		// Used only for static vertex types
 		template<typename TVertex>
@@ -212,10 +217,11 @@ namespace Sailor::RHI
 		SAILOR_API virtual void ReleaseTemporaryRenderTarget(RHI::RHIRenderTargetPtr renderTarget);
 
 		//Immediate context
-		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
+		SAILOR_API virtual bool UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
+		// An incomplete wait returns nullptr/false; accepted commands remain tracked until completion.
 		SAILOR_API virtual RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
-		SAILOR_API virtual void CopyBuffer_Immediate(RHIBufferPtr src, RHIBufferPtr dst, size_t size) = 0;
-		SAILOR_API virtual void SubmitCommandList_Immediate(RHICommandListPtr commandList);
+		SAILOR_API virtual bool CopyBuffer_Immediate(RHIBufferPtr src, RHIBufferPtr dst, size_t size, size_t srcOffset = 0, size_t dstOffset = 0) = 0;
+		SAILOR_API virtual bool SubmitCommandList_Immediate(RHICommandListPtr commandList);
 
                 SAILOR_API virtual RHITexturePtr CreateImage_Immediate(
                         const void* pData,
@@ -335,6 +341,19 @@ namespace Sailor::RHI
 			float clearDepth,
 			bool bStoreDepth) = 0;
 
+		// One optional resolve per color target, preserving explicit MSAA targets in mixed MRT passes.
+		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+			const TVector<RHI::RHITexturePtr>& colorAttachments,
+			const TVector<RHI::RHITexturePtr>& colorAttachmentResolves,
+			RHI::RHITexturePtr depthStencilAttachment,
+			glm::ivec4 renderArea,
+			glm::ivec2 offset,
+			bool bClearRenderTargets,
+			glm::vec4 clearColor,
+			float clearDepth,
+			bool bSupportMultisampling,
+			bool bStoreDepth) = 0;
+
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd) = 0;
 
 		SAILOR_API virtual void RestoreImageBarriers(RHI::RHICommandListPtr cmd) = 0;
@@ -373,7 +392,7 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual void SetViewport(RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
 		SAILOR_API virtual void SetDefaultViewport(RHICommandListPtr cmd) = 0;
-		SAILOR_API virtual void BindShaderBindings(RHICommandListPtr cmd, RHI::RHIMaterialPtr, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) = 0;
+		SAILOR_API virtual bool BindShaderBindings(RHICommandListPtr cmd, RHI::RHIMaterialPtr, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) = 0;
 		SAILOR_API virtual void DrawIndexed(RHICommandListPtr cmd, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0) = 0;
 		SAILOR_API virtual void DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, size_t offset, uint32_t drawCount, uint32_t stride) = 0;
 		SAILOR_API virtual void PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr) = 0;

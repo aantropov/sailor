@@ -3,21 +3,15 @@
 
 #include "Sailor.h"
 #include "AssetRegistry/AssetRegistry.h"
-#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Core/Reflection.h"
 #include "ECS/ECS.h"
 #include "ECS/GlobalIlluminationECS.h"
 #include "Engine/World.h"
 #include "Engine/InstanceId.h"
-#include "FrameGraph/EditorReadbackNode.h"
-#include "FrameGraph/RHIFrameGraph.h"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "Platform/Win32/Input.h"
 #include "RHI/Buffer.h"
-#include "RHI/Fence.h"
 #include "RHI/Renderer.h"
-#include "RHI/RenderTarget.h"
-#include "RHI/Surface.h"
 #include "Submodules/Editor.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
 #if defined(_WIN32)
@@ -50,359 +44,16 @@ namespace
 
 	constexpr ViewportId kPrimaryEditorViewportId = 1;
 
-	std::optional<PixelFormat> ToRemotePixelFormat(RHI::EFormat format)
-	{
-		switch (format)
-		{
-		case RHI::EFormat::R8G8B8A8_UNORM:
-		case RHI::EFormat::R8G8B8A8_SRGB:
-			return PixelFormat::R8G8B8A8_UNorm;
-		case RHI::EFormat::B8G8R8A8_UNORM:
-		case RHI::EFormat::B8G8R8A8_SRGB:
-			return PixelFormat::B8G8R8A8_UNorm;
-		case RHI::EFormat::R16G16B16A16_SFLOAT:
-			return PixelFormat::R16G16B16A16_Float;
-		default:
-			return std::nullopt;
-		}
-	}
-
-	float HalfToFloat(uint16_t value)
-	{
-		const uint32_t sign = (static_cast<uint32_t>(value & 0x8000u)) << 16u;
-		const uint32_t exp = (value >> 10u) & 0x1fu;
-		const uint32_t mant = value & 0x03ffu;
-		uint32_t out = 0;
-		if (exp == 0)
-		{
-			if (mant == 0)
-			{
-				out = sign;
-			}
-			else
-			{
-				uint32_t normalizedMant = mant;
-				uint32_t normalizedExp = 113u;
-				while ((normalizedMant & 0x0400u) == 0)
-				{
-					normalizedMant <<= 1u;
-					normalizedExp--;
-				}
-				normalizedMant &= 0x03ffu;
-				out = sign | (normalizedExp << 23u) | (normalizedMant << 13u);
-			}
-		}
-		else if (exp == 31u)
-		{
-			out = sign | 0x7f800000u | (mant << 13u);
-		}
-		else
-		{
-			out = sign | ((exp + 112u) << 23u) | (mant << 13u);
-		}
-
-		float result = 0.0f;
-		std::memcpy(&result, &out, sizeof(float));
-		return result;
-	}
-
-	uint8_t FloatToUnorm8(float value)
-	{
-		value = std::clamp(value, 0.0f, 1.0f);
-		return static_cast<uint8_t>(value * 255.0f + 0.5f);
-	}
-
-	TSharedPtr<std::vector<uint8_t>> TryReadbackRendererTargetToBGRA8Bytes(const RHI::RHIRenderTargetPtr& renderTarget, PixelFormat pixelFormat, uint32_t& outBytesPerRow)
-	{
-		auto& driver = RHI::Renderer::GetDriver();
-		auto* commands = RHI::Renderer::GetDriverCommands();
-		if (!driver || !commands || !renderTarget)
-		{
-			return nullptr;
-		}
-
-		const uint32_t srcBytesPerPixel = pixelFormat == PixelFormat::R16G16B16A16_Float ? 8u : 4u;
-		const glm::ivec2 extent = renderTarget->GetExtent();
-		const size_t readbackSize = static_cast<size_t>(extent.x) * static_cast<size_t>(extent.y) * srcBytesPerPixel;
-		auto readbackBuffer = driver->CreateBuffer(readbackSize, RHI::EBufferUsageBit::BufferTransferDst_Bit, RHI::EMemoryPropertyBit::HostCoherent | RHI::EMemoryPropertyBit::HostVisible);
-		if (!readbackBuffer)
-		{
-			return nullptr;
-		}
-
-		auto cmd = driver->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
-		commands->BeginCommandList(cmd, true);
-		commands->ImageMemoryBarrier(cmd, renderTarget, renderTarget->GetFormat(), renderTarget->GetDefaultLayout(), RHI::EImageLayout::TransferSrcOptimal);
-		commands->CopyImageToBuffer(cmd, renderTarget, readbackBuffer);
-		commands->ImageMemoryBarrier(cmd, renderTarget, renderTarget->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, renderTarget->GetDefaultLayout());
-		commands->EndCommandList(cmd);
-
-		auto fence = RHI::RHIFencePtr::Make();
-		if (!driver->SubmitCommandList(cmd, fence))
-		{
-			SAILOR_LOG_ERROR("EditorRuntimeBridge: viewport readback submission failed.");
-			return nullptr;
-		}
-		fence->Wait();
-		fence->ClearDependencies();
-		fence->ClearObservables();
-
-		const auto* src = reinterpret_cast<const uint8_t*>(readbackBuffer->GetPointer());
-		if (!src)
-		{
-			return nullptr;
-		}
-
-		outBytesPerRow = static_cast<uint32_t>(extent.x) * 4u;
-		auto outBytes = TSharedPtr<std::vector<uint8_t>>::Make(static_cast<size_t>(outBytesPerRow) * static_cast<size_t>(extent.y));
-		for (int y = 0; y < extent.y; ++y)
-		{
-			uint8_t* dstRow = outBytes->data() + static_cast<size_t>(y) * outBytesPerRow;
-			const uint8_t* srcRow = src + static_cast<size_t>(y) * static_cast<size_t>(extent.x) * srcBytesPerPixel;
-			for (int x = 0; x < extent.x; ++x)
-			{
-				uint8_t* dstPixel = dstRow + static_cast<size_t>(x) * 4u;
-				const uint8_t* srcPixel = srcRow + static_cast<size_t>(x) * srcBytesPerPixel;
-				switch (pixelFormat)
-				{
-				case PixelFormat::B8G8R8A8_UNorm:
-					dstPixel[0] = srcPixel[0];
-					dstPixel[1] = srcPixel[1];
-					dstPixel[2] = srcPixel[2];
-					dstPixel[3] = srcPixel[3];
-					break;
-				case PixelFormat::R8G8B8A8_UNorm:
-					dstPixel[0] = srcPixel[2];
-					dstPixel[1] = srcPixel[1];
-					dstPixel[2] = srcPixel[0];
-					dstPixel[3] = srcPixel[3];
-					break;
-				case PixelFormat::R16G16B16A16_Float:
-				{
-					const uint16_t* halfs = reinterpret_cast<const uint16_t*>(srcPixel);
-					dstPixel[0] = FloatToUnorm8(HalfToFloat(halfs[2]));
-					dstPixel[1] = FloatToUnorm8(HalfToFloat(halfs[1]));
-					dstPixel[2] = FloatToUnorm8(HalfToFloat(halfs[0]));
-					dstPixel[3] = FloatToUnorm8(HalfToFloat(halfs[3]));
-					break;
-				}
-				default:
-					return nullptr;
-				}
-			}
-		}
-
-		return outBytes;
-	}
-
-	bool TryAcquireEditorReadbackFrameSource(MacRendererFrameSource& outSource, std::string* outSummary = nullptr)
-	{
-		auto* renderer = App::GetSubmodule<RHI::Renderer>();
-		FrameGraphPtr frameGraph{};
-		if (renderer)
-		{
-			frameGraph = renderer->GetFrameGraph();
-		}
-
-		auto rhiFrameGraph = frameGraph ? frameGraph->GetRHI() : nullptr;
-		auto readbackNode = rhiFrameGraph ? rhiFrameGraph->GetGraphNode("EditorReadback").DynamicCast<Framegraph::EditorReadbackNode>() : nullptr;
-
-		auto cpuBuffer = readbackNode ? readbackNode->GetBuffer() : RHIBufferPtr{};
-		auto texture = readbackNode ? readbackNode->GetTexture() : RHITexturePtr{};
-		const auto* src = cpuBuffer ? reinterpret_cast<const uint8_t*>(cpuBuffer->GetPointer()) : nullptr;
-
-		const bool available = readbackNode && cpuBuffer && texture && src;
-		if (available)
-		{
-			const auto pixelFormat = ToRemotePixelFormat(texture->GetFormat());
-			if (!pixelFormat.has_value())
-			{
-				return false;
-			}
-
-			const glm::ivec2 extent = texture->GetExtent();
-			outSource = MacRendererFrameSource{};
-			outSource.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
-			outSource.m_sourceObject = reinterpret_cast<uintptr_t>(texture.GetRawPtr());
-			outSource.m_sourceToken = texture.GetHash();
-			outSource.m_width = static_cast<uint32_t>(extent.x);
-			outSource.m_height = static_cast<uint32_t>(extent.y);
-			outSource.m_pixelFormat = *pixelFormat;
-			outSource.m_bytesPerRow = readbackNode->GetBytesPerRow();
-			outSource.m_debugName = "EditorReadback";
-			const size_t totalBytes = static_cast<size_t>(outSource.m_bytesPerRow) * static_cast<size_t>(outSource.m_height);
-			outSource.m_cpuBytes = TSharedPtr<std::vector<uint8_t>>::Make(src, src + totalBytes);
-		}
-
-		if (outSummary)
-		{
-			std::ostringstream ss;
-			ss << "editorReadback=" << (readbackNode ? 1 : 0)
-				<< " available=" << (available ? 1 : 0);
-			if (available)
-			{
-				ss << " srcSize=" << outSource.m_width << "x" << outSource.m_height
-					<< " srcPitch=" << outSource.m_bytesPerRow;
-			}
-			*outSummary = ss.str();
-		}
-
-		return available;
-	}
-
-	bool TryFillRendererFrameSourceFromTarget(const char* debugName, const RHI::RHIRenderTargetPtr& renderTarget, MacRendererFrameSource& outSource)
-	{
-		if (!renderTarget)
-		{
-			return false;
-		}
-
-#if defined(SAILOR_BUILD_WITH_VULKAN)
-		if (!renderTarget->m_vulkan.m_image || !renderTarget->m_vulkan.m_imageView)
-		{
-			return false;
-		}
-#endif
-
-		const auto extent = renderTarget->GetExtent();
-		if (extent.x <= 0 || extent.y <= 0)
-		{
-			return false;
-		}
-
-		const auto pixelFormat = ToRemotePixelFormat(renderTarget->GetFormat());
-		if (!pixelFormat.has_value())
-		{
-			return false;
-		}
-
-		outSource.m_sourceObject = reinterpret_cast<uintptr_t>(renderTarget.GetRawPtr());
-		outSource.m_sourceToken = renderTarget.GetHash();
-		outSource.m_width = static_cast<uint32_t>(extent.x);
-		outSource.m_height = static_cast<uint32_t>(extent.y);
-		outSource.m_pixelFormat = *pixelFormat;
-		outSource.m_debugName = debugName;
-
-		auto cpuBytes = TryReadbackRendererTargetToBGRA8Bytes(renderTarget, *pixelFormat, outSource.m_bytesPerRow);
-		if (cpuBytes && !cpuBytes->empty())
-		{
-			outSource.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
-			outSource.m_cpuBytes = std::move(cpuBytes);
-			return true;
-		}
-
-		return false;
-	}
-
-	bool TryFillRendererFrameSourceFromSurface(const char* debugName, const RHI::RHISurfacePtr& surface, MacRendererFrameSource& outSource)
-	{
-		if (!surface)
-		{
-			return false;
-		}
-
-		auto renderTarget = surface->GetResolved();
-		if (!renderTarget)
-		{
-			renderTarget = surface->GetTarget();
-		}
-
-		return TryFillRendererFrameSourceFromTarget(debugName, renderTarget, outSource);
-	}
-
-	bool TryAcquireFrameGraphFrameSource(MacRendererFrameSource& outSource, std::string* outSummary = nullptr)
-	{
-		if (TryAcquireEditorReadbackFrameSource(outSource, outSummary))
-		{
-			return true;
-		}
-
-		outSource = MacRendererFrameSource{};
-		auto* renderer = App::GetSubmodule<RHI::Renderer>();
-		FrameGraphPtr frameGraph{};
-		if (renderer)
-		{
-			frameGraph = renderer->GetFrameGraph();
-		}
-		auto rhiFrameGraph = frameGraph ? frameGraph->GetRHI() : nullptr;
-
-		struct Candidate
-		{
-			const char* m_name;
-			const char* m_surfaceName;
-		};
-
-		constexpr Candidate candidates[] =
-		{
-			{ "Renderer.SceneView.EditorOutput", "EditorOutput" },
-			{ "Renderer.SceneView.Main", "Main" },
-			{ "Renderer.SceneView.BackBuffer", "BackBuffer" },
-			{ "Renderer.SceneView.Secondary", "Secondary" }
-		};
-
-		const char* selectedResource = nullptr;
-		for (const auto& candidate : candidates)
-		{
-			auto surface = rhiFrameGraph ? rhiFrameGraph->GetSurface(candidate.m_surfaceName) : nullptr;
-			if (TryFillRendererFrameSourceFromSurface(candidate.m_name, surface, outSource))
-			{
-				selectedResource = candidate.m_surfaceName;
-				break;
-			}
-
-			auto renderTarget = rhiFrameGraph ? rhiFrameGraph->GetRenderTarget(candidate.m_surfaceName) : nullptr;
-			if (TryFillRendererFrameSourceFromTarget(candidate.m_name, renderTarget, outSource))
-			{
-				selectedResource = candidate.m_surfaceName;
-				break;
-			}
-		}
-
-		const bool acquired = selectedResource != nullptr;
-
-		if (outSummary)
-		{
-			std::ostringstream ss;
-			ss << "renderer=" << (renderer ? 1 : 0)
-				<< " frameGraph=" << (frameGraph ? 1 : 0)
-				<< " available=" << (acquired ? 1 : 0);
-			if (acquired)
-			{
-				ss << " surface=" << selectedResource
-					<< " srcSize=" << outSource.m_width << "x" << outSource.m_height
-					<< " srcPitch=" << outSource.m_bytesPerRow;
-			}
-			*outSummary = ss.str();
-		}
-
-		return acquired;
-	}
-
 	class SailorRendererFrameSourceProvider final : public IMacRendererFrameSourceProvider
 	{
 	public:
 		Failure AcquireFrameSource(const MacViewportSurfaceState& state, FrameIndex nextFrameIndex, MacRendererFrameSource& outSource) override
 		{
 			(void)state;
+			(void)nextFrameIndex;
 
-			if (TryAcquireFrameGraphFrameSource(outSource, &m_lastProbeSummary))
-			{
-				m_hasAcquiredRealSource = true;
-				return Failure::Ok();
-			}
-
-			const uint32_t maxAttempts = !m_hasAcquiredRealSource || nextFrameIndex <= 2 ? 2u : 1u;
-			for (uint32_t attempt = 0; attempt < maxAttempts; attempt++)
-			{
-				std::this_thread::sleep_for(std::chrono::milliseconds(8));
-				if (TryAcquireFrameGraphFrameSource(outSource, &m_lastProbeSummary))
-				{
-					m_hasAcquiredRealSource = true;
-					return Failure::Ok();
-				}
-			}
-
-			outSource = {};
+			const bool available = EditorRuntime::TryAcquireEditorReadbackFrameSource(outSource);
+			m_lastProbeSummary = available ? "editorReadback=1 available=1" : "editorReadback=1 available=0";
 			return Failure::Ok();
 		}
 
@@ -410,7 +61,6 @@ namespace
 
 	private:
 		std::string m_lastProbeSummary{};
-		bool m_hasAcquiredRealSource = false;
 	};
 
 	struct RemoteViewportBinding
@@ -430,7 +80,6 @@ namespace
 		std::atomic_bool m_created = false;
 		std::atomic_bool m_visible = true;
 		bool m_focused = false;
-		uint64_t m_nowMs = 0;
 		Failure m_lastPumpFailure = Failure::Ok();
 #if defined(_WIN32)
 		std::atomic_bool m_pumpScheduled = false;
@@ -464,7 +113,6 @@ namespace
 			{
 				m_lastPumpFailure = Failure::Ok();
 			}
-			m_binding.GetRuntimeSession().TickTimeouts(++m_nowMs);
 		}
 
 		void SetVisible(bool value)
@@ -845,6 +493,25 @@ namespace
 	}
 }
 
+bool Sailor::EditorRuntime::TryAcquireEditorReadbackFrameSource(EditorRemote::MacRendererFrameSource& outSource)
+{
+	outSource = {};
+	const auto* renderer = App::GetSubmodule<RHI::Renderer>();
+	const auto frame = renderer ? renderer->GetEditorReadback() : EditorReadbackFramePtr{};
+	if (!frame) return false;
+
+	outSource.m_kind = EditorRemote::MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
+	outSource.m_sourceObject = reinterpret_cast<uintptr_t>(frame->m_buffer.GetRawPtr());
+	outSource.m_sourceToken = frame->m_frameIndex;
+	outSource.m_width = static_cast<uint32_t>(frame->m_extent.x);
+	outSource.m_height = static_cast<uint32_t>(frame->m_extent.y);
+	outSource.m_pixelFormat = EditorRemote::PixelFormat::B8G8R8A8_UNorm;
+	outSource.m_debugName = "EditorReadback";
+	outSource.m_bytesPerRow = frame->GetBgraBytesPerRow();
+	outSource.m_readback = frame;
+	return true;
+}
+
 bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 {
 	RECT rect{};
@@ -1103,6 +770,13 @@ void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()
 				continue;
 			}
 #endif
+			const auto* renderer = App::GetSubmodule<RHI::Renderer>();
+			if (renderer && renderer->HasEditorReadback())
+			{
+				const auto frame = renderer->GetEditorReadback();
+				const auto& viewport = binding->m_binding.GetRuntimeSession().GetDescriptor();
+				if (!frame || frame->m_extent != glm::ivec2(viewport.m_width, viewport.m_height)) continue;
+			}
 			binding->Pump();
 		}
 #endif
@@ -1226,7 +900,7 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 	}
 	if (hostHandle.has_value())
 	{
-		binding->m_binding.GetHost().BindNativeHostHandle(viewportId, *hostHandle);
+		binding->m_presenter.BindHostHandle(viewportId, *hostHandle);
 	}
 #endif
 	if (!binding->m_created)
@@ -1314,6 +988,36 @@ uint32_t App::GetEditorRemoteViewportState(uint64_t viewportId)
 	return static_cast<uint32_t>(binding->m_binding.GetRuntimeSession().GetState());
 }
 
+bool App::CaptureEditorRemoteViewportFrameEvidence(uint64_t viewportId, std::string& outDiagnostic)
+{
+#if defined(__APPLE__)
+	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
+	auto binding = FindRemoteViewportBinding(viewportId);
+	if (!binding)
+	{
+		outDiagnostic = "Viewport does not exist.";
+		return false;
+	}
+	std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
+	if (!bindingLock.owns_lock())
+	{
+		outDiagnostic = "Viewport is busy; retry the capture.";
+		return false;
+	}
+	if (!IsCurrentRemoteViewportBinding(viewportId, binding))
+	{
+		outDiagnostic = "Viewport was replaced before capture.";
+		return false;
+	}
+	auto result = binding->m_presenter.CaptureFrameEvidence(viewportId);
+	outDiagnostic = result.IsOk() ? binding->m_presenter.BuildViewportSummary(viewportId) : result.m_message;
+	return result.IsOk();
+#else
+	outDiagnostic = "Viewport pixel evidence is only available on macOS.";
+	return false;
+#endif
+}
+
 uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics)
 {
 	if (!diagnostics)
@@ -1376,7 +1080,8 @@ uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** dia
 				<< "' syntheticSource=" << (isSyntheticSource ? 1 : 0)
 				<< " srcSize=" << allocation->m_lastRendererSource.m_width << "x" << allocation->m_lastRendererSource.m_height
 				<< " srcPitch=" << allocation->m_lastRendererSource.m_bytesPerRow
-				<< " copyToken=" << allocation->m_lastProducerCopyToken;
+				<< " copyToken=" << allocation->m_lastProducerCopyToken
+				<< " cpuUploadedBytes=" << allocation->m_cpuUploadedBytes;
 			info.m_nativePresenterSummary += macSource.str();
 		}
 	}
@@ -1499,7 +1204,7 @@ bool App::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hos
 	{
 		return true;
 	}
-	binding->m_binding.GetHost().BindNativeHostHandle(viewportId, *currentHostHandle);
+	binding->m_presenter.BindHostHandle(viewportId, *currentHostHandle);
 	return true;
 #else
 	(void)viewportId;

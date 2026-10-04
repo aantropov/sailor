@@ -1,6 +1,7 @@
 #include "BVH.h"
 #include "Tasks/Scheduler.h"
 #include "Containers/Vector.h"
+#include "Containers/Sort.h"
 #include "Core/LogMacros.h"
 #include "Core/Utils.h"
 #include "Math/Math.h"
@@ -15,7 +16,22 @@ using namespace Sailor;
 using namespace Sailor::Math;
 using namespace Sailor::Raytracing;
 
-float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t& outAxis, float& outSplitPos) const
+struct BVH::BuildProgress
+{
+	const std::function<bool()>& m_shouldContinue;
+	uint32_t m_remaining = 1024u;
+
+	bool Check() const { return !m_shouldContinue || m_shouldContinue(); }
+	bool Advance()
+	{
+		if (--m_remaining != 0u) return true;
+		m_remaining = 1024u;
+		return Check();
+	}
+};
+
+bool BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>& tris,
+	int32_t& outAxis, float& outSplitPos, float& outCost, BuildProgress& progress) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -31,6 +47,7 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 
 		for (uint32_t i = 0; i < node.m_triCount; i++)
 		{
+			if (!progress.Advance()) return false;
 			const Math::Triangle& triangle = tris[m_triIdx[node.m_leftFirst + i]];
 			boundsMin = std::min(boundsMin, triangle.m_centroid[a]);
 			boundsMax = std::max(boundsMax, triangle.m_centroid[a]);
@@ -47,6 +64,7 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 		const double binScale = static_cast<double>(NumBins) / boundsExtent;
 		for (uint i = 0; i < node.m_triCount; i++)
 		{
+			if (!progress.Advance()) return false;
 			const Math::Triangle& triangle = tris[m_triIdx[node.m_leftFirst + i]];
 			const double scaledCentroid =
 				(static_cast<double>(triangle.m_centroid[a]) -
@@ -101,7 +119,8 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 			}
 		}
 	}
-	return bestCost;
+	outCost = bestCost;
+	return true;
 }
 
 float BVH::EvaluateSAH(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t axis, float pos) const
@@ -207,7 +226,7 @@ bool BVH::IntersectBVH(const Math::Ray& ray, Math::RaycastHit& outResult, const 
 	return outResult.HasIntersection();
 }
 
-void BVH::UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
+bool BVH::UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris, BuildProgress& progress)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -218,6 +237,7 @@ void BVH::UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris
 
 	for (uint first = node.m_leftFirst, i = 0; i < node.m_triCount; i++)
 	{
+		if (!progress.Advance()) return false;
 		uint leafTriIdx = m_triIdx[first + i];
 		const Triangle& leafTri = tris[leafTriIdx];
 		node.m_aabbMin = glm::min(node.m_aabbMin, leafTri.m_vertices[0]);
@@ -227,9 +247,10 @@ void BVH::UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris
 		node.m_aabbMax = glm::max(node.m_aabbMax, leafTri.m_vertices[1]);
 		node.m_aabbMax = glm::max(node.m_aabbMax, leafTri.m_vertices[2]);
 	}
+	return true;
 }
 
-void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
+bool BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris, BuildProgress& progress)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -238,17 +259,18 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 
 	if (node.m_triCount <= 4)
 	{
-		return;
+		return true;
 	}
 
 	int32_t axis{};
 	float splitPos{};
-	float splitCost = FindBestSplitPlane(node, tris, axis, splitPos);
+	float splitCost{};
+	if (!FindBestSplitPlane(node, tris, axis, splitPos, splitCost, progress)) return false;
 
 	float nosplitCost = node.CalculateCost();
 	if (!std::isfinite(splitCost) || splitCost >= nosplitCost)
 	{
-		return;
+		return true;
 	}
 
 	// in-place partition
@@ -257,6 +279,7 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 
 	while (i <= j)
 	{
+		if (!progress.Advance()) return false;
 		if (tris[m_triIdx[i]].m_centroid[axis] < splitPos)
 		{
 			i++;
@@ -272,7 +295,7 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 
 	if (leftCount == 0 || leftCount == node.m_triCount)
 	{
-		return;
+		return true;
 	}
 
 	// create child nodes
@@ -287,21 +310,30 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 	node.m_leftFirst = leftChildIdx;
 	node.m_triCount = 0;
 
-	UpdateNodeBounds(leftChildIdx, tris);
-	UpdateNodeBounds(rightChildIdx, tris);
-
-	Subdivide(leftChildIdx, tris);
-	Subdivide(rightChildIdx, tris);
+	return UpdateNodeBounds(leftChildIdx, tris, progress) &&
+		UpdateNodeBounds(rightChildIdx, tris, progress) &&
+		Subdivide(leftChildIdx, tris, progress) &&
+		Subdivide(rightChildIdx, tris, progress);
 }
 
 void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
+{
+	BuildBVH(tris, {});
+}
+
+bool BVH::BuildBVH(const TVector<Math::Triangle>& tris, const std::function<bool()>& shouldContinue)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	check(tris.Num() * 2 - 1 == m_nodes.Num());
 
-	for (uint32_t i = 0; i < m_nodes.Num(); i++)
+	BuildProgress progress{ shouldContinue };
+	if (!progress.Check()) return false;
+	m_nodesUsed = 1u;
+	m_triangles.Clear();
+	for (uint32_t i = 0; i < tris.Num(); i++)
 	{
+		if (!progress.Advance()) return false;
 		m_triIdx[i] = i;
 	}
 
@@ -309,18 +341,19 @@ void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 	root.m_leftFirst = 0;
 	root.m_triCount = (uint32_t)tris.Num();
 
-	UpdateNodeBounds(m_rootNodeIdx, tris);
-	Subdivide(m_rootNodeIdx, tris);
+	if (!UpdateNodeBounds(m_rootNodeIdx, tris, progress) ||
+		!Subdivide(m_rootNodeIdx, tris, progress)) return false;
 
 	{
 		SAILOR_PROFILE_SCOPE("Copy/Locality triangle data");
 		// Cache locality
 		m_triangles.Reserve(tris.Num());
-		m_triIdxMapping.AddDefault(tris.Num());
+		m_triIdxMapping.Resize(tris.Num());
 
 		// TODO: Parallelize
-		for (uint32_t i = 0; i < m_nodes.Num(); i++)
+		for (uint32_t i = 0; i < m_nodesUsed; i++)
 		{
+			if (!progress.Advance()) return false;
 			if (m_nodes[i].IsLeaf())
 			{
 				const uint32_t triIndex = m_nodes[i].m_leftFirst;
@@ -332,19 +365,27 @@ void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 					SAILOR_PROFILE_SCOPE("Sort Triangles by area");
 					for (uint32_t j = 0; j < m_nodes[i].m_triCount; j++)
 					{
+						if (!progress.Advance()) return false;
 						sorted[j] = m_triIdx[triIndex + j];
 					}
 
-					sorted.Sort([&](const auto& lhs, const auto& rhs)
-						{
-							return tris[lhs].SquareArea() > tris[rhs].SquareArea();
-						});
+					const auto largerArea = [&](uint32_t lhs, uint32_t rhs)
+					{
+						return tris[lhs].SquareArea() > tris[rhs].SquareArea();
+					};
+					if (shouldContinue && sorted.Num() > 1024u)
+					{
+						if (!CancellableStableSort(sorted.begin(), sorted.end(), largerArea,
+							[&]() { return progress.Check(); })) return false;
+					}
+					else sorted.Sort(largerArea);
 				}
 
 				{
 					SAILOR_PROFILE_SCOPE("Copy data");
 					for (uint32_t j = 0; j < m_nodes[i].m_triCount; j++)
 					{
+						if (!progress.Advance()) return false;
 						const uint32_t triId = sorted[j];// m_triIdx[triIndex + j];
 						m_triIdxMapping[m_triangles.Num()] = triId;
 						m_triangles.Add(tris[triId]);
@@ -353,4 +394,5 @@ void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 			}
 		}
 	}
+	return progress.Check();
 }

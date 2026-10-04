@@ -15,9 +15,9 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(const ShaderCacheData& commit
 {
 	outDiagnostic.clear();
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
-	if (m_bArtifactSweepFailureForTests)
+	if (m_bArtifactCleanupFailureForTests)
 	{
-		m_bArtifactSweepFailureForTests = false;
+		m_bArtifactCleanupFailureForTests = false;
 		outDiagnostic = "Injected shader artifact sweep failure for lifecycle validation.";
 		return false;
 	}
@@ -101,8 +101,22 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(const ShaderCacheData& commit
 	return bSuccess;
 }
 
+void ShaderCache::CleanupArtifactsLocked()
+{
+	std::string diagnostic;
+	m_bCleanupPending = !SweepUnreferencedArtifactsLocked(m_committedCache, diagnostic);
+	if (m_bCleanupPending)
+	{
+		m_lastSaveDiagnostic = std::move(diagnostic);
+		SAILOR_LOG_ERROR("Shader cache artifact cleanup deferred: %s", m_lastSaveDiagnostic.c_str());
+	}
+	else
+	{
+		m_lastSaveDiagnostic.clear();
+	}
+}
+
 bool ShaderCache::RemoveLocked(const FileId& uid,
-	Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
 	std::string& outDiagnostic)
 {
 	for (size_t index = m_quarantinedEntries.Num(); index > 0; --index)
@@ -125,17 +139,11 @@ bool ShaderCache::RemoveLocked(const FileId& uid,
 
 	ShaderCacheData candidate = m_cache;
 	candidate.m_entries.Remove(uid);
-	if (!CommitCandidateLocked(std::move(candidate), outDiagnostic, failurePoint))
+	if (!CommitCandidateLocked(std::move(candidate), outDiagnostic))
 	{
 		return false;
 	}
-	std::string sweepDiagnostic;
-	if (!SweepUnreferencedArtifactsLocked(m_committedCache, sweepDiagnostic))
-	{
-		m_bIsDirty = true;
-		AppendDiagnostic(outDiagnostic, sweepDiagnostic);
-		return false;
-	}
+	CleanupArtifactsLocked();
 	outDiagnostic.clear();
 	return true;
 }
@@ -146,7 +154,7 @@ void ShaderCache::Remove(const FileId& uid)
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	std::string diagnostic;
-	if (!RemoveLocked(uid, Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None, diagnostic))
+	if (!RemoveLocked(uid, diagnostic))
 	{
 		m_lastSaveDiagnostic = std::move(diagnostic);
 		SAILOR_LOG_ERROR("Shader cache remove failed: %s", m_lastSaveDiagnostic.c_str());
@@ -155,46 +163,45 @@ void ShaderCache::Remove(const FileId& uid)
 
 void ShaderCache::Invalidate(const FileId& uid)
 {
+	Invalidate(TVector<FileId>{ uid });
+}
+
+bool ShaderCache::Invalidate(const TVector<FileId>& uids)
+{
 	SAILOR_PROFILE_FUNCTION();
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	bool bInvalidated = false;
-	if (m_cache.m_entries.ContainsKey(uid))
+	for (const FileId& uid : uids)
 	{
-		for (ShaderCacheData::Entry& entry : m_cache.m_entries[uid])
+		if (auto entries = m_cache.m_entries.Find(uid); entries != m_cache.m_entries.end())
 		{
-			// Keep the last durable generation as a fallback while forcing an exact
-			// dependency comparison to reject it until a successful replacement exists.
-			entry.m_timestamp = 0;
-			entry.m_sourceFingerprint = 0;
-			bInvalidated = true;
+			for (ShaderCacheData::Entry& entry : entries.Value())
+			{
+				// Retain the last generation until its replacement has been committed.
+				m_bIsDirty |= entry.m_timestamp != 0 || entry.m_sourceFingerprint != 0;
+				entry.m_timestamp = 0;
+				entry.m_sourceFingerprint = 0;
+			}
 		}
-	}
-	for (QuarantinedEntry& entry : m_quarantinedEntries)
-	{
-		if (entry.m_fileId == uid)
+		for (QuarantinedEntry& entry : m_quarantinedEntries)
 		{
-			entry.m_timestamp = 0;
-			entry.m_sourceFingerprint = 0;
-			bInvalidated = true;
+			if (entry.m_fileId == uid)
+			{
+				entry.m_timestamp = 0;
+				entry.m_sourceFingerprint = 0;
+			}
 		}
-	}
-	if (!bInvalidated)
-	{
-		return;
 	}
 
-	m_bIsDirty = true;
 	if (!SaveCacheLocked(false))
 	{
-		SAILOR_LOG_ERROR("Shader cache invalidation could not be persisted for %s: %s",
-			uid.ToString().c_str(),
-			m_lastSaveDiagnostic.c_str());
+		SAILOR_LOG_ERROR("Shader cache invalidation could not be persisted: %s", m_lastSaveDiagnostic.c_str());
+		return false;
 	}
+	return true;
 }
 
-bool ShaderCache::ClearExpiredLocked(Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
-	std::string& outDiagnostic)
+bool ShaderCache::ClearExpiredLocked(std::string& outDiagnostic)
 {
 	if (m_bPreserveStorageAfterLoadFailure)
 	{
@@ -237,16 +244,12 @@ bool ShaderCache::ClearExpiredLocked(Workspace::EWorkspaceCacheAtomicWriteFailur
 
 	if (m_bIsDirty || expired.Num() != 0 || !m_bHasCommittedSnapshot)
 	{
-		if (!CommitCandidateLocked(std::move(candidate), outDiagnostic, failurePoint))
+		if (!CommitCandidateLocked(std::move(candidate), outDiagnostic))
 		{
 			return false;
 		}
 	}
-	if (!SweepUnreferencedArtifactsLocked(m_committedCache, outDiagnostic))
-	{
-		m_bIsDirty = true;
-		return false;
-	}
+	CleanupArtifactsLocked();
 	outDiagnostic.clear();
 	return true;
 }
@@ -262,7 +265,7 @@ void ShaderCache::ClearExpired()
 		return;
 	}
 	std::string diagnostic;
-	if (!ClearExpiredLocked(Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None, diagnostic))
+	if (!ClearExpiredLocked(diagnostic))
 	{
 		m_lastSaveDiagnostic = std::move(diagnostic);
 		SAILOR_LOG_ERROR("Shader cache cleanup failed: %s", m_lastSaveDiagnostic.c_str());
@@ -281,17 +284,20 @@ void ShaderCache::ClearAll()
 	std::string clearDiagnostic;
 	const bool bCleared = ClearOwnedCacheFilesLocked(clearDiagnostic);
 	std::string writeDiagnostic;
-	const bool bEnvelopeWritten = WriteCacheLocked(writeDiagnostic);
+	const bool bEnvelopeWritten = Platform::IsAtomicWriteComplete(WriteCacheLocked(writeDiagnostic));
+	m_bIsDirty = !bEnvelopeWritten;
+	m_bHasCommittedSnapshot = bEnvelopeWritten;
+	m_bCleanupPending = !bCleared;
+	if (bEnvelopeWritten)
+	{
+		m_committedCache = m_cache;
+	}
 	if (bCleared && bEnvelopeWritten)
 	{
-		m_bIsDirty = false;
-		m_committedCache = m_cache;
-		m_bHasCommittedSnapshot = true;
 		m_lastSaveDiagnostic.clear();
 	}
 	else
 	{
-		m_bIsDirty = true;
 		m_lastSaveDiagnostic.clear();
 		AppendDiagnostic(m_lastSaveDiagnostic, clearDiagnostic);
 		AppendDiagnostic(m_lastSaveDiagnostic, writeDiagnostic);
@@ -315,6 +321,12 @@ bool ShaderCache::IsDirty() const
 {
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	return m_bIsDirty;
+}
+
+bool ShaderCache::NeedsMaintenance() const
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	return m_bIsDirty || m_bCleanupPending;
 }
 
 bool ShaderCache::GetTimeStamp(const FileId& uid, time_t& outTimestamp) const

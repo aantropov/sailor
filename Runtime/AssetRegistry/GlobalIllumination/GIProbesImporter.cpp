@@ -117,7 +117,7 @@ Tasks::TaskPtr<GIProbesAssetPtr> GIProbesImporter::LoadGIProbes(
 {
 	auto& promise = m_promises.At_Lock(uid, nullptr);
 	auto& loadedAsset = m_loadedAssets.At_Lock(uid, GIProbesAssetPtr{});
-	if (loadedAsset)
+	if ((promise && !promise->IsFinished()) || (loadedAsset && loadedAsset->IsReady()))
 	{
 		outAsset = loadedAsset;
 		auto result = promise
@@ -128,29 +128,25 @@ Tasks::TaskPtr<GIProbesAssetPtr> GIProbesImporter::LoadGIProbes(
 		return result;
 	}
 
-	if (!promise)
+	if (!loadedAsset)
 	{
-		GIProbesAssetPtr asset = GIProbesAssetPtr::Make(m_allocator, uid);
-		promise = Tasks::CreateTaskWithResult<GIProbesAssetPtr>(
-			"Load GI Probes",
-			[this, uid, asset]() mutable
-			{
-				GIProbesAssetPtr imported = asset;
-				ImportGIProbes(uid, imported);
-				return imported;
-			},
-			EThreadType::Worker);
-		outAsset = loadedAsset = asset;
-		promise->Run();
+		loadedAsset = GIProbesAssetPtr::Make(m_allocator, uid);
 	}
-	else
-	{
-		outAsset = loadedAsset;
-	}
+	outAsset = loadedAsset;
+	promise = Tasks::CreateTaskWithResult<GIProbesAssetPtr>(
+		"Load GI Probes",
+		[this, uid, asset = loadedAsset]() mutable
+		{
+			ImportGIProbes(uid, asset);
+			return asset;
+		},
+		EThreadType::Worker);
+	auto result = promise;
 
 	m_loadedAssets.Unlock(uid);
 	m_promises.Unlock(uid);
-	return promise;
+	result->Run();
+	return result;
 }
 
 bool GIProbesImporter::LoadGIProbes_Immediate(
@@ -206,26 +202,21 @@ void GIProbesImporter::TryEvictReleasedGIProbes(FileId uid)
 		return;
 	}
 	uint32_t& count = m_runtimeRetentions.At_Lock(uid, 0u);
-	const bool bReleased = count == 0u;
-	m_runtimeRetentions.Unlock(uid);
-	if (!bReleased)
+	if (count != 0u)
 	{
+		m_runtimeRetentions.Unlock(uid);
 		return;
 	}
 
-	Tasks::TaskPtr<GIProbesAssetPtr> promise;
-	if (m_promises.ContainsKey(uid))
+	auto& promise = m_promises.At_Lock(uid, nullptr);
+	if (!promise || promise->IsFinished())
 	{
-		promise = m_promises.At_Lock(uid);
-		m_promises.Unlock(uid);
-		if (promise && !promise->IsFinished())
-		{
-			return;
-		}
-		m_promises.Remove(uid);
+		m_loadedAssets.Remove(uid);
+		m_promises.ForcelyRemove(uid);
+		m_runtimeRetentions.ForcelyRemove(uid);
 	}
-	m_loadedAssets.Remove(uid);
-	m_runtimeRetentions.Remove(uid);
+	m_promises.Unlock(uid);
+	m_runtimeRetentions.Unlock(uid);
 }
 
 bool GIProbesImporter::ImportGIProbes(
@@ -259,22 +250,17 @@ bool GIProbesImporter::ImportGIProbes(
 
 void GIProbesImporter::CollectGarbage()
 {
-	TVector<FileId> completed;
 	m_promises.LockAll();
 	const TVector<FileId> ids = m_promises.GetKeys();
 	m_promises.UnlockAll();
 	for (const FileId& id : ids)
 	{
-		Tasks::TaskPtr<GIProbesAssetPtr> promise = m_promises.At_Lock(id);
+		auto& promise = m_promises.At_Lock(id);
 		if (!promise || promise->IsFinished())
 		{
-			completed.Add(id);
+			m_promises.ForcelyRemove(id);
 		}
 		m_promises.Unlock(id);
-	}
-	for (const FileId& id : completed)
-	{
-		m_promises.Remove(id);
 	}
 
 	m_runtimeRetentions.LockAll();

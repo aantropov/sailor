@@ -154,14 +154,15 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    internal Task CompleteLocalShutdownFallbackAsync()
+    internal async Task<bool> CompleteLocalShutdownFallbackAsync()
     {
         if (transport is ILocalEngineProtocolTransport localTransport)
         {
-            return localTransport.CompleteShutdownAsync(
-                shutdownEngine: true);
+            await localTransport.CompleteShutdownAsync(
+                shutdownEngine: true).ConfigureAwait(false);
+            return true;
         }
-        return Task.CompletedTask;
+        return false;
     }
 
     public async Task<bool> RequestAssetReloadAsync(
@@ -172,16 +173,25 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 cancellationToken).ConfigureAwait(false),
             nameof(ProtocolRequest.RequestAssetReload));
 
-    public async Task<bool> UpdateAssetAsync(
+    public Task<bool> UpdateAssetAsync(
         string fileId,
         CancellationToken cancellationToken = default)
+        => SendAssetUpdateAsync(fileId, false, cancellationToken);
+
+    public Task<bool> ReimportAssetAsync(
+        string fileId,
+        CancellationToken cancellationToken = default)
+        => SendAssetUpdateAsync(fileId, true, cancellationToken);
+
+    async Task<bool> SendAssetUpdateAsync(string fileId, bool reimport, CancellationToken cancellationToken)
         => ReadBool(
             await SendAsync(
                     new ProtocolRequest
                     {
-                        UpdateAsset = new FileIdRequest
+                        UpdateAsset = new UpdateAssetRequest
                         {
-                            FileId = ValidateString(fileId, nameof(fileId))
+                            FileId = ValidateString(fileId, nameof(fileId)),
+                            Reimport = reimport
                         }
                     },
                     cancellationToken)
@@ -667,6 +677,35 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.PreviewAudioAsset));
 
+    public async Task<bool> GenerateModelFingerprintAsync(
+        string fileId,
+        CancellationToken cancellationToken = default)
+    {
+        var requestedId = ValidateString(fileId, nameof(fileId));
+        if (!ReadBool(await SendAsync(new ProtocolRequest
+            {
+                RequestModelFingerprint = new FileIdRequest { FileId = requestedId }
+            }, cancellationToken).ConfigureAwait(false), nameof(ProtocolRequest.RequestModelFingerprint)))
+        {
+            return false;
+        }
+
+        while (true)
+        {
+            var response = await SendAsync(new ProtocolRequest
+            {
+                GetModelFingerprintStatus = new FileIdRequest { FileId = requestedId }
+            }, cancellationToken).ConfigureAwait(false);
+            var status = RequireResult<ModelFingerprintStatusResult>(
+                response.ModelFingerprintStatusResult,
+                nameof(ProtocolRequest.GetModelFingerprintStatus)).Status;
+            if (status != ModelFingerprintStatus.Pending)
+                return status == ModelFingerprintStatus.Ready;
+
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     public async Task SetViewportAsync(
         uint windowPosX,
         uint windowPosY,
@@ -786,6 +825,20 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                     cancellationToken)
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.GetRemoteViewportDiagnostics));
+
+    public async Task<string> CaptureRemoteViewportFrameEvidenceAsync(
+        ulong viewportId,
+        CancellationToken cancellationToken = default)
+        => ReadString(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        CaptureRemoteViewportFrameEvidence =
+                            new ViewportIdRequest { ViewportId = viewportId }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.CaptureRemoteViewportFrameEvidence));
 
     public async Task<bool> RetryRemoteViewportAsync(
         ulong viewportId,
@@ -1524,6 +1577,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 ProtocolRequest.CommandOneofCase.DestroyRemoteViewport or
                 ProtocolRequest.CommandOneofCase.GetRemoteViewportState or
                 ProtocolRequest.CommandOneofCase.GetRemoteViewportDiagnostics or
+                ProtocolRequest.CommandOneofCase.CaptureRemoteViewportFrameEvidence or
                 ProtocolRequest.CommandOneofCase.RetryRemoteViewport or
             ProtocolRequest.CommandOneofCase.SetRemoteViewportMacHostHandle or
                 ProtocolRequest.CommandOneofCase.SendRemoteViewportInput or

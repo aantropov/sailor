@@ -25,7 +25,7 @@ namespace Sailor::RHI
 		RHITexturePtr GetStencilAspect() const { return m_stencilAspect; }
 
 		// Only for mip levels > 1
-		RHITexturePtr GetMipLayer(uint32_t layer) const;
+		SAILOR_API RHITexturePtr GetMipLayer(uint32_t layer) const;
 		uint32_t GetMipLevels() const { return (uint32_t)m_mipLayers.Num(); }
 
 	protected:

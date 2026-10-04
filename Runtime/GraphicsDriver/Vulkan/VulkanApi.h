@@ -202,7 +202,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static VkDescriptorPoolSize CreateDescriptorPoolSize(VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uint32_t count = 1);
 
 		SAILOR_API static VulkanBufferPtr CreateBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
-		SAILOR_API static VulkanBufferPtr CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
+		SAILOR_API static VulkanBufferPtr CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device,
+			const void* pData, VkDeviceSize size, VkBufferUsageFlags usage,
+			VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 
 		SAILOR_API static VulkanImagePtr CreateImageUpload(
 			VulkanCommandBufferPtr& cmdBuffer,
@@ -245,25 +248,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 #endif
 
 		SAILOR_API static VulkanCommandBufferPtr UpdateBuffer(VulkanDevicePtr device, const VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size);
-
-		//Immediate context
-		SAILOR_API static VulkanBufferPtr CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
-		SAILOR_API static void CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferMemoryPtr  src, VulkanBufferMemoryPtr dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
-
-                SAILOR_API static VulkanImagePtr CreateImage_Immediate(
-                        VulkanDevicePtr device,
-                        const void* pData,
-                        VkDeviceSize size,
-                        VkExtent3D extent,
-			uint32_t mipLevels = 1,
-			VkImageType type = VK_IMAGE_TYPE_2D,
-			VkFormat format = VK_FORMAT_R8G8B8A8_SRGB,
-			VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
-			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-			VkImageLayout defaultLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        VkImageCreateFlags flags = 0,
-                        uint32_t arrayLayer = 1);
 
 #ifdef _WIN32
 		SAILOR_API static void* ExportImage(VulkanDevicePtr device, VulkanImagePtr image,

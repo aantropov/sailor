@@ -81,20 +81,20 @@ namespace Sailor
 	{
 	public:
 
-		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
-		void CopySceneView(RHI::RHISceneViewPtr& outSceneView);
+		SAILOR_API virtual Tasks::ITaskPtr Tick(float) override { return nullptr; }
+		SAILOR_API virtual void EndPlay() override;
+		SAILOR_API void CopySceneView(RHI::RHISceneViewPtr& outSceneView);
 		void SetPathTracingEnabled(bool bEnabled) { m_bPathTracingEnabled = bEnabled; }
 		bool IsPathTracingEnabled() const { return m_bPathTracingEnabled; }
 		virtual uint32_t GetOrder() const override { return 1100; }
 
 	protected:
 
+		void UpdateScene();
 		bool m_bPathTracingEnabled = false;
 		TOctree<size_t> m_proxyOctree{ glm::ivec3(0, 0, 0), 16536 * 16, 4 };
-		TVector<RHI::RHIPathTracerProxy> m_pathTracerProxiesCache{};
-		TVector<Raytracing::PathTracer::TLASInstance> m_pathTracerTLASInstancesCache{};
-		TVector<MaterialPtr> m_pathTracerMaterialsCache{};
-		TVector<Raytracing::LightProxy> m_pathTracerLightsCache{};
+		RHI::RHIPathTracerScenePtr m_scene;
+		Raytracing::PathTracer::MaterialSnapshotCache m_materialSnapshots;
 	};
 
 	template class ECS::TSystem<PathTracerECS, PathTracerProxyData>;

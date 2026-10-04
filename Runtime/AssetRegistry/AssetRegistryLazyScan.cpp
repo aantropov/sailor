@@ -18,8 +18,8 @@ bool AssetRegistry::ScanContentFolderLazy()
 	{
 		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 		m_scanProcessingTasks.Clear();
-		m_bCollectScanProcessingTasks = true;
-		m_bScanProcessingActive = true;
+		m_bCollectScanProcessingTasks = false;
+		m_bScanProcessingActive = false;
 		m_bScanProcessingFailed = false;
 	}
 
@@ -112,7 +112,7 @@ bool AssetRegistry::ScanContentFolderLazy()
 		cachedRecords.Reserve(m_assetCache.m_cache.m_assets.Num());
 		for (const auto& cached : m_assetCache.m_cache.m_assets)
 		{
-			const AssetCache::AssetCacheData::Entry& entry = cached.m_second;
+			const AssetCache::AssetCacheData::Entry& entry = *cached.m_second;
 			cachedRecords.Emplace(cached.m_first,
 				LazyAssetInfoRecord{entry.m_sourcePath,
 					entry.m_sourceRevision,
@@ -183,6 +183,11 @@ bool AssetRegistry::ScanContentFolderLazy()
 			continue;
 		}
 		liveAssetIds.Insert(loaded.m_first);
+		if ((IsAssetExpired(info) || sourceRevision != info->m_importedSourceRevision ||
+			metadataRevision != info->m_metadataRevision) && !expiredAssetIds.Contains(loaded.m_first))
+		{
+			expiredAssetIds.Add(loaded.m_first);
+		}
 		indexedMetadataPaths.Insert(PathKey(info->GetMetaFilepath()));
 		if (PathKey(info->GetMetaFilepath()) == PathKey(info->GetAssetFilepath() + "." + MetaFileExtension))
 		{
@@ -243,13 +248,112 @@ bool AssetRegistry::ScanContentFolderLazy()
 		}
 	}
 
+	// Register moved and newly discovered metadata before import callbacks resolve dependencies.
+	TSet<FileId> discoveredAssetIds;
+	for (const AssetMountDiscoveredFile& metadataFile : discovery.m_files)
+	{
+		if (Extension(metadataFile.m_virtualPath) != MetaFileExtension ||
+			indexedMetadataPaths.Contains(PathKey(metadataFile.m_physicalPath)))
+		{
+			continue;
+		}
+
+		std::string fileIdString;
+		std::string filename;
+		std::string assetInfoType;
+		std::string metadataError;
+		if (!ReadMetadataIdentity(metadataFile.m_physicalPath, fileIdString, filename, assetInfoType, metadataError))
+		{
+			SAILOR_LOG_ERROR("Invalid new asset metadata '%s': %s.",
+				metadataFile.m_physicalPath.string().c_str(),
+				metadataError.c_str());
+			continue;
+		}
+
+		std::error_code sourceError;
+		const std::filesystem::path sourcePath =
+			std::filesystem::weakly_canonical(metadataFile.m_physicalPath.parent_path() / filename, sourceError);
+		if (sourceError || !activeSourcePaths.Contains(PathKey(sourcePath)))
+		{
+			SAILOR_LOG_ERROR("New asset metadata references a missing source and was skipped: %s",
+				metadataFile.m_physicalPath.string().c_str());
+			continue;
+		}
+
+		const bool bPrimary =
+			PathKey(metadataFile.m_physicalPath) == PathKey(sourcePath.string() + "." + MetaFileExtension);
+		const auto virtualSource = effectiveVirtualPathsByPhysicalPath.Find(PathKey(sourcePath));
+		if (bPrimary && virtualSource == effectiveVirtualPathsByPhysicalPath.end())
+		{
+			continue;
+		}
+
+		const FileId fileId = ParseFileId(fileIdString);
+		if (!fileId)
+		{
+			SAILOR_LOG_ERROR(
+				"New asset metadata contains an invalid FileId: %s", metadataFile.m_physicalPath.string().c_str());
+			continue;
+		}
+		AssetInfoPtr existingInfo = GetAssetInfoPtr_Internal(fileId);
+		if (existingInfo != nullptr)
+		{
+			if (PathKey(existingInfo->GetMetaFilepath()) != PathKey(metadataFile.m_physicalPath))
+			{
+				SAILOR_LOG_ERROR("New asset metadata collides with an active FileId and was skipped: %s",
+					metadataFile.m_physicalPath.string().c_str());
+			}
+			continue;
+		}
+
+		std::filesystem::path handlerPath(metadataFile.m_virtualPath);
+		handlerPath.replace_extension();
+		IAssetInfoHandler* handler = GetAssetInfoHandler(Extension(handlerPath.string()), assetInfoType, bPrimary);
+		if (handler == nullptr)
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot find a handler for new asset metadata: %s", metadataFile.m_physicalPath.string().c_str());
+			continue;
+		}
+
+		AssetInfoPtr info = handler->LoadAssetInfo(metadataFile.m_physicalPath.string(),
+			metadataFile.m_virtualPath,
+			metadataFile.m_mount.m_kind,
+			metadataFile.m_mount.m_bWritable,
+			false,
+			false);
+		if (info == nullptr || info->GetFileId() != fileId || PathKey(info->GetAssetFilepath()) != PathKey(sourcePath))
+		{
+			delete info;
+			SAILOR_LOG_ERROR(
+				"New asset metadata failed identity validation: %s", metadataFile.m_physicalPath.string().c_str());
+			continue;
+		}
+
+		m_loadedAssetInfo[fileId] = info;
+		discoveredAssetIds.Insert(fileId);
+		expiredAssetIds.Add(fileId);
+		liveAssetIds.Insert(fileId);
+		indexedMetadataPaths.Insert(PathKey(metadataFile.m_physicalPath));
+		if (bPrimary)
+		{
+			indexedPrimarySourcePaths.Insert(PathKey(sourcePath));
+			m_fileIds[virtualSource.Value()] = fileId;
+			m_physicalFileIds[PathKey(sourcePath)] = fileId;
+		}
+	}
+	if (!BeginScanProcessing(expiredAssetIds))
+	{
+		return false;
+	}
 	bool bSucceeded = true;
 	TSet<std::string> handledEffectiveContentChanges;
 	for (const FileId& expiredAssetId : expiredAssetIds)
 	{
 		const bool bWasLoaded = m_loadedAssetInfo.ContainsKey(expiredAssetId);
+		const bool bDiscovered = discoveredAssetIds.Contains(expiredAssetId);
 		AssetInfoPtr info = bWasLoaded ? m_loadedAssetInfo[expiredAssetId] : GetAssetInfoPtr_Internal(expiredAssetId);
-		if (info == nullptr || (bWasLoaded && !UpdateAsset(expiredAssetId)))
+		if (info == nullptr || (bWasLoaded && !bDiscovered && !UpdateAsset(expiredAssetId)))
 		{
 			bSucceeded = false;
 			if (!bWasLoaded)
@@ -259,6 +363,11 @@ bool AssetRegistry::ScanContentFolderLazy()
 				m_lazyAssetInfos.Remove(expiredAssetId);
 			}
 			continue;
+		}
+		if (!bWasLoaded || bDiscovered)
+		{
+			GetAssetInfoHandler(*info)->NotifyUpdateAssetInfo(info);
+			CacheAsset(info);
 		}
 
 		if (Extension(info->GetAssetFilepath()) == "glsl")
@@ -293,93 +402,6 @@ bool AssetRegistry::ScanContentFolderLazy()
 		}
 	}
 
-	for (const AssetMountDiscoveredFile& metadataFile : discovery.m_files)
-	{
-		if (Extension(metadataFile.m_virtualPath) != MetaFileExtension ||
-			indexedMetadataPaths.Contains(PathKey(metadataFile.m_physicalPath)))
-		{
-			continue;
-		}
-
-		std::string fileIdString;
-		std::string filename;
-		std::string assetInfoType;
-		std::string metadataError;
-		if (!ReadMetadataIdentity(metadataFile.m_physicalPath, fileIdString, filename, assetInfoType, metadataError))
-		{
-			SAILOR_LOG_ERROR("Invalid new asset metadata '%s': %s.",
-				metadataFile.m_physicalPath.string().c_str(),
-				metadataError.c_str());
-			continue;
-		}
-
-		std::error_code sourceError;
-		const std::filesystem::path sourcePath =
-			std::filesystem::weakly_canonical(metadataFile.m_physicalPath.parent_path() / filename, sourceError);
-		if (sourceError || !activeSourcePaths.Contains(PathKey(sourcePath)))
-		{
-			SAILOR_LOG_ERROR("New asset metadata references a missing source and was skipped: %s",
-				metadataFile.m_physicalPath.string().c_str());
-			continue;
-		}
-
-		const bool bPrimary =
-			PathKey(metadataFile.m_physicalPath) == PathKey(sourcePath.string() + "." + MetaFileExtension);
-		if (bPrimary)
-		{
-			// Primary metadata is loaded by the source import path above.
-			continue;
-		}
-
-		const FileId fileId = ParseFileId(fileIdString);
-		if (!fileId)
-		{
-			SAILOR_LOG_ERROR(
-				"New secondary metadata contains an invalid FileId: %s", metadataFile.m_physicalPath.string().c_str());
-			continue;
-		}
-		AssetInfoPtr existingInfo = GetAssetInfoPtr_Internal(fileId);
-		if (existingInfo != nullptr)
-		{
-			if (PathKey(existingInfo->GetMetaFilepath()) != PathKey(metadataFile.m_physicalPath))
-			{
-				SAILOR_LOG_ERROR("New secondary metadata collides with an active FileId and was skipped: %s",
-					metadataFile.m_physicalPath.string().c_str());
-			}
-			continue;
-		}
-
-		std::filesystem::path handlerPath(metadataFile.m_virtualPath);
-		handlerPath.replace_extension();
-		IAssetInfoHandler* handler = GetAssetInfoHandler(Extension(handlerPath.string()), assetInfoType, false);
-		if (handler == nullptr)
-		{
-			SAILOR_LOG_ERROR(
-				"Cannot find a handler for new secondary metadata: %s", metadataFile.m_physicalPath.string().c_str());
-			continue;
-		}
-
-		AssetInfoPtr info = handler->LoadAssetInfo(metadataFile.m_physicalPath.string(),
-			metadataFile.m_virtualPath,
-			metadataFile.m_mount.m_kind,
-			metadataFile.m_mount.m_bWritable,
-			false,
-			false);
-		if (info == nullptr || info->GetFileId() != fileId || PathKey(info->GetAssetFilepath()) != PathKey(sourcePath))
-		{
-			delete info;
-			SAILOR_LOG_ERROR(
-				"New secondary metadata failed identity validation: %s", metadataFile.m_physicalPath.string().c_str());
-			continue;
-		}
-
-		m_loadedAssetInfo[fileId] = info;
-		handler->NotifyUpdateAssetInfo(info);
-		CacheAsset(info);
-		liveAssetIds.Insert(fileId);
-		indexedMetadataPaths.Insert(PathKey(metadataFile.m_physicalPath));
-	}
-
 	for (const auto& loaded : m_loadedAssetInfo)
 	{
 		AssetInfoPtr info = *loaded.m_second;
@@ -406,10 +428,6 @@ bool AssetRegistry::ScanContentFolderLazy()
 		}
 	}
 	m_assetCache.Prune(liveAssetIds);
-	m_assetCache.SaveCache();
-	{
-		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-		m_bCollectScanProcessingTasks = false;
-	}
+	FinishScanProcessing();
 	return bSucceeded;
 }

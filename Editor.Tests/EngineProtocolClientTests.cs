@@ -143,8 +143,41 @@ public sealed class EngineProtocolClientTests
                 request.CommandCase));
     }
 
-    [Fact]
-    public async Task UpdateAssetAsync_SendsExactFileId()
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task UpsertRemoteViewportAsync_PreservesIdentityExtentAndDesiredState(
+        bool visible, bool focused)
+    {
+        ProtocolRequest? capturedRequest = null;
+        using var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(request, response =>
+                response.BoolResult = new BoolResult { Value = true });
+        });
+
+        Assert.True(await client.UpsertRemoteViewportAsync(73, 19, 29, 3840, 2160, visible, focused));
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(ProtocolRequest.CommandOneofCase.UpsertRemoteViewport, capturedRequest.CommandCase);
+        Assert.Equal(new RemoteViewportRequest
+        {
+            ViewportId = 73,
+            WindowPosX = 19,
+            WindowPosY = 29,
+            Width = 3840,
+            Height = 2160,
+            Visible = visible,
+            Focused = focused
+        }, capturedRequest.UpsertRemoteViewport);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UpdateAssetAsync_SendsExactFileIdAndReimport(bool reimport)
     {
         ProtocolRequest? capturedRequest = null;
         var client = CreateClient(request =>
@@ -157,13 +190,14 @@ public sealed class EngineProtocolClientTests
         });
         const string fileId = "{01234567-89AB-CDEF-0123-456789ABCDEF}";
 
-        Assert.True(await client.UpdateAssetAsync(fileId));
+        Assert.True(reimport ? await client.ReimportAssetAsync(fileId) : await client.UpdateAssetAsync(fileId));
 
         Assert.NotNull(capturedRequest);
         Assert.Equal(
             ProtocolRequest.CommandOneofCase.UpdateAsset,
             capturedRequest.CommandCase);
         Assert.Equal(fileId, capturedRequest.UpdateAsset.FileId);
+        Assert.Equal(reimport, capturedRequest.UpdateAsset.Reimport);
     }
 
     [Fact]
@@ -187,6 +221,94 @@ public sealed class EngineProtocolClientTests
             ProtocolRequest.CommandOneofCase.PreviewAudioAsset,
             capturedRequest.CommandCase);
         Assert.Equal(fileId, capturedRequest.PreviewAudioAsset.FileId);
+    }
+
+    [Theory]
+    [InlineData(ModelFingerprintStatus.Ready, true)]
+    [InlineData(ModelFingerprintStatus.Failed, false)]
+    [InlineData(ModelFingerprintStatus.Unavailable, false)]
+    public async Task ModelFingerprint_WaitsForActualPublication(ModelFingerprintStatus result, bool expected)
+    {
+        const string fileId = "{89ABCDEF-0123-4567-89AB-CDEF01234567}";
+        var requests = 0;
+        var polls = 0;
+        using var client = CreateClient(request =>
+        {
+            Assert.Equal(1u, request.ProtocolVersion);
+            if (request.CommandCase == ProtocolRequest.CommandOneofCase.RequestModelFingerprint)
+            {
+                ++requests;
+                Assert.Equal(fileId, request.RequestModelFingerprint.FileId);
+                return Success(request, response => response.BoolResult = new BoolResult { Value = true });
+            }
+            Assert.Equal(ProtocolRequest.CommandOneofCase.GetModelFingerprintStatus, request.CommandCase);
+            Assert.Equal(fileId, request.GetModelFingerprintStatus.FileId);
+            return Success(request, response => response.ModelFingerprintStatusResult = new()
+            {
+                Status = ++polls == 1 ? ModelFingerprintStatus.Pending : result
+            });
+        });
+
+        Assert.Equal(expected, await client.GenerateModelFingerprintAsync(fileId));
+        Assert.Equal(1, requests);
+        Assert.Equal(2, polls);
+    }
+
+    [Fact]
+    public async Task ModelFingerprint_RetriesOnRenewedDemandWithoutChangingFileId()
+    {
+        var attempts = 0;
+        using var client = CreateClient(request =>
+        {
+            if (request.CommandCase == ProtocolRequest.CommandOneofCase.RequestModelFingerprint)
+            {
+                ++attempts;
+                return Success(request, response => response.BoolResult = new BoolResult { Value = true });
+            }
+            return Success(request, response => response.ModelFingerprintStatusResult = new()
+            {
+                Status = attempts == 1 ? ModelFingerprintStatus.Failed : ModelFingerprintStatus.Ready
+            });
+        });
+
+        Assert.False(await client.GenerateModelFingerprintAsync("model"));
+        Assert.True(await client.GenerateModelFingerprintAsync("model"));
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public async Task ModelFingerprint_RejectionDoesNotStartPolling()
+    {
+        var requests = 0;
+        using var client = CreateClient(request =>
+        {
+            ++requests;
+            Assert.Equal(ProtocolRequest.CommandOneofCase.RequestModelFingerprint, request.CommandCase);
+            return Success(request, response => response.BoolResult = new BoolResult { Value = false });
+        });
+        Assert.False(await client.GenerateModelFingerprintAsync("model"));
+        Assert.Equal(1, requests);
+    }
+
+    [Fact]
+    public async Task ModelFingerprint_CancellationStopsWaitingForPendingWork()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var polls = 0;
+        using var client = CreateClient(request =>
+        {
+            if (request.CommandCase == ProtocolRequest.CommandOneofCase.RequestModelFingerprint)
+                return Success(request, response => response.BoolResult = new BoolResult { Value = true });
+            ++polls;
+            cancellation.Cancel();
+            return Success(request, response => response.ModelFingerprintStatusResult = new()
+            {
+                Status = ModelFingerprintStatus.Pending
+            });
+        });
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            client.GenerateModelFingerprintAsync("model", cancellation.Token));
+        Assert.Equal(1, polls);
     }
 
     [Fact]
@@ -702,6 +824,42 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public async Task ShutdownFallback_DoesNotReportRemoteTeardownAsCompleted()
+    {
+        using var client = CreateClient(request => Success(request,
+            response => response.EmptyResult = new Empty()));
+        Assert.False(await client.CompleteLocalShutdownFallbackAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ShutdownFallback_ReportsActualLocalCompletion(bool fail)
+    {
+        var calls = 0;
+        var transport = new LocalCapabilityRecordingTransport
+        {
+            Shutdown = shutdownEngine =>
+            {
+                Assert.True(shutdownEngine);
+                ++calls;
+                return fail ? Task.FromException(new InvalidOperationException("shutdown failed")) : Task.CompletedTask;
+            }
+        };
+        using var client = new EngineProtocolClient(transport);
+        if (fail)
+        {
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CompleteLocalShutdownFallbackAsync());
+            Assert.Equal("shutdown failed", exception.Message);
+        }
+        else
+        {
+            Assert.True(await client.CompleteLocalShutdownFallbackAsync());
+        }
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
     public async Task StopAsync_UsesBoundedLifecycleTransportTimeout()
     {
         EngineProtocolInvocationKind? capturedKind = null;
@@ -716,6 +874,52 @@ public sealed class EngineProtocolClientTests
         Assert.Equal(
             EngineProtocolInvocationKind.Lifecycle,
             capturedKind);
+    }
+
+    [Fact]
+    public async Task ViewportEvidence_RequiresItsOwnExplicitRequest()
+    {
+        var requests = new List<ProtocolRequest>();
+        var lanes = new List<EngineProtocolInvocationKind>();
+        using var client = CreateClient(request =>
+        {
+            requests.Add(request);
+            return Success(request, response => response.StringResult = new StringResult
+            {
+                HasValue = true,
+                Value = request.CommandCase == ProtocolRequest.CommandOneofCase.CaptureRemoteViewportFrameEvidence
+                    ? "captureFrame=7 captureGen=2"
+                    : "presentCount=7"
+            });
+        }, lanes.Add);
+
+        Assert.Equal("presentCount=7", await client.GetRemoteViewportDiagnosticsAsync(12));
+        Assert.Equal("captureFrame=7 captureGen=2", await client.CaptureRemoteViewportFrameEvidenceAsync(12));
+        Assert.Equal("presentCount=7", await client.GetRemoteViewportDiagnosticsAsync(12));
+        Assert.Equal(new[]
+        {
+            ProtocolRequest.CommandOneofCase.GetRemoteViewportDiagnostics,
+            ProtocolRequest.CommandOneofCase.CaptureRemoteViewportFrameEvidence,
+            ProtocolRequest.CommandOneofCase.GetRemoteViewportDiagnostics
+        }, requests.Select(request => request.CommandCase));
+        Assert.All(requests, request => Assert.Equal(1u, request.ProtocolVersion));
+        Assert.Equal(12ul, requests[1].CaptureRemoteViewportFrameEvidence.ViewportId);
+        Assert.All(lanes, lane => Assert.Equal(EngineProtocolInvocationKind.Interactive, lane));
+    }
+
+    [Fact]
+    public async Task ViewportEvidence_PropagatesNativeCaptureFailure()
+    {
+        using var client = CreateClient(request => new ProtocolResponse
+        {
+            ProtocolVersion = request.ProtocolVersion,
+            RequestId = request.RequestId,
+            Success = false,
+            Error = "viewport producer frame is pending presentation"
+        });
+        var error = await Assert.ThrowsAsync<EngineProtocolException>(
+            () => client.CaptureRemoteViewportFrameEvidenceAsync(1));
+        Assert.Contains("pending presentation", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1490,6 +1694,7 @@ public sealed class EngineProtocolClientTests
         IEngineProtocolTransport,
         ILocalEngineProtocolTransport
     {
+        public Func<bool, Task> Shutdown { get; init; } = _ => Task.CompletedTask;
         public List<ProtocolRequest> InitializeRequests { get; } = [];
         public List<ProtocolRequest> InvokedRequests { get; } = [];
 
@@ -1538,7 +1743,7 @@ public sealed class EngineProtocolClientTests
             => Task.CompletedTask;
 
         public Task CompleteShutdownAsync(bool shutdownEngine)
-            => Task.CompletedTask;
+            => Shutdown(shutdownEngine);
 
         public void Dispose()
         {

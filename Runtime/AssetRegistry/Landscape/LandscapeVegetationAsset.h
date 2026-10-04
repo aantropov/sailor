@@ -93,7 +93,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::LandscapeVegetationAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::LandscapeVegetationAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "vegetation" }),
 	field(m_fileId),
 	field(m_assetFilename)
 )

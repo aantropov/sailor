@@ -1,4 +1,5 @@
 #include "AssetRegistry/Model/ModelLodGeneration.h"
+#include "Core/FileRevision.h"
 
 #include "AssetRegistry/Model/ModelGeometry.h"
 #include "AssetRegistry/Model/ModelLodCache.h"
@@ -18,6 +19,7 @@ namespace
 {
 	constexpr uint32_t MaxGeneratedModelLods = 8u;
 
+#if defined(SAILOR_HAS_MESHOPT)
 	void RecalculateShadingBasis(ModelImporter::MeshContext::LodGeometry& geometry)
 	{
 		const size_t vertexCount = geometry.m_vertices.Num();
@@ -111,8 +113,11 @@ namespace
 		const size_t triangleIndexCount = mesh.outIndices.Num() - mesh.outIndices.Num() % 3u;
 		const size_t targetIndexCount =
 			(std::max)(size_t{3u}, static_cast<size_t>(triangleIndexCount * targetRatio) / 3u * 3u);
+		if (targetIndexCount >= triangleIndexCount)
+		{
+			return {};
+		}
 
-#if defined(SAILOR_HAS_MESHOPT)
 		result.m_indices.Resize(triangleIndexCount);
 		float simplificationError = 0.0f;
 		const size_t simplifiedIndexCount = meshopt_simplify(result.m_indices.GetData(),
@@ -125,29 +130,53 @@ namespace
 			0.01f,
 			meshopt_SimplifyLockBorder,
 			&simplificationError);
-		result.m_indices.Resize(simplifiedIndexCount);
-		if (simplifiedIndexCount >= 3u)
+		if (simplifiedIndexCount < 3u || simplifiedIndexCount >= triangleIndexCount)
 		{
-			meshopt_optimizeVertexCache(
-				result.m_indices.GetData(), result.m_indices.GetData(), result.m_indices.Num(), mesh.outVertices.Num());
-			result.m_vertices.Resize(mesh.outVertices.Num());
-			const size_t compactedVertexCount = meshopt_optimizeVertexFetch(result.m_vertices.GetData(),
-				result.m_indices.GetData(),
-				result.m_indices.Num(),
-				mesh.outVertices.GetData(),
-				mesh.outVertices.Num(),
-				sizeof(RHI::VertexP3N3T3B3UV2C4I4W4));
-			result.m_vertices.Resize(compactedVertexCount);
-			RecalculateShadingBasis(result);
+			return {};
 		}
+		result.m_indices.Resize(simplifiedIndexCount);
+		meshopt_optimizeVertexCache(
+			result.m_indices.GetData(), result.m_indices.GetData(), result.m_indices.Num(), mesh.outVertices.Num());
+		result.m_vertices.Resize(mesh.outVertices.Num());
+		const size_t compactedVertexCount = meshopt_optimizeVertexFetch(result.m_vertices.GetData(),
+			result.m_indices.GetData(),
+			result.m_indices.Num(),
+			mesh.outVertices.GetData(),
+			mesh.outVertices.Num(),
+			sizeof(RHI::VertexP3N3T3B3UV2C4I4W4));
+		result.m_vertices.Resize(compactedVertexCount);
+		RecalculateShadingBasis(result);
+		return result;
+	}
+#else
+	ModelImporter::MeshContext::LodGeometry Build(const ModelImporter::MeshContext&, float)
+	{
+		return {};
+	}
 #endif
 
-		if (result.m_vertices.IsEmpty() || result.m_indices.Num() < 3u)
+	void DiscardUnreducedLod(ModelImporter::MeshContext& mesh, size_t lodIndex)
+	{
+		size_t previousVertices = mesh.outVertices.Num();
+		size_t previousIndices = mesh.outIndices.Num();
+		for (size_t i = lodIndex; i > 0; --i)
 		{
-			result.m_vertices = mesh.outVertices;
-			result.m_indices = mesh.outIndices;
+			const auto& previous = mesh.lods[i - 1];
+			if (!previous.m_indices.IsEmpty())
+			{
+				previousVertices = previous.m_vertices.Num();
+				previousIndices = previous.m_indices.Num();
+				break;
+			}
 		}
-		return result;
+		auto& lod = mesh.lods[lodIndex];
+		constexpr size_t VertexSize = sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
+		const size_t previousBytes = previousVertices * VertexSize + previousIndices * sizeof(uint32_t);
+		const size_t lodBytes = lod.m_vertices.Num() * VertexSize + lod.m_indices.Num() * sizeof(uint32_t);
+		if (lod.m_indices.IsEmpty() || lod.m_indices.Num() >= previousIndices || lodBytes >= previousBytes)
+		{
+			lod = {};
+		}
 	}
 }
 
@@ -164,6 +193,7 @@ void Sailor::ModelLodGeneration::Generate(TVector<ModelImporter::MeshContext>& m
 		for (uint32_t lodLevel = 1u; lodLevel <= clampedNumLods; ++lodLevel)
 		{
 			mesh.lods.Add(Build(mesh, std::pow(clampedReductionFactor, static_cast<float>(lodLevel))));
+			DiscardUnreducedLod(mesh, lodLevel - 1u);
 		}
 	}
 }
@@ -185,18 +215,21 @@ void Sailor::ModelLodGeneration::Prepare(const ModelAssetInfo& assetInfo, TVecto
 	const float reductionFactor = (std::clamp)(assetInfo.GetLodReductionFactor(), 0.05f, 0.95f);
 	for (uint32_t lodLevel = 1u; lodLevel <= numLods; ++lodLevel)
 	{
-		if (ModelLodCache::Load(assetInfo, sourceRevision, lodLevel, meshes))
-		{
-			continue;
-		}
-
+		const bool cached = ModelLodCache::Load(assetInfo, sourceRevision, lodLevel, meshes);
 		const size_t lodIndex = static_cast<size_t>(lodLevel - 1u);
 		const float targetRatio = std::pow(reductionFactor, static_cast<float>(lodLevel));
 		for (auto& mesh : meshes)
 		{
-			mesh.lods.Resize((std::max)(mesh.lods.Num(), lodIndex + 1u));
-			mesh.lods[lodIndex] = Build(mesh, targetRatio);
+			if (!cached)
+			{
+				mesh.lods.Resize((std::max)(mesh.lods.Num(), lodIndex + 1u));
+				mesh.lods[lodIndex] = Build(mesh, targetRatio);
+			}
+			DiscardUnreducedLod(mesh, lodIndex);
 		}
-		ModelLodCache::Save(assetInfo, sourceRevision, lodLevel, meshes);
+		if (!cached)
+		{
+			ModelLodCache::Save(assetInfo, sourceRevision, lodLevel, meshes);
+		}
 	}
 }

@@ -136,7 +136,7 @@ layout(set = 1, binding = 8) uniform sampler2D g_aoSampler;
 layout(set = 1, binding = 9) uniform sampler2D shadowMaps[MAX_SHADOW_MAP_SAMPLERS];
 
 #ifdef TRANSMISSION
-layout(set = 1, binding = 10) uniform sampler2D g_transmissionFramebufferSampler;
+layout(set = 2, binding = 2) uniform sampler2D g_transmissionFramebufferSampler;
 #endif
 
 layout(std430, set = 1, binding = 11) readonly buffer ShadowAtlasTilesSSBO

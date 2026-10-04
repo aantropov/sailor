@@ -16,6 +16,22 @@ using namespace Sailor::AssetRegistryInternal;
 bool AssetRegistry::ScanContentFolder()
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (m_scheduler != nullptr && !m_scheduler->IsMainThread())
+	{
+		SAILOR_LOG_ERROR("Asset registry scans may only be committed from the main thread.");
+		return false;
+	}
+	bool bPendingScan = false;
+	{
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		bPendingScan = m_scanProcessingTasks.ContainsIf([](const auto& task) { return task && !task->IsFinished(); });
+	}
+	if (bPendingScan)
+	{
+		// Finish the previous batch before replacing its asset infos and acknowledgement state.
+		m_scheduler->ProcessTasksOnMainThread();
+		m_scheduler->WaitIdle({EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render});
+	}
 	bool bHasLazyIndex = false;
 	if (g_bUseLazyAssetInfoLoading)
 	{
@@ -441,13 +457,6 @@ bool AssetRegistry::ScanContentFolder()
 
 	if (Tasks::Scheduler* scheduler = m_scheduler)
 	{
-		if (!scheduler->IsMainThread())
-		{
-			rollbackStaging();
-			SAILOR_LOG_ERROR("Asset registry generations may only be committed from the main thread; preserving the "
-							 "previous generation.");
-			return false;
-		}
 		scheduler->WaitIdle({EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render});
 	}
 
@@ -475,6 +484,20 @@ bool AssetRegistry::ScanContentFolder()
 		return false;
 	}
 
+	TVector<FileId> changedAssets;
+	for (const PendingAssetNotification& pending : pendingNotifications)
+	{
+		if (pending.m_bImported || pending.m_assetInfo->m_bPendingWasExpired)
+		{
+			changedAssets.Add(pending.m_assetInfo->GetFileId());
+		}
+	}
+	if (!BeginScanProcessing(changedAssets))
+	{
+		rollbackStaging();
+		return false;
+	}
+
 	TMap<FileId, AssetInfoPtr> previousAssetInfos = std::move(m_loadedAssetInfo);
 	m_loadedAssetInfo = std::move(stagedAssetInfos);
 	m_fileIds = std::move(stagedFileIds);
@@ -482,11 +505,6 @@ bool AssetRegistry::ScanContentFolder()
 	m_contentMounts = discovery.m_mounts;
 	m_contentFileWinners = std::move(stagedContentWinners);
 	DeleteAssetInfos(previousAssetInfos);
-	{
-		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-		m_bCollectScanProcessingTasks = true;
-		m_bScanProcessingActive = true;
-	}
 	// Listener callbacks can change a source. Start a fresh commit snapshot so
 	// cache acknowledgements still inspect each shared source once and only record
 	// the post-callback revision when it matches the imported revision.
@@ -523,10 +541,6 @@ bool AssetRegistry::ScanContentFolder()
 			}
 		}
 	}
-	{
-		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-		m_bCollectScanProcessingTasks = false;
-	}
 	TSet<FileId> liveAssetIds;
 	for (const auto& loadedAsset : m_loadedAssetInfo)
 	{
@@ -548,6 +562,6 @@ bool AssetRegistry::ScanContentFolder()
 		}
 	}
 	m_assetCache.Prune(liveAssetIds);
-	m_assetCache.SaveCache();
+	FinishScanProcessing();
 	return true;
 }

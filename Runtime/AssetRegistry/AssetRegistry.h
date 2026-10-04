@@ -2,6 +2,7 @@
 #include <string>
 #include <fstream>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <vector>
@@ -27,6 +28,8 @@ namespace Sailor
 	{
 	public:
 		virtual ~IAssetRegistryContentListener() = default;
+		virtual void OnAssetScanStarted() {}
+		virtual Tasks::TaskPtr<bool> OnAssetScanFinished() { return Tasks::TaskPtr<bool>::Make(true); }
 		virtual Tasks::TaskPtr<bool> OnEffectiveContentChanged(
 			const std::string& virtualPath) = 0;
 	};
@@ -84,6 +87,7 @@ namespace Sailor
 			const Workspace::WorkspaceContext& workspaceContext,
 			Tasks::Scheduler* scheduler);
 		SAILOR_API virtual ~AssetRegistry() override;
+		const Workspace::WorkspaceContext& GetWorkspaceContext() const { return m_workspaceContext; }
 
 		template<typename TBinaryType, typename TFilepath>
 		static bool ReadBinaryFile(const TFilepath& filename, TVector<TBinaryType>& buffer)
@@ -128,7 +132,9 @@ namespace Sailor
 			outText = buffer.str();
 
 			file.close();
-
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+			NotifyTextReadForTests(filename);
+#endif
 			return true;
 		}
 
@@ -169,7 +175,13 @@ namespace Sailor
 		}
 
 		SAILOR_API bool ScanContentFolder();
-		SAILOR_API bool UpdateAsset(const FileId& fileId);
+		SAILOR_API bool UpdateAsset(const FileId& fileId, bool bReimport = false);
+		SAILOR_API bool UpdateAsset(const FileId& fileId,
+			TVector<AssetInfoPtr>& outAffectedAssets, bool bReimport = false);
+		// Check the same update's assets after the importer tasks have finished.
+		SAILOR_API bool CompleteAssetUpdate(const TVector<AssetInfoPtr>& affectedAssets) const;
+		// Existing engine assets reload synchronously on Main. Other queues return
+		// the current ID and request an update on Main without waiting for it.
 		SAILOR_API const FileId& GetOrLoadFile(const std::string& filepath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
@@ -230,6 +242,12 @@ namespace Sailor
 			const Tasks::TaskPtr<bool>& processingTask);
 		SAILOR_API bool CompleteScanProcessing();
 
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		uint64_t TakeManifestWritesForTests() { return m_assetCache.TakeManifestWriteCountForTests(); }
+		using TextReadObserver = std::function<void(const std::filesystem::path&)>;
+		SAILOR_API static TextReadObserver ExchangeTextReadObserverForTests(TextReadObserver observer);
+#endif
+
 		template<typename T>
 		TObjectPtr<T> LoadAssetFromFile(const FileId& id, bool bImmediate = true)
 		{
@@ -244,13 +262,21 @@ namespace Sailor
 
 	protected:
 
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		SAILOR_API static void NotifyTextReadForTests(const std::filesystem::path& path);
+#endif
+
 		SAILOR_API TObjectPtr<Object> LoadAsset(IAssetInfoHandler* assetInfoHandler, const FileId& id, bool bImmediate);
 
 		SAILOR_API const FileId& LoadFile(const std::string& filepath);
+		void RequestAssetUpdate(const FileId& fileId);
 
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
 		bool ScanContentFolderLazy();
+		bool BeginScanProcessing(const TVector<FileId>& changedAssets);
+		void FinishScanProcessing();
+		bool CommitScanProcessing();
 		AssetInfoPtr MaterializeLazyAssetInfo(FileId uid) const;
 		void GetLazyAssetInfoIds(
 			const std::string& assetInfoType,
@@ -266,6 +292,7 @@ namespace Sailor
 			const std::string& requestedPath,
 			AssetReadLocation& outLocation) const;
 		IAssetInfoHandler* GetAssetInfoHandler(const std::string& extension) const;
+		IAssetInfoHandler* GetAssetInfoHandler(const AssetInfo& info) const;
 		IAssetInfoHandler* GetAssetInfoHandler(
 			const std::string& extension,
 			const std::string& assetInfoType,
@@ -295,10 +322,13 @@ namespace Sailor
 			std::string m_metadataFilename;
 			std::string m_assetInfoType;
 			bool m_bRejected = false;
+			FileRevision m_completedMetadataRevision{};
 		};
 		std::mutex m_assetProcessingMutex;
 		TMap<FileId, AssetProcessingState> m_assetProcessingStates;
+		TSet<FileId> m_pendingAssetUpdates;
 		TVector<Tasks::TaskPtr<bool>> m_scanProcessingTasks;
+		TSet<FileId> m_scanInvalidatedAssets;
 		bool m_bCollectScanProcessingTasks = false;
 		bool m_bScanProcessingActive = false;
 		bool m_bScanProcessingFailed = false;
@@ -310,6 +340,11 @@ namespace Sailor
 
 		FileId RegisterGeneratedSecondaryAssetInfo(
 			const std::filesystem::path& metadataPath);
+		// Unclaimed IDs keep the proposed path; owned IDs retain their existing sidecar location.
+		bool CanReuseSecondaryAssetId(const FileId& fileId,
+			const std::string& assetInfoType,
+			const std::filesystem::path& sourcePath,
+			std::filesystem::path& inOutMetadataPath) const;
 
 		friend class IAssetInfoHandler;
 		friend class ModelImporter;

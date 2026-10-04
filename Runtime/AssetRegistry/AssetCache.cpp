@@ -1,4 +1,6 @@
 #include "AssetCache.h"
+#include "Core/FileRevision.h"
+#include "Platform/AtomicFile.h"
 #include "Containers/Containers.h"
 
 #include "AssetRegistry/AssetRegistry.h"
@@ -13,6 +15,7 @@
 #include <cctype>
 #include <filesystem>
 #include <sstream>
+#include <utility>
 
 using namespace Sailor;
 
@@ -176,7 +179,7 @@ YAML::Node AssetCache::AssetCacheData::Serialize() const
 	{
 		assets.force_insert(
 			asset.m_first.ToString(),
-			asset.m_second.Serialize());
+			asset.m_second->Serialize());
 	}
 	result["assets"] = assets;
 	return result;
@@ -208,7 +211,7 @@ bool AssetCache::AssetCacheData::Validate(
 	for (const auto& asset : m_assets)
 	{
 		if (!asset.m_first ||
-			!asset.m_second.Validate(asset.m_first, outDiagnostic))
+			!asset.m_second->Validate(asset.m_first, outDiagnostic))
 		{
 			return false;
 		}
@@ -408,11 +411,23 @@ bool AssetCache::WriteCacheLocked(std::string& outDiagnostic) noexcept
 		return false;
 	}
 
-	return Workspace::AtomicReplaceWorkspaceCacheText(
+	const bool bSaved = Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
 		GetConfiguredAssetCacheFilepath(),
 		envelope,
-		outDiagnostic);
+		outDiagnostic));
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+	m_manifestWriteCount += bSaved;
+#endif
+	return bSaved;
 }
+
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+uint64_t AssetCache::TakeManifestWriteCountForTests()
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	return std::exchange(m_manifestWriteCount, 0);
+}
+#endif
 
 std::string AssetCache::GetConfiguredAssetCacheFilepath() const
 {
@@ -561,17 +576,7 @@ bool AssetCache::Update(
 	}
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	auto& entry = m_cache.m_assets.At_Lock(id);
-	struct EntryUnlockGuard final
-	{
-		TConcurrentMap<FileId, AssetCacheData::Entry>& m_assets;
-		const FileId& m_id;
-
-		~EntryUnlockGuard() noexcept
-		{
-			m_assets.Unlock(m_id);
-		}
-	} unlockGuard{ m_cache.m_assets, id };
+	auto& entry = m_cache.m_assets[id];
 
 	const bool bChanged = entry.m_fileId != id ||
 		entry.m_assetImportTime != assetImportTime ||

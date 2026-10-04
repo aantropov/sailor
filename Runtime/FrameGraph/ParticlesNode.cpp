@@ -23,6 +23,26 @@ using namespace Sailor::Framegraph::Experimental;
 const char* ParticlesNode::m_name = "ExperimentalParticles";
 #endif
 
+bool ParticlesNode::InitializeBuffers(const TVector<PerInstanceData>& instances)
+{
+	auto& driver = Renderer::GetDriver();
+	auto instanceBuffer = driver->CreateBuffer_Immediate(instances.GetData(), instances.Num() * sizeof(PerInstanceData), EBufferUsageBit::StorageBuffer_Bit);
+	if (!instanceBuffer) return false;
+	auto framesBuffer = driver->CreateBuffer_Immediate(m_particlesDataBinary.GetData(), m_particlesDataBinary.Num() * sizeof(ParticleData), EBufferUsageBit::StorageBuffer_Bit);
+	if (!framesBuffer) return false;
+
+	auto bindings = driver->CreateShaderBindings();
+	driver->AddBufferToShaderBindings(bindings, instanceBuffer, "data", 0);
+	driver->AddBufferToShaderBindings(bindings, framesBuffer, "particlesData", 1);
+
+	m_instances = std::move(instanceBuffer);
+	m_particlesFrames = std::move(framesBuffer);
+	m_perInstanceData = std::move(bindings);
+	m_numInstances = (uint32_t)instances.Num();
+	m_particlesDataBinary.Clear();
+	return true;
+}
+
 void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -163,16 +183,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 			instances.Emplace(std::move(newInstance));
 		}
 
-		m_numInstances = (uint32_t)instances.Num();
-		m_instances = driver->CreateBuffer_Immediate(instances.GetData(), instances.Num() * sizeof(PerInstanceData), EBufferUsageBit::StorageBuffer_Bit);
-		m_particlesFrames = driver->CreateBuffer_Immediate(m_particlesDataBinary.GetData(), m_particlesDataBinary.Num() * sizeof(ParticleData), EBufferUsageBit::StorageBuffer_Bit);
-
-		m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-
-		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_perInstanceData, m_instances, "data", 0);
-		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_perInstanceData, m_particlesFrames, "particlesData", 1);
-
-		m_particlesDataBinary.Clear();
+		if (!InitializeBuffers(instances)) return;
 	}
 
 	RHI::RHISurfacePtr colorAttachment = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
@@ -231,11 +242,13 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 			glm::vec2(scissors.z, scissors.w),
 			0.0f, 1.0f);
 
-		commands->BindShaderBindings(commandList, m_material, sets);
-		commands->BindVertexBuffer(commandList, m_mesh->m_vertexBuffer, 0);
-		commands->BindIndexBuffer(commandList, m_mesh->m_indexBuffer, 0);
-		commands->DrawIndexed(commandList, m_mesh->GetIndexCount(), m_numInstances, m_mesh->GetFirstIndex(), m_mesh->GetVertexOffset(), 0);
-		RecordDrawCallStats(m_numInstances);
+		if (commands->BindShaderBindings(commandList, m_shadowMaterial, sets))
+		{
+			commands->BindVertexBuffer(commandList, m_mesh->m_vertexBuffer, 0);
+			commands->BindIndexBuffer(commandList, m_mesh->m_indexBuffer, 0);
+			commands->DrawIndexed(commandList, m_mesh->GetIndexCount(), m_numInstances, m_mesh->GetFirstIndex(), m_mesh->GetVertexOffset(), 0);
+			RecordDrawCallStats(m_numInstances);
+		}
 
 		commands->EndRenderPass(commandList);
 		commands->ImageMemoryBarrier(commandList, m_shadowMap, EImageLayout::ShaderReadOnlyOptimal);
@@ -263,11 +276,13 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		glm::vec2(scissors.z, scissors.w),
 		0.0f, 1.0f);
 
-	commands->BindShaderBindings(commandList, m_material, sets);
-	commands->BindVertexBuffer(commandList, m_mesh->m_vertexBuffer, 0);
-	commands->BindIndexBuffer(commandList, m_mesh->m_indexBuffer, 0);
-	commands->DrawIndexed(commandList, m_mesh->GetIndexCount(), m_numInstances, m_mesh->GetFirstIndex(), m_mesh->GetVertexOffset(), 0);
-	RecordDrawCallStats(m_numInstances);
+	if (commands->BindShaderBindings(commandList, m_material, sets))
+	{
+		commands->BindVertexBuffer(commandList, m_mesh->m_vertexBuffer, 0);
+		commands->BindIndexBuffer(commandList, m_mesh->m_indexBuffer, 0);
+		commands->DrawIndexed(commandList, m_mesh->GetIndexCount(), m_numInstances, m_mesh->GetFirstIndex(), m_mesh->GetVertexOffset(), 0);
+		RecordDrawCallStats(m_numInstances);
+	}
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);

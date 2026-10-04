@@ -28,15 +28,23 @@ VulkanFence::~VulkanFence()
 
 VkResult VulkanFence::Wait(uint64_t timeout) const
 {
-	return vkWaitForFences(*m_device, 1, &m_fence, VK_TRUE, timeout);
+	return CheckResult(m_device->m_waitForFences(*m_device, 1, &m_fence, VK_TRUE, timeout));
 }
 
 VkResult VulkanFence::Reset() const
 {
-	return vkResetFences(*m_device, 1, &m_fence);
+	return CheckResult(vkResetFences(*m_device, 1, &m_fence));
 }
 
 VkResult VulkanFence::Status() const
 {
-	return vkGetFenceStatus(*m_device, m_fence);
+	return CheckResult(m_device->m_getFenceStatus(*m_device, m_fence));
+}
+
+VkResult VulkanFence::CheckResult(VkResult result) const
+{
+	auto* device = m_device.GetRawPtr();
+	if (result == VK_ERROR_DEVICE_LOST) device->m_bIsDeviceLost = true;
+	// Completed work on a lost device cannot publish valid resource contents.
+	return result == VK_SUCCESS && device->m_bIsDeviceLost ? VK_ERROR_DEVICE_LOST : result;
 }

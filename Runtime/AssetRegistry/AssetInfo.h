@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <string>
 #include <ctime>
 #include <type_traits>
@@ -53,10 +54,12 @@ namespace Sailor
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
-		SAILOR_API virtual void SaveMetaFile();
+		SAILOR_API virtual bool SaveMetaFile();
 		SAILOR_API virtual IAssetInfoHandler* GetHandler();
 
 	protected:
+
+		SAILOR_API virtual void CopyMetadata(const AssetInfo& source);
 
 		std::time_t m_metaLoadTime;
 		std::time_t m_assetImportTime;
@@ -85,12 +88,22 @@ namespace Sailor
 	class SAILOR_API IAssetInfoHandlerListener
 	{
 	public:
+		// Direct registration can make dependencies available to existing resources.
+		// Most importers handle it like an update; dependent resources may need an owner task.
+		virtual void OnRegisterAsset(AssetInfoPtr assetInfo, bool bWasExpired)
+		{
+			OnUpdateAssetInfo(assetInfo, bWasExpired);
+		}
+
+		// Listeners persist intentional metadata changes and acknowledge required
+		// processing through AssetRegistry; notification alone does not save metadata.
 		// bWasExpired means that the source or metadata changed since the last
 		// acknowledged processing watermark, or that no watermark exists yet.
+		// Explicit reimport also requests regeneration through this notification.
 		// Importers refresh loaded resources here.
 		virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) = 0;
 		// Called only after creating metadata for a previously untracked source.
-		// A new source receives OnUpdateAssetInfo(..., false) before this callback.
+		// A new source receives a non-expired registration/update notification first.
 		virtual void OnImportAsset(AssetInfoPtr assetInfo) = 0;
 
 	};
@@ -125,7 +138,8 @@ namespace Sailor
 			bool bNotifyListeners = true,
 			bool bUpdateAssetCache = true) const;
 		bool DiscardImportedMetadataIfUnchanged(AssetInfoPtr assetInfo) const;
-		void NotifyUpdateAssetInfo(AssetInfoPtr assetInfo) const;
+		void NotifyRegisterAsset(AssetInfoPtr assetInfo) const;
+		void NotifyUpdateAssetInfo(AssetInfoPtr assetInfo, bool bReimport = false) const;
 		void NotifyImportAsset(AssetInfoPtr assetInfo) const;
 
 		virtual ~IAssetInfoHandler() = default;
@@ -135,9 +149,12 @@ namespace Sailor
 	protected:
 
 		virtual AssetInfoPtr CreateAssetInfo() const = 0;
-		TVector<std::string> m_supportedExtensions;
 
 		TVector<IAssetInfoHandlerListener*> m_listeners;
+
+	private:
+
+		void NotifyAssetInfo(AssetInfoPtr assetInfo, bool bReimport, bool bRegistered) const;
 	};
 
 	class SAILOR_API DefaultAssetInfoHandler final : public TSubmodule<DefaultAssetInfoHandler>, public IAssetInfoHandler
@@ -169,6 +186,70 @@ namespace Sailor
 		}
 
 		return fieldName;
+	}
+
+	namespace Attributes
+	{
+		template<typename... TExtensions>
+		struct Asset : refl::attr::usage::type
+		{
+			constexpr Asset(TExtensions... extensions) : m_extensions{ extensions... } {}
+
+			TVector<std::string> Extensions() const
+			{
+				TVector<std::string> extensions;
+				for (const auto extension : m_extensions)
+				{
+					extensions.Emplace(extension);
+				}
+				return extensions;
+			}
+
+			template<typename TAssetInfo>
+			YAML::Node Serialize() const
+			{
+				static_assert(std::is_base_of_v<AssetInfo, TAssetInfo>);
+				YAML::Node node;
+				node["typename"] = refl::reflect<TAssetInfo>().name.c_str();
+				node["extensions"] = YAML::Node(YAML::NodeType::Sequence);
+				for (const auto extension : m_extensions)
+				{
+					node["extensions"].push_back(std::string(extension));
+				}
+
+				YAML::Node properties(YAML::NodeType::Sequence);
+				TVector<std::string> names;
+				TAssetInfo* empty = nullptr;
+				for_each(refl::reflect<TAssetInfo>().members, [&](auto member)
+					{
+						if constexpr (is_writable(member))
+						{
+							const std::string name = NormalizeAssetInfoFieldName(get_display_name(member));
+							if (names.Contains(name))
+							{
+								return;
+							}
+							names.Add(name);
+							using PropertyType = decltype(get_reader(member)(*empty));
+							YAML::Node property;
+							property["name"] = name;
+							property["type"] = TypeInfo::GetReflectedPropertyTypeName<PropertyType>();
+							properties.push_back(property);
+						}
+					});
+				node["properties"] = properties;
+				return node;
+			}
+
+		private:
+			std::array<std::string_view, sizeof...(TExtensions)> m_extensions;
+		};
+	}
+
+	template<typename TAssetInfo>
+	TVector<std::string> GetAssetInfoExtensions()
+	{
+		return refl::descriptor::get_attribute<Attributes::Asset>(refl::reflect<TAssetInfo>()).Extensions();
 	}
 
 	template<typename TAssetInfo>
@@ -203,6 +284,25 @@ namespace Sailor
 	}
 
 	template<typename TAssetInfo>
+	void CopyReflectedAssetInfo(TAssetInfo& destination, const TAssetInfo& source)
+	{
+		for_each(refl::reflect<TAssetInfo>().members, [&](auto member)
+			{
+				if constexpr (is_readable(member) && is_writable(member))
+				{
+					if constexpr (is_field(member))
+					{
+						member(destination) = member(source);
+					}
+					else if constexpr (refl::descriptor::is_function(member))
+					{
+						member(destination, get_reader(member)(source));
+					}
+				}
+			});
+	}
+
+	template<typename TAssetInfo>
 	void DeserializeReflectedAssetInfo(TAssetInfo& assetInfo, const YAML::Node& inData)
 	{
 		for_each(refl::reflect(assetInfo).members, [&](auto member)
@@ -230,7 +330,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::AssetInfo),
+	type(Sailor::AssetInfo, Sailor::Attributes::Asset{}),
 	field(m_fileId),
 	field(m_assetFilename)
 )

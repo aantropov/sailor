@@ -1,5 +1,8 @@
 #include "Engine/World.h"
 #include "FrameGraph/BlitFormatConversion.h"
+#include "FrameGraph/FrameGraphNode.h"
+#include "FrameGraph/RHIFrameGraph.h"
+#include "RHI/DebugContext.h"
 #include "RHI/Material.h"
 #include "RHI/RenderSubmission.h"
 #include "RHI/Scene.h"
@@ -90,7 +93,7 @@ namespace
 			"collecting older versions must not invalidate a recycled live handle");
 	}
 
-	void TestBatchUpdatesPreserveVersionsAndFlightReplay()
+	void TestBatchUpdatesPreserveVersionsAndFlights()
 	{
 		auto scene = RHIScenePtr::Make(2u);
 		TVector<RenderInstanceHandle> handles;
@@ -110,7 +113,7 @@ namespace
 		}
 		const uint64_t revision = scene->GetRevision();
 		Require(scene->UpdateInstances(updates) == handles.Num(), "a batch must update every live handle");
-		Require(scene->GetRevision() == revision + handles.Num(), "each changed handle must retain its journal revision");
+		Require(scene->GetRevision() == revision + handles.Num(), "each changed handle must advance the scene revision");
 		auto after = scene->PublishVersion();
 		Require(after->m_stationaryHandles->Num() == 50u && after->m_dynamicHandles->Num() == 100u,
 			"batch mobility changes must rebuild the published handle lists");
@@ -125,8 +128,9 @@ namespace
 				newRecord->m_worldMatrix[3].x == float(i + 1000u),
 				"batch publication must preserve the old transform and mobility");
 		}
-		const auto replay = scene->PrepareFlight(0u, after);
-		Require(replay->m_appliedRevision == after->m_sceneRevision, "a retained flight must replay the complete batch");
+		const auto flight = scene->PrepareFlight(0u, after);
+		Require(flight->m_appliedVersion == after && flight->m_appliedRevision == after->m_sceneRevision,
+			"a freed flight must retain the complete published batch");
 
 		updates.Clear();
 		auto stale = handles[0];
@@ -136,7 +140,7 @@ namespace
 		updates.Add({ handles[1], {}, ToMask(ESceneChangeBit::None) });
 		const auto unchangedRevision = scene->GetRevision();
 		Require(scene->UpdateInstances(updates) == 1u && scene->GetRevision() == unchangedRevision,
-			"stale generations must be skipped and live no-ops must not replace records or append journal entries");
+			"stale generations and live no-ops must not replace records or advance the revision");
 		Require(scene->PublishVersion() == after, "a no-op batch must reuse the published version");
 		updates.Clear();
 		Require(scene->UpdateInstances(updates) == 0u, "an empty batch must be a no-op");
@@ -215,61 +219,112 @@ namespace
 		}
 	}
 
-	void TestTwoAndThreeFlightRevisionReplay()
+	void TestTwoAndThreeFlightVersionRetention()
 	{
-		auto scene = RHIScenePtr::Make(3u);
-		const auto stationary = scene->AddInstance(MakeRecord(1ull, EMobilityType::Stationary, 1.0f));
-		const auto dynamic = scene->AddInstance(MakeRecord(2ull, EMobilityType::Dynamic, 2.0f));
-		auto first = scene->PublishVersion();
+		for (uint32_t numFlights : { 2u, 3u })
+		{
+			auto scene = RHIScenePtr::Make(numFlights);
+			const auto stationary = scene->AddInstance(MakeRecord(1ull, EMobilityType::Stationary, 1.0f));
+			const auto dynamic = scene->AddInstance(MakeRecord(2ull, EMobilityType::Dynamic, 2.0f));
+			auto first = scene->PublishVersion();
 
-		auto flight0 = scene->PrepareFlight(0u, first);
-		auto flight1 = scene->PrepareFlight(1u, first);
-		auto flight2 = scene->PrepareFlight(2u, first);
-		const RHISceneInstanceRecord* flight0Stationary = nullptr;
-		Require(flight0->m_appliedVersion->Resolve(stationary, flight0Stationary) &&
-			flight0Stationary->m_worldMatrix[3].x == 1.0f &&
-			flight0->m_bStationaryFullRebuild,
-			"the first free flight must retain the immutable stationary version without copying complete records");
-		Require(flight0->m_dynamicHandles->Num() == 1u &&
-			flight1->m_dynamicHandles->Num() == 1u &&
-			flight2->m_dynamicHandles->Num() == 1u,
-			"every flight must reference its version's dynamic handle list");
+			auto flight0 = scene->PrepareFlight(0u, first);
+			auto flight1 = scene->PrepareFlight(1u, first);
+			auto flight2 = numFlights == 3u ? scene->PrepareFlight(2u, first) : flight1;
+			const RHISceneInstanceRecord* flight0Stationary = nullptr;
+			Require(flight0->m_appliedVersion->Resolve(stationary, flight0Stationary) &&
+				flight0Stationary->m_worldMatrix[3].x == 1.0f,
+				"the first free flight must retain the immutable stationary version without copying complete records");
+			Require(flight0->m_appliedVersion->m_dynamicHandles->Num() == 1u &&
+				flight1->m_appliedVersion->m_dynamicHandles->Num() == 1u &&
+				flight2->m_appliedVersion->m_dynamicHandles->Num() == 1u,
+				"every flight must reference its version's dynamic handle list");
 
-		Require(scene->UpdateInstance(
-			stationary,
-			MakeRecord(1ull, EMobilityType::Stationary, 10.0f),
-			ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds)),
-			"the stationary record must update");
-		Require(scene->UpdateInstance(
-			dynamic,
-			MakeRecord(2ull, EMobilityType::Dynamic, 20.0f),
-			ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds)),
-			"the dynamic record must update");
-		auto second = scene->PublishVersion();
+			Require(scene->UpdateInstance(
+				stationary,
+				MakeRecord(1ull, EMobilityType::Stationary, 10.0f),
+				ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds)),
+				"the stationary record must update");
+			Require(scene->UpdateInstance(
+				dynamic,
+				MakeRecord(2ull, EMobilityType::Dynamic, 20.0f),
+				ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds)),
+				"the dynamic record must update");
+			auto second = scene->PublishVersion();
 
-		scene->PrepareFlight(0u, second);
-		const RHISceneInstanceRecord* updatedStationary = nullptr;
-		const RHISceneInstanceRecord* retainedStationary1 = nullptr;
-		const RHISceneInstanceRecord* retainedStationary2 = nullptr;
-		const RHISceneInstanceRecord* updatedDynamic = nullptr;
-		Require(flight0->m_appliedVersion->Resolve(stationary, updatedStationary) &&
-			updatedStationary->m_worldMatrix[3].x == 10.0f &&
-			flight0->m_stationaryDirtyHandles.Contains(stationary),
-			"a freed flight must advance to the latest stationary delta by handle");
-		Require(flight1->m_appliedVersion->Resolve(stationary, retainedStationary1) &&
-			flight2->m_appliedVersion->Resolve(stationary, retainedStationary2) &&
-			retainedStationary1->m_worldMatrix[3].x == 1.0f &&
-			retainedStationary2->m_worldMatrix[3].x == 1.0f,
-			"active flights must retain their previous immutable stationary version");
-		Require(flight0->m_appliedVersion->Resolve(dynamic, updatedDynamic) &&
-			updatedDynamic->m_worldMatrix[3].x == 20.0f,
-			"the reused flight must resolve dynamic state without a duplicate record array");
+			scene->PrepareFlight(0u, second);
+			const RHISceneInstanceRecord* updatedStationary = nullptr;
+			const RHISceneInstanceRecord* retainedStationary1 = nullptr;
+			const RHISceneInstanceRecord* retainedStationary2 = nullptr;
+			const RHISceneInstanceRecord* updatedDynamic = nullptr;
+			Require(flight0->m_appliedVersion->Resolve(stationary, updatedStationary) &&
+				updatedStationary->m_worldMatrix[3].x == 10.0f,
+				"a freed flight must advance to the latest stationary delta by handle");
+			Require(flight1->m_appliedVersion->Resolve(stationary, retainedStationary1) &&
+				flight2->m_appliedVersion->Resolve(stationary, retainedStationary2) &&
+				retainedStationary1->m_worldMatrix[3].x == 1.0f &&
+				retainedStationary2->m_worldMatrix[3].x == 1.0f,
+				"active flights must retain their previous immutable stationary version");
+			Require(flight0->m_appliedVersion->Resolve(dynamic, updatedDynamic) &&
+				updatedDynamic->m_worldMatrix[3].x == 20.0f,
+				"the reused flight must resolve dynamic state without a duplicate record array");
 
-		scene->PrepareFlight(1u, second);
-		scene->PrepareFlight(2u, second);
-		Require(flight1->m_appliedVersion == second &&
-			flight2->m_appliedVersion == second,
-			"two and three-flight replay must converge only when each slot is reused");
+			scene->PrepareFlight(1u, second);
+			if (numFlights == 3u) scene->PrepareFlight(2u, second);
+			Require(flight1->m_appliedVersion == second &&
+				flight2->m_appliedVersion == second,
+				"two and three-flight versions must converge only when each slot is reused");
+		}
+	}
+
+	void TestFlightRetirementWithMotionHistory()
+	{
+		for (uint32_t numFlights : { 2u, 3u })
+		{
+			auto scene = RHIScenePtr::Make(numFlights);
+			Require(!scene->PrepareFlight(0u, {}), "an unpublished scene has no flight version");
+			const auto removed = scene->AddInstance(MakeRecord(1u, EMobilityType::Stationary, 1.0f));
+			const auto moving = scene->AddInstance(MakeRecord(2u, EMobilityType::Dynamic, 2.0f));
+			auto original = scene->PublishVersion();
+			for (uint32_t slot = 0u; slot < numFlights; ++slot) scene->PrepareFlight(slot, original);
+			auto history = TSharedPtr<RHIMotionHistoryFrame>::Make();
+			history->m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(
+				TVector<RHISceneVersionPtr>{ original });
+			original.Clear();
+			Require(scene->RemoveInstance(removed), "the retained stationary instance must be removable");
+			for (uint32_t i = 0u; i < 100u; ++i)
+			{
+				Require(scene->UpdateInstance(moving, MakeRecord(2u, EMobilityType::Dynamic, float(i + 3u)),
+					ToMask(ESceneChangeBit::Transform)), "unpublished dynamic changes must succeed");
+			}
+			auto latest = scene->PublishVersion();
+			for (uint32_t slot = 0u; slot + 1u < numFlights; ++slot) scene->PrepareFlight(slot, latest);
+			scene->CollectGarbage();
+			const auto whileInFlight = scene->AddInstance(MakeRecord(3u, EMobilityType::Static));
+			Require(whileInFlight.m_slot != removed.m_slot,
+				"an older flight must prevent a removed slot from being reused");
+			const auto lastFlight = scene->PrepareFlight(numFlights - 1u, latest);
+			scene->CollectGarbage();
+			const auto whileInHistory = scene->AddInstance(MakeRecord(4u, EMobilityType::Static));
+			Require(whileInHistory.m_slot != removed.m_slot,
+				"motion history must retain the old slot after every flight has advanced");
+			const RHISceneInstanceRecord* record = nullptr;
+			Require((*history->m_sceneVersions)[0]->Resolve(removed, record) && record->m_producerKey == 1u &&
+				record->m_worldMatrix[3].x == 1.0f, "motion history must still resolve the removed owner");
+			Require(!lastFlight->m_appliedVersion->Resolve(removed, record) &&
+				lastFlight->m_appliedVersion->Resolve(moving, record) && record->m_worldMatrix[3].x == 102.0f,
+				"the new flight must contain removal and the last unpublished update");
+			history.Clear();
+			scene->CollectGarbage();
+			const auto reused = scene->AddInstance(MakeRecord(5u, EMobilityType::Stationary));
+			Require(reused.m_slot == removed.m_slot && reused.m_generation != removed.m_generation,
+				"the exact retired slot becomes reusable only after its last retained version is released");
+			auto current = scene->PublishVersion();
+			Require(!current->Resolve(removed, record) && current->Resolve(reused, record) && record->m_producerKey == 5u,
+				"the recycled generation must not revive the old handle");
+			Require(scene->PrepareFlight(numFlights + 1u, {})->m_appliedVersion == current,
+				"a newly added flight must use the current version when no explicit target is supplied");
+		}
 	}
 
 	void TestRangeRetirementAndDirtyCoalescing()
@@ -550,6 +605,68 @@ namespace
 				ETextureFormat::D32_SFLOAT),
 			"matching depth formats must remain on the dedicated native depth path");
 	}
+
+	void TestDebugRecordingIsASubmissionPrerequisite()
+	{
+		for (const bool bIncludeDebugPass : { false, true })
+		{
+			Tasks::Scheduler scheduler;
+			scheduler.AttachCurrentThreadAsMainThread();
+			auto graph = RHIFrameGraphPtr::Make();
+			if (bIncludeDebugPass)
+			{
+				FrameGraphBuilder builder;
+				auto node = builder.CreateNode("DebugDraw");
+				Require(static_cast<bool>(node),
+					"the runtime factory must create the registered DebugDraw node");
+				// No attachments: the node cannot consume its recording result.
+				graph->GetGraph().Add(std::move(node));
+			}
+			auto sceneView = RHISceneViewPtr::Make();
+			DebugContext::DrawSnapshot snapshot;
+			{
+				DebugContext context;
+				snapshot = context.GetDrawSnapshot();
+			}
+			uint32_t completed = 0u;
+			for (uint32_t camera = 0; camera < 2u; ++camera)
+			{
+				// Main-queue admission lets this test complete each camera independently.
+				sceneView->m_debugDraw.Add(Tasks::CreateTask<RHICommandListPtr>(scheduler,
+					"Record retained debug snapshot", [snapshot, &completed]()
+					{
+						DebugContext::DrawDebugMesh({}, glm::mat4(1.0f), snapshot, glm::ivec2(64));
+						++completed;
+						return RHICommandListPtr{};
+					}, EThreadType::Main));
+				RHISceneViewSnapshot view;
+				view.m_camera = TUniquePtr<CameraData>::Make();
+				view.m_cameraIndex = camera;
+				sceneView->m_snapshots.Add(std::move(view));
+			}
+			const auto prerequisites = graph->Prepare(sceneView);
+			Require(prerequisites.Num() == 2u,
+				"every camera recording must belong to preparation even without a usable DebugDraw pass");
+			uint32_t completedAtSubmission = 0u;
+			auto frame = Tasks::CreateTask(scheduler, "Submit after all recording",
+				[&]() { completedAtSubmission = completed; }, EThreadType::Main);
+			for (const auto& task : prerequisites)
+			{
+				frame->Join(task);
+			}
+			frame->Run();
+			scheduler.ProcessTasksOnMainThread();
+			const bool bInitiallyBlocked = !frame->IsStarted();
+			prerequisites[0]->Run();
+			scheduler.ProcessTasksOnMainThread();
+			const bool bBlockedAfterFirstCamera = !frame->IsStarted() && completed == 1u;
+			prerequisites[1]->Run();
+			scheduler.ProcessTasksOnMainThread();
+			Require(bInitiallyBlocked && bBlockedAfterFirstCamera && frame->IsFinished() &&
+				completedAtSubmission == 2u,
+				"submission must wait for both retained recordings, not depend on DebugDraw consuming them");
+		}
+	}
 }
 
 int main()
@@ -557,10 +674,11 @@ int main()
 	try
 	{
 		TestGenerationalHandlesAndImmutableVersions();
-		TestBatchUpdatesPreserveVersionsAndFlightReplay();
+		TestBatchUpdatesPreserveVersionsAndFlights();
 		TestCopyOnWritePageSharing();
 		TestRenderedMotionHistoryReleasesOldScenePages();
-		TestTwoAndThreeFlightRevisionReplay();
+		TestTwoAndThreeFlightVersionRetention();
+		TestFlightRetirementWithMotionHistory();
 		TestRangeRetirementAndDirtyCoalescing();
 		TestImmutableMaterialBindingVersions();
 		TestLocalizedShadowVersionDiff();
@@ -569,6 +687,7 @@ int main()
 		TestBlitFormatConversionPath();
 		TestMotionHistoryContinuity();
 		TestObjectMotionUsesRenderedVersions();
+		TestDebugRecordingIsASubmissionPrerequisite();
 	}
 	catch (const std::exception& exception)
 	{

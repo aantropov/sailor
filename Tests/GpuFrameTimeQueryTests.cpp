@@ -57,13 +57,6 @@ namespace
 			RHI::TryResolveGpuFrameTimeMilliseconds(
 				0xfffffff0u, 0x10u, 32u, 1.0f, milliseconds),
 			"limited-width timestamp counters should still support a valid wrap");
-		Require(
-			RHI::CalculateGpuFramesPerSecond(40.0f) == 25u &&
-			RHI::CalculateGpuFramesPerSecond(0.0f) == 0u &&
-			RHI::CalculateGpuFramesPerSecond(
-				(std::numeric_limits<float>::quiet_NaN)()) == 0u,
-			"GPU FPS must be derived from the measured GPU frame duration");
-
 		RHI::TGpuFrameTimeQueryRing<2u> ring;
 		const uint32_t first = ring.Acquire();
 		Require(first == 0u && ring.MarkIssued(first),

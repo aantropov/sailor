@@ -112,27 +112,14 @@ namespace Sailor::RHI
 	static_assert(sizeof(RHISceneInstanceRecord) <= 160u,
 		"Persistent scene records must not accumulate pass-local allocation metadata.");
 
-	struct RHISceneChangeEntry
-	{
-		uint64_t m_revision = 0ull;
-		RenderInstanceHandle m_handle{};
-		SceneChangeMask m_changeMask = ToMask(ESceneChangeBit::None);
-	};
-
-	static_assert(sizeof(RHISceneChangeEntry) <= 24u,
-		"The change journal must not duplicate complete scene records.");
-
 	struct RHISceneMetrics
 	{
 		uint32_t m_numStaticInstances = 0u;
 		uint32_t m_numStationaryInstances = 0u;
 		uint32_t m_numDynamicInstances = 0u;
 		uint32_t m_numDirtyChanges = 0u;
-		uint32_t m_numCoalescedChanges = 0u;
 		uint32_t m_numCowPages = 0u;
-		uint32_t m_numFullRebuilds = 0u;
 		uint64_t m_copiedCpuBytes = 0ull;
-		uint64_t m_dynamicRewriteBytes = 0ull;
 	};
 
 	struct RHISceneRecordSlot
@@ -192,13 +179,6 @@ namespace Sailor::RHI
 		uint32_t m_flightSlot = 0u;
 		uint64_t m_appliedRevision = 0ull;
 		RHISceneVersionPtr m_appliedVersion{};
-		TSharedPtr<TVector<RenderInstanceHandle>> m_stationaryHandles{};
-		TSharedPtr<TVector<RenderInstanceHandle>> m_dynamicHandles{};
-		TVector<RenderInstanceHandle> m_stationaryDirtyHandles{};
-		TVector<RenderInstanceHandle> m_coalescedHandlesScratch{};
-		TVector<uint8_t> m_coalescedSlotFlags{};
-		bool m_bStationaryFullRebuild = false;
-		RHISceneMetrics m_metrics{};
 	};
 
 	using RHISceneFlightStatePtr = TRefPtr<RHISceneFlightState>;
@@ -279,13 +259,13 @@ namespace Sailor::RHI
 			uint64_t shadowRevision = 0ull,
 			uint64_t spatialRevision = 0ull);
 		SAILOR_SHARED_API RHISceneVersionPtr GetCurrentVersion() const;
+		// Called after the slot fence completes; keeps its scene version alive until reuse.
 		SAILOR_SHARED_API RHISceneFlightStatePtr PrepareFlight(
 			uint32_t flightSlot,
 			RHISceneVersionPtr targetVersion);
 		SAILOR_SHARED_API void CollectGarbage();
 
 		uint64_t GetRevision() const { return m_revision; }
-		SAILOR_SHARED_API uint64_t GetJournalFirstRevision() const;
 		const RHISceneMetrics& GetMetrics() const { return m_metrics; }
 
 	private:
@@ -299,13 +279,12 @@ namespace Sailor::RHI
 
 		bool ResolveSlot(RenderInstanceHandle handle, LogicalSlot*& outSlot);
 		bool ResolveSlot(RenderInstanceHandle handle, const LogicalSlot*& outSlot) const;
-		void AppendChange(RenderInstanceHandle handle, SceneChangeMask mask);
+		void MarkDirty(uint32_t slotIndex);
 		bool UpdateInstanceLocked(RenderInstanceHandle handle,
 			const RHISceneInstanceRecord& record, SceneChangeMask changeMask);
 		void BumpMobilityRevision(EMobilityType mobility);
 		void RebuildHandleLists(RHISceneVersion& version);
 		RHISceneRecordRootPtr BuildRecordRoot();
-		void RebuildFlight(RHISceneFlightState& flight, const RHISceneVersion& version);
 		uint64_t MinimumRetainedRevision() const;
 
 		mutable SpinLock m_lock;
@@ -321,7 +300,6 @@ namespace Sailor::RHI
 		TVector<uint32_t> m_dirtySlots{};
 		TVector<uint8_t> m_dirtySlotFlags{};
 		TVector<uint8_t> m_cowPageScratch{};
-		TVector<RHISceneChangeEntry> m_journal{};
 		RHISceneRecordRootPtr m_currentRoot{};
 		RHISceneVersionPtr m_currentVersion{};
 		TVector<RHISceneVersionPtr> m_retainedVersions{};

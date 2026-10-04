@@ -146,7 +146,7 @@ namespace
 				break;
 
 			case EProtocolLifecycleCompletion::Shutdown:
-				m_gate.CompleteShutdown();
+				m_gate.CompleteShutdown(m_bSucceeded);
 				break;
 
 			case EProtocolLifecycleCompletion::None:
@@ -165,6 +165,18 @@ namespace
 		EProtocolLifecycleCompletion m_completion = EProtocolLifecycleCompletion::None;
 		bool m_bSucceeded = false;
 	};
+
+	bool RequestStop(Sailor::Protocol::TEditorEngineProtocolLifecycleGate& gate,
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	{
+		if (!gate.TryAcquireStop())
+		{
+			return false;
+		}
+		const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Operation);
+		StopEngine(dependencies);
+		return true;
+	}
 
 	void DispatchRequestWithLifecycleAdmission(const ProtocolRequest& request,
 		ProtocolResponse& response,
@@ -191,7 +203,7 @@ namespace
 
 			TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Initialization);
 			DispatchRequest(request, response, dependencies);
-			completion.MarkSucceeded();
+			if (response.success()) completion.MarkSucceeded();
 			return;
 		}
 
@@ -209,15 +221,11 @@ namespace
 		}
 
 		case ProtocolRequest::kStop:
-			if (gate.NoteStopRequested())
+			if (RequestStop(gate, dependencies))
 			{
-				DispatchRequest(request, response, dependencies);
 				gate.WaitForStartDrainAndJoin();
 			}
-			else
-			{
-				SetEmptyResult(response);
-			}
+			SetEmptyResult(response);
 			return;
 
 		case ProtocolRequest::kShutdown:
@@ -228,7 +236,7 @@ namespace
 				return;
 			}
 
-			const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Shutdown);
+			TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Shutdown);
 			// Initialization owns partially built App state. Once it drains,
 			// Stop can safely release a blocking Start before the remaining
 			// regular operation leases are joined.
@@ -237,6 +245,7 @@ namespace
 			gate.WaitForShutdownDrain();
 			gate.WaitForStartDrainAndJoin();
 			DispatchRequest(request, response, dependencies);
+			if (response.success()) completion.MarkSucceeded();
 			return;
 		}
 
@@ -378,6 +387,11 @@ void Sailor::Protocol::FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept
 	delete[] buffer;
 }
 
+void Sailor::Protocol::RequestEditorEngineProtocolStop()
+{
+	RequestStop(GetEditorEngineProtocolLifecycleGate(), EditorEngineProtocolDependencies{});
+}
+
 void Sailor::Protocol::WaitForEditorEngineProtocolStartDrain()
 {
 	GetEditorEngineProtocolLifecycleGate().WaitForStartDrainAndJoin();
@@ -386,4 +400,9 @@ void Sailor::Protocol::WaitForEditorEngineProtocolStartDrain()
 void Sailor::Protocol::ResetEditorEngineProtocolLifecycle()
 {
 	GetEditorEngineProtocolLifecycleGate().Reset();
+}
+
+void Sailor::Protocol::FailEditorEngineProtocolShutdown()
+{
+	GetEditorEngineProtocolLifecycleGate().CompleteShutdown(false);
 }

@@ -60,10 +60,13 @@ a trace failure.
 
 `update_asset` revalidates one registered `FileId` against its metadata,
 source-file, and cache revisions. A metadata-only edit reloads that exact
-AssetInfo; a changed source reloads every registered AssetInfo backed by the
-same source (for example, the assets generated from one glTF file). It does not
-scan Content or wait for unrelated Worker, RHI, or Render work. Commands that
-change Content topology still use `request_asset_reload`.
+AssetInfo; a changed source reloads loaded AssetInfos backed by the same source
+(for example, assets generated from one glTF file). Explicit Editor Reimport
+sets `reimport = true` to regenerate even when those revisions are unchanged.
+Normal Save/watcher updates leave it false. Reimport preserves authored values
+and generated FileIds; it does not change source timestamps to trigger work.
+The command drains asset tasks around updates, but does not scan Content.
+Commands that change Content topology still use `request_asset_reload`.
 
 `set_animator_parameter` updates one runtime Animator instance using a typed
 Float, Int, Bool, Trigger, or ResetTrigger value. `get_animator_state` returns
@@ -72,6 +75,14 @@ and crossfade alpha for Editor preview and diagnostics. Both commands identify
 the component by its full `InstanceId`, execute through the regular Editor
 worker, and marshal to the Engine main thread. They never persist runtime
 parameter values into scene or controller YAML.
+
+`get_remote_viewport_diagnostics` reads counters and any previously requested
+pixel evidence; it never samples the surface. `capture_remote_viewport_frame_evidence`
+is a separate, explicit macOS diagnostic request. It samples the last presented
+IOSurface frame and returns its frame/epoch/generation with pixel statistics.
+An absent frame, pending producer copy, changed-but-unpresented surface or native
+capture error fails that request without failing the viewport session. Other
+platforms report unsupported. This command stays at protocol version 1.
 
 `create_model_instance` performs one atomic Engine-side model drop. With
 `create_hierarchy = true`, the Engine creates the asset root and the editable
@@ -98,6 +109,16 @@ world mutations to the Engine main thread.
 regular asset registry, and plays it as a non-spatial one-shot voice. Starting
 another preview stops and destroys the previous preview voice. The Editor sends
 this command asynchronously through the normal WebSocket transport.
+
+`request_model_fingerprint` accepts a model FileId and queues its preview only
+on explicit consumer demand. `get_model_fingerprint_status` reports Unavailable,
+Pending, Ready or Failed without starting or retrying work. Both commands marshal
+to the Engine main thread; rendering runs on Background and does not block the
+Editor worker. A renewed request retries failure without a source edit, while
+duplicate pending requests share the same attempt. Ready means publication
+completed successfully. Failed rendering or replacement preserves the old PNG;
+a failure to confirm OS sync after replacement remains retryable, not a rollback.
+Neither command changes the model processing acknowledgement. Both remain v1.
 
 Compatibility rules:
 

@@ -16,6 +16,11 @@
 using namespace Sailor;
 using namespace Sailor::Win32;
 
+Utils::WindowSizeAndPosition Utils::GetWindowSizeAndPosition(HWND hwnd)
+{
+	return {};
+}
+
 namespace
 {
 	constexpr char sSailorWindowDelegateKey[] = "sailor_delegate";

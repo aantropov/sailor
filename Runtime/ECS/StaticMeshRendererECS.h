@@ -49,6 +49,10 @@ namespace Sailor
 			uint32_t minLod,
 			uint32_t maxLod,
 			const TVector<float>& screenCoverageThresholds);
+		SAILOR_API static void NormalizeLodSettings(
+			uint32_t minLod,
+			uint32_t& maxLod,
+			TVector<float>& screenCoverageThresholds);
 	protected:
 
 		ModelPtr m_model;
@@ -77,6 +81,7 @@ namespace Sailor
 		const RHI::RHIScenePtr& GetRHIScene() const { return m_rhiScene; }
 		SAILOR_API uint64_t GetGlobalIlluminationContributorRevision()
 			const noexcept;
+		SAILOR_API uint64_t GetGlobalIlluminationGeometryRevision() const noexcept;
 
 		virtual uint32_t GetOrder() const override { return 1000; }
 
@@ -122,6 +127,7 @@ namespace Sailor
 		uint64_t m_spatialRevision = 0ull;
 		uint64_t m_shadowCastersRevision = 0ull;
 		uint64_t m_lastMaterialContentRevision = 0;
+		uint64_t m_giMaterialRevision = 0;
 		TVector<PreparedProxyBatch> m_preparedBatchesScratch{};
 		TVector<Tasks::ITaskPtr> m_prepareTasksScratch{};
 		bool m_bHasCustomDepthShadowCasters = false;

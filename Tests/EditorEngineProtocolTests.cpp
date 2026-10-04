@@ -1,7 +1,11 @@
 #include "EditorEngineProtocolInternal.h"
 #include "EditorEngineProtocolLifecycle.h"
 #include "Protocol/Generated/editor_engine.pb.h"
+#include "Sailor.h"
+#include "AssetRegistry/Model/ModelImporter.h"
+#include "Support/TempDirectory.h"
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -9,6 +13,7 @@
 #include <cstring>
 #include <condition_variable>
 #include <future>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <mutex>
@@ -32,6 +37,7 @@ extern "C"
 		uint32_t* responseSize) noexcept;
 
 	SAILOR_PROTOCOL_TEST_IMPORT void SailorProtocolFreeBuffer(uint8_t* buffer) noexcept;
+	SAILOR_PROTOCOL_TEST_IMPORT int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 }
 
 namespace
@@ -276,8 +282,8 @@ namespace
 					reinterpret_cast<const char*>(value),
 					static_cast<size_t>(length));
 			}
-			else if (fieldNumber >= 10u &&
-				fieldNumber <= c_editorRenderModeResultField)
+			else if ((fieldNumber >= 10u && fieldNumber <= c_editorRenderModeResultField) ||
+				fieldNumber == sailor::editor::v1::ProtocolResponse::kModelFingerprintStatusResultFieldNumber)
 			{
 				response.m_resultField = fieldNumber;
 				response.m_resultPayload.assign(
@@ -798,6 +804,32 @@ namespace
 		return DecodeResponse(response.GetData(), response.GetSize());
 	}
 
+	void TestViewportEvidenceRequestReportsNoFrame()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "capture protocol test must initialize its lifecycle");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies;
+		dependencies.m_lifecycleGate = &gate;
+		std::string viewport;
+		AppendVarintField(viewport, 1u, 1u);
+		TProtocolBuffer buffer;
+		const auto response = RequireProtocolResponse(MakeRequest(1u, 151,
+			sailor::editor::v1::ProtocolRequest::kCaptureRemoteViewportFrameEvidence, viewport), buffer, dependencies);
+		Require(!response.m_success && response.m_requestId == 151 && response.m_resultField == 0,
+			"capture without a viewport must return a correlated request failure, not empty successful evidence");
+#if defined(__APPLE__)
+		Require(response.m_error == "Viewport does not exist.", "capture command must reach the native viewport handler");
+#else
+		Require(response.m_error == "Viewport pixel evidence is only available on macOS.", "other platforms must report unsupported capture");
+#endif
+		TProtocolBuffer diagnostics;
+		Require(RequireProtocolResponse(MakeRequest(1u, 152,
+			sailor::editor::v1::ProtocolRequest::kGetRemoteViewportDiagnostics, viewport), diagnostics, dependencies).m_success,
+			"ordinary diagnostics must remain a separate read-only query after capture failure");
+	}
+
 	void TestInvalidArgumentsResetOutputs()
 	{
 		uint8_t requestByte = 0;
@@ -891,6 +923,8 @@ namespace
 		Require(
 			responseData == nullptr && responseSize == 0,
 			"an execution failure must not publish a partial response");
+		Require(SailorProtocolStopLocalHost(true) != 0,
+			"an initialization exception must be rolled back before starting another session");
 	}
 
 	void TestEnvelopeValidation()
@@ -1250,6 +1284,39 @@ namespace
 		static_assert(
 			sailor::editor::v1::FileIdRequest::
 				kFileIdFieldNumber == 1);
+	}
+
+	void TestModelFingerprintProtocol()
+	{
+		using Status = Sailor::ModelImporter::EFingerprintStatus;
+		using namespace sailor::editor::v1;
+		static_assert(static_cast<uint32_t>(Status::Unavailable) == MODEL_FINGERPRINT_STATUS_UNAVAILABLE);
+		static_assert(static_cast<uint32_t>(Status::Pending) == MODEL_FINGERPRINT_STATUS_PENDING);
+		static_assert(static_cast<uint32_t>(Status::Ready) == MODEL_FINGERPRINT_STATUS_READY);
+		static_assert(static_cast<uint32_t>(Status::Failed) == MODEL_FINGERPRINT_STATUS_FAILED);
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "preview protocol fixture must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies;
+		dependencies.m_lifecycleGate = &gate;
+		std::string fileId;
+		AppendMessageField(fileId, FileIdRequest::kFileIdFieldNumber, "01234567-89AB-CDEF-0123-456789ABCDEF");
+		TProtocolBuffer admitted;
+		const auto response = RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 143,
+			ProtocolRequest::kRequestModelFingerprintFieldNumber, fileId), admitted, dependencies);
+		Require(response.m_success && response.m_requestId == 143 &&
+			response.m_resultField == c_boolResultField && !response.m_boolResult,
+			"an unavailable importer must refuse generation rather than report a ready image");
+		TProtocolBuffer queried;
+		const auto status = RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 144,
+			ProtocolRequest::kGetModelFingerprintStatusFieldNumber, fileId), queried, dependencies);
+		int32_t value = -1;
+		Require(status.m_success && status.m_requestId == 144 &&
+			status.m_resultField == ProtocolResponse::kModelFingerprintStatusResultFieldNumber &&
+			TryDecodeInt32Result(reinterpret_cast<const uint8_t*>(status.m_resultPayload.data()), status.m_resultPayload.size(), value) &&
+			value == MODEL_FINGERPRINT_STATUS_UNAVAILABLE,
+			"status queries must distinguish an absent request/importer from pending or ready output");
 	}
 
 	void TestEmbeddedNullIsRejected()
@@ -1622,7 +1689,8 @@ namespace
 			stoppedGate.TryBeginInitialization(error),
 			"fresh gate must admit initialization");
 		stoppedGate.CompleteInitialization(true);
-		stoppedGate.NoteStopRequested();
+		Require(stoppedGate.TryAcquireStop(), "Stop must acquire an initialized session");
+		stoppedGate.ReleaseOperation();
 		Require(
 			!stoppedGate.TryBeginStart(error),
 			"Stop before Start must prevent a late Start race");
@@ -1632,7 +1700,7 @@ namespace
 			initializingGate.TryBeginInitialization(error),
 			"fresh gate must admit initialization");
 		Require(
-			!initializingGate.NoteStopRequested(),
+			!initializingGate.TryAcquireStop(),
 			"Stop during initialization must not enter partially built App state");
 		initializingGate.CompleteInitialization(true);
 		Require(
@@ -1703,13 +1771,14 @@ namespace
 		source.m_condition.notify_all();
 	}
 
-	void RecordShutdown(void* context)
+	bool RecordShutdown(void* context)
 	{
 		auto& source =
 			*static_cast<TBlockingLifecycleSource*>(context);
 		const std::lock_guard<std::mutex> lock(source.m_mutex);
 		++source.m_numShutdowns;
 		source.m_bShutdownObservedStartExit = source.m_bStartExited;
+		return true;
 	}
 
 	class TBlockingLifecycleRelease final
@@ -1756,6 +1825,216 @@ namespace
 			gate.TryBeginInitialization(error),
 			"async lifecycle test must initialize its session");
 		gate.CompleteInitialization(true);
+	}
+
+	void TestFailedShutdownKeepsAdmissionClosedUntilRetry()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		PrepareInitializedLifecycle(gate);
+		uint32_t attempts = 0u;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &attempts;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_stop = [](void*) {};
+		dependencies.m_shutdown = [](void* context)
+			{
+				const auto attempt = ++*static_cast<uint32_t*>(context);
+				if (attempt == 2u) throw std::runtime_error("shutdown test failure");
+				return attempt == 3u;
+			};
+		for (uint32_t attempt = 1u; attempt <= 3u; ++attempt)
+		{
+			TProtocolBuffer buffer;
+			TDecodedResponse response{};
+			bool bThrew = false;
+			try
+			{
+				response = RequireProtocolResponse(
+					MakeRequest(EditorEngineProtocolVersion, attempt, c_shutdownCommandField), buffer, dependencies);
+			}
+			catch (const std::runtime_error& exception)
+			{
+				Require(attempt == 2u && std::string(exception.what()) == "shutdown test failure",
+					"internal invocation must propagate the original shutdown exception to its transport boundary");
+				bThrew = true;
+			}
+			Require(bThrew == (attempt == 2u), "throwing shutdown must reach the native transport boundary");
+			Require(attempts == attempt, "Shutdown must execute each explicit retry exactly once");
+			Require(response.m_success == (attempt == 3u), "Shutdown must report native completion, not just dispatch");
+			std::string error;
+			if (attempt < 3u)
+			{
+				Require(bThrew || (!response.m_error.empty() && response.m_resultField != c_emptyResultField),
+					"failed Shutdown must carry an error instead of an empty success result");
+				Require(!gate.TryBeginInitialization(error) && !gate.TryBeginStart(error) &&
+					!gate.TryAcquireOperation(error, true), "failed Shutdown must keep the old session closed");
+			}
+			else
+			{
+				Require(response.m_resultField == c_emptyResultField && gate.TryBeginInitialization(error),
+					"successful Shutdown retry must allow a fresh session");
+				gate.CompleteInitialization(true);
+			}
+		}
+	}
+
+	void TestFailedInitializationRequiresRollbackBeforeRetry()
+	{
+		Sailor::Tests::TempDirectory workspace("protocol-initialization");
+		std::ofstream(workspace.Path("file")) << "not a directory";
+		std::filesystem::create_directory(workspace.Path("invalid"));
+		std::ofstream(workspace.Path("invalid/project.sailor")) << "manifestVersion: [";
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_lifecycleGate = &gate;
+
+		for (const char* path : { "missing", "file", "invalid", "missing" })
+		{
+			std::string arguments;
+			for (const auto& argument : { std::string("SailorEngine"), std::string("--workspace"),
+				workspace.Path(path).string(), std::string("--noconsole"), std::string("--new-world") })
+			{
+				AppendMessageField(arguments, 1u, argument);
+			}
+			TProtocolBuffer buffer;
+			const auto response = RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
+				c_initializeCommandField, arguments), buffer, dependencies);
+			Require(!response.m_success && !response.m_error.empty(),
+				"Initialize must report the real App failure, not successful dispatch");
+			Require(Sailor::App::GetInstance() && Sailor::App::GetExitCode() != 0 &&
+				Sailor::App::Initialize() == Sailor::EAppInitializationResult::Failed,
+				"failed initialization must retain its partial App and diagnostic until rollback");
+			std::string error;
+			Require(!gate.TryBeginStart(error) && !gate.TryAcquireOperation(error, false) &&
+				!gate.TryBeginInitialization(error),
+				"failed initialization must not admit commands or another App before rollback");
+			TProtocolBuffer shutdownBuffer;
+			Require(RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 2u,
+				c_shutdownCommandField), shutdownBuffer, dependencies).m_success && !Sailor::App::GetInstance(),
+				"shutdown must release a partially initialized App and allow the next attempt");
+		}
+	}
+
+	void TestStopWaitsForInitializationAndSkipsClosedSessions()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		uint32_t stops = 0u;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &stops;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_stop = [](void* context) { ++*static_cast<uint32_t*>(context); };
+		auto stop = [&]()
+			{
+				TProtocolBuffer buffer;
+				Require(RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
+					c_stopCommandField), buffer, dependencies).m_success, "Stop must acknowledge its request");
+			};
+
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "Stop test must admit initialization");
+		stop();
+		stop();
+		Require(stops == 0u, "Stop must not access App while initialization owns its construction");
+		gate.CompleteInitialization(true);
+		Require(!gate.TryBeginStart(error), "Stop during initialization must prevent a late Start");
+		stop();
+		Require(stops == 1u, "Stop must reach the initialized App");
+
+		Require(gate.TryBeginShutdown(error), "Stop test must admit shutdown");
+		stop();
+		gate.WaitForShutdownDrain();
+		gate.CompleteShutdown();
+		stop();
+		Require(stops == 1u, "late Stop must not enter App during or after teardown");
+
+		PrepareInitializedLifecycle(gate);
+		Require(gate.TryBeginStart(error), "a new session must not inherit the previous Stop");
+		gate.CompleteStart();
+	}
+
+	void TestShutdownDrainsAnAdmittedStop()
+	{
+		using namespace std::chrono_literals;
+		struct TStopSource
+		{
+			std::promise<void> m_stopEntered;
+			std::promise<void> m_releaseStop;
+			std::promise<void> m_shutdownEntered;
+			std::atomic<bool> m_bStopExited{false};
+			bool m_bShutdownAfterStop = false;
+		} source;
+
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		PrepareInitializedLifecycle(gate);
+		Sailor::Protocol::EditorEngineProtocolDependencies stopDependencies{};
+		stopDependencies.m_context = &source;
+		stopDependencies.m_lifecycleGate = &gate;
+		stopDependencies.m_stop = [](void* context)
+			{
+				auto& state = *static_cast<TStopSource*>(context);
+				state.m_stopEntered.set_value();
+				state.m_releaseStop.get_future().wait();
+				state.m_bStopExited = true;
+			};
+		auto shutdownDependencies = stopDependencies;
+		shutdownDependencies.m_stop = [](void* context)
+			{
+				static_cast<TStopSource*>(context)->m_shutdownEntered.set_value();
+			};
+		shutdownDependencies.m_shutdown = [](void* context)
+			{
+				auto& state = *static_cast<TStopSource*>(context);
+				state.m_bShutdownAfterStop = state.m_bStopExited;
+				return true;
+			};
+
+		auto stop = std::async(std::launch::async, [&]()
+			{
+				TProtocolBuffer buffer;
+				return RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
+					c_stopCommandField), buffer, stopDependencies).m_success;
+			});
+		const bool bStopEntered = source.m_stopEntered.get_future().wait_for(1s) == std::future_status::ready;
+		auto shutdown = std::async(std::launch::async, [&]()
+			{
+				TProtocolBuffer buffer;
+				return RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 2u,
+					c_shutdownCommandField), buffer, shutdownDependencies).m_success;
+			});
+		const bool bShutdownEntered = source.m_shutdownEntered.get_future().wait_for(1s) == std::future_status::ready;
+		const bool bShutdownWaited = shutdown.wait_for(20ms) == std::future_status::timeout;
+		source.m_releaseStop.set_value();
+		const bool bStopped = stop.get();
+		const bool bShutdown = shutdown.get();
+		Require(bStopEntered && bShutdownEntered && bStopped && bShutdown,
+			"Stop and Shutdown must enter and complete their lifecycle callbacks");
+		Require(bShutdownWaited && source.m_bShutdownAfterStop,
+			"Shutdown must retain App until every admitted Stop callback has returned");
+	}
+
+	void TestThrowingStopReleasesItsOperation()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		PrepareInitializedLifecycle(gate);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_stop = [](void*) { throw std::runtime_error("stop failure"); };
+		bool bThrew = false;
+		try
+		{
+			TProtocolBuffer buffer;
+			RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
+				c_stopCommandField), buffer, dependencies);
+		}
+		catch (const std::runtime_error& error)
+		{
+			bThrew = std::string(error.what()) == "stop failure";
+		}
+		Require(bThrew, "Stop must propagate its exception to the transport boundary");
+		std::string error;
+		Require(gate.TryBeginShutdown(error), "a failed Stop must still allow shutdown");
+		gate.WaitForShutdownDrain();
+		gate.CompleteShutdown();
 	}
 
 	TDecodedResponse InvokeStartPromptly(
@@ -2028,12 +2307,13 @@ namespace
 		source.m_condition.notify_all();
 	}
 
-	void RecordEditorDispatchShutdown(void* context)
+	bool RecordEditorDispatchShutdown(void* context)
 	{
 		auto& source =
 			*static_cast<TBlockingEditorDispatchSource*>(context);
 		const std::lock_guard<std::mutex> lock(source.m_mutex);
 		++source.m_numShutdowns;
+		return true;
 	}
 
 	struct TEditorExceptionSource
@@ -2223,6 +2503,7 @@ int main()
 	try
 	{
 		TestInvalidArgumentsResetOutputs();
+		TestViewportEvidenceRequestReportsNoFrame();
 		TestOversizedAndMalformedPayloads();
 		TestCommandExceptionIsContainedByTransportBoundary();
 		TestEnvelopeValidation();
@@ -2233,6 +2514,7 @@ int main()
 		TestEditorStatsModeWireContract();
 		TestEditorRenderModeWireContract();
 		TestAudioPreviewWireContract();
+		TestModelFingerprintProtocol();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();
 		TestGetExitCodeRoundTripAndFree();
@@ -2240,6 +2522,11 @@ int main()
 		TestViewportAssetDropEventIsTypedAndValidated();
 		TestViewportToolShortcutEventIsTypedAndValidated();
 		TestLifecycleGateDrainsStartAndOperationsBeforeShutdown();
+		TestFailedShutdownKeepsAdmissionClosedUntilRetry();
+		TestFailedInitializationRequiresRollbackBeforeRetry();
+		TestShutdownDrainsAnAdmittedStop();
+		TestStopWaitsForInitializationAndSkipsClosedSessions();
+		TestThrowingStopReleasesItsOperation();
 		TestStartAcknowledgesBeforeWorkerExitAndStopJoins();
 		TestImmediateStopAfterStartAcknowledgementCannotBeLost();
 		TestShutdownStopsAndJoinsWorkerBeforeShutdownRoutine();

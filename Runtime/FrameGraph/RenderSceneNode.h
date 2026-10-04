@@ -10,6 +10,11 @@
 #include "RHI/Batch.hpp"
 #include "RHI/MotionHistory.h"
 
+namespace Sailor::RHI
+{
+	class RHIMaterialPreparationCache;
+}
+
 namespace Sailor::Framegraph
 {
 	class RenderSceneNode : public TFrameGraphNode<RenderSceneNode>
@@ -67,7 +72,7 @@ namespace Sailor::Framegraph
 			{
 				m_orderedDrawItems.Clear(false);
 				m_renderPassColorAttachments.Clear(false);
-				m_renderPassColorSurfaces.Clear(false);
+				m_renderPassColorResolves.Clear(false);
 				m_cullingDispatchBindings.Clear(false);
 				m_arenaRangeInstances.Clear(false);
 				m_arenaRangeStableKeys.Clear(false);
@@ -89,22 +94,23 @@ namespace Sailor::Framegraph
 			TVector<RHI::RHIShaderBindingSetPtr> m_cullingIndirectBufferBinding;
 			RHI::RHIShaderBindingSetPtr m_computeMeshCullingBindings{};
 			RHI::RHITexturePtr m_cullingDepthHighZ{};
-			RHI::RHIShaderBindingSetPtr m_nodeLightsBindings{};
-			RHI::RHIShaderBindingSetPtr m_nodeLightsSource{};
-			RHI::RHITexturePtr m_transmissionTexture{};
-			RHI::RHITexturePtr m_sceneDepthTexture{};
-			RHI::RHITexturePtr m_globalIlluminationProbeCellIndicesTexture{};
-			uint64_t m_nodeLightsSourceRevision = 0ull;
 			TVector<RHI::RHITexturePtr> m_renderPassColorAttachments{};
-			TVector<RHI::RHISurfacePtr> m_renderPassColorSurfaces{};
+			TVector<RHI::RHITexturePtr> m_renderPassColorResolves{};
 			TVector<RHI::RHIShaderBindingSetPtr> m_cullingDispatchBindings{};
 			TVector<PerInstanceData> m_arenaRangeInstances{};
 			TVector<uint64_t> m_arenaRangeStableKeys{};
 			TVector<RHI::PackedDrawArenaMaterialRun> m_arenaRangeMaterialVersionRuns{};
 		};
 
+		void BuildStableArenas(const RHI::RHISceneViewSnapshot& sceneView, SubmissionResources& resources,
+			RHI::RHIMaterialPreparationCache& preparedMaterials, size_t queueTagHash);
+		void BuildVisiblePacket(const RHI::RHISceneViewSnapshot& sceneView, SubmissionResources& resources,
+			RHI::RHIMaterialPreparationCache& preparedMaterials, size_t queueTagHash,
+			bool bUsesPagedArenas, bool bBackToFront);
+
 		SAILOR_SHARED_API static const char* m_name;
 
+		// Shared by concurrent Worker preparation tasks; Process belongs to Render.
 		SpinLock m_syncSharedResources;
 
 		// Culling
@@ -112,7 +118,6 @@ namespace Sailor::Framegraph
 
 		// Shared cache across platforms; macOS relies on it most because of descriptor pressure.
 		TextureBindingCache m_textureBindingCache;
-		RHI::TPackedDrawPacketPayloadCache<PerInstanceData> m_packetPayloadCache;
 		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache;
 	};
 

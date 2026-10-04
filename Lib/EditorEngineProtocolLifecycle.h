@@ -62,7 +62,7 @@ namespace Sailor::Protocol
 				m_bInitializationActive = false;
 				if (m_state == EState::Initializing)
 				{
-					m_state = bSucceeded ? EState::Ready : EState::Idle;
+					m_state = bSucceeded ? EState::Ready : EState::InitializationFailed;
 				}
 				m_bStartIssued = false;
 				m_bStartActive = false;
@@ -147,7 +147,7 @@ namespace Sailor::Protocol
 			return m_bStartActive;
 		}
 
-		bool NoteStopRequested()
+		bool TryAcquireStop()
 		{
 			const std::lock_guard<std::mutex> lock(m_mutex);
 			if (m_bInitializationActive)
@@ -158,10 +158,10 @@ namespace Sailor::Protocol
 				m_bStopRequested = true;
 				return false;
 			}
-			if (m_state == EState::Ready ||
-				m_state == EState::ShuttingDown)
+			if (m_state == EState::Ready)
 			{
 				m_bStopRequested = true;
+				++m_numActiveOperations;
 				return true;
 			}
 			return false;
@@ -215,11 +215,11 @@ namespace Sailor::Protocol
 			}
 		}
 
-		void CompleteShutdown()
+		void CompleteShutdown(bool bSucceeded = true)
 		{
 			{
 				const std::lock_guard<std::mutex> lock(m_mutex);
-				m_state = EState::ShutdownComplete;
+				m_state = bSucceeded ? EState::ShutdownComplete : EState::ShutdownFailed;
 				m_bInitializationActive = false;
 				m_bStartIssued = false;
 				m_bStopRequested = true;
@@ -306,8 +306,10 @@ namespace Sailor::Protocol
 		{
 			Idle,
 			Initializing,
+			InitializationFailed,
 			Ready,
 			ShuttingDown,
+			ShutdownFailed,
 			ShutdownComplete
 		};
 

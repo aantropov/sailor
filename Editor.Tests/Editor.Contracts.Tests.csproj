@@ -101,6 +101,7 @@
     <Compile Include="EditorEngineProtocolTests.cs" />
     <Compile Include="EngineProtocolClientTests.cs" />
     <Compile Include="LocalEngineProtocolTransportTests.cs" />
+    <Compile Include="AssetReimportIntegrationTests.cs" />
     <Compile Include="MacEngineLibraryLoaderTests.cs" />
     <Compile Include="..\Editor\Protocol\MacEngineLibraryLoader.cs" Link="Protocol\MacEngineLibraryLoader.cs" />
     <Compile Include="..\Editor\Protocol\ClientWebSocketEngineProtocolTransport.cs" Link="Protocol\ClientWebSocketEngineProtocolTransport.cs" />

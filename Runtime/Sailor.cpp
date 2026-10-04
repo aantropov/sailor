@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Platform/Time.h"
 #include "Editor/EditorRuntimeBridge.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
@@ -128,7 +129,13 @@ Settings::ERenderStatsMode App::GetRenderStatsMode()
 
 bool App::SetRenderStatsMode(Settings::ERenderStatsMode mode)
 {
-	g_renderStatsMode.store(mode, std::memory_order_release);
+	if (g_renderStatsMode.exchange(mode, std::memory_order_acq_rel) != mode)
+	{
+		if (auto renderer = GetSubmodule<RHI::Renderer>())
+		{
+			renderer->RefreshGpuTimings();
+		}
+	}
 	return true;
 }
 
@@ -251,6 +258,18 @@ namespace
 		return parent;
 	}
 
+	void WaitForAssetTasks()
+	{
+		if (auto* scheduler = App::GetSubmodule<Tasks::Scheduler>())
+		{
+			scheduler->WaitIdle({
+				EThreadType::Worker,
+				EThreadType::Render,
+				EThreadType::RHI
+			});
+		}
+	}
+
 	bool ReloadAssetsOnEngineMainThread()
 	{
 		auto* assetRegistry = App::GetSubmodule<AssetRegistry>();
@@ -259,28 +278,13 @@ namespace
 			return false;
 		}
 
-		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		if (scheduler)
-		{
-			scheduler->WaitIdle({
-				EThreadType::Worker,
-				EThreadType::RHI,
-				EThreadType::Render
-			});
-		}
+		WaitForAssetTasks();
 		if (auto* shaderCompiler = App::GetSubmodule<ShaderCompiler>())
 		{
 			shaderCompiler->RecoverMissingShaderCacheStorage();
 		}
 		const bool bReloaded = assetRegistry->ScanContentFolder();
-		if (scheduler)
-		{
-			scheduler->WaitIdle({
-				EThreadType::Worker,
-				EThreadType::Render,
-				EThreadType::RHI
-			});
-		}
+		WaitForAssetTasks();
 		const bool bProcessingSucceeded = assetRegistry->CompleteScanProcessing();
 		if (bReloaded && bProcessingSucceeded)
 		{
@@ -421,13 +425,13 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 	return params;
 }
 
-void App::Initialize(const char** commandLineArgs, int32_t num)
+EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t num)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	if (s_pInstance != nullptr)
 	{
-		return;
+		return s_pInstance->m_initializationResult;
 	}
 
 	EditorRuntime::ResetForAppLifecycle();
@@ -485,8 +489,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	{
 		SAILOR_LOG_ERROR("%s", workspaceContextResult.m_message.c_str());
 		SetExitCode(1);
-		s_pInstance->m_bSkipMainLoop = true;
-		return;
+		return EAppInitializationResult::Failed;
 	}
 
 	s_pInstance->m_workspaceContext = workspaceContextResult.m_context;
@@ -555,8 +558,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		if (!params.m_bIsEditor)
 		{
 			SetExitCode(1);
-			s_pInstance->m_bSkipMainLoop = true;
-			return;
+			return EAppInitializationResult::Failed;
 		}
 	}
 
@@ -604,7 +606,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		s_pInstance->AddSubmodule(TSubmodule<Editor>::Make(params.m_editorHwnd, params.m_editorPort, s_pInstance->m_pMainWindow.GetRawPtr()));
 	}
 
-	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
+	auto scheduler = s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make());
+	scheduler->Initialize();
 	s_pInstance->AddSubmodule(TSubmodule<AudioSystem>::Make(params.m_bForceNullAudioDevice));
 	s_pInstance->AddSubmodule(TSubmodule<Physics::JoltRuntime>::Make());
 	auto renderer = s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(
@@ -614,7 +617,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	if (!renderer->IsInitialized())
 	{
 		SAILOR_LOG_ERROR("App initialization aborted: renderer backend failed to initialize.");
-		return;
+		SetExitCode(1);
+		return EAppInitializationResult::Failed;
 	}
 
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
@@ -637,7 +641,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	s_pInstance->AddSubmodule(TSubmodule<TextureImporter>::Make(textureInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler, scheduler, assetRegistry));
 	s_pInstance->AddSubmodule(TSubmodule<AnimationImporter>::Make(animationInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<AnimationControllerImporter>::Make(animationControllerInfoHandler, animationSetInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<AudioImporter>::Make(audioInfoHandler));
@@ -659,15 +663,14 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		if (pathTracerParams.m_pathToModel.empty())
 		{
 			SAILOR_LOG_ERROR("PathTracer mode requires --in <modelPath> and --out <imagePath>.");
-		}
-		else
-		{
-			Raytracing::PathTracer tracer;
-			tracer.Run(pathTracerParams);
+			SetExitCode(1);
+			return EAppInitializationResult::Failed;
 		}
 
-		s_pInstance->m_bSkipMainLoop = true;
-		return;
+		Raytracing::PathTracer tracer;
+		tracer.Run(pathTracerParams);
+		s_pInstance->m_initializationResult = EAppInitializationResult::Completed;
+		return s_pInstance->m_initializationResult;
 	}
 
 	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
@@ -695,8 +698,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 			if (!params.m_bIsEditor)
 			{
-				s_pInstance->m_bSkipMainLoop = true;
-				return;
+				return EAppInitializationResult::Failed;
 			}
 		}
 	}
@@ -723,6 +725,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	SAILOR_LOG("Sailor Engine initialized");
+	s_pInstance->m_initializationResult = EAppInitializationResult::Ready;
+	return s_pInstance->m_initializationResult;
 }
 
 void App::Start()
@@ -737,7 +741,7 @@ void App::Start()
 		}
 	}
 
-	if (s_pInstance->m_bSkipMainLoop)
+	if (s_pInstance->m_initializationResult != EAppInitializationResult::Ready)
 	{
 		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
 		g_engineMainLoopState = EEngineMainLoopState::Exited;
@@ -790,7 +794,6 @@ void App::Start()
 		return;
 	}
 
-	uint32_t frameCounter = 0U;
 	Utils::Timer timer{};
 	Utils::Timer trackEditor{};
 	FrameState currentFrame{};
@@ -908,7 +911,6 @@ void App::Start()
 			lastFrame = currentFrame;
 
 			//Frame successfully pushed
-			frameCounter++;
 			SAILOR_PROFILE_END_FRAME();
 			if (bRunsInsideEditor)
 			{
@@ -953,8 +955,9 @@ void App::Start()
 			const Stats& stats = renderer->GetStats();
 
 			char Buff[256];
-			SAILOR_SNPRINTF(Buff, sizeof(Buff), "Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb, CmdLists: %u", frameCounter,
-				stats.m_gpuFps.load(std::memory_order_relaxed),
+			SAILOR_SNPRINTF(Buff, sizeof(Buff), "Sailor Render FPS: %u, Present: %u /s, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb, CmdLists: %u",
+				stats.m_renderFps.load(std::memory_order_relaxed),
+				stats.m_presentFps.load(std::memory_order_relaxed),
 				(uint32_t)pEngineLoop->GetCpuFps(),
 				(float)stats.m_gpuHeapUsage / (1024.0f * 1024.0f),
 				(float)stats.m_gpuHeapBudget / (1024.0f * 1024.0f),
@@ -970,7 +973,6 @@ void App::Start()
 				pMainWindow->SetWindowTitle(Buff);
 			}
 
-			frameCounter = 0U;
 			timer.Clear();
 		}
 
@@ -1032,7 +1034,7 @@ bool App::RequestAssetReload()
 	return true;
 }
 
-bool App::UpdateAsset(const char* strFileId)
+bool App::UpdateAsset(const char* strFileId, bool bReimport)
 {
 	if (strFileId == nullptr || strFileId[0] == '\0')
 	{
@@ -1040,7 +1042,7 @@ bool App::UpdateAsset(const char* strFileId)
 	}
 
 	const std::string fileIdValue = strFileId;
-	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
+	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue, bReimport]()
 		{
 			AssetRegistry* assetRegistry = GetSubmodule<AssetRegistry>();
 			if (assetRegistry == nullptr)
@@ -1054,15 +1056,21 @@ bool App::UpdateAsset(const char* strFileId)
 				return false;
 			}
 
+			// Importers update live resources across these queues. Keep world capture
+			// outside the reload, just as for a full content scan.
+			WaitForAssetTasks();
 			FrameGraphAssetInfoPtr frameGraphAssetInfo =
 				assetRegistry->GetAssetInfoPtr<FrameGraphAssetInfoPtr>(fileId);
 			const bool bRefreshFrameGraph =
 				frameGraphAssetInfo != nullptr &&
-				(frameGraphAssetInfo->IsMetaExpired() ||
+				(bReimport || frameGraphAssetInfo->IsMetaExpired() ||
 					frameGraphAssetInfo->IsAssetExpired() ||
 					assetRegistry->IsAssetExpired(frameGraphAssetInfo));
-			const bool bUpdated = assetRegistry->UpdateAsset(fileId);
-			if (bUpdated && bRefreshFrameGraph)
+			TVector<AssetInfoPtr> affectedAssets;
+			const bool bUpdated = assetRegistry->UpdateAsset(fileId, affectedAssets, bReimport);
+			WaitForAssetTasks();
+			const bool bSucceeded = bUpdated && assetRegistry->CompleteAssetUpdate(affectedAssets);
+			if (bSucceeded && bRefreshFrameGraph)
 			{
 				if (Renderer* renderer = GetSubmodule<Renderer>())
 				{
@@ -1070,7 +1078,7 @@ bool App::UpdateAsset(const char* strFileId)
 				}
 			}
 
-			return bUpdated;
+			return bSucceeded;
 		});
 }
 
@@ -1161,7 +1169,7 @@ void App::ProcessAssetReloadRequestOnEngineMainThread()
 	QueueAssetReloadTaskLocked(scheduler);
 }
 
-void App::Shutdown()
+bool App::Shutdown()
 {
 	{
 		std::unique_lock<std::mutex> shutdownLock(g_engineShutdownMutex);
@@ -1169,7 +1177,7 @@ void App::Shutdown()
 		{
 			if (g_engineShutdownOwner == std::this_thread::get_id())
 			{
-				return;
+				return false;
 			}
 			g_engineShutdownCondition.wait(
 				shutdownLock,
@@ -1177,11 +1185,11 @@ void App::Shutdown()
 				{
 					return !g_engineShutdownInProgress;
 				});
-			return;
+			return s_pInstance == nullptr;
 		}
 		if (!s_pInstance)
 		{
-			return;
+			return true;
 		}
 
 		g_engineStopRequested = true;
@@ -1204,16 +1212,25 @@ void App::Shutdown()
 	{
 		scheduler->AttachCurrentThreadAsMainThread();
 		ProcessPendingEngineMainThreadTasks(scheduler);
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
+			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
 	}
 
-	if (renderer)
+	if (renderer && !renderer->BeginConditionalDestroy())
 	{
-		renderer->BeginConditionalDestroy();
+		SAILOR_LOG_ERROR("Engine shutdown could not drain GPU work; resources are retained for another shutdown attempt.");
+		return false;
+	}
+
+	if (auto* editor = GetSubmodule<Editor>())
+	{
+		editor->SetWorld(nullptr);
 	}
 
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
+			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
 		s_pInstance->m_pendingAssetReloadTask.Clear();
 	}
 
@@ -1227,17 +1244,17 @@ void App::Shutdown()
 #endif
 
 	RemoveSubmodule<EngineLoop>();
+	if (scheduler)
+	{
+		// EndPlay may queue work that still uses the remaining submodules.
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
+			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
+	}
 	RemoveSubmodule<Physics::JoltRuntime>();
 	RemoveSubmodule<ECS::ECSFactory>();
 	RemoveSubmodule<FrameGraphBuilder>();
 
-	// We need to finish all tasks before release
 	RemoveSubmodule<ImGuiApi>();
-
-	if (scheduler)
-	{
-		scheduler->ProcessTasksOnMainThread();
-	}
 
 	RemoveSubmodule<FrameGraphImporter>();
 	RemoveSubmodule<GIProbesImporter>();
@@ -1280,6 +1297,7 @@ void App::Shutdown()
 	g_graphicsSettingsState = Settings::GraphicsSettingsState{};
 	g_renderStatsMode.store(Settings::ERenderStatsMode::None, std::memory_order_release);
 	g_editorRenderMode.store(RHI::ESceneViewRenderMode::Lit, std::memory_order_release);
+	return true;
 }
 
 bool App::IsRendererInitialized()

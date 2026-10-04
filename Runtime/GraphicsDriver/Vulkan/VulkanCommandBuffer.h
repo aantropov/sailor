@@ -1,5 +1,6 @@
 #pragma once
 #include "VulkanApi.h"
+#include "VulkanBufferMemory.h"
 #include "Memory/RefPtr.hpp"
 #include "RHI/Types.h"
 #include "VulkanGraphicsDriver.h"
@@ -11,6 +12,40 @@
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
+	struct VulkanRenderPassClearValues
+	{
+		VkClearColorValue m_color = VulkanApi::DefaultClearColor.color;
+		VkClearDepthStencilValue m_depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+
+		VulkanRenderPassClearValues() = default;
+		VulkanRenderPassClearValues(const glm::vec4& color, float depth, uint32_t stencil = 0u) :
+			m_color{ { color.x, color.y, color.z, color.w } },
+			m_depthStencil{ depth, stencil }
+		{}
+	};
+
+	class VulkanRenderingAttachments final
+	{
+	public:
+		SAILOR_SHARED_API VulkanRenderingAttachments(
+			const TVector<VulkanImageViewPtr>& colorAttachments,
+			const TVector<VulkanImageViewPtr>& colorAttachmentResolves,
+			const VulkanImageViewPtr& depthStencilAttachment,
+			const VulkanImageViewPtr& depthStencilAttachmentResolve,
+			bool bClearRenderTargets,
+			const VulkanRenderPassClearValues& clearValues,
+			bool bStoreDepth,
+			const VkPhysicalDeviceDepthStencilResolveProperties& resolveProperties);
+
+		// The returned pointers borrow this object's attachment storage until recording completes.
+		SAILOR_SHARED_API VkRenderingInfo GetRenderingInfo(VkRect2D renderArea, VkRenderingFlags flags) const;
+
+	private:
+		TVector<VkRenderingAttachmentInfo> m_colors;
+		VkRenderingAttachmentInfo m_depth{};
+		VkRenderingAttachmentInfo m_stencil{};
+	};
+
 	// TODO: Implement the possibility to reuse command lists (read: NOT one_time_submit for secondary command buffers?)
 	class VulkanCommandBuffer final : public RHI::RHIResource
 	{
@@ -40,7 +75,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkRenderingFlags renderingFlags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
 			VkOffset2D offset = { 0,0 },
 			bool bClearRenderTargets = true,
-			VkClearValue clearColor = VulkanApi::DefaultClearColor,
+			const VulkanRenderPassClearValues& clearValues = {},
 			bool bStoreDepth = true);
 
 		SAILOR_API void BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
@@ -50,7 +85,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkOffset2D offset = { 0,0 },
 			bool bSupportMultisampling = true,
 			bool bClearRenderTargets = true,
-			VkClearValue clearColor = VulkanApi::DefaultClearColor,
+			const VulkanRenderPassClearValues& clearValues = {},
 			bool bStoreDepth = true);
 		SAILOR_API void EndRenderPassEx();
 
@@ -83,7 +118,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr);
 		SAILOR_API void Execute(VulkanCommandBufferPtr secondaryCommandBuffer);
 		SAILOR_API void CopyBuffer(VulkanBufferMemoryPtr  src, VulkanBufferMemoryPtr dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
-		SAILOR_API void CopyBufferToImage(VulkanBufferMemoryPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth, VkDeviceSize srcOffset = 0);
+		SAILOR_API void CopyBufferToImage(VulkanBufferMemoryPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth, VkDeviceSize srcOffset = 0, uint32_t layerCount = 1);
 		SAILOR_API void CopyImageToBuffer(VulkanBufferMemoryPtr dst, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth, uint32_t mipLevel = 0, uint32_t baseArrayLayer = 0, VkDeviceSize srcOffset = 0);
 
 		SAILOR_API void SetViewport(VulkanStateViewportPtr viewport);
@@ -117,6 +152,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void Reset();
 
 		SAILOR_API void AddDependency(RHI::RHIResourcePtr resource);
+		SAILOR_API void AddDependency(TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator> allocation);
 		SAILOR_API void AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator);
 
 		SAILOR_API bool BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration = VkFilter::VK_FILTER_LINEAR);
@@ -127,8 +163,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool FitsViewport(const VkViewport& viewport) const;
 		SAILOR_API bool IsRecorded() const { return m_bIsRecorded; }
 
-		SAILOR_API static VkAccessFlags GetAccessFlags(VkImageLayout layout);
-		SAILOR_API static VkPipelineStageFlags GetPipelineStage(VkImageLayout layout);
+		SAILOR_API VkQueueFlags GetQueueFlags() const;
+		SAILOR_API static VkAccessFlags GetAccessFlags(VkImageLayout layout, VkQueueFlags queueFlags);
+		SAILOR_API static VkPipelineStageFlags GetPipelineStage(VkImageLayout layout, VkQueueFlags queueFlags);
 		static VkPipelineStageFlags GetShaderPipelineStages(VkQueueFlags queueFlags)
 		{
 			return ((queueFlags & VK_QUEUE_GRAPHICS_BIT) ? VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT : 0u) |
@@ -149,6 +186,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkFormat m_currentDepthAttachment = VkFormat::VK_FORMAT_UNDEFINED;
 
 		TSet<RHI::RHIResourcePtr> m_rhiDependecies;
+		TSet<TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>> m_managedMemoryPtrs;
 		TSet<TPair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;
 
 		// That is used for image barrier optimization

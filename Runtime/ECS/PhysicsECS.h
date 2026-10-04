@@ -20,9 +20,11 @@ namespace Sailor
 		Physics::PhysicsBodyPose m_previousPose{};
 		Physics::PhysicsBodyPose m_currentPose{};
 		size_t m_lastAppliedTransformFrame = 0;
-		bool m_bVelocityDirty = true;
+		glm::vec3 m_pendingLinearVelocity{};
+		glm::vec3 m_pendingAngularVelocity{};
+		bool m_bLinearVelocityPending = false;
+		bool m_bAngularVelocityPending = false;
 
-		void MarkVelocityDirty() { m_bVelocityDirty = true; }
 		void ClearDirty() { m_bIsDirty = false; }
 
 		friend class PhysicsECS;
@@ -33,6 +35,8 @@ namespace Sailor
 	{
 	public:
 		PhysicsECS();
+		// JoltRuntime and scheduler must outlive the system and its physics world.
+		PhysicsECS(TUniquePtr<Physics::PhysicsWorld> physicsWorld, Tasks::Scheduler& scheduler);
 		~PhysicsECS() override;
 
 		Tasks::ITaskPtr Tick(float deltaTime) override;
@@ -96,6 +100,7 @@ namespace Sailor
 		void ApplyDynamicTransforms(float interpolationAlpha);
 
 		TUniquePtr<Physics::PhysicsWorld> m_physicsWorld{};
+		Tasks::Scheduler* m_scheduler = nullptr;
 		float m_accumulator = 0.0f;
 		float m_fixedDeltaTime = 1.0f / 60.0f;
 		uint32_t m_maxSubSteps = 4;

@@ -1,5 +1,6 @@
 #include "AssetRegistry/AssetMountDiscovery.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "Support/TempDirectory.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -14,6 +15,7 @@
 namespace
 {
 	using namespace Sailor;
+	using Tests::TempDirectory;
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -22,32 +24,6 @@ namespace
 			throw std::runtime_error(message);
 		}
 	}
-
-	class TempDirectory final
-	{
-	public:
-		explicit TempDirectory(const char* label)
-		{
-			static uint64_t counter = 0;
-			m_path = std::filesystem::temp_directory_path() /
-				("sailor-asset-mount-" + std::string(label) + "-" +
-					std::to_string(++counter));
-			std::filesystem::remove_all(m_path);
-			std::filesystem::create_directories(m_path);
-		}
-
-		~TempDirectory()
-		{
-			std::error_code error;
-			std::filesystem::remove_all(m_path, error);
-		}
-
-		const std::filesystem::path& Get() const noexcept { return m_path; }
-		std::filesystem::path Path(const std::filesystem::path& relative) const { return m_path / relative; }
-
-	private:
-		std::filesystem::path m_path;
-	};
 
 	class TypedFailureAssetInfo final : public AssetInfo
 	{

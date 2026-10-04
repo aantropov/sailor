@@ -1,4 +1,5 @@
 #include "AssetRegistry/Shader/ShaderCache.h"
+#include "Platform/AtomicFile.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/Shader/ShaderDependencyFingerprint.h"
 #include "AssetRegistry/Shader/ShaderYamlIncludeResolver.h"
@@ -10,7 +11,9 @@
 #include "RHI/Lighting.h"
 #include "RHI/GpuCulling.h"
 #include "FrameGraph/DepthPrepassNode.h"
+#include "FrameGraph/LightCullingNode.h"
 #include "GraphicsDriver/Vulkan/VulkanShaderModule.h"
+#include "GraphicsDriver/Vulkan/VulkanPipeline.h"
 #include "Workspace/WorkspaceCacheContract.h"
 
 #include <array>
@@ -21,19 +24,28 @@
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <latch>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <spirv_reflect.h>
 #include <yaml-cpp/yaml.h>
 
 namespace
 {
 	using namespace Sailor;
+	using namespace Sailor::GraphicsDriver::Vulkan;
 
 	class ShaderLayoutProbe final : public GraphicsDriver::Vulkan::VulkanShaderStage
 	{
 	public:
 		using VulkanShaderStage::ReflectDescriptorSetBindings;
+	};
+
+	class LightCullingLayoutProbe final : public Framegraph::LightCullingNode
+	{
+	public:
+		using Constants = PushConstants;
 	};
 
 	class FixedShaderSourceStateProvider final : public IShaderSourceStateProvider
@@ -53,6 +65,20 @@ namespace
 	};
 
 	const FixedShaderSourceStateProvider c_shaderSourceStateProvider;
+
+	class CountingShaderSourceStateProvider final : public IShaderSourceStateProvider
+	{
+	public:
+		bool Capture(const FileId& uid, ShaderSourceState& outState, std::string& outDiagnostic) const override
+		{
+			++captures;
+			const bool captured = c_shaderSourceStateProvider.Capture(uid, outState, outDiagnostic);
+			outState.m_fingerprint += revision;
+			return captured;
+		}
+		mutable uint32_t captures = 0;
+		uint64_t revision = 0;
+	};
 
 	class TempDirectory final
 	{
@@ -299,6 +325,22 @@ namespace
 				", expected=" + std::to_string(expectedStride));
 	}
 
+	const RHI::ShaderLayoutBinding* FindBinding(const ShaderLayoutProbe& shader,
+		uint32_t setIndex, uint32_t bindingIndex)
+	{
+		for (const auto& set : shader.GetBindings())
+		{
+			for (const auto& binding : set)
+			{
+				if (binding.m_set == setIndex && binding.m_binding == bindingIndex)
+				{
+					return &binding;
+				}
+			}
+		}
+		return nullptr;
+	}
+
 	void RequireGltfMaterialLayout(const RHI::ShaderByteCode& byteCode,
 		const RHI::ShaderByteCode& reflectionByteCode,
 		uint32_t payloadSize, uint32_t stride)
@@ -306,34 +348,23 @@ namespace
 		RequireSpirvStorageBufferArrayStride(byteCode, 3u, 0u, stride);
 		ShaderLayoutProbe shader;
 		shader.ReflectDescriptorSetBindings(reflectionByteCode);
-		const RHI::ShaderLayoutBinding* material = nullptr;
-		for (const auto& set : shader.GetBindings())
-		{
-			for (const auto& binding : set)
-			{
-				if (binding.m_set == 3u && binding.m_binding == 0u)
-					material = &binding;
-			}
-		}
+		const auto* material = FindBinding(shader, 3u, 0u);
 		Require(material && material->m_size == payloadSize && material->m_paddedSize == stride,
 			"material upload size and array stride must retain internal and trailing std430 padding");
 		ShaderLayoutProbe optimizedShader;
 		optimizedShader.ReflectDescriptorSetBindings(byteCode);
-		for (const auto& set : optimizedShader.GetBindings())
+		const auto* optimizedMaterial = FindBinding(optimizedShader, 3u, 0u);
+		Require(optimizedMaterial != nullptr,
+			"the optimized shader must retain the used material binding");
+		Require(optimizedMaterial->m_size == payloadSize && optimizedMaterial->m_paddedSize == stride,
+			"optimized material payload and stride must match the CPU upload layout");
+		Require(optimizedMaterial->m_members.Num() == material->m_members.Num(),
+			"optimized and reflection shaders must retain the same material fields");
+		for (size_t i = 0u; i < optimizedMaterial->m_members.Num(); ++i)
 		{
-			for (const auto& binding : set)
-			{
-				if (binding.m_set != 3u || binding.m_binding != 0u)
-					continue;
-				Require(binding.m_members.Num() == material->m_members.Num(),
-					"optimized and reflection shaders must retain the same material fields");
-				for (size_t i = 0u; i < binding.m_members.Num(); ++i)
-				{
-					Require(binding.m_members[i].m_absoluteOffset == material->m_members[i].m_absoluteOffset &&
-						binding.m_members[i].m_size == material->m_members[i].m_size,
-						"CPU reflection and optimized GPU shader must agree on every material field offset and size");
-				}
-			}
+			Require(optimizedMaterial->m_members[i].m_absoluteOffset == material->m_members[i].m_absoluteOffset &&
+				optimizedMaterial->m_members[i].m_size == material->m_members[i].m_size,
+				"CPU reflection and optimized GPU shader must agree on every material field offset and size");
 		}
 		auto binding = RHI::RHIShaderBindingPtr::Make();
 		binding->SetLayout(*material);
@@ -441,11 +472,11 @@ namespace
 	{
 		std::string diagnostic;
 		Require(
-			Workspace::AtomicReplaceWorkspaceCacheBinary(
+			Platform::AtomicWriteFile(
 				path,
 				words.Num() == 0 ? nullptr : &words[0],
 				static_cast<uint64_t>(words.Num()) * sizeof(uint32_t),
-				diagnostic),
+				diagnostic) == Platform::EAtomicWriteResult::Synced,
 			"test SPIR-V should be writable: " + diagnostic);
 	}
 
@@ -472,11 +503,11 @@ namespace
 	{
 		std::string diagnostic;
 		Require(
-			Workspace::AtomicReplaceWorkspaceCacheBinary(
+			Platform::AtomicWriteFile(
 				path,
 				bytes.data(),
 				bytes.size(),
-				diagnostic),
+				diagnostic) == Platform::EAtomicWriteResult::Synced,
 			"test artifact should be writable: " + diagnostic);
 	}
 
@@ -509,11 +540,11 @@ namespace
 		const auto path = directory.Path("valid.spirv");
 		std::string writeDiagnostic;
 		Require(
-			Workspace::AtomicReplaceWorkspaceCacheBinary(
+			Platform::AtomicWriteFile(
 				path,
 				words.data(),
 				sizeof(words),
-				writeDiagnostic),
+				writeDiagnostic) == Platform::EAtomicWriteResult::Synced,
 			"valid SPIR-V fixture should be writable: " + writeDiagnostic);
 
 		TVector<uint32_t> output = SentinelOutput();
@@ -692,6 +723,361 @@ namespace
 			"unknown engine metadata should not invalidate the shader cache: " + diagnostic);
 	}
 
+	void TestBatchInvalidationAndRestart()
+	{
+		TempDirectory directory;
+		const auto cacheRoot = directory.Path("Cache");
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot), "batch cache fixture must initialize");
+		std::array<FileId, 8> ids;
+		std::array<std::string, 8> generations;
+		for (size_t i = 0; i < ids.size(); ++i)
+		{
+			ids[i] = FileId::CreateNewFileId();
+			Require(PublishComplete(cache, ids[i], 0, 400 + static_cast<uint32_t>(i) * 10),
+				"batch fixture must publish complete shader generations");
+			generations[i] = ShaderCacheTestAccess::GetGeneration(cache, ids[i], 0);
+		}
+		Require(cache.SaveCache(), "batch fixtures must commit before invalidation");
+		const TVector<FileId> changed{ ids[0], ids[2], ids[5] };
+		ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		Require(cache.Invalidate(changed) && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 1,
+			"one batch must invalidate every changed shader in one manifest replacement");
+		Require(cache.Invalidate(changed) && cache.Invalidate(changed) &&
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0,
+			"repeating a durable invalidation must not rewrite unchanged revisions");
+		{
+			ShaderCache restarted(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(restarted, cacheRoot), "restart cache must use the same storage");
+			restarted.LoadCache();
+			for (size_t i = 0; i < ids.size(); ++i)
+			{
+				Require(restarted.IsExpired(ids[i], 0) == changed.Contains(ids[i]),
+					"restart between invalidation and completion must retry only unfinished shaders");
+				Require(ShaderCacheTestAccess::GetGeneration(restarted, ids[i], 0) == generations[i],
+					"batch invalidation must preserve the last complete artifacts");
+			}
+		}
+		for (const auto& id : changed)
+		{
+			Require(PublishComplete(cache, id, 0, 500), "each changed shader must accept its replacement");
+		}
+		Require(cache.SaveCache() && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 1,
+			"the completed batch must publish all replacements in one manifest");
+		const auto committed = ReadText(ShaderCacheTestAccess::GetCachePath(cache));
+		ShaderCacheTestAccess::FailNextSaveBeforeReplace(cache);
+		Require(!cache.Invalidate(changed) && cache.IsDirty() &&
+			ReadText(ShaderCacheTestAccess::GetCachePath(cache)) == committed,
+			"a rejected invalidation must retain the committed manifest and request retry");
+		Require(cache.Invalidate(changed) && !cache.IsDirty() &&
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 1,
+			"already invalidated in-memory entries must still retry their failed checkpoint");
+		ShaderCache restarted(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(restarted, cacheRoot), "retried cache must reopen");
+		restarted.LoadCache();
+		for (const auto& id : ids)
+		{
+			Require(restarted.IsExpired(id, 0) == changed.Contains(id),
+				"a successfully retried checkpoint must survive a fresh cache instance");
+		}
+	}
+
+	void TestWarmPermutationReadsEachArtifactOnce()
+	{
+		TempDirectory directory;
+		CountingShaderSourceStateProvider source;
+		ShaderCache cache(&source);
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "warm-read fixture must initialize");
+		const FileId uid = MakeFileId("{SHADER-CACHE-SINGLE-READ}");
+		Require(PublishComplete(cache, uid, 0, 200), "warm-read graphics fixture must publish");
+		cache.SaveCache();
+		ShaderCacheTestAccess::TakeArtifactReadCount(cache);
+		source.captures = 0;
+		ShaderCache::PermutationSpirv loaded;
+		Require(cache.TryLoadPermutation(uid, 0, loaded), "both shader variants must load together");
+		Require(source.captures == 1, "a warm permutation must capture its dependencies once");
+		RequireWords(loaded.m_regular.m_vertex, Words(200), "regular vertex");
+		RequireWords(loaded.m_regular.m_fragment, Words(201), "regular fragment");
+		RequireWords(loaded.m_debug.m_vertex, Words(202), "debug vertex");
+		RequireWords(loaded.m_debug.m_fragment, Words(203), "debug fragment");
+		Require(loaded.m_regular.m_compute.IsEmpty() && loaded.m_debug.m_compute.IsEmpty(),
+			"graphics permutations must not invent a compute stage");
+		const auto reads = ShaderCacheTestAccess::TakeArtifactReadCount(cache);
+		Require(reads == 4, "one warm graphics permutation must read four artifacts once, got " + std::to_string(reads));
+
+		const TVector<uint32_t> empty;
+		Require(cache.CacheSpirv_ThreadSafe(uid, 1, empty, empty, Words(210), empty, empty, Words(211)),
+			"warm-read compute fixture must publish");
+		cache.SaveCache();
+		ShaderCacheTestAccess::TakeArtifactReadCount(cache);
+		source.captures = 0;
+		Require(cache.TryLoadPermutation(uid, 1, loaded), "compute permutations must load both variants");
+		Require(source.captures == 1, "a warm compute permutation must capture its dependencies once");
+		RequireWords(loaded.m_regular.m_compute, Words(210), "regular compute");
+		RequireWords(loaded.m_debug.m_compute, Words(211), "debug compute");
+		Require(loaded.m_regular.m_vertex.IsEmpty() && loaded.m_regular.m_fragment.IsEmpty() &&
+			loaded.m_debug.m_vertex.IsEmpty() && loaded.m_debug.m_fragment.IsEmpty(),
+			"a successful compute load must replace preceding graphics output");
+		Require(ShaderCacheTestAccess::TakeArtifactReadCount(cache) == 2,
+			"one warm compute permutation must read its two artifacts once");
+		const auto debugPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 1, ShaderCache::ComputeShaderTag, true);
+		WriteWords(debugPath, Words(999));
+		Require(!cache.TryLoadPermutation(uid, 1, loaded), "corrupt debug bytes must reject the complete permutation");
+		RequireWords(loaded.m_regular.m_compute, Words(210), "failed whole-permutation load regular output");
+		RequireWords(loaded.m_debug.m_compute, Words(211), "failed whole-permutation load debug output");
+		++source.revision;
+		ShaderCacheTestAccess::SetArtifactReadIoFailure(cache, true);
+		Require(cache.IsExpired(uid, 0) && ShaderCacheTestAccess::IsQuarantined(cache),
+			"a stale source must not hide an artifact I/O failure from expiry cleanup");
+	}
+
+	void TestReloadKeepsHealthyShaderPermutations()
+	{
+		for (int damage = 0; damage < 3; ++damage)
+		{
+			TempDirectory directory;
+			ShaderCache cache(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "partial recovery fixture must initialize");
+			const auto uid = MakeFileId("{SHADER-CACHE-PARTIAL-RECOVERY}");
+			const auto other = MakeFileId("{SHADER-CACHE-HEALTHY-NEIGHBOR}");
+			Require(PublishComplete(cache, uid, 0, 220) && PublishComplete(cache, uid, 1, 230) &&
+				PublishComplete(cache, other, 0, 240), "three independent permutations must publish");
+			cache.SaveCache();
+			const auto badPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0, ShaderCache::FragmentShaderTag, true);
+			const auto healthyPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 1, ShaderCache::VertexShaderTag, false);
+			const auto healthyGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 1);
+			const auto healthyBytes = ReadText(healthyPath);
+			if (damage == 0) std::filesystem::remove(badPath);
+			else if (damage == 1) std::filesystem::resize_file(badPath, 7);
+			else WriteWords(badPath, Words(999));
+			cache.LoadCache();
+			Require(cache.GetLastLoadResult().IsLoaded() && !cache.IsDirty(),
+				"one damaged artifact must not reset an otherwise parseable shader manifest");
+			ShaderCache::PermutationSpirv loaded;
+			Require(!cache.TryLoadPermutation(uid, 0, loaded), "only the damaged permutation must be removed");
+			Require(cache.TryLoadPermutation(uid, 1, loaded), "a healthy sibling permutation must survive reload");
+			RequireWords(loaded.m_regular.m_vertex, Words(230), "healthy sibling");
+			Require(cache.TryLoadPermutation(other, 0, loaded), "an unrelated healthy shader must survive reload");
+			RequireWords(loaded.m_regular.m_vertex, Words(240), "healthy shader");
+			Require(ShaderCacheTestAccess::GetGeneration(cache, uid, 1) == healthyGeneration && ReadText(healthyPath) == healthyBytes,
+				"recovery must retain existing healthy generations and artifact bytes");
+			cache.LoadCache();
+			Require(cache.GetLastLoadResult().IsLoaded() && cache.TryLoadPermutation(uid, 1, loaded),
+				"the pruned manifest must remain readable after another reload");
+		}
+	}
+
+	void TestPartialRecoveryRetriesFailedManifestCommit()
+	{
+		TempDirectory directory;
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "recovery commit fixture must initialize");
+		const auto bad = MakeFileId("{SHADER-CACHE-RECOVERY-BAD}");
+		const auto good = MakeFileId("{SHADER-CACHE-RECOVERY-GOOD}");
+		Require(PublishComplete(cache, bad, 0, 250) && PublishComplete(cache, good, 0, 260),
+			"recovery commit fixture must publish");
+		cache.SaveCache();
+		const auto manifest = ShaderCacheTestAccess::GetCachePath(cache);
+		const auto envelope = ReadText(manifest);
+		const auto badPath = ShaderCacheTestAccess::GetArtifactPath(cache, bad, 0, ShaderCache::VertexShaderTag, false);
+		const auto healthyPath = ShaderCacheTestAccess::GetArtifactPath(cache, good, 0, ShaderCache::VertexShaderTag, false);
+		const auto healthyBytes = ReadText(healthyPath);
+		WriteWords(badPath, Words(999));
+		const auto corruptBytes = ReadText(badPath);
+		const auto fileCount = CountRegularFiles(directory.Path("Cache"));
+		ShaderCacheTestAccess::FailNextSaveBeforeReplace(cache);
+		cache.LoadCache();
+		Require(cache.GetLastLoadResult().IsLoaded() && cache.IsDirty() && !cache.Contains(bad),
+			"failed recovery commit must leave a usable, retryable filtered cache");
+		ShaderCache::PermutationSpirv loaded;
+		Require(cache.TryLoadPermutation(good, 0, loaded), "healthy bytecode must remain usable after recovery commit failure");
+		RequireWords(loaded.m_regular.m_vertex, Words(260), "healthy bytecode after failed recovery commit");
+		Require(ReadText(manifest) == envelope && ReadText(badPath) == corruptBytes &&
+			ReadText(healthyPath) == healthyBytes && CountRegularFiles(directory.Path("Cache")) == fileCount,
+			"failed recovery commit must not collect or rewrite the old durable files");
+		cache.SaveCache();
+		Require(!cache.IsDirty() && !std::filesystem::exists(badPath) && ReadText(healthyPath) == healthyBytes,
+			"retry must commit the pruned manifest before collecting broken generations");
+		cache.LoadCache();
+		Require(!cache.Contains(bad) && cache.TryLoadPermutation(good, 0, loaded),
+			"a committed recovery must survive reload without recompiling healthy shaders");
+	}
+
+	void TestSaveResultSurvivesAnotherPublisher()
+	{
+		TempDirectory directory;
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "concurrent save fixture must initialize");
+		const auto uid = MakeFileId("{SHADER-CACHE-CONCURRENT-COMMIT}");
+		Require(PublishComplete(cache, uid, 0, 300), "the first generation must stage");
+		const auto committedGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
+		struct Handoff
+		{
+			std::latch saved{ 1 };
+			std::latch published{ 1 };
+		} handoff;
+		bool published = false;
+		std::jthread writer([&]()
+			{
+				handoff.saved.wait();
+				published = PublishComplete(cache, uid, 0, 310);
+				handoff.published.count_down();
+			});
+		ShaderCacheTestAccess::AfterNextSave(cache, [](void* context)
+			{
+				auto& handoff = *static_cast<Handoff*>(context);
+				handoff.saved.count_down();
+				handoff.published.wait();
+			}, &handoff);
+		const bool saved = ShaderCompilerTestAccess::SaveCacheAndCombineResult(cache, true);
+		writer.join();
+		Require(published && cache.IsDirty(), "the second publisher must stage after the first commit");
+		Require(saved, "a completed cache commit must not become a compile failure when another publisher makes it dirty");
+		ShaderCache reloaded(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(reloaded, directory.Path("Cache")), "durable save fixture must reopen");
+		reloaded.LoadCache();
+		Require(ShaderCacheTestAccess::GetGeneration(reloaded, uid, 0) == committedGeneration,
+			"the first commit must be durable while the second publication remains pending");
+		Require(cache.SaveCache() && !cache.IsDirty(), "the next save must commit the second publisher independently");
+	}
+
+	void TestCommittedShaderSurvivesCleanupFailure()
+	{
+		TempDirectory directory;
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "deferred cleanup fixture must initialize");
+		const auto uid = MakeFileId("{SHADER-CACHE-DEFERRED-CLEANUP}");
+		Require(PublishComplete(cache, uid, 0, 320) && cache.SaveCache(), "the original generation must commit");
+		const auto oldPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0, ShaderCache::VertexShaderTag, false);
+		Require(PublishComplete(cache, uid, 0, 330), "the replacement generation must stage");
+		const auto newGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
+		ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
+		Require(ShaderCompilerTestAccess::SaveCacheAndCombineResult(cache, true),
+			"artifact cleanup failure after commit must not report shader compilation failure");
+		Require(!cache.IsDirty() && cache.NeedsMaintenance() && std::filesystem::exists(oldPath),
+			"only cleanup must remain pending after a successful metadata commit");
+		ShaderCache reloaded(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(reloaded, directory.Path("Cache")), "cleanup fixture must reopen");
+		reloaded.LoadCache();
+		Require(ShaderCacheTestAccess::GetGeneration(reloaded, uid, 0) == newGeneration,
+			"the new generation must already be durable despite pending garbage collection");
+		const auto manifest = ShaderCacheTestAccess::GetCachePath(cache);
+		const auto envelope = ReadText(manifest);
+		const auto timestamp = std::filesystem::last_write_time(manifest);
+		ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
+		Require(cache.SaveCache() && !cache.IsDirty() && cache.NeedsMaintenance() && std::filesystem::exists(oldPath),
+			"repeated cleanup failure must preserve the successful commit and keep only cleanup pending");
+		Require(cache.SaveCache() && !cache.NeedsMaintenance() && !std::filesystem::exists(oldPath),
+			"the next save must retry deferred cleanup without recompiling");
+		Require(ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0 && ReadText(manifest) == envelope &&
+			std::filesystem::last_write_time(manifest) == timestamp,
+			"cleanup-only retry must not rewrite the committed manifest");
+	}
+
+	void TestResetSeparatesCommitFromArtifactCleanup()
+	{
+		for (int reset = 0; reset < 3; ++reset)
+		{
+			TempDirectory directory;
+			ShaderCache cache(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "reset fixture must initialize");
+			const auto uid = MakeFileId("{SHADER-CACHE-RESET-CLEANUP}");
+			Require(PublishComplete(cache, uid, 0, 340) && cache.SaveCache(), "reset fixture must commit");
+			const auto artifact = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0, ShaderCache::VertexShaderTag, false);
+			const auto manifest = ShaderCacheTestAccess::GetCachePath(cache);
+			ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
+			if (reset == 0)
+			{
+				cache.ClearAll();
+			}
+			else if (reset == 1)
+			{
+				std::string diagnostic;
+				Require(Platform::AtomicWriteFile(manifest, "invalid: [", diagnostic) == Platform::EAtomicWriteResult::Synced,
+					"reset fixture must invalidate its manifest");
+				cache.LoadCache();
+			}
+			else
+			{
+				Require(std::filesystem::remove(directory.Path("Cache/PrecompiledShaders")),
+					"reset fixture must remove its empty precompiled directory");
+				Require(!cache.RecoverMissingStorage(), "storage recovery is incomplete until owned directories are restored");
+			}
+			Require(!cache.Contains(uid) && !cache.IsDirty() && cache.NeedsMaintenance() && std::filesystem::exists(artifact),
+				"reset must distinguish the committed empty manifest from pending artifact cleanup");
+			ShaderCache reloaded(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(reloaded, directory.Path("Cache")), "reset manifest must reopen");
+			reloaded.LoadCache();
+			Require(reloaded.GetLastLoadResult().IsLoaded() && !reloaded.Contains(uid),
+				"the empty reset manifest must already be durable");
+			const auto envelope = ReadText(manifest);
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+			Require(cache.SaveCache() && !cache.NeedsMaintenance() && !std::filesystem::exists(artifact),
+				"reset must retry artifact cleanup independently");
+			Require(ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0 && ReadText(manifest) == envelope,
+				"reset cleanup retry must not republish the empty manifest");
+		}
+	}
+
+	void TestPublishedManifestWaitsForSync()
+	{
+		for (int operation = 0; operation < 3; ++operation)
+		{
+			TempDirectory directory;
+			ShaderCache cache(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")), "sync fixture must initialize");
+			const auto uid = MakeFileId("{SHADER-CACHE-PUBLISHED-SYNC}");
+			const auto healthyUid = MakeFileId("{SHADER-CACHE-PUBLISHED-HEALTHY}");
+			Require(PublishComplete(cache, uid, 0, 350) && PublishComplete(cache, healthyUid, 0, 360) && cache.SaveCache(),
+				"sync fixture must commit both original generations");
+			const auto oldArtifact = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0, ShaderCache::VertexShaderTag, false);
+			const auto healthyGeneration = ShaderCacheTestAccess::GetGeneration(cache, healthyUid, 0);
+			if (operation == 0)
+			{
+				Require(PublishComplete(cache, uid, 0, 370), "sync fixture must stage a replacement");
+			}
+			else if (operation == 2)
+			{
+				WriteWords(oldArtifact, Words(999));
+			}
+			ShaderCacheTestAccess::FailNextSaveAfterPublish(cache);
+			if (operation == 0)
+			{
+				Require(!cache.SaveCache(), "save must not acknowledge unconfirmed directory sync");
+			}
+			else if (operation == 1)
+			{
+				cache.Remove(uid);
+			}
+			else
+			{
+				cache.ClearExpired();
+			}
+			Require(cache.IsDirty() && cache.NeedsMaintenance() && std::filesystem::exists(oldArtifact),
+				"post-publish sync failure must retain retry state and old artifacts");
+			Require(cache.Contains(uid) == (operation == 0) && cache.Contains(healthyUid),
+				"memory must adopt the published manifest without reverting a removal");
+			const auto publishedGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
+			const auto manifest = ShaderCacheTestAccess::GetCachePath(cache);
+			const auto publishedEnvelope = ReadText(manifest);
+			ShaderCache reloaded(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(reloaded, directory.Path("Cache")), "published fixture must reopen");
+			reloaded.LoadCache();
+			Require(reloaded.Contains(uid) == (operation == 0) &&
+				ShaderCacheTestAccess::GetGeneration(reloaded, uid, 0) == publishedGeneration &&
+				ShaderCacheTestAccess::GetGeneration(reloaded, healthyUid, 0) == healthyGeneration,
+				"reload must see the complete published candidate and unchanged healthy shader");
+			ShaderCacheTestAccess::FailNextSaveAfterPublish(cache);
+			Require(!cache.SaveCache() && cache.IsDirty() && ReadText(manifest) == publishedEnvelope &&
+				std::filesystem::exists(oldArtifact), "repeated sync failure must not revert metadata or collect artifacts");
+			ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+			Require(cache.SaveCache() && !cache.NeedsMaintenance() && !std::filesystem::exists(oldArtifact) &&
+				ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 1 && ReadText(manifest) == publishedEnvelope,
+				"sync retry must preserve published metadata, then collect old artifacts");
+		}
+	}
+
 	void TestFailedGenerationPreservesDurableGeneration()
 	{
 		TempDirectory directory;
@@ -734,6 +1120,8 @@ namespace
 				diagnostic),
 			"an injected artifact replacement failure should reject the new generation");
 		Require(!diagnostic.empty(), "failed generation publication should report a diagnostic");
+		Require(!cache.IsDirty() && cache.NeedsMaintenance(),
+			"a failed artifact write must schedule orphan cleanup without changing the committed manifest");
 
 		Require(ShaderCacheTestAccess::GetGeneration(cache, uid, 3) == durableGeneration,
 			"failed generation publication must retain the durable generation metadata");
@@ -788,13 +1176,15 @@ namespace
 		Require(ReadText(cachePath) == durableEnvelope,
 			"failed remove must preserve the durable envelope");
 
-		ShaderCacheTestAccess::FailNextArtifactSweep(cache);
+		ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
 		cache.Remove(uid);
-		Require(!cache.Contains(uid) && cache.IsDirty(),
-			"remove should retain retryable dirty state when post-commit cleanup fails");
+		Require(!cache.Contains(uid) && !cache.IsDirty() && cache.NeedsMaintenance(),
+			"remove must commit the new manifest even when artifact cleanup remains pending");
 		Require(std::filesystem::exists(artifactPath),
 			"failed post-commit cleanup should retain the now-unreferenced artifact");
-		cache.SaveCache();
+		ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		Require(cache.SaveCache() && !cache.NeedsMaintenance() && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0,
+			"remove cleanup retry must not rewrite the committed manifest");
 		Require(!cache.IsDirty() && !std::filesystem::exists(artifactPath),
 			"save retry should garbage-collect removed artifacts after the committed metadata");
 	}
@@ -931,12 +1321,14 @@ namespace
 			ShaderCache::VertexShaderTag,
 			false);
 		WriteWords(cleanupArtifactPath, Words(600));
-		ShaderCacheTestAccess::FailNextArtifactSweep(cache);
+		ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
 		cache.ClearExpired();
-		Require(!cache.Contains(cleanupUid) && cache.IsDirty() &&
+		Require(!cache.Contains(cleanupUid) && !cache.IsDirty() && cache.NeedsMaintenance() &&
 			std::filesystem::exists(cleanupArtifactPath),
-			"expired cleanup should remain dirty when post-commit artifact sweeping fails");
-		cache.SaveCache();
+			"expired metadata must be committed while artifact cleanup remains pending");
+		ShaderCacheTestAccess::TakeManifestWriteCount(cache);
+		Require(cache.SaveCache() && !cache.NeedsMaintenance() && ShaderCacheTestAccess::TakeManifestWriteCount(cache) == 0,
+			"expiry cleanup retry must not rewrite its committed manifest");
 		Require(!cache.IsDirty() && !std::filesystem::exists(cleanupArtifactPath),
 			"save retry should finish expired artifact sweeping after metadata commit");
 		Require(cache.Contains(uid), "successful expired cleanup should retain unrelated healed metadata");
@@ -954,6 +1346,7 @@ namespace
 
 		Require(PublishComplete(cache, durableUid, 0, 60), "the durable quarantine fixture should publish");
 		cache.SaveCache(true);
+		const auto debugPath = ShaderCacheTestAccess::GetArtifactPath(cache, durableUid, 0, ShaderCache::FragmentShaderTag, true);
 		const auto cachePath = ShaderCacheTestAccess::GetCachePath(cache);
 		const auto backupPath = cacheRoot / "ShaderCache.backup.yaml";
 		std::filesystem::rename(cachePath, backupPath);
@@ -1010,10 +1403,10 @@ namespace
 
 		std::string writeDiagnostic;
 		Require(
-			Workspace::AtomicReplaceWorkspaceCacheText(
+			Platform::AtomicWriteFile(
 				cachePath,
 				"not: [valid",
-				writeDiagnostic),
+				writeDiagnostic) == Platform::EAtomicWriteResult::Synced,
 			"a corrupt retry fixture should be writable: " + writeDiagnostic);
 		cache.LoadCache();
 		Require(
@@ -1028,6 +1421,17 @@ namespace
 
 		std::filesystem::remove(cachePath);
 		std::filesystem::rename(backupPath, cachePath);
+		WriteWords(debugPath, Words(999));
+		const auto badBytes = ReadText(debugPath);
+		cache.LoadCache();
+		Require(ShaderCacheTestAccess::IsQuarantined(cache) && cache.Contains(sessionUid) &&
+			cache.GetLastLoadResult().m_status == Workspace::EWorkspaceCacheLoadStatus::Corrupt,
+			"partial artifact recovery must not escape an existing I/O quarantine");
+		cache.SaveCache(true);
+		cache.ClearExpired();
+		Require(ReadText(cachePath) == durableEnvelope && ReadText(debugPath) == badBytes,
+			"a valid manifest with bad artifacts must stay read-only during quarantine");
+		WriteWords(debugPath, Words(63));
 		cache.LoadCache();
 		Require(cache.GetLastLoadResult().IsLoaded(),
 			"a later full successful reload should leave I/O quarantine");
@@ -1104,6 +1508,40 @@ namespace
 		RequireWords(vertex, Words(80), "restored durable bytecode");
 	}
 
+	void TestFailedGlslCompilationPreservesBytecode()
+	{
+		const std::string validSource =
+			"#version 450\nlayout(location = 0) out vec4 color;\nvoid main() { color = vec4(1.0); }\n";
+		struct InvalidShader
+		{
+			const char* m_filename;
+			std::string m_source;
+		};
+		const InvalidShader invalidShaders[] = {
+			{ "single-digit.frag", "#version 450\n#error invalid shader\nvoid main() {}\n" },
+			{ "C:\\Project With Spaces\\Shaders\\invalid.frag", "#version 450\n" + std::string(12, '\n') + "#error invalid shader\nvoid main() {}\n" },
+			{ "multiple-errors.frag", "#version 450\n#error first diagnostic\n#error second diagnostic\nvoid main() {}\n" },
+			{ "remapped-line.frag", "#version 450\n#line 1200\n#error remapped diagnostic\nvoid main() {}\n" },
+			{ "", "#version 450\nvoid main() { invalid_expression; }\n" }
+		};
+		for (bool debug : { false, true })
+		{
+			RHI::ShaderByteCode byteCode;
+			Require(ShaderCompilerTestAccess::CompileGlslToSpirv("valid.frag", validSource,
+				RHI::EShaderStage::Fragment, byteCode, debug), "the fixture must compile real valid GLSL");
+			const RHI::ShaderByteCode previous = byteCode;
+			Require(!previous.IsEmpty(), "the fixture must retain actual compiled SPIR-V");
+			for (const InvalidShader& shader : invalidShaders)
+			{
+				Require(!ShaderCompilerTestAccess::CompileGlslToSpirv(shader.m_filename, shader.m_source,
+					RHI::EShaderStage::Fragment, byteCode, debug), "invalid GLSL must return failure without throwing while reading its diagnostics");
+				RequireWords(byteCode, previous, "a failed compile must not replace the previously compiled bytecode");
+			}
+			Require(ShaderCompilerTestAccess::CompileGlslToSpirv("recovered.frag", validSource,
+				RHI::EShaderStage::Fragment, byteCode, debug), "valid GLSL must still compile after diagnostic failures");
+		}
+	}
+
 	void TestShaderCompilerFailureLifecycle()
 	{
 		const FileId parsedOnly = MakeFileId("{SHADER-DEPENDENCY-PARSED}");
@@ -1144,11 +1582,6 @@ namespace
 		Require(
 			!ShaderCompilerTestAccess::AggregateCompileResults(oneFailed, std::size(oneFailed)),
 			"one failed permutation should fail the aggregate compile result");
-		Require(ShaderCompilerTestAccess::ShouldRetryCacheSave(0, true),
-			"current bytecode with dirty metadata should select the save-only retry branch");
-		Require(!ShaderCompilerTestAccess::ShouldRetryCacheSave(0, false) &&
-			!ShaderCompilerTestAccess::ShouldRetryCacheSave(1, true),
-			"save-only retry should require both no compilation work and dirty metadata");
 		Require(ShaderCompilerTestAccess::ExerciseFailedLoadEvictionAndRetry(),
 			"failed shader load eviction should permit a second permutation load attempt");
 		Require(ShaderCompilerTestAccess::ExercisePromiseGarbageCollection(),
@@ -1209,16 +1642,12 @@ namespace
 		const std::string& virtualPath,
 		const std::string& winnerIdentity,
 		int64_t modificationTimeNanoseconds,
-		uint64_t fileSize,
-		uint64_t contentHash,
 		uint32_t mountKind)
 	{
 		ShaderDependencyFile dependency;
 		dependency.m_virtualPath = virtualPath;
 		dependency.m_winnerIdentity = winnerIdentity;
 		dependency.m_revision.m_modificationTimeNanoseconds = modificationTimeNanoseconds;
-		dependency.m_revision.m_fileSize = fileSize;
-		dependency.m_revision.m_contentHash = contentHash;
 		dependency.m_revision.m_bIsValid = true;
 		dependency.m_mountKind = mountKind;
 		return dependency;
@@ -1231,15 +1660,11 @@ namespace
 			"Shaders/User.shader",
 			"/Engine/Content/Shaders/User.shader",
 			5000000000ll,
-			128,
-			0x1111111111111111ull,
 			0));
 		baselineDependencies.Add(Dependency(
 			"Shaders/Library/Math.glsl",
 			"/Workspace/Content/Shaders/Library/Math.glsl",
 			6000000000ll,
-			64,
-			0x2222222222222222ull,
 			1));
 
 		const uint64_t baseline = CalculateShaderDependencyFingerprint(baselineDependencies);
@@ -1247,15 +1672,13 @@ namespace
 			CalculateShaderDependencyFingerprint(baselineDependencies) == baseline,
 			"identical shader dependency snapshots should have a stable non-zero fingerprint");
 
-		TVector<ShaderDependencyFile> sameTimestampEdit = baselineDependencies;
-		sameTimestampEdit[1].m_revision.m_fileSize = 256;
-		sameTimestampEdit[1].m_revision.m_contentHash = 0x3333333333333333ull;
-		Require(CalculateShaderDependencyFingerprint(sameTimestampEdit) == baseline,
-			"file size and content hash must not affect timestamp-based shader fingerprints");
+		TVector<ShaderDependencyFile> laterEdit = baselineDependencies;
+		laterEdit[1].m_revision.m_modificationTimeNanoseconds += 1000000000ll;
+		Require(CalculateShaderDependencyFingerprint(laterEdit) != baseline,
+			"a changed GLSL timestamp should invalidate the shader fingerprint");
 
 		TVector<ShaderDependencyFile> backdatedEdit = baselineDependencies;
 		backdatedEdit[1].m_revision.m_modificationTimeNanoseconds = 1000000000ll;
-		backdatedEdit[1].m_revision.m_contentHash = 0x4444444444444444ull;
 		Require(CalculateShaderDependencyFingerprint(backdatedEdit) != baseline,
 			"backdated GLSL edits should invalidate the shader fingerprint");
 
@@ -1303,10 +1726,193 @@ namespace
 			"native nested GLSL include text should remain opaque to the YAML include resolver");
 	}
 
-	void TestRuntimeLightingShadersCompile()
+	void TestShaderMaterialDefaults()
+	{
+		const auto content = std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		ShaderAsset shader;
+		shader.Deserialize(YAML::LoadFile((content / "Shaders/Standard_glTF.shader").string()));
+		const glm::vec4* color = nullptr;
+		Require(shader.GetDefaultUniformsVec4().Find("material.baseColorFactor", color) && *color == glm::vec4(1),
+			"the surface shader must describe a white default base color");
+		Require(shader.GetDefaultUniformsVec4().Find("material.emissiveFactor", color) && *color == glm::vec4(0),
+			"the surface shader must describe a non-emissive default");
+		const TMap<std::string, float> expected{
+			{ "material.roughnessFactor", 1.0f }, { "material.metallicFactor", 0.0f },
+			{ "material.normalScale", 1.0f }, { "material.alphaCutoff", 0.5f },
+			{ "material.occlusionStrength", 1.0f }
+		};
+		for (const auto& entry : expected)
+		{
+			const float* value = nullptr;
+			Require(shader.GetDefaultUniformsFloat().Find(entry.m_first, value) && *value == *entry.m_second,
+				"the surface shader must describe neutral textureless PBR factors");
+		}
+		const auto box = YAML::LoadFile((content / "Models/Box/materials/BoxDefault.mat").string());
+		Require(box["uniformsVec4"]["material.baseColorFactor"].as<glm::vec4>() == glm::vec4(1, 0.5f, 0.5f, 1) &&
+			box["uniformsVec4"]["material.emissiveFactor"].as<glm::vec4>() == glm::vec4(0),
+			"the authored Box material must retain its colors in canonical shader fields");
+		for (const auto& entry : expected)
+			Require(box["uniformsFloat"][entry.m_first].as<float>() == *entry.m_second,
+				"the authored Box material must not depend on runtime default injection");
+	}
+
+	RHI::ShaderByteCode CompileRuntimeShaderStage(const char* shaderPath,
+		std::initializer_list<const char*> permutationDefines, RHI::EShaderStage stage,
+		bool bIsDebug = false)
 	{
 		const std::filesystem::path contentRoot =
 			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		ShaderAsset shader;
+		shader.Deserialize(YAML::Load(ReadText(contentRoot / shaderPath)));
+		const char* stageDefine = stage == RHI::EShaderStage::Vertex ? "VERTEX" :
+			(stage == RHI::EShaderStage::Fragment ? "FRAGMENT" : "COMPUTE");
+		std::string source = shader.GetGlslCommonCode() + "\n#define " + stageDefine + "\n";
+		for (const char* define : permutationDefines)
+		{
+			source += std::string("#define ") + define + "\n";
+		}
+#if defined(__APPLE__)
+		if (stage != RHI::EShaderStage::Compute)
+		{
+			source += "#define SAILOR_TEXTURE_REMAP\n";
+		}
+#endif
+		std::string diagnostic;
+		Require(ShaderYamlIncludeResolver::Append(shader.GetIncludes(),
+			[&](const std::string& include, std::string& contents)
+			{
+				std::ifstream input(contentRoot / include, std::ios::binary);
+				if (!input.is_open()) return false;
+				contents.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+				return true;
+			}, source, diagnostic),
+			std::string("runtime shader includes should resolve for ") + shaderPath + ": " + diagnostic);
+		source += stage == RHI::EShaderStage::Vertex ? shader.GetGlslVertexCode() :
+			(stage == RHI::EShaderStage::Fragment ? shader.GetGlslFragmentCode() : shader.GetGlslComputeCode());
+		RHI::ShaderByteCode byteCode;
+		Require(ShaderCompilerTestAccess::CompileGlslToSpirv(shaderPath, source, stage, byteCode, bIsDebug),
+			std::string("runtime shader stage should compile: ") + shaderPath + " " + stageDefine);
+		Require(!byteCode.IsEmpty(), "runtime shader stage should produce SPIR-V");
+		return byteCode;
+	}
+
+	VulkanShaderStagePtr ReflectStage(const RHI::ShaderByteCode& code, RHI::EShaderStage stage)
+	{
+		auto reflected = TRefPtr<ShaderLayoutProbe>::Make();
+		reflected->m_stage = static_cast<VkShaderStageFlagBits>(stage);
+		reflected->ReflectDescriptorSetBindings(code);
+		return reflected;
+	}
+
+	TVector<VkPushConstantRange> RequirePushConstantLayout(const TVector<VulkanShaderStagePtr>& stages,
+		VkShaderStageFlags flags, uint32_t offset, uint32_t size)
+	{
+		TVector<VkPushConstantRange> ranges;
+		Require(VulkanPipelineLayout::BuildPushConstantRanges(stages, 128u, ranges),
+			"compiled shader push constants must fit a 128-byte device");
+		if (size == 0u)
+		{
+			Require(ranges.IsEmpty(), "a shader without push constants must produce no native range");
+		}
+		else
+		{
+			Require(ranges.Num() == 1u && ranges[0].stageFlags == flags &&
+				ranges[0].offset == offset && ranges[0].size == size,
+				"the native layout must preserve compiled stage visibility and the exact byte span");
+		}
+		return ranges;
+	}
+
+	void TestCompiledPushConstantRanges()
+	{
+		const struct
+		{
+			RHI::EShaderStage m_stage;
+			uint32_t m_offset;
+			uint32_t m_size;
+			const char* m_source;
+		} cases[] = {
+			{ RHI::EShaderStage::Compute, 0u, 4u, R"(#version 450
+layout(local_size_x=1) in;
+layout(push_constant) uniform Params { uint value; } params;
+layout(set=0,binding=0) buffer Result { uint value; } result;
+void main() { result.value = params.value; }
+)" },
+			{ RHI::EShaderStage::Compute, 16u, 4u, R"(#version 450
+layout(local_size_x=1) in;
+layout(push_constant) uniform Params { layout(offset=16) uint value; } params;
+layout(set=0,binding=0) buffer Result { uint value; } result;
+void main() { result.value = params.value; }
+)" },
+			{ RHI::EShaderStage::Vertex, 64u, 64u, R"(#version 450
+layout(location=0) in vec4 position;
+layout(push_constant) uniform Params { layout(offset=64) mat4 value; } params;
+void main() { gl_Position = params.value * position; }
+)" },
+			{ RHI::EShaderStage::Fragment, 0u, 4u, R"(#version 450
+layout(push_constant) uniform Params { uint value; } params;
+layout(location=0) out vec4 color;
+void main() { color = vec4(float(params.value)); }
+)" },
+			{ RHI::EShaderStage::Vertex, 0u, 0u, R"(#version 450
+layout(location=0) in vec4 position;
+void main() { gl_Position = position; }
+)" }
+		};
+		for (const bool debug : { false, true })
+		{
+			TVector<VulkanShaderStagePtr> stages;
+			for (const auto& test : cases)
+			{
+				RHI::ShaderByteCode code;
+				Require(ShaderCompilerTestAccess::CompileGlslToSpirv("push-constants.glsl",
+					test.m_source, test.m_stage, code, debug), "push constant fixture must compile");
+				auto reflected = ReflectStage(code, test.m_stage);
+				RequirePushConstantLayout({ reflected }, static_cast<VkShaderStageFlags>(test.m_stage),
+					test.m_offset, test.m_size);
+				stages.Add(reflected);
+			}
+			RequirePushConstantLayout({ stages[4], stages[3] }, VK_SHADER_STAGE_FRAGMENT_BIT, 0u, 4u);
+			RequirePushConstantLayout({ stages[2], stages[3] },
+				VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u, 128u);
+		}
+	}
+
+	void TestRuntimePushConstantLayouts()
+	{
+		for (const bool debug : { false, true })
+		{
+			const auto graphics = [&](const char* path, std::initializer_list<const char*> defines)
+			{
+				return TVector<VulkanShaderStagePtr>{
+					ReflectStage(CompileRuntimeShaderStage(path, defines, RHI::EShaderStage::Vertex, debug),
+						RHI::EShaderStage::Vertex),
+					ReflectStage(CompileRuntimeShaderStage(path, defines, RHI::EShaderStage::Fragment, debug),
+						RHI::EShaderStage::Fragment) };
+			};
+			RequirePushConstantLayout(graphics("Shaders/Sky.shader", { "CLOUDS", "DITHER" }),
+				debug ? VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT : VK_SHADER_STAGE_FRAGMENT_BIT,
+				0u, 4u);
+			RequirePushConstantLayout(graphics("Shaders/ImGuiUI.shader", {}), VK_SHADER_STAGE_VERTEX_BIT, 0u, 16u);
+
+			const auto lights = ReflectStage(CompileRuntimeShaderStage("Shaders/ComputeLightCulling.shader", {},
+				RHI::EShaderStage::Compute, debug), RHI::EShaderStage::Compute);
+			using Constants = LightCullingLayoutProbe::Constants;
+			constexpr uint32_t memberEnd = offsetof(Constants, m_lightsNum) + sizeof(int32_t);
+			auto layout = VulkanPipelineLayoutPtr::Make();
+			layout->m_pushConstantRanges = RequirePushConstantLayout({ lights }, VK_SHADER_STAGE_COMPUTE_BIT, 0u, memberEnd);
+			Constants constants{};
+			const void* data = &constants;
+			VkPushConstantRange update;
+			Require(sizeof(constants) > memberEnd &&
+				layout->GetPushConstantUpdate(0u, sizeof(constants), data, update) &&
+				update.size == memberEnd && data == &constants,
+				"LightCulling must submit its last member without trailing C++ alignment padding");
+		}
+	}
+
+	void TestRuntimeLightingShadersCompile()
+	{
 		const std::array<const char*, 5> shaderPaths =
 		{
 			"Shaders/Standard.shader",
@@ -1316,84 +1922,22 @@ namespace
 			"Shaders/HBAO_Blur.shader"
 		};
 
-		auto compileRuntimeStage = [&contentRoot](
-			const char* shaderPath,
-			std::initializer_list<const char*> permutationDefines,
-			RHI::EShaderStage stage,
-			bool bIsDebug = false)
-			-> RHI::ShaderByteCode
-		{
-			const std::filesystem::path sourcePath = contentRoot / shaderPath;
-			ShaderAsset shader;
-			shader.Deserialize(YAML::Load(ReadText(sourcePath)));
-
-			const bool bVertex = stage == RHI::EShaderStage::Vertex;
-			const char* stageDefine = bVertex ? "VERTEX" : "FRAGMENT";
-			std::string source = shader.GetGlslCommonCode() +
-				"\n#define " + stageDefine + "\n";
-			for (const char* define : permutationDefines)
-			{
-				source += std::string("#define ") + define + "\n";
-			}
-#if defined(__APPLE__)
-			source += "#define SAILOR_TEXTURE_REMAP\n";
-#endif
-			std::string diagnostic;
-			Require(
-				ShaderYamlIncludeResolver::Append(
-					shader.GetIncludes(),
-					[&](const std::string& include, std::string& contents)
-					{
-						const std::filesystem::path includePath = contentRoot / include;
-						std::ifstream input(includePath, std::ios::binary);
-						if (!input.is_open())
-						{
-							return false;
-						}
-						contents.assign(
-							std::istreambuf_iterator<char>(input),
-							std::istreambuf_iterator<char>());
-						return true;
-					},
-					source,
-					diagnostic),
-				std::string("runtime shader includes should resolve for ") + shaderPath +
-					": " + diagnostic);
-
-			source += "\n#ifdef " + std::string(stageDefine) + "\n" +
-				(bVertex ? shader.GetGlslVertexCode() : shader.GetGlslFragmentCode()) +
-				"\n#endif\n";
-			RHI::ShaderByteCode byteCode;
-			Require(
-				ShaderCompilerTestAccess::CompileGlslToSpirv(
-					shaderPath,
-					source,
-					stage,
-					byteCode,
-					bIsDebug),
-				std::string("runtime shader stage should compile: ") + shaderPath +
-					" " + stageDefine);
-			Require(!byteCode.IsEmpty(),
-				std::string("runtime shader stage should produce SPIR-V: ") +
-					shaderPath + " " + stageDefine);
-			return byteCode;
-		};
-		auto compileRuntimeFragment = [&compileRuntimeStage](
+		auto compileRuntimeFragment = [](
 			const char* shaderPath,
 			std::initializer_list<const char*> permutationDefines,
 			bool bIsDebug = false)
 		{
-			return compileRuntimeStage(
+			return CompileRuntimeShaderStage(
 				shaderPath,
 				permutationDefines,
 				RHI::EShaderStage::Fragment,
 				bIsDebug);
 		};
-		auto compileRuntimeVertex = [&compileRuntimeStage](
+		auto compileRuntimeVertex = [](
 			const char* shaderPath,
 			std::initializer_list<const char*> permutationDefines)
 		{
-			return compileRuntimeStage(
+			return CompileRuntimeShaderStage(
 				shaderPath,
 				permutationDefines,
 				RHI::EShaderStage::Vertex);
@@ -1483,8 +2027,9 @@ namespace
 					sizeof(RHI::RHIGlobalIlluminationGpuState));
 				RequireSpirvCombinedImageSamplerBinding(
 					byteCode,
-					1u,
-					18u);
+					2u,
+					4u);
+				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 18u);
 				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 19u);
 				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 22u);
 			}
@@ -1504,6 +2049,14 @@ namespace
 			1u,
 			19u);
 		RequireLocalReflectionUniformLayout(materialExtensionsByteCode);
+		for (const bool debug : { false, true })
+		{
+			const auto transmission = compileRuntimeFragment("Shaders/Standard_glTF.shader", { "TRANSMISSION" }, debug);
+			RequireSpirvCombinedImageSamplerBinding(transmission, 2u, 2u);
+			RequireSpirvCombinedImageSamplerBinding(transmission, 2u, 4u);
+			RequireSpirvDescriptorBindingAbsent(transmission, 1u, 10u);
+			RequireSpirvDescriptorBindingAbsent(transmission, 1u, 18u);
+		}
 		RequireGltfMaterialLayout(materialExtensionsByteCode, compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader", { "CLEAR_COAT", "SHEEN", "TRANSMISSION" }, true), 176u, 176u);
 		RequireGltfMaterialLayout(compileRuntimeFragment(
@@ -1554,6 +2107,8 @@ namespace
 		compileRuntimeFragment("Shaders/MotionBlur.shader", { "DEBUG_MOTIONS" });
 		compileRuntimeVertex("Experimental/MeshParticles/Particle.shader", {});
 		compileRuntimeFragment("Experimental/MeshParticles/Particle.shader", {});
+		compileRuntimeVertex("Tests/Shaders/DepthCoverage.shader", {});
+		compileRuntimeFragment("Tests/Shaders/DepthCoverage.shader", {});
 		const RHI::ShaderByteCode hbaoByteCode = compileRuntimeFragment(
 			"Shaders/HBAO.shader",
 			{});
@@ -1586,56 +2141,12 @@ namespace
 			"Shaders/Tonemapping.shader",
 			{ "UNCHARTED2" });
 
-		auto compileRuntimeCompute = [&contentRoot](
+		auto compileRuntimeCompute = [](
 			const char* computeShaderPath,
 			std::initializer_list<const char*> permutationDefines = {}) -> RHI::ShaderByteCode
-			{
-				ShaderAsset computeShader;
-				computeShader.Deserialize(YAML::Load(ReadText(
-					contentRoot / computeShaderPath)));
-				std::string computeSource =
-					computeShader.GetGlslCommonCode() + "\n#define COMPUTE\n";
-				for (const char* define : permutationDefines)
-				{
-					computeSource += std::string("#define ") + define + "\n";
-				}
-				std::string computeDiagnostic;
-				Require(
-					ShaderYamlIncludeResolver::Append(
-						computeShader.GetIncludes(),
-						[&](const std::string& include, std::string& contents)
-						{
-							std::ifstream input(contentRoot / include, std::ios::binary);
-							if (!input.is_open())
-							{
-								return false;
-							}
-							contents.assign(
-								std::istreambuf_iterator<char>(input),
-								std::istreambuf_iterator<char>());
-							return true;
-						},
-						computeSource,
-						computeDiagnostic),
-					std::string("runtime compute shader includes should resolve for ") +
-						computeShaderPath + ": " + computeDiagnostic);
-				computeSource += "\n#ifdef COMPUTE\n" +
-					computeShader.GetGlslComputeCode() + "\n#endif\n";
-				RHI::ShaderByteCode computeByteCode;
-				Require(
-					ShaderCompilerTestAccess::CompileGlslToSpirv(
-						computeShaderPath,
-						computeSource,
-						RHI::EShaderStage::Compute,
-						computeByteCode,
-						false),
-					std::string("runtime compute shader should compile: ") +
-						computeShaderPath);
-				Require(!computeByteCode.IsEmpty(),
-					std::string("runtime compute shader should produce SPIR-V: ") +
-						computeShaderPath);
-				return computeByteCode;
-			};
+		{
+			return CompileRuntimeShaderStage(computeShaderPath, permutationDefines, RHI::EShaderStage::Compute);
+		};
 
 		for (bool depthLayout : { false, true })
 		{
@@ -1660,6 +2171,18 @@ namespace
 		const auto depthInput = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "DEPTH_INPUT" });
 		RequireSpirvCombinedImageSamplerBinding(depthInput, 0u, 0u);
 		RequireSpirvStorageImageBinding(depthInput, 0u, 1u);
+		const auto depthMsaa = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "MSAA_DEPTH_INPUT" });
+		RequireSpirvCombinedImageSamplerBinding(depthMsaa, 0u, 0u);
+		RequireSpirvStorageImageBinding(depthMsaa, 0u, 1u);
+		SpvReflectShaderModule depthModule{};
+		Require(spvReflectCreateShaderModule(depthMsaa.Num() * sizeof(uint32_t), depthMsaa.GetData(),
+			&depthModule) == SPV_REFLECT_RESULT_SUCCESS, "MSAA depth input must reflect");
+		SpvReflectResult depthStatus;
+		const auto* depthBinding = spvReflectGetDescriptorBinding(&depthModule, 0u, 0u, &depthStatus);
+		const bool multisampled = depthStatus == SPV_REFLECT_RESULT_SUCCESS && depthBinding &&
+			depthBinding->image.ms == 1u && depthBinding->image.dim == SpvDim2D;
+		spvReflectDestroyShaderModule(&depthModule);
+		Require(multisampled, "Hi-Z input must retain access to each depth sample before reduction");
 		const auto depthMips = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader");
 		RequireSpirvStorageImageBinding(depthMips, 0u, 0u);
 		RequireSpirvStorageImageBinding(depthMips, 0u, 1u);
@@ -1720,73 +2243,34 @@ namespace
 
 	void TestShadowCasterPermutationsCompile()
 	{
-		const std::filesystem::path contentRoot =
-			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
-		auto compilePermutation = [&](
+		auto compilePermutation = [](
 			const char* shaderPath,
-			std::initializer_list<const char*> permutationDefines)
+			std::initializer_list<const char*> permutationDefines, bool hasPushConstants = true)
+		{
+			for (const bool debug : { false, true })
 			{
-				ShaderAsset shader;
-				shader.Deserialize(YAML::Load(ReadText(contentRoot / shaderPath)));
-				auto compileStage = [&](
-					const char* stageDefine,
-					const std::string& stageSource,
-					RHI::EShaderStage stage)
-					{
-						std::string source = shader.GetGlslCommonCode() + "\n#define " +
-							stageDefine + "\n";
-						for (const char* define : permutationDefines)
-						{
-							source += std::string("#define ") + define + "\n";
-						}
-#if defined(__APPLE__)
-						source += "#define SAILOR_TEXTURE_REMAP\n";
-#endif
-						std::string diagnostic;
-						Require(
-							ShaderYamlIncludeResolver::Append(
-								shader.GetIncludes(),
-								[&](const std::string& include, std::string& contents)
-								{
-									std::ifstream input(contentRoot / include, std::ios::binary);
-									if (!input.is_open())
-									{
-										return false;
-									}
-									contents.assign(
-										std::istreambuf_iterator<char>(input),
-										std::istreambuf_iterator<char>());
-									return true;
-								},
-								source,
-								diagnostic),
-							std::string("shadow shader includes should resolve for ") +
-								shaderPath + ": " + diagnostic);
-						source += std::string("\n#ifdef ") + stageDefine + "\n" +
-							stageSource + "\n#endif\n";
-						RHI::ShaderByteCode byteCode;
-						Require(
-							ShaderCompilerTestAccess::CompileGlslToSpirv(
-								shaderPath,
-								source,
-								stage,
-								byteCode,
-								false),
-							std::string("shadow shader stage should compile: ") + shaderPath);
-						Require(!byteCode.IsEmpty(),
-							std::string("shadow shader stage should produce SPIR-V: ") + shaderPath);
-					};
+				TVector<VulkanShaderStagePtr> stages;
+				for (const auto stage : { RHI::EShaderStage::Vertex, RHI::EShaderStage::Fragment })
+				{
+					stages.Add(ReflectStage(CompileRuntimeShaderStage(shaderPath, permutationDefines, stage, debug), stage));
+				}
+				RequirePushConstantLayout(stages, VK_SHADER_STAGE_VERTEX_BIT, 0u, hasPushConstants ? 64u : 0u);
+			}
+		};
 
-				compileStage("VERTEX", shader.GetGlslVertexCode(), RHI::EShaderStage::Vertex);
-				compileStage("FRAGMENT", shader.GetGlslFragmentCode(), RHI::EShaderStage::Fragment);
-			};
-
+		compilePermutation("Shaders/ShadowCaster.shader", {});
+		compilePermutation("Shaders/ShadowCaster.shader", { "EVSM" });
+		compilePermutation("Shaders/ShadowCaster.shader", { "SKINNING" });
+		compilePermutation("Shaders/ShadowCaster.shader", { "EVSM", "SKINNING" });
 		compilePermutation("Shaders/ShadowCaster.shader", { "MASKED" });
+		compilePermutation("Shaders/ShadowCaster.shader", { "EVSM", "MASKED" });
+		compilePermutation("Shaders/ShadowCaster.shader", { "SKINNING", "MASKED" });
 		compilePermutation("Shaders/ShadowCaster.shader", { "EVSM", "SKINNING", "MASKED" });
-		compilePermutation("Experimental/MeshParticles/Particle.shader", { "SHADOW_CASTER" });
+		compilePermutation("Experimental/MeshParticles/Particle.shader", { "SHADOW_CASTER" }, false);
 		compilePermutation("Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER" });
-		compilePermutation(
-			"Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER", "EVSM" });
+		compilePermutation("Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER", "EVSM" });
+		compilePermutation("Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER", "SHADOW_CASTER" });
+		compilePermutation("Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER", "SHADOW_CASTER", "EVSM" });
 	}
 
 	void TestShaderSourceNormalization()
@@ -1924,6 +2408,14 @@ int main()
 		TestOwnedArtifactContainment();
 		TestDebugArtifactsAreRequired();
 		TestPayloadIgnoresUnknownFields();
+		TestBatchInvalidationAndRestart();
+		TestWarmPermutationReadsEachArtifactOnce();
+		TestReloadKeepsHealthyShaderPermutations();
+		TestPartialRecoveryRetriesFailedManifestCommit();
+		TestSaveResultSurvivesAnotherPublisher();
+		TestCommittedShaderSurvivesCleanupFailure();
+		TestResetSeparatesCommitFromArtifactCleanup();
+		TestPublishedManifestWaitsForSync();
 		TestFailedGenerationPreservesDurableGeneration();
 		TestRemoveCommitsBeforeGarbageCollection();
 		TestExplicitInvalidationSurvivesSameTimestampReload();
@@ -1932,8 +2424,12 @@ int main()
 		TestIoFailureQuarantineIsReadOnlyAndSessionOnly();
 		TestRuntimeArtifactIoFailureEntersReadOnlyQuarantine();
 		TestShaderCompilerFailureLifecycle();
+		TestFailedGlslCompilationPreservesBytecode();
 		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
+		TestShaderMaterialDefaults();
+		TestCompiledPushConstantRanges();
+		TestRuntimePushConstantLayouts();
 		TestRuntimeLightingShadersCompile();
 		TestShadowCasterPermutationsCompile();
 		TestShaderSourceNormalization();

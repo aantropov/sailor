@@ -3,7 +3,7 @@
 
 #include "Components/Component.h"
 #include "Core/Reflection.h"
-#include "Core/Utils.h"
+#include "Core/YamlUtils.h"
 #include "ECS/ECSAutoRegistration.h"
 #include "Workspace/WorkspaceModuleApi.h"
 
@@ -1429,8 +1429,6 @@ bool Sailor::Workspace::WorkspaceModuleManager::BuildEditorTypeMetadata(
 
 	const YAML::Node workspaceMetadata = YAML::Load(m_metadata);
 	return MergeEditorTypeMetadata(engineMetadata, workspaceMetadata, outMetadata, outError);
-
-	return false;
 }
 
 bool Sailor::Workspace::WorkspaceModuleManager::MergeEditorTypeMetadata(
@@ -1509,8 +1507,6 @@ bool Sailor::Workspace::WorkspaceModuleManager::MergeEditorTypeMetadata(
 	outMetadata = std::move(mergedMetadata);
 	outError.clear();
 	return true;
-
-	return false;
 }
 
 bool Sailor::Workspace::WorkspaceModuleManager::Unload() noexcept

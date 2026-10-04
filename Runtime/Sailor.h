@@ -50,6 +50,13 @@ namespace Sailor
 		std::string m_world = "Editor.world";
 	};
 
+	enum class EAppInitializationResult : uint8_t
+	{
+		Failed,
+		Ready,
+		Completed
+	};
+
 	class App
 	{
 		static constexpr size_t MaxSubmodules = 128u;
@@ -70,13 +77,13 @@ namespace Sailor
 		SAILOR_API static RHI::ESceneViewRenderMode GetEditorRenderMode();
 		SAILOR_API static bool SetEditorRenderMode(RHI::ESceneViewRenderMode mode);
 
-		SAILOR_API static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
+		SAILOR_API static EAppInitializationResult Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
 		SAILOR_API static void Start();
 		SAILOR_API static void Stop();
-		SAILOR_API static void Shutdown();
+		SAILOR_API static bool Shutdown();
 		SAILOR_API static bool IsEngineMainThreadReady();
 		SAILOR_API static bool RequestAssetReload();
-		SAILOR_API static bool UpdateAsset(const char* strFileId);
+		SAILOR_API static bool UpdateAsset(const char* strFileId, bool bReimport = false);
 		SAILOR_API static bool GetAssetReloadState(
 			uint64_t& outRequestGeneration,
 			uint64_t& outCompletedGeneration,
@@ -90,6 +97,7 @@ namespace Sailor
 		SAILOR_API static bool DestroyEditorRemoteViewport(uint64_t viewportId);
 		SAILOR_API static uint32_t GetEditorRemoteViewportState(uint64_t viewportId);
 		SAILOR_API static uint32_t GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics);
+		SAILOR_API static bool CaptureEditorRemoteViewportFrameEvidence(uint64_t viewportId, std::string& outDiagnostic);
 		SAILOR_API static bool RetryEditorRemoteViewport(uint64_t viewportId);
 		SAILOR_API static bool SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hostHandleKind, uint64_t hostHandleValue);
 		SAILOR_API static bool SetEditorRemoteViewportWindowsHost(uint64_t viewportId, void* swapChainPanelInspectable, float compositionScale);
@@ -113,6 +121,8 @@ namespace Sailor
 		SAILOR_API static bool SetEditorSimulationEnabled(bool bEnabled);
 		SAILOR_API static bool IsEditorSimulationEnabled();
 		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
+		SAILOR_API static bool RequestModelFingerprint(const char* strFileId);
+		SAILOR_API static uint32_t GetModelFingerprintStatus(const char* strFileId);
 		SAILOR_API static bool StartEditorGIProbesBake(
 			const EditorGIProbesBakeRequest& request,
 			std::string& outDiagnostic);
@@ -280,7 +290,7 @@ namespace Sailor
 		TUniquePtr<Win32::Window> m_pMainWindow;
 		TUniquePtr<Workspace::WorkspaceModuleManager> m_pWorkspaceModuleManager;
 		Workspace::WorkspaceContext m_workspaceContext;
-		bool m_bSkipMainLoop = false;
+		EAppInitializationResult m_initializationResult = EAppInitializationResult::Failed;
 		int32_t m_exitCode = 0;
 		AppArgs m_args{};
 

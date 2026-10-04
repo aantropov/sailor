@@ -8,6 +8,7 @@
 #include "Components/AnimatorComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Core/StringHash.h"
+#include "GlobalIllumination/GISettings.h"
 #include "Settings/GraphicsSettings.h"
 
 #include <algorithm>
@@ -217,25 +218,24 @@ namespace
 #if defined(__APPLE__)
 				if (!shadowMesh.m_customDepthMaterial)
 				{
-					shadowMesh.m_materialTextureSamplers.Insert(0u);
-					shadowMesh.m_materialTextureSamplers.Insert(shadowMesh.m_baseColorSampler);
+					shadowMesh.m_materialTextureSamplers.Add(shadowMesh.m_baseColorSampler);
 				}
 #endif
 			}
 #if defined(__APPLE__)
 			if (shadowMesh.m_customDepthMaterial)
 			{
-				shadowMesh.m_materialTextureSamplers.Insert(0u);
 				if (textureImporter)
 				{
 					for (const auto& sampler : material->GetSamplers())
 					{
 						const uint32_t textureIndex = sampler.m_second ?
 							(uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
-						shadowMesh.m_materialTextureSamplers.Insert(textureIndex);
+						shadowMesh.m_materialTextureSamplers.Add(textureIndex);
 					}
 				}
 			}
+			RHI::NormalizeTextureSamplers(shadowMesh.m_materialTextureSamplers);
 #endif
 			shadowCaster->m_meshes.Add(std::move(shadowMesh));
 		}
@@ -292,17 +292,34 @@ void StaticMeshRendererData::SetLodSettings(
 	uint32_t maxLod,
 	const TVector<float>& screenCoverageThresholds)
 {
+	TVector<float> thresholds = screenCoverageThresholds;
+	NormalizeLodSettings(minLod, maxLod, thresholds);
+	if (m_minLod == minLod && m_maxLod == maxLod &&
+		m_screenCoverageThresholds == thresholds)
+	{
+		return;
+	}
+
 	m_minLod = minLod;
-	m_maxLod = (std::max)(minLod, maxLod);
-	m_screenCoverageThresholds = screenCoverageThresholds;
-	for (float& threshold : m_screenCoverageThresholds)
+	m_maxLod = maxLod;
+	m_screenCoverageThresholds = std::move(thresholds);
+	MarkDirty();
+}
+
+void StaticMeshRendererData::NormalizeLodSettings(
+	uint32_t minLod,
+	uint32_t& maxLod,
+	TVector<float>& screenCoverageThresholds)
+{
+	maxLod = (std::max)(minLod, maxLod);
+	for (float& threshold : screenCoverageThresholds)
 	{
 		threshold = std::isfinite(threshold) ?
 			(std::clamp)(threshold, 0.0f, 1.0f) : 0.0f;
 	}
 	std::sort(
-		m_screenCoverageThresholds.begin(),
-		m_screenCoverageThresholds.end(),
+		screenCoverageThresholds.begin(),
+		screenCoverageThresholds.end(),
 		std::greater<float>());
 }
 
@@ -310,6 +327,7 @@ void StaticMeshRendererECS::BeginPlay()
 {
 	m_rhiScene = RHI::RHIScenePtr::Make();
 	m_lastMaterialContentRevision = Material::GetGlobalContentRevision();
+	m_giMaterialRevision = 0;
 	PublishSceneVersion();
 }
 
@@ -417,8 +435,7 @@ void StaticMeshRendererECS::MarkDirty(GameObjectPtr owner)
 	}
 }
 
-uint64_t StaticMeshRendererECS::GetGlobalIlluminationContributorRevision()
-	const noexcept
+uint64_t StaticMeshRendererECS::GetGlobalIlluminationGeometryRevision() const noexcept
 {
 	if (!m_publishedSceneVersion ||
 		!m_publishedSceneVersion->m_sceneVersion)
@@ -428,10 +445,18 @@ uint64_t StaticMeshRendererECS::GetGlobalIlluminationContributorRevision()
 	const RHI::RHISceneVersion& version =
 		*m_publishedSceneVersion->m_sceneVersion;
 	uint64_t revision = version.m_staticRevision;
-	HashCombine(
-		revision,
-		version.m_stationaryRevision,
-		version.m_materialRevision);
+	HashCombine(revision, version.m_stationaryRevision);
+	return revision;
+}
+
+uint64_t StaticMeshRendererECS::GetGlobalIlluminationContributorRevision() const noexcept
+{
+	uint64_t revision = GetGlobalIlluminationGeometryRevision();
+	if (m_publishedSceneVersion && m_publishedSceneVersion->m_sceneVersion)
+	{
+		HashCombine(revision, m_publishedSceneVersion->m_sceneVersion->m_materialRevision,
+			m_giMaterialRevision);
+	}
 	return revision;
 }
 
@@ -763,15 +788,14 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				}
 				proxy.m_baseColorSamplers.Add(baseColorSampler);
 #if defined(__APPLE__)
-				TSet<uint32_t> requestedTextures;
-				requestedTextures.Insert(0u);
+				TVector<uint32_t> requestedTextures;
 				if (textureImporter)
 				{
 					for (const auto& sampler : material->GetSamplers())
 					{
 						const uint32_t textureIndex = sampler.m_second ?
 							(uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
-						requestedTextures.Insert(textureIndex);
+						requestedTextures.Add(textureIndex);
 					}
 				}
 				proxy.m_materialTextureSamplers.Add(std::move(requestedTextures));
@@ -833,6 +857,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	bool bShadowCastersChanged = false;
 	bool bSceneRecordsChanged = false;
 	bool bMaterialVersionsPending = false;
+	bool bGIMaterialsChanged = false;
 	const bool bPreviousHasCustomDepthShadowCasters =
 		m_bHasCustomDepthShadowCasters;
 	uint8_t spatialChangeMask = 0u;
@@ -874,6 +899,8 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				}
 				if (update.m_state == EPreparedProxyState::MaterialVersionOnly)
 				{
+					const auto owner = data.m_owner.StaticCast<GameObject>();
+					bGIMaterialsChanged |= IsGlobalIlluminationBakeContributor(owner->GetMobilityType());
 					cacheMaterialRevisions();
 					continue;
 				}
@@ -1048,6 +1075,11 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	{
 		m_lastMaterialContentRevision = materialContentRevision;
 	}
+	if (bGIMaterialsChanged)
+	{
+		// Uniform-only edits leave the RHI scene intact but still invalidate GI.
+		++m_giMaterialRevision;
+	}
 
 	if (bShadowCastersChanged)
 	{
@@ -1079,6 +1111,7 @@ void StaticMeshRendererECS::EndPlay()
 	m_sceneVersionRevision = 0ull;
 	m_spatialRevision = 0ull;
 	m_shadowCastersRevision = 0ull;
+	m_giMaterialRevision = 0;
 	m_preparedBatchesScratch.Clear();
 	m_prepareTasksScratch.Clear();
 	m_bHasCustomDepthShadowCasters = false;

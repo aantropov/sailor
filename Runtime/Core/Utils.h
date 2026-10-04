@@ -1,46 +1,29 @@
 #pragma once
-#include <string>
-#include <thread>
-#include "Sailor.h"
-#include "Core/FileRevision.h"
-#include "Containers/Containers.h"
-#include <ctime>
 
-namespace YAML
-{
-	class Node;
-}
+#include "Core/Defines.h"
+#include "Memory/LockFreeHeapAllocator.h"
+#include "Memory/MallocAllocator.hpp"
+#include "Containers/Vector.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
 
 namespace Sailor
 {
-	class InstanceId;
-	class ReflectedData;
-
 	namespace Utils
 	{
-		struct WindowSizeAndPosition
-		{
-			RECT m_windowRect; // Includes title bar, borders, etc.
-			RECT m_clientRect; // Only the client area
-			int32_t m_width;
-			int32_t m_height;
-			int32_t m_clientWidth;
-			int32_t m_clientHeight;
-			int32_t m_xPos;
-			int32_t m_yPos;
-		};
-
 		SAILOR_API std::string wchar_to_UTF8(const wchar_t* in);
 		SAILOR_API std::wstring UTF8_to_wchar(const char* in);
 
 		SAILOR_API std::string RemoveFileExtension(const std::string& filename);
 		SAILOR_API std::string SanitizeFilepath(const std::string& filename);
 		SAILOR_API std::string GetFileExtension(const std::string& filename);
-		SAILOR_API std::time_t GetFileModificationTime(const std::string& filepath);
 		SAILOR_API std::string GetFileFolder(const std::string& filepath);
 
 		SAILOR_API TVector<std::string> SplitStringByLines(const std::string& str);
 		SAILOR_API TVector<std::string> SplitString(const std::string& str, const std::string& delimiter);
+		// Matches must fit in the original [startPos, endPos) range; an empty pattern is ignored.
 		SAILOR_API void ReplaceAll(std::string& str, const std::string& from, const std::string& to, size_t startPos = 0, size_t endPos = std::string::npos);
 		SAILOR_API void Erase(std::string& str, const std::string& substr, size_t startPos = 0, size_t endPos = std::string::npos);
 
@@ -48,71 +31,7 @@ namespace Sailor
 
 		SAILOR_API void Trim(std::string& s);
 
-		enum class EYamlCanonicalizationMode
-		{
-			SemanticValue,
-			StrictDocument
-		};
-
-		SAILOR_API bool CanonicalizeYaml(
-			const YAML::Node& node,
-			std::string& destination,
-			EYamlCanonicalizationMode mode);
-		SAILOR_API bool AreYamlNodesEqual(const YAML::Node& lhs, const YAML::Node& rhs);
-		SAILOR_API bool TryGetComponentInstanceId(
-			const ReflectedData& reflection,
-			InstanceId& outInstanceId,
-			std::string& outDiagnostic);
-
-		SAILOR_API void SetThreadName(size_t dwThreadID, const std::string& threadName);
-		SAILOR_API void SetThreadName(const std::string& threadName);
-		SAILOR_API void SetThreadName(std::thread* thread, const std::string& threadName);
-		SAILOR_API std::string GetCurrentThreadName();
-
-		SAILOR_API DWORD GetRandomColorHex();
-
-		SAILOR_API __forceinline glm::vec4 LinearToSRGB(const glm::u8vec4& linearRGB);
-		SAILOR_API __forceinline glm::vec4 SRGBToLinear(const glm::u8vec4& srgbIn);
-
-		SAILOR_API __forceinline glm::vec4 LinearToSRGB(const glm::vec4& linearRGB);
-		SAILOR_API __forceinline glm::vec4 SRGBToLinear(const glm::vec4& srgbIn);
-
-		SAILOR_API __forceinline glm::vec3 LinearToSRGB(const glm::vec3& linearRGB);
-		SAILOR_API __forceinline glm::vec3 SRGBToLinear(const glm::vec3& srgbIn);
-
-		SAILOR_API int64_t GetCurrentTimeMs();
-		SAILOR_API int64_t GetCurrentTimeMicro();
-		SAILOR_API int64_t GetCurrentTimeNano();
-
-		SAILOR_API WindowSizeAndPosition GetWindowSizeAndPosition(HWND hwnd);
-
 		std::string GetArgValue(const char** args, int32_t& i, int32_t num);
-
-		struct SAILOR_API Timer
-		{
-			int64_t m_counterStart = 0;
-			int64_t m_counterEnd = 0;
-			int64_t m_counterAcc = 0;
-			double m_pcFrequence = 0.0;
-			bool m_bIsStarted = false;
-
-			void Start();
-			void Stop();
-
-			int64_t ResultMs() const;
-			int64_t ResultAccumulatedMs() const;
-
-			void Clear();
-		};
-
-		static constexpr int32_t s_j2000 = 2451545;
-
-		SAILOR_API int32_t CalculateJulianDayNumber(int32_t year, int32_t month, int32_t day);
-		SAILOR_API double CalculateJulianDate(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second);
-
-		// Julian centuries since January 1, 2000
-		SAILOR_API double CalculateJulianCenturyDate(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second);
-		SAILOR_API glm::vec3 ConvertToEuclidean(float rightAscension, float declination, float radialDistance);
 	}
 
 	template<typename Class, typename Member>

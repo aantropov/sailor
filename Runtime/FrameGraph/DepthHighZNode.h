@@ -21,10 +21,11 @@ namespace Sailor::Framegraph
 
 	protected:
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 
 		ShaderSetPtr m_pComputeDepthHighZShader{};
 		ShaderSetPtr m_pComputeDepthHighZInputShader{};
+		ShaderSetPtr m_pComputeDepthHighZMsaaShader{};
 		TVector<RHI::RHIShaderBindingSetPtr> m_computeDepthHighZBindings{};
 		RHI::RHIShaderBindingSetPtr m_computePrepassDepthHighZBindings{};
 		RHI::RHIRenderTargetPtr m_boundDepth{};

@@ -34,6 +34,7 @@ namespace Sailor
 		SAILOR_API virtual bool IsReady() const override;
 		SAILOR_API bool IsDirty() const { return m_bIsDirty.load(); }
 		SAILOR_API uint64_t GetContentRevision() const { return m_contentRevision.load(std::memory_order_acquire); }
+		SAILOR_API uint64_t GetSurfaceRevision() const { return m_surfaceRevision.load(std::memory_order_acquire); }
 		SAILOR_API uint64_t GetRenderMetadataRevision() const { return m_renderMetadataRevision.load(std::memory_order_acquire); }
 		SAILOR_API static uint64_t GetGlobalContentRevision();
 
@@ -47,6 +48,8 @@ namespace Sailor
 		SAILOR_API const TConcurrentMap<std::string, glm::vec4>& GetUniformsVec4() const { return m_uniformsVec4; }
 		SAILOR_API const TConcurrentMap<std::string, float>& GetUniformsFloat() const { return m_uniformsFloat; }
 
+		// World-owned values are edited on Main after loading. Private instances
+		// can be initialized by their creating task before publication.
 		SAILOR_API void ClearSamplers();
 		SAILOR_API void ClearUniforms();
 
@@ -71,13 +74,17 @@ namespace Sailor
 
 	protected:
 
-		void AdvanceContentRevision();
+		void AdvanceContentRevision(bool bSurfaceChanged = true);
 		void AdvanceRenderMetadataRevision();
 		void ForcelyUpdateUniforms();
 		void UpdateUniforms(RHI::RHICommandListPtr cmdList);
 
+		// Publishes initial CPU state; GPU readiness is checked separately.
+		std::atomic<bool> m_initialized{ false };
 		std::atomic<bool> m_bIsDirty{};
 		std::atomic<uint64_t> m_contentRevision{};
+		// Emission RGB changes lighting, but leaves the transport surface intact.
+		std::atomic<uint64_t> m_surfaceRevision{};
 		std::atomic<uint64_t> m_renderMetadataRevision{};
 
 		ShaderSetPtr m_shader{};
@@ -113,6 +120,7 @@ namespace Sailor
 
 		SAILOR_API virtual ~MaterialAsset() = default;
 
+		SAILOR_API static YAML::Node Serialize(const Data& data);
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
@@ -158,6 +166,8 @@ namespace Sailor
 	protected:
 
 		SAILOR_API bool IsMaterialLoaded(FileId uid) const;
+		Tasks::TaskPtr<MaterialPtr> CreateMaterialTask(MaterialPtr material,
+			TSharedPtr<MaterialAsset> asset, bool bHotReload, const Tasks::ITaskPtr& previous);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<MaterialPtr>> m_promises;
 		TConcurrentMap<FileId, MaterialPtr> m_loadedMaterials;

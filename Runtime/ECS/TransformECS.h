@@ -59,6 +59,7 @@ namespace Sailor
 
 		virtual Tasks::ITaskPtr PostTick() override;
 		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
+		virtual void EndPlay() override;
 
 		void MarkDirty(TransformComponent* ptr);
 		void CalculateMatrices(TransformComponent& root);

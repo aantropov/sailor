@@ -13,7 +13,7 @@
 #include "Containers/Map.h"
 #include "RHI/DebugContext.h"
 
-// Not used, more memory friendly solution
+// Sparse octree: child nodes are allocated only for occupied octants.
 namespace Sailor
 {
 	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator>
@@ -28,7 +28,7 @@ namespace Sailor
 			TBounds() = default;
 			TBounds(const glm::ivec3& pos, const glm::ivec3& extents) : m_position(pos), m_extents(extents) {}
 
-			bool operator==(const TBounds& rhs) const { return m_position == rhs.m_position || m_extents == rhs.m_extents; }
+			bool operator==(const TBounds& rhs) const { return m_position == rhs.m_position && m_extents == rhs.m_extents; }
 
 			glm::ivec3 m_position{};
 			glm::ivec3 m_extents{};
@@ -40,6 +40,15 @@ namespace Sailor
 			// |0|1|    |4|5|
 			// |2|3|    |6|7|
 			__forceinline constexpr uint32_t GetIndex(int32_t x, int32_t y, int32_t z) const { return (z < 0 ? 0 : 1) + (x < 0 ? 1 : 0) * 2 + (y < 0 ? 0 : 1) * 4; }
+
+			glm::ivec3 GetChildCenter(size_t index) const
+			{
+				static const glm::ivec3 offsets[] = {
+					{ 1, -1, -1 }, { 1, -1, 1 }, { -1, -1, -1 }, { -1, -1, 1 },
+					{ 1, 1, -1 }, { 1, 1, 1 }, { -1, 1, -1 }, { -1, 1, 1 }
+				};
+				return m_center + offsets[index] * static_cast<int32_t>(m_size / 4);
+			}
 
 			__forceinline bool IsLeaf() const { return m_bIsLeaf; }
 			__forceinline bool Contains(const glm::ivec3& pos, const glm::ivec3& extents) const
@@ -100,10 +109,12 @@ namespace Sailor
 	public:
 
 		// Constructors & Destructor
-		TOctree2(glm::ivec3 center = glm::ivec3(0, 0, 0), uint32_t size = 16536u, uint32_t minSize = 4) : m_map(size)
+		TOctree2(glm::ivec3 center = glm::ivec3(0, 0, 0), uint32_t size = 16536u, uint32_t minSize = 4,
+			uint32_t initialCapacity = 64u) : m_map(initialCapacity)
 		{
 			m_minSize = minSize;
 			m_root = Memory::New<TNode>(m_allocator);
+			m_numNodes = 1u;
 			m_root->m_size = size;
 			m_root->m_center = center;
 		}
@@ -116,27 +127,29 @@ namespace Sailor
 			m_root = nullptr;
 		}
 
-			TOctree2(const TOctree2& octree) = delete;
-			TOctree2& operator= (const TOctree2& octree) = delete;
+		TOctree2(const TOctree2& octree) = delete;
+		TOctree2& operator= (const TOctree2& octree) = delete;
 
-			TOctree2(TOctree2&& octree) noexcept { Swap(*this, octree); }
-			TOctree2& operator= (TOctree2&& octree)
-			{
-				Swap(*this, octree);
-				return *this;
-			}
+		TOctree2(TOctree2&& octree) noexcept { Swap(*this, octree); }
+		TOctree2& operator= (TOctree2&& octree)
+		{
+			Swap(*this, octree);
+			return *this;
+		}
 
-			static void Swap(TOctree2& lhs, TOctree2& rhs)
-			{
-				std::swap(rhs.m_root, lhs.m_root);
-				std::swap(rhs.m_allocator, lhs.m_allocator);
-				std::swap(rhs.m_num, lhs.m_num);
-				std::swap(rhs.m_minSize, lhs.m_minSize);
-				std::swap(rhs.m_map, lhs.m_map);
-			}
+		static void Swap(TOctree2& lhs, TOctree2& rhs)
+		{
+			std::swap(rhs.m_root, lhs.m_root);
+			std::swap(rhs.m_allocator, lhs.m_allocator);
+			std::swap(rhs.m_num, lhs.m_num);
+			std::swap(rhs.m_numNodes, lhs.m_numNodes);
+			std::swap(rhs.m_minSize, lhs.m_minSize);
+			TMap<TElementType, TNode*>::Swap(lhs.m_map, rhs.m_map);
+		}
 
 		void Clear()
 		{
+			m_num = 0;
 			if (m_root)
 			{
 				Clear_Internal(*m_root);
@@ -152,7 +165,7 @@ namespace Sailor
 
 		bool Insert(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
 		{
-			if (Insert_Internal(*m_root, pos, extents, element))
+			if (m_root && !Contains(element) && Insert_Internal(*m_root, pos, extents, element))
 			{
 				m_num++;
 				return true;
@@ -172,22 +185,10 @@ namespace Sailor
 					return true;
 				}
 
-				// If not then remove & reinsert
-				if ((*node)->Remove(element))
-				{
-					Resolve_Internal(**node);
-				}
-
-				if (Insert_Internal(*m_root, pos, extents, element))
-				{
-					return true;
-				}
-
-				// Cannot insert the element into octree
-				m_map.Remove(element);
+				Remove(element);
 			}
 
-			return Insert_Internal(*m_root, pos, extents, element);
+			return Insert(pos, extents, element);
 		}
 
 		bool Remove(const TElementType& element)
@@ -209,12 +210,18 @@ namespace Sailor
 
 		__forceinline void Resolve()
 		{
-			Resolve_Internal(*m_root);
+			if (m_root)
+			{
+				Resolve_Internal(*m_root);
+			}
 		}
 
 		void DrawOctree(RHI::DebugContext& context, float duration = 0.0f) const
 		{
-			DrawOctree_Internal(*m_root, context, duration);
+			if (m_root)
+			{
+				DrawOctree_Internal(*m_root, context, duration);
+			}
 		}
 
 	protected:
@@ -246,11 +253,11 @@ namespace Sailor
 
 			context.DrawAABB(aabb, color, duration);
 
-			for (auto& el : node.m_elements)
+			for (const auto& el : node.m_elements)
 			{
 				Math::AABB aabb;
-				aabb.m_min = glm::vec3(el.m_second.m_position - el.m_second.m_extents);
-				aabb.m_max = glm::vec3(el.m_second.m_position + el.m_second.m_extents);
+				aabb.m_min = glm::vec3(el.m_second->m_position - el.m_second->m_extents);
+				aabb.m_max = glm::vec3(el.m_second->m_position + el.m_second->m_extents);
 
 				const auto color = glm::vec4((0x4 & reinterpret_cast<size_t>(&node)) / 16.0f,
 					(0x4 & reinterpret_cast<size_t>(&node) >> 4) / 16.0f,
@@ -263,11 +270,6 @@ namespace Sailor
 
 		void Resolve_Internal(TNode& node)
 		{
-			if (node.m_elements.Num())
-			{
-				return;
-			}
-
 			if (!node.IsLeaf())
 			{
 				for (uint32_t i = 0; i < 8; i++)
@@ -307,19 +309,13 @@ namespace Sailor
 
 		__forceinline TNode& GetOrAddChildNode(TNode& node, size_t i)
 		{
-			// Bottom   Top
-			// |0|1|    |4|5|
-			// |2|3|    |6|7|
-			const glm::ivec3 offset[] = { glm::ivec3(1, -1, -1), glm::ivec3(1, -1, 1), glm::ivec3(-1, -1, -1), glm::ivec3(-1, -1, 1),
-										  glm::ivec3(1, 1, -1), glm::ivec3(1, 1, 1), glm::ivec3(-1, 1, -1), glm::ivec3(-1, 1, 1) };
-
 			const int32_t quarterSize = node.m_size / 4;
 
 			if (!node.m_internal[i])
 			{
 				node.m_internal[i] = Memory::New<TNode>(m_allocator);
 				node.m_internal[i]->m_size = quarterSize * 2;
-				node.m_internal[i]->m_center = offset[i] * quarterSize + node.m_center;
+				node.m_internal[i]->m_center = node.GetChildCenter(i);
 				node.m_bIsLeaf = false;
 				m_numNodes += 1;
 			}
@@ -346,78 +342,46 @@ namespace Sailor
 
 		bool Insert_Internal(TNode& node, const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
 		{
-			const bool bIsLeaf = node.IsLeaf();
-			const bool bContains = node.Contains(pos, extents);
-
-			if (!bContains)
+			if (!node.Contains(pos, extents))
 			{
 				return false;
 			}
 
-			if (bIsLeaf)
+			if (node.IsLeaf())
 			{
 				node.Insert(element, pos, extents);
-
-				if (node.m_elements.Num() == NumElementsInNode && node.m_size > m_minSize)
+				m_map[element] = &node;
+				if (node.m_elements.Num() >= NumElementsInNode && node.m_size > m_minSize && node.m_size >= 4)
 				{
 					auto elements = std::move(node.m_elements);
-					node.m_elements.Clear();
 					node.m_bIsLeaf = false;
-
-					for (auto& el : elements)
+					for (const auto& el : elements)
 					{
-						const glm::ivec3 delta = el.m_second.m_position - node.m_center;
-						const size_t innerNodeIndex = node.GetIndex(delta.x, delta.y, delta.z);
-
-						if (std::min(abs(delta.x), (int32_t)node.m_size / 2 - abs(delta.x)) > el.m_second.m_extents.x &&
-							std::min(abs(delta.y), (int32_t)node.m_size / 2 - abs(delta.y)) > el.m_second.m_extents.y &&
-							std::min(abs(delta.z), (int32_t)node.m_size / 2 - abs(delta.z)) > el.m_second.m_extents.z)
-						{
-							if (!Insert_Internal(GetOrAddChildNode(node, innerNodeIndex), pos, extents, element))
-							{
-								node.Insert(el.m_first, pos, extents);
-								m_map[element] = &node;
-							}
-						}
+						Insert_Internal(node, el.m_second->m_position, el.m_second->m_extents, el.m_first);
 					}
-
-					return true;
 				}
-
-				m_map[element] = &node;
-
 				return true;
 			}
-			else
+
+			const glm::ivec3 delta = pos - node.m_center;
+			const size_t childIndex = node.GetIndex(delta.x, delta.y, delta.z);
+			const glm::ivec3 childDelta = pos - node.GetChildCenter(childIndex);
+			const glm::ivec3 childExtents(node.m_size / 4);
+			if (glm::all(glm::lessThan(glm::abs(childDelta) + extents, childExtents)))
 			{
-				const glm::ivec3 delta = pos - node.m_center;
-				const size_t innerNodeIndex = node.GetIndex(delta.x, delta.y, delta.z);
-
-				// Octant contains the object
-				if (node.m_elements.Num() >= NumElementsInNode &&
-					std::min(abs(delta.x), (int32_t)node.m_size / 2 - abs(delta.x)) > extents.x &&
-					std::min(abs(delta.y), (int32_t)node.m_size / 2 - abs(delta.y)) > extents.y &&
-					std::min(abs(delta.z), (int32_t)node.m_size / 2 - abs(delta.z)) > extents.z)
-				{
-					if (Insert_Internal(GetOrAddChildNode(node, innerNodeIndex), pos, extents, element))
-					{
-						return true;
-					}
-
-					check(false);
-				}
-
-				node.Insert(element, pos, extents);
-				m_map[element] = &node;
+				return Insert_Internal(GetOrAddChildNode(node, childIndex), pos, extents, element);
 			}
 
+			// Bounds spanning octants stay in their parent.
+			node.Insert(element, pos, extents);
+			m_map[element] = &node;
 			return true;
 		}
 
 		TNode* m_root{};
 		size_t m_num = 0u;
 		uint32_t m_minSize = 1;
-		size_t m_numNodes = 1u;
+		size_t m_numNodes = 0u;
 		TAllocator m_allocator{};
 		TMap<TElementType, TNode*> m_map{};
 	};

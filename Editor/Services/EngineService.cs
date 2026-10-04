@@ -131,6 +131,7 @@ namespace SailorEditor.Services
         EngineTypes editorTypes = new();
         int consoleDispatchScheduled = 0;
         int disposeState;
+        volatile bool nativeShutdownPending;
         int lifecycleState = (int)EngineLifecycleState.Stopped;
         long engineGeneration;
 #if WINDOWS || MACCATALYST
@@ -964,6 +965,18 @@ namespace SailorEditor.Services
 #endif
         }
 
+        public Task<string> CaptureRemoteViewportFrameEvidenceAsync(
+            ulong viewportId,
+            CancellationToken cancellationToken = default)
+        {
+            if (State != EngineLifecycleState.Running)
+            {
+                throw new InvalidOperationException("The Engine is not running.");
+            }
+            return protocolClient.CaptureRemoteViewportFrameEvidenceAsync(
+                viewportId, cancellationToken);
+        }
+
         public string GetRemoteViewportDiagnostics(ulong viewportId)
         {
 #if WINDOWS || MACCATALYST
@@ -1111,6 +1124,13 @@ namespace SailorEditor.Services
             try
             {
                 startCancellationToken.ThrowIfCancellationRequested();
+                if (nativeShutdownPending)
+                {
+                    throw new EngineLifecycleException(
+                        "The previous native session has not shut down. Stop it before starting another workspace.",
+                        LastExitCode,
+                        LastFailure);
+                }
                 generation = Interlocked.Increment(ref engineGeneration);
 #if WINDOWS || MACCATALYST
                 ResetPlatformInteropState();
@@ -1127,6 +1147,7 @@ namespace SailorEditor.Services
                 Console.WriteLine($"Starting SailorEngine interop with workspace: {launchContext.WorkspaceRoot}");
                 Volatile.Write(ref editorTypes, new EngineTypes());
 
+                nativeShutdownPending = true;
 #if WINDOWS || MACCATALYST
                 await MainThread.InvokeOnMainThreadAsync(
                     () => protocolClient.InitializeAsync(
@@ -1464,9 +1485,20 @@ namespace SailorEditor.Services
 
                 if (completionTask is null)
                 {
-                    // A prior failed session has already completed native teardown.
-                    // Its historical failure must not prevent a later candidate
-                    // workspace from entering the repair pipeline and restarting.
+                    if (nativeShutdownPending)
+                    {
+                        var shutdownFailure = await ShutdownNativeSessionAsync(
+                            stopNative: false,
+                            destroyRemoteViewport: false).ConfigureAwait(false);
+                        if (nativeShutdownPending)
+                        {
+                            throw new EngineLifecycleException(
+                                "Native shutdown is still incomplete. Retry Stop before starting another workspace.",
+                                LastExitCode,
+                                shutdownFailure);
+                        }
+                    }
+                    // Historical session errors do not prevent a restart after cleanup.
                     return LastExitCode;
                 }
 
@@ -1997,9 +2029,11 @@ namespace SailorEditor.Services
                 }
             }
 
+            var shutdownCompleted = false;
             try
             {
                 await protocolClient.ShutdownAsync().ConfigureAwait(false);
+                shutdownCompleted = true;
             }
             catch (Exception ex)
             {
@@ -2008,7 +2042,7 @@ namespace SailorEditor.Services
                     : new AggregateException(failure, ex);
                 try
                 {
-                    await protocolClient.CompleteLocalShutdownFallbackAsync()
+                    shutdownCompleted = await protocolClient.CompleteLocalShutdownFallbackAsync()
                         .ConfigureAwait(false);
                 }
                 catch (Exception fallbackException)
@@ -2018,8 +2052,9 @@ namespace SailorEditor.Services
                         fallbackException);
                 }
             }
+            nativeShutdownPending = !shutdownCompleted;
 #if WINDOWS || MACCATALYST
-            ResetPlatformInteropState();
+            if (shutdownCompleted) ResetPlatformInteropState();
 #endif
             return failure;
         }
@@ -2288,6 +2323,16 @@ namespace SailorEditor.Services
                 cancellationToken: cancellationToken);
         }
 
+        public Task<bool> ReimportAssetAsync(
+            FileId fileId,
+            CancellationToken cancellationToken = default)
+        {
+            var stringId = fileId?.Value ?? string.Empty;
+            return InvokeRunningInteropAsync(
+                token => protocolClient.ReimportAssetAsync(stringId, token),
+                cancellationToken: cancellationToken);
+        }
+
         public Task<bool> PreviewAudioAssetAsync(
             FileId fileId,
             CancellationToken cancellationToken = default)
@@ -2296,6 +2341,20 @@ namespace SailorEditor.Services
             return InvokeRunningInteropAsync(
                 token => protocolClient.PreviewAudioAssetAsync(stringId, token),
                 cancellationToken: cancellationToken);
+        }
+
+        public async Task<bool> GenerateModelFingerprintAsync(
+            FileId fileId,
+            CancellationToken cancellationToken = default)
+        {
+            var generation = Volatile.Read(ref engineGeneration);
+            CancellationToken sessionToken;
+            lock (runLock)
+                sessionToken = activeSession?.PollCancellation.Token ?? default;
+            using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, sessionToken);
+            return IsInteropRunning() && IsGenerationActive(generation) &&
+                await protocolClient.GenerateModelFingerprintAsync(fileId?.Value ?? string.Empty, operation.Token)
+                    .ConfigureAwait(false) && IsGenerationActive(generation);
         }
 
         public Task<bool> SetAnimatorFloatAsync(
@@ -3724,24 +3783,32 @@ namespace SailorEditor.Services
             {
                 if (disposeTask is not null)
                 {
+                    if (disposeTask.IsFaulted)
+                    {
+                        disposeTask = Task.Run(DisposeProtocolClientAsync);
+                    }
                     return disposeTask;
                 }
 
                 Interlocked.Exchange(ref disposeState, 1);
                 disposeCancellation.Cancel();
-                if (ReferenceEquals(currentInstance, this))
-                {
-                    currentInstance = null;
-                }
                 disposeTask = Task.Run(DisposeCoreAsync);
                 return disposeTask;
             }
+        }
+
+        async Task DisposeProtocolClientAsync()
+        {
+            await protocolClient.DisposeAsync().ConfigureAwait(false);
+            nativeShutdownPending = false;
+            Interlocked.CompareExchange(ref currentInstance, null, this);
         }
 
         async Task DisposeCoreAsync()
         {
             Exception? disposalFailure = null;
             var protocolClientDisposed = false;
+            var protocolClientDrained = false;
             void DisposeProtocolClientOnce()
             {
                 if (protocolClientDisposed)
@@ -3766,7 +3833,8 @@ namespace SailorEditor.Services
                 DisposeProtocolClientOnce();
                 try
                 {
-                    await protocolClient.DisposeAsync().ConfigureAwait(false);
+                    await DisposeProtocolClientAsync().ConfigureAwait(false);
+                    protocolClientDrained = true;
                 }
                 catch (Exception exception)
                 {
@@ -3876,6 +3944,7 @@ namespace SailorEditor.Services
                 SetLifecycleState(EngineLifecycleState.Faulted);
                 Console.WriteLine(
                     $"[EngineService] Native transport disposal failed: {disposalFailure.Message}");
+                if (!protocolClientDrained) throw disposalFailure;
             }
         }
 

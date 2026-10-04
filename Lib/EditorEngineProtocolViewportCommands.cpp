@@ -535,6 +535,20 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			DispatchRemoteViewportDiagnostics(request.get_remote_viewport_diagnostics(), response);
 			break;
 
+		case ProtocolRequest::kCaptureRemoteViewportFrameEvidence:
+		{
+			std::string diagnostic;
+			if (Sailor::App::CaptureEditorRemoteViewportFrameEvidence(request.capture_remote_viewport_frame_evidence().viewport_id(), diagnostic))
+			{
+				SetStringResult(response, diagnostic.data(), static_cast<uint32_t>(diagnostic.size()));
+			}
+			else
+			{
+				SetError(response, diagnostic);
+			}
+			break;
+		}
+
 		case ProtocolRequest::kRetryRemoteViewport:
 			SetBoolResult(
 				response, Sailor::App::RetryEditorRemoteViewport(request.retry_remote_viewport().viewport_id()));

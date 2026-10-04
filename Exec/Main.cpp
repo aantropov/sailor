@@ -36,16 +36,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 	LPWSTR* szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
 	const char** ansiArgs = ConvertToAnsi(szArglist, nArgs);
 
-	App::Initialize(ansiArgs, nArgs);
-	if (!App::IsRendererInitialized())
+	const auto initialization = App::Initialize(ansiArgs, nArgs);
+	if (initialization == EAppInitializationResult::Ready)
 	{
-		App::Shutdown();
-		return 1;
+		App::Start();
 	}
-	App::Start();
-	const int32_t exitCode = App::GetExitCode();
+	const int32_t exitCode = initialization == EAppInitializationResult::Failed ? 1 : App::GetExitCode();
 	App::Stop();
-	App::Shutdown();
+	const bool bShutdown = App::Shutdown();
 
 	for (int i = 0; i < nArgs; ++i)
 	{
@@ -59,24 +57,21 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 		LocalFree(szArglist);
 	}
 
-	return exitCode;
+	return bShutdown ? exitCode : 1;
 }
 
 #else
 
 int main(int argc, const char** argv)
 {
-	App::Initialize(argv, argc);
-	if (!App::IsRendererInitialized())
+	const auto initialization = App::Initialize(argv, argc);
+	if (initialization == EAppInitializationResult::Ready)
 	{
-		App::Shutdown();
-		return 1;
+		App::Start();
 	}
-	App::Start();
-	const int32_t exitCode = App::GetExitCode();
+	const int32_t exitCode = initialization == EAppInitializationResult::Failed ? 1 : App::GetExitCode();
 	App::Stop();
-	App::Shutdown();
-	return exitCode;
+	return App::Shutdown() ? exitCode : 1;
 }
 
 #endif

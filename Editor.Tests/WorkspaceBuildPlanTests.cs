@@ -105,77 +105,60 @@ public sealed class WorkspaceBuildPlanTests
     [Fact]
     public void Create_UsesSourceEngineVcpkgToolchainWhenAvailable()
     {
-        var repositoryRoot = ResolveRepositoryRoot();
-        var root = Path.Combine(Path.GetTempPath(), "Sailor Workspace");
-        var session = new WorkspaceSession(
-            root,
-            Path.Combine(root, "workspace.sailor"),
-            WorkspaceManifest.CreateDefault("Game", repositoryRoot),
-            Path.Combine(root, "Content"),
-            Path.Combine(root, "Source"),
-            Path.Combine(root, "Generated"),
-            Path.Combine(root, "Cache"))
+        var directory = Directory.CreateTempSubdirectory("Sailor Workspace Build ");
+        try
         {
-            BuildDirectory = Path.Combine(root, "Cache", "Build"),
-            LogicOutputDirectory = Path.Combine(root, "Binaries"),
-        };
-
-        var plan = WorkspaceBuildPlan.Create(
-            session,
-            "Release",
-            configure: true);
-
-        var toolchainPath = Path.Combine(
-            repositoryRoot,
-            "External",
-            "vcpkg",
-            "scripts",
-            "buildsystems",
-            "vcpkg.cmake");
-        Assert.Contains(
-            "-DCMAKE_TOOLCHAIN_FILE=" + toolchainPath,
-            plan.Invocations[0].Arguments);
-        var triplet = OperatingSystem.IsMacOS() || OperatingSystem.IsMacCatalyst()
-            ? "arm64-osx"
-            : OperatingSystem.IsWindows()
-                ? "x64-windows"
-                : OperatingSystem.IsLinux()
-                    ? "x64-linux"
-                    : null;
-        if (triplet is not null)
-        {
-            Assert.Contains(
-                "-DVCPKG_TARGET_TRIPLET=" + triplet,
+            var root = directory.FullName;
+            var engineRoot = Path.Combine(root, "Engine");
+            var session = new WorkspaceSession(
+                root,
+                Path.Combine(root, "workspace.sailor"),
+                WorkspaceManifest.CreateDefault("Game", engineRoot),
+                Path.Combine(root, "Content"),
+                Path.Combine(root, "Source"),
+                Path.Combine(root, "Generated"),
+                Path.Combine(root, "Cache"))
+            {
+                BuildDirectory = Path.Combine(root, "Cache", "Build"),
+                LogicOutputDirectory = Path.Combine(root, "Binaries"),
+            };
+            var plan = WorkspaceBuildPlan.Create(session, "Release", configure: true);
+            Assert.Equal(
+                ["-S", session.GeneratedProjectDirectory, "-B", session.BuildDirectory, "-DCMAKE_BUILD_TYPE=Release"],
                 plan.Invocations[0].Arguments);
-            var installedDirectory = Path.Combine(
-                repositoryRoot,
-                "External",
-                "vcpkg",
-                "installed",
-                triplet);
-            if (Directory.Exists(installedDirectory))
+
+            var toolchainPath = Path.Combine(engineRoot, "External", "vcpkg", "scripts", "buildsystems", "vcpkg.cmake");
+            Directory.CreateDirectory(Path.GetDirectoryName(toolchainPath)!);
+            File.WriteAllText(toolchainPath, "# Build-plan fixture; CMake is not invoked.\n");
+            plan = WorkspaceBuildPlan.Create(session, "Release", configure: true);
+            Assert.Contains(
+                "-DCMAKE_TOOLCHAIN_FILE=" + toolchainPath,
+                plan.Invocations[0].Arguments);
+            var triplet = OperatingSystem.IsMacOS() || OperatingSystem.IsMacCatalyst()
+                ? "arm64-osx"
+                : OperatingSystem.IsWindows()
+                    ? "x64-windows"
+                    : OperatingSystem.IsLinux()
+                        ? "x64-linux"
+                        : null;
+            if (triplet is not null)
             {
                 Assert.Contains(
-                    "-DCMAKE_PREFIX_PATH=" + installedDirectory,
+                    "-DVCPKG_TARGET_TRIPLET=" + triplet,
                     plan.Invocations[0].Arguments);
+                var installedDirectory = Path.Combine(engineRoot, "External", "vcpkg", "installed", triplet);
+                var stbModules = Path.Combine(installedDirectory, "share", "stb");
+                Assert.DoesNotContain("-DCMAKE_PREFIX_PATH=" + installedDirectory, plan.Invocations[0].Arguments);
+                Assert.DoesNotContain("-DCMAKE_MODULE_PATH=" + stbModules, plan.Invocations[0].Arguments);
+                Directory.CreateDirectory(stbModules);
+                plan = WorkspaceBuildPlan.Create(session, "Release", configure: true);
+                Assert.Contains("-DCMAKE_PREFIX_PATH=" + installedDirectory, plan.Invocations[0].Arguments);
+                Assert.Contains("-DCMAKE_MODULE_PATH=" + stbModules, plan.Invocations[0].Arguments);
             }
         }
-    }
-
-    static string ResolveRepositoryRoot()
-    {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null)
+        finally
         {
-            if (File.Exists(Path.Combine(current.FullName, "CMakeLists.txt")) &&
-                Directory.Exists(Path.Combine(current.FullName, "Editor")))
-            {
-                return current.FullName;
-            }
-
-            current = current.Parent;
+            directory.Delete(recursive: true);
         }
-
-        throw new DirectoryNotFoundException("Could not find the Sailor repository root.");
     }
 }

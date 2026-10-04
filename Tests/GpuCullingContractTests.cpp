@@ -20,6 +20,7 @@
 #include "Core/StringHash.h"
 #include "Raytracing/MaterialUtils.h"
 #include "RHI/Buffer.h"
+#include "RHI/CommandList.h"
 #include "RHI/Material.h"
 #include "RHI/MaterialPreparationCache.h"
 #include "RHI/Mesh.h"
@@ -41,6 +42,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <yaml-cpp/yaml.h>
 
@@ -53,6 +55,12 @@ namespace
 	{
 	public:
 		using TextureBindingCacheKeyProbe = TextureBindingCacheKey;
+	};
+
+	class ShadowPrepassNodeProbe : public ShadowPrepassNode
+	{
+	public:
+		using MaterialKey = CustomShadowMaterialKey;
 	};
 
 	void Require(bool condition, const std::string& message)
@@ -254,6 +262,8 @@ namespace
 				{
 					Require(depthPasses == 2u && mainPasses == 0u,
 						"current-frame Hi-Z must follow both depth contributors and precede main drawing");
+					Require(GetFrameGraphAttachment(pass, "src") == "DepthBuffer",
+						"Hi-Z must reduce full-resolution depth, not a nearest-filtered depth blit");
 					currentDepthPyramid = GetFrameGraphAttachment(pass, "dst");
 					Require(!currentDepthPyramid.empty(), "Hi-Z must publish a named target");
 				}
@@ -474,7 +484,15 @@ namespace
 			}
 
 			RHI::TPackedDrawPacket<TestInstance> nextFlight;
-			nextFlight.UseSharedPayload(EMobilityType::Static, packet.SharePayload(EMobilityType::Static));
+			RHI::TPackedDrawPagedArenaCache<TestInstance> cache;
+			TVector<uint64_t> keys;
+			for (uint32_t index = 0; index < count; ++index) keys.Add(index);
+			cache.BeginUpdate(1u, 1u, 1u);
+			Require(cache.ReplaceRange(1u, 1u, packet.GetPayload(EMobilityType::Static).m_instances, keys),
+				"the active arena must publish the complete sorted instance range");
+			nextFlight.UseSharedArenaPayload(EMobilityType::Static, cache.EndUpdate());
+			for (uint32_t index = 0; index < count; ++index)
+				Require(nextFlight.AddArenaView({}, {}, 1u, index), "every visible arena key must resolve");
 			nextFlight.Finalize(false);
 			validate(nextFlight, count);
 			Require(nextFlight.GetInstanceIndices() == packet.GetInstanceIndices(),
@@ -495,21 +513,26 @@ namespace
 				"transparent draw splitting must preserve the supplied back-to-front order");
 		}
 
-		RHI::TPackedDrawPacket<TestInstance> arena;
+		RHI::TPackedDrawPagedArenaCache<TestInstance> arena;
+		TVector<TestInstance> arenaInstances;
+		TVector<uint64_t> arenaKeys;
 		for (uint32_t index = 0u; index < orderedCount * 2u; ++index)
 		{
-			Require(arena.AddArenaInstance({ index }, index), "arena keys must be unique");
+			arenaInstances.Add({ index });
+			arenaKeys.Add(index);
 		}
+		arena.BeginUpdate(1u, 1u, 1u);
+		Require(arena.ReplaceRange(1u, 1u, arenaInstances, arenaKeys), "the arena must store visible and invisible records");
 		RHI::TPackedDrawPacket<TestInstance> view;
-		view.UseSharedArenaPayload(EMobilityType::Static, arena.ShareArenaPayload(EMobilityType::Static));
+		view.UseSharedArenaPayload(EMobilityType::Static, arena.EndUpdate());
 		for (uint32_t index = orderedCount; index > 0u; --index)
 		{
-			Require(view.AddArenaView({}, {}, (index - 1u) * 2u), "visible keys must resolve");
+			Require(view.AddArenaView({}, {}, 1u, (index - 1u) * 2u), "visible keys must resolve");
 		}
 		view.Finalize(false);
 		validate(view, orderedCount);
-		Require(view.GetNumStorageInstances() == orderedCount * 2u,
-			"splitting must retain invisible records in the shared arena");
+		Require(view.GetNumStorageInstances() == 16384u,
+			"splitting must retain all 8194 records in the shared arena's reserved range");
 		for (uint32_t index = 0u; index < orderedCount; ++index)
 		{
 			Require(view.GetInstanceIndices()[index] == index * 2u,
@@ -631,14 +654,19 @@ namespace
 			source.GetGroups()[2].m_firstInstance == 2u,
 			"combined packet groups must reference contiguous static, stationary, and dynamic ranges");
 
-		auto staticPayload = source.SharePayload(EMobilityType::Static);
-		auto stationaryPayload = source.SharePayload(EMobilityType::Stationary);
-		Require(staticPayload && stationaryPayload && source.HasSharedImmutablePayload(),
-			"static and stationary payloads must be publishable as immutable shared storage");
+		RHI::TPackedDrawPagedArenaCache<TestInstance> sharedCache;
+		sharedCache.BeginUpdate(7u, 101u, 1u);
+		Require(sharedCache.ReplaceRange(1u, 1u, { { 10u } }, { 10ull }), "static range must publish");
+		auto staticPayload = sharedCache.EndUpdate();
+		sharedCache.BeginUpdate(8u, 101u, 1u);
+		Require(sharedCache.ReplaceRange(2u, 1u, { { 20u } }, { 20ull }), "stationary range must publish");
+		auto stationaryPayload = sharedCache.EndUpdate();
 
 		RHI::TPackedDrawPacket<TestInstance> nextFlight;
-		nextFlight.UseSharedPayload(EMobilityType::Static, staticPayload);
-		nextFlight.UseSharedPayload(EMobilityType::Stationary, stationaryPayload);
+		nextFlight.UseSharedArenaPayload(EMobilityType::Static, staticPayload);
+		nextFlight.UseSharedArenaPayload(EMobilityType::Stationary, stationaryPayload);
+		Require(nextFlight.AddArenaView({}, {}, 1u, 10ull, EMobilityType::Static) &&
+			nextFlight.AddArenaView({}, {}, 2u, 20ull, EMobilityType::Stationary), "both shared mobility ranges must resolve");
 		nextFlight.Add({}, {}, { 31u }, 31ull, EMobilityType::Dynamic);
 		nextFlight.Finalize(false);
 		Require(nextFlight.GetSharedPayload(EMobilityType::Static) == staticPayload &&
@@ -648,19 +676,18 @@ namespace
 			!nextFlight.GetSharedPayload(EMobilityType::Dynamic),
 			"dynamic records must remain flight-local and be rebuilt for the new submission");
 
-		RHI::TPackedDrawPacket<TestInstance> arenaSource;
-		Require(arenaSource.AddArenaInstance({ 10u }, 101ull, EMobilityType::Static) &&
-			arenaSource.AddArenaInstance({ 20u }, 102ull, EMobilityType::Static) &&
-			arenaSource.AddArenaInstance({ 30u }, 103ull, EMobilityType::Static),
+		RHI::TPackedDrawPagedArenaCache<TestInstance> arenaSource;
+		arenaSource.BeginUpdate(1u, 1u, 1u);
+		Require(arenaSource.ReplaceRange(1u, 1u, { { 10u }, { 20u }, { 30u } }, { 101ull, 102ull, 103ull }),
 			"a static arena must register immutable records independently of a view");
-		auto arenaPayload = arenaSource.ShareArenaPayload(EMobilityType::Static);
+		auto arenaPayload = arenaSource.EndUpdate();
 		RHI::TPackedDrawPacket<TestInstance> arenaView;
 		arenaView.UseSharedArenaPayload(EMobilityType::Static, arenaPayload);
-		Require(arenaView.AddArenaView({}, {}, 103ull, EMobilityType::Static) &&
-			arenaView.AddArenaView({}, {}, 101ull, EMobilityType::Static),
+		Require(arenaView.AddArenaView({}, {}, 1u, 103ull, EMobilityType::Static) &&
+			arenaView.AddArenaView({}, {}, 1u, 101ull, EMobilityType::Static),
 			"a view packet must resolve visible items through stable arena keys");
 		arenaView.Finalize(false);
-		Require(arenaView.GetNumStorageInstances() == 3u &&
+		Require(arenaView.GetNumStorageInstances() == 4u &&
 			arenaView.GetNumDrawInstances() == 2u &&
 			arenaView.GetInstanceIndices().Num() == 2u &&
 			arenaView.GetInstanceIndices()[0] == 0u &&
@@ -672,13 +699,13 @@ namespace
 		RHI::TPackedDrawPacket<TestInstance> nearView;
 		nearView.UseSharedArenaPayload(EMobilityType::Static, arenaPayload);
 		Require(nearView.AddArenaView(
-			{}, baseLodMesh, 101ull, EMobilityType::Static),
+			{}, baseLodMesh, 1u, 101ull, EMobilityType::Static),
 			"the near view must resolve the shared static record");
 		nearView.Finalize(false);
 		RHI::TPackedDrawPacket<TestInstance> farView;
 		farView.UseSharedArenaPayload(EMobilityType::Static, arenaPayload);
 		Require(farView.AddArenaView(
-			{}, selectedLodMesh, 101ull, EMobilityType::Static),
+			{}, selectedLodMesh, 1u, 101ull, EMobilityType::Static),
 			"the far view must resolve the same shared static record");
 		farView.Finalize(false);
 		Require(nearView.GetSharedPayload(EMobilityType::Static) ==
@@ -694,12 +721,12 @@ namespace
 			EMobilityType::Static,
 			arenaPayload);
 		Require(disjointCameraView.AddArenaView(
-			{}, baseLodMesh, 102ull, EMobilityType::Static),
+			{}, baseLodMesh, 1u, 102ull, EMobilityType::Static),
 			"a disjoint camera must resolve records absent from another camera's visible set");
 		disjointCameraView.Finalize(false);
 		Require(disjointCameraView.GetSharedPayload(EMobilityType::Static) ==
 				arenaView.GetSharedPayload(EMobilityType::Static) &&
-			disjointCameraView.GetNumStorageInstances() == 3u &&
+			disjointCameraView.GetNumStorageInstances() == 4u &&
 			disjointCameraView.GetNumDrawInstances() == 1u &&
 			disjointCameraView.GetInstanceIndices()[0] == 1u,
 			"camera-independent arenas must retain the complete immutable scene while each view owns only compact indices");
@@ -720,19 +747,19 @@ namespace
 			reorderedInstances[2].m_value == 30u,
 			"metadata sorting must reorder the single instance array in place without a duplicate payload");
 
-		RHI::TPackedDrawPacketPayloadCache<TestInstance> cache;
-		cache.Publish(7u, 101u, staticPayload, 1ull);
-		Require(cache.Find(7u, 101u, 2ull) == staticPayload,
+		Require(sharedCache.Find(7u, 101u, 2ull) == staticPayload,
 			"payload cache must preserve immutable identity across flight slots");
-		auto replacementPayload = RHI::TPackedDrawPacketPayloadPtr<TestInstance>::Make();
-		replacementPayload->m_instances.Add({ 91u });
-		cache.Publish(7u, 102u, replacementPayload, 3ull);
-		Require(!cache.Find(7u, 101u, 3ull) &&
-			cache.Find(7u, 102u, 3ull) == replacementPayload &&
-			cache.Num() == 1u,
+		sharedCache.BeginUpdate(7u, 102u, 3u);
+		Require(sharedCache.ReplaceRange(1u, 2u, { { 91u } }, { 10ull }), "replacement range must publish");
+		auto replacementPayload = sharedCache.EndUpdate();
+		Require(!sharedCache.Find(7u, 101u, 3ull) &&
+			sharedCache.Find(7u, 102u, 3ull) == replacementPayload &&
+			staticPayload->m_arenaPages[0]->m_instances[0].m_value == 10u &&
+			replacementPayload->m_arenaPages[0]->m_instances[0].m_value == 91u,
 			"a logical cache slot must retain only its current immutable revision");
-		cache.Evict(12ull, 8ull);
-		Require(!cache.Find(7u, 102u, 12ull),
+		sharedCache.Evict(12ull, 8ull);
+		Require(!sharedCache.Find(7u, 102u, 12ull) &&
+			nextFlight.GetSharedPayload(EMobilityType::Static)->m_arenaPages[0]->m_instances[0].m_value == 10u,
 			"unreferenced payload cache entries must expire after the retention window");
 
 		RHI::TPackedDrawPagedArenaCache<TestInstance> pagedCache;
@@ -1310,14 +1337,43 @@ namespace
 		Require(movedSnapshot.ResolveMesh(movedSnapshot.m_proxies[0], 0u) == baseOnlyMesh,
 			"meshes without an LOD chain must remain drawable with LOD enabled");
 	}
+	void TestCustomShadowMaterialKey()
+	{
+		using Key = ShadowPrepassNodeProbe::MaterialKey;
+		auto first = RHI::RHIMaterialPtr::Make(RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+		auto second = RHI::RHIMaterialPtr::Make(RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+		const Key keys[] = {
+			{ first.GetRawPtr(), 1, RHI::EShadowType::PCF, false },
+			{ second.GetRawPtr(), 1, RHI::EShadowType::PCF, false },
+			{ first.GetRawPtr(), 2, RHI::EShadowType::PCF, false },
+			{ first.GetRawPtr(), 1, RHI::EShadowType::EVSM, false },
+			{ first.GetRawPtr(), 1, RHI::EShadowType::PCF, true }
+		};
+		TMap<Key, uint32_t> entries;
+		for (uint32_t i = 0; i < std::size(keys); ++i)
+		{
+			Require(entries.Insert(keys[i], i), "each source, vertex, shadow-type and masked combination must have its own entry");
+			Require(keys[i] == Key(keys[i]) && keys[i].GetHash() == Key(keys[i]).GetHash(),
+				"equal typed shadow keys must hash equally");
+		}
+		Require(entries.Num() == std::size(keys), "shadow cache identity must retain every typed key field");
+		for (uint32_t i = 0; i < std::size(keys); ++i)
+		{
+			uint32_t* value = nullptr;
+			Require(entries.Find(keys[i], value) && value && *value == i, "shadow key lookup must return the exact requested variant");
+		}
+	}
+
 	void TestBatchTextureBindingIdentityContract()
 	{
 		using TextureBindingCacheKey = RenderSceneNodeProbe::TextureBindingCacheKeyProbe;
 
-		TextureBindingCacheKey firstTextureSet;
-		firstTextureSet.m_requestedTextures = { 0u, 4u, 8u };
-		TextureBindingCacheKey secondTextureSet;
-		secondTextureSet.m_requestedTextures = { 0u, 5u, 8u };
+		const TVector<uint32_t> firstTextures{ 0u, 4u, 8u };
+		const TVector<uint32_t> secondTextures{ 0u, 5u, 8u };
+		TextureBindingCacheKey firstTextureSet(firstTextures);
+		TextureBindingCacheKey secondTextureSet(secondTextures);
+		firstTextureSet.Materialize();
+		secondTextureSet.Materialize();
 
 		TMap<TextureBindingCacheKey, uint32_t> textureBindingCache;
 		Require(textureBindingCache.Insert(firstTextureSet, 1u),
@@ -1326,22 +1382,28 @@ namespace
 			"a different equal-sized texture binding cache key must not collapse into the first");
 		Require(textureBindingCache.Num() == 2,
 			"texture sets with the same count and layout capacity must retain distinct cache identities");
-		TSet<uint32_t> lookupTextures{ 8u, 4u };
+		TVector<uint32_t> lookupTextures{ 0u, 4u, 8u };
 		TextureBindingCacheKey lookupKey(lookupTextures);
-		Require(lookupKey.m_requestedTextures.IsEmpty() &&
+		Require(lookupKey.GetTextures().GetData() == lookupTextures.GetData() &&
 			lookupKey == firstTextureSet &&
 			lookupKey.GetHash() == firstTextureSet.GetHash(),
-			"a cache-hit lookup key must compare and hash a non-owning texture set without materializing a vector");
+			"a cache-hit lookup key must compare and hash the published vector without copying it");
 		uint32_t* lookupValue = nullptr;
 		Require(textureBindingCache.Find(lookupKey, lookupValue) &&
 			lookupValue && *lookupValue == 1u,
 			"a non-owning texture key must resolve the canonical cached entry");
 		lookupKey.Materialize();
-		Require(lookupKey.m_requestedTextures.Num() == 3u &&
-			lookupKey.m_requestedTextures[0] == 0u &&
-			lookupKey.m_requestedTextures[1] == 4u &&
-			lookupKey.m_requestedTextures[2] == 8u,
-			"a cache miss must materialize one sorted canonical key including the default texture slot");
+		Require(lookupKey.GetTextures() == firstTextures &&
+			lookupKey.GetTextures().GetData() != lookupTextures.GetData(),
+			"an inserted key must own the canonical indices independently of the lookup source");
+		lookupTextures = { 0u };
+		Require(lookupKey == firstTextureSet && lookupKey.GetHash() == firstTextureSet.GetHash() &&
+			!(lookupKey == TextureBindingCacheKey(lookupTextures)),
+			"changing the borrowed source after materialization must not change a stored key");
+		const auto copiedKey = lookupKey;
+		const auto movedKey = std::move(lookupKey);
+		Require(copiedKey == movedKey && textureBindingCache.Find(movedKey, lookupValue) && *lookupValue == 1u,
+			"copied and moved owning keys must retain the original cache identity");
 
 		const auto materialBindings = RHI::RHIShaderBindingSetPtr::Make();
 		auto material = RHI::RHIMaterialPtr::Make(
@@ -1377,41 +1439,211 @@ namespace
 
 	}
 
-	void TestRenderResourceVirtualizationContract()
+	void TestTextureSamplerPublication()
 	{
-		Framegraph::TextureDependencyCollector textureDependencies;
-		textureDependencies.Reset();
-		textureDependencies.Insert(42u);
-		textureDependencies.Insert(7u);
-		textureDependencies.Insert(42u);
-		textureDependencies.Insert(
-			static_cast<uint32_t>(Framegraph::TextureDependencyCollector::MaxTrackedTextures));
-		const auto& textureIndices = textureDependencies.GetIndices();
-		Require(textureIndices.Num() == 3u &&
-			textureIndices[0] == 0u &&
-			textureIndices[1] == 7u &&
-			textureIndices[2] == 42u,
-			"the reusable texture dependency collector must deduplicate, bound, and sort indices without transient sets");
-
+#if defined(__APPLE__)
+		constexpr uint32_t Limit = TextureImporter::MaxTexturesInScene;
+		const TVector<uint32_t> expected{ 0u, 4u, 8u, Limit - 1u };
+		auto makeProxy = [](bool alternate)
+		{
+			RHI::RHISceneViewProxy proxy;
+			proxy.m_materialTextureSamplers = { { 8u, 4u, 8u, 0u, Limit, Limit - 1u }, {} };
+			if (alternate)
+			{
+				proxy.m_materialTextureSamplers = {
+					{ Limit - 1u, 8u, 4u, 4u }, { 0u, 0u, (std::numeric_limits<uint32_t>::max)() } };
+			}
+			RHI::RHIInstancedMeshGroup group;
+			group.m_materialTextureSamplers = proxy.m_materialTextureSamplers;
+			proxy.m_instancedGroups.Add(std::move(group));
+			proxy.m_shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
+			for (const auto& textures : proxy.m_materialTextureSamplers)
+			{
+				RHI::RHIShadowMeshProxy mesh;
+				mesh.m_worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 3, 4));
+				mesh.m_materialTextureSamplers = textures;
+				proxy.m_shadowCaster->m_meshes.Add(std::move(mesh));
+			}
+			return proxy;
+		};
+		auto requireIndices = [](const TVector<uint32_t>& textures, const TVector<uint32_t>& indices)
+		{
+			Require(textures == indices,
+				"published material indices must be sorted, unique, bounded and include the default slot");
+		};
+		for (const auto& world : { glm::mat4(1.0f), glm::mat4(0.0f) })
+		{
+			auto source = makeProxy(false);
+			source.m_worldMatrix = world;
+			const auto originalTextures = source.m_materialTextureSamplers;
+			const auto originalShadow = source.m_shadowCaster;
+			const auto originalShadowTextures = originalShadow->m_meshes[0].m_materialTextureSamplers;
+			const auto originalShadowMatrix = originalShadow->m_meshes[0].m_worldMatrix;
+			auto copied = RHI::RHISceneProxyResourcePtr::Make(source);
+			Require(source.m_materialTextureSamplers == originalTextures,
+				"publication must not rewrite the producer's texture metadata");
+			auto moved = RHI::RHISceneProxyResourcePtr::Make(std::move(source));
+			for (const auto& resource : { copied, moved })
+			{
+				const auto& proxy = resource->m_proxy;
+				for (size_t i = 0; i < 2u; ++i)
+				{
+					const TVector<uint32_t> indices = i == 0u ? expected : TVector<uint32_t>{ 0u };
+					requireIndices(proxy.m_materialTextureSamplers[i], indices);
+					requireIndices(proxy.m_instancedGroups[0].m_materialTextureSamplers[i], indices);
+					requireIndices(proxy.m_shadowCaster->m_meshes[i].m_materialTextureSamplers, indices);
+				}
+				Require(proxy.m_shadowCaster != originalShadow &&
+					originalShadow->m_meshes[0].m_materialTextureSamplers == originalShadowTextures &&
+					originalShadow->m_meshes[0].m_worldMatrix == originalShadowMatrix,
+					"copy and move publication must isolate shared shadow metadata even with a singular world transform");
+			}
+			auto alternate = makeProxy(true);
+			alternate.m_worldMatrix = world;
+			auto equivalent = RHI::RHISceneProxyResourcePtr::Make(alternate);
+			Require(copied->m_mainRevision == equivalent->m_mainRevision &&
+				copied->m_shadowRevision == equivalent->m_shadowRevision &&
+				copied->m_mainRevision == moved->m_mainRevision &&
+				copied->m_shadowRevision == moved->m_shadowRevision,
+				"permutations, duplicates, invalid indices and implicit slot zero must share publication revisions");
+			alternate.m_materialTextureSamplers[0] = { 0u, 4u, 9u, Limit - 1u };
+			alternate.m_shadowCaster->m_meshes[0].m_materialTextureSamplers = alternate.m_materialTextureSamplers[0];
+			auto changed = RHI::RHISceneProxyResourcePtr::Make(std::move(alternate));
+			Require(changed->m_mainRevision != copied->m_mainRevision &&
+				changed->m_shadowRevision != copied->m_shadowRevision,
+				"an actual sampler replacement must still invalidate main and shadow publications");
+		}
+#endif
 	}
 
 	void TestShaderReadOnlyBarrierSynchronizesShaderSampling()
 	{
+		constexpr VkQueueFlags queueFlags = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
 		const VkAccessFlags shaderReadAccess =
 			VulkanCommandBuffer::GetAccessFlags(
-				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, queueFlags);
 		Require((shaderReadAccess & VK_ACCESS_SHADER_READ_BIT) != 0,
 			"shader-read image layouts must wait for prior image writes");
 
 		const VkPipelineStageFlags shaderReadStages =
 			VulkanCommandBuffer::GetPipelineStage(
-				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-		Require((shaderReadStages & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT) != 0,
-			"shader-read image layouts must synchronize graphics shader stages");
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, queueFlags);
+		Require(shaderReadStages == (VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
+			"shader-read image layouts must synchronize both graphics and compute sampling on a combined queue");
+	}
+
+	void TestDepthSamplingBarrierScopes()
+	{
+		constexpr VkPipelineStageFlags depthStages = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		struct QueueCase
+		{
+			VkQueueFlags m_flags;
+			VkPipelineStageFlags m_shaderStages;
+			bool m_graphics;
+		};
+		const QueueCase queues[]
+		{
+			{ VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
+				VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, true },
+			{ VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, true },
+			{ VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, false },
+			{ VK_QUEUE_TRANSFER_BIT, 0u, false }
+		};
+		for (const auto& queue : queues)
+		{
+			const VkAccessFlags depthRead = queue.m_graphics ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT : 0u;
+			const VkAccessFlags depthWrite = queue.m_graphics ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : 0u;
+			const VkAccessFlags shaderRead = queue.m_shaderStages ? VK_ACCESS_SHADER_READ_BIT : 0u;
+			const VkPipelineStageFlags samplingStages = queue.m_shaderStages ? queue.m_shaderStages : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+			const VkPipelineStageFlags attachmentStages = queue.m_graphics ? depthStages : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+			const VkPipelineStageFlags readOnlyStages = queue.m_graphics ? depthStages | queue.m_shaderStages : samplingStages;
+
+			for (VkImageLayout layout : { VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL })
+			{
+				Require(VulkanCommandBuffer::GetAccessFlags(layout, queue.m_flags) == (depthRead | depthWrite) &&
+					VulkanCommandBuffer::GetPipelineStage(layout, queue.m_flags) == attachmentStages,
+					"depth attachment writes and later reads must synchronize early and late tests only on a graphics queue");
+			}
+			Require(VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, queue.m_flags) == shaderRead &&
+				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, queue.m_flags) == samplingStages,
+				"depth sampling and its return transition must include every shader stage supported by the recording queue");
+
+			for (VkImageLayout layout : { VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+				VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL })
+			{
+				Require(VulkanCommandBuffer::GetAccessFlags(layout, queue.m_flags) == (depthRead | shaderRead) &&
+					VulkanCommandBuffer::GetPipelineStage(layout, queue.m_flags) == readOnlyStages,
+					"read-only depth layouts must cover shader sampling and depth tests without claiming a depth write");
+			}
+			for (VkImageLayout layout : { VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL })
+			{
+				Require(VulkanCommandBuffer::GetAccessFlags(layout, queue.m_flags) == (depthRead | depthWrite | shaderRead) &&
+					VulkanCommandBuffer::GetPipelineStage(layout, queue.m_flags) == readOnlyStages,
+					"mixed depth/stencil layouts must retain attachment writes and sampling of the read-only aspect");
+			}
+			Require(VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, queue.m_flags) ==
+				(queue.m_graphics ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : 0u) &&
+				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, queue.m_flags) ==
+				(queue.m_graphics ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT),
+				"compute and transfer queues must not advertise color attachment operations");
+			Require(VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, queue.m_flags) == VK_ACCESS_TRANSFER_READ_BIT &&
+				VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, queue.m_flags) == VK_ACCESS_TRANSFER_WRITE_BIT &&
+				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, queue.m_flags) == VK_PIPELINE_STAGE_TRANSFER_BIT &&
+				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, queue.m_flags) == VK_PIPELINE_STAGE_TRANSFER_BIT,
+				"transfer dependencies must retain their access masks and stages on every command queue");
+		}
+	}
+
+	class ComputeBarrierForwardingProbe final : public VulkanGraphicsDriver
+	{
+	public:
+		using VulkanGraphicsDriver::ImageMemoryBarrier;
+
+		void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format,
+			RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout) override
+		{
+			m_cmd = cmd;
+			m_image = image;
+			m_format = format;
+			m_oldLayout = oldLayout;
+			m_newLayout = newLayout;
+			++m_calls;
+		}
+
+		RHI::RHICommandListPtr m_cmd;
+		RHI::RHITexturePtr m_image;
+		RHI::EFormat m_format = RHI::EFormat::UNDEFINED;
+		RHI::EImageLayout m_oldLayout = RHI::EImageLayout::Undefined;
+		RHI::EImageLayout m_newLayout = RHI::EImageLayout::Undefined;
+		uint32_t m_calls = 0u;
+	};
+
+	void TestComputeWriteBarrierOverloadDirections()
+	{
+		ComputeBarrierForwardingProbe driver;
+		const auto cmd = RHI::RHICommandListPtr::Make(RHI::ECommandListQueue::Graphics);
+		const auto image = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Nearest, RHI::ETextureClamping::Clamp, false);
+		constexpr auto format = RHI::EFormat::D32_SFLOAT_S8_UINT;
+		for (auto layout : { RHI::EImageLayout::DepthStencilAttachmentOptimal, RHI::EImageLayout::ShaderReadOnlyOptimal })
+		{
+			for (bool allowWrite : { false, true })
+			{
+				const uint32_t calls = driver.m_calls;
+				driver.ImageMemoryBarrier(cmd, image, format, layout, allowWrite);
+				Require(driver.m_calls == calls + 1u && driver.m_cmd == cmd && driver.m_image == image && driver.m_format == format,
+					"the compute-write overload must forward the original command list and image to the typed barrier");
+				Require(driver.m_oldLayout == (allowWrite ? layout : RHI::EImageLayout::ComputeWrite) &&
+					driver.m_newLayout == (allowWrite ? RHI::EImageLayout::ComputeWrite : layout),
+					"allowing compute writes must enter ComputeWrite, and finishing them must restore the requested layout");
+			}
+		}
 	}
 
 	void TestBakedVolumeScalePerInstanceLayoutContract()
 	{
+		static_assert(std::is_same_v<DepthPrepassNode::CustomPerInstanceData, Framegraph::RenderSceneNode::PerInstanceData>);
 		Framegraph::RenderSceneNode::PerInstanceData renderInstance{};
 		DepthPrepassNode::PerInstanceData depthInstance{};
 		DepthPrepassNode::CustomPerInstanceData customDepthInstance{};
@@ -1438,7 +1670,7 @@ namespace
 			shadowScaleOffset == 96u &&
 			shadowAlphaOffset == 112u &&
 			renderScaleOffset + sizeof(vec4) + sizeof(RHI::RHIObjectMotionData) == sizeof(renderInstance),
-			"main, ordinary depth, custom depth, and shadow passes must keep their independent std430 instance layouts");
+			"custom depth must match the main layout while generic depth and shadows keep their compact std430 records");
 
 		RHI::RHIMesh mesh;
 		Require(mesh.m_bakedVolumeScale == glm::vec3(1.0f) &&
@@ -1667,8 +1899,11 @@ int main()
 		{ "InstancedViewLodAndDistanceContract", TestInstancedViewLodAndDistanceContract },
 		{ "SnapshotCameraLodContract", TestSnapshotCameraLodContract },
 		{ "BatchTextureBindingIdentityContract", TestBatchTextureBindingIdentityContract },
-		{ "RenderResourceVirtualizationContract", TestRenderResourceVirtualizationContract },
+		{ "CustomShadowMaterialKey", TestCustomShadowMaterialKey },
+		{ "TextureSamplerPublication", TestTextureSamplerPublication },
 		{ "ShaderReadOnlyBarrierSynchronizesShaderSampling", TestShaderReadOnlyBarrierSynchronizesShaderSampling },
+		{ "DepthSamplingBarrierScopes", TestDepthSamplingBarrierScopes },
+		{ "ComputeWriteBarrierOverloadDirections", TestComputeWriteBarrierOverloadDirections },
 		{ "BakedVolumeScalePerInstanceLayoutContract", TestBakedVolumeScalePerInstanceLayoutContract },
 		{ "DepthPrepassSkinningContract", TestDepthPrepassSkinningContract },
 		{ "PathTracerThicknessSamplerContract", TestPathTracerThicknessSamplerContract },

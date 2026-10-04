@@ -45,7 +45,7 @@ Transform Transform::operator* (const Transform& parent) const
 	Transform t = *this;
 
 	t.m_position = parent.TransformPosition(t.m_position);
-	t.m_rotation = SanitizeRotation(t.m_rotation) * SanitizeRotation(parent.m_rotation);
+	t.m_rotation = SanitizeRotation(parent.m_rotation) * SanitizeRotation(t.m_rotation);
 
 	t.m_scale.x *= parent.m_scale.x;
 	t.m_scale.y *= parent.m_scale.y;
@@ -68,14 +68,12 @@ mat4 Transform::Matrix() const
 
 vec4 Transform::TransformPosition(const vec4& position) const
 {
-	const quat rotation = SanitizeRotation(m_rotation);
-	return rotation * vec4(m_scale.x * position.x, m_scale.y * position.y, m_scale.z * position.z, position.w) + m_position;
+	return TransformVector(position) + vec4(vec3(m_position), 0.0f);
 }
 
 vec4 Transform::InverseTransformPosition(const vec4& position) const
 {
-	const quat rotation = SanitizeRotation(m_rotation);
-	return glm::toMat4(glm::inverse(rotation)) * (position - m_position);
+	return InverseTransformVector(position - vec4(vec3(m_position), 0.0f));
 }
 
 vec4 Transform::TransformVector(const vec4& vector) const
@@ -87,18 +85,18 @@ vec4 Transform::TransformVector(const vec4& vector) const
 vec4 Transform::InverseTransformVector(const vec4& vector) const
 {
 	const quat rotation = SanitizeRotation(m_rotation);
-	vec3 scale = GetReciprocalScale();
-	return glm::inverse(rotation) * vec4(scale.x * vector.x, scale.y * vector.y, scale.z * vector.z, vector.w);
+	const vec3 unrotated = glm::conjugate(rotation) * vec3(vector);
+	return vec4(unrotated * GetReciprocalScale(), vector.w);
 }
 
 Transform Transform::Inverse() const
 {
 	const quat rotation = SanitizeRotation(m_rotation);
 	const vec4 invScale = vec4(GetReciprocalScale(), 1.0f);
-	const quat invRotation = glm::inverse(rotation);
-	const vec4 scaledTranslation = invRotation * (invScale * m_position);
+	const quat invRotation = glm::conjugate(rotation);
+	const vec3 invTranslation = -vec3(invScale) * (invRotation * vec3(m_position));
 
-	return Transform(-scaledTranslation, invRotation, invScale);
+	return Transform(vec4(invTranslation, m_position.w), invRotation, invScale);
 }
 
 vec3 Transform::GetForward() const { return glm::rotate(SanitizeRotation(m_rotation), Math::vec3_Forward); }

@@ -1,10 +1,11 @@
 #include "AssetRegistry/Model/ModelLodCache.h"
+#include "Platform/AtomicFile.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "Containers/Concepts.h"
+#include "Containers/Hash.h"
 #include "RHI/VertexDescription.h"
 #include "Sailor.h"
-#include "Workspace/WorkspaceCacheContract.h"
 
 #include <algorithm>
 #include <array>
@@ -13,6 +14,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <utility>
 
 using namespace Sailor;
 
@@ -22,16 +24,20 @@ namespace
 	constexpr uint64_t MaxBytes = 1024ull * 1024ull * 1024ull;
 	constexpr std::array<char, 8> Magic = {'S', 'A', 'I', 'L', 'L', 'O', 'D', '\0'};
 
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+	thread_local ModelLodCache::AllocationObserver g_allocationObserver;
+#endif
+
 	struct Header final
 	{
 		std::array<char, 8> m_magic{};
+		uint32_t m_headerSize = 0u;
 		uint32_t m_version = 0u;
 		uint32_t m_vertexStride = 0u;
 		uint32_t m_meshCount = 0u;
 		uint32_t m_lodLevel = 0u;
 		int64_t m_sourceModificationTime = 0;
-		uint64_t m_sourceSize = 0u;
-		uint64_t m_sourceContentHash = 0u;
+		uint64_t m_sourceGeometryHash = 0u;
 		float m_unitScale = 1.0f;
 		float m_reductionFactor = 0.5f;
 		uint32_t m_bBatchByMaterial = 0u;
@@ -43,6 +49,30 @@ namespace
 		uint64_t m_vertexCount = 0u;
 		uint64_t m_indexCount = 0u;
 	};
+
+	uint64_t GetSourceGeometryHash(const TVector<ModelImporter::MeshContext>& meshes)
+	{
+		uint64_t hash = Fnv1aOffsetBasis;
+		HashValue(hash, static_cast<uint64_t>(meshes.Num()));
+		for (const auto& mesh : meshes)
+		{
+			HashValues(hash, static_cast<uint64_t>(mesh.outVertices.Num()), static_cast<uint64_t>(mesh.outIndices.Num()));
+			for (const auto& vertex : mesh.outVertices)
+			{
+				// Hash imported values, not vertex/GLM padding or a newer on-disk buffer.
+				HashValues(hash, vertex.m_position.x, vertex.m_position.y, vertex.m_position.z,
+					vertex.m_normal.x, vertex.m_normal.y, vertex.m_normal.z,
+					vertex.m_tangent.x, vertex.m_tangent.y, vertex.m_tangent.z,
+					vertex.m_bitangent.x, vertex.m_bitangent.y, vertex.m_bitangent.z,
+					vertex.m_texcoord.x, vertex.m_texcoord.y,
+					vertex.m_color.x, vertex.m_color.y, vertex.m_color.z, vertex.m_color.w,
+					vertex.m_boneIds.x, vertex.m_boneIds.y, vertex.m_boneIds.z, vertex.m_boneIds.w,
+					vertex.m_boneWeights.x, vertex.m_boneWeights.y, vertex.m_boneWeights.z, vertex.m_boneWeights.w);
+			}
+			HashBytes(hash, mesh.outIndices.GetData(), mesh.outIndices.Num() * sizeof(uint32_t));
+		}
+		return hash;
+	}
 
 	template <IsTriviallyCopyable Type> void Append(std::string& bytes, const Type& value)
 	{
@@ -92,6 +122,13 @@ namespace
 	}
 }
 
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+ModelLodCache::AllocationObserver ModelLodCache::ExchangeAllocationObserverForTests(AllocationObserver observer)
+{
+	return std::exchange(g_allocationObserver, std::move(observer));
+}
+#endif
+
 bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 	const FileRevision& sourceRevision,
 	uint32_t lodLevel,
@@ -114,15 +151,16 @@ bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 
 	size_t offset = 0u;
 	Header header{};
-	if (!Read(bytes, offset, header) || header.m_magic != Magic || header.m_version != Version ||
+	if (!Read(bytes, offset, header) || header.m_magic != Magic || header.m_headerSize != sizeof(Header) ||
+		header.m_version != Version ||
 		header.m_vertexStride != sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) || header.m_meshCount != meshes.Num() ||
 		header.m_lodLevel != lodLevel ||
 		header.m_sourceModificationTime != sourceRevision.m_modificationTimeNanoseconds ||
-		header.m_sourceSize != sourceRevision.m_fileSize ||
-		header.m_sourceContentHash != sourceRevision.m_contentHash || header.m_unitScale != assetInfo.GetUnitScale() ||
+		header.m_unitScale != assetInfo.GetUnitScale() ||
 		header.m_reductionFactor != assetInfo.GetLodReductionFactor() ||
 		header.m_bBatchByMaterial != static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial()) ||
-		header.m_bFlipTexcoordY != static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY()))
+		header.m_bFlipTexcoordY != static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY()) ||
+		header.m_sourceGeometryHash != GetSourceGeometryHash(meshes))
 	{
 		return false;
 	}
@@ -140,11 +178,14 @@ bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 
 		const uint64_t vertexBytes = meshHeader.m_vertexCount * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
 		const uint64_t indexBytes = meshHeader.m_indexCount * sizeof(uint32_t);
-		if (vertexBytes + indexBytes > MaxBytes)
+		if (vertexBytes + indexBytes > bytes.size() - offset)
 		{
 			return false;
 		}
 
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+		if (g_allocationObserver) g_allocationObserver(vertexBytes + indexBytes);
+#endif
 		lod.m_vertices.Resize(static_cast<size_t>(meshHeader.m_vertexCount));
 		lod.m_indices.Resize(static_cast<size_t>(meshHeader.m_indexCount));
 		if (!Read(bytes, offset, lod.m_vertices.GetData(), static_cast<size_t>(vertexBytes)) ||
@@ -182,13 +223,13 @@ void Sailor::ModelLodCache::Save(const ModelAssetInfo& assetInfo,
 {
 	Header header{};
 	header.m_magic = Magic;
+	header.m_headerSize = sizeof(Header);
 	header.m_version = Version;
 	header.m_vertexStride = sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
 	header.m_meshCount = static_cast<uint32_t>(meshes.Num());
 	header.m_lodLevel = lodLevel;
 	header.m_sourceModificationTime = sourceRevision.m_modificationTimeNanoseconds;
-	header.m_sourceSize = sourceRevision.m_fileSize;
-	header.m_sourceContentHash = sourceRevision.m_contentHash;
+	header.m_sourceGeometryHash = GetSourceGeometryHash(meshes);
 	header.m_unitScale = assetInfo.GetUnitScale();
 	header.m_reductionFactor = assetInfo.GetLodReductionFactor();
 	header.m_bBatchByMaterial = static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial());
@@ -216,7 +257,7 @@ void Sailor::ModelLodCache::Save(const ModelAssetInfo& assetInfo,
 
 	const std::filesystem::path path = GetPath(assetInfo.GetFileId(), lodLevel);
 	std::string diagnostic;
-	if (!path.empty() && !Workspace::AtomicReplaceWorkspaceCacheBinary(path, bytes.data(), bytes.size(), diagnostic))
+	if (!path.empty() && !Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(path, bytes.data(), bytes.size(), diagnostic)))
 	{
 		SAILOR_LOG("Cannot save model LOD cache %s: %s", path.string().c_str(), diagnostic.c_str());
 	}

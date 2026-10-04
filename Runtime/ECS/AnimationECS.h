@@ -96,6 +96,7 @@ namespace Sailor
 		TVector<TSharedPtr<TVector<glm::mat4>>> m_boneSnapshotPool{};
 		uint64_t m_animationRevision = 0ull;
 		uint32_t m_nextBoneOffset = 0;
+		bool m_bGpuLayoutDirty = false;
 	};
 
 	template class ECS::TSystem<AnimationECS, AnimatorComponentData>;

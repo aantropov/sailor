@@ -1059,26 +1059,24 @@ VulkanBufferPtr VulkanApi::CreateBuffer(VulkanDevicePtr device, VkDeviceSize siz
 	VulkanBufferPtr outBuffer = VulkanBufferPtr::Make(device, size, usage, sharingMode);
 	outBuffer->Compile();
 
-	// TODO: Pass into Allocate the correct allignment for memory device allocation
 	auto requirements = outBuffer->GetMemoryRequirements();
 
-	//requirements.size += device->GetBufferImageGranuality();
-	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
-
-	auto data = device->GetMemoryAllocator(properties, requirements).Allocate(requirements.size, requirements.alignment);
+	auto data = device->GetMemoryAllocator(properties, requirements, EVulkanMemoryClass::Linear)
+		.Allocate(requirements.size, requirements.alignment);
 	outBuffer->Bind(data);
 
 	return outBuffer;
 }
 
-VulkanBufferPtr VulkanApi::CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
+VulkanBufferPtr VulkanApi::CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device,
+	const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode)
 {
 	VulkanBufferPtr outbuffer = VulkanApi::CreateBuffer(
 		device,
 		size,
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		VK_SHARING_MODE_CONCURRENT);
+		properties,
+		sharingMode);
 
 	const auto requirements = outbuffer->GetMemoryRequirements();
 
@@ -1106,35 +1104,6 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 
 	return cmdBuffer;
-}
-
-VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
-{
-	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateBuffer_Immediate");
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanBufferPtr resBuffer = CreateBuffer(cmdBuffer, device, pData, size, usage, sharingMode);
-	cmdBuffer->EndCommandList();
-
-	auto fence = VulkanFencePtr::Make(device);
-	device->SubmitCommandBuffer(cmdBuffer, fence);
-	fence->Wait();
-
-	return resBuffer;
-}
-
-void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferMemoryPtr src, VulkanBufferMemoryPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
-{
-	auto fence = VulkanFencePtr::Make(device);
-
-	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CopyBuffer_Immediate");
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	cmdBuffer->CopyBuffer(src, dst, size, srcOffset, dstOffset);
-	cmdBuffer->EndCommandList();
-	device->SubmitCommandBuffer(cmdBuffer, fence);
-
-	fence->Wait();
 }
 
 VulkanImagePtr VulkanApi::CreateImageUpload(
@@ -1175,11 +1144,9 @@ VulkanImagePtr VulkanApi::CreateImageUpload(
 
 	auto requirements = outImage->GetMemoryRequirements();
 
-	// We must respect bufferImageGranuality
-	//requirements.size += device->GetBufferImageGranuality();
-	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
-
-	auto& imageMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), requirements);
+	const EVulkanMemoryClass memoryClass = outImage->m_tiling == VK_IMAGE_TILING_LINEAR ?
+		EVulkanMemoryClass::Linear : EVulkanMemoryClass::OptimalImage;
+	auto& imageMemoryAllocator = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements, memoryClass);
 	auto data = imageMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
 	outImage->Bind(data);
@@ -1190,7 +1157,8 @@ VulkanImagePtr VulkanApi::CreateImageUpload(
 		static_cast<uint32_t>(extent.width),
 		static_cast<uint32_t>(extent.height),
 		static_cast<uint32_t>(extent.depth),
-		(*stagingBufferManagedPtr).m_offset);
+		(*stagingBufferManagedPtr).m_offset,
+		arrayLayers);
 
 	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 
@@ -1239,11 +1207,9 @@ VulkanImagePtr VulkanApi::CreateImage(
 
 	auto requirements = outImage->GetMemoryRequirements();
 
-	// We must respect bufferImageGranuality
-	//requirements.size += device->GetBufferImageGranuality();
-	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
-
-	auto& imageMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), requirements);
+	const EVulkanMemoryClass memoryClass = outImage->m_tiling == VK_IMAGE_TILING_LINEAR ?
+		EVulkanMemoryClass::Linear : EVulkanMemoryClass::OptimalImage;
+	auto& imageMemoryAllocator = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements, memoryClass);
 	auto data = imageMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
 	outImage->Bind(data);
@@ -1340,35 +1306,6 @@ VulkanImagePtr VulkanApi::CreateExportableImage(
 	return outImage;
 }
 #endif
-
-VulkanImagePtr VulkanApi::CreateImage_Immediate(
-        VulkanDevicePtr device,
-        const void* pData,
-        VkDeviceSize size,
-        VkExtent3D extent,
-	uint32_t mipLevels,
-	VkImageType type,
-	VkFormat format,
-	VkImageTiling tiling,
-	VkImageUsageFlags usage,
-	VkSharingMode sharingMode,
-	VkImageLayout defaultLayout,
-	VkImageCreateFlags flags,
-	uint32_t arrayLayers)
-{
-
-	auto cmdBuffer = device->CreateCommandBuffer();
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateImage_Immediate");
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanImagePtr res = CreateImageUpload(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode, defaultLayout, flags, arrayLayers);
-	cmdBuffer->EndCommandList();
-
-	auto fence = VulkanFencePtr::Make(device);
-	device->SubmitCommandBuffer(cmdBuffer, fence);
-        fence->Wait();
-
-        return res;
-}
 
 #ifdef _WIN32
 void* VulkanApi::ExportImage(VulkanDevicePtr device, VulkanImagePtr image, VkExternalMemoryHandleTypeFlagBits handleType)

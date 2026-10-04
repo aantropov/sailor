@@ -21,6 +21,27 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
+#if defined(__APPLE__)
+void RHI::NormalizeTextureSamplers(TVector<uint32_t>& textures)
+{
+	textures.Add(0u);
+	std::sort(textures.begin(), textures.end());
+	size_t count = 0;
+	for (uint32_t texture : textures)
+	{
+		if (texture >= TextureImporter::MaxTexturesInScene)
+		{
+			break;
+		}
+		if (count == 0u || textures[count - 1u] != texture)
+		{
+			textures[count++] = texture;
+		}
+	}
+	textures.Resize(count);
+}
+#endif
+
 namespace
 {
 	bool TryNormalizeProxyTransforms(RHISceneProxyResource& resource)
@@ -44,8 +65,6 @@ namespace
 		}
 		if (resource.m_proxy.m_shadowCaster)
 		{
-			resource.m_proxy.m_shadowCaster = RHIShadowCasterProxyPtr::Make(
-				*resource.m_proxy.m_shadowCaster);
 			for (auto& shadowMesh : resource.m_proxy.m_shadowCaster->m_meshes)
 			{
 				shadowMesh.m_worldMatrix = inverseWorld * shadowMesh.m_worldMatrix;
@@ -98,12 +117,10 @@ namespace
 	}
 
 #if defined(__APPLE__)
-	void HashTextureSet(size_t& result, const TSet<uint32_t>& textures)
+	void HashTextureSamplers(size_t& result, const TVector<uint32_t>& textures)
 	{
-		auto sortedTextures = textures.ToVector();
-		sortedTextures.Sort();
-		HashCombine(result, sortedTextures.Num());
-		for (uint32_t texture : sortedTextures)
+		HashCombine(result, textures.Num());
+		for (uint32_t texture : textures)
 		{
 			HashCombine(result, texture);
 		}
@@ -185,7 +202,7 @@ namespace
 #if defined(__APPLE__)
 		for (const auto& textures : proxy.m_materialTextureSamplers)
 		{
-			HashTextureSet(mainRevision, textures);
+			HashTextureSamplers(mainRevision, textures);
 		}
 #endif
 		for (const auto& group : proxy.m_instancedGroups)
@@ -197,7 +214,7 @@ namespace
 #if defined(__APPLE__)
 			for (const auto& textures : group.m_materialTextureSamplers)
 			{
-				HashTextureSet(mainRevision, textures);
+				HashTextureSamplers(mainRevision, textures);
 			}
 #endif
 		}
@@ -280,7 +297,7 @@ namespace
 					HashCombine(shadowRevision, shadowMesh.m_customDepthShader);
 				}
 #if defined(__APPLE__)
-				HashTextureSet(shadowRevision, shadowMesh.m_materialTextureSamplers);
+				HashTextureSamplers(shadowRevision, shadowMesh.m_materialTextureSamplers);
 #endif
 			}
 		}
@@ -317,20 +334,49 @@ namespace
 		}
 		resource.m_shadowRevision = shadowRevision;
 	}
+
+	void PrepareProxyResource(RHISceneProxyResource& resource)
+	{
+		auto& proxy = resource.m_proxy;
+		if (proxy.m_shadowCaster)
+		{
+			proxy.m_shadowCaster = RHIShadowCasterProxyPtr::Make(*proxy.m_shadowCaster);
+		}
+#if defined(__APPLE__)
+		for (auto& textures : proxy.m_materialTextureSamplers)
+		{
+			NormalizeTextureSamplers(textures);
+		}
+		for (auto& group : proxy.m_instancedGroups)
+		{
+			for (auto& textures : group.m_materialTextureSamplers)
+			{
+				NormalizeTextureSamplers(textures);
+			}
+		}
+		if (proxy.m_shadowCaster)
+		{
+			for (auto& mesh : proxy.m_shadowCaster->m_meshes)
+			{
+				NormalizeTextureSamplers(mesh.m_materialTextureSamplers);
+			}
+		}
+#endif
+		TryNormalizeProxyTransforms(resource);
+		CalculateProxyResourceRevisions(resource);
+	}
 }
 
 RHISceneProxyResource::RHISceneProxyResource(const RHISceneViewProxy& proxy) :
 	m_proxy(proxy)
 {
-	TryNormalizeProxyTransforms(*this);
-	CalculateProxyResourceRevisions(*this);
+	PrepareProxyResource(*this);
 }
 
 RHISceneProxyResource::RHISceneProxyResource(RHISceneViewProxy&& proxy) :
 	m_proxy(std::move(proxy))
 {
-	TryNormalizeProxyTransforms(*this);
-	CalculateProxyResourceRevisions(*this);
+	PrepareProxyResource(*this);
 }
 
 const RHISceneViewProxy* RHIVisibleSceneProxy::GetSource() const
@@ -730,28 +776,25 @@ void RHISceneView::PrepareDebugDrawCommandLists(
 	m_debugDraw.Reserve(m_cameras.Num());
 	const DebugContext::DrawSnapshot debugDrawSnapshot = world->GetDebugContext()->GetDrawSnapshot();
 
-	// TODO: Check the sync between CPUFrame and Recording
 	for (const auto& camera : m_cameras)
 	{
+		const glm::mat4 viewProjection = camera.GetProjectionMatrix() * camera.GetViewMatrix();
 		auto task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record DebugContext Draw Command List",
-			[=]()
+			[debugDrawSnapshot, viewProjection, renderExtent]()
 			{
-				const auto& matrix = camera.GetProjectionMatrix() * camera.GetViewMatrix();
 				RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh");
 				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
-				world->GetDebugContext()->DrawDebugMesh(
+				DebugContext::DrawDebugMesh(
 					secondaryCmdList,
-					matrix,
+					viewProjection,
 					debugDrawSnapshot,
 					renderExtent);
 				commands->EndCommandList(secondaryCmdList);
 
 				return secondaryCmdList;
 			}, EThreadType::RHI);
-
-		task->Run();
 
 		m_debugDraw.Emplace(std::move(task));
 	}
@@ -800,10 +843,7 @@ void RHISceneView::Clear()
 	m_renderMode = ESceneViewRenderMode::Lit;
 	m_shadowCastersRevision = 0ull;
 	m_bHasCustomDepthShadowCasters = false;
-	m_pathTracerProxies.Clear(false);
-	m_pathTracerTLASInstances.Clear(false);
-	m_pathTracerMaterials.Clear(false);
-	m_pathTracerLights.Clear(false);
+	m_pathTracerScene.Clear();
 }
 
 void RHISceneViewSnapshot::ResetForReuse()
@@ -824,10 +864,7 @@ void RHISceneViewSnapshot::ResetForReuse()
 		m_lodMeshes.Clear(false);
 		m_instancedLodOffsets.Clear(false);
 	}
-	m_pathTracerProxies.Clear(false);
-	m_pathTracerTLASInstances.Clear(false);
-	m_pathTracerMaterials.Clear(false);
-	m_pathTracerLights.Clear(false);
+	m_pathTracerScene.Clear();
 	m_totalNumLights = 0u;
 	m_shadowMapsToUpdate.Clear(false);
 	m_shadowMapsToBlit.Clear(false);
@@ -1324,10 +1361,7 @@ void RHISceneView::PrepareSnapshots()
 			res.m_camera = TUniquePtr<CameraData>::Make();
 		}
 		*res.m_camera = camera;
-		res.m_pathTracerProxies = m_pathTracerProxies;
-		res.m_pathTracerTLASInstances = m_pathTracerTLASInstances;
-		res.m_pathTracerMaterials = m_pathTracerMaterials;
-		res.m_pathTracerLights = m_pathTracerLights;
+		res.m_pathTracerScene = m_pathTracerScene;
 
 		res.m_totalNumLights = m_totalNumLights;
 		res.m_rhiLightsData = i < m_rhiLightsDataPerCamera.Num() ?

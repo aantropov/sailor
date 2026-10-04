@@ -15,6 +15,7 @@
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
 #include "GraphicsDriver/Vulkan/VulkanDeviceMemory.h"
 #include "GraphicsDriver/Vulkan/VulkanFence.h"
+#include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
 #include "RHI/CommandList.h"
@@ -70,9 +71,7 @@ namespace Sailor::EditorRemote
 				return {};
 			}
 
-			const auto readbackNode = rhiFrameGraph
-				->GetGraphNode("EditorReadback")
-				.DynamicCast<Framegraph::EditorReadbackNode>();
+			const auto readbackNode = Framegraph::EditorReadbackNode::Find(*rhiFrameGraph);
 			if (readbackNode)
 			{
 				auto texture = readbackNode->GetTexture();
@@ -251,7 +250,7 @@ namespace Sailor::EditorRemote
 			HANDLE m_sharedHandle = nullptr;
 			uint64_t m_allocationId = 0;
 			FrameIndex m_frameIndex = 0;
-			bool m_ownedByExternal = false;
+			RHI::RHIFencePtr m_copyFence{};
 			std::string m_lastSourceName{};
 			glm::ivec2 m_lastSourceExtent{};
 			glm::ivec2 m_lastSceneRenderExtent{};
@@ -411,7 +410,6 @@ namespace Sailor::EditorRemote
 		allocation->m_ownerTexture = std::move(ownerTexture);
 		allocation->m_sharedHandle = sharedHandle;
 		allocation->m_allocationId = m_impl->m_nextAllocationId++;
-		allocation->m_ownedByExternal = true;
 
 		WindowsSharedSurfaceHandle nativeHandle{};
 		nativeHandle.m_sharedTextureHandle = reinterpret_cast<uint64_t>(sharedHandle);
@@ -450,40 +448,41 @@ namespace Sailor::EditorRemote
 			return m_impl->m_lastFailure;
 		}
 
+		if (allocation->m_copyFence)
+		{
+			const auto status = allocation->m_copyFence->Wait();
+			driver->TrackResources_ThreadSafe();
+			m_impl->m_lastFailure = status == RHI::EFenceStatus::Finished ? Failure::Ok() : Failure::FromDomain(
+				ErrorDomain::Transport, 1, "The Windows shared-texture copy has not completed");
+			return m_impl->m_lastFailure;
+		}
+
+		auto device = Sailor::GraphicsDriver::Vulkan::VulkanApi::GetInstance()->GetMainDevice();
+		if (device->IsDeviceLost())
+		{
+			m_impl->m_lastFailure = Failure::FromDomain(ErrorDomain::Transport, VK_ERROR_DEVICE_LOST,
+				"The Vulkan device is lost while copying the Windows shared texture");
+			return m_impl->m_lastFailure;
+		}
 		const WindowsRendererFrameSource source = TryAcquireRendererFrameSource();
 
 		auto commandList = driver->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 		commands->BeginCommandList(commandList, true);
 
-		auto device = Sailor::GraphicsDriver::Vulkan::VulkanApi::GetInstance()->GetMainDevice();
 		const uint32_t graphicsFamily = device->GetQueueFamilies().m_graphicsFamily.value();
 		auto sharedImageView = allocation->m_texture->m_vulkan.m_imageView;
-		if (allocation->m_ownedByExternal)
-		{
-			commandList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
-				sharedImageView,
-				sharedImageView->m_format,
-				VK_IMAGE_LAYOUT_GENERAL,
-				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				0,
-				VK_ACCESS_TRANSFER_WRITE_BIT,
-				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-				VK_PIPELINE_STAGE_TRANSFER_BIT,
-				VK_QUEUE_FAMILY_EXTERNAL,
-				graphicsFamily);
-		}
-		else
-		{
-			commandList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
-				sharedImageView,
-				sharedImageView->m_format,
-				VK_IMAGE_LAYOUT_UNDEFINED,
-				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				0,
-				VK_ACCESS_TRANSFER_WRITE_BIT,
-				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-				VK_PIPELINE_STAGE_TRANSFER_BIT);
-		}
+		// D3D11 imports start in external ownership; every copy releases it back.
+		commandList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
+			sharedImageView,
+			sharedImageView->m_format,
+			VK_IMAGE_LAYOUT_GENERAL,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			0,
+			VK_ACCESS_TRANSFER_WRITE_BIT,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_QUEUE_FAMILY_EXTERNAL,
+			graphicsFamily);
 
 		if (source.IsValid())
 		{
@@ -518,18 +517,10 @@ namespace Sailor::EditorRemote
 					"Vulkan cannot blit the renderer output into the Windows shared texture");
 				return m_impl->m_lastFailure;
 			}
-			allocation->m_lastSourceName = source.m_debugName;
-			allocation->m_lastSourceExtent = { sourceExtent.x, sourceExtent.y };
-			auto frameGraph = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph();
-			allocation->m_lastSceneRenderExtent = frameGraph && frameGraph->GetRHI()
-				? frameGraph->GetRHI()->GetSceneRenderExtent() : glm::ivec2{};
 		}
 		else
 		{
 			commands->ClearImage(commandList, allocation->m_texture, glm::vec4(0.0f));
-			allocation->m_lastSourceName = "unavailable";
-			allocation->m_lastSourceExtent = {};
-			allocation->m_lastSceneRenderExtent = {};
 		}
 
 		commandList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
@@ -563,9 +554,10 @@ namespace Sailor::EditorRemote
 		keyedMutexInfo.pReleaseSyncs = &sharedMemory;
 		keyedMutexInfo.pReleaseKeys = &releaseKey;
 
-		auto fence = Sailor::GraphicsDriver::Vulkan::VulkanFencePtr::Make(device);
-		if (!device->SubmitCommandBuffer(
-				commandList->m_vulkan.m_commandBuffer,
+		auto fence = RHI::RHIFencePtr::Make();
+		auto& vulkanDriver = static_cast<Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver&>(*driver);
+		if (!vulkanDriver.SubmitCommandList(
+				commandList,
 				fence,
 				{},
 				{},
@@ -577,10 +569,17 @@ namespace Sailor::EditorRemote
 				"Submitting the Windows shared-texture copy failed");
 			return m_impl->m_lastFailure;
 		}
-		fence->Wait();
-		allocation->m_ownedByExternal = true;
-		m_impl->m_lastFailure = Failure::Ok();
-		return Failure::Ok();
+		allocation->m_copyFence = std::move(fence);
+		allocation->m_lastSourceName = source.IsValid() ? source.m_debugName : "unavailable";
+		allocation->m_lastSourceExtent = source.IsValid() ? source.m_texture->GetExtent() : glm::ivec2{};
+		auto frameGraph = source.IsValid() ? App::GetSubmodule<RHI::Renderer>()->GetFrameGraph() : FrameGraphPtr{};
+		allocation->m_lastSceneRenderExtent = source.IsValid() && frameGraph && frameGraph->GetRHI()
+			? frameGraph->GetRHI()->GetSceneRenderExtent() : glm::ivec2{};
+		const auto status = allocation->m_copyFence->Wait();
+		driver->TrackResources_ThreadSafe();
+		m_impl->m_lastFailure = status == RHI::EFenceStatus::Finished ? Failure::Ok() : Failure::FromDomain(
+			ErrorDomain::Transport, 1, "The Windows shared-texture copy has not completed");
+		return m_impl->m_lastFailure;
 	}
 
 	Failure SailorWindowsSharedSurfaceProvider::ExportFrame(
@@ -588,7 +587,7 @@ namespace Sailor::EditorRemote
 		FramePacket& outFrame)
 	{
 		auto* allocation = m_impl->Find(state.m_key);
-		if (!allocation || !allocation->m_ownedByExternal)
+		if (!allocation || !allocation->m_copyFence || allocation->m_copyFence->GetStatus() != RHI::EFenceStatus::Finished)
 		{
 			m_impl->m_lastFailure = Failure::FromDomain(
 				ErrorDomain::Session,
@@ -613,6 +612,7 @@ namespace Sailor::EditorRemote
 		outFrame.m_sync.m_crossApiSyncKind = CrossApiSyncKind::Win32KeyedMutex;
 		outFrame.m_sync.m_requiresExplicitRelease = true;
 		outFrame.m_sync.m_crossApiCpuWaited = true;
+		allocation->m_copyFence.Clear();
 		m_impl->m_lastFailure = Failure::Ok();
 		return Failure::Ok();
 	}
@@ -627,12 +627,8 @@ namespace Sailor::EditorRemote
 			return Failure::Ok();
 		}
 
-		auto& allocation = *it.Value();
-		if (allocation.m_sharedHandle)
-		{
-			CloseHandle(allocation.m_sharedHandle);
-			allocation.m_sharedHandle = nullptr;
-		}
+		// The tracked command retains VkDeviceMemory's imported NT payload until
+		// completion; the public handle is no longer needed after surface release.
 		m_impl->m_allocations.Remove(state.m_key);
 		m_impl->m_lastFailure = Failure::Ok();
 		return Failure::Ok();
@@ -660,7 +656,7 @@ namespace Sailor::EditorRemote
 			<< " source='" << allocation->m_lastSourceName << "'"
 			<< " srcSize=" << allocation->m_lastSourceExtent.x << "x" << allocation->m_lastSourceExtent.y
 			<< " renderSize=" << allocation->m_lastSceneRenderExtent.x << "x" << allocation->m_lastSceneRenderExtent.y
-			<< " externalOwned=" << (allocation->m_ownedByExternal ? 1 : 0);
+			<< " copySubmitted=" << (allocation->m_copyFence ? 1 : 0);
 		return summary.str();
 	}
 
@@ -740,15 +736,15 @@ namespace Sailor::EditorRemote
 			return Failure::Ok();
 		}
 
-		Failure ApplyCompositionScale()
+		Failure ApplyCompositionScale(const ComPtr<IDXGISwapChain1>& target)
 		{
-			if (!m_swapChain)
+			if (!target)
 			{
 				return Failure::Ok();
 			}
 
 			ComPtr<IDXGISwapChain2> swapChain;
-			const HRESULT queryResult = m_swapChain.As(&swapChain);
+			const HRESULT queryResult = target.As(&swapChain);
 			if (FAILED(queryResult))
 			{
 				return MakeWindowsFailure(queryResult, "IDXGISwapChain2 query");
@@ -797,13 +793,13 @@ namespace Sailor::EditorRemote
 			return result;
 		}
 
-		m_impl->m_sharedTexture.Reset();
-		m_impl->m_keyedMutex.Reset();
+		ComPtr<ID3D11Texture2D> sharedTexture;
+		ComPtr<IDXGIKeyedMutex> keyedMutex;
 		const HANDLE sharedHandle = reinterpret_cast<HANDLE>(
 			transport.m_nativeHandles.front().m_sharedTextureHandle);
 		HRESULT nativeResult = m_impl->m_device->OpenSharedResource1(
 			sharedHandle,
-			IID_PPV_ARGS(&m_impl->m_sharedTexture));
+			IID_PPV_ARGS(&sharedTexture));
 		if (FAILED(nativeResult))
 		{
 			m_impl->m_lastFailure = MakeWindowsFailure(
@@ -812,7 +808,7 @@ namespace Sailor::EditorRemote
 			return m_impl->m_lastFailure;
 		}
 
-		nativeResult = m_impl->m_sharedTexture.As(&m_impl->m_keyedMutex);
+		nativeResult = sharedTexture.As(&keyedMutex);
 		if (FAILED(nativeResult))
 		{
 			m_impl->m_lastFailure = MakeWindowsFailure(
@@ -822,7 +818,7 @@ namespace Sailor::EditorRemote
 		}
 
 		D3D11_TEXTURE2D_DESC textureDescription{};
-		m_impl->m_sharedTexture->GetDesc(&textureDescription);
+		sharedTexture->GetDesc(&textureDescription);
 		if (textureDescription.Width != viewport.m_width ||
 			textureDescription.Height != viewport.m_height ||
 			textureDescription.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
@@ -846,12 +842,12 @@ namespace Sailor::EditorRemote
 		swapChainDescription.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 		swapChainDescription.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
 
-		m_impl->m_swapChain.Reset();
+		ComPtr<IDXGISwapChain1> swapChain;
 		nativeResult = m_impl->m_factory->CreateSwapChainForComposition(
 			m_impl->m_device.Get(),
 			&swapChainDescription,
 			nullptr,
-			&m_impl->m_swapChain);
+			&swapChain);
 		if (FAILED(nativeResult))
 		{
 			m_impl->m_lastFailure = MakeWindowsFailure(
@@ -860,14 +856,16 @@ namespace Sailor::EditorRemote
 			return m_impl->m_lastFailure;
 		}
 
-		result = m_impl->ApplyCompositionScale();
+		result = m_impl->ApplyCompositionScale(swapChain);
 		if (!result.IsOk())
 		{
 			m_impl->m_lastFailure = result;
-			m_impl->m_swapChain.Reset();
 			return result;
 		}
 
+		m_impl->m_sharedTexture = std::move(sharedTexture);
+		m_impl->m_keyedMutex = std::move(keyedMutex);
+		m_impl->m_swapChain = std::move(swapChain);
 		m_impl->m_attachedSwapChain.Reset();
 		m_impl->m_viewportId = viewport.m_viewportId;
 		m_impl->m_epoch = epoch;
@@ -883,7 +881,7 @@ namespace Sailor::EditorRemote
 		ViewportId viewportId,
 		const FramePacket& frame)
 	{
-		if (viewportId != m_impl->m_viewportId ||
+		if (viewportId != m_impl->m_viewportId || frame.m_viewportId != viewportId ||
 			frame.m_connectionEpoch != m_impl->m_epoch ||
 			frame.m_generation != m_impl->m_generation ||
 			!m_impl->m_sharedTexture ||
@@ -900,7 +898,7 @@ namespace Sailor::EditorRemote
 		const uint64_t acquireKey = frame.m_sync.m_acquireValue;
 		const uint64_t releaseKey = frame.m_sync.m_releaseValue;
 		HRESULT result = m_impl->m_keyedMutex->AcquireSync(acquireKey, 2000);
-		if (FAILED(result))
+		if (result != S_OK)
 		{
 			m_impl->m_lastFailure = MakeWindowsFailure(result, "IDXGIKeyedMutex::AcquireSync");
 			return m_impl->m_lastFailure;
@@ -924,11 +922,11 @@ namespace Sailor::EditorRemote
 			m_impl->m_context->Flush();
 
 			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-			while (m_impl->m_context->GetData(
+			while ((result = m_impl->m_context->GetData(
 				m_impl->m_copyCompleteQuery.Get(),
 				nullptr,
 				0,
-				0) == S_FALSE)
+				0)) == S_FALSE)
 			{
 				if (std::chrono::steady_clock::now() >= deadline)
 				{
@@ -940,6 +938,12 @@ namespace Sailor::EditorRemote
 					return m_impl->m_lastFailure;
 				}
 				std::this_thread::yield();
+			}
+			if (result != S_OK)
+			{
+				m_impl->m_keyedMutex->ReleaseSync(releaseKey);
+				m_impl->m_lastFailure = MakeWindowsFailure(result, "ID3D11DeviceContext::GetData");
+				return m_impl->m_lastFailure;
 			}
 
 			result = m_impl->m_swapChain->Present(1, 0);
@@ -1032,7 +1036,7 @@ namespace Sailor::EditorRemote
 			std::isfinite(compositionScale) && compositionScale > 0.0f
 				? compositionScale
 				: 1.0f;
-		m_impl->m_lastFailure = m_impl->ApplyCompositionScale();
+		m_impl->m_lastFailure = m_impl->ApplyCompositionScale(m_impl->m_swapChain);
 		if (!m_impl->m_lastFailure.IsOk())
 		{
 			return m_impl->m_lastFailure;

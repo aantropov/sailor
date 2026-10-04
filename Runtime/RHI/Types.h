@@ -6,6 +6,8 @@
 #include "Math/Math.h"
 #include "Containers/Containers.h"
 #include "Containers/Hash.h"
+#include <chrono>
+#include <optional>
 
 #if defined(_MSC_VER)
 # pragma warning(push)
@@ -361,6 +363,7 @@ namespace Sailor::RHI
 	SAILOR_API bool IsDepthFormat(ETextureFormat textureFormat);
 	SAILOR_API bool IsDepthStencilFormat(ETextureFormat textureFormat);
 	SAILOR_API bool IsFloatFormat(ETextureFormat textureFormat);
+	SAILOR_API bool IsSrgbFormat(ETextureFormat textureFormat);
 
 	enum ETextureUsageBit : uint8_t
 	{
@@ -568,10 +571,7 @@ namespace Sailor::RHI
 		size_t GetTag() const { return m_tag; }
 		bool SupportMultisampling() const { return m_bSupportMultisampling; }
 
-		bool operator==(const RenderState& rhs) const
-		{
-			return memcmp(this, &rhs, sizeof(RenderState)) == 0;
-		}
+		bool operator==(const RenderState&) const = default;
 
 	private:
 
@@ -810,10 +810,27 @@ namespace Sailor::RHI
 		float m_durationMilliseconds = 0.0f;
 	};
 
+	struct GpuTimingResult
+	{
+		uint64_t m_generation = 0u;
+		uint64_t m_queryId = 0u;
+		std::chrono::steady_clock::time_point m_recordedAt{};
+		bool m_bValid = false;
+		// Sum of measured command-list ranges, not a frame interval or display cadence.
+		float m_gpuWorkMilliseconds = 0.0f;
+		TVector<GpuTiming> m_timings;
+	};
+
+	// Accepted queue operations, not GPU completion or display scanout.
+	struct FrameSubmissionResult
+	{
+		bool m_bSubmitted = false;
+		bool m_bPresented = false;
+	};
+
 	struct GpuStats
 	{
 		TMap<RHI::RHITexturePtr, TMap<RHI::EImageLayout, uint32_t>> m_barriers;
-		TVector<GpuTiming> m_timings;
 	};
 
 	static constexpr uint32_t InvalidGpuTimestampQuery = ~0u;
@@ -833,7 +850,10 @@ namespace Sailor::RHI
 
 	struct Stats
 	{
-		std::atomic<uint32_t> m_gpuFps = 0u;
+		// Successful rendered submissions and accepted swapchain presents per wall-clock second.
+		// Present counts do not measure display scanout; offscreen frames only increase render FPS.
+		std::atomic<uint32_t> m_renderFps = 0u;
+		std::atomic<uint32_t> m_presentFps = 0u;
 		std::atomic<uint32_t> m_numBatches = 0u;
 		std::atomic<uint32_t> m_numInstances = 0u;
 		std::atomic<size_t> m_materialsMemoryUsage = 0u;
@@ -961,6 +981,10 @@ namespace Sailor::RHI
 
 		virtual void TraceVisit(class TRefPtr<RHIResource> visitor, bool& bShouldRemoveFromList) override;
 		virtual bool IsReady() const;
+		bool HasInitializationFailed() const;
+
+	protected:
+		bool m_bInitializationFailed = false;
 	};
 
 	// Used as composing approach to build the object by functionality

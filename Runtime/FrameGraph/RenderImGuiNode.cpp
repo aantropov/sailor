@@ -23,9 +23,6 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	SAILOR_PROFILE_FUNCTION();
 	ResetDrawCallStats();
 
-	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
-
 	RHI::RHITexturePtr colorAttachment = GetResolvedAttachment("color");
 	for (const auto& r : m_unresolvedResourceParams)
 	{
@@ -51,15 +48,17 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	{
 		SAILOR_PROFILE_SCOPE("Wait for ImGui");
-		while (!sceneView.m_drawImGui->IsFinished());
+		sceneView.m_drawImGui->Wait();
 	}
 
 	auto imguiCommandList = sceneView.m_drawImGui->GetResult();
 	if (!imguiCommandList)
 	{
-		commands->EndDebugRegion(commandList);
 		return;
 	}
+
+	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
 
 	m_drawCallStats += imguiCommandList->GetRecordedDrawCallStats();
 	commands->RenderSecondaryCommandBuffers(commandList,

@@ -380,9 +380,9 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 	};
 
 	prepareNoise(m_createNoiseHigh, m_pCloudsNoiseHighTexture,
-		CloudsNoiseHighResolution, "CloudsNoiseHigh", &GenerateCloudsNoiseHigh);
+		CloudsNoiseHighResolution, "PerlinWorleyCloudsNoiseHigh", &GenerateCloudsNoiseHigh);
 	prepareNoise(m_createNoiseLow, m_pCloudsNoiseLowTexture,
-		CloudsNoiseLowResolution, "CloudsNoiseLow", &GenerateCloudsNoiseLow);
+		CloudsNoiseLowResolution, "PerlinWorleyCloudsNoiseLow", &GenerateCloudsNoiseLow);
 
 	if (!m_pCloudsNoiseFallbackTexture)
 	{
@@ -661,17 +661,18 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			false);
 
 		commands->BindMaterial(commandList, m_pSkyMaterial);
-		commands->BindShaderBindings(commandList, m_pSkyMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
+		if (commands->BindShaderBindings(commandList, m_pSkyMaterial, { sceneView.m_frameBindings, m_pShaderBindings }))
+		{
+			commands->SetViewport(commandList,
+				0, 0,
+				(float)m_pSkyTexture->GetExtent().x, (float)m_pSkyTexture->GetExtent().y,
+				glm::vec2(0, 0),
+				glm::vec2(m_pSkyTexture->GetExtent().x, m_pSkyTexture->GetExtent().y),
+				0, 1.0f);
 
-		commands->SetViewport(commandList,
-			0, 0,
-			(float)m_pSkyTexture->GetExtent().x, (float)m_pSkyTexture->GetExtent().y,
-			glm::vec2(0, 0),
-			glm::vec2(m_pSkyTexture->GetExtent().x, m_pSkyTexture->GetExtent().y),
-			0, 1.0f);
-
-		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-		RecordDrawCallStats(1);
+			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+			RecordDrawCallStats(1);
+		}
 		commands->EndRenderPass(commandList);
 	}
 	commands->EndDebugRegion(commandList);
@@ -706,11 +707,12 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 				false);
 
 			commands->BindMaterial(commandList, m_pCloudsMaterial);
-			commands->BindShaderBindings(commandList, m_pCloudsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
-			commands->PushConstants(commandList, m_pCloudsMaterial, sizeof(uint32_t), &m_ditherPatternIndex);
-
-			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-			RecordDrawCallStats(1);
+			if (commands->BindShaderBindings(commandList, m_pCloudsMaterial, { sceneView.m_frameBindings, m_pShaderBindings }))
+			{
+				commands->PushConstants(commandList, m_pCloudsMaterial, sizeof(uint32_t), &m_ditherPatternIndex);
+				commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+				RecordDrawCallStats(1);
+			}
 			commands->EndRenderPass(commandList);
 
 			commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetDefaultLayout());
@@ -748,10 +750,11 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			false);
 
 		commands->BindMaterial(commandList, m_pSunMaterial);
-		commands->BindShaderBindings(commandList, m_pSunMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
-
-		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-		RecordDrawCallStats(1);
+		if (commands->BindShaderBindings(commandList, m_pSunMaterial, { sceneView.m_frameBindings, m_pShaderBindings }))
+		{
+			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+			RecordDrawCallStats(1);
+		}
 		commands->EndRenderPass(commandList);
 
 		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetDefaultLayout());
@@ -786,10 +789,11 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			false);
 
 		commands->BindMaterial(commandList, m_pComposeMaterial);
-		commands->BindShaderBindings(commandList, m_pComposeMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
-
-		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-		RecordDrawCallStats(1);
+		if (commands->BindShaderBindings(commandList, m_pComposeMaterial, { sceneView.m_frameBindings, m_pShaderBindings }))
+		{
+			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+			RecordDrawCallStats(1);
+		}
 		commands->EndRenderPass(commandList);
 
 		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetDefaultLayout());
@@ -831,9 +835,6 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			false);
 
 		commands->BindMaterial(commandList, m_pStarsMaterial);
-		commands->BindShaderBindings(commandList, m_pStarsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
-		commands->PushConstants(commandList, m_pStarsMaterial, sizeof(PushConstants), &pushConstants);
-
 		commands->SetViewport(commandList,
 			0, (float)target->GetExtent().y,
 			(float)target->GetExtent().x, -(float)target->GetExtent().y,
@@ -841,8 +842,12 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			glm::vec2(target->GetExtent().x, target->GetExtent().y),
 			0, 1.0f);
 
-		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, 0u, 0u, 0u);
-		RecordDrawCallStats(1);
+		if (commands->BindShaderBindings(commandList, m_pStarsMaterial, { sceneView.m_frameBindings, m_pShaderBindings }))
+		{
+			commands->PushConstants(commandList, m_pStarsMaterial, sizeof(PushConstants), &pushConstants);
+			commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, 0u, 0u, 0u);
+			RecordDrawCallStats(1);
+		}
 
 		commands->BeginDebugRegion(commandList, "Blit Clouds", DebugContext::Color_CmdPostProcess);
 		{
@@ -850,18 +855,22 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
 			commands->BindMaterial(commandList, m_pBlitCloudsMaterial);
-			commands->BindShaderBindings(commandList, m_pBlitCloudsMaterial, { sceneView.m_frameBindings, m_pBlitCloudsBindings });
-			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-			RecordDrawCallStats(1);
+			if (commands->BindShaderBindings(commandList, m_pBlitCloudsMaterial, { sceneView.m_frameBindings, m_pBlitCloudsBindings }))
+			{
+				commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+				RecordDrawCallStats(1);
+			}
 		}
 		commands->EndDebugRegion(commandList);
 
 		commands->BeginDebugRegion(commandList, "Sun Shafts", DebugContext::Color_CmdPostProcess);
 		{
 			commands->BindMaterial(commandList, m_pSunShaftsMaterial);
-			commands->BindShaderBindings(commandList, m_pSunShaftsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
-			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-			RecordDrawCallStats(1);
+			if (commands->BindShaderBindings(commandList, m_pSunShaftsMaterial, { sceneView.m_frameBindings, m_pShaderBindings }))
+			{
+				commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+				RecordDrawCallStats(1);
+			}
 		}
 		commands->EndDebugRegion(commandList);
 
@@ -924,41 +933,38 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 					false);
 
 				commands->BindMaterial(commandList, m_pSkyEnvMaterial);
-				commands->BindShaderBindings(commandList, m_pSkyEnvMaterial, { m_pEnvCubemapBindings[face], m_pEnvironmentBindings });
+				if (commands->BindShaderBindings(commandList, m_pSkyEnvMaterial, { m_pEnvCubemapBindings[face], m_pEnvironmentBindings }))
+				{
+					commands->SetViewport(commandList,
+						0, 0,
+						(float)targetFace->GetExtent().x, (float)targetFace->GetExtent().y,
+						glm::vec2(0, 0),
+						glm::vec2(targetFace->GetExtent().x, targetFace->GetExtent().y),
+						0, 1.0f);
 
-				commands->SetViewport(commandList,
-					0, 0,
-					(float)targetFace->GetExtent().x, (float)targetFace->GetExtent().y,
-					glm::vec2(0, 0),
-					glm::vec2(targetFace->GetExtent().x, targetFace->GetExtent().y),
-					0, 1.0f);
-
-				commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-				RecordDrawCallStats(1);
+					commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+					RecordDrawCallStats(1);
+					++m_environmentCaptureStep;
+				}
 				commands->EndRenderPass(commandList);
 			}
 			else
 			{
 				commands->ImageMemoryBarrier(commandList, cubemap, EImageLayout::TransferDstOptimal);
 				commands->GenerateMipMaps(commandList, cubemap);
+				frameGraph->SetSampler("g_skyCubemap", cubemap);
+				m_readyEnvironmentParams = m_capturedEnvironmentParams;
+				m_bEnvironmentReady = true;
+
+				if (auto node = frameGraph->GetGraphNode("Environment").DynamicCast<EnvironmentNode>())
+				{
+					node->MarkDirty();
+				}
+				++m_environmentCaptureStep;
 			}
 
 			commands->EndDebugRegion(commandList);
 		}
-
-		if (m_environmentCaptureStep == EnvCubemapFaceCount)
-		{
-			frameGraph->SetSampler("g_skyCubemap", cubemap);
-			m_readyEnvironmentParams = m_capturedEnvironmentParams;
-			m_bEnvironmentReady = true;
-
-			if (auto node = frameGraph->GetGraphNode("Environment").DynamicCast<EnvironmentNode>())
-			{
-				node->MarkDirty();
-			}
-
-		}
-		m_environmentCaptureStep++;
 	}
 
 	commands->EndDebugRegion(commandList);

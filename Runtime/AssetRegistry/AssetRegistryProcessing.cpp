@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetRegistry.h"
+#include "Core/FileRevision.h"
 #include "AssetRegistry/AssetRegistryInternal.h"
 #include "AssetRegistry/AssetScanSourceRevisionCache.h"
 #include "AssetRegistry/AssetInfo.h"
@@ -156,8 +157,9 @@ AssetRegistry::AssetProcessingToken AssetRegistry::BeginAssetProcessing(AssetInf
 	FileRevision metadataRevision;
 	const bool bHasMetadataRevision = Utils::TryGetFileRevision(info->GetMetaFilepath(), metadataRevision);
 	const std::string assetInfoType = info->GetAssetInfoType();
+	const bool bAlreadyInvalidated = m_scanInvalidatedAssets.Contains(token.m_fileId) && !m_assetCache.Contains(token.m_fileId);
 	m_assetCache.Remove(token.m_fileId);
-	const bool bRetryWatermarkPersisted = m_assetCache.SaveCache();
+	const bool bRetryWatermarkPersisted = bAlreadyInvalidated || m_assetCache.SaveCache();
 	token.m_assetImportTime = Utils::GetFileModificationTime(token.m_sourcePath);
 	if (token.m_assetImportTime <= 0 || !bHasMetadataRevision || metadataFilename.empty() || assetInfoType.empty() ||
 		!Utils::TryGetFileRevision(token.m_sourcePath, token.m_sourceRevision))
@@ -186,6 +188,10 @@ AssetRegistry::AssetProcessingToken AssetRegistry::BeginAssetProcessing(AssetInf
 	info->m_assetImportTime = token.m_assetImportTime;
 	info->m_importedSourceRevision = token.m_sourceRevision;
 	m_assetProcessingStates[token.m_fileId] = AssetProcessingState{token, metadataFilename, assetInfoType, false};
+	if (m_bCollectScanProcessingTasks)
+	{
+		m_scanInvalidatedAssets.Insert(token.m_fileId);
+	}
 	return token;
 }
 
@@ -236,6 +242,11 @@ void AssetRegistry::CompleteAssetProcessing(const AssetProcessingToken& token, b
 			"Asset metadata disappeared while its source was being processed: %s", metadataPath.string().c_str());
 		return;
 	}
+	if (m_scanInvalidatedAssets.Contains(token.m_fileId))
+	{
+		processingState.Value().m_completedMetadataRevision = currentMetadataRevision;
+		return;
+	}
 	m_assetCache.Update(acknowledgedToken.m_fileId,
 		acknowledgedToken.m_assetImportTime,
 		acknowledgedToken.m_sourcePath,
@@ -255,6 +266,134 @@ void AssetRegistry::CompleteAssetProcessing(const AssetProcessingToken& token, b
 	m_assetProcessingStates.Remove(acknowledgedToken.m_fileId);
 }
 
+bool AssetRegistry::BeginScanProcessing(const TVector<FileId>& changedAssets)
+{
+	{
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		m_bScanProcessingActive = true;
+		for (const FileId& fileId : changedAssets)
+		{
+			m_assetCache.Remove(fileId);
+		}
+		if (!m_assetCache.SaveCache())
+		{
+			m_bScanProcessingFailed = true;
+			SAILOR_LOG_ERROR("Cannot persist the asset scan retry checkpoint; processing was not started.");
+			return false;
+		}
+		for (const FileId& fileId : changedAssets)
+		{
+			m_scanInvalidatedAssets.Insert(fileId);
+		}
+		m_bCollectScanProcessingTasks = true;
+	}
+	for (auto* listener : m_contentListeners)
+	{
+		listener->OnAssetScanStarted();
+	}
+	return true;
+}
+
+bool AssetRegistry::CommitScanProcessing()
+{
+	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+	TVector<FileId> completedAssets;
+	for (const FileId& fileId : m_scanInvalidatedAssets)
+	{
+		auto state = m_assetProcessingStates.Find(fileId);
+		if (state == m_assetProcessingStates.end() || state.Value().m_bRejected ||
+			!state.Value().m_completedMetadataRevision.m_bIsValid)
+		{
+			continue;
+		}
+		const AssetProcessingToken& token = state.Value().m_token;
+		const auto metadataPath = std::filesystem::path(token.m_sourcePath).parent_path() / state.Value().m_metadataFilename;
+		FileRevision sourceRevision, metadataRevision;
+		if (!Utils::TryGetFileRevision(token.m_sourcePath, sourceRevision) || sourceRevision != token.m_sourceRevision ||
+			!Utils::TryGetFileRevision(metadataPath.string(), metadataRevision) ||
+			metadataRevision != state.Value().m_completedMetadataRevision)
+		{
+			state.Value().m_bRejected = true;
+			m_bScanProcessingFailed = true;
+			SAILOR_LOG_ERROR("Asset changed before the scan completion checkpoint: %s", token.m_sourcePath.c_str());
+			continue;
+		}
+		m_assetCache.Update(fileId, token.m_assetImportTime, token.m_sourcePath, sourceRevision,
+			state.Value().m_metadataFilename, metadataRevision, state.Value().m_assetInfoType);
+		completedAssets.Add(fileId);
+	}
+	const bool bSaved = m_assetCache.SaveCache();
+	for (const FileId& fileId : completedAssets)
+	{
+		if (bSaved)
+		{
+			m_assetProcessingStates.Remove(fileId);
+		}
+		else
+		{
+			m_assetCache.Remove(fileId);
+			m_assetProcessingStates[fileId].m_bRejected = true;
+		}
+	}
+	m_scanInvalidatedAssets.Clear();
+	m_bScanProcessingFailed |= !bSaved;
+	return !m_bScanProcessingFailed;
+}
+
+void AssetRegistry::FinishScanProcessing()
+{
+	for (auto* listener : m_contentListeners)
+	{
+		TrackScanProcessingTask(listener->OnAssetScanFinished());
+	}
+	TVector<Tasks::TaskPtr<bool>> processingTasks;
+	{
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		m_bCollectScanProcessingTasks = false;
+		processingTasks = std::move(m_scanProcessingTasks);
+		m_scanProcessingTasks.Clear();
+	}
+	bool bFinished = true;
+	for (const auto& task : processingTasks)
+	{
+		bFinished &= !task || task->IsFinished();
+	}
+	auto commit = [this, processingTasks]()
+	{
+		bool bSucceeded = true;
+		for (const auto& task : processingTasks)
+		{
+			bSucceeded &= task && task->GetResult();
+		}
+		{
+			std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+			m_bScanProcessingFailed |= !bSucceeded;
+		}
+		return CommitScanProcessing();
+	};
+	if (bFinished)
+	{
+		commit();
+		return;
+	}
+
+	// Startup scans also commit without an external CompleteScanProcessing call.
+	// Join acknowledgement tasks, not just the work which precedes them.
+	auto commitTask = Tasks::CreateTask<bool>(*m_scheduler, "Commit Asset Scan", std::move(commit));
+	for (const auto& task : processingTasks)
+	{
+		if (task)
+		{
+			commitTask->Join(task);
+		}
+	}
+	{
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		m_scanProcessingTasks.Add(commitTask);
+	}
+	commitTask->Run();
+}
+
 void AssetRegistry::TrackScanProcessingTask(const Tasks::TaskPtr<bool>& processingTask)
 {
 	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
@@ -269,6 +408,13 @@ bool AssetRegistry::CompleteScanProcessing()
 	TVector<Tasks::TaskPtr<bool>> processingTasks;
 	{
 		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		for (const auto& task : m_scanProcessingTasks)
+		{
+			if (task && !task->IsFinished())
+			{
+				return false;
+			}
+		}
 		processingTasks = std::move(m_scanProcessingTasks);
 		m_scanProcessingTasks.Clear();
 		m_bCollectScanProcessingTasks = false;

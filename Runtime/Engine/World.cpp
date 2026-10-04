@@ -5,7 +5,7 @@
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Containers/Set.h"
 #include "Core/LogMacros.h"
-#include "Core/Utils.h"
+#include "Core/Reflection.h"
 #include "YamlExceptionBoundary.h"
 #include <Components/TestComponent.h>
 #include <ECS/TransformECS.h>
@@ -21,6 +21,33 @@ namespace
 		auto* ecsFactory = App::GetSubmodule<ECS::ECSFactory>();
 		check(ecsFactory);
 		return ecsFactory->CreateECS();
+	}
+
+	ReflectedData RemapPendingReferences(
+		const ReflectedData& reflection,
+		const TMap<InstanceId, ObjectPtr>& internalDependencies)
+	{
+		YAML::Node properties(YAML::NodeType::Map);
+		const auto& propertyTypes = reflection.GetTypeInfo().Properties();
+		for (const auto& property : reflection.GetProperties())
+		{
+			YAML::Node value = YAML::Clone(*property.m_second);
+			if (propertyTypes.ContainsKey(property.m_first) &&
+				propertyTypes[property.m_first].starts_with("TObjectPtr<") && value.IsMap())
+			{
+				const YAML::Node instanceIdNode = static_cast<const YAML::Node&>(value)["instanceId"];
+				if (instanceIdNode.IsScalar())
+				{
+					const InstanceId sourceId = instanceIdNode.as<InstanceId>();
+					if (internalDependencies.ContainsKey(sourceId))
+					{
+						value["instanceId"] = internalDependencies[sourceId]->GetInstanceId();
+					}
+				}
+			}
+			properties[property.m_first] = std::move(value);
+		}
+		return Reflection::CreateReflectedData(reflection.GetTypeInfo(), properties);
 	}
 
 	class PrefabInstantiationTransaction final
@@ -79,7 +106,7 @@ World::World(
 	m_currentFrame(1),
 	m_name(std::move(name)),
 	m_frameInput(),
-	m_bIsBeginPlayCalled(false),
+	m_bEcsBeginPlayCalled(false),
 	m_bPhysicsSimulationEnabled(
 		(mask & (uint8_t)EWorldBehaviourBit::Tickable) != 0)
 {
@@ -349,10 +376,7 @@ bool World::RegisterPrefabInstance(
 		effectiveBaseline->m_detachedSupplementalInstanceIds;
 	link.m_effectiveBaseline->m_linkedParentInstanceId =
 		effectiveBaseline->m_linkedParentInstanceId;
-	link.m_effectiveBaseline->m_bLinkedInstanceRecord =
-		effectiveBaseline->m_bLinkedInstanceRecord;
-	link.m_effectiveBaseline->m_bExpandedLinkedInstanceRecord =
-		effectiveBaseline->m_bExpandedLinkedInstanceRecord;
+	link.m_effectiveBaseline->m_recordType = effectiveBaseline->m_recordType;
 	link.m_effectiveBaseline->m_bIsReady.store(
 		effectiveBaseline->IsReady(),
 		std::memory_order_release);
@@ -801,25 +825,61 @@ bool World::CanReparentPrefabObject(
 	return true;
 }
 
-void World::Tick(FrameState& frameState)
+void World::BeginPlayEcs()
 {
-	SAILOR_PROFILE_FUNCTION();
-	const bool bShouldCallBeginPlay = (m_mask & (uint8_t)EWorldBehaviourBit::CallBeginPlay) != 0;
-	const bool bShouldTick = (m_mask & (uint8_t)EWorldBehaviourBit::Tickable) != 0;
-	const bool bShouldEcsTick = (m_mask & (uint8_t)EWorldBehaviourBit::EcsTickable) != 0;
-	const bool bShouldEditorTick = (m_mask & (uint8_t)EWorldBehaviourBit::EditorTick) != 0;
-
-	m_currentFrame++;
-
-	if (!m_bIsBeginPlayCalled)
+	if (!m_bEcsBeginPlayCalled)
 	{
+		m_bEcsBeginPlayCalled = true;
 		for (auto& ecs : m_sortedEcs)
 		{
 			m_ecs[ecs]->BeginPlay();
 		}
-
-		m_bIsBeginPlayCalled = true;
 	}
+}
+
+void World::TickGameObjects(float deltaTime)
+{
+	const bool bShouldCallBeginPlay = (m_mask & (uint8_t)EWorldBehaviourBit::CallBeginPlay) != 0;
+	const bool bShouldTick = (m_mask & (uint8_t)EWorldBehaviourBit::Tickable) != 0;
+	const bool bShouldEditorTick = (m_mask & (uint8_t)EWorldBehaviourBit::EditorTick) != 0;
+	auto objects = m_objects;
+	for (auto& object : objects)
+	{
+		if (!object || object->m_bPendingDestroy)
+		{
+			continue;
+		}
+		if (!object->m_bBeginPlayCalled && bShouldCallBeginPlay)
+		{
+			object->m_bBeginPlayCalled = true;
+			object->BeginPlay();
+		}
+		if (object && !object->m_bPendingDestroy && (bShouldCallBeginPlay || bShouldTick))
+		{
+			object->Tick(deltaTime);
+		}
+	}
+
+	if (bShouldEditorTick)
+	{
+		for (auto& object : objects)
+		{
+			if (object && !object->m_bPendingDestroy)
+			{
+				object->EditorTick(deltaTime);
+			}
+		}
+	}
+}
+
+void World::Tick(FrameState& frameState)
+{
+	SAILOR_PROFILE_FUNCTION();
+	const bool bShouldEcsTick = (m_mask & (uint8_t)EWorldBehaviourBit::EcsTickable) != 0;
+	const bool bShouldEditorTick = (m_mask & (uint8_t)EWorldBehaviourBit::EditorTick) != 0;
+
+	m_currentFrame++;
+	BeginPlayEcs();
 
 	m_frameInput = frameState.GetInputState();
 	m_commandList = frameState.CreateCommandBuffer(0);
@@ -831,28 +891,10 @@ void World::Tick(FrameState& frameState)
 	m_time += deltaTime;
 
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_commandList, true);
-
-	for (uint32_t i = 0; i < m_objects.Num(); i++)
-	{
-		auto& el = m_objects[i];
-		if (!el->m_bBeginPlayCalled && bShouldCallBeginPlay)
-		{
-			el->m_bBeginPlayCalled = true;
-			el->BeginPlay();
-		}
-		else if (bShouldTick)
-		{
-			el->Tick(deltaTime);
-		}
-	}
+	TickGameObjects(deltaTime);
 
 	if (bShouldEditorTick)
 	{
-		for (auto& el : m_objects)
-		{
-			el->EditorTick(deltaTime);
-		}
-
 		if (auto editor = App::GetSubmodule<Editor>())
 		{
 			editor->TickViewportTools();
@@ -880,24 +922,7 @@ void World::Tick(FrameState& frameState)
 		}
 	}
 
-	for (auto& el : m_pendingDestroyObjects)
-	{
-		if (!el)
-		{
-			continue;
-		}
-
-		check(el->m_bPendingDestroy);
-
-		if (!m_objectsMap.ContainsKey(el->m_instanceId))
-		{
-			continue;
-		}
-
-		DestroyGameObjectHierarchy(el);
-	}
-
-	m_pendingDestroyObjects.Clear();
+	DestroyPendingGameObjects();
 
 	GetDebugContext()->Tick(m_commandList, deltaTime);
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
@@ -933,14 +958,14 @@ GameObjectPtr World::Instantiate(
 		return {};
 	}
 
-	if (prefab->m_bLinkedPrefabSnapshotRecord)
+	if (prefab->IsLinkedPrefabSnapshotRecord())
 	{
 		SAILOR_LOG_ERROR(
 			"Cannot instantiate linked prefab snapshot directly; it must be resolved against its current source first.");
 		return {};
 	}
 
-	if (prefab->m_bExpandedLinkedInstanceRecord)
+	if (prefab->m_recordType == Prefab::ERecordType::ExpandedLinkedInstance)
 	{
 		SAILOR_LOG_ERROR(
 			"Cannot instantiate an expanded linked serialization record directly.");
@@ -948,7 +973,7 @@ GameObjectPtr World::Instantiate(
 	}
 
 	GameObjectPtr detachedParent;
-	if (prefab->m_bDetachedFromPrefabRecord)
+	if (prefab->IsDetachedFromPrefabRecord())
 	{
 		if (!bStrictInstanceIds)
 		{
@@ -970,7 +995,7 @@ GameObjectPtr World::Instantiate(
 		}
 	}
 
-	if (prefab->m_bLinkedInstanceRecord)
+	if (prefab->IsLinkedInstanceRecord())
 	{
 		TMap<InstanceId, InstanceId> dependencyAliasTargets;
 		auto registerDependencyAlias =
@@ -1085,7 +1110,7 @@ GameObjectPtr World::Instantiate(
 			const InstanceId& sourceInstanceId =
 				sourceGameObject.m_instanceId;
 			InstanceId desiredGameObjectId = sourceInstanceId;
-			if (prefab->m_bLinkedInstanceRecord)
+			if (prefab->IsLinkedInstanceRecord())
 			{
 				if (prefab->m_linkedInstanceIds.ContainsKey(
 						sourceInstanceId))
@@ -1169,7 +1194,7 @@ GameObjectPtr World::Instantiate(
 	{
 		const InstanceId& sourceInstanceId = prefab->m_gameObjects[j].m_instanceId;
 		InstanceId gameObjectId;
-		if (prefab->m_bLinkedInstanceRecord)
+		if (prefab->IsLinkedInstanceRecord())
 		{
 			if (prefab->m_linkedInstanceIds.ContainsKey(
 					sourceInstanceId))
@@ -1350,9 +1375,11 @@ GameObjectPtr World::Instantiate(
 					resolveDiagnostic.c_str());
 				return {};
 			}
+			newComp->m_bDependenciesResolved = bResolved;
 			if (!bResolved)
 			{
-				ComponentsToResolveDependencies.Add(TPair(newComp, reflection));
+				// Retry against live IDs; source IDs may belong to another prefab instance.
+				ComponentsToResolveDependencies.Add(TPair(newComp, RemapPendingReferences(reflection, internalDependencies)));
 			}
 		}
 	}
@@ -1381,7 +1408,7 @@ GameObjectPtr World::Instantiate(
 		return {};
 	}
 
-	if (prefab->m_bLinkedInstanceRecord && prefab->m_linkedParentInstanceId)
+	if (prefab->IsLinkedInstanceRecord() && prefab->m_linkedParentInstanceId)
 	{
 		GameObjectPtr externalParent =
 			GetObjectByInstanceId(prefab->m_linkedParentInstanceId).DynamicCast<GameObject>();
@@ -1405,7 +1432,7 @@ GameObjectPtr World::Instantiate(
 		}
 	}
 
-	if (prefab->m_bDetachedFromPrefabRecord)
+	if (prefab->IsDetachedFromPrefabRecord())
 	{
 		root->SetParentInternal(
 			detachedParent,
@@ -1419,7 +1446,8 @@ GameObjectPtr World::Instantiate(
 		}
 	}
 
-	if (prefab->GetFileId())
+	// Gameplay copies do not retain authoring links to the source asset.
+	if (prefab->GetFileId() && !(m_mask & (uint8_t)EWorldBehaviourBit::CallBeginPlay))
 	{
 		std::string linkDiagnostic;
 		if (!RegisterPrefabInstance(
@@ -1449,7 +1477,13 @@ void World::ResolveExternalDependencies()
 	for (size_t i = 0; i < ComponentsToResolveDependencies.Num();)
 	{
 		auto& el = ComponentsToResolveDependencies[i];
-		if (!el.m_first || el.m_first->ResolveRefs(el.m_second, m_objectsMap, false))
+		if (!el.m_first)
+		{
+			ComponentsToResolveDependencies.RemoveAt(i);
+			continue;
+		}
+		el.m_first->m_bDependenciesResolved = el.m_first->ResolveRefs(el.m_second, m_objectsMap, false);
+		if (el.m_first->m_bDependenciesResolved)
 		{
 			ComponentsToResolveDependencies.RemoveAt(i);
 			continue;
@@ -1483,7 +1517,8 @@ void World::ApplyComponentReflection(ComponentPtr component, const ReflectedData
 
 	component->ApplyReflection(reflection);
 	RemovePendingDependencyResolutions(component);
-	if (!component->ResolveRefs(reflection, m_objectsMap, bImmediate))
+	component->m_bDependenciesResolved = component->ResolveRefs(reflection, m_objectsMap, bImmediate);
+	if (!component->m_bDependenciesResolved)
 	{
 		ComponentsToResolveDependencies.Add(TPair(component, reflection));
 	}
@@ -1515,6 +1550,28 @@ bool World::IsEditorSelected(const InstanceId& instanceId) const
 	return instanceId && m_editorSelection.Contains(instanceId.GameObjectId());
 }
 
+void World::DestroyPendingGameObjects()
+{
+	for (auto& object : m_pendingDestroyObjects)
+	{
+		if (!object)
+		{
+			continue;
+		}
+
+		check(object->m_bPendingDestroy);
+
+		if (!m_objectsMap.ContainsKey(object->m_instanceId))
+		{
+			continue;
+		}
+
+		DestroyGameObjectHierarchy(object);
+	}
+
+	m_pendingDestroyObjects.Clear();
+}
+
 void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 {
 	if (!root)
@@ -1522,7 +1579,11 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 		return;
 	}
 
-	RemovePrefabLinksInHierarchy(root);
+	root->SetParentInternal({}, true);
+	if (!m_bIsClearing)
+	{
+		RemovePrefabLinksInHierarchy(root);
+	}
 
 	TVector<GameObjectPtr> destroyingObjects;
 	destroyingObjects.Reserve(root->GetChildren().Num() + 1);
@@ -1557,7 +1618,10 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 		go->EndPlay();
 
 		m_objectsMap.Remove(go->m_instanceId);
-		m_objects.RemoveFirst(go);
+		if (!m_bIsClearing)
+		{
+			m_objects.RemoveFirst(go);
+		}
 		go.DestroyObject(m_allocator);
 	}
 }
@@ -1605,14 +1669,6 @@ GameObjectPtr World::NewGameObject(const std::string& name, const InstanceId& in
 	newObject->m_instanceId = instanceId;
 
 	newObject->Initialize();
-
-	if (m_bIsBeginPlayCalled)
-	{
-		newObject->BeginPlay();
-		newObject->m_bBeginPlayCalled = true;
-	}
-
-	newObject->GetTransformComponent().SetOwner(newObject);
 
 	m_objects.Add(newObject);
 	m_objectsMap[newObject->m_instanceId] = newObject;
@@ -1671,7 +1727,6 @@ void World::DestroyImmediate(GameObjectPtr object)
 		return;
 	}
 
-	object->SetParent(GameObjectPtr());
 	DestroyGameObjectHierarchy(object);
 }
 
@@ -1691,20 +1746,37 @@ void World::Clear()
 	ComponentsToResolveDependencies.Clear();
 
 	TVector<GameObjectPtr> objectsToDestroy = m_objects;
+	TVector<GameObjectPtr> roots;
+	roots.Reserve(objectsToDestroy.Num());
 	for (auto& go : objectsToDestroy)
 	{
-		if (!go || !m_objectsMap.ContainsKey(go->m_instanceId))
+		if (!go)
 		{
 			continue;
 		}
 
+		go->m_fileId = FileId::Invalid;
+		if (!go->GetParent())
+		{
+			roots.Add(go);
+		}
+	}
+	m_prefabInstances.Clear();
+	m_prefabInstanceRootsByObject.Clear();
+
+	for (const auto& root : roots)
+	{
+		DestroyGameObjectHierarchy(root);
+	}
+
+	// EndPlay can reparent descendants after their old hierarchy was queued.
+	for (const auto& go : objectsToDestroy)
+	{
 		DestroyGameObjectHierarchy(go);
 	}
 
 	m_objects.Clear();
 	m_pendingDestroyObjects.Clear();
-	m_prefabInstances.Clear();
-	m_prefabInstanceRootsByObject.Clear();
 	m_editorSelection.Clear();
 	m_pDebugContext.Clear();
 

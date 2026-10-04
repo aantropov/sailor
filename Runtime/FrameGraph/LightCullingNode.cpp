@@ -2,11 +2,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
-#include "RHI/Surface.h"
 #include "RHI/Texture.h"
-#include "RHI/RenderTarget.h"
-#include "Engine/World.h"
-#include "Engine/GameObject.h"
 #include "AssetRegistry/AssetRegistry.h"
 
 using namespace Sailor;
@@ -35,16 +31,7 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
-	auto linearDepthAttachment = GetRHIResource("linearDepth").DynamicCast<RHI::RHITexture>();
-	if (!linearDepthAttachment)
-	{
-		linearDepthAttachment = frameGraph->GetRenderTarget("LinearDepth").DynamicCast<RHI::RHITexture>();
-	}
-	if (!linearDepthAttachment)
-	{
-		commands->EndDebugRegion(commandList);
-		return;
-	}
+	const auto linearDepthAttachment = sceneView.m_rhiLightCullingData->GetShaderBindings()["linearDepth"]->GetTextureBinding();
 
 #ifdef _DEBUG
 	if (RHIShaderPtr computeShader = m_pComputeShader->GetDebugComputeShaderRHI())

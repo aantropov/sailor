@@ -1,23 +1,12 @@
 #include "Reflection.h"
-#include "Utils.h"
+#include "Core/YamlUtils.h"
+#include "Engine/InstanceId.h"
 #include "Containers/Containers.h"
 #include "Components/Component.h"
 #include "Containers/ConcurrentMap.h"
 #include "RHI/Types.h"
 #include "Engine/GameObject.h"
 #include "AssetRegistry/AssetRegistry.h"
-#include "AssetRegistry/Animation/AnimationAssetInfo.h"
-#include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
-#include "AssetRegistry/Audio/AudioAssetInfo.h"
-#include "AssetRegistry/AssetInfo.h"
-#include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
-#include "AssetRegistry/GlobalIllumination/GIProbesAssetInfo.h"
-#include "AssetRegistry/Material/MaterialAssetInfo.h"
-#include "AssetRegistry/Model/ModelAssetInfo.h"
-#include "AssetRegistry/Prefab/PrefabAssetInfo.h"
-#include "AssetRegistry/Shader/ShaderAssetInfo.h"
-#include "AssetRegistry/Texture/TextureAssetInfo.h"
-#include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "RHI/SceneView.h"
 #include "Physics/PhysicsTypes.h"
 #include <algorithm>
@@ -30,82 +19,9 @@
 
 using namespace Sailor;
 
-namespace
+YAML::Node TypeInfo::SerializeAssetType() const
 {
-	template<typename TProperty>
-	std::string GetAssetPropertyTypeName()
-	{
-		using PropertyType = ::refl::trait::remove_qualifiers_t<TProperty>;
-
-		return TypeInfo::GetReflectedPropertyTypeName<PropertyType>();
-	}
-
-	YAML::Node MakeStringSequence(std::initializer_list<const char*> values)
-	{
-		YAML::Node node;
-		for (const char* value : values)
-		{
-			node.push_back(value);
-		}
-		return node;
-	}
-
-	template<typename TAssetInfo>
-	YAML::Node ExportAssetInfoType(const std::string& typeName, std::initializer_list<const char*> extensions)
-	{
-		YAML::Node node;
-		node["typename"] = typeName;
-		node["extensions"] = MakeStringSequence(extensions);
-
-		YAML::Node properties(YAML::NodeType::Sequence);
-		TVector<std::string> exportedPropertyNames;
-		TAssetInfo* empty = nullptr;
-		for_each(refl::reflect<TAssetInfo>().members, [&](auto member)
-			{
-				if constexpr (is_writable(member))
-				{
-					using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*empty))>;
-					const std::string propertyName = NormalizeAssetInfoFieldName(get_display_name(member));
-
-					if (exportedPropertyNames.Contains(propertyName))
-					{
-						return;
-					}
-
-					exportedPropertyNames.Add(propertyName);
-
-					YAML::Node propertyNode;
-					propertyNode["name"] = propertyName;
-					propertyNode["type"] = GetAssetPropertyTypeName<PropertyType>();
-					properties.push_back(propertyNode);
-				}
-			});
-
-		node["properties"] = properties;
-
-		return node;
-	}
-
-	TVector<YAML::Node> ExportAssetInfoTypes()
-	{
-		TVector<YAML::Node> nodes;
-
-		nodes.Add(ExportAssetInfoType<AssetInfo>("Sailor::AssetInfo", {}));
-		nodes.Add(ExportAssetInfoType<TextureAssetInfo>("Sailor::TextureAssetInfo", { "png", "bmp", "tga", "jpg", "gif", "psd", "dds", "hdr" }));
-		nodes.Add(ExportAssetInfoType<ModelAssetInfo>("Sailor::ModelAssetInfo", { "glb", "gltf" }));
-		nodes.Add(ExportAssetInfoType<AnimationAssetInfo>("Sailor::AnimationAssetInfo", { "anim" }));
-		nodes.Add(ExportAssetInfoType<AnimationControllerAssetInfo>("Sailor::AnimationControllerAssetInfo", { "animcontroller" }));
-		nodes.Add(ExportAssetInfoType<AnimationSetAssetInfo>("Sailor::AnimationSetAssetInfo", { "animset" }));
-		nodes.Add(ExportAssetInfoType<AudioAssetInfo>("Sailor::AudioAssetInfo", { "wav", "flac", "mp3" }));
-		nodes.Add(ExportAssetInfoType<MaterialAssetInfo>("Sailor::MaterialAssetInfo", { "mat" }));
-		nodes.Add(ExportAssetInfoType<ShaderAssetInfo>("Sailor::ShaderAssetInfo", { "shader", "glsl" }));
-		nodes.Add(ExportAssetInfoType<FrameGraphAssetInfo>("Sailor::FrameGraphAssetInfo", { "renderer" }));
-		nodes.Add(ExportAssetInfoType<GIProbesAssetInfo>("Sailor::GIProbesAssetInfo", { "probes" }));
-		nodes.Add(ExportAssetInfoType<PrefabAssetInfo>("Sailor::PrefabAssetInfo", { "prefab" }));
-		nodes.Add(ExportAssetInfoType<WorldPrefabAssetInfo>("Sailor::WorldPrefabAssetInfo", { "world" }));
-
-		return nodes;
-	}
+	return m_serializeAssetType ? m_serializeAssetType() : YAML::Node(YAML::NodeType::Undefined);
 }
 
 namespace Sailor::Internal
@@ -715,9 +631,74 @@ YAML::Node Reflection::ExportEngineTypes()
 	nodes.Add(ReflectEnumValues<RHI::EShadowType>());
 
 	yamlTypes["enums"] = nodes;
-	yamlTypes["assetTypes"] = ExportAssetInfoTypes();
+	YAML::Node assetTypes(YAML::NodeType::Sequence);
+	for (const TypeInfo* type : types)
+	{
+		YAML::Node asset = type->SerializeAssetType();
+		if (asset.IsDefined())
+		{
+			assetTypes.push_back(asset);
+		}
+	}
+	yamlTypes["assetTypes"] = assetTypes;
 
 	return yamlTypes;
+}
+
+bool Utils::TryGetComponentInstanceId(
+	const ReflectedData& reflection,
+	InstanceId& outInstanceId,
+	std::string& outDiagnostic)
+{
+	outInstanceId = InstanceId::Invalid;
+	outDiagnostic.clear();
+
+	if (!reflection.IsValid())
+	{
+		outDiagnostic = "the reflected component is invalid";
+		return false;
+	}
+
+	const auto& properties = reflection.GetProperties();
+	if (!properties.ContainsKey("instanceId"))
+	{
+		outDiagnostic = "the reflected component has no instanceId";
+		return false;
+	}
+
+	const auto& instanceIdNode = properties["instanceId"];
+	if (!instanceIdNode.IsScalar())
+	{
+		outDiagnostic = "the reflected component has an invalid instanceId: expected a scalar value";
+		return false;
+	}
+
+	InstanceId instanceId;
+	std::string conversionDiagnostic;
+	if (!External::TryConvertYaml(
+			instanceIdNode,
+			instanceId,
+			conversionDiagnostic))
+	{
+		outDiagnostic = "the reflected component has an invalid instanceId";
+		if (!conversionDiagnostic.empty())
+		{
+			outDiagnostic += ": " + conversionDiagnostic;
+		}
+		return false;
+	}
+
+	if (instanceId.ComponentId() == InstanceId::Invalid ||
+		instanceId.GameObjectId() == InstanceId::Invalid)
+	{
+		outDiagnostic =
+			"the reflected component has an invalid instanceId: "
+			"both component and game-object IDs must be valid";
+		return false;
+	}
+
+	outInstanceId = instanceId;
+	return true;
 }
 
 ObjectPtr IReflectable::ResolveAssetDependency(const FileId& fileId, bool bImmediate)

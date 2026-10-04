@@ -38,7 +38,13 @@ internal sealed class LocalEngineProtocolNativeBridge :
         => EngineProtocolNative.SailorProtocolRequestLocalHostStop();
 
     public void StopLocalHost(bool shutdownEngine)
-        => EngineProtocolNative.SailorProtocolStopLocalHost(shutdownEngine);
+    {
+        if (EngineProtocolNative.SailorProtocolStopLocalHost(shutdownEngine) == 0)
+        {
+            throw new EngineProtocolException(
+                "Native engine shutdown did not complete. Retry shutdown before starting another session.");
+        }
+    }
 }
 
 internal sealed class LocalEngineProtocolTransport :
@@ -57,7 +63,7 @@ internal sealed class LocalEngineProtocolTransport :
     static LocalHostEndpoint? activeHost;
 
     readonly object stateGate = new();
-    readonly TaskCompletionSource<bool> disposalCompletion =
+    TaskCompletionSource<bool> disposalCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly ILocalEngineProtocolNativeBridge nativeBridge;
     readonly Func<Uri, string, IEngineProtocolTransport> transportFactory;
@@ -127,6 +133,7 @@ internal sealed class LocalEngineProtocolTransport :
         IEngineProtocolTransport? candidateTransport = null;
         try
         {
+            int startStatus;
             lock (hostGate)
             {
                 ThrowIfDisposed();
@@ -135,7 +142,7 @@ internal sealed class LocalEngineProtocolTransport :
                     throw new EngineProtocolException(
                         "The local Engine WebSocket host is already initialized.");
                 }
-                candidateHost = StartNewHost(requestData);
+                candidateHost = StartNewHost(requestData, out startStatus);
             }
 
             lock (stateGate)
@@ -143,6 +150,7 @@ internal sealed class LocalEngineProtocolTransport :
                 initializingHost = candidateHost;
                 ThrowIfDisposed();
             }
+            ThrowIfHostFailed(startStatus);
 
             candidateTransport = transportFactory(
                 candidateHost.Endpoint,
@@ -180,10 +188,7 @@ internal sealed class LocalEngineProtocolTransport :
                         hostToStop = candidateHost;
                         shutdownAsPartOfDisposal =
                             Volatile.Read(ref disposed) != 0;
-                        if (shutdownAsPartOfDisposal)
-                        {
-                            pendingHostShutdowns += 1;
-                        }
+                        pendingHostShutdowns += 1;
                     }
                 }
             }
@@ -205,9 +210,20 @@ internal sealed class LocalEngineProtocolTransport :
                 {
                     if (hostToStop is not null)
                     {
-                        StopOwnedHost(
-                            hostToStop,
-                            shutdownEngine: true);
+                        Exception? shutdownFailure = null;
+                        try
+                        {
+                            StopOwnedHost(hostToStop, shutdownEngine: true);
+                        }
+                        catch (Exception exception)
+                        {
+                            shutdownFailure = exception;
+                            throw;
+                        }
+                        finally
+                        {
+                            CompleteHostShutdown(shutdownFailure);
+                        }
                     }
                 }
             }
@@ -223,7 +239,7 @@ internal sealed class LocalEngineProtocolTransport :
         }
     }
 
-    LocalHostEndpoint StartNewHost(byte[] requestData)
+    LocalHostEndpoint StartNewHost(byte[] requestData, out int status)
     {
         var token = Convert.ToHexString(
             RandomNumberGenerator.GetBytes(32));
@@ -234,11 +250,12 @@ internal sealed class LocalEngineProtocolTransport :
             var candidate = new LocalHostEndpoint(
                 new Uri($"ws://127.0.0.1:{port}/sailor/editor/v1"),
                 token);
-            var status = nativeBridge.StartLocalHost(
+            status = nativeBridge.StartLocalHost(
                 requestData,
                 checked((ushort)port),
                 token);
-            if (status == 0)
+            // Failed native rollback still owns an App that this transport must stop.
+            if (status is 0 or 7)
             {
                 activeHost = candidate;
                 return candidate;
@@ -282,6 +299,7 @@ internal sealed class LocalEngineProtocolTransport :
             4 => "Local Engine initialization failed.",
             5 => "Local Engine WebSocket host failed during bootstrap.",
             6 => "Local Engine WebSocket networking could not be initialized.",
+            7 => "Local Engine initialization failed and shutdown is incomplete. Retry shutdown before starting another session.",
             _ => $"Local Engine WebSocket host failed with status {status}."
         };
         throw new EngineProtocolException(message);
@@ -356,6 +374,7 @@ internal sealed class LocalEngineProtocolTransport :
         {
             if (hostToStop is not null)
             {
+                Exception? shutdownFailure = null;
                 try
                 {
                     await Task.Run(
@@ -365,9 +384,14 @@ internal sealed class LocalEngineProtocolTransport :
                             CancellationToken.None)
                         .ConfigureAwait(false);
                 }
+                catch (Exception exception)
+                {
+                    shutdownFailure = exception;
+                    throw;
+                }
                 finally
                 {
-                    CompleteHostShutdown();
+                    CompleteHostShutdown(shutdownFailure);
                 }
             }
         }
@@ -375,15 +399,19 @@ internal sealed class LocalEngineProtocolTransport :
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref disposed, 1) != 0)
-        {
-            return;
-        }
-
+        var firstAttempt = Interlocked.Exchange(ref disposed, 1) == 0;
         IEngineProtocolTransport? transport;
         LocalHostEndpoint? hostToStop = null;
         lock (stateGate)
         {
+            if (!firstAttempt && (pendingHostShutdowns != 0 || ownedHost is null))
+            {
+                return;
+            }
+            if (disposalCompletion.Task.IsCompleted)
+            {
+                disposalCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
             hostToStop = ownedHost ?? initializingHost;
             transport = webSocketTransport;
             webSocketTransport = null;
@@ -414,7 +442,10 @@ internal sealed class LocalEngineProtocolTransport :
     public ValueTask DisposeAsync()
     {
         Dispose();
-        return new ValueTask(disposalCompletion.Task);
+        lock (stateGate)
+        {
+            return new ValueTask(disposalCompletion.Task);
+        }
     }
 
     void BeginNonBlockingHostShutdown(
@@ -455,6 +486,7 @@ internal sealed class LocalEngineProtocolTransport :
         LocalHostEndpoint host,
         IEngineProtocolTransport? transport)
     {
+        Exception? shutdownFailure = null;
         try
         {
             try
@@ -480,21 +512,29 @@ internal sealed class LocalEngineProtocolTransport :
         }
         catch (Exception exception)
         {
+            shutdownFailure = exception;
             Console.WriteLine(
                 $"[EngineProtocol] Local host teardown failed: {exception.Message}");
         }
         finally
         {
-            CompleteHostShutdown();
+            CompleteHostShutdown(shutdownFailure);
         }
     }
 
-    void CompleteHostShutdown()
+    void CompleteHostShutdown(Exception? failure = null)
     {
         lock (stateGate)
         {
             pendingHostShutdowns -= 1;
-            TryCompleteDisposalUnderLock();
+            if (failure is not null && Volatile.Read(ref disposed) != 0)
+            {
+                disposalCompletion.TrySetException(failure);
+            }
+            else
+            {
+                TryCompleteDisposalUnderLock();
+            }
         }
     }
 
@@ -510,7 +550,7 @@ internal sealed class LocalEngineProtocolTransport :
     {
         if (Volatile.Read(ref disposed) != 0 &&
             !initializing &&
-            pendingHostShutdowns == 0)
+            pendingHostShutdowns == 0 && ownedHost is null && initializingHost is null)
         {
             disposalCompletion.TrySetResult(true);
         }
@@ -550,6 +590,7 @@ internal sealed class LocalEngineProtocolTransport :
         bool shutdownEngine)
     {
         var claimedHost = false;
+        var stoppedHost = false;
         try
         {
             lock (hostGate)
@@ -568,6 +609,7 @@ internal sealed class LocalEngineProtocolTransport :
             }
 
             nativeBridge.StopLocalHost(shutdownEngine);
+            stoppedHost = true;
         }
         finally
         {
@@ -577,7 +619,15 @@ internal sealed class LocalEngineProtocolTransport :
                 {
                     if (ReferenceEquals(activeHost, host))
                     {
-                        activeHost = null;
+                        if (stoppedHost) activeHost = null;
+                        else host.IsStopping = false;
+                    }
+                }
+                if (!stoppedHost)
+                {
+                    lock (stateGate)
+                    {
+                        ownedHost = host;
                     }
                 }
             }

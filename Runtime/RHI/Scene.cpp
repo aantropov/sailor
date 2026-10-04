@@ -390,20 +390,17 @@ bool RHIScene::ResolveSlot(RenderInstanceHandle handle, const LogicalSlot*& outS
 	return true;
 }
 
-void RHIScene::AppendChange(
-	RenderInstanceHandle handle,
-	SceneChangeMask mask)
+void RHIScene::MarkDirty(uint32_t slotIndex)
 {
 	++m_revision;
-	m_journal.Add({ m_revision, handle, mask });
-	if (m_dirtySlotFlags.Num() <= handle.m_slot)
+	if (m_dirtySlotFlags.Num() <= slotIndex)
 	{
-		m_dirtySlotFlags.Resize(static_cast<size_t>(handle.m_slot) + 1u);
+		m_dirtySlotFlags.Resize(static_cast<size_t>(slotIndex) + 1u);
 	}
-	if (m_dirtySlotFlags[handle.m_slot] == 0u)
+	if (m_dirtySlotFlags[slotIndex] == 0u)
 	{
-		m_dirtySlotFlags[handle.m_slot] = 1u;
-		m_dirtySlots.Add(handle.m_slot);
+		m_dirtySlotFlags[slotIndex] = 1u;
+		m_dirtySlots.Add(slotIndex);
 	}
 	++m_metrics.m_numDirtyChanges;
 }
@@ -444,7 +441,7 @@ RenderInstanceHandle RHIScene::AddInstance(const RHISceneInstanceRecord& record)
 	slot.m_retirementRevision = 0ull;
 	slot.m_record = record;
 	const RenderInstanceHandle handle{ slotIndex, slot.m_generation };
-	AppendChange(handle, ToMask(ESceneChangeBit::Add));
+	MarkDirty(slotIndex);
 	BumpMobilityRevision(record.m_mobility);
 	m_bHandleListsDirty = true;
 	m_lock.Unlock();
@@ -491,7 +488,7 @@ bool RHIScene::UpdateInstanceLocked(RenderInstanceHandle handle,
 
 	const EMobilityType oldMobility = slot->m_record.m_mobility;
 	slot->m_record = record;
-	AppendChange(handle, changeMask);
+	MarkDirty(handle.m_slot);
 	BumpMobilityRevision(oldMobility);
 	if (oldMobility != record.m_mobility)
 	{
@@ -517,7 +514,7 @@ bool RHIScene::RemoveInstance(RenderInstanceHandle handle)
 
 	const EMobilityType oldMobility = slot->m_record.m_mobility;
 	slot->m_bActive = false;
-	AppendChange(handle, ToMask(ESceneChangeBit::Remove));
+	MarkDirty(handle.m_slot);
 	BumpMobilityRevision(oldMobility);
 	slot->m_retirementRevision = m_revision;
 	m_retiredSlots.Add(handle.m_slot);
@@ -705,16 +702,6 @@ RHISceneVersionPtr RHIScene::GetCurrentVersion() const
 	return result;
 }
 
-void RHIScene::RebuildFlight(
-	RHISceneFlightState& flight,
-	const RHISceneVersion& version)
-{
-	flight.m_stationaryHandles = version.m_stationaryHandles;
-	flight.m_stationaryDirtyHandles.Clear(false);
-	flight.m_bStationaryFullRebuild = true;
-	++flight.m_metrics.m_numFullRebuilds;
-}
-
 RHISceneFlightStatePtr RHIScene::PrepareFlight(
 	uint32_t flightSlot,
 	RHISceneVersionPtr targetVersion)
@@ -742,73 +729,8 @@ RHISceneFlightStatePtr RHIScene::PrepareFlight(
 	}
 
 	auto flight = m_flights[flightSlot];
-	flight->m_metrics = {};
-	flight->m_bStationaryFullRebuild = false;
-	flight->m_stationaryDirtyHandles.Clear(false);
-	const uint64_t firstJournalRevision = m_journal.IsEmpty() ?
-		m_revision + 1ull : m_journal[0].m_revision;
-	const bool bNeedsFullRebuild = flight->m_appliedRevision == 0ull ||
-		flight->m_appliedRevision > targetVersion->m_sceneRevision ||
-		flight->m_appliedRevision + 1ull < firstJournalRevision;
-
-	if (bNeedsFullRebuild)
-	{
-		RebuildFlight(*flight, *targetVersion);
-	}
-	else if (flight->m_appliedRevision < targetVersion->m_sceneRevision)
-	{
-		auto& coalesced = flight->m_coalescedHandlesScratch;
-		coalesced.Clear(false);
-		if (flight->m_coalescedSlotFlags.Num() < m_slots.Num())
-		{
-			flight->m_coalescedSlotFlags.Resize(m_slots.Num());
-		}
-		uint32_t numJournalChanges = 0u;
-		for (const auto& change : m_journal)
-		{
-			if (change.m_revision > flight->m_appliedRevision &&
-				change.m_revision <= targetVersion->m_sceneRevision)
-			{
-				++numJournalChanges;
-				if (flight->m_coalescedSlotFlags[change.m_handle.m_slot] == 0u)
-				{
-					flight->m_coalescedSlotFlags[change.m_handle.m_slot] = 1u;
-					coalesced.Add(change.m_handle);
-				}
-			}
-		}
-		flight->m_metrics.m_numDirtyChanges = numJournalChanges;
-		flight->m_metrics.m_numCoalescedChanges = static_cast<uint32_t>(coalesced.Num());
-		flight->m_stationaryDirtyHandles.Reserve(coalesced.Num());
-		for (const auto& handle : coalesced)
-		{
-			const RHISceneInstanceRecord* targetRecord = nullptr;
-			const RHISceneInstanceRecord* previousRecord = nullptr;
-			const bool bTouchesStationary =
-				(targetVersion->Resolve(handle, targetRecord) && targetRecord &&
-					targetRecord->m_mobility == EMobilityType::Stationary) ||
-				(flight->m_appliedVersion &&
-					flight->m_appliedVersion->Resolve(handle, previousRecord) &&
-					previousRecord &&
-					previousRecord->m_mobility == EMobilityType::Stationary);
-			if (bTouchesStationary)
-			{
-				flight->m_stationaryDirtyHandles.Add(handle);
-			}
-			flight->m_coalescedSlotFlags[handle.m_slot] = 0u;
-		}
-		flight->m_metrics.m_copiedCpuBytes +=
-			flight->m_stationaryDirtyHandles.Num() * sizeof(RenderInstanceHandle);
-	}
-
-	flight->m_stationaryHandles = targetVersion->m_stationaryHandles;
-	flight->m_dynamicHandles = targetVersion->m_dynamicHandles;
 	flight->m_appliedVersion = targetVersion;
 	flight->m_appliedRevision = targetVersion->m_sceneRevision;
-	m_metrics.m_numCoalescedChanges += flight->m_metrics.m_numCoalescedChanges;
-	m_metrics.m_numFullRebuilds += flight->m_metrics.m_numFullRebuilds;
-	m_metrics.m_copiedCpuBytes += flight->m_metrics.m_copiedCpuBytes;
-	m_metrics.m_dynamicRewriteBytes += flight->m_metrics.m_dynamicRewriteBytes;
 	m_lock.Unlock();
 	return flight;
 }
@@ -837,17 +759,6 @@ void RHIScene::CollectGarbage()
 {
 	m_lock.Lock();
 	const uint64_t minimumRetainedRevision = MinimumRetainedRevision();
-	size_t firstRetainedJournalEntry = 0u;
-	while (firstRetainedJournalEntry < m_journal.Num() &&
-		m_journal[firstRetainedJournalEntry].m_revision <= minimumRetainedRevision)
-	{
-		++firstRetainedJournalEntry;
-	}
-	if (firstRetainedJournalEntry > 0u)
-	{
-		m_journal.RemoveAt(0u, firstRetainedJournalEntry);
-	}
-
 	size_t retiredWriteIndex = 0u;
 	for (size_t retiredReadIndex = 0u;
 		retiredReadIndex < m_retiredSlots.Num();
@@ -889,12 +800,4 @@ void RHIScene::CollectGarbage()
 	}
 	m_retainedVersions.Resize(versionWriteIndex);
 	m_lock.Unlock();
-}
-
-uint64_t RHIScene::GetJournalFirstRevision() const
-{
-	m_lock.Lock();
-	const uint64_t result = m_journal.IsEmpty() ? m_revision + 1ull : m_journal[0].m_revision;
-	m_lock.Unlock();
-	return result;
 }

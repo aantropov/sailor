@@ -6,6 +6,8 @@
 #include "Containers/Octree.h"
 #include "Engine/Types.h"
 #include "Raytracing/BVH.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/Model/ModelImporter.h"
 
 #include "MaterialUtils.h"
 #include "LightingModel.h"
@@ -65,6 +67,7 @@ namespace Sailor::Raytracing
 		struct TLASInstance
 		{
 			ModelPtr m_model{};
+			TSharedPtr<const Model::BLASGeometry> m_modelGeometry{};
 			// Optional immutable geometry snapshot. GI probes baking uses it so
 			// model hot reloads cannot mutate an in-flight bake.
 			TSharedPtr<BVH> m_blas{};
@@ -111,6 +114,37 @@ namespace Sailor::Raytracing
 			bool m_bBackFace = false;
 		};
 
+		struct TextureSnapshot
+		{
+			FileId m_fileId{};
+			std::string m_sourceKey;
+			TSharedPtr<const TVector<uint8_t>> m_data;
+			int32_t m_width = 0;
+			int32_t m_height = 0;
+			TextureImporter::CpuDecodeRequest m_decodeRequest;
+		};
+
+		struct SamplerSnapshot
+		{
+			TSharedPtr<const TextureSnapshot> m_texture;
+			RHI::ETextureClamping m_clamping = RHI::ETextureClamping::Repeat;
+		};
+
+		struct MaterialSnapshot
+		{
+			FileId m_fileId{};
+			uint64_t m_contentRevision = 0u;
+			uint64_t m_surfaceRevision = 0u;
+			Material m_parameters;
+			TVector<TPair<std::string, SamplerSnapshot>> m_samplers;
+		};
+
+		using MaterialSnapshots = TVector<TSharedPtr<const MaterialSnapshot>>;
+		using MaterialSnapshotCache = TMap<MaterialPtr, TSharedPtr<const MaterialSnapshot>>;
+		// The material owner waits while Render reads values; texture reads join RHI publication.
+		SAILOR_SHARED_API static MaterialSnapshots CaptureMaterials(const TVector<MaterialPtr>& materials,
+			MaterialSnapshotCache* cache = nullptr);
+
 		static void ParseCommandLineArgs(Params& params, const char** args, int32_t num);
 
 		SAILOR_SHARED_API bool InitializeScene(const TVector<TLASInstance>& instances,
@@ -120,11 +154,21 @@ namespace Sailor::Raytracing
 			const ScenePreparationProgressCallback& progress = {},
 			bool bSkipUnresolvedMaterialInstances = false,
 			const ScenePreparationWarningCallback& warning = {});
+		SAILOR_SHARED_API bool InitializeSceneSnapshot(const TVector<TLASInstance>& instances,
+			const MaterialSnapshots& materials,
+			const TVector<LightProxy>& lightProxies,
+			bool bAddDefaultLightIfEmpty = true,
+			const ScenePreparationProgressCallback& progress = {},
+			bool bSkipUnresolvedMaterialInstances = false,
+			const ScenePreparationWarningCallback& warning = {});
 		void SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::uvec2& extent);
 		SAILOR_SHARED_API void SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
+		// Cancellable preparation uses disposable state, never a published tracer.
+		SAILOR_SHARED_API bool SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent,
+			const std::function<bool()>& shouldContinue);
 		SAILOR_SHARED_API void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		void ClearRuntimeEnvironment();
-		bool RenderPreparedScene(const Params& params);
+		SAILOR_SHARED_API bool RenderPreparedScene(const Params& params);
 		SAILOR_SHARED_API bool SamplePreparedSceneRay(
 			const vec3& origin,
 			const vec3& direction,
@@ -139,19 +183,32 @@ namespace Sailor::Raytracing
 			PreparedRaySample& outSample) const;
 		bool ArePreparedMaterialsFullyResolved() const
 		{
-			return m_bMaterialsFullyResolved;
+			return m_preparedMaterials->m_bMaterialsFullyResolved;
 		}
 		double GetLastRaytraceTimeMs() const { return m_lastRaytraceTimeMs; }
 		const ScenePreparationStats& GetLastScenePreparationStats() const
 		{
 			return m_lastScenePreparationStats;
 		}
-		const TVector<u8vec4>& GetLastRenderedImage() const { return m_lastRenderedImage; }
+		SAILOR_SHARED_API const TVector<u8vec4>& GetLastRenderedImage() const;
+		const TVector<vec4>& GetLastRenderedImageLinear() const { return m_lastRenderedImageLinear; }
 		glm::uvec2 GetLastRenderedExtent() const { return m_lastRenderedExtent; }
 
-		void Run(const Params& params);
+		SAILOR_SHARED_API void Run(const Params& params);
 
 	protected:
+		void UsePreparedGeometry(const PathTracer& source);
+		bool UpdatePreparedEmission(const MaterialSnapshots& materials,
+			const ScenePreparationProgressCallback& progress);
+
+		bool InitializeSceneInternal(const TVector<TLASInstance>& instances,
+			const TVector<MaterialPtr>& runtimeMaterials,
+			const MaterialSnapshots* snapshotMaterials,
+			const TVector<LightProxy>& lightProxies,
+			bool bAddDefaultLightIfEmpty,
+			const ScenePreparationProgressCallback& progress,
+			bool bSkipUnresolvedMaterialInstances,
+			const ScenePreparationWarningCallback& warning);
 
 		static vec2 NextVec2_BlueNoise(
 			uint32_t& randSeedX,
@@ -213,7 +270,8 @@ namespace Sailor::Raytracing
 			float m_cumulativeWeight = 0.0f;
 		};
 
-		void AppendEmissiveTriangles(uint32_t instanceIndex);
+		bool AppendEmissiveTriangles(uint32_t instanceIndex, const ScenePreparationProgressCallback& progress,
+			const ScenePreparationProgress& state);
 		vec3 SampleDirectEmissive(
 			const TLASHit& receiverHit,
 			const LightingModel::SampledData& receiverMaterial,
@@ -230,7 +288,7 @@ namespace Sailor::Raytracing
 		vec3 SampleRuntimeEnvironment(const vec3& direction) const;
 		vec3 SampleRuntimeDiffuseEnvironment(const vec3& direction) const;
 		SAILOR_SHARED_API vec3 SampleRuntimeDirectEnvironment(const vec3& direction) const;
-		void RebuildRuntimeEnvironmentImportance();
+		bool RebuildRuntimeEnvironmentImportance(const std::function<bool()>& shouldContinue = {});
 		float RuntimeEnvironmentImportancePdf(
 			const vec3& direction) const;
 		bool SampleRuntimeEnvironmentImportance(
@@ -247,22 +305,34 @@ namespace Sailor::Raytracing
 			float& outPdf) const;
 
 
-		TVector<DirectionalLight> m_directionalLights{};
-		TVector<LightProxy> m_lightProxies{};
-		TVector<TLASInstance> m_tlasInstances{};
-		TOctree<size_t> m_tlasOctree{ glm::ivec3(0, 0, 0), 16536 * 16, 4 };
-		TVector<Material> m_materials{};
-		TVector<uint8_t> m_resolvedMaterialSlots{};
-		TVector<EmissiveTriangle> m_emissiveTriangles{};
+		struct PreparedGeometry
+		{
+			TVector<TLASInstance> m_tlasInstances;
+			TOctree<size_t> m_tlasOctree{ glm::ivec3(0), 16536 * 16, 4 };
+			TVector<uint32_t> m_tracedInstances;
+		};
+
+		struct PreparedMaterials
+		{
+			TVector<Material> m_materials;
+			TVector<uint8_t> m_resolvedMaterialSlots;
+			TVector<TSharedPtr<CombinedSampler2D>> m_textures;
+			TMap<std::string, uint32_t> m_textureMapping;
+			size_t m_cachedMaterialsSignature = 0;
+			uint32_t m_cachedMaterialsCount = 0;
+			bool m_bCachedMaterialsFromSnapshot = false;
+			bool m_bMaterialsFullyResolved = false;
+		};
+
+		TSharedPtr<PreparedGeometry> m_geometry = TSharedPtr<PreparedGeometry>::Make();
+		TSharedPtr<PreparedMaterials> m_preparedMaterials = TSharedPtr<PreparedMaterials>::Make();
+		TSharedPtr<TVector<EmissiveTriangle>> m_emissiveTriangles = TSharedPtr<TVector<EmissiveTriangle>>::Make();
 		float m_totalEmissiveWeight = 0.0f;
-		TVector<TSharedPtr<CombinedSampler2D>> m_textures{};
-		TMap<std::string, uint32_t> m_textureMapping{};
-		size_t m_cachedMaterialsSignature = 0;
-		uint32_t m_cachedMaterialsCount = 0;
-		bool m_bMaterialsFullyResolved = false;
+		TVector<LightProxy> m_lightProxies{};
 		ScenePreparationStats m_lastScenePreparationStats{};
 		double m_lastRaytraceTimeMs = 0.0;
-		TVector<u8vec4> m_lastRenderedImage{};
+		TVector<vec4> m_lastRenderedImageLinear{};
+		mutable TVector<u8vec4> m_lastRenderedImage{};
 		glm::uvec2 m_lastRenderedExtent{ 0, 0 };
 		CombinedSampler2D m_runtimeEnvironment{};
 		CombinedSampler2D m_runtimeDiffuseEnvironment{};

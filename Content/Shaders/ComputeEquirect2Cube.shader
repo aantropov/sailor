@@ -6,11 +6,27 @@ glslCommon: |
   #extension GL_ARB_separate_shader_objects : enable
   #extension GL_EXT_shader_atomic_float : enable
 glslCompute: |
-  const float PI = 3.141592;
+  const float PI = 3.14159265359;
   const float TwoPI = 2 * PI;
   
   layout(set=0, binding=0) uniform sampler2D src;
   layout(set=0, binding=1, rgba16f) restrict writeonly uniform imageCube dst;
+
+  vec4 sampleEnvironment(vec2 uv)
+  {
+    // Longitude repeats; latitude stops at the poles, independently of the asset sampler.
+    ivec2 size = textureSize(src, 0);
+    vec2 texel = uv * vec2(size) - vec2(0.5);
+    ivec2 lower = ivec2(floor(texel));
+    vec2 weight = fract(texel);
+    int x0 = (lower.x + size.x) % size.x;
+    int x1 = (lower.x + 1) % size.x;
+    int y0 = clamp(lower.y, 0, size.y - 1);
+    int y1 = clamp(lower.y + 1, 0, size.y - 1);
+    return mix(
+      mix(texelFetch(src, ivec2(x0, y0), 0), texelFetch(src, ivec2(x1, y0), 0), weight.x),
+      mix(texelFetch(src, ivec2(x0, y1), 0), texelFetch(src, ivec2(x1, y1), 0), weight.x), weight.y);
+  }
   
   // Calculate normalized sampling direction vector based on current fragment coordinates (gl_GlobalInvocationID.xyz).
   // This is essentially "inverse-sampling": we reconstruct what the sampling vector would be if we wanted it to "hit"
@@ -49,7 +65,7 @@ glslCompute: |
     float theta = acos(v.y);
   
     // Sample equirectangular texture.
-    vec4 color = texture(src, vec2(phi/TwoPI, theta/PI));
+    vec4 color = sampleEnvironment(vec2(phi / TwoPI + 0.5, theta / PI));
   
     // Write out color to output cubemap.
     imageStore(dst, ivec3(gl_GlobalInvocationID), color);

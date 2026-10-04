@@ -59,9 +59,7 @@ namespace Sailor::RHI
 	} \
 	virtual ::Sailor::ReflectedData GetReflectedData() const override \
 	{ \
-		::Sailor::TypeInfo typeInfo = ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-		::Sailor::ReflectedData res = ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
-		return res; \
+		return ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
 	} \
 	virtual void ApplyReflection(const ::Sailor::ReflectedData& reflection) override \
 	{ \
@@ -89,9 +87,7 @@ namespace Sailor::RHI
 	} \
 	virtual ::Sailor::ReflectedData GetReflectedData() const override \
 	{ \
-		::Sailor::TypeInfo typeInfo = ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-		::Sailor::ReflectedData res = ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
-		return res; \
+		return ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
 	} \
 	virtual void ApplyReflection(const ::Sailor::ReflectedData& reflection) override \
 	{ \
@@ -116,6 +112,9 @@ namespace Sailor
 
 	namespace Attributes
 	{
+		template<typename... TExtensions>
+		struct Asset;
+
 		struct Transient : refl::attr::usage::field, refl::attr::usage::function { };
 		struct SkipCDO : refl::attr::usage::field, refl::attr::usage::function { };
 
@@ -149,6 +148,7 @@ namespace Sailor
 
 		virtual YAML::Node Serialize() const;
 		virtual void Deserialize(const YAML::Node& inData);
+		YAML::Node SerializeAssetType() const;
 
 		// instances can be obtained only through calls to Get()
 		template <typename T>
@@ -173,42 +173,7 @@ namespace Sailor
 		static std::string GetReflectedEnumTypeName()
 		{
 			using EnumType = ::refl::trait::remove_qualifiers_t<TEnum>;
-
-			std::string enumName = std::string(magic_enum::enum_type_name<EnumType>());
-			constexpr const char* enumClassPrefix = "enum class ";
-			constexpr const char* enumPrefix = "enum ";
-
-			if (enumName.rfind(enumClassPrefix, 0) == 0)
-			{
-				enumName.erase(0, std::char_traits<char>::length(enumClassPrefix));
-			}
-			else if (enumName.rfind(enumPrefix, 0) == 0)
-			{
-				enumName.erase(0, std::char_traits<char>::length(enumPrefix));
-			}
-
-			if (enumName.find("::") == std::string::npos)
-			{
-				if constexpr (
-					std::is_same_v<EnumType, RHI::EFormat> ||
-					std::is_same_v<EnumType, RHI::ETextureFiltration> ||
-					std::is_same_v<EnumType, RHI::ETextureClamping> ||
-					std::is_same_v<EnumType, RHI::ESamplerReductionMode> ||
-					std::is_same_v<EnumType, RHI::EFillMode> ||
-					std::is_same_v<EnumType, RHI::ECullMode> ||
-					std::is_same_v<EnumType, RHI::EBlendMode> ||
-					std::is_same_v<EnumType, RHI::EDepthCompare> ||
-					std::is_same_v<EnumType, RHI::EShadowType>)
-				{
-					enumName = "Sailor::RHI::" + enumName;
-				}
-				else
-				{
-					enumName = "Sailor::" + enumName;
-				}
-			}
-
-			return "enum " + enumName;
+			return "enum " + GetCanonicalCppTypeName<EnumType>();
 		}
 
 		template<typename TProperty>
@@ -313,6 +278,7 @@ namespace Sailor
 		size_t m_size;
 		TMap<std::string, std::string> m_props;
 		TMap<std::string, PropertyRange> m_propertyRanges;
+		YAML::Node (*m_serializeAssetType)() = nullptr;
 
 		template<typename TProperty, typename TMember>
 		void AddPropertyRange(const std::string& propertyName, TMember)
@@ -372,6 +338,15 @@ namespace Sailor
 			: m_name(td.name)
 		{
 			m_size = sizeof(T);
+			if constexpr (refl::descriptor::has_attribute<Attributes::Asset>(td))
+			{
+				m_serializeAssetType = []()
+					{
+						constexpr const auto& asset =
+							refl::descriptor::get_attribute<Attributes::Asset>(refl::reflect<T>());
+						return asset.template Serialize<T>();
+					};
+			}
 
 			T* empty = nullptr;// reinterpret_cast<T*>(_malloca(m_size));
 
@@ -766,6 +741,14 @@ namespace Sailor
 			return reflection;
 		}
 	};
+}
+
+namespace Sailor::Utils
+{
+	SAILOR_API bool TryGetComponentInstanceId(
+		const ReflectedData& reflection,
+		InstanceId& outInstanceId,
+		std::string& outDiagnostic);
 }
 
 REFL_AUTO(

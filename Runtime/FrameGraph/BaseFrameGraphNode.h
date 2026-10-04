@@ -23,8 +23,10 @@ namespace Sailor::Framegraph
 		// Used to resolve render resources during frame recording
 		SAILOR_API void SetRHIResource_Unresolved(const std::string& name, const std::string& value);
 
-		SAILOR_API RHI::RHITexturePtr GetResolvedAttachment(const std::string& name) const;
-		SAILOR_API RHI::RHIResourcePtr GetRHIResource(const std::string& name) const;
+		SAILOR_API RHI::RHITexturePtr GetResolvedAttachment(const std::string& name, const RHI::RHIFrameGraph* frameGraph = nullptr) const;
+		SAILOR_API RHI::RHITexturePtr GetTargetAttachment(const std::string& name, const RHI::RHIFrameGraph* frameGraph = nullptr) const;
+		SAILOR_API RHI::RHITexturePtr GetSampledAttachment(const std::string& name, const RHI::RHIFrameGraph* frameGraph = nullptr) const;
+		SAILOR_API RHI::RHIResourcePtr GetRHIResource(const std::string& name, const RHI::RHIFrameGraph* frameGraph = nullptr) const;
 		SAILOR_API const glm::vec4& GetVec4(const std::string& name) const;
 		SAILOR_API float GetFloat(const std::string& name) const;
 		SAILOR_API const std::string& GetString(const std::string& name) const;		
@@ -39,6 +41,8 @@ namespace Sailor::Framegraph
 		SAILOR_API void SetTag(const std::string& tag) { m_tag = tag; }
 
 	protected:
+		friend class RHI::RHIFrameGraph;
+
 		void ResetDrawCallStats() { m_drawCallStats = {}; }
 		void RecordDrawCallStats(uint32_t numInstances)
 		{
@@ -51,6 +55,8 @@ namespace Sailor::Framegraph
 		TMap<std::string, float> m_floatParams;
 		TMap<std::string, RHI::RHIResourcePtr> m_resourceParams;
 		TMap<std::string, std::string> m_unresolvedResourceParams;
+		uint64_t m_parameterRevision = 0;
+		uint64_t m_resourceRevision = 0;
 		RHI::DrawCallStats m_drawCallStats{};
 
 		std::string m_tag{};

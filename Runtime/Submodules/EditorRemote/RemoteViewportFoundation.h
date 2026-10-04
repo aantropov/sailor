@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <compare>
 #include <cstdint>
@@ -15,6 +16,12 @@ namespace Sailor::EditorRemote
 	using ConnectionEpoch = uint64_t;
 	using SurfaceGeneration = uint64_t;
 	using FrameIndex = uint64_t;
+
+	inline uint64_t GetMonotonicTimeMs()
+	{
+		return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count());
+	}
 
 	enum class ErrorDomain : uint8_t;
 	enum class ResultCode : uint8_t;

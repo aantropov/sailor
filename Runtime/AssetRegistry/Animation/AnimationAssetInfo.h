@@ -22,6 +22,7 @@ namespace Sailor
 		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
 
 	private:
+		SAILOR_API void CopyMetadata(const AssetInfo& source) override;
 		int32_t m_animationIndex = 0;
 		int32_t m_skinIndex = 0;
 	};
@@ -39,7 +40,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::AnimationAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::AnimationAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "anim" }),
 	field(m_fileId),
 	field(m_assetFilename),
 	field(m_animationIndex),

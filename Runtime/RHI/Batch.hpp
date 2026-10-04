@@ -260,8 +260,6 @@ namespace Sailor::RHI
 	{
 		TVector<TPerInstanceData> m_instances{};
 		TVector<PackedDrawGroup> m_groups{};
-		TVector<uint64_t> m_stableKeys{};
-		TMap<uint64_t, uint32_t> m_instanceLookup{};
 		TVector<TPackedDrawArenaPagePtr<TPerInstanceData>> m_arenaPages{};
 		TMap<uint64_t, PackedDrawArenaRange> m_arenaRanges{};
 		uint32_t m_arenaCapacity = 0u;
@@ -277,41 +275,12 @@ namespace Sailor::RHI
 				static_cast<uint32_t>(m_instances.Num());
 		}
 
-		void RebuildInstanceLookup()
-		{
-			m_instanceLookup.Clear();
-			for (uint32_t index = 0u; index < m_stableKeys.Num(); ++index)
-			{
-				m_instanceLookup[m_stableKeys[index]] = index;
-			}
-		}
-
-		bool FindInstance(uint64_t stableKey, uint32_t& outInstanceIndex) const
-		{
-			const uint32_t* instanceIndex = nullptr;
-			if (!m_instanceLookup.Find(stableKey, instanceIndex) || !instanceIndex)
-			{
-				return false;
-			}
-			outInstanceIndex = *instanceIndex;
-			return true;
-		}
-
 		bool FindInstance(
 			uint64_t rangeKey,
 			uint64_t stableKey,
 			uint32_t& outInstanceIndex,
 			RHIMaterialVersionPtr* outMaterialVersion = nullptr) const
 		{
-			if (!IsPagedArena())
-			{
-				if (outMaterialVersion)
-				{
-					outMaterialVersion->Clear();
-				}
-				return FindInstance(stableKey, outInstanceIndex);
-			}
-
 			const PackedDrawArenaRange* range = nullptr;
 			if (!m_arenaRanges.Find(rangeKey, range) || !range ||
 				!range->m_itemOffsets)
@@ -374,75 +343,6 @@ namespace Sailor::RHI
 		const TPerInstanceData* m_data = nullptr;
 		uint32_t m_offset = 0u;
 		uint32_t m_count = 0u;
-	};
-
-	template<typename TPerInstanceData>
-	class TPackedDrawPacketPayloadCache
-	{
-	public:
-		TPackedDrawPacketPayloadPtr<TPerInstanceData> Find(
-			size_t slotKey,
-			size_t revision,
-			uint64_t frame)
-		{
-			Entry* entry = nullptr;
-			if (m_entries.Find(slotKey, entry) && entry && entry->m_payload &&
-				entry->m_revision == revision)
-			{
-				entry->m_lastUsedFrame = frame;
-				return entry->m_payload;
-			}
-			return {};
-		}
-
-		void Publish(
-			size_t slotKey,
-			size_t revision,
-			TPackedDrawPacketPayloadPtr<TPerInstanceData> payload,
-			uint64_t frame)
-		{
-			// Replacing a logical slot releases the cache reference to the old
-			// revision immediately. Active submissions retain their own shared
-			// reference until the corresponding completion fence is signalled.
-			m_entries[slotKey] = { revision, std::move(payload), frame };
-		}
-
-		void Evict(uint64_t frame, uint64_t retentionFrames = 3ull)
-		{
-			m_expiredKeys.Clear(false);
-			for (const auto& entry : m_entries)
-			{
-				if (entry.Second() && frame > entry.Second()->m_lastUsedFrame &&
-					frame - entry.Second()->m_lastUsedFrame > retentionFrames)
-				{
-					m_expiredKeys.Add(entry.First());
-				}
-			}
-			for (size_t key : m_expiredKeys)
-			{
-				m_entries.Remove(key);
-			}
-			m_expiredKeys.Clear(false);
-		}
-
-		void Clear()
-		{
-			m_entries.Clear();
-			m_expiredKeys.Clear();
-		}
-
-		size_t Num() const { return m_entries.Num(); }
-
-	private:
-		struct Entry
-		{
-			size_t m_revision = 0u;
-			TPackedDrawPacketPayloadPtr<TPerInstanceData> m_payload{};
-			uint64_t m_lastUsedFrame = 0ull;
-		};
-
-		TMap<size_t, Entry> m_entries{};
-		TVector<size_t> m_expiredKeys{};
 	};
 
 	/**
@@ -880,18 +780,6 @@ namespace Sailor::RHI
 				segment.m_sharedPayload.Clear();
 				segment.m_localPayload.m_instances.Clear(false);
 				segment.m_localPayload.m_groups.Clear(false);
-				segment.m_localPayload.m_stableKeys.Clear(false);
-				if (!segment.m_localPayload.m_instanceLookup.IsEmpty())
-				{
-					segment.m_localPayload.m_instanceLookup.Clear();
-				}
-				segment.m_localPayload.m_arenaPages.Clear(false);
-				if (!segment.m_localPayload.m_arenaRanges.IsEmpty())
-				{
-					segment.m_localPayload.m_arenaRanges.Clear();
-				}
-				segment.m_localPayload.m_arenaCapacity = 0u;
-				segment.m_bUsesArenaPayload = false;
 			}
 			m_groups.Clear(false);
 			m_instanceIndices.Clear(false);
@@ -954,51 +842,6 @@ namespace Sailor::RHI
 			return GetPayload(ToSegmentIndex(mobility));
 		}
 
-		TPackedDrawPacketPayloadPtr<TPerInstanceData> SharePayload(
-			EMobilityType mobility)
-		{
-			auto& segment = m_segments[ToSegmentIndex(mobility)];
-			if (!segment.m_sharedPayload)
-			{
-				segment.m_sharedPayload = TPackedDrawPacketPayloadPtr<TPerInstanceData>::Make();
-				segment.m_sharedPayload->m_instances = std::move(segment.m_localPayload.m_instances);
-				segment.m_sharedPayload->m_groups = std::move(segment.m_localPayload.m_groups);
-			}
-			m_metrics.m_bSharedImmutablePayload = HasSharedImmutablePayload();
-			return segment.m_sharedPayload;
-		}
-
-		TPackedDrawPacketPayloadPtr<TPerInstanceData> ShareArenaPayload(
-			EMobilityType mobility)
-		{
-			auto& segment = m_segments[ToSegmentIndex(mobility)];
-			if (!segment.m_sharedPayload)
-			{
-				segment.m_sharedPayload = TPackedDrawPacketPayloadPtr<TPerInstanceData>::Make();
-				segment.m_sharedPayload->m_instances =
-					std::move(segment.m_localPayload.m_instances);
-				segment.m_sharedPayload->m_stableKeys =
-					std::move(segment.m_localPayload.m_stableKeys);
-				segment.m_sharedPayload->RebuildInstanceLookup();
-			}
-			segment.m_bUsesArenaPayload = true;
-			m_metrics.m_bSharedImmutablePayload = HasSharedImmutablePayload();
-			return segment.m_sharedPayload;
-		}
-
-		void UseSharedPayload(
-			EMobilityType mobility,
-			TPackedDrawPacketPayloadPtr<TPerInstanceData> payload)
-		{
-			auto& segment = m_segments[ToSegmentIndex(mobility)];
-			segment.m_items.Clear(false);
-			segment.m_localPayload.m_instances.Clear(false);
-			segment.m_localPayload.m_groups.Clear(false);
-			segment.m_sharedPayload = std::move(payload);
-			segment.m_bUsesArenaPayload = false;
-			m_metrics.m_bSharedImmutablePayload = HasSharedImmutablePayload();
-		}
-
 		void UseSharedArenaPayload(
 			EMobilityType mobility,
 			TPackedDrawPacketPayloadPtr<TPerInstanceData> payload)
@@ -1007,19 +850,7 @@ namespace Sailor::RHI
 			segment.m_items.Clear(false);
 			segment.m_localPayload.m_instances.Clear(false);
 			segment.m_localPayload.m_groups.Clear(false);
-			segment.m_localPayload.m_stableKeys.Clear(false);
-			if (!segment.m_localPayload.m_instanceLookup.IsEmpty())
-			{
-				segment.m_localPayload.m_instanceLookup.Clear();
-			}
-			segment.m_localPayload.m_arenaPages.Clear(false);
-			if (!segment.m_localPayload.m_arenaRanges.IsEmpty())
-			{
-				segment.m_localPayload.m_arenaRanges.Clear();
-			}
-			segment.m_localPayload.m_arenaCapacity = 0u;
 			segment.m_sharedPayload = std::move(payload);
-			segment.m_bUsesArenaPayload = true;
 			m_metrics.m_bSharedImmutablePayload = HasSharedImmutablePayload();
 		}
 
@@ -1054,55 +885,6 @@ namespace Sailor::RHI
 				stableSortKey });
 		}
 
-		bool AddArenaInstance(
-			TPerInstanceData instanceData,
-			uint64_t stableKey,
-			EMobilityType mobility = EMobilityType::Static)
-		{
-			auto& segment = m_segments[ToSegmentIndex(mobility)];
-			if (segment.m_sharedPayload)
-			{
-				return false;
-			}
-			uint32_t existingIndex = 0u;
-			if (segment.m_localPayload.FindInstance(stableKey, existingIndex))
-			{
-				return false;
-			}
-
-			const uint32_t instanceIndex =
-				static_cast<uint32_t>(segment.m_localPayload.m_instances.Num());
-			segment.m_localPayload.m_instances.Emplace(std::move(instanceData));
-			segment.m_localPayload.m_stableKeys.Add(stableKey);
-			segment.m_localPayload.m_instanceLookup[stableKey] = instanceIndex;
-			segment.m_bUsesArenaPayload = true;
-			return true;
-		}
-
-		bool AddArenaView(
-			RHIBatch batch,
-			RHIMeshPtr mesh,
-			uint64_t stableKey,
-			EMobilityType mobility = EMobilityType::Static)
-		{
-			auto& segment = m_segments[ToSegmentIndex(mobility)];
-			const auto& payload = GetPayload(mobility);
-			uint32_t instanceIndex = 0u;
-			if (!payload.FindInstance(stableKey, instanceIndex))
-			{
-				return false;
-			}
-
-			segment.m_items.Emplace(
-				TPackedDrawItem<TPerInstanceData>{
-				std::move(batch),
-				std::move(mesh),
-				instanceIndex,
-				stableKey });
-			segment.m_bUsesArenaPayload = true;
-			return true;
-		}
-
 		bool AddArenaView(
 			RHIBatch batch,
 			RHIMeshPtr mesh,
@@ -1133,7 +915,6 @@ namespace Sailor::RHI
 				std::move(mesh),
 				instanceIndex,
 				stableKey });
-			segment.m_bUsesArenaPayload = true;
 			return true;
 		}
 
@@ -1144,14 +925,8 @@ namespace Sailor::RHI
 			{
 				segment.m_viewInstanceIndices.Clear(false);
 				segment.m_groups.Clear(false);
-				if (segment.m_sharedPayload && !segment.m_bUsesArenaPayload)
-				{
-					segment.m_items.Clear(false);
-					continue;
-				}
-
 				auto& instances = segment.m_localPayload.m_instances;
-				auto& groups = segment.m_bUsesArenaPayload ?
+				auto& groups = segment.m_sharedPayload ?
 					segment.m_groups : segment.m_localPayload.m_groups;
 				groups.Clear(false);
 
@@ -1203,7 +978,7 @@ namespace Sailor::RHI
 						return lhs.m_stableSortKey < rhs.m_stableSortKey;
 					});
 
-					if (!segment.m_bUsesArenaPayload)
+					if (!segment.m_sharedPayload)
 					{
 						segment.m_reorderVisited.Resize(instances.Num());
 						std::memset(
@@ -1253,7 +1028,7 @@ namespace Sailor::RHI
 					}
 
 					++groups.Last()->m_numInstances;
-					if (segment.m_bUsesArenaPayload)
+					if (segment.m_sharedPayload)
 					{
 						segment.m_viewInstanceIndices.Add(item.m_instanceIndex);
 					}
@@ -1291,7 +1066,7 @@ namespace Sailor::RHI
 			{
 				auto& segment = m_segments[index];
 				const auto& payload = GetPayload(index);
-				const auto& sourceGroups = segment.m_bUsesArenaPayload ?
+				const auto& sourceGroups = segment.m_sharedPayload ?
 					segment.m_groups : payload.m_groups;
 				m_groups.Reserve(m_groups.Num() + sourceGroups.Num());
 				for (const auto& sourceGroup : sourceGroups)
@@ -1301,7 +1076,7 @@ namespace Sailor::RHI
 					m_groups.Emplace(std::move(group));
 				}
 
-				if (segment.m_bUsesArenaPayload)
+				if (segment.m_sharedPayload)
 				{
 					m_instanceIndices.Reserve(
 						m_instanceIndices.Num() + segment.m_viewInstanceIndices.Num());
@@ -1335,7 +1110,6 @@ namespace Sailor::RHI
 			TVector<PackedDrawGroup> m_groups{};
 			TPackedDrawPacketPayload<TPerInstanceData> m_localPayload{};
 			TPackedDrawPacketPayloadPtr<TPerInstanceData> m_sharedPayload{};
-			bool m_bUsesArenaPayload = false;
 		};
 
 		std::array<Segment, NumMobilitySegments> m_segments{};
@@ -1638,7 +1412,6 @@ namespace Sailor::RHI
 			command.m_firstIndex = group.m_mesh->GetFirstIndex();
 			command.m_vertexOffset = group.m_mesh->GetVertexOffset();
 			command.m_firstInstance = firstIndexInstance + group.m_firstInstance;
-			stats.m_numInstances += group.m_numInstances;
 		}
 
 		for (const auto& upload : instanceUploads)
@@ -1757,19 +1530,25 @@ namespace Sailor::RHI
 				depthRange.y);
 			drawBindingSets.Clear(false);
 			collectShaderBindings(batch, drawBindingSets);
-			commands->BindShaderBindings(
+			if (commands->BindShaderBindings(
 				graphicsCmdList,
 				batch.m_material,
-				drawBindingSets);
-			commands->BindVertexBuffer(graphicsCmdList, batch.m_mesh->m_vertexBuffer, 0u);
-			commands->BindIndexBuffer(graphicsCmdList, batch.m_mesh->m_indexBuffer, 0u);
-			commands->DrawIndexedIndirect(
-				graphicsCmdList,
-				indirectCommandBuffer,
-				sizeof(DrawIndexedIndirectData) * runBegin,
-				runEnd - runBegin,
-				sizeof(DrawIndexedIndirectData));
-			++stats.m_numBatches;
+				drawBindingSets))
+			{
+				commands->BindVertexBuffer(graphicsCmdList, batch.m_mesh->m_vertexBuffer, 0u);
+				commands->BindIndexBuffer(graphicsCmdList, batch.m_mesh->m_indexBuffer, 0u);
+				commands->DrawIndexedIndirect(
+					graphicsCmdList,
+					indirectCommandBuffer,
+					sizeof(DrawIndexedIndirectData) * runBegin,
+					runEnd - runBegin,
+					sizeof(DrawIndexedIndirectData));
+				++stats.m_numBatches;
+				for (uint32_t groupIndex = runBegin; groupIndex < runEnd; ++groupIndex)
+				{
+					stats.m_numInstances += groups[groupIndex].m_numInstances;
+				}
+			}
 			runBegin = runEnd;
 		}
 		drawBindingSets.Clear(false);

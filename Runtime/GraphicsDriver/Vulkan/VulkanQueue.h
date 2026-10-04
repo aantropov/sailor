@@ -24,6 +24,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VkResult WaitIdle();
 
 		SAILOR_API VulkanQueue(VkQueue queue, uint32_t queueFamilyIndex, uint32_t queueIndex);
+		SAILOR_API VulkanQueue(VkQueue queue, uint32_t queueFamilyIndex, uint32_t queueIndex, PFN_vkQueueSubmit queueSubmit);
 
 	protected:
 
@@ -36,7 +37,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkQueue m_queue;
 		uint32_t m_queueFamilyIndex;
 		uint32_t m_queueIndex;
+		PFN_vkQueueSubmit m_queueSubmit;
+		PFN_vkQueueWaitIdle m_queueWaitIdle = vkQueueWaitIdle;
 		
 		mutable SpinLock m_lock;
+		friend class VulkanSubmissionTestAccess;
 	};
 }

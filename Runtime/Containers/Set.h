@@ -146,8 +146,8 @@ namespace Sailor
 		using TEntryPtr = TUniquePtr<TEntry>;
 		using TBucketContainer = TVector<TEntryPtr, TAllocator>;
 
-		TSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
-		TSet(TSet&&) = default;
+		TSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(std::max(1u, desiredNumBuckets)); }
+		TSet(TSet&& rhs) : TSet() { Swap(*this, rhs); }
 		TSet(const TSet& rhs) requires IsCopyConstructible<TElementType> : TSet((uint32_t)rhs.m_buckets.Num())
 		{
 			for (const auto& el : rhs)
@@ -156,9 +156,17 @@ namespace Sailor
 			}
 		}
 
-		TSet& operator=(TSet&&) noexcept = default;
+		TSet& operator=(TSet&& rhs) noexcept
+		{
+			Swap(*this, rhs);
+			return *this;
+		}
 		TSet& operator=(const TSet& rhs) requires IsCopyConstructible<TElementType>
 		{
+			if (this == &rhs)
+			{
+				return *this;
+			}
 			Clear((uint32_t)rhs.m_buckets.Num());
 			for (const auto& el : rhs)
 			{
@@ -347,7 +355,15 @@ namespace Sailor
 			m_num = 0;
 			m_first = m_last = nullptr;
 			m_buckets.Clear();
-			m_buckets.Resize(desiredBucketsNum);
+			m_buckets.Resize(std::max(1u, desiredBucketsNum));
+		}
+
+		static void Swap(TSet& lhs, TSet& rhs)
+		{
+			TBucketContainer::Swap(lhs.m_buckets, rhs.m_buckets);
+			std::swap(lhs.m_num, rhs.m_num);
+			std::swap(lhs.m_first, rhs.m_first);
+			std::swap(lhs.m_last, rhs.m_last);
 		}
 
 		// Support ranged for

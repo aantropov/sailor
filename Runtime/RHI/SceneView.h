@@ -20,6 +20,10 @@
 
 namespace Sailor::RHI
 {
+#if defined(__APPLE__)
+	SAILOR_API void NormalizeTextureSamplers(TVector<uint32_t>& textures);
+#endif
+
 	SAILOR_API float CalculateScreenCoverage(
 		const Math::AABB& worldBounds,
 		const glm::mat4& viewMatrix,
@@ -44,7 +48,7 @@ namespace Sailor::RHI
 		RHIMaterialPtr m_customDepthMaterial{};
 		ShaderSetPtr m_customDepthShader{};
 #if defined(__APPLE__)
-		TSet<uint32_t> m_materialTextureSamplers{};
+		TVector<uint32_t> m_materialTextureSamplers{};
 #endif
 	};
 
@@ -97,7 +101,7 @@ namespace Sailor::RHI
 		TVector<uint32_t> m_baseColorSamplers{};
 		TVector<float> m_alphaCutoffs{};
 #if defined(__APPLE__)
-		TVector<TSet<uint32_t>> m_materialTextureSamplers{};
+		TVector<TVector<uint32_t>> m_materialTextureSamplers{};
 #endif
 		bool m_bCastShadows = false;
 		float m_maxShadowDistance = (std::numeric_limits<float>::max)();
@@ -143,7 +147,7 @@ namespace Sailor::RHI
 		TVector<float> m_alphaCutoffs;
 		TVector<RHIInstancedMeshGroup> m_instancedGroups{};
 #if defined(__APPLE__)
-		TVector<TSet<uint32_t>> m_materialTextureSamplers;
+		TVector<TVector<uint32_t>> m_materialTextureSamplers;
 #endif
 		RHIShadowCasterProxyPtr m_shadowCaster{};
 		RHILodPolicy m_lodPolicy{};
@@ -307,15 +311,14 @@ namespace Sailor::RHI
 
 	using RHISpatialSceneVersionPtr = TSharedPtr<RHISpatialSceneVersion>;
 
-	struct RHIPathTracerProxy
+	struct RHIPathTracerScene
 	{
-		ModelPtr m_model{};
-		Math::AABB m_worldBounds{};
-		glm::mat4 m_worldMatrix{ 1.0f };
-		glm::mat4 m_inverseWorldMatrix{ 1.0f };
-		TVector<MaterialPtr> m_materials{};
-		uint64_t m_frameLastChange = 0ull;
+		TVector<Raytracing::PathTracer::TLASInstance> m_instances;
+		Raytracing::PathTracer::MaterialSnapshots m_materials;
+		TVector<Raytracing::LightProxy> m_lights;
+		uint64_t m_revision = 0;
 	};
+	using RHIPathTracerScenePtr = TSharedPtr<const RHIPathTracerScene>;
 
 	struct RHIUpdateShadowMapCommand
 	{
@@ -451,10 +454,7 @@ namespace Sailor::RHI
 		// Camera-selected meshes shared by main, depth and every shadow pass.
 		TVector<RHIMeshPtr> m_lodMeshes{};
 		TVector<uint32_t> m_instancedLodOffsets{};
-		TVector<RHIPathTracerProxy> m_pathTracerProxies{};
-		TVector<Sailor::Raytracing::PathTracer::TLASInstance> m_pathTracerTLASInstances{};
-		TVector<MaterialPtr> m_pathTracerMaterials{};
-		TVector<Sailor::Raytracing::LightProxy> m_pathTracerLights{};
+		RHIPathTracerScenePtr m_pathTracerScene;
 
 		uint32_t m_totalNumLights = 0;
 		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate{};
@@ -532,10 +532,7 @@ namespace Sailor::RHI
 
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;
-		TVector<RHIPathTracerProxy> m_pathTracerProxies;
-		TVector<Sailor::Raytracing::PathTracer::TLASInstance> m_pathTracerTLASInstances;
-		TVector<MaterialPtr> m_pathTracerMaterials;
-		TVector<Sailor::Raytracing::LightProxy> m_pathTracerLights;
+		RHIPathTracerScenePtr m_pathTracerScene;
 
 		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui;
 		TVector<Tasks::TaskPtr<RHI::RHICommandListPtr>> m_debugDraw;

@@ -1,5 +1,16 @@
 find_package(ixwebsocket CONFIG QUIET)
 find_package(imgui CONFIG REQUIRED)
+find_package(magic_enum CONFIG REQUIRED)
+find_package(Jolt CONFIG REQUIRED)
+include("${PROJECT_SOURCE_DIR}/CMake/SailorJolt.cmake")
+find_package(Threads REQUIRED)
+
+add_executable(SpinLockTests SpinLockTests.cpp)
+target_compile_features(SpinLockTests PRIVATE cxx_std_20)
+target_include_directories(SpinLockTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(SpinLockTests PRIVATE Threads::Threads magic_enum::magic_enum)
+add_test(NAME SpinLockTests COMMAND SpinLockTests)
+set_tests_properties(SpinLockTests PROPERTIES TIMEOUT 20)
 
 add_executable(ImGuiDrawDataSnapshotTests ImGuiDrawDataSnapshotTests.cpp)
 target_compile_features(ImGuiDrawDataSnapshotTests PRIVATE cxx_std_20)
@@ -59,10 +70,6 @@ add_executable(EditorEngineWebSocketServerTests
     EditorEngineWebSocketServerTests.cpp
 )
 
-add_executable(EditorViewportSessionTests
-    EditorViewportSessionTests.cpp
-)
-
 add_executable(SmartPointerTests
     SmartPointerTests.cpp
 )
@@ -83,9 +90,154 @@ add_executable(BoundsContractTests
     BoundsContractTests.cpp
 )
 
+add_executable(MathContractTests MathContractTests.cpp)
+target_compile_features(MathContractTests PRIVATE cxx_std_20)
+target_include_directories(MathContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(MathContractTests PRIVATE Sailor::Runtime)
+add_test(NAME MathContractTests COMMAND MathContractTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(MathContractTests)
+endif()
+
+add_executable(TimerContractTests TimerContractTests.cpp)
+target_compile_features(TimerContractTests PRIVATE cxx_std_20)
+target_include_directories(TimerContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(TimerContractTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME TimerContractTests COMMAND TimerContractTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(TimerContractTests)
+endif()
+
+add_executable(StringUtilsTests StringUtilsTests.cpp)
+target_compile_features(StringUtilsTests PRIVATE cxx_std_20)
+target_include_directories(StringUtilsTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(StringUtilsTests PRIVATE Sailor::Runtime)
+add_test(NAME StringUtilsTests COMMAND StringUtilsTests)
+set_tests_properties(StringUtilsTests PROPERTIES TIMEOUT 10)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(StringUtilsTests)
+endif()
+
+add_executable(AssetTypeContractTests AssetTypeContractTests.cpp)
+target_compile_features(AssetTypeContractTests PRIVATE cxx_std_20)
+target_include_directories(AssetTypeContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(AssetTypeContractTests PRIVATE Sailor::Runtime)
+add_test(NAME AssetTypeContractTests COMMAND AssetTypeContractTests)
+set_tests_properties(AssetTypeContractTests PROPERTIES TIMEOUT 20)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(AssetTypeContractTests)
+endif()
+
+add_executable(ContainerContractTests ContainerContractTests.cpp)
+target_compile_features(ContainerContractTests PRIVATE cxx_std_20)
+target_include_directories(ContainerContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ContainerContractTests PRIVATE Sailor::Runtime)
+add_test(NAME ContainerContractTests COMMAND ContainerContractTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ContainerContractTests)
+endif()
+
+add_executable(BlockAllocatorTests BlockAllocatorTests.cpp)
+target_compile_features(BlockAllocatorTests PRIVATE cxx_std_20)
+target_include_directories(BlockAllocatorTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(BlockAllocatorTests PRIVATE Sailor::Runtime)
+add_test(NAME BlockAllocatorTests COMMAND BlockAllocatorTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(BlockAllocatorTests)
+endif()
+
+add_executable(RendererTimingTests RendererTimingTests.cpp)
+target_compile_features(RendererTimingTests PRIVATE cxx_std_20)
+target_include_directories(RendererTimingTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(RendererTimingTests PRIVATE Sailor::Runtime)
+add_test(NAME RendererTimingTests COMMAND RendererTimingTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(RendererTimingTests)
+endif()
+
+add_executable(EnvironmentCacheTests EnvironmentCacheTests.cpp)
+target_compile_features(EnvironmentCacheTests PRIVATE cxx_std_20)
+target_include_directories(EnvironmentCacheTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(EnvironmentCacheTests PRIVATE Sailor::Runtime)
+add_test(NAME EnvironmentCacheTests COMMAND EnvironmentCacheTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(EnvironmentCacheTests)
+endif()
+
+add_executable(GraphicsSettingsTests GraphicsSettingsTests.cpp)
+target_compile_features(GraphicsSettingsTests PRIVATE cxx_std_20)
+target_include_directories(GraphicsSettingsTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(GraphicsSettingsTests PRIVATE Sailor::Runtime)
+add_test(NAME GraphicsSettingsTests COMMAND GraphicsSettingsTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(GraphicsSettingsTests)
+endif()
+
+add_executable(RHISubmissionTests RHISubmissionTests.cpp)
+target_compile_features(RHISubmissionTests PRIVATE cxx_std_20)
+target_include_directories(RHISubmissionTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(RHISubmissionTests PRIVATE Sailor::Runtime)
+add_test(NAME RHISubmissionTests COMMAND RHISubmissionTests)
+set_tests_properties(RHISubmissionTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(RHISubmissionTests)
+endif()
+
+add_executable(FrameGraphAssetTests FrameGraphAssetTests.cpp)
+target_compile_features(FrameGraphAssetTests PRIVATE cxx_std_20)
+target_include_directories(FrameGraphAssetTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(FrameGraphAssetTests PRIVATE Sailor::Runtime)
+add_test(NAME FrameGraphAssetTests COMMAND FrameGraphAssetTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(FrameGraphAssetTests)
+endif()
+
+add_executable(ConcurrentContainerTests ConcurrentContainerTests.cpp)
+target_compile_features(ConcurrentContainerTests PRIVATE cxx_std_20)
+target_include_directories(ConcurrentContainerTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ConcurrentContainerTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME ConcurrentContainerTests COMMAND ConcurrentContainerTests)
+set_tests_properties(ConcurrentContainerTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ConcurrentContainerTests)
+endif()
+
 add_executable(LandscapeStreamingTests
     LandscapeStreamingTests.cpp
 )
+
+add_executable(TaskContractTests TaskContractTests.cpp)
+target_compile_features(TaskContractTests PRIVATE cxx_std_20)
+target_include_directories(TaskContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(TaskContractTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME TaskContractTests COMMAND TaskContractTests)
+set_tests_properties(TaskContractTests PROPERTIES TIMEOUT 60)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(TaskContractTests)
+endif()
+
+add_executable(JoltJobSystemTests
+    JoltJobSystemTests.cpp
+    ${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp
+    ${SAILOR_RUNTIME_DIR}/Physics/JoltJobDispatch.cpp
+)
+target_compile_features(JoltJobSystemTests PRIVATE cxx_std_20)
+target_include_directories(JoltJobSystemTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(JoltJobSystemTests PRIVATE Sailor::Runtime Jolt::Jolt)
+# Only the Jolt vtable implementation needs the library's no-RTTI ABI.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR
+    CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    set_source_files_properties(${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp
+        PROPERTIES COMPILE_OPTIONS "/GR-")
+else()
+    set_source_files_properties(${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp
+        PROPERTIES COMPILE_OPTIONS "-fno-rtti")
+endif()
+add_test(NAME JoltJobSystemTests COMMAND JoltJobSystemTests)
+set_tests_properties(JoltJobSystemTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(JoltJobSystemTests)
+endif()
 
 add_executable(GpuCullingContractTests
     GpuCullingContractTests.cpp
@@ -97,7 +249,23 @@ add_executable(RHISceneVirtualizationTests
 
 add_executable(ModelImporterContractTests
     ModelImporterContractTests.cpp
+    ${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelLodCache.cpp
 )
+
+# Compile the production generator without the runtime's private meshoptimizer definition.
+add_executable(ModelLodWithoutMeshoptTests
+    ModelLodWithoutMeshoptTests.cpp
+    ${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelLodGeneration.cpp
+    ${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelLodCache.cpp
+)
+target_compile_features(ModelLodWithoutMeshoptTests PRIVATE cxx_std_20)
+target_include_directories(ModelLodWithoutMeshoptTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ModelLodWithoutMeshoptTests PRIVATE Sailor::Runtime)
+add_test(NAME ModelLodWithoutMeshoptTests COMMAND ModelLodWithoutMeshoptTests)
+set_tests_properties(ModelLodWithoutMeshoptTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ModelLodWithoutMeshoptTests)
+endif()
 
 add_executable(AnimationSamplingContractTests
     AnimationSamplingContractTests.cpp
@@ -106,6 +274,67 @@ add_executable(AnimationSamplingContractTests
 add_executable(VulkanDescriptorCacheTests
     VulkanDescriptorCacheTests.cpp
 )
+
+add_executable(VulkanRenderPassTests VulkanRenderPassTests.cpp)
+target_compile_features(VulkanRenderPassTests PRIVATE cxx_std_20)
+target_include_directories(VulkanRenderPassTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(VulkanRenderPassTests PRIVATE Sailor::Runtime)
+add_test(NAME VulkanRenderPassTests COMMAND VulkanRenderPassTests)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(VulkanRenderPassTests)
+endif()
+
+add_executable(PathTracerImageTests PathTracerImageTests.cpp)
+target_compile_features(PathTracerImageTests PRIVATE cxx_std_20)
+target_include_directories(PathTracerImageTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(PathTracerImageTests PRIVATE Sailor::Runtime)
+add_test(NAME PathTracerImageTests COMMAND PathTracerImageTests)
+set_tests_properties(PathTracerImageTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(PathTracerImageTests)
+endif()
+
+add_executable(ModelBlasInstancingTests ModelBlasInstancingTests.cpp)
+target_compile_features(ModelBlasInstancingTests PRIVATE cxx_std_20)
+target_include_directories(ModelBlasInstancingTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ModelBlasInstancingTests PRIVATE Sailor::Runtime)
+add_test(NAME ModelBlasInstancingTests COMMAND ModelBlasInstancingTests)
+set_tests_properties(ModelBlasInstancingTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ModelBlasInstancingTests)
+endif()
+
+add_executable(VulkanSubmissionTests
+    VulkanSubmissionTests.cpp
+    PathTracerCommandTests.cpp
+    GIProbesCommandTests.cpp
+    TextureImporterCommandTests.cpp
+    MaterialImporterCommandTests.cpp
+    AudioCommandTests.cpp
+    LogCommandTests.cpp
+    ModelLodCommandTests.cpp
+    PrefabImporterCommandTests.cpp
+    FrameGraphNodeCommandTests.cpp
+    ${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelLodCache.cpp
+)
+target_compile_features(VulkanSubmissionTests PRIVATE cxx_std_20)
+target_include_directories(VulkanSubmissionTests PRIVATE ${SAILOR_RUNTIME_DIR} ${PROJECT_SOURCE_DIR}/Lib)
+target_link_libraries(VulkanSubmissionTests PRIVATE Sailor::Runtime ixwebsocket::ixwebsocket)
+if(APPLE)
+    find_package(Protobuf CONFIG REQUIRED)
+    target_sources(VulkanSubmissionTests PRIVATE Support/MacViewportPresentation.mm)
+    target_link_libraries(VulkanSubmissionTests PRIVATE protobuf::libprotobuf "-framework IOSurface" "-framework CoreFoundation"
+        "-framework QuartzCore" "-framework Metal")
+endif()
+# GPU scenarios are explicit command-line modes; default CTest needs no device.
+add_test(NAME VulkanSubmissionTests COMMAND VulkanSubmissionTests)
+set_tests_properties(VulkanSubmissionTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    target_sources(VulkanSubmissionTests PRIVATE
+        ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportWindowsNative.cpp)
+    target_link_libraries(VulkanSubmissionTests PRIVATE d3d11 dxgi)
+    sailor_stage_workspace_test_runtime(VulkanSubmissionTests)
+endif()
 
 add_executable(EditorViewportControllerContractTests
     EditorViewportControllerContractTests.cpp
@@ -138,6 +367,26 @@ add_executable(GpuFrameTimeQueryTests
 add_executable(GlobalIlluminationContractTests
     GlobalIlluminationContractTests.cpp
 )
+
+add_executable(RuntimeGIProbesPublicationTests RuntimeGIProbesPublicationTests.cpp)
+target_compile_features(RuntimeGIProbesPublicationTests PRIVATE cxx_std_20)
+target_include_directories(RuntimeGIProbesPublicationTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(RuntimeGIProbesPublicationTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME RuntimeGIProbesPublicationTests COMMAND RuntimeGIProbesPublicationTests)
+set_tests_properties(RuntimeGIProbesPublicationTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(RuntimeGIProbesPublicationTests)
+endif()
+
+add_executable(GlobalIlluminationLayoutTests GlobalIlluminationLayoutTests.cpp)
+target_compile_features(GlobalIlluminationLayoutTests PRIVATE cxx_std_20)
+target_include_directories(GlobalIlluminationLayoutTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(GlobalIlluminationLayoutTests PRIVATE Sailor::Runtime)
+add_test(NAME GlobalIlluminationLayoutTests COMMAND GlobalIlluminationLayoutTests)
+set_tests_properties(GlobalIlluminationLayoutTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(GlobalIlluminationLayoutTests)
+endif()
 
 add_library(WorkspaceModuleFixture SHARED
     WorkspaceModuleFixture.cpp
@@ -229,11 +478,9 @@ add_executable(AssetMountDiscoveryTests
     ${SAILOR_RUNTIME_DIR}/AssetRegistry/AssetMountDiscovery.cpp
 )
 
-if(WIN32)
-    add_executable(RemoteViewportWindowsTransportTests
-        RemoteViewportWindowsTransportTests.cpp
-    )
-endif()
+add_executable(RemoteViewportWindowsTransportTests
+    RemoteViewportWindowsTransportTests.cpp
+)
 
 if(APPLE)
     add_executable(MacWindowThreadingTests
@@ -242,11 +489,13 @@ if(APPLE)
 
     add_executable(RemoteViewportMacTransportTests
         RemoteViewportMacTransportTests.cpp
+        Support/MacViewportTestSource.mm
         ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm
     )
 
     add_executable(RemoteViewportMacNativeBridgeTests
         RemoteViewportMacNativeBridgeTests.mm
+        Support/MacViewportTestSource.mm
         ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm
     )
 endif()
@@ -256,7 +505,6 @@ target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(EditorEngineProtocolTests PRIVATE cxx_std_20)
 target_compile_features(EditorEngineWebSocketServerTests PRIVATE cxx_std_20)
-target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
 target_compile_features(SmartPointerTests PRIVATE cxx_std_20)
 target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
 target_compile_features(YamlUtilsContractTests PRIVATE cxx_std_20)
@@ -321,7 +569,6 @@ target_link_libraries(EditorEngineWebSocketServerTests PRIVATE
     Sailor::Runtime
     ixwebsocket::ixwebsocket
 )
-target_link_libraries(EditorViewportSessionTests PRIVATE Sailor::Runtime)
 target_link_libraries(SmartPointerTests PRIVATE Sailor::Runtime)
 target_link_libraries(InstanceIdContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(YamlUtilsContractTests PRIVATE Sailor::Runtime)
@@ -399,10 +646,8 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(EditorEngineProtocolTests)
     sailor_stage_workspace_test_runtime(EditorEngineWebSocketServerTests)
 endif()
-if(WIN32)
-    target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
-    target_link_libraries(RemoteViewportWindowsTransportTests PRIVATE Sailor::Runtime)
-endif()
+target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
+target_link_libraries(RemoteViewportWindowsTransportTests PRIVATE Sailor::Runtime)
 if(APPLE)
     target_compile_features(MacWindowThreadingTests PRIVATE cxx_std_20)
     target_compile_features(RemoteViewportMacTransportTests PRIVATE cxx_std_20)
@@ -426,9 +671,6 @@ target_include_directories(EditorEngineProtocolTests PRIVATE
 target_include_directories(EditorEngineWebSocketServerTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
     ${PROJECT_SOURCE_DIR}/Lib
-)
-target_include_directories(EditorViewportSessionTests PRIVATE
-    ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(SmartPointerTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
@@ -517,11 +759,9 @@ target_include_directories(ShaderCacheArtifactTests PRIVATE
 target_include_directories(AssetMountDiscoveryTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
-if(WIN32)
-    target_include_directories(RemoteViewportWindowsTransportTests PRIVATE
-        ${SAILOR_RUNTIME_DIR}
-    )
-endif()
+target_include_directories(RemoteViewportWindowsTransportTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
 
 if(APPLE)
     target_include_directories(MacWindowThreadingTests PRIVATE
@@ -579,11 +819,6 @@ add_test(
     NAME EditorEngineWebSocketLateStopTests
     COMMAND EditorEngineWebSocketServerTests
         --late-stop-after-static-teardown
-)
-
-add_test(
-    NAME EditorViewportSessionTests
-    COMMAND EditorViewportSessionTests
 )
 
 add_test(
@@ -752,6 +987,7 @@ set_tests_properties(
     ModelImporterContractTests
     AnimationSamplingContractTests
     VulkanDescriptorCacheTests
+    VulkanRenderPassTests
     EditorViewportControllerContractTests
     SkyComponentContractTests
     PhysicsRuntimeTests
@@ -779,12 +1015,10 @@ if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR 
     )
 endif()
 
-if(WIN32)
-    add_test(
-        NAME RemoteViewportWindowsTransportTests
-        COMMAND RemoteViewportWindowsTransportTests
-    )
-endif()
+add_test(
+    NAME RemoteViewportWindowsTransportTests
+    COMMAND RemoteViewportWindowsTransportTests
+)
 
 if(APPLE)
     add_test(

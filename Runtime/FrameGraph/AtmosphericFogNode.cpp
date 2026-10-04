@@ -54,18 +54,9 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 	}
 	if (m_parameters.m_fog.x <= 0.0f || m_parameters.m_scattering.z <= 0.0f || !frameGraph) return;
 
-	RHITexturePtr color = GetResolvedAttachment("color");
-	RHISurfacePtr surface = GetRHIResource("color").DynamicCast<RHISurface>();
-	RHITexturePtr depth = GetResolvedAttachment("depthSampler");
-	for (const auto& resource : m_unresolvedResourceParams)
-	{
-		if (resource.First() == "color")
-		{
-			surface = frameGraph->GetSurface(*resource.Second());
-			color = surface ? surface->GetResolved() : frameGraph->GetRenderTarget(*resource.Second());
-		}
-		else if (resource.First() == "depthSampler") depth = frameGraph->GetRenderTarget(*resource.Second());
-	}
+	RHITexturePtr color = GetResolvedAttachment("color", frameGraph.GetRawPtr());
+	RHISurfacePtr surface = GetRHIResource("color", frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
+	RHITexturePtr depth = GetResolvedAttachment("depthSampler", frameGraph.GetRawPtr());
 	if (!color || !depth || !sceneView.m_frameBindings) return;
 	PreloadShader();
 	if (!IsShaderReady()) return;
@@ -108,11 +99,7 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 
 	auto& driver = App::GetSubmodule<Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
-	RHITexturePtr sampledDepth = depth;
-	if (const auto target = depth.DynamicCast<RHIRenderTarget>())
-	{
-		if (const auto aspect = target->GetDepthAspect()) sampledDepth = aspect;
-	}
+	RHITexturePtr sampledDepth = GetSampledAttachment("depthSampler", frameGraph.GetRawPtr());
 	if (!m_bindings || m_depthTexture != sampledDepth || lightingChanged)
 	{
 		m_bindings = driver->CreateShaderBindings();
@@ -159,13 +146,15 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 	commands->BindMaterial(commandList, m_material);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_material, { sceneView.m_frameBindings, m_bindings });
-	commands->SetViewport(commandList, 0, 0, viewport.z, viewport.w,
-		glm::vec2(0), glm::vec2(viewport.z, viewport.w), 0, 1.0f);
-	commands->DrawIndexed(commandList, 6, 1,
-		uint32_t(mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t)),
-		uint32_t(mesh->m_vertexBuffer->GetOffset() / mesh->m_vertexDescription->GetVertexStride()), 0);
-	RecordDrawCallStats(1);
+	if (commands->BindShaderBindings(commandList, m_material, { sceneView.m_frameBindings, m_bindings }))
+	{
+		commands->SetViewport(commandList, 0, 0, viewport.z, viewport.w,
+			glm::vec2(0), glm::vec2(viewport.z, viewport.w), 0, 1.0f);
+		commands->DrawIndexed(commandList, 6, 1,
+			uint32_t(mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t)),
+			uint32_t(mesh->m_vertexBuffer->GetOffset() / mesh->m_vertexDescription->GetVertexStride()), 0);
+		RecordDrawCallStats(1);
+	}
 	commands->EndRenderPass(commandList);
 	commands->EndDebugRegion(commandList);
 }

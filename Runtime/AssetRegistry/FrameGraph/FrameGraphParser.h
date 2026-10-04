@@ -27,8 +27,16 @@ namespace Sailor
 			virtual void Deserialize(const YAML::Node& inData)
 			{
 				m_name = inData["name"].as<std::string>();
-				m_path = inData["path"].as<std::string>();
-				m_fileId.Deserialize(inData["fileId"]);
+				m_path = inData["path"].as<std::string>("");
+				m_fileId = FileId{};
+				if (inData["fileId"])
+				{
+					m_fileId.Deserialize(inData["fileId"]);
+				}
+				if (!m_fileId && m_path.empty())
+				{
+					throw YAML::RepresentationException(inData.Mark(), "Frame graph sampler needs a path or fileId: " + m_name);
+				}
 			}
 		};
 
@@ -81,48 +89,7 @@ namespace Sailor
 
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
-			static uint32_t ParseUintValue(const std::string& str)
-			{
-				uint32_t res = 1;
-				std::stringstream strStream(str);
-
-				if (!(strStream >> res))
-				{
-					auto strings = Utils::SplitString(str, "/");
-					float multiplier = strings.Num() > 1 ? 1.0f / (float)std::atof(strings[1].c_str()) : 1.0f;
-
-					const glm::ivec2 viewportExtent =
-						App::GetMainWindow()->GetRenderArea();
-					const Settings::GraphicsExtent renderExtent =
-						Settings::ResolveRenderDimensions(
-							static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
-							static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
-							App::GetActiveGraphicsSettings().m_resolutionFactor);
-
-					if (str.starts_with("RenderWidth"))
-					{
-						res = std::max(1u, (uint32_t)((float)renderExtent.m_width * multiplier));
-					}
-					else if (str.starts_with("RenderHeight"))
-					{
-						res = std::max(1u, (uint32_t)((float)renderExtent.m_height * multiplier));
-					}
-					else if (str.starts_with("ViewportWidth"))
-					{
-						res = std::max(1u, (uint32_t)((float)viewportExtent.x * multiplier));
-					}
-					else if (str.starts_with("ViewportHeight"))
-					{
-						res = std::max(1u, (uint32_t)((float)viewportExtent.y * multiplier));
-					}
-					else
-					{
-						ensure(false, "Variable cannot be parsed");
-					}
-				}
-
-				return res;
-			}
+			SAILOR_API static uint32_t ParseUintValue(const std::string& str);
 
 			virtual void Deserialize(const YAML::Node& inData)
 			{
@@ -170,7 +137,12 @@ namespace Sailor
 
 				if (inData["maxMipLevel"])
 				{
-					m_maxMipLevel = (uint32_t)inData["maxMipLevel"].as<int32_t>();
+					const int32_t limit = inData["maxMipLevel"].as<int32_t>();
+					if (limit <= 0)
+					{
+						throw YAML::RepresentationException(inData["maxMipLevel"].Mark(), "Frame graph mip limit must be positive: " + m_name);
+					}
+					m_maxMipLevel = static_cast<uint32_t>(limit);
 				}
 
 				if (inData["bIsCompatibleWithComputeShaders"])
@@ -229,7 +201,7 @@ namespace Sailor
 			}
 		};
 
-		virtual void Deserialize(const YAML::Node& inData);
+		SAILOR_API virtual void Deserialize(const YAML::Node& inData);
 
 		TMap<std::string, Resource> m_samplers;
 		TMap<std::string, Value> m_values;

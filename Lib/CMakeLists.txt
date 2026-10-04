@@ -75,6 +75,8 @@ find_package(Jolt CONFIG QUIET)
 if(NOT Jolt_FOUND)
 	list(APPEND SAILOR_MISSING_DEPS "Jolt")
 	sailor_create_stub_target(Jolt::Jolt)
+else()
+	include("${PROJECT_SOURCE_DIR}/CMake/SailorJolt.cmake")
 endif()
 
 find_package(magic_enum CONFIG QUIET)
@@ -324,7 +326,10 @@ if(meshoptimizer_FOUND)
 endif()
 
 if(SAILOR_BUILD_TESTS)
-  target_compile_definitions(SailorLib PUBLIC $<BUILD_INTERFACE:SAILOR_SHADER_CACHE_TEST_HOOKS>)
+  target_compile_definitions(SailorLib PUBLIC
+    $<BUILD_INTERFACE:SAILOR_SHADER_CACHE_TEST_HOOKS>
+    $<BUILD_INTERFACE:SAILOR_FILE_IO_TEST_HOOKS>
+    $<BUILD_INTERFACE:SAILOR_MODEL_IMPORT_TEST_HOOKS>)
 endif()
 
 target_compile_definitions(SailorLib INTERFACE _SAILOR_IMPORT_)

@@ -2,7 +2,7 @@
 #include "FrameGraph/CPUPathTracerNode.h"
 #include "FrameGraph/CopyTextureToRamNode.h"
 #include "RHI/Renderer.h"
-#include "Core/Utils.h"
+#include "Platform/Time.h"
 
 using namespace Sailor;
 

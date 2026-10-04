@@ -9,11 +9,11 @@
 
 namespace
 {
-	void RollbackLocalEditorHost() noexcept
+	bool StopLocalEditorHost(bool bShutdownEngine) noexcept
 	{
 		try
 		{
-			Sailor::App::Stop();
+			Sailor::Protocol::RequestEditorEngineProtocolStop();
 		}
 		catch (...)
 		{
@@ -22,12 +22,18 @@ namespace
 		try
 		{
 			Sailor::Protocol::WaitForEditorEngineProtocolStartDrain();
-			Sailor::App::Shutdown();
-			Sailor::Protocol::ResetEditorEngineProtocolLifecycle();
+			if (!bShutdownEngine) return true;
+			if (Sailor::App::Shutdown())
+			{
+				Sailor::Protocol::ResetEditorEngineProtocolLifecycle();
+				return true;
+			}
 		}
 		catch (...)
 		{
 		}
+		Sailor::Protocol::FailEditorEngineProtocolShutdown();
+		return false;
 	}
 }
 
@@ -95,9 +101,9 @@ extern "C"
 			{
 				Sailor::Protocol::FreeEditorEngineProtocolBuffer(
 					responseData);
-				RollbackLocalEditorHost();
 				return static_cast<int32_t>(
-					EEditorEngineWebSocketHostStatus::InitializationFailed);
+					StopLocalEditorHost(true) ? EEditorEngineWebSocketHostStatus::InitializationFailed :
+					EEditorEngineWebSocketHostStatus::ShutdownFailed);
 			}
 
 			ProtocolResponse response;
@@ -110,9 +116,9 @@ extern "C"
 				response.request_id() != request.request_id() ||
 				!response.success())
 			{
-				RollbackLocalEditorHost();
 				return static_cast<int32_t>(
-					EEditorEngineWebSocketHostStatus::InitializationFailed);
+					StopLocalEditorHost(true) ? EEditorEngineWebSocketHostStatus::InitializationFailed :
+					EEditorEngineWebSocketHostStatus::ShutdownFailed);
 			}
 
 			return static_cast<int32_t>(
@@ -120,9 +126,9 @@ extern "C"
 		}
 		catch (...)
 		{
-			if (bOwnsLocalHost)
+			if (bOwnsLocalHost && !StopLocalEditorHost(true))
 			{
-				RollbackLocalEditorHost();
+				return static_cast<int32_t>(EEditorEngineWebSocketHostStatus::ShutdownFailed);
 			}
 			return static_cast<int32_t>(
 				EEditorEngineWebSocketHostStatus::ExecutionFailed);
@@ -133,36 +139,17 @@ extern "C"
 	{
 		try
 		{
-			Sailor::App::Stop();
+			Sailor::Protocol::RequestEditorEngineProtocolStop();
 		}
 		catch (...)
 		{
 		}
 	}
 
-	SAILOR_API void SailorProtocolStopLocalHost(
+	SAILOR_API int32_t SailorProtocolStopLocalHost(
 		const bool bShutdownEngine) noexcept
 	{
-		try
-		{
-			Sailor::App::Stop();
-		}
-		catch (...)
-		{
-		}
-		Sailor::Protocol::StopEditorEngineWebSocketServer();
-		try
-		{
-			Sailor::Protocol::WaitForEditorEngineProtocolStartDrain();
-			if (bShutdownEngine)
-			{
-				Sailor::App::Shutdown();
-				Sailor::Protocol::ResetEditorEngineProtocolLifecycle();
-			}
-		}
-		catch (...)
-		{
-		}
+		return StopLocalEditorHost(bShutdownEngine) ? 1 : 0;
 	}
 
 	SAILOR_API int32_t SailorProtocolSetWindowsViewportHost(

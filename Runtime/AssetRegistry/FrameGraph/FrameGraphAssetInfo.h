@@ -34,7 +34,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::FrameGraphAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::FrameGraphAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "renderer" }),
 	field(m_fileId),
 	field(m_assetFilename)
 )

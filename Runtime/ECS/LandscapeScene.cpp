@@ -396,7 +396,7 @@ bool LandscapeECS::CollectBakeGeometrySnapshots(TVector<LandscapeBakeGeometrySna
 	return true;
 }
 
-uint64_t LandscapeECS::GetGlobalIlluminationContributorRevision() const noexcept
+uint64_t LandscapeECS::GetGlobalIlluminationGeometryRevision() const noexcept
 {
 	if (!m_publishedSceneVersion || !m_publishedSceneVersion->m_sceneVersion)
 	{
@@ -404,7 +404,17 @@ uint64_t LandscapeECS::GetGlobalIlluminationContributorRevision() const noexcept
 	}
 	const RHI::RHISceneVersion& version = *m_publishedSceneVersion->m_sceneVersion;
 	uint64_t revision = version.m_staticRevision;
-	HashCombine(revision, version.m_stationaryRevision, version.m_materialRevision);
+	HashCombine(revision, version.m_stationaryRevision);
+	return revision;
+}
+
+uint64_t LandscapeECS::GetGlobalIlluminationContributorRevision() const noexcept
+{
+	uint64_t revision = GetGlobalIlluminationGeometryRevision();
+	if (m_publishedSceneVersion && m_publishedSceneVersion->m_sceneVersion)
+	{
+		HashCombine(revision, m_publishedSceneVersion->m_sceneVersion->m_materialRevision);
+	}
 	return revision;
 }
 

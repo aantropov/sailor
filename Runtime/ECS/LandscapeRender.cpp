@@ -79,12 +79,11 @@ namespace Sailor::LandscapeECSInternal
 			}
 		}
 #if defined(__APPLE__)
-		shadowMesh.m_materialTextureSamplers.Insert(0u);
 		if (textureImporter)
 		{
 			for (const auto& sampler : material->GetSamplers())
 			{
-				shadowMesh.m_materialTextureSamplers.Insert(
+				shadowMesh.m_materialTextureSamplers.Add(
 					sampler.m_second
 						? static_cast<uint32_t>(textureImporter->GetTextureIndex(sampler.m_second->GetFileId()))
 						: 0u);
@@ -273,12 +272,11 @@ namespace Sailor::LandscapeECSInternal
 			instanceGroup.m_baseColorSamplers.Add(baseColorSampler);
 #if defined(__APPLE__)
 			auto& requested = instanceGroup.m_materialTextureSamplers[meshIndex];
-			requested.Insert(0u);
 			if (textureImporter)
 			{
 				for (const auto& sampler : material->GetSamplers())
 				{
-					requested.Insert(sampler.m_second ? static_cast<uint32_t>(textureImporter->GetTextureIndex(
+					requested.Add(sampler.m_second ? static_cast<uint32_t>(textureImporter->GetTextureIndex(
 															sampler.m_second->GetFileId()))
 													  : 0u);
 				}

@@ -9,6 +9,7 @@
 #include "Core/Defines.h"
 #include "Math/Math.h"
 #include "Containers/Concepts.h"
+#include "Containers/Vector.h"
 
 namespace Sailor
 {
@@ -35,7 +36,7 @@ namespace Sailor
 		public:
 
 			using iterator_category = std::bidirectional_iterator_tag;
-			using value_type = TDataType;
+			using value_type = std::remove_const_t<TDataType>;
 			using difference_type = int64_t;
 			using pointer = TDataType*;
 			using reference = TDataType&;
@@ -47,9 +48,12 @@ namespace Sailor
 
 			~TBaseIterator() = default;
 
-			TBaseIterator(TNode* node) : m_node(node) {}
+			TBaseIterator(TNode* node, const TList* owner = nullptr) : m_node(node), m_owner(owner) {}
 
-			operator TBaseIterator<const TElementType>() { return TBaseIterator<const TElementType>(m_node); }
+			operator TBaseIterator<const TElementType>() const requires (!std::is_const_v<TDataType>)
+			{
+				return { m_node, m_owner };
+			}
 
 			TBaseIterator& operator=(const TBaseIterator& rhs) = default;
 			TBaseIterator& operator=(TBaseIterator&& rhs) = default;
@@ -71,13 +75,28 @@ namespace Sailor
 
 			TBaseIterator& operator--()
 			{
-				m_node = m_node->m_pPrev;
+				m_node = m_node ? m_node->m_pPrev : m_owner->m_pLast;
 				return *this;
+			}
+
+			TBaseIterator operator++(int)
+			{
+				auto previous = *this;
+				++(*this);
+				return previous;
+			}
+
+			TBaseIterator operator--(int)
+			{
+				auto previous = *this;
+				--(*this);
+				return previous;
 			}
 
 		protected:
 
 			TNode* m_node;
+			const TList* m_owner = nullptr;
 		};
 
 		using TIterator = TBaseIterator<TElementType>;
@@ -92,17 +111,39 @@ namespace Sailor
 		{
 			for (const auto& it : other)
 			{
-				PushBack(it);
+				EmplaceBack(it);
 			}
 		}
 
-		TList(TList&& other) = default;
-		TList& operator=(TList&& other) = default;
+		TList(TList&& other) noexcept requires IsMoveConstructible<TAllocator>
+		{
+			Swap(*this, other);
+		}
 
-		TList& operator=(std::initializer_list<TElementType> initList) { AddRange(initList.begin(), initList.size()); return *this; }
+		TList& operator=(TList&& other) noexcept requires IsMoveConstructible<TAllocator>
+		{
+			if (this != &other)
+			{
+				Clear();
+				Swap(*this, other);
+			}
+			return *this;
+		}
+
+		TList& operator=(std::initializer_list<TElementType> initList)
+		{
+			Clear();
+			AddRange(initList.begin(), initList.size());
+			return *this;
+		}
 
 		TList& operator=(const TList& other) requires IsCopyConstructible<TElementType>
 		{
+			if (this == &other)
+			{
+				return *this;
+			}
+			Clear();
 			for (const auto& it : other)
 			{
 				EmplaceBack(it);
@@ -116,7 +157,7 @@ namespace Sailor
 		template<typename... TArgs>
 		__forceinline void EmplaceBack(TArgs&& ... args)
 		{
-			TNode* node = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode)));
+			TNode* node = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode), alignof(TNode)));
 			new (node) TNode(std::forward<TArgs>(args)...);
 
 			if (!m_pFirst)
@@ -136,7 +177,7 @@ namespace Sailor
 		template<typename... TArgs>
 		__forceinline void EmplaceFront(TArgs&& ... args)
 		{
-			TNode* node = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode)));
+			TNode* node = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode), alignof(TNode)));
 			new (node) TNode(std::forward<TArgs>(args)...);
 
 			if (!m_pFirst)
@@ -153,8 +194,8 @@ namespace Sailor
 			m_num++;
 		}
 
-		void PushBack(TElementType item) { EmplaceBack(item); }
-		void PushFront(TElementType item) { EmplaceFront(item); }
+		void PushBack(TElementType item) { EmplaceBack(std::move_if_noexcept(item)); }
+		void PushFront(TElementType item) { EmplaceFront(std::move_if_noexcept(item)); }
 
 		void PopBack() { Remove(m_pLast); }
 		void PopFront() { Remove(m_pFirst); }
@@ -202,7 +243,7 @@ namespace Sailor
 				TNode* next = current->m_pNext;
 				if (current->m_data == el)
 				{
-					return TIterator(current);
+					return TIterator(current, this);
 				}
 				current = next;
 			}
@@ -218,7 +259,7 @@ namespace Sailor
 				TNode* next = current->m_pNext;
 				if (predicate(current->m_data))
 				{
-					return TIterator(current);
+					return TIterator(current, this);
 				}
 				current = next;
 			}
@@ -234,7 +275,7 @@ namespace Sailor
 				TNode* next = current->m_pNext;
 				if (predicate(current->m_data))
 				{
-					return TConstIterator(current);
+					return TConstIterator(current, this);
 				}
 				current = next;
 			}
@@ -366,14 +407,29 @@ namespace Sailor
 
 		void Sort()
 		{
-			// For now use std
-			std::stable_sort(begin(), end());
+			Sort([](const TElementType& lhs, const TElementType& rhs) { return lhs < rhs; });
 		}
 
-		void Sort(const TPredicate<TElementType>& predicate)
+		void Sort(const TCompare<TElementType>& compare)
 		{
-			// For now use std
-			std::stable_sort(begin(), end(), predicate);
+			if (m_num < 2)
+			{
+				return;
+			}
+			TVector<TNode*> nodes;
+			nodes.Reserve(m_num);
+			for (TNode* node = m_pFirst; node; node = node->m_pNext)
+			{
+				nodes.Add(node);
+			}
+			nodes.Sort([&](const TNode* lhs, const TNode* rhs) { return compare(lhs->m_data, rhs->m_data); });
+			for (size_t i = 0; i < nodes.Num(); ++i)
+			{
+				nodes[i]->m_pPrev = i > 0 ? nodes[i - 1] : nullptr;
+				nodes[i]->m_pNext = i + 1 < nodes.Num() ? nodes[i + 1] : nullptr;
+			}
+			m_pFirst = *nodes.First();
+			m_pLast = *nodes.Last();
 		}
 
 		static void Swap(TList& lhs, TList& rhs)
@@ -385,44 +441,35 @@ namespace Sailor
 		}
 
 		// Support ranged for
-		TIterator begin() { return TIterator(m_pFirst); }
-		TIterator end() { return TIterator(nullptr); }
+		TIterator begin() { return TIterator(m_pFirst, this); }
+		TIterator end() { return TIterator(nullptr, this); }
 
-		TConstIterator begin() const { return TConstIterator(m_pFirst); }
-		TConstIterator end() const { return TConstIterator(nullptr); }
+		TConstIterator begin() const { return TConstIterator(m_pFirst, this); }
+		TConstIterator end() const { return TConstIterator(nullptr, this); }
 
 		TIterator First() { return begin(); }
 		TConstIterator First() const { return begin(); }
 
-		TIterator Last() { return TIterator(m_pLast); }
-		TConstIterator Last() const { return TConstIterator(m_pLast); }
+		TIterator Last() { return TIterator(m_pLast, this); }
+		TConstIterator Last() const { return TConstIterator(m_pLast, this); }
 
 		template<typename TAllocator1>
 		__forceinline bool operator==(const TList<TElementType, TAllocator1>& rhs) const
 		{
-			if (m_num != rhs.m_num)
+			if (m_num != rhs.Num())
 			{
 				return false;
 			}
 
-			TNode* current = m_pFirst;
-			TNode* rhsCurrent = rhs.m_pFirst;
-
-			while (current && rhsCurrent)
+			auto rhsIt = rhs.begin();
+			for (const auto& element : *this)
 			{
-				TNode* next = current->m_pNext;
-				TNode* rhsNext = rhsCurrent->m_pNext;
-
-				if (rhsCurrent->m_data != current->m_data)
+				if (element != *rhsIt)
 				{
 					return false;
 				}
-
-				current = next;
-				rhsCurrent = rhsNext;
+				++rhsIt;
 			}
-
-			check(rhsCurrent == current);
 
 			return true;
 		}
@@ -433,7 +480,7 @@ namespace Sailor
 		{
 			for (size_t i = 0; i < num; i++)
 			{
-				Add(first[i]);
+				EmplaceBack(first[i]);
 			}
 		}
 

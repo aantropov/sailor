@@ -14,7 +14,6 @@ void RigidBodyComponent::Initialize()
 	auto& data = ecs->GetComponentData(m_handle);
 	data.SetOwner(GetOwner());
 	data.MarkDirty();
-	data.MarkVelocityDirty();
 }
 
 void RigidBodyComponent::EndPlay()
@@ -164,42 +163,68 @@ void RigidBodyComponent::SetSleepingAllowed(bool value)
 	}
 }
 
+void RigidBodyComponent::SetInitialLinearVelocity(const glm::vec3& value)
+{
+	if (Math::AllFinite(value))
+	{
+		m_initialLinearVelocity = value;
+	}
+}
+
+void RigidBodyComponent::SetInitialAngularVelocity(const glm::vec3& value)
+{
+	if (Math::AllFinite(value))
+	{
+		m_initialAngularVelocity = value;
+	}
+}
+
+glm::vec3 RigidBodyComponent::GetLinearVelocity() const
+{
+	if (m_handle == ECS::InvalidIndex)
+	{
+		return glm::vec3(0.0f);
+	}
+
+	const auto& data = GetWorld()->GetECS<PhysicsECS>()->GetComponentData(m_handle);
+	return data.m_bodyId != RigidBodyData::InvalidBodyId ?
+		data.m_currentPose.m_linearVelocity : glm::vec3(0.0f);
+}
+
+glm::vec3 RigidBodyComponent::GetAngularVelocity() const
+{
+	if (m_handle == ECS::InvalidIndex)
+	{
+		return glm::vec3(0.0f);
+	}
+
+	const auto& data = GetWorld()->GetECS<PhysicsECS>()->GetComponentData(m_handle);
+	return data.m_bodyId != RigidBodyData::InvalidBodyId ?
+		data.m_currentPose.m_angularVelocity : glm::vec3(0.0f);
+}
+
 void RigidBodyComponent::SetLinearVelocity(const glm::vec3& value)
 {
-	if (!Math::AllFinite(value))
+	if (m_handle == ECS::InvalidIndex || !Math::AllFinite(value))
 	{
 		return;
 	}
 
-	if (m_linearVelocity != value)
-	{
-		m_linearVelocity = value;
-		if (m_handle != ECS::InvalidIndex)
-		{
-			GetOwner()->GetWorld()->GetECS<PhysicsECS>()
-				->GetComponentData(m_handle)
-				.MarkVelocityDirty();
-		}
-	}
+	auto& data = GetWorld()->GetECS<PhysicsECS>()->GetComponentData(m_handle);
+	data.m_pendingLinearVelocity = value;
+	data.m_bLinearVelocityPending = true;
 }
 
 void RigidBodyComponent::SetAngularVelocity(const glm::vec3& value)
 {
-	if (!Math::AllFinite(value))
+	if (m_handle == ECS::InvalidIndex || !Math::AllFinite(value))
 	{
 		return;
 	}
 
-	if (m_angularVelocity != value)
-	{
-		m_angularVelocity = value;
-		if (m_handle != ECS::InvalidIndex)
-		{
-			GetOwner()->GetWorld()->GetECS<PhysicsECS>()
-				->GetComponentData(m_handle)
-				.MarkVelocityDirty();
-		}
-	}
+	auto& data = GetWorld()->GetECS<PhysicsECS>()->GetComponentData(m_handle);
+	data.m_pendingAngularVelocity = value;
+	data.m_bAngularVelocityPending = true;
 }
 
 bool RigidBodyComponent::AddForceAtPosition(

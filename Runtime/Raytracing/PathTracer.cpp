@@ -1,4 +1,5 @@
 #include "PathTracer.h"
+#include "Platform/Time.h"
 #include "Tasks/Scheduler.h"
 #include "Core/LogMacros.h"
 #include "Core/Utils.h"
@@ -160,33 +161,13 @@ namespace
 	const Raytracing::BVH* ResolveInstanceBlas(
 		const PathTracer::TLASInstance& instance)
 	{
-		if (instance.m_blas)
-		{
-			return instance.m_blas.GetRawPtr();
-		}
-		if (!instance.m_model ||
-			!instance.m_model->HasBLAS(instance.m_meshIndex))
-		{
-			return nullptr;
-		}
-		return instance.m_model->GetBLAS(instance.m_meshIndex).GetRawPtr();
+		return instance.m_blas.GetRawPtr();
 	}
 
 	const TVector<Math::Triangle>* ResolveInstanceTriangles(
 		const PathTracer::TLASInstance& instance)
 	{
-		if (instance.m_triangles && !instance.m_triangles->IsEmpty())
-		{
-			return instance.m_triangles.GetRawPtr();
-		}
-		if (!instance.m_model ||
-			!instance.m_model->HasBLAS(instance.m_meshIndex))
-		{
-			return nullptr;
-		}
-		const auto& triangles =
-			instance.m_model->GetBLASTriangles(instance.m_meshIndex);
-		return triangles.IsEmpty() ? nullptr : &triangles;
+		return instance.m_triangles && !instance.m_triangles->IsEmpty() ? instance.m_triangles.GetRawPtr() : nullptr;
 	}
 
 	bool HasInstanceGeometry(const PathTracer::TLASInstance& instance)
@@ -286,7 +267,7 @@ namespace
 			{
 				const tinygltf::Camera& camera = gltfModel.cameras[node.camera];
 				const bool bNameMatch = !params.m_camera.empty() && ((camera.name == params.m_camera) || (node.name == params.m_camera));
-				const bool bUseCamera = bNameMatch || (params.m_camera.empty() && !bFallbackCameraSet);
+				const bool bUseCamera = !bFoundNamedCamera && (bNameMatch || (params.m_camera.empty() && !bFallbackCameraSet));
 
 				if (bUseCamera && camera.type == "perspective")
 				{
@@ -334,11 +315,6 @@ namespace
 				}
 			}
 
-			if (bFoundNamedCamera)
-			{
-				return;
-			}
-
 			for (int32_t child : node.children)
 			{
 				traverseNode(child, world);
@@ -348,10 +324,6 @@ namespace
 		for (int32_t root : scene.nodes)
 		{
 			traverseNode(root, glm::mat4(1.0f));
-			if (bFoundNamedCamera)
-			{
-				break;
-			}
 		}
 	}
 
@@ -470,8 +442,134 @@ namespace
 		return false;
 	}
 
-	bool BuildRaytracingMaterialsFromRuntimeMaterials(
-		const TVector<MaterialPtr>& runtimeMaterials,
+	Raytracing::Material CaptureMaterialParameters(const Sailor::Material& material)
+	{
+		Raytracing::Material outMaterial{};
+		glm::vec4 baseColorFactor(1.0f);
+		glm::vec4 emissiveFactor(0.0f);
+		glm::vec4 attenuationColor(1.0f);
+		glm::vec4 sheenColor(0.0f);
+		glm::vec4 layerUvScale(1.0f);
+		float roughness = 1.0f;
+		float metallic = 1.0f;
+		float alphaCutoff = 0.5f;
+		float normalScale = 1.0f;
+		float clearcoat = 0.0f;
+		float clearcoatRoughness = 0.0f;
+		float clearcoatNormalScale = 1.0f;
+		float sheenRoughness = 0.0f;
+		float transmission = 0.0f;
+		float thickness = 0.0f;
+		float attenuationDistance = (std::numeric_limits<float>::max)();
+		float indexOfRefraction = 1.5f;
+
+		ReadUniformValue(material.GetUniformsVec4(), "material.baseColorFactor", baseColorFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.albedo", baseColorFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.emissiveFactor", emissiveFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.emissive", emissiveFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.emission", emissiveFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.attenuationColor", attenuationColor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.sheenColorFactor", sheenColor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.layerUvScale", layerUvScale);
+		ReadUniformValue(material.GetUniformsFloat(), "material.roughnessFactor", roughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.roughness", roughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.metallicFactor", metallic);
+		ReadUniformValue(material.GetUniformsFloat(), "material.metallic", metallic);
+		ReadUniformValue(material.GetUniformsFloat(), "material.alphaCutoff", alphaCutoff);
+		ReadUniformValue(material.GetUniformsFloat(), "material.normalScale", normalScale);
+		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatFactor", clearcoat);
+		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatRoughnessFactor", clearcoatRoughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatNormalScale", clearcoatNormalScale);
+		ReadUniformValue(material.GetUniformsFloat(), "material.sheenRoughnessFactor", sheenRoughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.transmissionFactor", transmission);
+		ReadUniformValue(material.GetUniformsFloat(), "material.thicknessFactor", thickness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.attenuationDistance", attenuationDistance);
+		ReadUniformValue(material.GetUniformsFloat(), "material.indexOfRefraction", indexOfRefraction);
+
+		outMaterial.m_baseColorFactor = baseColorFactor;
+		outMaterial.m_emissiveFactor = glm::vec3(emissiveFactor);
+		for (glm::length_t layer = 0; layer < 4; ++layer)
+		{
+			outMaterial.m_layerUvScale[layer] =
+				std::isfinite(layerUvScale[layer]) ? layerUvScale[layer] : 1.0f;
+		}
+		outMaterial.m_roughnessFactor = roughness;
+		outMaterial.m_metallicFactor = metallic;
+		outMaterial.m_normalScale = std::isfinite(normalScale) ?
+			normalScale : 1.0f;
+		outMaterial.m_clearcoatFactor = std::isfinite(clearcoat) ?
+			glm::clamp(clearcoat, 0.0f, 1.0f) : 0.0f;
+		outMaterial.m_clearcoatRoughnessFactor =
+			std::isfinite(clearcoatRoughness) ?
+			glm::clamp(clearcoatRoughness, 0.0f, 1.0f) : 0.0f;
+		outMaterial.m_clearcoatNormalScale =
+			std::isfinite(clearcoatNormalScale) ?
+			clearcoatNormalScale : 1.0f;
+		outMaterial.m_sheenRoughnessFactor =
+			std::isfinite(sheenRoughness) ?
+			glm::clamp(sheenRoughness, 0.0f, 1.0f) : 0.0f;
+		outMaterial.m_sheenColorFactor = glm::clamp(
+			glm::vec3(sheenColor),
+			glm::vec3(0.0f),
+			glm::vec3(1.0f));
+		outMaterial.m_alphaCutoff = alphaCutoff;
+		outMaterial.m_transmissionFactor = std::isfinite(transmission) ?
+			glm::clamp(transmission, 0.0f, 1.0f) :
+			0.0f;
+		outMaterial.m_thicknessFactor = std::isfinite(thickness) ?
+			(std::max)(0.0f, thickness) :
+			0.0f;
+		outMaterial.m_attenuationDistance =
+			std::isfinite(attenuationDistance) && attenuationDistance > 0.0f ?
+			attenuationDistance :
+			(std::numeric_limits<float>::max)();
+		for (uint32_t component = 0; component < 3; ++component)
+		{
+			const float value = attenuationColor[component];
+			outMaterial.m_attenuationColor[component] =
+				std::isfinite(value) ?
+				glm::clamp(value, 0.0f, 1.0f) :
+				1.0f;
+		}
+		outMaterial.m_indexOfRefraction = std::isfinite(indexOfRefraction) &&
+			indexOfRefraction >= 1.0f ?
+			indexOfRefraction :
+			1.5f;
+
+		const RHI::RenderState& renderState = material.GetRenderState();
+		switch (renderState.GetCullMode())
+		{
+		case RHI::ECullMode::None:
+			outMaterial.m_faceCullMode = FaceCullMode::None;
+			break;
+		case RHI::ECullMode::Front:
+			outMaterial.m_faceCullMode = FaceCullMode::Front;
+			break;
+		case RHI::ECullMode::Back:
+			outMaterial.m_faceCullMode = FaceCullMode::Back;
+			break;
+		case RHI::ECullMode::FrontAndBack:
+			outMaterial.m_faceCullMode = FaceCullMode::FrontAndBack;
+			break;
+		}
+		if (renderState.GetBlendMode() != RHI::EBlendMode::None)
+		{
+			outMaterial.m_blendMode = BlendMode::Blend;
+		}
+		else if (renderState.IsRequiredCustomDepthShader())
+		{
+			outMaterial.m_blendMode = BlendMode::Mask;
+		}
+		else
+		{
+			outMaterial.m_blendMode = BlendMode::Opaque;
+		}
+
+		return outMaterial;
+	}
+
+	bool BuildRaytracingMaterials(
+		const PathTracer::MaterialSnapshots& runtimeMaterials,
 		TVector<Raytracing::Material>& outMaterials,
 		TVector<uint8_t>& outResolvedMaterialSlots,
 		TVector<TSharedPtr<CombinedSampler2D>>& outTextures,
@@ -481,13 +579,6 @@ namespace
 		PathTracer::ScenePreparationStats& stats,
 		bool& outAllTexturesResolved)
 	{
-		struct CpuTextureSnapshot final
-		{
-			TVector<uint8_t> m_data{};
-			int32_t m_width = 0;
-			int32_t m_height = 0;
-		};
-
 		outAllTexturesResolved = true;
 
 		outMaterials.Resize(runtimeMaterials.Num());
@@ -495,13 +586,19 @@ namespace
 		outTextures.Clear();
 		outTextureMapping.Clear();
 		stats.m_materialSlotCount = runtimeMaterials.Num();
-		TMap<const Sailor::Material*, Raytracing::Material>
+		TMap<const PathTracer::MaterialSnapshot*, Raytracing::Material>
 			convertedMaterials;
-		TMap<const Sailor::Material*, uint8_t> convertedMaterialResolution;
-		TMap<std::string, TSharedPtr<CpuTextureSnapshot>> cpuTextureSnapshots;
+		TMap<const PathTracer::MaterialSnapshot*, uint8_t> convertedMaterialResolution;
+		TMap<std::string, TSharedPtr<const PathTracer::TextureSnapshot>> cpuTextureSnapshots;
+		size_t completedMaterials = 0u;
+		bool bCancelled = false;
 
 		auto reportMaterialProgress = [&](size_t completed) -> bool
 		{
+			if (bCancelled)
+			{
+				return false;
+			}
 			if (!progress)
 			{
 				return true;
@@ -510,20 +607,22 @@ namespace
 			update.m_stage = PathTracer::EScenePreparationStage::Materials;
 			update.m_completed = completed;
 			update.m_total = runtimeMaterials.Num();
-			return progress(update);
+			bCancelled = !progress(update);
+			return !bCancelled;
 		};
 		if (!reportMaterialProgress(0u))
 		{
 			return false;
 		}
 
-		auto addTexture = [&](const TexturePtr& pTexture,
+		auto addTexture = [&](const PathTracer::SamplerSnapshot& binding,
 			bool bLinear,
 			bool bNormalMap,
 			uint8_t channels,
 			uint16_t& outTextureIndex,
 			std::string& outDiagnostic) -> bool
 		{
+			const auto& pTexture = binding.m_texture;
 			outDiagnostic.clear();
 			++stats.m_textureReferenceCount;
 			if (!pTexture)
@@ -532,28 +631,10 @@ namespace
 				return false;
 			}
 
-			TexturePtr texture = pTexture;
-			const FileId fileId = pTexture->GetFileId();
-			if (fileId)
-			{
-				if (auto* textureImporter = App::GetSubmodule<TextureImporter>())
-				{
-					TexturePtr loadedTexture =
-						textureImporter->GetLoadedTexture(fileId);
-					if (loadedTexture &&
-						(loadedTexture->HasCpuData() || !texture->HasCpuData()))
-					{
-						texture = loadedTexture;
-					}
-				}
-			}
-
-			const RHI::ETextureClamping clamping = texture->GetRHI() ? texture->GetRHI()->GetClamping() : RHI::ETextureClamping::Repeat;
+			const FileId fileId = pTexture->m_fileId;
+			const RHI::ETextureClamping clamping = binding.m_clamping;
 			const char* clampingKey = clamping == RHI::ETextureClamping::Repeat ? "r" : "c";
-			const std::string sourceKey = fileId ?
-				fileId.ToString() :
-				"runtime:" + std::to_string(
-					reinterpret_cast<uintptr_t>(texture.GetRawPtr()));
+			const std::string& sourceKey = pTexture->m_sourceKey;
 			const std::string key = sourceKey + "_" +
 				std::to_string(channels) + "_" +
 				std::to_string((int)bLinear) + "_" +
@@ -565,35 +646,45 @@ namespace
 				return true;
 			}
 
-			TSharedPtr<CpuTextureSnapshot>* cachedSnapshot = nullptr;
+			TSharedPtr<const PathTracer::TextureSnapshot>* cachedSnapshot = nullptr;
 			if (!cpuTextureSnapshots.Find(sourceKey, cachedSnapshot))
 			{
-				auto snapshot = TSharedPtr<CpuTextureSnapshot>::Make();
-				snapshot->m_width = texture->GetWidth();
-				snapshot->m_height = texture->GetHeight();
-				if (texture->HasCpuData())
+				auto snapshot = pTexture;
+				if (!snapshot->m_data || snapshot->m_data->IsEmpty())
 				{
-					snapshot->m_data = texture->GetDecodedData();
-				}
-				else
-				{
+					if (!reportMaterialProgress(completedMaterials))
+					{
+						return false;
+					}
+					auto decoded = TSharedPtr<PathTracer::TextureSnapshot>::Make();
+					TVector<uint8_t> pixels;
 					uint32_t mipLevels = 1u;
-					if (!fileId || !TextureImporter::DecodeTextureCpu(
-							fileId,
-							snapshot->m_data,
-							snapshot->m_width,
-							snapshot->m_height,
-							mipLevels))
+					const bool bDecoded = TextureImporter::DecodeTextureCpu(
+						pTexture->m_decodeRequest,
+						pixels,
+						decoded->m_width,
+						decoded->m_height,
+						mipLevels);
+					if (bDecoded)
+					{
+						decoded->m_data = TSharedPtr<TVector<uint8_t>>::Make(std::move(pixels));
+						++stats.m_decodedTextureCount;
+					}
+					if (!reportMaterialProgress(completedMaterials))
+					{
+						return false;
+					}
+					if (!bDecoded)
 					{
 						outDiagnostic = fileId ?
-							"the texture could not be decoded on the CPU" :
+							"the captured texture source changed or could not be decoded on the CPU" :
 							"the runtime texture has no resident CPU pixels or file id";
 						return false;
 					}
-					++stats.m_decodedTextureCount;
+					snapshot = std::move(decoded);
 				}
 				if (snapshot->m_width <= 0 || snapshot->m_height <= 0 ||
-					snapshot->m_data.IsEmpty())
+					!snapshot->m_data || snapshot->m_data->IsEmpty())
 				{
 					outDiagnostic =
 						"the decoded texture has invalid dimensions or no pixel data";
@@ -609,7 +700,7 @@ namespace
 				return false;
 			}
 			const auto& snapshot = **cachedSnapshot;
-			const TVector<uint8_t>* sourceData = &snapshot.m_data;
+			const TVector<uint8_t>* sourceData = snapshot.m_data.GetRawPtr();
 			const int32_t width = snapshot.m_width;
 			const int32_t height = snapshot.m_height;
 
@@ -621,30 +712,37 @@ namespace
 				return false;
 			}
 
+			if (!reportMaterialProgress(completedMaterials))
+			{
+				return false;
+			}
 			TSharedPtr<CombinedSampler2D> sampler = TSharedPtr<CombinedSampler2D>::Make();
 			sampler->m_width = width;
 			sampler->m_height = height;
 			sampler->m_channels = channels;
-			sampler->m_clamping = clamping == RHI::ETextureClamping::Repeat ? SamplerClamping::Repeat : SamplerClamping::Clamp;
+			sampler->m_clampingU = sampler->m_clampingV = clamping == RHI::ETextureClamping::Repeat ?
+				SamplerClamping::Repeat : SamplerClamping::Clamp;
 
 			const size_t pixelCount = static_cast<size_t>(width) * height;
 			const bool bIsFloatTexture = sourceData->Num() ==
 				pixelCount * sizeof(glm::vec4);
+			const auto continueConversion = [&]() { return reportMaterialProgress(completedMaterials); };
+			bool bConverted = false;
 			if (bIsFloatTexture)
 			{
 				if (channels == 4)
 				{
-					sampler->Initialize<vec4, vec4>(
+					bConverted = sampler->Initialize<vec4, vec4>(
 						reinterpret_cast<const vec4*>(sourceData->GetData()),
 						bLinear,
-						bNormalMap);
+						bNormalMap, continueConversion);
 				}
 				else
 				{
-					sampler->Initialize<vec3, vec4>(
+					bConverted = sampler->Initialize<vec3, vec4>(
 						reinterpret_cast<const vec4*>(sourceData->GetData()),
 						bLinear,
-						bNormalMap);
+						bNormalMap, continueConversion);
 				}
 			}
 			else
@@ -657,20 +755,24 @@ namespace
 				}
 				if (channels == 4)
 				{
-					sampler->Initialize<vec4, u8vec4>(
+					bConverted = sampler->Initialize<vec4, u8vec4>(
 						reinterpret_cast<const u8vec4*>(sourceData->GetData()),
 						bLinear,
-						bNormalMap);
+						bNormalMap, continueConversion);
 				}
 				else
 				{
-					sampler->Initialize<vec3, u8vec4>(
+					bConverted = sampler->Initialize<vec3, u8vec4>(
 						reinterpret_cast<const u8vec4*>(sourceData->GetData()),
 						bLinear,
-						bNormalMap);
+						bNormalMap, continueConversion);
 				}
 			}
 
+			if (!bConverted || !reportMaterialProgress(completedMaterials))
+			{
+				return false;
+			}
 			const uint32_t index = (uint32_t)outTextures.Num();
 			outTextures.Add(sampler);
 			outTextureMapping[key] = index;
@@ -681,13 +783,13 @@ namespace
 		for (size_t i = 0; i < runtimeMaterials.Num(); i++)
 		{
 			Raytracing::Material outMaterial{};
-			const MaterialPtr pMaterial = runtimeMaterials[i];
+			const auto& pMaterial = runtimeMaterials[i];
 			auto reportCompletedMaterial = [&]() -> bool
 			{
-				const size_t completed = i + 1u;
-				return completed % 64u != 0u &&
-					completed != runtimeMaterials.Num() ?
-					true : reportMaterialProgress(completed);
+				completedMaterials = i + 1u;
+				return completedMaterials % 64u != 0u &&
+					completedMaterials != runtimeMaterials.Num() ?
+					true : reportMaterialProgress(completedMaterials);
 			};
 
 			if (!pMaterial)
@@ -720,133 +822,15 @@ namespace
 				continue;
 			}
 
-			glm::vec4 baseColorFactor(1.0f);
-			glm::vec4 emissiveFactor(0.0f);
-			glm::vec4 attenuationColor(1.0f);
-			glm::vec4 sheenColor(0.0f);
-			glm::vec4 layerUvScale(1.0f);
-			float roughness = 1.0f;
-			float metallic = 1.0f;
-			float alphaCutoff = 0.5f;
-			float normalScale = 1.0f;
-			float clearcoat = 0.0f;
-			float clearcoatRoughness = 0.0f;
-			float clearcoatNormalScale = 1.0f;
-			float sheenRoughness = 0.0f;
-			float transmission = 0.0f;
-			float thickness = 0.0f;
-			float attenuationDistance = (std::numeric_limits<float>::max)();
-			float indexOfRefraction = 1.5f;
-
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.baseColorFactor", baseColorFactor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.albedo", baseColorFactor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissiveFactor", emissiveFactor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissive", emissiveFactor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emission", emissiveFactor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.attenuationColor", attenuationColor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.sheenColorFactor", sheenColor);
-			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.layerUvScale", layerUvScale);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughnessFactor", roughness);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughness", roughness);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallicFactor", metallic);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallic", metallic);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.alphaCutoff", alphaCutoff);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.normalScale", normalScale);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.clearcoatFactor", clearcoat);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.clearcoatRoughnessFactor", clearcoatRoughness);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.clearcoatNormalScale", clearcoatNormalScale);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.sheenRoughnessFactor", sheenRoughness);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.transmissionFactor", transmission);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.thicknessFactor", thickness);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.attenuationDistance", attenuationDistance);
-			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.indexOfRefraction", indexOfRefraction);
-
-			outMaterial.m_baseColorFactor = baseColorFactor;
-			outMaterial.m_emissiveFactor = glm::vec3(emissiveFactor);
-			for (glm::length_t layer = 0; layer < 4; ++layer)
-			{
-				outMaterial.m_layerUvScale[layer] =
-					std::isfinite(layerUvScale[layer]) ? layerUvScale[layer] : 1.0f;
-			}
-			outMaterial.m_roughnessFactor = roughness;
-			outMaterial.m_metallicFactor = metallic;
-			outMaterial.m_normalScale = std::isfinite(normalScale) ?
-				normalScale : 1.0f;
-			outMaterial.m_clearcoatFactor = std::isfinite(clearcoat) ?
-				glm::clamp(clearcoat, 0.0f, 1.0f) : 0.0f;
-			outMaterial.m_clearcoatRoughnessFactor =
-				std::isfinite(clearcoatRoughness) ?
-				glm::clamp(clearcoatRoughness, 0.0f, 1.0f) : 0.0f;
-			outMaterial.m_clearcoatNormalScale =
-				std::isfinite(clearcoatNormalScale) ?
-				clearcoatNormalScale : 1.0f;
-			outMaterial.m_sheenRoughnessFactor =
-				std::isfinite(sheenRoughness) ?
-				glm::clamp(sheenRoughness, 0.0f, 1.0f) : 0.0f;
-			outMaterial.m_sheenColorFactor = glm::clamp(
-				glm::vec3(sheenColor),
-				glm::vec3(0.0f),
-				glm::vec3(1.0f));
-			outMaterial.m_alphaCutoff = alphaCutoff;
-			outMaterial.m_transmissionFactor = std::isfinite(transmission) ?
-				glm::clamp(transmission, 0.0f, 1.0f) :
-				0.0f;
-			outMaterial.m_thicknessFactor = std::isfinite(thickness) ?
-				(std::max)(0.0f, thickness) :
-				0.0f;
-			outMaterial.m_attenuationDistance =
-				std::isfinite(attenuationDistance) && attenuationDistance > 0.0f ?
-				attenuationDistance :
-				(std::numeric_limits<float>::max)();
-			for (uint32_t component = 0; component < 3; ++component)
-			{
-				const float value = attenuationColor[component];
-				outMaterial.m_attenuationColor[component] =
-					std::isfinite(value) ?
-					glm::clamp(value, 0.0f, 1.0f) :
-					1.0f;
-			}
-			outMaterial.m_indexOfRefraction = std::isfinite(indexOfRefraction) &&
-				indexOfRefraction >= 1.0f ?
-				indexOfRefraction :
-				1.5f;
-
-			const RHI::RenderState& renderState = pMaterial->GetRenderState();
-			switch (renderState.GetCullMode())
-			{
-			case RHI::ECullMode::None:
-				outMaterial.m_faceCullMode = FaceCullMode::None;
-				break;
-			case RHI::ECullMode::Front:
-				outMaterial.m_faceCullMode = FaceCullMode::Front;
-				break;
-			case RHI::ECullMode::Back:
-				outMaterial.m_faceCullMode = FaceCullMode::Back;
-				break;
-			case RHI::ECullMode::FrontAndBack:
-				outMaterial.m_faceCullMode = FaceCullMode::FrontAndBack;
-				break;
-			}
-			if (renderState.GetBlendMode() != RHI::EBlendMode::None)
-			{
-				outMaterial.m_blendMode = BlendMode::Blend;
-			}
-			else if (renderState.IsRequiredCustomDepthShader())
-			{
-				outMaterial.m_blendMode = BlendMode::Mask;
-			}
-			else
-			{
-				outMaterial.m_blendMode = BlendMode::Opaque;
-			}
+			outMaterial = pMaterial->m_parameters;
 
 			bool bMaterialResolved = true;
-			const std::string materialFileId = pMaterial->GetFileId().ToString();
+			const std::string materialFileId = pMaterial->m_fileId.ToString();
 			const std::string materialName = materialFileId.empty() ?
 				"runtime material slot " + std::to_string(i) :
 				"material '" + materialFileId + "'";
 			auto prepareTexture = [&](const std::string& samplerName,
-				const TexturePtr& texture,
+				const PathTracer::SamplerSnapshot& texture,
 				bool bLinear,
 				bool bNormalMap,
 				uint8_t channels,
@@ -863,11 +847,15 @@ namespace
 				{
 					return;
 				}
+				if (bCancelled)
+				{
+					return;
+				}
 				bMaterialResolved = false;
 				if (warning)
 				{
-					const std::string textureFileId = texture ?
-						texture->GetFileId().ToString() : std::string();
+					const std::string textureFileId = texture.m_texture ?
+						texture.m_texture->m_fileId.ToString() : std::string();
 					warning(
 						"could not prepare " + materialName +
 						" sampler '" + samplerName + "'" +
@@ -877,10 +865,10 @@ namespace
 				}
 			};
 
-			for (const auto& sampler : pMaterial->GetSamplers())
+			for (const auto& sampler : pMaterial->m_samplers)
 			{
 				const std::string& samplerName = sampler.m_first;
-				const TexturePtr pTexture = sampler.m_second;
+				const auto& pTexture = sampler.m_second;
 
 				if (samplerName == "baseColorSampler")
 				{
@@ -958,6 +946,10 @@ namespace
 				{
 					prepareTexture(samplerName, pTexture, false, false, 4, outMaterial.m_sheenRoughnessIndex);
 				}
+				if (bCancelled)
+				{
+					return false;
+				}
 			}
 
 			outMaterials[i] = outMaterial;
@@ -991,6 +983,178 @@ namespace
 		}
 		return hash;
 	}
+}
+
+PathTracer::MaterialSnapshots PathTracer::CaptureMaterials(const TVector<MaterialPtr>& materials,
+	MaterialSnapshotCache* cache)
+{
+	MaterialSnapshots result;
+	result.Reserve(materials.Num());
+	MaterialSnapshotCache capturedMaterials;
+	TMap<std::string, size_t> textureIndices;
+	TVector<TexturePtr> textures;
+	TVector<TSharedPtr<TextureSnapshot>> textureSnapshots;
+	TVector<TSharedPtr<MaterialSnapshot>> createdMaterials;
+	auto* textureImporter = App::GetSubmodule<TextureImporter>();
+	auto* registry = App::GetSubmodule<AssetRegistry>();
+	auto canReuse = [cache](const MaterialPtr& material)
+	{
+		TSharedPtr<const MaterialSnapshot>* previous = nullptr;
+		return !material || (cache && cache->Find(material, previous) &&
+			(*previous)->m_contentRevision == material->GetContentRevision() &&
+			(*previous)->m_surfaceRevision == material->GetSurfaceRevision());
+	};
+	if (std::all_of(materials.begin(), materials.end(), canReuse))
+	{
+		for (const auto& material : materials)
+		{
+			if (!material)
+			{
+				result.Add({});
+				continue;
+			}
+			auto snapshot = (*cache)[material];
+			result.Add(snapshot);
+			capturedMaterials.Add(material, std::move(snapshot));
+		}
+		if (cache) *cache = std::move(capturedMaterials);
+		return result;
+	}
+
+	auto captureValues = [&]()
+	{
+		for (const auto& material : materials)
+		{
+			if (!material)
+			{
+				result.Add({});
+				continue;
+			}
+			TSharedPtr<const MaterialSnapshot>* existing = nullptr;
+			if (capturedMaterials.Find(material, existing))
+			{
+				result.Add(*existing);
+				continue;
+			}
+
+			if (cache && cache->Find(material, existing) &&
+				(*existing)->m_surfaceRevision == material->GetSurfaceRevision())
+			{
+				auto captured = *existing;
+				if (captured->m_contentRevision != material->GetContentRevision())
+				{
+					auto changed = TSharedPtr<MaterialSnapshot>::Make(*captured);
+					changed->m_contentRevision = material->GetContentRevision();
+					changed->m_parameters = CaptureMaterialParameters(*material);
+					captured = std::move(changed);
+				}
+				result.Add(captured);
+				capturedMaterials.Add(material, std::move(captured));
+				continue;
+			}
+
+			auto snapshot = TSharedPtr<MaterialSnapshot>::Make();
+			snapshot->m_fileId = material->GetFileId();
+			snapshot->m_contentRevision = material->GetContentRevision();
+			snapshot->m_surfaceRevision = material->GetSurfaceRevision();
+			snapshot->m_parameters = CaptureMaterialParameters(*material);
+			for (const auto& sampler : material->GetSamplers())
+			{
+				SamplerSnapshot binding;
+				TexturePtr texture = sampler.m_second;
+				if (texture)
+				{
+					const FileId fileId = texture->GetFileId();
+					const std::string sourceKey = fileId ? fileId.ToString() :
+						"runtime:" + std::to_string(reinterpret_cast<uintptr_t>(texture.GetRawPtr()));
+					size_t* index = nullptr;
+					if (textureIndices.Find(sourceKey, index))
+					{
+						binding.m_texture = textureSnapshots[*index];
+					}
+					else
+					{
+						auto source = TSharedPtr<TextureSnapshot>::Make();
+						source->m_fileId = fileId;
+						source->m_sourceKey = sourceKey;
+						textureIndices.Add(sourceKey, textures.Num());
+						textures.Add(texture);
+						textureSnapshots.Add(source);
+						binding.m_texture = std::move(source);
+					}
+				}
+				snapshot->m_samplers.Add({ sampler.m_first, std::move(binding) });
+			}
+			createdMaterials.Add(snapshot);
+			result.Add(snapshot);
+			capturedMaterials.Add(material, std::move(snapshot));
+		}
+	};
+	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	if (scheduler && !scheduler->IsRendererThread())
+	{
+		auto capture = Tasks::CreateTask("Capture material CPU state", captureValues, EThreadType::Render);
+		capture->Run();
+		capture->Wait();
+	}
+	else
+	{
+		captureValues();
+	}
+
+	TVector<TextureImporter::CpuTextureSnapshot> pixels;
+	if (textureImporter && !textures.IsEmpty())
+	{
+		auto capture = textureImporter->CaptureCpuTextures(textures);
+		capture->Wait();
+		pixels = capture->GetResult();
+	}
+	else
+	{
+		// Standalone callers own their private textures; no importer can replace them.
+		for (const auto& texture : textures)
+		{
+			TextureImporter::CpuTextureSnapshot snapshot;
+			snapshot.m_width = texture->GetWidth();
+			snapshot.m_height = texture->GetHeight();
+			if (texture->GetRHI()) snapshot.m_clamping = texture->GetRHI()->GetClamping();
+			if (texture->HasCpuData())
+			{
+				snapshot.m_pixels = TSharedPtr<TVector<uint8_t>>::Make(texture->GetDecodedData());
+			}
+			pixels.Add(std::move(snapshot));
+		}
+	}
+	for (size_t i = 0; i < pixels.Num(); ++i)
+	{
+		auto snapshot = textureSnapshots[i];
+		snapshot->m_width = pixels[i].m_width;
+		snapshot->m_height = pixels[i].m_height;
+		snapshot->m_data = pixels[i].m_pixels;
+		snapshot->m_decodeRequest = pixels[i].m_source;
+		if (!snapshot->m_data && snapshot->m_decodeRequest.m_filepath.empty() && snapshot->m_fileId && registry)
+		{
+			if (auto* info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(snapshot->m_fileId))
+			{
+				TextureImporter::CaptureCpuDecodeRequest(*info, snapshot->m_decodeRequest);
+			}
+		}
+	}
+	for (auto& material : createdMaterials)
+	{
+		for (auto& sampler : material->m_samplers)
+		{
+			if (sampler.m_second.m_texture)
+			{
+				sampler.m_second.m_clamping = pixels[textureIndices[sampler.m_second.m_texture->m_sourceKey]].m_clamping;
+			}
+		}
+	}
+	if (cache)
+	{
+		*cache = std::move(capturedMaterials);
+	}
+	return result;
 }
 
 void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args, int32_t num)
@@ -1090,6 +1254,74 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 	}
 }
 
+void PathTracer::UsePreparedGeometry(const PathTracer& source)
+{
+	m_geometry = source.m_geometry;
+	m_preparedMaterials = source.m_preparedMaterials;
+	m_emissiveTriangles = source.m_emissiveTriangles;
+	m_totalEmissiveWeight = source.m_totalEmissiveWeight;
+	m_bAddDefaultLightIfEmpty = source.m_bAddDefaultLightIfEmpty;
+	m_lastScenePreparationStats = source.m_lastScenePreparationStats;
+	m_lastScenePreparationStats.m_builtBlasCount = 0;
+	m_lastScenePreparationStats.m_reusedBlasCount = m_lastScenePreparationStats.m_geometryInstanceCount;
+	m_lastScenePreparationStats.m_uniqueMaterialCount = 0;
+	m_lastScenePreparationStats.m_reusedMaterialCount = m_lastScenePreparationStats.m_materialSlotCount;
+	m_lastScenePreparationStats.m_textureReferenceCount = 0;
+	m_lastScenePreparationStats.m_uniqueTextureCount = 0;
+	m_lastScenePreparationStats.m_decodedTextureCount = 0;
+}
+
+bool PathTracer::UpdatePreparedEmission(const MaterialSnapshots& materials,
+	const ScenePreparationProgressCallback& progress)
+{
+	const ScenePreparationProgress preparingEmission{ EScenePreparationStage::Geometry,
+		0u, m_geometry->m_tracedInstances.Num() };
+	bool bChanged = false;
+	for (size_t index = 0; index < materials.Num(); ++index)
+	{
+		if (index % 64u == 0u && progress &&
+			!progress(preparingEmission)) return false;
+		bChanged |= materials[index] && materials[index]->m_parameters.m_emissiveFactor !=
+			m_preparedMaterials->m_materials[index].m_emissiveFactor;
+	}
+	if (!bChanged)
+	{
+		return true;
+	}
+
+	// Texture pixels and acceleration structures stay shared with older readers.
+	m_preparedMaterials = TSharedPtr<PreparedMaterials>::Make(*m_preparedMaterials);
+	for (size_t index = 0; index < materials.Num(); ++index)
+	{
+		if (index % 64u == 0u && progress &&
+			!progress(preparingEmission)) return false;
+		if (materials[index])
+		{
+			m_preparedMaterials->m_materials[index].m_emissiveFactor =
+				materials[index]->m_parameters.m_emissiveFactor;
+		}
+	}
+	m_emissiveTriangles = TSharedPtr<TVector<EmissiveTriangle>>::Make();
+	m_totalEmissiveWeight = 0;
+	for (size_t index = 0; index < m_geometry->m_tracedInstances.Num(); ++index)
+	{
+		if (index % 64 == 0 && progress && !progress({ EScenePreparationStage::Geometry,
+			index, m_geometry->m_tracedInstances.Num() }))
+		{
+			return false;
+		}
+		if (!AppendEmissiveTriangles(m_geometry->m_tracedInstances[index], progress,
+			{ EScenePreparationStage::Geometry, index, m_geometry->m_tracedInstances.Num() }))
+		{
+			return false;
+		}
+	}
+	m_lastScenePreparationStats.m_emissiveTriangleCount = m_emissiveTriangles->Num();
+	m_lastScenePreparationStats.m_emissiveSamplingWeight = m_totalEmissiveWeight;
+	return !progress || progress({ EScenePreparationStage::Geometry,
+		m_geometry->m_tracedInstances.Num(), m_geometry->m_tracedInstances.Num() });
+}
+
 bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 	const TVector<MaterialPtr>& materials,
 	const TVector<LightProxy>& lightProxies,
@@ -1098,41 +1330,86 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 	bool bSkipUnresolvedMaterialInstances,
 	const ScenePreparationWarningCallback& warning)
 {
-	m_tlasInstances = instances;
-	m_lightProxies = lightProxies;
-	m_bAddDefaultLightIfEmpty = bAddDefaultLightIfEmpty;
-	m_tlasOctree.Clear();
-	m_emissiveTriangles.Clear();
-	m_totalEmissiveWeight = 0.0f;
-	m_lastScenePreparationStats = {};
-	m_lastScenePreparationStats.m_instanceCount = m_tlasInstances.Num();
+	return InitializeSceneInternal(instances, materials, nullptr, lightProxies,
+		bAddDefaultLightIfEmpty, progress, bSkipUnresolvedMaterialInstances, warning);
+}
 
+bool PathTracer::InitializeSceneSnapshot(const TVector<TLASInstance>& instances,
+	const MaterialSnapshots& materials,
+	const TVector<LightProxy>& lightProxies,
+	bool bAddDefaultLightIfEmpty,
+	const ScenePreparationProgressCallback& progress,
+	bool bSkipUnresolvedMaterialInstances,
+	const ScenePreparationWarningCallback& warning)
+{
+	return InitializeSceneInternal(instances, {}, &materials, lightProxies,
+		bAddDefaultLightIfEmpty, progress, bSkipUnresolvedMaterialInstances, warning);
+}
+
+bool PathTracer::InitializeSceneInternal(const TVector<TLASInstance>& instances,
+	const TVector<MaterialPtr>& runtimeMaterials,
+	const MaterialSnapshots* snapshotMaterials,
+	const TVector<LightProxy>& lightProxies,
+	bool bAddDefaultLightIfEmpty,
+	const ScenePreparationProgressCallback& progress,
+	bool bSkipUnresolvedMaterialInstances,
+	const ScenePreparationWarningCallback& warning)
+{
+	// Older light generations may still be tracing the previous transport.
+	m_geometry = TSharedPtr<PreparedGeometry>::Make();
+	m_lastScenePreparationStats = {};
+	for (const auto& source : instances)
+	{
+		const auto* geometry = source.m_modelGeometry ? source.m_modelGeometry.GetRawPtr() :
+			(source.m_model ? source.m_model->GetBLASGeometry().GetRawPtr() : nullptr);
+		m_lastScenePreparationStats.m_instanceCount += geometry && !source.m_triangles ?
+			(std::max)(size_t(1), geometry->GetInstances(source.m_meshIndex).Num()) : 1;
+	}
 	auto reportGeometryProgress = [&](size_t completed) -> bool
 	{
-		if (!progress)
-		{
-			return true;
-		}
-		ScenePreparationProgress update;
-		update.m_stage = EScenePreparationStage::Geometry;
-		update.m_completed = completed;
-		update.m_total = m_tlasInstances.Num();
-		return progress(update);
+		return !progress || progress({ EScenePreparationStage::Geometry, completed,
+			m_lastScenePreparationStats.m_instanceCount });
 	};
-	if (!reportGeometryProgress(0u))
+	if (!reportGeometryProgress(0u)) return false;
+	m_geometry->m_tlasInstances.Reserve(m_lastScenePreparationStats.m_instanceCount);
+	for (const auto& source : instances)
 	{
-		return false;
+		const auto geometry = source.m_modelGeometry ? source.m_modelGeometry :
+			(source.m_model ? source.m_model->GetBLASGeometry() : TSharedPtr<const Model::BLASGeometry>{});
+		if (!geometry || source.m_triangles || geometry->GetInstances(source.m_meshIndex).IsEmpty())
+		{
+			m_geometry->m_tlasInstances.Add(source);
+			continue;
+		}
+		for (const auto& mesh : geometry->GetInstances(source.m_meshIndex))
+		{
+			if (m_geometry->m_tlasInstances.Num() % 64u == 0u && !reportGeometryProgress(0u)) return false;
+			TLASInstance instance = source;
+			instance.m_model.Clear();
+			instance.m_modelGeometry.Clear();
+			instance.m_blas = mesh.m_geometry->m_blas;
+			instance.m_triangles = mesh.m_geometry->m_triangles;
+			instance.m_worldMatrix = source.m_worldMatrix * mesh.m_modelMatrix;
+			instance.m_inverseWorldMatrix = mesh.m_inverseModelMatrix * source.m_inverseWorldMatrix;
+			instance.m_worldBounds = mesh.m_geometry->m_bounds;
+			instance.m_worldBounds.Apply(instance.m_worldMatrix);
+			m_geometry->m_tlasInstances.Add(std::move(instance));
+		}
 	}
+	m_emissiveTriangles = TSharedPtr<TVector<EmissiveTriangle>>::Make();
+	m_totalEmissiveWeight = 0;
+	m_lightProxies = lightProxies;
+	m_bAddDefaultLightIfEmpty = bAddDefaultLightIfEmpty;
 
 	TMap<const TVector<Math::Triangle>*, TSharedPtr<BVH>> preparedBlas;
-	for (size_t i = 0; i < m_tlasInstances.Num(); i++)
+	for (size_t i = 0; i < m_geometry->m_tlasInstances.Num(); i++)
 	{
-		auto& instance = m_tlasInstances[i];
+		auto& instance = m_geometry->m_tlasInstances[i];
 		const auto* triangles = instance.m_triangles.GetRawPtr();
-		if (triangles && instance.m_blas &&
-			!preparedBlas.ContainsKey(triangles))
+		if (triangles && instance.m_blas)
 		{
-			preparedBlas.Add(triangles, instance.m_blas);
+			++m_lastScenePreparationStats.m_reusedBlasCount;
+			if (!preparedBlas.ContainsKey(triangles)) preparedBlas.Add(triangles, instance.m_blas);
 		}
 		if (!ResolveInstanceBlas(instance) && triangles &&
 			!triangles->IsEmpty() && instance.m_worldBounds.IsValid())
@@ -1151,63 +1428,78 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 				{
 					return false;
 				}
-				instance.m_blas = TSharedPtr<BVH>::Make(
+				if (!reportGeometryProgress(i))
+				{
+					return false;
+				}
+				auto blas = TSharedPtr<BVH>::Make(
 					static_cast<uint32_t>(triangles->Num()));
-				instance.m_blas->BuildBVH(*triangles);
-				preparedBlas.Add(triangles, instance.m_blas);
+				if (!blas->BuildBVH(*triangles, [&]() { return reportGeometryProgress(i); }))
+				{
+					return false;
+				}
 				++m_lastScenePreparationStats.m_builtBlasCount;
+				if (!reportGeometryProgress(i + 1u))
+				{
+					return false;
+				}
+				instance.m_blas = std::move(blas);
+				preparedBlas.Add(triangles, instance.m_blas);
 			}
 		}
 
 		const size_t completed = i + 1u;
 		if ((completed % 64u == 0u ||
-			completed == m_tlasInstances.Num()) &&
+			completed == m_geometry->m_tlasInstances.Num()) &&
 			!reportGeometryProgress(completed))
 		{
 			return false;
 		}
 	}
 
-	const size_t materialsSignature = ComputeMaterialsSignature(materials);
-	const bool bNeedRebuildMaterials = m_materials.Num() == 0 ||
-		m_cachedMaterialsCount != (uint32_t)materials.Num() ||
-		m_cachedMaterialsSignature != materialsSignature ||
-		!m_bMaterialsFullyResolved;
+	const size_t materialCount = snapshotMaterials ? snapshotMaterials->Num() : runtimeMaterials.Num();
+	const size_t materialsSignature = snapshotMaterials ? 0u : ComputeMaterialsSignature(runtimeMaterials);
+	// Texture pixels can change without a material revision. A supplied snapshot is authoritative.
+	const bool bNeedRebuildMaterials = snapshotMaterials || m_preparedMaterials->m_bCachedMaterialsFromSnapshot ||
+		m_preparedMaterials->m_materials.Num() == 0 ||
+		m_preparedMaterials->m_cachedMaterialsCount != (uint32_t)materialCount ||
+		m_preparedMaterials->m_cachedMaterialsSignature != materialsSignature ||
+		!m_preparedMaterials->m_bMaterialsFullyResolved;
 
 	if (bNeedRebuildMaterials)
 	{
-		m_materials.Clear();
-		m_resolvedMaterialSlots.Clear();
-		m_textures.Clear();
-		m_textureMapping.Clear();
+		m_preparedMaterials = TSharedPtr<PreparedMaterials>::Make();
 		bool bAllTexturesResolved = true;
-		if (!BuildRaytracingMaterialsFromRuntimeMaterials(
-				materials,
-				m_materials,
-				m_resolvedMaterialSlots,
-				m_textures,
-				m_textureMapping,
+		// The live/private caller keeps its existing cache key and only captures on a miss.
+		const auto captured = snapshotMaterials ? MaterialSnapshots{} : CaptureMaterials(runtimeMaterials);
+		if (!BuildRaytracingMaterials(
+				snapshotMaterials ? *snapshotMaterials : captured,
+				m_preparedMaterials->m_materials,
+				m_preparedMaterials->m_resolvedMaterialSlots,
+				m_preparedMaterials->m_textures,
+				m_preparedMaterials->m_textureMapping,
 				progress,
 				warning,
 				m_lastScenePreparationStats,
 				bAllTexturesResolved))
 		{
-			m_bMaterialsFullyResolved = false;
+			m_preparedMaterials->m_bMaterialsFullyResolved = false;
 			return false;
 		}
-		m_bMaterialsFullyResolved = bAllTexturesResolved;
-		m_cachedMaterialsSignature = materialsSignature;
-		m_cachedMaterialsCount = (uint32_t)materials.Num();
+		m_preparedMaterials->m_bMaterialsFullyResolved = bAllTexturesResolved;
+		m_preparedMaterials->m_cachedMaterialsSignature = materialsSignature;
+		m_preparedMaterials->m_cachedMaterialsCount = (uint32_t)materialCount;
+		m_preparedMaterials->m_bCachedMaterialsFromSnapshot = snapshotMaterials != nullptr;
 	}
 	else
 	{
-		m_lastScenePreparationStats.m_materialSlotCount = materials.Num();
+		m_lastScenePreparationStats.m_materialSlotCount = materialCount;
 		if (progress)
 		{
 			ScenePreparationProgress update;
 			update.m_stage = EScenePreparationStage::Materials;
-			update.m_completed = materials.Num();
-			update.m_total = materials.Num();
+			update.m_completed = materialCount;
+			update.m_total = materialCount;
 			if (!progress(update))
 			{
 				return false;
@@ -1215,19 +1507,25 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		}
 	}
 
-	if (m_materials.Num() == 0)
+	if (m_preparedMaterials->m_materials.Num() == 0)
 	{
-		m_materials.Add(Material{});
-		m_resolvedMaterialSlots.Add(1u);
-		m_bMaterialsFullyResolved = true;
+		m_preparedMaterials->m_materials.Add(Material{});
+		m_preparedMaterials->m_resolvedMaterialSlots.Add(1u);
+		m_preparedMaterials->m_bMaterialsFullyResolved = true;
 	}
 
 	bool bHasGeometry = false;
 	TMap<const TVector<Math::Triangle>*, TVector<uint32_t>>
 		referencedMaterialSlots;
-	for (size_t i = 0u; i < m_tlasInstances.Num(); ++i)
+	const ScenePreparationProgress preparedMaterials{ EScenePreparationStage::Materials,
+		materialCount, materialCount };
+	for (size_t i = 0u; i < m_geometry->m_tlasInstances.Num(); ++i)
 	{
-		const TLASInstance& instance = m_tlasInstances[i];
+		if (i % 64u == 0u && progress && !progress(preparedMaterials))
+		{
+			return false;
+		}
+		const TLASInstance& instance = m_geometry->m_tlasInstances[i];
 		if (!HasInstanceGeometry(instance))
 		{
 			if (bSkipUnresolvedMaterialInstances)
@@ -1255,8 +1553,10 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 			auto& localMaterialSlots = referencedMaterialSlots[triangles];
 			if (localMaterialSlots.IsEmpty())
 			{
-				for (const Math::Triangle& triangle : *triangles)
+				for (size_t triangleIndex = 0u; triangleIndex < triangles->Num(); ++triangleIndex)
 				{
+					if (triangleIndex != 0u && triangleIndex % 1024u == 0u && progress && !progress(preparedMaterials)) return false;
+					const auto& triangle = (*triangles)[triangleIndex];
 					if (std::find(
 							localMaterialSlots.begin(),
 							localMaterialSlots.end(),
@@ -1274,8 +1574,8 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 					static_cast<int64_t>(localMaterialSlot);
 				if (globalSlot < 0 ||
 					globalSlot >= static_cast<int64_t>(
-						m_resolvedMaterialSlots.Num()) ||
-					m_resolvedMaterialSlots[static_cast<size_t>(globalSlot)] == 0u)
+						m_preparedMaterials->m_resolvedMaterialSlots.Num()) ||
+					m_preparedMaterials->m_resolvedMaterialSlots[static_cast<size_t>(globalSlot)] == 0u)
 				{
 					bSkipInstance = true;
 					unresolvedLocalSlot = localMaterialSlot;
@@ -1293,12 +1593,21 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 				std::string materialIdentity =
 					"material slot " + std::to_string(unresolvedLocalSlot);
 				if (unresolvedGlobalSlot >= 0 &&
-					unresolvedGlobalSlot < static_cast<int64_t>(materials.Num()))
+					unresolvedGlobalSlot < static_cast<int64_t>(materialCount))
 				{
-					const MaterialPtr& material =
-						materials[static_cast<size_t>(unresolvedGlobalSlot)];
-					const std::string fileId = material ?
-						material->GetFileId().ToString() : std::string();
+					const size_t slot = static_cast<size_t>(unresolvedGlobalSlot);
+					FileId materialId;
+					if (snapshotMaterials)
+					{
+						const auto& material = (*snapshotMaterials)[slot];
+						materialId = material ? material->m_fileId : FileId{};
+					}
+					else
+					{
+						const auto& material = runtimeMaterials[slot];
+						materialId = material ? material->GetFileId() : FileId{};
+					}
+					const std::string fileId = materialId.ToString();
 					if (!fileId.empty())
 					{
 						materialIdentity += " ('" + fileId + "')";
@@ -1328,14 +1637,22 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		const glm::ivec3 integerExtents = glm::max(
 			integerCenter - integerMin,
 			integerMax - integerCenter);
-		m_tlasOctree.Update(
+		m_geometry->m_tlasOctree.Update(
 			integerCenter,
 			glm::max(integerExtents, glm::ivec3(1)),
 			i);
-		AppendEmissiveTriangles(static_cast<uint32_t>(i));
+		m_geometry->m_tracedInstances.Add(static_cast<uint32_t>(i));
+		if (!AppendEmissiveTriangles(static_cast<uint32_t>(i), progress, preparedMaterials))
+		{
+			return false;
+		}
+	}
+	if (progress && !progress(preparedMaterials))
+	{
+		return false;
 	}
 	m_lastScenePreparationStats.m_emissiveTriangleCount =
-		m_emissiveTriangles.Num();
+		m_emissiveTriangles->Num();
 	m_lastScenePreparationStats.m_emissiveSamplingWeight =
 		m_totalEmissiveWeight;
 
@@ -1358,6 +1675,7 @@ void PathTracer::SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::
 	}
 
 	m_runtimeEnvironment.Initialize<vec3>(extent.x, extent.y, 3, SamplerClamping::Repeat);
+	m_runtimeEnvironment.m_clampingV = SamplerClamping::Clamp;
 	for (uint32_t y = 0; y < extent.y; y++)
 	{
 		for (uint32_t x = 0; x < extent.x; x++)
@@ -1374,23 +1692,35 @@ void PathTracer::SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::
 
 void PathTracer::SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent)
 {
+	SetRuntimeEnvironmentLinear(image, extent, {});
+}
+
+bool PathTracer::SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent,
+	const std::function<bool()>& shouldContinue)
+{
 	if (image.Num() == 0 || extent.x == 0 || extent.y == 0 || image.Num() < (size_t)extent.x * (size_t)extent.y)
 	{
-		return;
+		return false;
 	}
 
+	m_bHasRuntimeEnvironment = false;
+	m_bUseRuntimeEnvironmentImportance = false;
+	if (shouldContinue && !shouldContinue()) return false;
 	m_runtimeEnvironment.Initialize<vec3>(extent.x, extent.y, 3, SamplerClamping::Repeat);
-	for (uint32_t y = 0; y < extent.y; y++)
+	m_runtimeEnvironment.m_clampingV = SamplerClamping::Clamp;
+	for (size_t index = 0u; index < static_cast<size_t>(extent.x) * extent.y; ++index)
 	{
-		for (uint32_t x = 0; x < extent.x; x++)
-		{
-			const vec4 src = image[x + y * extent.x];
-			m_runtimeEnvironment.SetPixel(x, y, vec3(src));
-		}
+		if (index % 1024u == 0u && shouldContinue && !shouldContinue()) return false;
+		reinterpret_cast<vec3*>(m_runtimeEnvironment.m_data.GetData())[index] = vec3(image[index]);
 	}
 
 	m_bHasRuntimeEnvironment = true;
-	RebuildRuntimeEnvironmentImportance();
+	if (!RebuildRuntimeEnvironmentImportance(shouldContinue))
+	{
+		ClearRuntimeEnvironment();
+		return false;
+	}
+	return true;
 }
 
 void PathTracer::SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent)
@@ -1401,6 +1731,7 @@ void PathTracer::SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, 
 	}
 
 	m_runtimeDiffuseEnvironment.Initialize<vec3>(extent.x, extent.y, 3, SamplerClamping::Repeat);
+	m_runtimeDiffuseEnvironment.m_clampingV = SamplerClamping::Clamp;
 	for (uint32_t y = 0; y < extent.y; y++)
 	{
 		for (uint32_t x = 0; x < extent.x; x++)
@@ -1420,14 +1751,14 @@ void PathTracer::ClearRuntimeEnvironment()
 	m_runtimeEnvironment.m_width = 0;
 	m_runtimeEnvironment.m_height = 0;
 	m_runtimeEnvironment.m_channels = 3;
-	m_runtimeEnvironment.m_clamping = SamplerClamping::Clamp;
+	m_runtimeEnvironment.m_clampingU = m_runtimeEnvironment.m_clampingV = SamplerClamping::Clamp;
 	m_bHasRuntimeEnvironment = false;
 
 	m_runtimeDiffuseEnvironment.m_data.Clear();
 	m_runtimeDiffuseEnvironment.m_width = 0;
 	m_runtimeDiffuseEnvironment.m_height = 0;
 	m_runtimeDiffuseEnvironment.m_channels = 3;
-	m_runtimeDiffuseEnvironment.m_clamping = SamplerClamping::Clamp;
+	m_runtimeDiffuseEnvironment.m_clampingU = m_runtimeDiffuseEnvironment.m_clampingV = SamplerClamping::Clamp;
 	m_bHasRuntimeDiffuseEnvironment = false;
 	m_runtimeEnvironmentImportanceCdf.Clear();
 	m_runtimeEnvironmentImportancePdf.Clear();
@@ -1473,11 +1804,12 @@ vec3 PathTracer::SampleRuntimeDirectEnvironment(const vec3& direction) const
 		SampleRuntimeDiffuseEnvironment(direction);
 }
 
-void PathTracer::RebuildRuntimeEnvironmentImportance()
+bool PathTracer::RebuildRuntimeEnvironmentImportance(const std::function<bool()>& shouldContinue)
 {
 	m_runtimeEnvironmentImportanceCdf.Clear();
 	m_runtimeEnvironmentImportancePdf.Clear();
 	m_bUseRuntimeEnvironmentImportance = false;
+	if (shouldContinue && !shouldContinue()) return false;
 
 	const CombinedSampler2D* source = m_bHasRuntimeEnvironment ?
 		&m_runtimeEnvironment :
@@ -1485,14 +1817,14 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 			&m_runtimeDiffuseEnvironment : nullptr);
 	if (!source || source->m_width <= 0 || source->m_height <= 0)
 	{
-		return;
+		return true;
 	}
 
 	const size_t pixelCount = static_cast<size_t>(source->m_width) *
 		static_cast<size_t>(source->m_height);
 	if (source->m_data.Num() < pixelCount * sizeof(vec3))
 	{
-		return;
+		return true;
 	}
 
 	const vec3* pixels = reinterpret_cast<const vec3*>(
@@ -1518,6 +1850,7 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 			const size_t index = static_cast<size_t>(x) +
 				static_cast<size_t>(y) *
 				static_cast<size_t>(source->m_width);
+			if (index % 1024u == 0u && shouldContinue && !shouldContinue()) return false;
 			const vec3 radiance = SanitizeRadiance(pixels[index]);
 			const double luminance = static_cast<double>(glm::dot(
 				radiance,
@@ -1531,7 +1864,7 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 	if (!std::isfinite(totalLuminanceWeight) ||
 		totalLuminanceWeight <= 0.0)
 	{
-		return;
+		return !shouldContinue || shouldContinue();
 	}
 
 	const double sphereSolidAngle = 4.0 * static_cast<double>(Pi);
@@ -1542,7 +1875,7 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 	// HDR features such as the solar aureole and bright emissive texels.
 	if (maximumLuminance <= averageLuminance * 4.0)
 	{
-		return;
+		return !shouldContinue || shouldContinue();
 	}
 
 	const double uniformFloor = averageLuminance * 0.01;
@@ -1550,7 +1883,7 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 		uniformFloor * sphereSolidAngle;
 	if (!std::isfinite(totalWeight) || totalWeight <= 0.0)
 	{
-		return;
+		return !shouldContinue || shouldContinue();
 	}
 
 	m_runtimeEnvironmentImportanceCdf.Resize(pixelCount);
@@ -1571,6 +1904,7 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 			const size_t index = static_cast<size_t>(x) +
 				static_cast<size_t>(y) *
 				static_cast<size_t>(source->m_width);
+			if (index % 1024u == 0u && shouldContinue && !shouldContinue()) return false;
 			const double probability =
 				(solidAngleWeights[index] +
 					uniformFloor * pixelSolidAngle) / totalWeight;
@@ -1581,8 +1915,10 @@ void PathTracer::RebuildRuntimeEnvironmentImportance()
 				static_cast<float>(probability / pixelSolidAngle);
 		}
 	}
+	if (shouldContinue && !shouldContinue()) return false;
 	m_runtimeEnvironmentImportanceCdf[pixelCount - 1u] = 1.0f;
 	m_bUseRuntimeEnvironmentImportance = true;
+	return true;
 }
 
 float PathTracer::RuntimeEnvironmentImportancePdf(
@@ -1741,17 +2077,18 @@ bool PathTracer::SampleDirectEnvironment(
 bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 {
 	m_lastRaytraceTimeMs = 0.0;
+	m_lastRenderedImageLinear.Clear();
 	m_lastRenderedImage.Clear();
 	m_lastRenderedExtent = glm::uvec2(0, 0);
 
-	if (m_tlasInstances.Num() == 0)
+	if (m_geometry->m_tlasInstances.Num() == 0)
 	{
 		SAILOR_LOG_ERROR("PathTracer scene has no TLASInstances.");
 		return false;
 	}
 
 	Math::AABB bounds{};
-	for (const auto& instance : m_tlasInstances)
+	for (const auto& instance : m_geometry->m_tlasInstances)
 	{
 		if (instance.m_worldBounds.IsValid())
 		{
@@ -1897,9 +2234,25 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 			}
 		}
 
+		float lastProgress = 0.0f;
+		auto reportProgress = [&]()
+		{
+			const float progress = finishedTasks.load() / static_cast<float>(numTasks);
+			if (!params.m_output.empty() && progress - lastProgress > 0.05f)
+			{
+				if (lastProgress == 0.0f)
+				{
+					const float eta = raytracingTimer.ResultAccumulatedMs() * 0.001f / progress;
+					SAILOR_LOG("PathTracer ETA: ~%.2fsec (%.2fmin)", eta, round(eta / 60.0f));
+				}
+				SAILOR_LOG("PathTracer Progress: %.2f", progress);
+				lastProgress = progress;
+			}
+		};
 		for (auto& task : tasksThisThread)
 		{
 			task->Execute();
+			reportProgress();
 		}
 
 		for (auto& task : tasks)
@@ -1908,13 +2261,14 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 			{
 				task->Wait();
 			}
+			reportProgress();
 		}
 	}
 
 	raytracingTimer.Stop();
 	m_lastRaytraceTimeMs = static_cast<double>(raytracingTimer.ResultAccumulatedMs());
 
-	TVector<u8vec4> outSrgb(width * height);
+	m_lastRenderedImageLinear.Resize(width * height);
 	const float aberrationAmount = (0.5f / width);
 
 	for (uint32_t y = 0; y < height; y++)
@@ -1927,20 +2281,16 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 			vec3 redColor = outputTex.Sample<vec3>(uv + vec2(-aberrationAmount, -aberrationAmount));
 			vec3 chromaAberratedColor = vec3(redColor.r, greenColor.g, blueColor.b);
 			const float alpha = glm::clamp(alphaTex.Sample<float>(uv), 0.0f, 1.0f);
-			const u8vec3 rgb = alpha > 0.0f ?
-				u8vec3(glm::clamp(Utils::LinearToSRGB(chromaAberratedColor) * 255.0f, 0.0f, 255.0f)) :
-				u8vec3(0, 0, 0);
-			outSrgb[x + y * width] = u8vec4(rgb, (uint8_t)glm::round(alpha * 255.0f));
+			m_lastRenderedImageLinear[x + y * width] = vec4(alpha > 0.0f ? chromaAberratedColor : vec3(0.0f), alpha);
 		}
 	}
 
-	m_lastRenderedImage = outSrgb;
 	m_lastRenderedExtent = glm::uvec2(width, height);
 
 	if (!params.m_output.empty())
 	{
 		const uint32_t Channels = 4;
-		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
+		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, GetLastRenderedImage().GetData(), width * Channels))
 		{
 			SAILOR_LOG_ERROR("Raytracing WriteImage error");
 			return false;
@@ -1948,6 +2298,19 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	}
 
 	return true;
+}
+
+const TVector<u8vec4>& PathTracer::GetLastRenderedImage() const
+{
+	if (m_lastRenderedImage.IsEmpty())
+	{
+		m_lastRenderedImage.Resize(m_lastRenderedImageLinear.Num());
+		for (size_t i = 0; i < m_lastRenderedImageLinear.Num(); ++i)
+		{
+			m_lastRenderedImage[i] = Utils::LinearToSRGB8(m_lastRenderedImageLinear[i]);
+		}
+	}
+	return m_lastRenderedImage;
 }
 
 bool PathTracer::SamplePreparedSceneRay(
@@ -2007,7 +2370,7 @@ bool PathTracer::SamplePreparedSceneVisibility(
 {
 	outSample = {};
 	const float directionLength = glm::length(direction);
-	if (m_tlasInstances.IsEmpty() ||
+	if (m_geometry->m_tlasInstances.IsEmpty() ||
 		!std::isfinite(directionLength) ||
 		directionLength <= 1e-6f ||
 		!std::isfinite(maxDistance) ||
@@ -2036,6 +2399,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_lastRaytraceTimeMs = 0.0;
+	m_lastRenderedImageLinear.Clear();
 	m_lastRenderedImage.Clear();
 	m_lastRenderedExtent = glm::uvec2(0, 0);
 
@@ -2068,14 +2432,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 		pModelImporter->OnImportAsset(pModelAssetInfo);
 	}
 
-	m_directionalLights.Clear();
-	m_lightProxies.Clear();
-	m_tlasInstances.Clear();
-	m_tlasOctree.Clear();
-	m_materials.Clear();
-	m_textures.Clear();
-	m_textureMapping.Clear();
-
 	if (!pModelAssetInfo->ShouldKeepCpuBuffers())
 	{
 		SAILOR_LOG_ERROR("Path tracer requires bShouldKeepCpuBuffers=true in model asset info: %s", params.m_pathToModel.string().c_str());
@@ -2092,7 +2448,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	pLoadModelTask->Wait();
 	pModel = pLoadModelTask->GetResult();
-	if (!pModel || !pModel->IsReady() || !pModel->HasCpuMeshes())
+	if (!pModel || !pModel->IsStructurallyReady() || !pModel->HasCpuMeshes())
 	{
 		SAILOR_LOG_ERROR("Path tracer requires CPU model buffers. Enable bShouldKeepCpuBuffers for model: %s", params.m_pathToModel.string().c_str());
 		return;
@@ -2100,10 +2456,9 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	const Math::Sphere boundsSphere = pModel->GetBoundsSphere();
 
-	auto defaultMaterials = pModelAssetInfo->GetDefaultMaterials();
-	m_materials.Resize(defaultMaterials.Num());
+	const auto& defaultMaterials = pModelAssetInfo->GetDefaultMaterials();
 
-	if (!pModel->HasBLAS() || pModel->GetBLASTriangles().Num() == 0)
+	if (!pModel->HasBLAS())
 	{
 		SAILOR_LOG_ERROR("PathTracer requires model BLAS/TLAS-ready scene data: %s", params.m_pathToModel.string().c_str());
 		return;
@@ -2125,263 +2480,45 @@ void PathTracer::Run(const PathTracer::Params& params)
 		}
 	}
 
-	m_lastScenePreparationStats = {};
-	bool bAllTexturesResolved = true;
-	BuildRaytracingMaterialsFromRuntimeMaterials(
-		runtimeMaterials,
-		m_materials,
-		m_resolvedMaterialSlots,
-		m_textures,
-		m_textureMapping,
-		{},
-		{},
-		m_lastScenePreparationStats,
-		bAllTexturesResolved);
-	m_bMaterialsFullyResolved = bAllTexturesResolved;
-	if (m_materials.Num() == 0)
-	{
-		m_materials.Add(Material{});
-		m_resolvedMaterialSlots.Add(1u);
-		m_bMaterialsFullyResolved = true;
-	}
-
-	Raytracing::PathTracer::TLASInstance instance{};
+	TLASInstance instance{};
 	instance.m_model = pModel;
-	instance.m_worldMatrix = glm::mat4(1.0f);
-	instance.m_inverseWorldMatrix = glm::mat4(1.0f);
-	instance.m_worldBounds = Math::AABB(boundsSphere.m_center - vec3(boundsSphere.m_radius), boundsSphere.m_center + vec3(boundsSphere.m_radius));
-	instance.m_materialBaseOffset = 0;
-	m_tlasInstances.Add(instance);
+	instance.m_worldBounds = Math::AABB(boundsSphere.m_center, vec3(boundsSphere.m_radius));
 
 	PathTracerView view{};
+	TVector<DirectionalLight> directionalLights;
 	tinygltf::Model gltfModel;
+	tinygltf::TinyGLTF loader;
+	std::string err;
+	std::string warn;
+	const bool bIsGlb = Utils::GetFileExtension(pModelAssetInfo->GetAssetFilepath().c_str()) == "glb";
+	const bool bParsed = bIsGlb ?
+		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, pModelAssetInfo->GetAssetFilepath().c_str()) :
+		loader.LoadASCIIFromFile(&gltfModel, &err, &warn, pModelAssetInfo->GetAssetFilepath().c_str());
+	if (bParsed)
 	{
-		tinygltf::TinyGLTF loader;
-		std::string err;
-		std::string warn;
-		const bool bIsGlb = Utils::GetFileExtension(pModelAssetInfo->GetAssetFilepath().c_str()) == "glb";
-		const bool bParsed = bIsGlb ?
-			loader.LoadBinaryFromFile(&gltfModel, &err, &warn, pModelAssetInfo->GetAssetFilepath().c_str()) :
-			loader.LoadASCIIFromFile(&gltfModel, &err, &warn, pModelAssetInfo->GetAssetFilepath().c_str());
-
-		if (bParsed)
-		{
-			ResolveViewAndDirectionalLights(gltfModel, params, boundsSphere, view, m_directionalLights);
-		}
+		ResolveViewAndDirectionalLights(gltfModel, params, boundsSphere, view, directionalLights);
 	}
 
-	Utils::Timer raytracingTimer;
-	raytracingTimer.Start();
-
-	const vec3 cameraPos = view.m_cameraPos;
-	vec3 cameraForward = view.m_cameraForward;
-	vec3 cameraUp = view.m_cameraUp;
-	if (abs(dot(cameraForward, cameraUp)) > 0.99f || length(cameraForward) < 0.001f)
+	TVector<LightProxy> lights;
+	lights.Reserve(directionalLights.Num());
+	for (const auto& directional : directionalLights)
 	{
-		cameraUp = vec3(0.0f, 0.0f, 1.0f);
-		cameraForward = glm::normalize(vec3(0, 0, -1.0f));
+		lights.Add(MakeDirectionalLightProxy(directional));
+	}
+	if (!InitializeScene({ instance }, runtimeMaterials, lights))
+	{
+		SAILOR_LOG_ERROR("Cannot prepare model for path tracing: %s", params.m_pathToModel.string().c_str());
+		return;
 	}
 
-	const float aspectRatio = std::max(view.m_aspectRatio, 0.1f);
-	const uint32_t height = params.m_height;
-	const uint32_t width = (std::max)(1u, (uint32_t)std::lround((double)height * (double)aspectRatio));
-
-	const float hFov = std::max(view.m_hFov, glm::radians(10.0f));
-
-	const float vFov = 2.0f * atan(tan(hFov * 0.5f) * (1.0f / aspectRatio));
-	if (m_directionalLights.Num() == 0)
-	{
-		DirectionalLight sun{};
-		sun.m_direction = glm::normalize(vec3(-0.7f, -1.0f, -0.2f));
-		sun.m_intensity = vec3(1.0f);
-		m_directionalLights.Add(sun);
-	}
-
-	m_lightProxies.Reserve(m_directionalLights.Num());
-	for (const auto& directional : m_directionalLights)
-	{
-		m_lightProxies.Add(MakeDirectionalLightProxy(directional));
-	}
-
-	CombinedSampler2D outputTex;
-	outputTex.Initialize<vec3>(width, height);
-	CombinedSampler2D alphaTex;
-	alphaTex.Initialize<float>(width, height);
-
-	float h = tan(vFov / 2);
-	const float ViewportHeight = 2.0f * h;
-	const float ViewportWidth = aspectRatio * ViewportHeight;
-	
-	vec3 _u = normalize(cross(cameraUp, -cameraForward));
-	vec3 _v = cross(-cameraForward, _u);
-
-	const vec3 ViewportU = ViewportWidth * _u;
-	const vec3 ViewportV = ViewportHeight * _v;
-	const vec3 ViewportPivot = cameraPos - (ViewportU + ViewportV) * 0.5f + cameraForward;
-
-	const vec3 _pixelDeltaU = ViewportU / (float)width;
-	const vec3 _pixelDeltaV = ViewportV / (float)height;
-	const vec3 _pixel00Dir = ViewportPivot + 0.5f * (_pixelDeltaU + _pixelDeltaV) - cameraPos;
-
-	// Raytracing
-	{
-		SAILOR_PROFILE_SCOPE("Prepare raytracing tasks");
-
-		TVector<Tasks::ITaskPtr> tasks;
-		TVector<Tasks::ITaskPtr> tasksThisThread;
-
-		std::atomic<uint32_t> finishedTasks = 0;
-		const uint32_t numTasksX = (width + DefaultGroupSize - 1) / DefaultGroupSize;
-		const uint32_t numTasksY = (height + DefaultGroupSize - 1) / DefaultGroupSize;
-		const uint32_t numTasks = std::max(1u, numTasksX * numTasksY);
-
-		tasks.Reserve(numTasks);
-		tasksThisThread.Reserve(numTasks / 32);
-
-		for (uint32_t y = 0; y < height; y += DefaultGroupSize)
-		{
-			for (uint32_t x = 0; x < width; x += DefaultGroupSize)
-			{
-				auto task = Tasks::CreateTask("Calculate raytracing",
-					[=,
-					&finishedTasks,
-					&outputTex,
-					&alphaTex,
-					this]() mutable
-					{
-						Ray ray;
-						ray.SetOrigin(cameraPos);
-
-						for (uint32_t v = 0; (v < DefaultGroupSize) && (y + v) < height; v++)
-						{
-							for (uint32_t u = 0; u < DefaultGroupSize && (u + x) < width; u++)
-							{
-								vec3 accumulator = vec3(0);
-								float alphaCoverage = 0.0f;
-								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
-								{
-									uint32_t randomState = NextRandomU32();
-									const vec2 offset = sample == 0 ?
-										vec2(0.5f, 0.5f) :
-										NextRandomVec2_01(randomState);
-									const vec3 pixelDir = _pixel00Dir + ((float)(u + x) + offset.x) * _pixelDeltaU + ((float)(y + v) - offset.y) * _pixelDeltaV;
-
-									ray.SetDirection(glm::normalize(pixelDir));
-									TLASHit primaryHit{};
-									alphaCoverage += IntersectScene(ray, primaryHit, std::numeric_limits<float>::max(), (uint32_t)(-1), (uint32_t)(-1)) ? 1.0f : 0.0f;
-
-									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), std::numeric_limits<float>::max(), params, 1.0f, randomState, true);
-								}
-
-								vec3 res = accumulator / (float)params.m_msaa;
-								outputTex.SetPixel(x + u, height - (y + v) - 1, res);
-								alphaTex.SetPixel(x + u, height - (y + v) - 1, alphaCoverage / (float)params.m_msaa);
-								}
-							}
-
-						finishedTasks++;
-
-					}, EThreadType::Worker);
-
-				if (((x + y) / DefaultGroupSize) % 32 == 0)
-				{
-					tasksThisThread.Emplace(task);
-				}
-				else
-				{
-					task->Run();
-					tasks.Emplace(std::move(task));
-				}
-			}
-		}
-
-		float lastPrg = 0.0f;
-		{
-			SAILOR_PROFILE_SCOPE("Calcs on Main thread");
-			float eta = 0.0f;
-			for (auto& task : tasksThisThread)
-			{
-				task->Execute();
-
-				const float progress = finishedTasks.load() / (float)numTasks;
-
-				if (progress - lastPrg > 0.05f)
-				{
-					if (eta == 0.0f)
-					{
-						eta = raytracingTimer.ResultAccumulatedMs() * 20.0f * 0.001f * 1.5f;
-						SAILOR_LOG("PathTracer ETA: ~%.2fsec (%.2fmin)", eta, round(eta / 60.0f));
-					}
-
-					SAILOR_LOG("PathTracer Progress: %.2f", progress);
-					lastPrg = progress;
-				}
-			}
-		}
-
-		{
-			SAILOR_PROFILE_SCOPE("Wait all calcs");
-			for (auto& task : tasks)
-			{
-				if (!task->IsFinished())
-				{
-					task->Wait();
-
-					const float progress = finishedTasks.load() / (float)numTasks;
-					if (progress - lastPrg > 0.05f)
-					{
-						SAILOR_LOG("PathTracer Progress: %.2f", progress);
-						lastPrg = progress;
-					}
-				}
-			}
-		}
-	}
-
-	raytracingTimer.Stop();
-	m_lastRaytraceTimeMs = static_cast<double>(raytracingTimer.ResultAccumulatedMs());
-
-	{
-		SAILOR_PROFILE_SCOPE("Write Image");
-
-		TVector<u8vec4> outSrgb(width * height);
-		const float aberrationAmount = (0.5f / width);
-
-		for (uint32_t y = 0; y < height; y++)
-		{
-			for (uint32_t x = 0; x < width; x++)
-			{
-				vec2 uv = vec2((float)x / width, (float)y / height);
-
-				// Fetch the color values from the offset positions
-				vec3 greenColor = outputTex.Sample<vec3>(uv + vec2(aberrationAmount, 0));
-				vec3 blueColor = outputTex.Sample<vec3>(uv + vec2(aberrationAmount, aberrationAmount));
-				vec3 redColor = outputTex.Sample<vec3>(uv + vec2(-aberrationAmount, -aberrationAmount));
-
-				// Combine the shifted channels
-				vec3 chromaAberratedColor = vec3(redColor.r, greenColor.g, blueColor.b);
-				const float alpha = glm::clamp(alphaTex.Sample<float>(uv), 0.0f, 1.0f);
-				const u8vec3 rgb = alpha > 0.0f ?
-					u8vec3(glm::clamp(Utils::LinearToSRGB(chromaAberratedColor) * 255.0f, 0.0f, 255.0f)) :
-					u8vec3(0, 0, 0);
-
-				// Write the result back to the output array
-				outSrgb[x + y * width] = u8vec4(rgb, (uint8_t)glm::round(alpha * 255.0f));
-			}
-		}
-
-		m_lastRenderedImage = outSrgb;
-		m_lastRenderedExtent = glm::uvec2(width, height);
-
-		if (!params.m_output.empty())
-		{
-			const uint32_t Channels = 4;
-			if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
-			{
-				SAILOR_LOG("Raytracing WriteImage error");
-			}
-		}
-	}
+	Params renderParams = params;
+	renderParams.m_bUseRuntimeCamera = true;
+	renderParams.m_runtimeCameraPos = view.m_cameraPos;
+	renderParams.m_runtimeCameraForward = view.m_cameraForward;
+	renderParams.m_runtimeCameraUp = view.m_cameraUp;
+	renderParams.m_runtimeAspectRatio = view.m_aspectRatio;
+	renderParams.m_runtimeHFov = view.m_hFov;
+	RenderPreparedScene(renderParams);
 }
 
 bool PathTracer::IntersectSceneGeometry(const Math::Ray& worldRay,
@@ -2392,18 +2529,18 @@ bool PathTracer::IntersectSceneGeometry(const Math::Ray& worldRay,
 {
 	outHit = TLASHit{};
 
-	if (m_tlasInstances.Num() > 0)
+	if (m_geometry->m_tlasInstances.Num() > 0)
 	{
 		TLASHit bestHit{};
 		float bestDistance = maxRayLength;
 
-		m_tlasOctree.TraceRay(worldRay, maxRayLength, [&](size_t idx)
+		m_geometry->m_tlasOctree.TraceRay(worldRay, maxRayLength, [&](size_t idx)
 		{
-			if (idx >= m_tlasInstances.Num())
+			if (idx >= m_geometry->m_tlasInstances.Num())
 			{
 				return;
 			}
-			const auto& instance = m_tlasInstances[idx];
+			const auto& instance = m_geometry->m_tlasInstances[idx];
 			const Raytracing::BVH* blas = ResolveInstanceBlas(instance);
 			const TVector<Math::Triangle>* triangles =
 				ResolveInstanceTriangles(instance);
@@ -2524,7 +2661,7 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay,
 		}
 
 		const uint32_t materialIndex = ResolveMaterialIndex(candidate);
-		const Material& material = m_materials[materialIndex];
+		const Material& material = m_preparedMaterials->m_materials[materialIndex];
 		bool bAcceptHit = material.m_blendMode != BlendMode::Mask;
 		if (!bAcceptHit)
 		{
@@ -2608,7 +2745,7 @@ float PathTracer::TraceDirectLightTransmittance(
 		}
 
 		const uint32_t materialIndex = ResolveMaterialIndex(candidate);
-		const Material& material = m_materials[materialIndex];
+		const Material& material = m_preparedMaterials->m_materials[materialIndex];
 		if (material.m_blendMode != BlendMode::Blend)
 		{
 			return 0.0f;
@@ -2658,7 +2795,7 @@ float PathTracer::TraceDirectLightTransmittance(
 
 const Math::Triangle& PathTracer::GetTriangle(const TLASHit& hit) const
 {
-	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
+	const auto& instance = m_geometry->m_tlasInstances[hit.m_instanceIndex];
 	return (*ResolveInstanceTriangles(instance))[hit.m_triangleIndex];
 }
 
@@ -2676,7 +2813,7 @@ void PathTracer::GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outT
 		hit.m_hit.m_barycentricCoordinate.y * tri.m_bitangent[1] +
 		hit.m_hit.m_barycentricCoordinate.z * tri.m_bitangent[2];
 
-	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
+	const auto& instance = m_geometry->m_tlasInstances[hit.m_instanceIndex];
 	const glm::mat3 linearMatrix = glm::mat3(instance.m_worldMatrix);
 	const glm::mat3 normalMatrix = glm::mat3(glm::transpose(instance.m_inverseWorldMatrix));
 	outNormal = Math::SafeNormalize(
@@ -2736,23 +2873,24 @@ bool PathTracer::OrientShadingBasisToGeometricSurface(
 
 uint32_t PathTracer::ResolveMaterialIndex(const TLASHit& hit) const
 {
-	if (m_materials.Num() == 0)
+	if (m_preparedMaterials->m_materials.Num() == 0)
 	{
 		return 0;
 	}
 
-	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
+	const auto& instance = m_geometry->m_tlasInstances[hit.m_instanceIndex];
 	const auto& tri =
 		(*ResolveInstanceTriangles(instance))[hit.m_triangleIndex];
-	const int32_t idx = instance.m_materialBaseOffset + (int32_t)tri.m_materialIndex;
-	return (uint32_t)(std::max)(0, (std::min)(idx, (int32_t)m_materials.Num() - 1));
+	const int64_t index = static_cast<int64_t>(instance.m_materialBaseOffset) + tri.m_materialIndex;
+	return static_cast<uint32_t>((std::clamp)(index, int64_t{ 0 },
+		static_cast<int64_t>(m_preparedMaterials->m_materials.Num()) - 1));
 }
 
 bool PathTracer::IsThickVolumeAtHit(
 	const TLASHit& hit,
 	uint32_t materialIndex) const
 {
-	const auto& material = m_materials[materialIndex];
+	const auto& material = m_preparedMaterials->m_materials[materialIndex];
 	const vec2 uv = ResolveHitTextureCoordinates(
 		GetTriangle(hit),
 		hit.m_hit);
@@ -2763,7 +2901,7 @@ bool PathTracer::IsThickVolumeAtHit(
 	if (material.HasTransmissionTexture())
 	{
 		transmission *=
-			m_textures[material.m_transmissionIndex]->Sample<vec3>(
+			m_preparedMaterials->m_textures[material.m_transmissionIndex]->Sample<vec3>(
 				uvTransformed).r;
 	}
 
@@ -2775,40 +2913,42 @@ bool PathTracer::IsThickVolumeAtHit(
 	return material.m_thicknessFactor > 0.0f;
 }
 
-void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
+bool PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex, const ScenePreparationProgressCallback& progress,
+	const ScenePreparationProgress& state)
 {
-	if (instanceIndex >= m_tlasInstances.Num())
+	if (instanceIndex >= m_geometry->m_tlasInstances.Num())
 	{
-		return;
+		return true;
 	}
 
-	const TLASInstance& instance = m_tlasInstances[instanceIndex];
+	const TLASInstance& instance = m_geometry->m_tlasInstances[instanceIndex];
 	const TVector<Math::Triangle>* triangles =
 		ResolveInstanceTriangles(instance);
 	if (!triangles)
 	{
-		return;
+		return true;
 	}
 
 	for (uint32_t triangleIndex = 0u;
 		triangleIndex < triangles->Num();
 		++triangleIndex)
 	{
+		if (triangleIndex != 0u && triangleIndex % 256u == 0u && progress && !progress(state)) return false;
 		const Math::Triangle& triangle = (*triangles)[triangleIndex];
 		const int64_t materialIndex =
 			static_cast<int64_t>(instance.m_materialBaseOffset) +
 			static_cast<int64_t>(triangle.m_materialIndex);
 		if (materialIndex < 0 ||
-			materialIndex >= static_cast<int64_t>(m_materials.Num()) ||
+			materialIndex >= static_cast<int64_t>(m_preparedMaterials->m_materials.Num()) ||
 			materialIndex >= static_cast<int64_t>(
-				m_resolvedMaterialSlots.Num()) ||
-			m_resolvedMaterialSlots[static_cast<size_t>(materialIndex)] == 0u)
+				m_preparedMaterials->m_resolvedMaterialSlots.Num()) ||
+			m_preparedMaterials->m_resolvedMaterialSlots[static_cast<size_t>(materialIndex)] == 0u)
 		{
 			continue;
 		}
 
 		const glm::vec3 emissiveFactor = glm::max(
-			m_materials[static_cast<size_t>(materialIndex)].m_emissiveFactor,
+			m_preparedMaterials->m_materials[static_cast<size_t>(materialIndex)].m_emissiveFactor,
 			glm::vec3(0.0f));
 		const float emissivePower = glm::dot(
 			emissiveFactor,
@@ -2840,7 +2980,7 @@ void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
 		source.m_triangleIndex = triangleIndex;
 		source.m_materialIndex = static_cast<uint32_t>(materialIndex);
 
-		const Material& material = m_materials[source.m_materialIndex];
+		const Material& material = m_preparedMaterials->m_materials[source.m_materialIndex];
 		constexpr glm::vec3 WeightSamples[] = {
 			glm::vec3(1.0f / 3.0f),
 			glm::vec3(0.6f, 0.2f, 0.2f),
@@ -2878,8 +3018,9 @@ void PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex)
 			conservativeWeightFloor);
 		m_totalEmissiveWeight += source.m_weight;
 		source.m_cumulativeWeight = m_totalEmissiveWeight;
-		m_emissiveTriangles.Add(std::move(source));
+		m_emissiveTriangles->Add(std::move(source));
 	}
+	return true;
 }
 
 vec3 PathTracer::SampleDirectEmissive(
@@ -2892,7 +3033,7 @@ vec3 PathTracer::SampleDirectEmissive(
 	const Params& params,
 	uint32_t& randomState) const
 {
-	if (m_emissiveTriangles.IsEmpty() ||
+	if (m_emissiveTriangles->IsEmpty() ||
 		!std::isfinite(m_totalEmissiveWeight) ||
 		m_totalEmissiveWeight <= 0.0f)
 	{
@@ -2902,17 +3043,17 @@ vec3 PathTracer::SampleDirectEmissive(
 	const float selectedWeight =
 		NextRandom01(randomState) * m_totalEmissiveWeight;
 	const auto selectedIt = std::lower_bound(
-		m_emissiveTriangles.begin(),
-		m_emissiveTriangles.end(),
+		m_emissiveTriangles->begin(),
+		m_emissiveTriangles->end(),
 		selectedWeight,
 		[](const EmissiveTriangle& source, float value)
 		{
 			return source.m_cumulativeWeight < value;
 		});
 	const EmissiveTriangle& source = selectedIt !=
-		m_emissiveTriangles.end() ?
+		m_emissiveTriangles->end() ?
 		*selectedIt :
-			m_emissiveTriangles[m_emissiveTriangles.Num() - 1u];
+			(*m_emissiveTriangles)[m_emissiveTriangles->Num() - 1u];
 	if (source.m_instanceIndex == receiverHit.m_instanceIndex &&
 		source.m_triangleIndex == receiverHit.m_triangleIndex)
 	{
@@ -2953,7 +3094,7 @@ vec3 PathTracer::SampleDirectEmissive(
 	const float signedEmitterCosine =
 		glm::dot(emitterNormal, -direction);
 	if (!IsMaterialFaceVisible(
-			m_materials[source.m_materialIndex],
+			m_preparedMaterials->m_materials[source.m_materialIndex],
 			signedEmitterCosine >= 0.0f))
 	{
 		return vec3(0.0f);
@@ -2975,7 +3116,7 @@ vec3 PathTracer::SampleDirectEmissive(
 	}
 
 	const Material& emitterMaterial =
-		m_materials[source.m_materialIndex];
+		m_preparedMaterials->m_materials[source.m_materialIndex];
 	const glm::vec2 uv =
 		barycentric.x * source.m_uvs[0] +
 		barycentric.y * source.m_uvs[1] +
@@ -3119,7 +3260,7 @@ vec3 PathTracer::Raytrace(
 		const vec2 uv = ResolveHitTextureCoordinates(tri, hit.m_hit);
 
 		const uint32_t materialIndex = ResolveMaterialIndex(hit);
-		const auto material = m_materials[materialIndex];
+		const auto material = m_preparedMaterials->m_materials[materialIndex];
 		const vec2 uvTransformed = (material.m_uvTransform * vec3(uv, 1));
 
 		const vec4 layerWeights =
@@ -3424,7 +3565,7 @@ vec3 PathTracer::Raytrace(
 					// their BSDF-hit estimator as well would count the same path twice.
 					const bool bAllowNextEmissiveHit =
 						bOnlySpecularRay || bTransmissionRay ||
-						m_emissiveTriangles.IsEmpty();
+						m_emissiveTriangles->IsEmpty();
 					const vec3 raytraced = Raytrace(
 						rayToLight,
 						bounceLimit - 1,
@@ -3505,7 +3646,7 @@ glm::vec4 PathTracer::SampleMaterialBaseColor(
 	glm::vec2 uv,
 	glm::vec4 layerWeights) const
 {
-	const auto& material = m_materials[materialIndex];
+	const auto& material = m_preparedMaterials->m_materials[materialIndex];
 	glm::vec4 baseColor = material.m_baseColorFactor;
 
 	if (material.HasLayerColorTextures())
@@ -3531,7 +3672,7 @@ glm::vec4 PathTracer::SampleMaterialBaseColor(
 				continue;
 			}
 			layeredColor += layerWeights[layer] *
-				m_textures[material.m_layerColorIndices[layer]]->Sample<vec4>(
+				m_preparedMaterials->m_textures[material.m_layerColorIndices[layer]]->Sample<vec4>(
 					uv * material.m_layerUvScale[layer]);
 			resolvedWeight += layerWeights[layer];
 		}
@@ -3545,7 +3686,7 @@ glm::vec4 PathTracer::SampleMaterialBaseColor(
 		if (material.HasBaseTexture())
 		{
 			baseColor *=
-				m_textures[material.m_baseColorIndex]->Sample<vec4>(uv);
+				m_preparedMaterials->m_textures[material.m_baseColorIndex]->Sample<vec4>(uv);
 		}
 		baseColor *= layerWeights;
 	}
@@ -3558,7 +3699,7 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 	glm::vec2 uv,
 	glm::vec4 layerWeights) const
 {
-	const auto& material = m_materials[materialIndex];
+	const auto& material = m_preparedMaterials->m_materials[materialIndex];
 
 	LightingModel::SampledData res{};
 	res.m_baseColor = SampleMaterialBaseColor(
@@ -3580,32 +3721,32 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 
 	if (material.HasEmissiveTexture())
 	{
-		res.m_emissive *= m_textures[material.m_emissiveIndex]->Sample<vec3>(uv);
+		res.m_emissive *= m_preparedMaterials->m_textures[material.m_emissiveIndex]->Sample<vec3>(uv);
 	}
 
 	if (material.HasMetallicRoughnessTexture())
 	{
-		const vec3 ormSample = m_textures[material.m_metallicRoughnessIndex]->Sample<vec3>(uv);
+		const vec3 ormSample = m_preparedMaterials->m_textures[material.m_metallicRoughnessIndex]->Sample<vec3>(uv);
 		res.m_orm = vec3(ormSample.r, res.m_orm.g * ormSample.g, res.m_orm.b * ormSample.b);
 	}
 	else
 	{
 		if (material.HasRoughnessTexture())
 		{
-			const float roughness = m_textures[material.m_roughnessIndex]->Sample<vec3>(uv).r;
+			const float roughness = m_preparedMaterials->m_textures[material.m_roughnessIndex]->Sample<vec3>(uv).r;
 			res.m_orm.y *= roughness;
 		}
 
 		if (material.HasMetallicTexture())
 		{
-			const float metallic = m_textures[material.m_metallicIndex]->Sample<vec3>(uv).r;
+			const float metallic = m_preparedMaterials->m_textures[material.m_metallicIndex]->Sample<vec3>(uv).r;
 			res.m_orm.z *= metallic;
 		}
 	}
 
 	if (material.HasNormalTexture())
 	{
-		res.m_normal = m_textures[material.m_normalIndex]->Sample<vec3>(uv);
+		res.m_normal = m_preparedMaterials->m_textures[material.m_normalIndex]->Sample<vec3>(uv);
 		res.m_normal.x *= material.m_normalScale;
 		res.m_normal.y *= material.m_normalScale;
 	}
@@ -3613,19 +3754,19 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 	if (material.HasClearcoatTexture())
 	{
 		res.m_clearcoatFactor *=
-			m_textures[material.m_clearcoatIndex]->Sample<vec3>(uv).r;
+			m_preparedMaterials->m_textures[material.m_clearcoatIndex]->Sample<vec3>(uv).r;
 	}
 
 	if (material.HasClearcoatRoughnessTexture())
 	{
 		res.m_clearcoatRoughness *=
-			m_textures[material.m_clearcoatRoughnessIndex]->Sample<vec4>(uv).g;
+			m_preparedMaterials->m_textures[material.m_clearcoatRoughnessIndex]->Sample<vec4>(uv).g;
 	}
 
 	if (material.HasClearcoatNormalTexture())
 	{
 		res.m_clearcoatNormal =
-			m_textures[material.m_clearcoatNormalIndex]->Sample<vec3>(uv);
+			m_preparedMaterials->m_textures[material.m_clearcoatNormalIndex]->Sample<vec3>(uv);
 		res.m_clearcoatNormal.x *= material.m_clearcoatNormalScale;
 		res.m_clearcoatNormal.y *= material.m_clearcoatNormalScale;
 	}
@@ -3633,13 +3774,13 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 	if (material.HasSheenColorTexture())
 	{
 		res.m_sheenColor *=
-			m_textures[material.m_sheenColorIndex]->Sample<vec3>(uv);
+			m_preparedMaterials->m_textures[material.m_sheenColorIndex]->Sample<vec3>(uv);
 	}
 
 	if (material.HasSheenRoughnessTexture())
 	{
 		res.m_sheenRoughness *=
-			m_textures[material.m_sheenRoughnessIndex]->Sample<vec4>(uv).a;
+			m_preparedMaterials->m_textures[material.m_sheenRoughnessIndex]->Sample<vec4>(uv).a;
 	}
 
 	res.m_clearcoatFactor = glm::clamp(
@@ -3661,12 +3802,12 @@ LightingModel::SampledData PathTracer::GetMaterialData(
 
 	if (material.HasTransmissionTexture())
 	{
-		res.m_transmission *= m_textures[material.m_transmissionIndex]->Sample<vec3>(uv).r;
+		res.m_transmission *= m_preparedMaterials->m_textures[material.m_transmissionIndex]->Sample<vec3>(uv).r;
 	}
 
 	if (material.HasThicknessTexture())
 	{
-		res.m_thicknessFactor *= m_textures[material.m_thicknessIndex]->Sample<vec3>(uv).g;
+		res.m_thicknessFactor *= m_preparedMaterials->m_textures[material.m_thicknessIndex]->Sample<vec3>(uv).g;
 	}
 
 	if (material.m_blendMode == BlendMode::Mask)

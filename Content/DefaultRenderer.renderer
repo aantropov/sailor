@@ -264,7 +264,7 @@ frame:
 - name: DepthHighZ
 ############################
   renderTargets:
-  - src: HalfDepth
+  - src: DepthBuffer
   - dst: DepthHighZ
 
 ############################
