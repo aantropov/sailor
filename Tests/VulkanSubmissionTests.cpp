@@ -1810,6 +1810,150 @@ namespace
 		return result;
 	}
 
+#if defined(__APPLE__)
+	int RunAppBootstrapGpu(int argc, const char** argv)
+	{
+		auto& overrides = Tests::GetVulkanCapabilityOverrides();
+		uint32_t bootstraps = 0;
+		const auto resetFailure = [&]()
+			{
+				overrides.queueSubmit = nullptr;
+				overrides.waitForFences = nullptr;
+				overrides.getFenceStatus = nullptr;
+				rejectNativeSubmit = false;
+				captureNextFenceWait = false;
+				observedFences = {};
+			};
+		const auto checkReleased = [&]()
+			{
+				++bootstraps;
+				Require(!App::GetInstance() && !VulkanApi::GetInstance(), "App teardown must release its renderer and Vulkan instance");
+				Require(overrides.deviceCreateCalls == bootstraps && overrides.deviceDestroyCalls == bootstraps &&
+					overrides.instanceCreateCalls == bootstraps && overrides.instanceDestroyCalls == bootstraps &&
+					overrides.surfaceDestroyCalls == bootstraps,
+					"App teardown must destroy every native device, surface and instance");
+				Require(overrides.bufferCreateCalls > 0u && overrides.imageCreateCalls > 0u && overrides.fenceCreateCalls > 0u,
+					"native lifetime counters must observe the constructed resources");
+				Require(overrides.bufferCreateCalls == overrides.bufferDestroyCalls &&
+					overrides.imageCreateCalls == overrides.imageDestroyCalls &&
+					overrides.fenceCreateCalls == overrides.fenceDestroyCalls,
+					"App teardown must release all native buffers, images and fences after failed construction");
+			};
+		int result = 1;
+		try
+		{
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--editor", "--port", "0", "--new-world" });
+			forwardNativeSubmit = reinterpret_cast<PFN_vkQueueSubmit>(dlsym(RTLD_DEFAULT, "vkQueueSubmit"));
+			forwardFenceStatus = reinterpret_cast<PFN_vkGetFenceStatus>(dlsym(RTLD_DEFAULT, "vkGetFenceStatus"));
+			forwardFenceWait = reinterpret_cast<PFN_vkWaitForFences>(dlsym(RTLD_DEFAULT, "vkWaitForFences"));
+			Require(forwardNativeSubmit && forwardFenceStatus && forwardFenceWait,
+				"the native bootstrap fixture must resolve the real driver dispatch");
+			for (bool waitFailure : { false, true })
+			{
+				for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY, VK_ERROR_DEVICE_LOST })
+				{
+					for (uint32_t upload : { 1u, 2u })
+					{
+						overrides.queueSubmit = NativeSubmit;
+						overrides.waitForFences = NativeFenceWait;
+						overrides.getFenceStatus = NativeFenceStatus;
+						overrides.lastUploadLayers = 0;
+						submitCalls = fenceWaitCalls = allFenceWaitCalls = 0u;
+						submitsBeforeFailure = waitsBeforeCapture = upload - 1u;
+						nextResult = fenceWaitResult = error;
+						rejectNativeSubmit = !waitFailure;
+						submitBeforeFailure = false;
+						captureNextFenceWait = waitFailure;
+						capturedFenceCompleted = false;
+						observedFences = {};
+						fenceResults = { VK_NOT_READY, VK_NOT_READY };
+
+						const auto initialization = App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size()));
+						auto* renderer = App::GetSubmodule<Renderer>();
+						Require(initialization == EAppInitializationResult::Failed && App::GetExitCode() != 0 &&
+							renderer && !renderer->IsInitialized() && !App::IsRendererInitialized(),
+							"ordinary App construction must report the actual Renderer upload failure");
+						auto* driver = dynamic_cast<VulkanGraphicsDriver*>(Renderer::GetDriver().GetRawPtr());
+						Require(driver && !driver->IsInitialized() && !driver->GetDefaultTexture() &&
+							!App::GetSubmodule<AssetRegistry>() && !App::GetSubmodule<EngineLoop>(),
+							"failed Renderer construction must not publish a fallback or initialize later subsystems");
+						Require(overrides.lastUploadLayers == (upload == 1u ? 1u : 6u),
+							"the failure must reach the actual 2D or six-face fallback upload");
+						Require(waitFailure ? capturedFenceCompleted && fenceWaitCalls == 1u :
+							submitCalls == 1u && lastCommandCount == 1u && allFenceWaitCalls == upload - 1u,
+							"the fixture must observe native refusal or finish accepted work before injecting a wait failure");
+						rejectNativeSubmit = true;
+						nextResult = VK_SUCCESS;
+						submitsBeforeFailure = 0u;
+						const auto submissions = submitCalls;
+						App::Start();
+						Require(submitCalls == submissions && App::Initialize() == EAppInitializationResult::Failed,
+							"a failed App must neither enter its frame loop nor become Ready on another Initialize call");
+
+						if (waitFailure && error != VK_ERROR_DEVICE_LOST)
+						{
+							auto* app = App::GetInstance();
+							auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+							auto device = VulkanApi::GetInstance()->GetMainDevice();
+							Require(forwardFenceStatus(*device, observedFences[0]) == VK_SUCCESS,
+								"the pending-state fixture must have completed the physical GPU work");
+							const uint32_t images = overrides.imageDestroyCalls, fences = overrides.fenceDestroyCalls;
+							driver->TrackResources_ThreadSafe();
+							Require(overrides.imageDestroyCalls == images && overrides.fenceDestroyCalls == fences,
+								"ordinary collection must retain the pending fallback upload");
+							{
+								QueueWaitOverride refusal(device->GetGraphicsQueue(), error);
+								Require(!App::Shutdown() && App::GetInstance() == app && App::GetSubmodule<Renderer>() == renderer &&
+									App::GetSubmodule<Tasks::Scheduler>() == scheduler && overrides.imageDestroyCalls == images &&
+									overrides.fenceDestroyCalls == fences,
+									"a refused partial App shutdown must preserve the original renderer, scheduler and pending resources");
+							}
+							fenceResults[0] = VK_SUCCESS;
+						}
+						resetFailure();
+						Require(App::Shutdown(), "App must finish partial teardown after the failure is removed");
+						checkReleased();
+
+						Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
+							App::IsRendererInitialized(), "a fresh App must initialize after each failed renderer construction");
+						{
+							auto& retry = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+							auto fallback = retry.GetDefaultTexture();
+							Require(fallback && fallback->IsReady() && ReadImage(retry, fallback->m_vulkan.m_image) ==
+								std::vector<uint32_t>{ 0x00e567ffu }, "fresh App fallback pixels must retain their original value");
+							auto command = retry.CreateCommandList(false, ECommandListQueue::Graphics);
+							retry.BeginCommandList(command, true);
+							auto target = retry.CreateRenderTarget(command, glm::ivec2(4), 1, ETextureFormat::R8G8B8A8_UNORM);
+							retry.BeginRenderPass(command, TVector<RHITexturePtr>{ target }, nullptr, glm::ivec4(0, 0, 4, 4),
+								glm::ivec2(0), true, glm::vec4(0x43 / 255.0f, 0x67 / 255.0f, 0xab / 255.0f, 1.0f), 0.0f, false);
+							retry.EndRenderPass(command);
+							retry.RestoreImageBarriers(command);
+							retry.EndCommandList(command);
+							Require(retry.SubmitCommandList_Immediate(command), "fresh App must execute an offscreen rendering pass");
+							Require(ReadImage(retry, target->m_vulkan.m_image) == std::vector<uint32_t>(16, 0xffab6743u),
+								"fresh App must preserve every rendered retry pixel");
+						}
+						Require(App::Shutdown(), "the successful retry must shut down through App");
+						checkReleased();
+						std::cout << "App bootstrap failure: upload=" << upload << ", wait=" << waitFailure << ", result=" << error
+							<< "; owner teardown, fresh initialization and 16 rendered pixels passed\n";
+					}
+				}
+			}
+			std::cout << "Native App bootstrap resource lifetimes: " << bootstraps << " devices, " << overrides.bufferCreateCalls
+				<< " buffers, " << overrides.imageCreateCalls << " images, " << overrides.fenceCreateCalls << " fences\n";
+			std::cout << "Native App bootstrap: 12 upload failures, four retained shutdown retries and complete resource release passed\n";
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		resetFailure();
+		App::Stop();
+		if (!App::Shutdown()) result = 1;
+		return result;
+	}
+#endif
+
 	void TestImmediateBufferCopy(bool lost)
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
@@ -2563,6 +2707,7 @@ int main(int argc, const char** argv)
 		if (mode == "--gpu-bootstrap-submit") return RunBootstrapGpu(argc, argv, false, false);
 #if defined(__APPLE__)
 		if (mode == "--gpu-capabilities") return RunBootstrapGpu(argc, argv, false, false, true);
+		if (mode == "--gpu-app-bootstrap") return RunAppBootstrapGpu(argc, argv);
 		if (mode == "--gpu-pathtracer-khr")
 		{
 			auto& overrides = Tests::GetVulkanCapabilityOverrides();
@@ -2578,6 +2723,12 @@ int main(int argc, const char** argv)
 			}
 			std::cout << "Native Vulkan KHR rendering passed with a simulated 1.1 loader and 1.2 device\n";
 			return 0;
+		}
+#else
+		if (mode == "--gpu-capabilities" || mode == "--gpu-app-bootstrap" || mode == "--gpu-pathtracer-khr")
+		{
+			std::cerr << "This native Vulkan test requires the macOS interposer\n";
+			return 77;
 		}
 #endif
 		if (mode == "--gpu-initialization") return RunInitializationGpu(argc, argv);

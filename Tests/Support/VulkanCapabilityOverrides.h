@@ -32,6 +32,15 @@ namespace Sailor::Tests
 		std::atomic<uint32_t> surfaceDestroyCalls{ 0 };
 		std::atomic<uint32_t> samplerCreateCalls{ 0 };
 		std::atomic<uint32_t> bufferCreateCalls{ 0 };
+		std::atomic<uint32_t> bufferDestroyCalls{ 0 };
+		std::atomic<uint32_t> imageCreateCalls{ 0 };
+		std::atomic<uint32_t> imageDestroyCalls{ 0 };
+		std::atomic<uint32_t> fenceCreateCalls{ 0 };
+		std::atomic<uint32_t> fenceDestroyCalls{ 0 };
+		std::atomic<uint32_t> lastUploadLayers{ 0 };
+		std::atomic<PFN_vkQueueSubmit> queueSubmit{ nullptr };
+		std::atomic<PFN_vkWaitForFences> waitForFences{ nullptr };
+		std::atomic<PFN_vkGetFenceStatus> getFenceStatus{ nullptr };
 		std::atomic<uint32_t> coreRenderingLookups{ 0 };
 		std::atomic<uint32_t> khrRenderingLookups{ 0 };
 		std::atomic<uint32_t> instanceTarget{ 0 };

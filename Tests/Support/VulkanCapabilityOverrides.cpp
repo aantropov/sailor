@@ -48,6 +48,12 @@ namespace
 	VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL GetDeviceProc(VkDevice device, const char* name)
 	{
 		auto& overrides = GetVulkanCapabilityOverrides();
+		if (const auto submit = overrides.queueSubmit.load(); submit && std::strcmp(name, "vkQueueSubmit") == 0)
+			return reinterpret_cast<PFN_vkVoidFunction>(submit);
+		if (const auto wait = overrides.waitForFences.load(); wait && std::strcmp(name, "vkWaitForFences") == 0)
+			return reinterpret_cast<PFN_vkVoidFunction>(wait);
+		if (const auto status = overrides.getFenceStatus.load(); status && std::strcmp(name, "vkGetFenceStatus") == 0)
+			return reinterpret_cast<PFN_vkVoidFunction>(status);
 		if (std::strcmp(name, "vkCmdBeginRendering") == 0 || std::strcmp(name, "vkCmdEndRendering") == 0)
 			++overrides.coreRenderingLookups;
 		if (std::strcmp(name, "vkCmdBeginRenderingKHR") == 0 || std::strcmp(name, "vkCmdEndRenderingKHR") == 0)
@@ -187,8 +193,52 @@ namespace
 	VKAPI_ATTR VkResult VKAPI_CALL CreateBuffer(VkDevice device, const VkBufferCreateInfo* info,
 		const VkAllocationCallbacks* allocator, VkBuffer* buffer)
 	{
-		++GetVulkanCapabilityOverrides().bufferCreateCalls;
-		return vkCreateBuffer(device, info, allocator, buffer);
+		const auto result = vkCreateBuffer(device, info, allocator, buffer);
+		if (result == VK_SUCCESS) ++GetVulkanCapabilityOverrides().bufferCreateCalls;
+		return result;
+	}
+
+	VKAPI_ATTR void VKAPI_CALL DestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks* allocator)
+	{
+		if (buffer) ++GetVulkanCapabilityOverrides().bufferDestroyCalls;
+		vkDestroyBuffer(device, buffer, allocator);
+	}
+
+	VKAPI_ATTR VkResult VKAPI_CALL CreateImage(VkDevice device, const VkImageCreateInfo* info,
+		const VkAllocationCallbacks* allocator, VkImage* image)
+	{
+		const auto result = vkCreateImage(device, info, allocator, image);
+		if (result == VK_SUCCESS) ++GetVulkanCapabilityOverrides().imageCreateCalls;
+		return result;
+	}
+
+	VKAPI_ATTR void VKAPI_CALL DestroyImage(VkDevice device, VkImage image, const VkAllocationCallbacks* allocator)
+	{
+		if (image) ++GetVulkanCapabilityOverrides().imageDestroyCalls;
+		vkDestroyImage(device, image, allocator);
+	}
+
+	VKAPI_ATTR VkResult VKAPI_CALL CreateFence(VkDevice device, const VkFenceCreateInfo* info,
+		const VkAllocationCallbacks* allocator, VkFence* fence)
+	{
+		const auto result = vkCreateFence(device, info, allocator, fence);
+		if (result == VK_SUCCESS) ++GetVulkanCapabilityOverrides().fenceCreateCalls;
+		return result;
+	}
+
+	VKAPI_ATTR void VKAPI_CALL DestroyFence(VkDevice device, VkFence fence, const VkAllocationCallbacks* allocator)
+	{
+		if (fence) ++GetVulkanCapabilityOverrides().fenceDestroyCalls;
+		vkDestroyFence(device, fence, allocator);
+	}
+
+	VKAPI_ATTR void VKAPI_CALL CopyBufferToImage(VkCommandBuffer command, VkBuffer buffer, VkImage image,
+		VkImageLayout layout, uint32_t count, const VkBufferImageCopy* regions)
+	{
+		uint32_t layers = 0;
+		for (uint32_t i = 0; i < count; ++i) layers += regions[i].imageSubresource.layerCount;
+		GetVulkanCapabilityOverrides().lastUploadLayers = layers;
+		vkCmdCopyBufferToImage(command, buffer, image, layout, count, regions);
 	}
 
 	// dyld interposes other images, leaving this library's calls to Vulkan intact.
@@ -206,6 +256,12 @@ namespace
 		{ reinterpret_cast<const void*>(&DestroyInstance), reinterpret_cast<const void*>(&vkDestroyInstance) },
 		{ reinterpret_cast<const void*>(&DestroySurface), reinterpret_cast<const void*>(&vkDestroySurfaceKHR) },
 		{ reinterpret_cast<const void*>(&CreateSampler), reinterpret_cast<const void*>(&vkCreateSampler) },
-		{ reinterpret_cast<const void*>(&CreateBuffer), reinterpret_cast<const void*>(&vkCreateBuffer) }
+		{ reinterpret_cast<const void*>(&CreateBuffer), reinterpret_cast<const void*>(&vkCreateBuffer) },
+		{ reinterpret_cast<const void*>(&DestroyBuffer), reinterpret_cast<const void*>(&vkDestroyBuffer) },
+		{ reinterpret_cast<const void*>(&CreateImage), reinterpret_cast<const void*>(&vkCreateImage) },
+		{ reinterpret_cast<const void*>(&DestroyImage), reinterpret_cast<const void*>(&vkDestroyImage) },
+		{ reinterpret_cast<const void*>(&CreateFence), reinterpret_cast<const void*>(&vkCreateFence) },
+		{ reinterpret_cast<const void*>(&DestroyFence), reinterpret_cast<const void*>(&vkDestroyFence) },
+		{ reinterpret_cast<const void*>(&CopyBufferToImage), reinterpret_cast<const void*>(&vkCmdCopyBufferToImage) }
 	};
 }
