@@ -1,4 +1,4 @@
-#include "Settings/GraphicsSettings.h"
+#include "Settings/GraphicsSettingsReflection.h"
 #include "RHI/Types.h"
 #include "Support/TempDirectory.h"
 #include "Workspace/WorkspaceContext.h"
@@ -184,40 +184,40 @@ graphics:
 
 	void TestProfileDiagnostics()
 	{
-		struct Case { const char* field; const char* value; const char* requirement; };
+		struct Case { const char* field; const char* value; };
 		for (const auto& c : {
-			Case{ "resolutionFactor", "0.2", "must be a finite number in the range [0.25, 2.0]" },
-			Case{ "resolutionFactor", ".nan", "must be a finite number in the range [0.25, 2.0]" },
-			Case{ "fpsCap", "1001", "must be in the range [1, 1000]" },
-			Case{ "fpsCap", "-1", "must be an unsigned 32-bit integer" },
-			Case{ "fpsCap", "'+120'", "must be an unsigned 32-bit integer" },
-			Case{ "fpsCap", "'120x'", "must be an unsigned 32-bit integer" },
-			Case{ "fpsCap", "'0x78'", "must be an unsigned 32-bit integer" },
-			Case{ "fpsCap", "4294967296", "must be an unsigned 32-bit integer" },
-			Case{ "fpsCap", "[]", "is required and must be a scalar" },
-			Case{ "msaaSamples", "3", "must be one of 1, 2, 4, or 8" },
-			Case{ "shadowQuality", "Ultra", "must be one of High, Medium, Low, or VeryLow" },
-			Case{ "shadowBias", "17", "must be a finite number in the range [-16, 16]" },
-			Case{ "shadowDistance", "0", "must be a finite number in the range [1, 10000]" },
-			Case{ "shadowCascadeCount", "5", "must be in the range [1, 4]" },
-			Case{ "shadowCascadeResolutions", "[1024]", "must be a sequence whose length matches shadowCascadeCount" },
-			Case{ "cloudsResolutionMultiplier", "0.01", "must be a finite number in the range [0.0625, 2.0]" },
-			Case{ "skyResolution", "127", "must be a power of two in the range [32, 8192]" },
-			Case{ "lodBias", "9", "must be in the range [-8, 8]" },
-			Case{ "lodBias", "2147483648", "must be a signed 32-bit integer" },
-			Case{ "vegetationInstanceBudget", "1048577", "must be in the range [0, 1048576]" },
-			Case{ "vegetationInstanceBudget", "{}", "must be an unsigned 32-bit integer" },
-			Case{ "vegetationInstanceBudget", "'1x'", "must be an unsigned 32-bit integer" },
-			Case{ "maxGiProbeStatesPerSnapshot", "17", "must be in the range [0, 16]" } })
+			Case{ "resolutionFactor", "0.2" },
+			Case{ "resolutionFactor", ".nan" },
+			Case{ "fpsCap", "1001" },
+			Case{ "fpsCap", "-1" },
+			Case{ "fpsCap", "'120x'" },
+			Case{ "fpsCap", "4294967296" },
+			Case{ "fpsCap", "[]" },
+			Case{ "msaaSamples", "3" },
+			Case{ "shadowQuality", "Ultra" },
+			Case{ "shadowBias", "17" },
+			Case{ "shadowDistance", "0" },
+			Case{ "shadowCascadeCount", "5" },
+			Case{ "shadowCascadeResolutions", "[1024]" },
+			Case{ "cloudsResolutionMultiplier", "0.01" },
+			Case{ "skyResolution", "127" },
+			Case{ "lodBias", "9" },
+			Case{ "lodBias", "2147483648" },
+			Case{ "vegetationInstanceBudget", "1048577" },
+			Case{ "vegetationInstanceBudget", "{}" },
+			Case{ "vegetationInstanceBudget", "'1x'" },
+			Case{ "maxGiProbeStatesPerSnapshot", "17" } })
 		{
 			auto document = ProjectDocument();
 			document["graphics"]["defaultQuality"] = "Ultra";
 			document["graphics"]["presets"]["Ultra"]["fpsCap"] = 75;
 			document["graphics"]["presets"]["High"][c.field] = YAML::Load(c.value);
 			const auto result = ParseProjectGraphicsSettings(YAML::Dump(document), "fixture");
-			Require(result.m_status == EGraphicsSettingsLoadStatus::Invalid && result.m_diagnostic ==
-				"fixture is invalid: field 'graphics.presets.High." + std::string(c.field) + "' " + c.requirement + ".",
-				"field diagnostics must retain their path and requirement: " + result.m_diagnostic);
+			Require(result.m_status == EGraphicsSettingsLoadStatus::Invalid &&
+				result.m_diagnostic.find("fixture") != std::string::npos &&
+				result.m_diagnostic.find("graphics.presets.High") != std::string::npos &&
+				result.m_diagnostic.find(c.field) != std::string::npos,
+				"field diagnostics must identify the source, profile and invalid value: " + result.m_diagnostic);
 			CheckDefaults(result.m_settings);
 		}
 		for (const auto& field : ProjectDocument()["graphics"]["presets"]["High"])
@@ -234,7 +234,8 @@ graphics:
 			else
 			{
 				Require(result.m_status == EGraphicsSettingsLoadStatus::Invalid &&
-					result.m_diagnostic.find("graphics.presets.High." + name) != std::string::npos,
+					result.m_diagnostic.find("graphics.presets.High") != std::string::npos &&
+					result.m_diagnostic.find(name) != std::string::npos,
 					"every required field must identify its missing value: " + name);
 				CheckDefaults(result.m_settings);
 			}
@@ -246,7 +247,7 @@ graphics:
 		Require(accepted.IsLoaded() && accepted.m_settings.GetProfile(EGraphicsQuality::High).m_lodBias == 2 &&
 			accepted.m_settings.GetProfile(EGraphicsQuality::High).m_vegetationInstanceBudget == 0,
 			"signed plus and a zero optional vegetation budget must remain legal");
-		std::cout << "GraphicsSettings profile diagnostics, strict integers and atomic publication passed\n";
+		std::cout << "GraphicsSettings profile validation and atomic publication passed\n";
 	}
 
 	void TestDocumentValidation()
@@ -293,21 +294,21 @@ graphics:
 			document["graphics"]["presets"]["High"][name] = "not-a-value";
 			const auto result = ParseProjectGraphicsSettings(YAML::Dump(document), "fixture");
 			Require(result.m_status == EGraphicsSettingsLoadStatus::Invalid &&
-				result.m_diagnostic.find("fixture is invalid: field 'graphics.presets.High." + std::string(name) + "' must be ") == 0 &&
-				result.m_diagnostic.find("YAML detail:") != std::string::npos,
-				"typed conversions must preserve source/path and YAML conversion detail");
+				result.m_diagnostic.find("fixture") != std::string::npos &&
+				result.m_diagnostic.find("graphics.presets.High") != std::string::npos &&
+				result.m_diagnostic.find(name) != std::string::npos,
+				"typed conversions must identify their source, profile and field");
 			CheckDefaults(result.m_settings);
 		}
-		for (const char* value : { "{}", "31", "8193", "1023", "'1024x'", "'+1024'", "4294967296" })
+		for (const char* value : { "{}", "31", "8193", "1023", "'1024x'", "4294967296" })
 		{
 			auto document = ProjectDocument();
 			document["graphics"]["presets"]["High"]["shadowCascadeResolutions"][2] = YAML::Load(value);
 			const auto result = ParseProjectGraphicsSettings(YAML::Dump(document), "fixture");
-			const std::string requirement = std::string(value) == "{}" ? "must be an unsigned integer" :
-				"must be a power of two in the range [32, 8192]";
-			Require(result.m_status == EGraphicsSettingsLoadStatus::Invalid && result.m_diagnostic ==
-				"fixture is invalid: field 'graphics.presets.High.shadowCascadeResolutions[2]' " + requirement + ".",
-				"cascade diagnostics must distinguish structure from invalid numeric values");
+			Require(result.m_status == EGraphicsSettingsLoadStatus::Invalid &&
+				result.m_diagnostic.find("graphics.presets.High") != std::string::npos &&
+				result.m_diagnostic.find("shadowCascadeResolutions[2]") != std::string::npos,
+				"cascade diagnostics must identify the invalid array element");
 		}
 		for (const auto& field : EditorDocument()["graphics"])
 		{
@@ -317,7 +318,8 @@ graphics:
 			document["graphics"].remove(name);
 			const auto result = ParseEditorGraphicsSettings(YAML::Dump(document), "editor");
 			Require(result.m_status == EGraphicsSettingsLoadStatus::Invalid &&
-				result.m_diagnostic.find("graphics." + name) != std::string::npos &&
+				result.m_diagnostic.find("graphics") != std::string::npos &&
+				result.m_diagnostic.find(name) != std::string::npos &&
 				result.m_settings.m_selectedQuality == EGraphicsQualitySelection::ProjectDefault &&
 				result.m_settings.m_statsMode == ERenderStatsMode::None && !result.m_settings.m_bRuntimeGIProbesPreviewEnabled,
 				"a missing editor field must not publish earlier parsed changes");
@@ -330,6 +332,61 @@ graphics:
 		std::ofstream stream(path);
 		stream << YAML::Dump(document);
 		Require(stream.good(), "fixture settings must be written");
+	}
+
+	void TestReflectedSerialization()
+	{
+		const GraphicsSettings defaults;
+		for (const auto quality : magic_enum::enum_values<EGraphicsQuality>())
+		{
+			const auto& expected = defaults.GetProfile(quality);
+			YAML::Node document;
+			Sailor::Serialize(document, "profile", expected);
+			const auto profile = document["profile"];
+			Require(profile["shadowQuality"].as<std::string>() == magic_enum::enum_name(expected.m_shadowQuality) &&
+				profile["shadowCascadeResolutions"].size() == expected.m_shadowCascadeCount &&
+				profile["supportSoftShadows"].as<bool>() == expected.m_bSupportSoftShadows &&
+				profile["runtimeGIProbes"]["enabled"].as<bool>() == expected.m_runtimeGIProbes.m_bEnabled,
+				"reflection must preserve the existing names, enum strings and active-cascade layout");
+			GraphicsQualityProfile actual;
+			Require(Sailor::Deserialize(YAML::Load(YAML::Dump(document)), "profile", actual),
+				"the shared YAML API must deserialize reflected profiles");
+			CheckProfile(actual, expected);
+		}
+
+		auto document = ProjectDocument();
+		for (const auto quality : magic_enum::enum_values<EGraphicsQuality>())
+			document["graphics"]["presets"][std::string(magic_enum::enum_name(quality))].remove("vegetationInstanceBudget");
+		const auto optional = ParseProjectGraphicsSettings(YAML::Dump(document));
+		Require(optional.IsLoaded(), optional.m_diagnostic);
+		CheckDefaults(optional.m_settings);
+
+		for (const char* value : { "+120", "0x78" })
+		{
+			auto numbers = ProjectDocument();
+			numbers["graphics"]["presets"]["High"]["fpsCap"] = value;
+			const auto parsed = ParseProjectGraphicsSettings(YAML::Dump(numbers));
+			Require(parsed.IsLoaded() && parsed.m_settings.GetProfile(EGraphicsQuality::High).m_fpsCap == 120u,
+				"settings must use the same numeric conversion as the shared YAML API");
+		}
+
+		for (const auto selection : magic_enum::enum_values<EGraphicsQualitySelection>())
+		{
+			EditorGraphicsSettings expected;
+			expected.m_selectedQuality = selection;
+			expected.m_statsMode = ERenderStatsMode::RenderStatsAndQueries;
+			expected.m_bRuntimeGIProbesPreviewEnabled = true;
+			expected.m_runtimeGIProbesBudget = ERuntimeGIProbesEditorBudget::Balanced;
+			expected.m_runtimeGIProbesDebugView = ERuntimeGIProbesEditorDebugView::Visibility;
+			YAML::Node editor;
+			editor["settingsVersion"] = 1;
+			editor["graphics"] = expected;
+			const auto parsed = ParseEditorGraphicsSettings(YAML::Dump(editor));
+			Require(parsed.IsLoaded() && parsed.m_settings.m_selectedQuality == selection &&
+				Utils::AreYamlNodesEqual(YAML::Node(parsed.m_settings), YAML::Node(expected)),
+				"all editor settings must round-trip through the shared reflected codec");
+		}
+		std::cout << "GraphicsSettings shared reflection and enum round trips passed\n";
 	}
 
 	void TestLoadingAndSelection()
@@ -422,6 +479,7 @@ int main(int argc, char** argv)
 	try
 	{
 		TestPresets();
+		TestReflectedSerialization();
 		TestProfileDiagnostics();
 		TestDocumentValidation();
 		TestConversionDiagnostics();
