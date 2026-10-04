@@ -23,8 +23,10 @@
 #include "FrameGraph/SkyNode.h"
 #include "Math/Noise.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
+#include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
+#include "GraphicsDriver/Vulkan/VulkanPipeline.h"
 #include "RHI/Buffer.h"
 #include "RHI/CommandList.h"
 #include "RHI/Cubemap.h"
@@ -1726,6 +1728,169 @@ frame:
 	}
 
 
+
+	ShaderSetPtr WriteIndexedStorageShader(const std::filesystem::path& workspace, size_t stride)
+	{
+		const auto path = workspace / "Content" / ("IndexedStorage" + std::to_string(stride) + ".shader");
+		YAML::Node shader;
+		shader["glslCommon"] = "#version 450\n";
+		shader["glslCompute"] = "layout(local_size_x = 1) in;\n"
+			"struct Element { uvec4 words[" + std::to_string(stride / 16) + "]; };\n" +
+			"layout(set = 0, binding = 0, std430) readonly buffer Source { Element data[]; } source;\n"
+			"layout(set = 1, binding = 0, std430) writeonly buffer Output { uint words[]; } outputValue;\n"
+			"layout(push_constant) uniform ReadIndex { uint baseIndex; } readIndex;\n"
+			"void main() { uint word = gl_GlobalInvocationID.x; uint stride = " + std::to_string(stride / 4) + ";\n"
+			"outputValue.words[word] = source.data[readIndex.baseIndex + word / stride].words[(word % stride) / 4][word % 4]; }\n";
+		std::ofstream output(path);
+		output << shader;
+		output.close();
+		Require(static_cast<bool>(output), "indexed storage shader must be written");
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+		ShaderSetPtr result;
+		Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(id, result) && result->IsReady(),
+			"indexed storage shader must compile before recording");
+		return result;
+	}
+
+	void TestIndexedStorageBindings(ShaderSetPtr shader, size_t elementSize, bool suballocated)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
+		auto pipeline = nativeDriver->GetOrAddComputePipeline(shader->GetComputeShaderRHI());
+		Require(pipeline && pipeline->IsCompiled(), "indexed storage needs a compiled compute pipeline");
+		const size_t stride = (elementSize + 15) / 16 * 16;
+		using Allocation = Memory::TManagedMemory<VulkanBufferMemoryPtr, VulkanBufferAllocator>;
+		uint32_t relocatedBuffers = 0, offsetRanges = 0;
+		for (uint32_t method = 0; method < 3; ++method)
+			for (bool projected : { false, true })
+			{
+				const bool withOffset = method == 2;
+				const uint32_t count = method == 0 ? 1 : 3;
+				const size_t size = stride * count;
+				auto blocker = driver->CreateShaderBindings();
+				Require(static_cast<bool>(driver->AddSsboToShaderBindings(blocker, "blocker", stride, 5, 0, false)),
+					"indexed storage fixture must keep a neighboring allocation live");
+				auto inputs = driver->CreateShaderBindings();
+				const auto allocate = [&]()
+				{
+					return method == 0 ?
+						driver->AddBufferToShaderBindings(inputs, "indexed", elementSize, 0, EShaderBindingType::StorageBuffer) :
+						driver->AddSsboToShaderBindings(inputs, "indexed", elementSize, count, 0, withOffset);
+				};
+				auto binding = allocate();
+				Require(binding && binding->m_vulkan.m_valueBinding, "indexed storage must allocate a managed range");
+				if (projected)
+					Require(static_cast<bool>(driver->AddShaderBinding(inputs, blocker->GetOrAddShaderBinding("blocker"), "unused", 31)),
+						"an extra binding must require descriptor projection");
+				const auto prepare = [&]()
+				{
+					auto range = *binding->m_vulkan.m_valueBinding->Get();
+					const auto backing = *range.m_buffer->GetMemoryPtr();
+					if (backing.m_offset > 0) ++relocatedBuffers;
+					if (range.m_offset > 0) ++offsetRanges;
+					const size_t expectedOffset = withOffset ? 0 : range.m_offset;
+					if (size_t(binding->GetStorageInstanceIndex()) * stride != expectedOffset)
+						throw std::runtime_error("indexed storage address must be relative to VkBuffer: method=" + std::to_string(method) +
+							", index=" + std::to_string(binding->GetStorageInstanceIndex()) + ", stride=" + std::to_string(stride) +
+							", buffer offset=" + std::to_string(range.m_offset) + ", device-memory offset=" + std::to_string(backing.m_offset));
+					Require(range.m_size == size && binding->GetLayout().m_paddedSize == stride &&
+						binding->m_vulkan.m_bBindSsboWithOffset == withOffset,
+						"indexed storage must keep its padded stride and suballocation size");
+					Require(nativeDriver->IsCompatible(pipeline->m_layout, { inputs })[0] != projected,
+						"indexed storage must use the requested direct or projected descriptor path");
+					auto sets = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
+					Require(sets.Num() == 1 && sets[0] && sets[0]->IsCompiled() &&
+						(sets[0] == inputs->m_vulkan.m_descriptorSet) != projected,
+						"indexed storage must retain a complete native set");
+					Require(nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs })[0] == sets[0],
+						"an unchanged indexed binding must reuse its native descriptor set");
+					Require(sets[0]->m_descriptors.Num() == 1, "the selected shader uses only the source buffer");
+					VkWriteDescriptorSet write{};
+					sets[0]->m_descriptors[0]->Apply(write);
+					Require(write.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER && write.pBufferInfo &&
+						write.pBufferInfo->buffer == static_cast<VkBuffer>(*range.m_buffer) &&
+						write.pBufferInfo->offset == (withOffset ? range.m_offset : 0) &&
+						write.pBufferInfo->range == VK_WHOLE_SIZE,
+						"descriptor offset and shader index must describe the same live storage range");
+					return sets[0];
+				};
+				auto nativeA = prepare();
+				const auto indexA = binding->GetStorageInstanceIndex();
+				const auto rangeA = *binding->m_vulkan.m_valueBinding->Get();
+				TWeakPtr<Allocation> weakA(binding->m_vulkan.m_valueBinding);
+				const auto revisionA = inputs->GetDescriptorRevision();
+				Require(!driver->AddBufferToShaderBindings(inputs, "indexed", size, 0, EShaderBindingType::UniformBuffer) &&
+					inputs->GetDescriptorRevision() == revisionA && inputs->GetOrAddShaderBinding("indexed") == binding &&
+					prepare() == nativeA,
+					"a rejected indexed-buffer replacement must retain the published range and revision");
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+				const auto write = [&](uint32_t seed)
+				{
+					std::vector<uint32_t> values(size / sizeof(uint32_t));
+					for (uint32_t i = 0; i < values.size(); ++i) values[i] = seed + i * 17;
+					commands->UpdateShaderBinding(upload, binding, values.data(), size);
+					std::fill(values.begin(), values.end(), 0xdeadc0deu);
+				};
+				struct Readback { RHIBufferPtr m_buffer; uint32_t m_seed; };
+				std::vector<Readback> readbacks;
+				const auto record = [&](VulkanDescriptorSetPtr input, uint32_t index, uint32_t seed)
+				{
+					auto output = driver->CreateBuffer(size, EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit,
+						EMemoryPropertyBit::DeviceLocal);
+					auto outputBindings = driver->CreateShaderBindings();
+					Require(static_cast<bool>(driver->AddBufferToShaderBindings(outputBindings, output, "outputValue", 0)),
+						"indexed readback output must bind");
+					auto native = draw->m_vulkan.m_commandBuffer;
+					native->BindPipeline(pipeline);
+					native->AddDependency(shader->GetComputeShaderRHI());
+					native->BindDescriptorSet(pipeline->m_layout, { input, outputBindings->m_vulkan.m_descriptorSet }, VK_PIPELINE_BIND_POINT_COMPUTE);
+					native->PushConstants(pipeline->m_layout, 0, sizeof(index), &index);
+					native->Dispatch(static_cast<uint32_t>(size / sizeof(uint32_t)), 1, 1);
+					native->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+					auto result = driver->CreateBuffer(size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+					native->CopyBuffer(*output->m_vulkan.m_buffer->Get(), *result->m_vulkan.m_buffer->Get(), size);
+					readbacks.push_back({ result, seed });
+				};
+				write(0x12340000u);
+				record(nativeA, indexA, 0x12340000u);
+				Require(allocate() == binding && inputs->GetDescriptorRevision() == revisionA + 1,
+					"indexed storage replacement must preserve binding identity and publish once");
+				auto nativeB = prepare();
+				const auto rangeB = *binding->m_vulkan.m_valueBinding->Get();
+				Require(nativeA != nativeB && (rangeA.m_buffer != rangeB.m_buffer || rangeA.m_offset != rangeB.m_offset),
+					"pending storage generations must use distinct allocations");
+				write(0x56780000u);
+				record(nativeB, binding->GetStorageInstanceIndex(), 0x56780000u);
+				record(nativeA, indexA, 0x12340000u);
+				nativeA.Clear();
+				nativeB.Clear();
+				binding.Clear();
+				inputs.Clear();
+				blocker.Clear();
+				nativeDriver->CollectGarbage_RenderThread();
+				Require(static_cast<bool>(weakA.TryLock()), "recorded indexed descriptors must retain their original allocation");
+				CompleteCommands(upload, draw);
+				for (auto& result : readbacks)
+				{
+					const auto* words = static_cast<const uint32_t*>(result.m_buffer->GetPointer());
+					for (uint32_t i = 0; i < size / sizeof(uint32_t); ++i)
+						Require(words[i] == result.m_seed + i * 17, "indexed GPU reads must return every original/replacement/retained word");
+				}
+				upload->m_vulkan.m_commandBuffer->Reset();
+				draw->m_vulkan.m_commandBuffer->Reset();
+				driver->TrackResources_ThreadSafe();
+				nativeDriver->CollectGarbage_RenderThread();
+				Require(!weakA.TryLock(), "completed indexed commands must release their managed reservation");
+			}
+		Require(relocatedBuffers > 0 && (!suballocated || offsetRanges > 0),
+			"the indexed fixture must exercise nonzero buffer placements and nonzero suballocations");
+		std::cout << "Indexed storage " << (suballocated ? "suballocated" : "default") << " stride " << stride <<
+			": generic/indexed/offset allocations, direct/projected sets, rejection, A/B/A GPU words and owner release passed\n";
+	}
 
 	void TestSkyOverlayBlending(ShaderSetPtr shader, TRefPtr<TestGraph> graph, RHIShaderBindingSetPtr frame)
 	{
@@ -4381,6 +4546,10 @@ namespace Sailor::Tests
 		const auto importedGraphIds = WriteImportedGraph(workspace);
 		const auto mrtShader = WriteMrtShader(workspace);
 		const auto customDepthShaders = WriteCustomDepthShader(workspace);
+		const std::array<size_t, 4> storageSizes{ 16, 100, 140, 292 };
+		std::array<ShaderSetPtr, 4> storageShaders;
+		for (size_t i = 0; i < storageSizes.size(); ++i)
+			storageShaders[i] = WriteIndexedStorageShader(workspace, (storageSizes[i] + 15) / 16 * 16);
 		ShaderSetPtr blitShader;
 		const auto blitInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blit.shader");
 		Require(blitInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(blitInfo->GetFileId(), blitShader) && blitShader->IsReady(),
@@ -4403,6 +4572,25 @@ namespace Sailor::Tests
 			{
 				try
 				{
+					for (size_t i = 0; i < storageShaders.size(); ++i) TestIndexedStorageBindings(storageShaders[i], storageSizes[i], false);
+					// The production pool skips a block after its first small allocation.
+					// Also exercise nonzero buffer offsets using the same allocator with a smaller average element size.
+					auto* driver = Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+					auto& storageAllocator = driver->GetGeneralSsboAllocator();
+					auto savedAllocator = storageAllocator;
+					storageAllocator = TSharedPtr<VulkanBufferAllocator>::Make(65536, 256, 65536);
+					storageAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+					storageAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+					try
+					{
+						for (size_t i = 0; i < storageShaders.size(); ++i) TestIndexedStorageBindings(storageShaders[i], storageSizes[i], true);
+					}
+					catch (...)
+					{
+						storageAllocator = std::move(savedAllocator);
+						throw;
+					}
+					storageAllocator = std::move(savedAllocator);
 					TestImGuiSkippedAttachments();
 					TestLinearizeDepthRegions(linearDepthShader);
 					TestFullscreenUploadRetry();

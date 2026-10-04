@@ -2626,7 +2626,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 		allocator = GetGeneralSsboAllocator();
 
 		binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(paddedSize, paddedSize), allocator);
-		binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding->Get()).m_offset / paddedSize);
+		binding->m_vulkan.m_storageInstanceIndex = (uint32_t)(binding->GetBufferOffset() / paddedSize);
 	}
 	else
 	{
