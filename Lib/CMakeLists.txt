@@ -504,6 +504,10 @@ install(DIRECTORY "${SAILOR_RUNTIME_DIR}/"
 	PATTERN "*.hpp")
 
 install(FILES
+	"${SAILOR_EXTERNAL_DIR}/YamlExceptionBoundary.h"
+	DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/Sailor/External")
+
+install(FILES
 	"${SAILOR_EXTERNAL_DIR}/renderdoc/renderdoc/api/app/renderdoc_app.h"
 	DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/Sailor/External/renderdoc/renderdoc/api/app")
 
