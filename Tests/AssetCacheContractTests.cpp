@@ -1928,7 +1928,7 @@ namespace
 		Require(cold && YAML::Dump(live->Serialize()) == YAML::Dump(cold->Serialize()),
 			"removed model properties must reset to the same defaults as a fresh load");
 		Require(live == owned.GetRawPtr() && live->GetFileId() == id &&
-			live->GetAssetFilepath() == source.string() && live->GetMetaFilepath() == metadataPath.string() &&
+			live->GetAssetFilepath() == Workspace::PathToUtf8(source) && live->GetMetaFilepath() == metadataPath.string() &&
 			live->GetVirtualAssetFilepath() == "Ships/Ship.glb" &&
 			live->GetMountKind() == EAssetMountKind::Engine && !live->IsWritable() &&
 			!live->IsMetaExpired() && !live->IsAssetExpired(),
@@ -1952,7 +1952,7 @@ namespace
 		metadata["filename"] = "Other.glb";
 		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
 		Require(!handler.ReloadAssetInfo(live, true, false) && YAML::Dump(live->Serialize()) == retained &&
-			live->GetAssetFilepath() == source.string() && listener.m_events.size() == 1,
+			live->GetAssetFilepath() == Workspace::PathToUtf8(source) && listener.m_events.size() == 1,
 			"in-place metadata reload must not silently retarget the registered source path");
 		metadata["filename"] = "Ship.glb";
 		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
