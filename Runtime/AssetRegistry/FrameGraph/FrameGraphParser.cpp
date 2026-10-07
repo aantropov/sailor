@@ -2,66 +2,9 @@
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
-#include <format>
 #include <limits>
 
 using namespace Sailor;
-
-namespace
-{
-	void ValidateRasterAttachments(const FrameGraphAsset& graph, const FrameGraphAsset::Node& node, YAML::Mark mark)
-	{
-		const auto type = HashString(node.m_name);
-		const bool bScene = type == "RenderScene"_h.GetHash();
-		const bool bHasDepth = bScene || type == "ExperimentalParticles"_h.GetHash() ||
-			type == "DebugDraw"_h.GetHash() || type == "RenderImGui"_h.GetHash() || type == "DepthPrepass"_h.GetHash();
-		const bool bHasColor = (bHasDepth && type != "DepthPrepass"_h.GetHash()) ||
-			type == "PostProcess"_h.GetHash() || type == "Sky"_h.GetHash() || type == "AtmosphericFog"_h.GetHash();
-		if (!bHasDepth && !bHasColor) return;
-
-		const auto& label = node.m_tag.empty() ? node.m_name : node.m_tag;
-		const auto attachment = [&](const std::string& binding, bool bDepth, const std::string& fallback = {}) -> const FrameGraphAsset::RenderTarget*
-		{
-			const std::string* name = nullptr;
-			if (!node.m_renderTargets.Find(binding, name)) name = &fallback;
-			if (name->empty()) return nullptr;
-			const FrameGraphAsset::RenderTarget* target = nullptr;
-			if (graph.m_renderTargets.Find(*name, target))
-			{
-				if (RHI::IsDepthFormat(target->m_format) != bDepth)
-				{
-					throw YAML::RepresentationException(mark, std::format(
-						"Frame graph pass '{}' attachment '{}' uses '{}' with a non-{} format",
-						label, binding, *name, bDepth ? "depth" : "color"));
-				}
-				return target;
-			}
-			if (graph.m_samplers.ContainsKey(*name))
-			{
-				throw YAML::RepresentationException(mark, std::format(
-					"Frame graph pass '{}' attachment '{}' uses sampled-only resource '{}'", label, binding, *name));
-			}
-			// A runtime producer may publish this resource after the static graph is built.
-			return nullptr;
-		};
-
-		const auto color = bHasColor ? attachment("color", false,
-			type == "PostProcess"_h.GetHash() ? "BackBuffer" : "") : nullptr;
-		const auto depth = bHasDepth ? attachment("depthStencil", true,
-			type == "RenderImGui"_h.GetHash() ? "" : "DepthBuffer") : nullptr;
-		const auto motion = bScene ? attachment("motionVectors", false) : nullptr;
-		if (!color) return;
-		for (const auto target : { depth, motion })
-		{
-			if (target && (target->m_width < color->m_width || target->m_height < color->m_height))
-			{
-				throw YAML::RepresentationException(mark, std::format(
-					"Frame graph pass '{}' attachment '{}' does not cover the render area of '{}'",
-					label, target->m_name, color->m_name));
-			}
-		}
-	}
-}
 
 uint32_t FrameGraphAsset::RenderTarget::ParseUintValue(std::string_view str)
 {
@@ -181,7 +124,6 @@ void FrameGraphAsset::Deserialize(const YAML::Node& inData)
 		{
 			FrameGraphAsset::Node node;
 			node.Deserialize(el);
-			ValidateRasterAttachments(*this, node, el.Mark());
 			m_nodes.Add(std::move(node));
 		}
 	}

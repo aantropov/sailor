@@ -261,82 +261,21 @@ renderTargets:
 		std::cout << "FrameGraph attachment dimensions and mip declarations passed\n";
 	}
 
-	void TestRasterAttachmentRelationships()
+	void TestNodeResourceBindings()
 	{
-		const auto valid = YAML::Load(R"(
+		FrameGraphAsset asset;
+		asset.Deserialize(YAML::Load(R"(
 renderTargets:
-  - {name: Color, width: 8, height: 8, format: R16G16B16A16_SFLOAT}
-  - {name: DepthBuffer, width: 16, height: 8, format: D32_SFLOAT}
-  - {name: Motion, width: 8, height: 16, format: R16G16_SFLOAT}
-  - {name: SmallInput, width: 1, height: 1, format: R32_SFLOAT}
-samplers: [{name: SampledOnly, path: Texture.tga}]
+  - {name: Input, width: 4, height: 8, format: R32_SFLOAT}
+samplers: [{name: Sampled, path: Texture.tga}]
 frame:
   - name: RenderScene
-    tag: Geometry
-    renderTargets: [{color: Color}, {motionVectors: Motion}, {sceneDepth: SmallInput}]
-)");
-		for (const char* node : { "RenderScene", "ExperimentalParticles", "DebugDraw", "RenderImGui", "PostProcess", "Sky", "AtmosphericFog" })
-		{
-			for (bool surface : { false, true })
-			{
-				auto document = YAML::Clone(valid);
-				document["frame"][0]["name"] = node;
-				document["renderTargets"][0]["bIsSurface"] = surface;
-				FrameGraphAsset asset;
-				asset.Deserialize(document);
-				Require(asset.m_nodes.Num() == 1 && asset.m_renderTargets.Num() == 4,
-					"legal larger depth/motion attachments and differently sized sampled inputs must load");
-			}
-		}
-		for (const char* failure : { "color-depth", "depth-color", "motion-depth", "small-depth", "small-motion", "color-sampler" })
-		{
-			auto document = YAML::Clone(valid);
-			const std::string_view kind(failure);
-			const char* resource = "Color";
-			if (kind == "color-depth") document["renderTargets"][0]["format"] = "D32_SFLOAT";
-			else if (kind == "depth-color") { document["renderTargets"][1]["format"] = "R32_SFLOAT"; resource = "DepthBuffer"; }
-			else if (kind == "motion-depth") { document["renderTargets"][2]["format"] = "D32_SFLOAT"; resource = "Motion"; }
-			else if (kind == "small-depth") { document["renderTargets"][1]["height"] = 7; resource = "DepthBuffer"; }
-			else if (kind == "small-motion") { document["renderTargets"][2]["width"] = 7; resource = "Motion"; }
-			else { document["frame"][0]["renderTargets"][0]["color"] = "SampledOnly"; resource = "SampledOnly"; }
-			bool rejected = false;
-			try { FrameGraphAsset asset; asset.Deserialize(document); }
-			catch (const YAML::Exception& error)
-			{
-				const std::string_view diagnostic(error.what());
-				rejected = diagnostic.find("Geometry") != std::string_view::npos && diagnostic.find(resource) != std::string_view::npos;
-			}
-			if (!rejected) throw std::runtime_error(std::string("Invalid static attachment relationship accepted: ") + failure);
-		}
-		for (bool bDepthOnly : { false, true })
-		{
-			for (bool bExplicit : { false, true })
-			{
-				auto document = YAML::Clone(valid);
-				document["frame"][0]["name"] = bDepthOnly ? "DepthPrepass" : "PostProcess";
-				document["frame"][0]["renderTargets"] = YAML::Load(bExplicit ?
-					(bDepthOnly ? "[{depthStencil: DepthBuffer}]" : "[{color: BackBuffer}]") : "[]");
-				document["renderTargets"][0]["name"] = "BackBuffer";
-				FrameGraphAsset asset;
-				asset.Deserialize(document);
-				document["renderTargets"][bDepthOnly ? 1 : 0]["format"] = bDepthOnly ? "R32_SFLOAT" : "D32_SFLOAT";
-				bool bRejected = false;
-				try { asset.Deserialize(document); }
-				catch (const YAML::Exception& error)
-				{
-					const std::string_view diagnostic(error.what());
-					bRejected = diagnostic.find(bDepthOnly ? "DepthBuffer" : "BackBuffer") != std::string_view::npos;
-				}
-				Require(bRejected, "explicit and default raster attachments must enforce the same format role");
-			}
-		}
-		auto external = YAML::Clone(valid);
-		external["frame"][0]["renderTargets"] = YAML::Load("[{color: PublishedLater}, {depthStencil: ExternalDepth}]");
-		FrameGraphAsset asset;
-		asset.Deserialize(external);
-		Require(asset.m_nodes[0].m_renderTargets["color"] == "PublishedLater",
-			"external attachments must not require static declarations");
-		std::cout << "FrameGraph raster attachment roles and render-area coverage passed\n";
+    renderTargets: [{color: Sampled}, {depthStencil: Input}, {motionVectors: PublishedLater}]
+)"));
+		const auto& resources = asset.m_nodes[0].m_renderTargets;
+		Require(resources.Num() == 3 && resources["color"] == "Sampled" &&
+			resources["depthStencil"] == "Input" && resources["motionVectors"] == "PublishedLater",
+			"the asset parser must preserve node resource bindings without interpreting their rendering roles");
 	}
 
 	void TestGlobalValues(const FrameGraphImporter& importer)
@@ -417,7 +356,7 @@ int main()
 		TestResourceDeclarations();
 		TestSamplerReferences();
 		TestAttachmentDimensions();
-		TestRasterAttachmentRelationships();
+		TestNodeResourceBindings();
 		TestGlobalValues(importer);
 		std::cout << "FrameGraphAssetTests passed\n";
 		return 0;

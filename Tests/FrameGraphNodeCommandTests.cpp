@@ -860,7 +860,7 @@ frame:
 		valid["frame"].push_back(YAML::Load("{name: ExperimentalParticles, tag: Particles}"));
 
 		for (const std::string failure : { "missing-file", "unknown-node", "texture-decode", "sampler-path", "sampler-id",
-			"zero-width", "invalid-divisor", "invalid-mips", "color-depth", "color-sampler", "depth-color", "depth-coverage" })
+			"zero-width", "invalid-divisor", "invalid-mips" })
 		{
 			auto description = YAML::Clone(valid);
 			const auto path = workspace / "Content" / (failure + ".renderer");
@@ -891,14 +891,6 @@ frame:
 			else if (failure == "zero-width") description["renderTargets"][0]["width"] = 0;
 			else if (failure == "invalid-divisor") description["renderTargets"][0]["height"] = "RenderHeight/0";
 			else if (failure == "invalid-mips") description["renderTargets"][0]["maxMipLevel"] = -1;
-			else if (failure == "color-depth") description["renderTargets"][0]["format"] = "D32_SFLOAT";
-			else if (failure == "color-sampler") description["frame"][1]["renderTargets"][0]["color"] = "ById";
-			else if (failure == "depth-color") description["frame"][2]["renderTargets"] = YAML::Load("[{depthStencil: Main}]");
-			else if (failure == "depth-coverage")
-			{
-				description["renderTargets"].push_back(YAML::Load("{name: SmallDepth, width: 8, height: 7, format: D32_SFLOAT}"));
-				description["frame"][2]["renderTargets"] = YAML::Load("[{color: Main}, {depthStencil: SmallDepth}]");
-			}
 			auto write = [&](const YAML::Node& data)
 				{
 					std::ofstream output(path);
@@ -911,8 +903,7 @@ frame:
 			if (failure == "missing-file") std::filesystem::rename(path, unavailable);
 			auto parsed = importer->LoadFrameGraphAsset(id);
 			const bool invalidDescription = failure == "missing-file" || failure == "zero-width" ||
-				failure == "invalid-divisor" || failure == "invalid-mips" || failure == "color-depth" ||
-				failure == "color-sampler" || failure == "depth-color" || failure == "depth-coverage";
+				failure == "invalid-divisor" || failure == "invalid-mips";
 			Require(invalidDescription ? !parsed : static_cast<bool>(parsed),
 				"invalid descriptions must fail to load; invalid build dependencies must still parse");
 			for (uint32_t attempt = 0; attempt < 2; ++attempt)
