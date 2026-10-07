@@ -44,6 +44,7 @@ namespace Sailor
 		virtual ~Component() = default;
 
 		GameObjectPtr m_owner;
+		// Lets World cancel this component's pending references in O(1), without scanning the list.
 		TList<TPair<ComponentPtr, ReflectedData>>::TIterator m_pendingDependency;
 
 		size_t m_frameAdded = 0;
