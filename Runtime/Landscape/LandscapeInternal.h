@@ -1,8 +1,8 @@
 #pragma once
 
-#include "ECS/LandscapeECS.h"
+#include "Landscape/LandscapeData.h"
 
-namespace Sailor::LandscapeECSInternal
+namespace Sailor::LandscapeInternal
 {
 	struct LandscapeCpuTexture final
 	{

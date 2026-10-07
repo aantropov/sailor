@@ -1,5 +1,5 @@
 #include "ECS/LandscapeECS.h"
-#include "ECS/LandscapeECSInternal.h"
+#include "Landscape/LandscapeInternal.h"
 
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
@@ -11,7 +11,7 @@
 #include <utility>
 
 using namespace Sailor;
-using namespace Sailor::LandscapeECSInternal;
+using namespace Sailor::LandscapeInternal;
 using namespace Sailor::Tasks;
 
 void LandscapeECS::PublishSceneVersion()

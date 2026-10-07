@@ -1,7 +1,7 @@
 #include "AssetRegistry/AssetCache.h"
 #include "Components/Component.h"
 #include "ECS/TransformECS.h"
-#include "ECS/LandscapeSettings.h"
+#include "Landscape/LandscapeSettings.h"
 #include "Workspace/WorkspaceTypeRegistration.h"
 
 #include <atomic>

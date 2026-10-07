@@ -1,4 +1,5 @@
-#include "ECS/LandscapeECSInternal.h"
+#include "ECS/LandscapeECS.h"
+#include "Landscape/LandscapeInternal.h"
 
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
@@ -12,7 +13,7 @@
 #include <utility>
 
 using namespace Sailor;
-using namespace Sailor::LandscapeECSInternal;
+using namespace Sailor::LandscapeInternal;
 
 void LandscapeECS::UpdateTerrainRenderProxy(size_t componentIndex, size_t chunkIndex, RHI::RHIMeshPtr mesh)
 {
@@ -122,7 +123,7 @@ bool LandscapeECS::UpdateVegetationRenderProxies(size_t componentIndex)
 	return bChanged;
 }
 
-namespace Sailor::LandscapeECSInternal
+namespace Sailor::LandscapeInternal
 {
 	void GetOctreeBounds(const Math::AABB& bounds, glm::ivec3& center, glm::ivec3& extents)
 	{

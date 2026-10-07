@@ -1,6 +1,6 @@
 #include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
 #include "ECS/LandscapeECS.h"
-#include "ECS/LandscapeStreaming.h"
+#include "Landscape/LandscapeStreaming.h"
 
 #include <chrono>
 #include <filesystem>

@@ -1,11 +1,11 @@
-#include "ECS/LandscapeECS.h"
-#include "ECS/LandscapeECSInternal.h"
+#include "Landscape/LandscapeData.h"
+#include "Landscape/LandscapeInternal.h"
 
 #include <algorithm>
 #include <cmath>
 
 using namespace Sailor;
-using namespace Sailor::LandscapeECSInternal;
+using namespace Sailor::LandscapeInternal;
 
 namespace
 {

@@ -1,5 +1,5 @@
 #include "ECS/LandscapeECS.h"
-#include "ECS/LandscapeECSInternal.h"
+#include "Landscape/LandscapeInternal.h"
 #include "ECS/TransformECS.h"
 
 #include "Engine/GameObject.h"
@@ -11,7 +11,7 @@
 #include <utility>
 
 using namespace Sailor;
-using namespace Sailor::LandscapeECSInternal;
+using namespace Sailor::LandscapeInternal;
 using namespace Sailor::Tasks;
 
 bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTransforms,

@@ -1,4 +1,4 @@
-#include "ECS/LandscapeECSInternal.h"
+#include "Landscape/LandscapeInternal.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 
@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 
-namespace Sailor::LandscapeECSInternal
+namespace Sailor::LandscapeInternal
 {
 	static float SampleLandscapeChunkHeight(const LandscapeData& data, const LandscapeChunk& chunk, float x, float z)
 	{

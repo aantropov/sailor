@@ -2,7 +2,7 @@
 
 #include "Containers/Vector.h"
 #include "Core/Defines.h"
-#include "ECS/LandscapeSettings.h"
+#include "Landscape/LandscapeSettings.h"
 #include "Math/Bounds.h"
 
 #include <cstdint>

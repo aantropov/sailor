@@ -1,11 +1,12 @@
-#include "ECS/LandscapeECSInternal.h"
+#include "Landscape/LandscapeInternal.h"
+#include "Landscape/LandscapeStreaming.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <utility>
 
-namespace Sailor::LandscapeECSInternal
+namespace Sailor::LandscapeInternal
 {
 	uint32_t HashVegetationSeed(uint32_t value)
 	{
