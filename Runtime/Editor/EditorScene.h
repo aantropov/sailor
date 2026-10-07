@@ -3,6 +3,7 @@
 #include "Core/Defines.h"
 
 #include <cstdint>
+#include <string>
 
 namespace Sailor::EditorRuntime
 {
@@ -21,4 +22,24 @@ namespace Sailor::EditorRuntime
 		const char* strInstanceId,
 		const char* strFileId);
 	SAILOR_API bool BreakEditorPrefabLink(const char* strInstanceId);
+
+	SAILOR_API bool SetEditorAnimatorParameter(
+		const char* strInstanceId,
+		const char* strName,
+		uint32_t valueKind,
+		float floatValue,
+		int32_t intValue,
+		bool boolValue);
+	SAILOR_API bool GetEditorAnimatorState(
+		const char* strInstanceId,
+		bool& outHasController,
+		uint64_t& outControllerRevision,
+		uint64_t& outActiveStateId,
+		std::string& outActiveStateName,
+		float& outActiveStateTime,
+		bool& outTransitioning,
+		uint64_t& outDestinationStateId,
+		std::string& outDestinationStateName,
+		float& outDestinationStateTime,
+		float& outTransitionAlpha);
 }

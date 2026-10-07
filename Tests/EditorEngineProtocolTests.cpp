@@ -2,6 +2,8 @@
 #include "EditorEngineProtocolLifecycle.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
+#include "Editor/EditorScene.h"
+#include "AssetRegistry/Animation/AnimationController.h"
 #include "Editor/EditorViewportEvent.h"
 #include "Editor/EditorViewportController.h"
 #include "AssetRegistry/Model/ModelImporter.h"
@@ -922,6 +924,50 @@ namespace
 				response.m_error.find("value is not set") != std::string::npos &&
 				response.m_resultField == 0,
 			"animator parameter mutations must carry exactly one typed value");
+	}
+
+	void TestAnimatorStateWithoutEditor()
+	{
+		for (const char* instanceId : { static_cast<const char*>(nullptr), "Animator-1" })
+		{
+			bool bHasController = true;
+			uint64_t controllerRevision = 42;
+			uint64_t activeStateId = 43;
+			std::string activeStateName = "Previous active state";
+			float activeStateTime = 2.0f;
+			bool bTransitioning = true;
+			uint64_t destinationStateId = 44;
+			std::string destinationStateName = "Previous destination state";
+			float destinationStateTime = 3.0f;
+			float transitionAlpha = 0.5f;
+			Require(!Sailor::EditorRuntime::GetEditorAnimatorState(instanceId,
+				bHasController, controllerRevision, activeStateId, activeStateName, activeStateTime,
+				bTransitioning, destinationStateId, destinationStateName, destinationStateTime, transitionAlpha),
+				"an unavailable editor must not report an animator state");
+			Require(!bHasController && controllerRevision == 0 &&
+				activeStateId == Sailor::InvalidAnimationControllerNodeId && activeStateName.empty() &&
+				activeStateTime == 0.0f && !bTransitioning &&
+				destinationStateId == Sailor::InvalidAnimationControllerNodeId && destinationStateName.empty() &&
+				destinationStateTime == 0.0f && transitionAlpha == 0.0f,
+				"a failed query must clear caller-owned names and all previous state");
+		}
+
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "animator state protocol fixture must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies;
+		dependencies.m_lifecycleGate = &gate;
+		std::string stateRequest;
+		AppendBytesField(stateRequest, 1u, "Animator-1");
+		TProtocolBuffer buffer;
+		const auto response = RequireProtocolResponse(
+			MakeVersionedRequest(EditorEngineProtocolVersion, 28,
+				sailor::editor::v1::ProtocolRequest::kGetAnimatorState, stateRequest),
+			buffer, dependencies);
+		Require(!response.m_bSuccess && response.m_requestId == 28 && response.m_resultField == 0 &&
+			response.m_error == "Animator component was not found.",
+			"an unavailable animator must preserve the protocol error without a stale state result");
 	}
 
 	void TestStrictInstanceIdProtocolGate()
@@ -2514,6 +2560,7 @@ int main()
 		TestCommandExceptionIsContainedByTransportBoundary();
 		TestEnvelopeValidation();
 		TestAnimatorParameterRequiresTypedValue();
+		TestAnimatorStateWithoutEditor();
 		TestStrictInstanceIdProtocolGate();
 		TestModelInstanceWireContract();
 		TestEditorSimulationWireContract();

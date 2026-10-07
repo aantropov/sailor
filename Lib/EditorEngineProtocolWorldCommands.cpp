@@ -203,7 +203,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		}
 
 		SetBoolResult(response,
-			Sailor::App::SetEditorAnimatorParameter(
+			Sailor::EditorRuntime::SetEditorAnimatorParameter(
 				request.instance_id().c_str(), request.name().c_str(), valueKind, floatValue, intValue, boolValue));
 	}
 
@@ -217,21 +217,19 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		uint64_t destinationStateId = 0;
 		float destinationStateTime = 0.0f;
 		float transitionAlpha = 0.0f;
-		char* activeStateName = nullptr;
-		char* destinationStateName = nullptr;
-		const bool bFound = Sailor::App::GetEditorAnimatorState(request.instance_id().c_str(),
+		std::string activeStateName;
+		std::string destinationStateName;
+		const bool bFound = Sailor::EditorRuntime::GetEditorAnimatorState(request.instance_id().c_str(),
 			bHasController,
 			controllerRevision,
 			activeStateId,
-			&activeStateName,
+			activeStateName,
 			activeStateTime,
 			bTransitioning,
 			destinationStateId,
-			&destinationStateName,
+			destinationStateName,
 			destinationStateTime,
 			transitionAlpha);
-		Sailor::TUniquePtr<char[]> ownedActiveStateName(activeStateName);
-		Sailor::TUniquePtr<char[]> ownedDestinationStateName(destinationStateName);
 		if (!bFound)
 		{
 			SetError(response, "Animator component was not found.");
@@ -243,11 +241,11 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		result->set_has_controller(bHasController);
 		result->set_controller_revision(controllerRevision);
 		result->set_active_state_id(activeStateId);
-		result->set_active_state_name(activeStateName ? activeStateName : "");
+		result->set_active_state_name(activeStateName);
 		result->set_active_state_time(activeStateTime);
 		result->set_transitioning(bTransitioning);
 		result->set_destination_state_id(destinationStateId);
-		result->set_destination_state_name(destinationStateName ? destinationStateName : "");
+		result->set_destination_state_name(destinationStateName);
 		result->set_destination_state_time(destinationStateTime);
 		result->set_transition_alpha(transitionAlpha);
 	}

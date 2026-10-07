@@ -112,25 +112,6 @@ namespace Sailor
 		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
 		SAILOR_API static bool RequestModelFingerprint(const char* strFileId);
 		SAILOR_API static uint32_t GetModelFingerprintStatus(const char* strFileId);
-		SAILOR_API static bool SetEditorAnimatorParameter(
-			const char* strInstanceId,
-			const char* strName,
-			uint32_t valueKind,
-			float floatValue,
-			int32_t intValue,
-			bool boolValue);
-		SAILOR_API static bool GetEditorAnimatorState(
-			const char* strInstanceId,
-			bool& outHasController,
-			uint64_t& outControllerRevision,
-			uint64_t& outActiveStateId,
-			char** outActiveStateName,
-			float& outActiveStateTime,
-			bool& outTransitioning,
-			uint64_t& outDestinationStateId,
-			char** outDestinationStateName,
-			float& outDestinationStateTime,
-			float& outTransitionAlpha);
 		SAILOR_API static bool ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform);
 		SAILOR_API static bool CreateEditorGameObject(const char* strParentInstanceId, const char* strPreferredInstanceId, char** outInstanceId);
 		SAILOR_API static bool CreateEditorModelInstance(
