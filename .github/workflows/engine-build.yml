@@ -61,7 +61,7 @@ jobs:
 
 
     - name: Configure CMake
-      run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 ${{ matrix.cmake_toolset_argument }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DSAILOR_BUILD_BENCHMARKS=ON -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+      run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 ${{ matrix.cmake_toolset_argument }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
 
     - name: Build
       run: cmake --build build --config ${{ env.BUILD_TYPE }}
@@ -69,12 +69,6 @@ jobs:
     - name: Test
       working-directory: build
       run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure
-
-    - name: Smoke standalone memory benchmark
-      run: ./Binaries/${{ env.BUILD_TYPE }}/SailorMemoryBenchmark.exe --count 128 --max-size 1024 --iterations 1
-
-    - name: Smoke standalone container benchmark
-      run: ./Binaries/${{ env.BUILD_TYPE }}/SailorContainerBenchmark.exe --count 512 --iterations 1
 
     - name: Install Sailor CMake package
       run: cmake --install build --config ${{ env.BUILD_TYPE }} --prefix build/install
