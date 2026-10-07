@@ -27,6 +27,7 @@ namespace Sailor
 		float m_normalBias = 0.05f;
 		float m_viewBias = 0.05f;
 		float m_maxRayDistance = 1000.0f;
+		float m_sunAngleThresholdDegrees = 30.0f;
 		bool m_bIncludeSky = true;
 		bool m_bIncludeEmissive = true;
 		bool m_bIncludeDirectLighting = true;

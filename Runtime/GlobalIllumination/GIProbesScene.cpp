@@ -380,14 +380,57 @@ namespace
 		}
 
 		TVector<Raytracing::LightProxy> lights;
+		glm::vec3 sunDirection{};
 		if (const auto* lightingEcs = world->GetECS<LightingECS>())
 		{
-			lightingEcs->GetGlobalIlluminationBakeLightProxies(lights);
+			const auto sky = lightingEcs->GetSky();
+			const LightComponent* sun = sky ? sky->GetDirectionalLight().GetRawPtr() : nullptr;
+			const bool bUsesSun = sun && sun->GetLightType() == ELightType::Directional &&
+				IsGlobalIlluminationBakeContributor(sun->GetOwner()->GetMobilityType()) &&
+				ContributesToBakedGlobalIllumination(sun->GetGlobalIlluminationMode());
+			lightingEcs->GetGlobalIlluminationBakeLightProxies(lights, bUsesSun ? &sun->GetData() : nullptr);
+			HashValue(lighting, bUsesSun);
+			if (bUsesSun)
+			{
+				// SkyComponent derives this light's pose and ground-level lux from the sun angle.
+				// Hash its authored inputs; compare that angle separately against the captured state.
+				sunDirection = glm::vec3(sky->GetSkyParameters().m_lightDirection);
+				HashVec3(lighting, sky->GetSunIlluminance());
+				HashValue(lighting, sun->GetIndirectLightingIntensity());
+				HashValue(lighting, sun->GetShadowType() != RHI::EShadowType::None);
+			}
+			if (environment.m_type == EEnvironmentSource::Sky)
+			{
+				sunDirection = glm::vec3(environment.m_sky.m_lightDirection);
+				HashValue(lighting, environment.m_type);
+				HashVec3(lighting, sky->GetSunIlluminance());
+				HashVec3(lighting, sky->GetGroundAlbedo());
+				HashValue(lighting, sky->GetGiIndirectIntensity());
+			}
 		}
 		HashLightProxies(lighting, lights);
-		HashValue(lighting, environment.GetRevision());
-		return { geometry, lighting };
+		if (environment.m_type != EEnvironmentSource::Sky)
+		{
+			HashValue(lighting, environment.GetRevision());
+		}
+		return { geometry, lighting, sunDirection };
 	}
+}
+
+bool GIProbesSceneRevision::HasChanges(const GIProbesSceneRevision& previous,
+	float sunAngleThresholdDegrees) const noexcept
+{
+	if (m_geometry != previous.m_geometry || m_lighting != previous.m_lighting)
+	{
+		return true;
+	}
+	if (m_sunDirection == previous.m_sunDirection)
+	{
+		return false;
+	}
+	const float angle = std::atan2(glm::length(glm::cross(m_sunDirection, previous.m_sunDirection)),
+		glm::dot(m_sunDirection, previous.m_sunDirection));
+	return angle >= glm::radians(sunAngleThresholdDegrees);
 }
 
 bool Sailor::ObserveGIProbesSceneRevision(World* world,

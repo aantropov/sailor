@@ -19,6 +19,7 @@ YAML::Node RuntimeGIProbesSettings::Serialize() const
 	SERIALIZE_PROPERTY(result, m_normalBias);
 	SERIALIZE_PROPERTY(result, m_viewBias);
 	SERIALIZE_PROPERTY(result, m_maxRayDistance);
+	SERIALIZE_PROPERTY(result, m_sunAngleThresholdDegrees);
 	return result;
 }
 
@@ -32,7 +33,8 @@ bool RuntimeGIProbesSettings::Deserialize(const YAML::Node& inData)
 		DESERIALIZE_PROPERTY(inData, m_minProbeSpacing) &&
 		DESERIALIZE_PROPERTY(inData, m_normalBias) &&
 		DESERIALIZE_PROPERTY(inData, m_viewBias) &&
-		DESERIALIZE_PROPERTY(inData, m_maxRayDistance);
+		DESERIALIZE_PROPERTY(inData, m_maxRayDistance) &&
+		DESERIALIZE_PROPERTY(inData, m_sunAngleThresholdDegrees);
 }
 
 GIProbesBakeSettings Sailor::ResolveRuntimeGIProbesBakeSettings(
@@ -69,6 +71,12 @@ bool RuntimeGIProbesSettings::Validate(
 		m_bounceCount > GIProbesMaxBounceCount)
 	{
 		outDiagnostic = "runtime GI probes bounce count is outside the supported range";
+		return false;
+	}
+	if (!std::isfinite(m_sunAngleThresholdDegrees) ||
+		m_sunAngleThresholdDegrees < 0.0f || m_sunAngleThresholdDegrees > 180.0f)
+	{
+		outDiagnostic = "runtime GI sun angle threshold must be between 0 and 180 degrees";
 		return false;
 	}
 	if (!std::isfinite(m_minProbeSpacing) ||

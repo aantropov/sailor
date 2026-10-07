@@ -697,7 +697,8 @@ void GlobalIlluminationECS::TickRuntimeProvider(float deltaTime)
 					request,
 					revision,
 					observationDiagnostic) &&
-				(revision != m_runtimePreparationRevision ||
+				(revision.HasChanges(m_runtimePreparationRevision,
+					m_worldSettings.m_runtimeProbes.m_sunAngleThresholdDegrees) ||
 					!m_runtimeSceneMaterialWatch.HasUnchangedMaterials()))
 			{
 				const auto status = m_runtimeProbes.GetStatus();
@@ -773,9 +774,6 @@ bool GlobalIlluminationECS::BeginRuntimeScenePreparation(
 			reportWarning, &m_runtimeSceneMaterialWatch);
 	if (!bCaptured)
 	{
-		std::string observationDiagnostic;
-		ObserveGIProbesSceneRevision(
-			GetWorld(), captureRequest, m_runtimePreparationRevision, observationDiagnostic);
 		return false;
 	}
 	m_runtimePreparationRevision = snapshot.m_observedRevision;
@@ -883,7 +881,7 @@ void GlobalIlluminationECS::ConsumeRuntimeScenePreparation(
 			currentRevision,
 			observationDiagnostic) ||
 		currentRevision.m_geometry != attemptedRevision.m_geometry ||
-		(!result.m_scene && currentRevision.m_lighting != attemptedRevision.m_lighting))
+		(!result.m_scene && currentRevision != attemptedRevision))
 	{
 		m_runtimeSceneSnapshot.Clear();
 		m_runtimeSceneMaterialWatch = {};

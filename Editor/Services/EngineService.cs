@@ -3073,7 +3073,8 @@ namespace SailorEditor.Services
                     MinProbeSpacing = runtimeSettings.MinProbeSpacing,
                     NormalBias = runtimeSettings.NormalBias,
                     ViewBias = runtimeSettings.ViewBias,
-                    MaxRayDistance = runtimeSettings.MaxRayDistance
+                    MaxRayDistance = runtimeSettings.MaxRayDistance,
+                    SunAngleThresholdDegrees = runtimeSettings.SunAngleThresholdDegrees
                 }
             };
             foreach (var binding in bindings.OrderBy(
@@ -3141,7 +3142,8 @@ namespace SailorEditor.Services
                     runtimeSettings.MinProbeSpacing,
                     runtimeSettings.NormalBias,
                     runtimeSettings.ViewBias,
-                    runtimeSettings.MaxRayDistance),
+                    runtimeSettings.MaxRayDistance,
+                    runtimeSettings.SunAngleThresholdDegrees),
                 new RuntimeGIProbesRuntimeState(
                     FromProtocolRuntimeGIProbesLifecycle(
                         runtimeState.Lifecycle),

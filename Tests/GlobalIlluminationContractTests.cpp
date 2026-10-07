@@ -9,6 +9,7 @@
 #include "Components/LandscapeComponent.h"
 #include "Components/LightComponent.h"
 #include "Components/MeshRendererComponent.h"
+#include "Components/SkyComponent.h"
 #include "Components/Tests/GlobalIlluminationLandscapeTestScene.h"
 #include "Core/YamlUtils.h"
 #include "ECS/LandscapeECS.h"
@@ -2414,6 +2415,7 @@ namespace
 		source.m_runtimeProbes.m_normalBias = 0.075f;
 		source.m_runtimeProbes.m_viewBias = 0.125f;
 		source.m_runtimeProbes.m_maxRayDistance = 750.0f;
+		source.m_runtimeProbes.m_sunAngleThresholdDegrees = 12.0f;
 		source.m_runtimeProbes.m_bIncludeSky = false;
 		GlobalIlluminationProbeBinding day;
 		day.m_asset = ParseFileId("11111111-1111-1111-1111-111111111111");
@@ -2440,6 +2442,7 @@ namespace
 			IsNear(parsed.m_runtimeProbes.m_normalBias, 0.075f) &&
 			IsNear(parsed.m_runtimeProbes.m_viewBias, 0.125f) &&
 			IsNear(parsed.m_runtimeProbes.m_maxRayDistance, 750.0f) &&
+			IsNear(parsed.m_runtimeProbes.m_sunAngleThresholdDegrees, 12.0f) &&
 			!parsed.m_runtimeProbes.m_bIncludeSky &&
 			parsed.m_probes.Num() == 2u &&
 			parsed.m_probes["Day"].m_mode == EGlobalIlluminationProbeMode::Blend &&
@@ -7627,6 +7630,60 @@ prefabs:
 		world.Clear();
 	}
 
+	void TestRuntimeGISunAngleThreshold()
+	{
+		GlobalIlluminationMobilityTestWorld world;
+		auto sky = world.Instantiate("Sky")->AddComponent<SkyComponent>();
+		auto sunObject = world.Instantiate("Sun");
+		sunObject->SetMobilityType(EMobilityType::Stationary);
+		auto sun = sunObject->AddComponent<LightComponent>();
+		sky->SetDirectionalLight(sun);
+		sky->SetGroundAlbedo(glm::vec3(0.3f));
+		GIProbesSceneCaptureRequest request;
+		const auto observe = [&]()
+		{
+			sky->Tick(0.0f);
+			world.GetECS<TransformECS>()->Tick(0.0f);
+			GIProbesSceneRevision revision;
+			std::string diagnostic;
+			Require(ObserveGIProbesSceneRevision(&world, request, revision, diagnostic), diagnostic);
+			return revision;
+		};
+		RuntimeGIProbesSettings settings;
+		Require(settings.m_sunAngleThresholdDegrees == 30.0f, "the default sun refresh threshold is 30 degrees");
+		sky->SetSunAngle(10.0f);
+		const auto captured = observe();
+		for (float angle : { 15.0f, 25.0f, 39.0f })
+		{
+			sky->SetSunAngle(angle);
+			Require(!observe().HasChanges(captured, settings.m_sunAngleThresholdDegrees),
+				"sun pose, derived lux and ground radiance must coalesce against the captured angle");
+		}
+		Require(observe().HasChanges(captured, 5.0f) && observe().HasChanges(captured, 0.0f),
+			"a smaller configured threshold must detect the same accumulated motion");
+		sky->SetSunAngle(41.0f);
+		const auto refreshed = observe();
+		Require(refreshed.HasChanges(captured, settings.m_sunAngleThresholdDegrees),
+			"small updates must accumulate until they cross the accepted sun threshold");
+		sky->SetSunAngle(45.0f);
+		sky->SetCloudsDensity(0.9f);
+		Require(!observe().HasChanges(refreshed, 30.0f), "a new capture resets the angle baseline; clouds do not affect GI");
+		sky->SetGroundAlbedo(glm::vec3(0.6f));
+		Require(observe().HasChanges(refreshed, 30.0f), "authored ground albedo must invalidate without waiting for the sun");
+		const auto newGround = observe();
+		sky->SetSunIlluminance(glm::vec3(60000.0f));
+		Require(observe().HasChanges(newGround, 30.0f), "authored sun illuminance must invalidate independently of its angle");
+		const auto newSun = observe();
+		auto lampObject = world.Instantiate("Lamp");
+		lampObject->SetMobilityType(EMobilityType::Stationary);
+		lampObject->AddComponent<LightComponent>();
+		Require(observe().HasChanges(newSun, 30.0f), "local light changes must bypass the sun threshold");
+		std::string diagnostic;
+		settings.m_sunAngleThresholdDegrees = 181.0f;
+		Require(!settings.Validate(diagnostic), "the configured threshold must fit a direction angle");
+		world.Clear();
+	}
+
 	void TestPointLightModeChangesBakedRadiance()
 	{
 		using namespace GlobalIlluminationLandscapeTestScene;
@@ -8804,6 +8861,7 @@ int main(int argc, char** argv)
 			"ReceiverPlaneProbeRejection",
 			TestReceiverPlaneProbeRejection);
 		RunTest("WorldBindingRoundTripAndModes", TestWorldBindingRoundTripAndModes);
+		RunTest("RuntimeGISunAngleThreshold", TestRuntimeGISunAngleThreshold);
 		RunTest(
 			"ProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs",
 			TestProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs);

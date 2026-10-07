@@ -597,6 +597,7 @@ message RuntimeGIProbesSettings {
 	float normal_bias = 7;
 	float view_bias = 8;
 	float max_ray_distance = 9;
+	float sun_angle_threshold_degrees = 10;
 }
 
 message RuntimeGIProbesPreviewRequest {

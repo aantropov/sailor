@@ -28,8 +28,10 @@ namespace Sailor
 	{
 		uint64_t m_geometry = 0u;
 		uint64_t m_lighting = 0u;
+		glm::vec3 m_sunDirection{};
 
 		bool operator==(const GIProbesSceneRevision&) const noexcept = default;
+		bool HasChanges(const GIProbesSceneRevision& previous, float sunAngleThresholdDegrees) const noexcept;
 	};
 
 	struct SAILOR_SHARED_API GIProbesSceneSnapshot final

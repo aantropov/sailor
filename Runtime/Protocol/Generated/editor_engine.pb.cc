@@ -588,6 +588,7 @@ inline constexpr RuntimeGIProbesSettings::Impl_::Impl_(
         normal_bias_{0},
         view_bias_{0},
         max_ray_distance_{0},
+        sun_angle_threshold_degrees_{0},
         _cached_size_{0} {}
 
 template <typename>
@@ -2788,6 +2789,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RuntimeGIProbesSettings, _impl_.normal_bias_),
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RuntimeGIProbesSettings, _impl_.view_bias_),
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RuntimeGIProbesSettings, _impl_.max_ray_distance_),
+        PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RuntimeGIProbesSettings, _impl_.sun_angle_threshold_degrees_),
         ~0u,  // no _has_bits_
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RuntimeGIProbesPreviewRequest, _internal_metadata_),
         ~0u,  // no _extensions_
@@ -2913,11 +2915,11 @@ static const ::_pbi::MigrationSchema
         {793, -1, -1, sizeof(::sailor::editor::v1::ViewportEvent)},
         {808, -1, -1, sizeof(::sailor::editor::v1::ViewportEventBatchResult)},
         {817, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesSettings)},
-        {834, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPreviewRequest)},
-        {843, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPauseRequest)},
-        {852, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesState)},
-        {876, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest)},
-        {885, -1, -1, sizeof(::sailor::editor::v1::ModelFingerprintStatusResult)},
+        {835, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPreviewRequest)},
+        {844, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPauseRequest)},
+        {853, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesState)},
+        {877, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest)},
+        {886, -1, -1, sizeof(::sailor::editor::v1::ModelFingerprintStatusResult)},
 };
 static const ::_pb::Message* const file_default_instances[] = {
     &::sailor::editor::v1::_Empty_default_instance_._instance,
@@ -3325,112 +3327,113 @@ const char descriptor_table_protodef_editor_5fengine_2eproto[] ABSL_ATTRIBUTE_SE
     "tcut\030\r \001(\0132+.sailor.editor.v1.ViewportTo"
     "olShortcutEventH\000B\t\n\007payloadJ\004\010\003\020\n\"K\n\030Vi"
     "ewportEventBatchResult\022/\n\006events\030\001 \003(\0132\037"
-    ".sailor.editor.v1.ViewportEvent\"\355\001\n\027Runt"
+    ".sailor.editor.v1.ViewportEvent\"\222\002\n\027Runt"
     "imeGIProbesSettings\022\017\n\007version\030\001 \001(\r\022\023\n\013"
     "include_sky\030\002 \001(\010\022\030\n\020include_emissive\030\003 "
     "\001(\010\022\037\n\027include_direct_lighting\030\004 \001(\010\022\024\n\014"
     "bounce_count\030\005 \001(\r\022\031\n\021min_probe_spacing\030"
     "\006 \001(\002\022\023\n\013normal_bias\030\007 \001(\002\022\021\n\tview_bias\030"
-    "\010 \001(\002\022\030\n\020max_ray_distance\030\t \001(\002\"0\n\035Runti"
-    "meGIProbesPreviewRequest\022\017\n\007enabled\030\001 \001("
-    "\010\"-\n\033RuntimeGIProbesPauseRequest\022\016\n\006paus"
-    "ed\030\001 \001(\010\"\334\003\n\024RuntimeGIProbesState\022=\n\tlif"
-    "ecycle\030\001 \001(\0162*.sailor.editor.v1.RuntimeG"
-    "IProbesLifecycle\022\017\n\007enabled\030\002 \001(\010\022\016\n\006pau"
-    "sed\030\003 \001(\010\022\027\n\017preview_enabled\030\004 \001(\010\022\030\n\020sc"
-    "ene_generation\030\005 \001(\004\022\033\n\023lighting_generat"
-    "ion\030\006 \001(\004\022\032\n\022published_revision\030\007 \001(\004\022\020\n"
-    "\010capacity\030\010 \001(\r\022\032\n\022active_probe_count\030\t "
-    "\001(\r\022\031\n\021ready_probe_count\030\n \001(\r\022\024\n\014worker"
-    "_count\030\013 \001(\r\022\027\n\017published_bytes\030\014 \001(\004\022\020\n"
-    "\010coverage\030\r \001(\002\022\022\n\nrefinement\030\016 \001(\002\022\022\n\nd"
-    "iagnostic\030\017 \001(\t\022F\n\016preview_budget\030\020 \001(\0162"
-    "..sailor.editor.v1.RuntimeGIProbesPrevie"
-    "wBudget\"e\n#RuntimeGIProbesPreviewBudgetR"
-    "equest\022>\n\006budget\030\001 \001(\0162..sailor.editor.v"
-    "1.RuntimeGIProbesPreviewBudget\"X\n\034ModelF"
-    "ingerprintStatusResult\0228\n\006status\030\001 \001(\0162("
-    ".sailor.editor.v1.ModelFingerprintStatus"
-    "*\360\001\n\032ViewportTransformOperation\022,\n(VIEWP"
-    "ORT_TRANSFORM_OPERATION_UNSPECIFIED\020\000\022\'\n"
-    "#VIEWPORT_TRANSFORM_OPERATION_SELECT\020\001\022*"
-    "\n&VIEWPORT_TRANSFORM_OPERATION_TRANSLATE"
-    "\020\002\022\'\n#VIEWPORT_TRANSFORM_OPERATION_ROTAT"
-    "E\020\003\022&\n\"VIEWPORT_TRANSFORM_OPERATION_SCAL"
-    "E\020\004*\212\001\n\026ViewportTransformSpace\022(\n$VIEWPO"
-    "RT_TRANSFORM_SPACE_UNSPECIFIED\020\000\022\"\n\036VIEW"
-    "PORT_TRANSFORM_SPACE_WORLD\020\001\022\"\n\036VIEWPORT"
-    "_TRANSFORM_SPACE_LOCAL\020\002*\244\001\n\017EditorStats"
-    "Mode\022!\n\035EDITOR_STATS_MODE_UNSPECIFIED\020\000\022"
-    "\032\n\026EDITOR_STATS_MODE_NONE\020\001\022\"\n\036EDITOR_ST"
-    "ATS_MODE_RENDER_STATS\020\002\022.\n*EDITOR_STATS_"
-    "MODE_RENDER_STATS_AND_QUERIES\020\003*\243\005\n\020Edit"
-    "orRenderMode\022\"\n\036EDITOR_RENDER_MODE_UNSPE"
-    "CIFIED\020\000\022\032\n\026EDITOR_RENDER_MODE_LIT\020\001\022(\n$"
-    "EDITOR_RENDER_MODE_AMBIENT_OCCLUSION\020\002\022\037"
-    "\n\033EDITOR_RENDER_MODE_CASCADES\020\003\022\"\n\036EDITO"
-    "R_RENDER_MODE_LIGHT_TILES\020\004\022/\n+EDITOR_RE"
-    "NDER_MODE_GLOBAL_ILLUMINATION_ONLY\020\005\0221\n-"
-    "EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_P"
-    "ROBES\020\006\0221\n-EDITOR_RENDER_MODE_GLOBAL_ILL"
-    "UMINATION_BRICKS\020\007\0223\n/EDITOR_RENDER_MODE"
-    "_GLOBAL_ILLUMINATION_VALIDITY\020\010\0225\n1EDITO"
-    "R_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBI"
-    "LITY\020\t\0224\n0EDITOR_RENDER_MODE_GLOBAL_ILLU"
-    "MINATION_RESIDENCY\020\n\0229\n5EDITOR_RENDER_MO"
-    "DE_GLOBAL_ILLUMINATION_ASSET_IDENTITY\020\013\022"
-    "3\n/EDITOR_RENDER_MODE_GLOBAL_ILLUMINATIO"
-    "N_FALLBACK\020\014\0227\n3EDITOR_RENDER_MODE_GLOBA"
-    "L_ILLUMINATION_SUBDIVISIONS\020\r*\247\002\n\021GIProb"
-    "esBakeState\022$\n GI_PROBES_BAKE_STATE_UNSP"
-    "ECIFIED\020\000\022\035\n\031GI_PROBES_BAKE_STATE_IDLE\020\001"
-    "\022\"\n\036GI_PROBES_BAKE_STATE_PREPARING\020\002\022\037\n\033"
-    "GI_PROBES_BAKE_STATE_BAKING\020\003\022\037\n\033GI_PROB"
-    "ES_BAKE_STATE_SAVING\020\004\022\"\n\036GI_PROBES_BAKE"
-    "_STATE_SUCCEEDED\020\005\022\037\n\033GI_PROBES_BAKE_STA"
-    "TE_FAILED\020\006\022\"\n\036GI_PROBES_BAKE_STATE_CANC"
-    "ELLED\020\007*\244\001\n\033GlobalIlluminationProbeMode\022"
-    ".\n*GLOBAL_ILLUMINATION_PROBE_MODE_UNSPEC"
-    "IFIED\020\000\022(\n$GLOBAL_ILLUMINATION_PROBE_MOD"
-    "E_BLEND\020\001\022+\n\'GLOBAL_ILLUMINATION_PROBE_M"
-    "ODE_ADDITIVE\020\002*\260\001\n\026GlobalIlluminationMod"
-    "e\022(\n$GLOBAL_ILLUMINATION_MODE_UNSPECIFIE"
-    "D\020\000\022\"\n\036GLOBAL_ILLUMINATION_MODE_NO_GI\020\001\022"
-    "$\n GLOBAL_ILLUMINATION_MODE_RUNTIME\020\002\022\"\n"
-    "\036GLOBAL_ILLUMINATION_MODE_BAKED\020\003*\355\002\n\030Ru"
-    "ntimeGIProbesLifecycle\022+\n\'RUNTIME_GI_PRO"
-    "BES_LIFECYCLE_UNSPECIFIED\020\000\022(\n$RUNTIME_G"
-    "I_PROBES_LIFECYCLE_DISABLED\020\001\022/\n+RUNTIME"
-    "_GI_PROBES_LIFECYCLE_PREPARING_SCENE\020\002\022\'"
-    "\n#RUNTIME_GI_PROBES_LIFECYCLE_TRACING\020\003\022"
-    "%\n!RUNTIME_GI_PROBES_LIFECYCLE_READY\020\004\022&"
-    "\n\"RUNTIME_GI_PROBES_LIFECYCLE_PAUSED\020\005\022)"
-    "\n%RUNTIME_GI_PROBES_LIFECYCLE_THROTTLED\020"
-    "\006\022&\n\"RUNTIME_GI_PROBES_LIFECYCLE_FAILED\020"
-    "\007*\251\001\n\034RuntimeGIProbesPreviewBudget\0220\n,RU"
-    "NTIME_GI_PROBES_PREVIEW_BUDGET_UNSPECIFI"
-    "ED\020\000\022(\n$RUNTIME_GI_PROBES_PREVIEW_BUDGET"
-    "_ECO\020\001\022-\n)RUNTIME_GI_PROBES_PREVIEW_BUDG"
-    "ET_BALANCED\020\002*\234\002\n GlobalIlluminationProb"
-    "eResidency\0223\n/GLOBAL_ILLUMINATION_PROBE_"
-    "RESIDENCY_UNSPECIFIED\020\000\0220\n,GLOBAL_ILLUMI"
-    "NATION_PROBE_RESIDENCY_UNLOADED\020\001\022/\n+GLO"
-    "BAL_ILLUMINATION_PROBE_RESIDENCY_LOADING"
-    "\020\002\0220\n,GLOBAL_ILLUMINATION_PROBE_RESIDENC"
-    "Y_RESIDENT\020\003\022.\n*GLOBAL_ILLUMINATION_PROB"
-    "E_RESIDENCY_FAILED\020\004*\261\001\n\026ModelFingerprin"
-    "tStatus\022(\n$MODEL_FINGERPRINT_STATUS_UNAV"
-    "AILABLE\020\000\022$\n MODEL_FINGERPRINT_STATUS_PE"
-    "NDING\020\001\022\"\n\036MODEL_FINGERPRINT_STATUS_READ"
-    "Y\020\002\022#\n\037MODEL_FINGERPRINT_STATUS_FAILED\020\003"
-    "B\"\252\002\037SailorEditor.Protocol.Generatedb\006pr"
-    "oto3"
+    "\010 \001(\002\022\030\n\020max_ray_distance\030\t \001(\002\022#\n\033sun_a"
+    "ngle_threshold_degrees\030\n \001(\002\"0\n\035RuntimeG"
+    "IProbesPreviewRequest\022\017\n\007enabled\030\001 \001(\010\"-"
+    "\n\033RuntimeGIProbesPauseRequest\022\016\n\006paused\030"
+    "\001 \001(\010\"\334\003\n\024RuntimeGIProbesState\022=\n\tlifecy"
+    "cle\030\001 \001(\0162*.sailor.editor.v1.RuntimeGIPr"
+    "obesLifecycle\022\017\n\007enabled\030\002 \001(\010\022\016\n\006paused"
+    "\030\003 \001(\010\022\027\n\017preview_enabled\030\004 \001(\010\022\030\n\020scene"
+    "_generation\030\005 \001(\004\022\033\n\023lighting_generation"
+    "\030\006 \001(\004\022\032\n\022published_revision\030\007 \001(\004\022\020\n\010ca"
+    "pacity\030\010 \001(\r\022\032\n\022active_probe_count\030\t \001(\r"
+    "\022\031\n\021ready_probe_count\030\n \001(\r\022\024\n\014worker_co"
+    "unt\030\013 \001(\r\022\027\n\017published_bytes\030\014 \001(\004\022\020\n\010co"
+    "verage\030\r \001(\002\022\022\n\nrefinement\030\016 \001(\002\022\022\n\ndiag"
+    "nostic\030\017 \001(\t\022F\n\016preview_budget\030\020 \001(\0162..s"
+    "ailor.editor.v1.RuntimeGIProbesPreviewBu"
+    "dget\"e\n#RuntimeGIProbesPreviewBudgetRequ"
+    "est\022>\n\006budget\030\001 \001(\0162..sailor.editor.v1.R"
+    "untimeGIProbesPreviewBudget\"X\n\034ModelFing"
+    "erprintStatusResult\0228\n\006status\030\001 \001(\0162(.sa"
+    "ilor.editor.v1.ModelFingerprintStatus*\360\001"
+    "\n\032ViewportTransformOperation\022,\n(VIEWPORT"
+    "_TRANSFORM_OPERATION_UNSPECIFIED\020\000\022\'\n#VI"
+    "EWPORT_TRANSFORM_OPERATION_SELECT\020\001\022*\n&V"
+    "IEWPORT_TRANSFORM_OPERATION_TRANSLATE\020\002\022"
+    "\'\n#VIEWPORT_TRANSFORM_OPERATION_ROTATE\020\003"
+    "\022&\n\"VIEWPORT_TRANSFORM_OPERATION_SCALE\020\004"
+    "*\212\001\n\026ViewportTransformSpace\022(\n$VIEWPORT_"
+    "TRANSFORM_SPACE_UNSPECIFIED\020\000\022\"\n\036VIEWPOR"
+    "T_TRANSFORM_SPACE_WORLD\020\001\022\"\n\036VIEWPORT_TR"
+    "ANSFORM_SPACE_LOCAL\020\002*\244\001\n\017EditorStatsMod"
+    "e\022!\n\035EDITOR_STATS_MODE_UNSPECIFIED\020\000\022\032\n\026"
+    "EDITOR_STATS_MODE_NONE\020\001\022\"\n\036EDITOR_STATS"
+    "_MODE_RENDER_STATS\020\002\022.\n*EDITOR_STATS_MOD"
+    "E_RENDER_STATS_AND_QUERIES\020\003*\243\005\n\020EditorR"
+    "enderMode\022\"\n\036EDITOR_RENDER_MODE_UNSPECIF"
+    "IED\020\000\022\032\n\026EDITOR_RENDER_MODE_LIT\020\001\022(\n$EDI"
+    "TOR_RENDER_MODE_AMBIENT_OCCLUSION\020\002\022\037\n\033E"
+    "DITOR_RENDER_MODE_CASCADES\020\003\022\"\n\036EDITOR_R"
+    "ENDER_MODE_LIGHT_TILES\020\004\022/\n+EDITOR_RENDE"
+    "R_MODE_GLOBAL_ILLUMINATION_ONLY\020\005\0221\n-EDI"
+    "TOR_RENDER_MODE_GLOBAL_ILLUMINATION_PROB"
+    "ES\020\006\0221\n-EDITOR_RENDER_MODE_GLOBAL_ILLUMI"
+    "NATION_BRICKS\020\007\0223\n/EDITOR_RENDER_MODE_GL"
+    "OBAL_ILLUMINATION_VALIDITY\020\010\0225\n1EDITOR_R"
+    "ENDER_MODE_GLOBAL_ILLUMINATION_VISIBILIT"
+    "Y\020\t\0224\n0EDITOR_RENDER_MODE_GLOBAL_ILLUMIN"
+    "ATION_RESIDENCY\020\n\0229\n5EDITOR_RENDER_MODE_"
+    "GLOBAL_ILLUMINATION_ASSET_IDENTITY\020\013\0223\n/"
+    "EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_F"
+    "ALLBACK\020\014\0227\n3EDITOR_RENDER_MODE_GLOBAL_I"
+    "LLUMINATION_SUBDIVISIONS\020\r*\247\002\n\021GIProbesB"
+    "akeState\022$\n GI_PROBES_BAKE_STATE_UNSPECI"
+    "FIED\020\000\022\035\n\031GI_PROBES_BAKE_STATE_IDLE\020\001\022\"\n"
+    "\036GI_PROBES_BAKE_STATE_PREPARING\020\002\022\037\n\033GI_"
+    "PROBES_BAKE_STATE_BAKING\020\003\022\037\n\033GI_PROBES_"
+    "BAKE_STATE_SAVING\020\004\022\"\n\036GI_PROBES_BAKE_ST"
+    "ATE_SUCCEEDED\020\005\022\037\n\033GI_PROBES_BAKE_STATE_"
+    "FAILED\020\006\022\"\n\036GI_PROBES_BAKE_STATE_CANCELL"
+    "ED\020\007*\244\001\n\033GlobalIlluminationProbeMode\022.\n*"
+    "GLOBAL_ILLUMINATION_PROBE_MODE_UNSPECIFI"
+    "ED\020\000\022(\n$GLOBAL_ILLUMINATION_PROBE_MODE_B"
+    "LEND\020\001\022+\n\'GLOBAL_ILLUMINATION_PROBE_MODE"
+    "_ADDITIVE\020\002*\260\001\n\026GlobalIlluminationMode\022("
+    "\n$GLOBAL_ILLUMINATION_MODE_UNSPECIFIED\020\000"
+    "\022\"\n\036GLOBAL_ILLUMINATION_MODE_NO_GI\020\001\022$\n "
+    "GLOBAL_ILLUMINATION_MODE_RUNTIME\020\002\022\"\n\036GL"
+    "OBAL_ILLUMINATION_MODE_BAKED\020\003*\355\002\n\030Runti"
+    "meGIProbesLifecycle\022+\n\'RUNTIME_GI_PROBES"
+    "_LIFECYCLE_UNSPECIFIED\020\000\022(\n$RUNTIME_GI_P"
+    "ROBES_LIFECYCLE_DISABLED\020\001\022/\n+RUNTIME_GI"
+    "_PROBES_LIFECYCLE_PREPARING_SCENE\020\002\022\'\n#R"
+    "UNTIME_GI_PROBES_LIFECYCLE_TRACING\020\003\022%\n!"
+    "RUNTIME_GI_PROBES_LIFECYCLE_READY\020\004\022&\n\"R"
+    "UNTIME_GI_PROBES_LIFECYCLE_PAUSED\020\005\022)\n%R"
+    "UNTIME_GI_PROBES_LIFECYCLE_THROTTLED\020\006\022&"
+    "\n\"RUNTIME_GI_PROBES_LIFECYCLE_FAILED\020\007*\251"
+    "\001\n\034RuntimeGIProbesPreviewBudget\0220\n,RUNTI"
+    "ME_GI_PROBES_PREVIEW_BUDGET_UNSPECIFIED\020"
+    "\000\022(\n$RUNTIME_GI_PROBES_PREVIEW_BUDGET_EC"
+    "O\020\001\022-\n)RUNTIME_GI_PROBES_PREVIEW_BUDGET_"
+    "BALANCED\020\002*\234\002\n GlobalIlluminationProbeRe"
+    "sidency\0223\n/GLOBAL_ILLUMINATION_PROBE_RES"
+    "IDENCY_UNSPECIFIED\020\000\0220\n,GLOBAL_ILLUMINAT"
+    "ION_PROBE_RESIDENCY_UNLOADED\020\001\022/\n+GLOBAL"
+    "_ILLUMINATION_PROBE_RESIDENCY_LOADING\020\002\022"
+    "0\n,GLOBAL_ILLUMINATION_PROBE_RESIDENCY_R"
+    "ESIDENT\020\003\022.\n*GLOBAL_ILLUMINATION_PROBE_R"
+    "ESIDENCY_FAILED\020\004*\261\001\n\026ModelFingerprintSt"
+    "atus\022(\n$MODEL_FINGERPRINT_STATUS_UNAVAIL"
+    "ABLE\020\000\022$\n MODEL_FINGERPRINT_STATUS_PENDI"
+    "NG\020\001\022\"\n\036MODEL_FINGERPRINT_STATUS_READY\020\002"
+    "\022#\n\037MODEL_FINGERPRINT_STATUS_FAILED\020\003B\"\252"
+    "\002\037SailorEditor.Protocol.Generatedb\006proto"
+    "3"
 };
 static ::absl::once_flag descriptor_table_editor_5fengine_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_editor_5fengine_2eproto = {
     false,
     false,
-    17404,
+    17441,
     descriptor_table_protodef_editor_5fengine_2eproto,
     "editor_engine.proto",
     &descriptor_table_editor_5fengine_2eproto_once,
@@ -25547,9 +25550,9 @@ inline void RuntimeGIProbesSettings::SharedCtor(::_pb::Arena* arena) {
   ::memset(reinterpret_cast<char *>(&_impl_) +
                offsetof(Impl_, version_),
            0,
-           offsetof(Impl_, max_ray_distance_) -
+           offsetof(Impl_, sun_angle_threshold_degrees_) -
                offsetof(Impl_, version_) +
-               sizeof(Impl_::max_ray_distance_));
+               sizeof(Impl_::sun_angle_threshold_degrees_));
 }
 RuntimeGIProbesSettings::~RuntimeGIProbesSettings() {
   // @@protoc_insertion_point(destructor:sailor.editor.v1.RuntimeGIProbesSettings)
@@ -25598,15 +25601,15 @@ const ::google::protobuf::internal::ClassData* RuntimeGIProbesSettings::GetClass
   return _class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<4, 9, 0, 0, 2> RuntimeGIProbesSettings::_table_ = {
+const ::_pbi::TcParseTable<4, 10, 0, 0, 2> RuntimeGIProbesSettings::_table_ = {
   {
     0,  // no _has_bits_
     0, // no _extensions_
-    9, 120,  // max_field_number, fast_idx_mask
+    10, 120,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294966784,  // skipmap
+    4294966272,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    9,  // num_field_entries
+    10,  // num_field_entries
     0,  // num_aux_entries
     offsetof(decltype(_table_), field_names),  // no aux_entries
     _class_data_.base(),
@@ -25644,7 +25647,9 @@ const ::_pbi::TcParseTable<4, 9, 0, 0, 2> RuntimeGIProbesSettings::_table_ = {
     // float max_ray_distance = 9;
     {::_pbi::TcParser::FastF32S1,
      {77, 63, 0, PROTOBUF_FIELD_OFFSET(RuntimeGIProbesSettings, _impl_.max_ray_distance_)}},
-    {::_pbi::TcParser::MiniParse, {}},
+    // float sun_angle_threshold_degrees = 10;
+    {::_pbi::TcParser::FastF32S1,
+     {85, 63, 0, PROTOBUF_FIELD_OFFSET(RuntimeGIProbesSettings, _impl_.sun_angle_threshold_degrees_)}},
     {::_pbi::TcParser::MiniParse, {}},
     {::_pbi::TcParser::MiniParse, {}},
     {::_pbi::TcParser::MiniParse, {}},
@@ -25680,6 +25685,9 @@ const ::_pbi::TcParseTable<4, 9, 0, 0, 2> RuntimeGIProbesSettings::_table_ = {
     // float max_ray_distance = 9;
     {PROTOBUF_FIELD_OFFSET(RuntimeGIProbesSettings, _impl_.max_ray_distance_), 0, 0,
     (0 | ::_fl::kFcSingular | ::_fl::kFloat)},
+    // float sun_angle_threshold_degrees = 10;
+    {PROTOBUF_FIELD_OFFSET(RuntimeGIProbesSettings, _impl_.sun_angle_threshold_degrees_), 0, 0,
+    (0 | ::_fl::kFcSingular | ::_fl::kFloat)},
   }},
   // no aux_entries
   {{
@@ -25694,8 +25702,8 @@ PROTOBUF_NOINLINE void RuntimeGIProbesSettings::Clear() {
   (void) cached_has_bits;
 
   ::memset(&_impl_.version_, 0, static_cast<::size_t>(
-      reinterpret_cast<char*>(&_impl_.max_ray_distance_) -
-      reinterpret_cast<char*>(&_impl_.version_)) + sizeof(_impl_.max_ray_distance_));
+      reinterpret_cast<char*>(&_impl_.sun_angle_threshold_degrees_) -
+      reinterpret_cast<char*>(&_impl_.version_)) + sizeof(_impl_.sun_angle_threshold_degrees_));
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
 
@@ -25777,6 +25785,13 @@ PROTOBUF_NOINLINE void RuntimeGIProbesSettings::Clear() {
                 9, this_._internal_max_ray_distance(), target);
           }
 
+          // float sun_angle_threshold_degrees = 10;
+          if (::absl::bit_cast<::uint32_t>(this_._internal_sun_angle_threshold_degrees()) != 0) {
+            target = stream->EnsureSpace(target);
+            target = ::_pbi::WireFormatLite::WriteFloatToArray(
+                10, this_._internal_sun_angle_threshold_degrees(), target);
+          }
+
           if (PROTOBUF_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
             target =
                 ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -25840,6 +25855,10 @@ PROTOBUF_NOINLINE void RuntimeGIProbesSettings::Clear() {
             if (::absl::bit_cast<::uint32_t>(this_._internal_max_ray_distance()) != 0) {
               total_size += 5;
             }
+            // float sun_angle_threshold_degrees = 10;
+            if (::absl::bit_cast<::uint32_t>(this_._internal_sun_angle_threshold_degrees()) != 0) {
+              total_size += 5;
+            }
           }
           return this_.MaybeComputeUnknownFieldsSize(total_size,
                                                      &this_._impl_._cached_size_);
@@ -25880,6 +25899,9 @@ void RuntimeGIProbesSettings::MergeImpl(::google::protobuf::MessageLite& to_msg,
   if (::absl::bit_cast<::uint32_t>(from._internal_max_ray_distance()) != 0) {
     _this->_impl_.max_ray_distance_ = from._impl_.max_ray_distance_;
   }
+  if (::absl::bit_cast<::uint32_t>(from._internal_sun_angle_threshold_degrees()) != 0) {
+    _this->_impl_.sun_angle_threshold_degrees_ = from._impl_.sun_angle_threshold_degrees_;
+  }
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(from._internal_metadata_);
 }
 
@@ -25895,8 +25917,8 @@ void RuntimeGIProbesSettings::InternalSwap(RuntimeGIProbesSettings* PROTOBUF_RES
   using std::swap;
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(RuntimeGIProbesSettings, _impl_.max_ray_distance_)
-      + sizeof(RuntimeGIProbesSettings::_impl_.max_ray_distance_)
+      PROTOBUF_FIELD_OFFSET(RuntimeGIProbesSettings, _impl_.sun_angle_threshold_degrees_)
+      + sizeof(RuntimeGIProbesSettings::_impl_.sun_angle_threshold_degrees_)
       - PROTOBUF_FIELD_OFFSET(RuntimeGIProbesSettings, _impl_.version_)>(
           reinterpret_cast<char*>(&_impl_.version_),
           reinterpret_cast<char*>(&other->_impl_.version_));

@@ -170,6 +170,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		destination.set_normal_bias(source.m_normalBias);
 		destination.set_view_bias(source.m_viewBias);
 		destination.set_max_ray_distance(source.m_maxRayDistance);
+		destination.set_sun_angle_threshold_degrees(source.m_sunAngleThresholdDegrees);
 	}
 
 	static sailor::editor::v1::GlobalIlluminationProbeResidency ToProtocolGlobalIlluminationProbeResidency(
@@ -311,6 +312,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 				nativeSettings.m_runtimeProbes.m_normalBias = runtime.normal_bias();
 				nativeSettings.m_runtimeProbes.m_viewBias = runtime.view_bias();
 				nativeSettings.m_runtimeProbes.m_maxRayDistance = runtime.max_ray_distance();
+				nativeSettings.m_runtimeProbes.m_sunAngleThresholdDegrees = runtime.sun_angle_threshold_degrees();
 				if (!nativeSettings.m_runtimeProbes.Validate(diagnostic))
 				{
 					bValid = false;

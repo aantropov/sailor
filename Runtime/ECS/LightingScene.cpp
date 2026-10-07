@@ -186,13 +186,14 @@ void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) co
 	CollectLightProxies(outLights, false);
 }
 
-void LightingECS::GetGlobalIlluminationBakeLightProxies(TVector<Raytracing::LightProxy>& outLights) const
+void LightingECS::GetGlobalIlluminationBakeLightProxies(TVector<Raytracing::LightProxy>& outLights,
+	const LightData* excludedLight) const
 {
-	CollectLightProxies(outLights, true);
+	CollectLightProxies(outLights, true, excludedLight);
 }
 
 void LightingECS::CollectLightProxies(TVector<Raytracing::LightProxy>& outLights,
-	bool bGlobalIlluminationBakeContributorsOnly) const
+	bool bGlobalIlluminationBakeContributorsOnly, const LightData* excludedLight) const
 {
 	outLights.Clear();
 	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
@@ -201,7 +202,7 @@ void LightingECS::CollectLightProxies(TVector<Raytracing::LightProxy>& outLights
 	for (size_t index = 0; index < numGpuLightSlots; ++index)
 	{
 		const auto& light = m_components[index];
-		if (!light.m_bIsActive)
+		if (!light.m_bIsActive || &light == excludedLight)
 		{
 			continue;
 		}

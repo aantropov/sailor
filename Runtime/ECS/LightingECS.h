@@ -180,7 +180,7 @@ namespace Sailor
 		size_t GetNumSkies() const { return m_skies.Num(); }
 		uint64_t GetLightingRevision() const { return m_lightingRevision; }
 		SAILOR_API void GetGlobalIlluminationBakeLightProxies(
-			TVector<Raytracing::LightProxy>& outLights) const;
+			TVector<Raytracing::LightProxy>& outLights, const LightData* excludedLight = nullptr) const;
 		void FillLightingData(RHI::RHISceneViewPtr& sceneView);
 
 		float GetShadowsOccupiedMemoryMb() const { return m_shadows.m_mapsMb; }
@@ -198,7 +198,7 @@ namespace Sailor
 	protected:
 		void CollectLightProxies(
 			TVector<Raytracing::LightProxy>& outLights,
-			bool bGlobalIlluminationBakeContributorsOnly) const;
+			bool bGlobalIlluminationBakeContributorsOnly, const LightData* excludedLight = nullptr) const;
 		TVector<TObjectPtr<SkyComponent>> m_skies;
 
 		SAILOR_API void PrepareCSMPasses(

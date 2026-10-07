@@ -5096,6 +5096,7 @@ class RuntimeGIProbesSettings final : public ::google::protobuf::Message
     kNormalBiasFieldNumber = 7,
     kViewBiasFieldNumber = 8,
     kMaxRayDistanceFieldNumber = 9,
+    kSunAngleThresholdDegreesFieldNumber = 10,
   };
   // uint32 version = 1;
   void clear_version() ;
@@ -5187,12 +5188,22 @@ class RuntimeGIProbesSettings final : public ::google::protobuf::Message
   void _internal_set_max_ray_distance(float value);
 
   public:
+  // float sun_angle_threshold_degrees = 10;
+  void clear_sun_angle_threshold_degrees() ;
+  float sun_angle_threshold_degrees() const;
+  void set_sun_angle_threshold_degrees(float value);
+
+  private:
+  float _internal_sun_angle_threshold_degrees() const;
+  void _internal_set_sun_angle_threshold_degrees(float value);
+
+  public:
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.RuntimeGIProbesSettings)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      4, 9, 0,
+      4, 10, 0,
       0, 2>
       _table_;
 
@@ -5219,6 +5230,7 @@ class RuntimeGIProbesSettings final : public ::google::protobuf::Message
     float normal_bias_;
     float view_bias_;
     float max_ray_distance_;
+    float sun_angle_threshold_degrees_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -32558,6 +32570,28 @@ inline float RuntimeGIProbesSettings::_internal_max_ray_distance() const {
 inline void RuntimeGIProbesSettings::_internal_set_max_ray_distance(float value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.max_ray_distance_ = value;
+}
+
+// float sun_angle_threshold_degrees = 10;
+inline void RuntimeGIProbesSettings::clear_sun_angle_threshold_degrees() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.sun_angle_threshold_degrees_ = 0;
+}
+inline float RuntimeGIProbesSettings::sun_angle_threshold_degrees() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.RuntimeGIProbesSettings.sun_angle_threshold_degrees)
+  return _internal_sun_angle_threshold_degrees();
+}
+inline void RuntimeGIProbesSettings::set_sun_angle_threshold_degrees(float value) {
+  _internal_set_sun_angle_threshold_degrees(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.RuntimeGIProbesSettings.sun_angle_threshold_degrees)
+}
+inline float RuntimeGIProbesSettings::_internal_sun_angle_threshold_degrees() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.sun_angle_threshold_degrees_;
+}
+inline void RuntimeGIProbesSettings::_internal_set_sun_angle_threshold_degrees(float value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.sun_angle_threshold_degrees_ = value;
 }
 
 // -------------------------------------------------------------------

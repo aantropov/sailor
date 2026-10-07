@@ -1292,7 +1292,7 @@ namespace
 		Require(before == after, "clouds, fog and shafts absent from CPU clear sky must not invalidate GI");
 		sky->SetSunAngle(25.0f);
 		Require(ObserveGIProbesSceneRevision(&world, request, after, diagnostic), diagnostic);
-		Require(before.m_geometry == after.m_geometry && before.m_lighting != after.m_lighting,
+		Require(before.m_geometry == after.m_geometry && after.HasChanges(before, 30.0f),
 			"a changed sun must invalidate lighting without invalidating geometry");
 	}
 
