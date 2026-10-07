@@ -94,6 +94,10 @@ jobs:
         SAILOR_CMAKE_TOOLSET: ${{ matrix.sailor_toolset }}
         SAILOR_CMAKE_TOOLCHAIN_FILE: ${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
 
+    - name: Mount runtime content for installed workspace checks
+      shell: pwsh
+      run: New-Item -ItemType Junction -Path build/install/Content -Target "${{ github.workspace }}/Content" | Out-Null
+
     - name: Validate two-workspace phase 1
       run: >-
         dotnet test Editor.Tests/Editor.Contracts.Tests.csproj
