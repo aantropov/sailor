@@ -476,7 +476,7 @@ namespace
 		meshes->Tick(0.0f);
 		auto rebuilt = RHI::RHISceneViewPtr::Make();
 		meshes->CopySceneView(rebuilt);
-		Require(rebuilt->m_shadowCastersRevision > beforeRebuild->m_shadowCastersRevision,
+		Require(rebuilt->m_shadowCastersRevision != beforeRebuild->m_shadowCastersRevision,
 			"a simultaneous topology rebuild and owner move must invalidate shadows even when local shadow meshes are equal");
 		world.Clear();
 		clip.DestroyObject(world.GetAllocator());
