@@ -23,7 +23,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
-#include "Platform/Win32/Window.h"
+#include "Platform/Window.h"
 #include "Math/Math.h"
 #include "VulkanDevice.h"
 #include "VulkanApi.h"
