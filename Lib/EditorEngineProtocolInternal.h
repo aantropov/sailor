@@ -13,6 +13,7 @@ namespace google::protobuf
 }
 
 namespace Sailor::EditorViewport { struct Event; }
+namespace Sailor { enum class EAppInitializationResult : uint8_t; }
 
 namespace sailor::editor::v1
 {
@@ -24,6 +25,7 @@ namespace sailor::editor::v1
 namespace Sailor::Protocol
 {
 	class TEditorEngineProtocolLifecycleGate;
+	enum class EEditorEngineWebSocketHostStatus : int32_t;
 
 	enum class EEditorEngineTransportStatus : int32_t
 	{
@@ -52,6 +54,7 @@ namespace Sailor::Protocol
 
 		void* m_context = nullptr;
 		FPullEditorViewportEvents m_pullEditorViewportEvents = nullptr;
+		EAppInitializationResult (*m_initialize)(void* context, const char** arguments, int32_t count) = nullptr;
 		FLifecycleRoutine m_start = nullptr;
 		FLifecycleRoutine m_stop = nullptr;
 		bool (*m_shutdown)(void* context) = nullptr;
@@ -104,11 +107,14 @@ namespace Sailor::Protocol
 		const EditorEngineProtocolDependencies& dependencies);
 
 	void FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept;
+	SAILOR_SHARED_API EEditorEngineWebSocketHostStatus StartEditorEngineLocalHost(
+		const uint8_t* requestData, uint32_t requestSize, uint16_t port,
+		const char* authorizationToken, uint32_t authorizationTokenSize,
+		const EditorEngineProtocolDependencies& dependencies = {}) noexcept;
+	SAILOR_SHARED_API bool StopEditorEngineLocalHost(bool bShutdownEngine,
+		const EditorEngineProtocolDependencies& dependencies = {}) noexcept;
 	bool SetMacViewportHost(uint64_t viewportId, uintptr_t layer);
 	void RequestEditorEngineProtocolStop();
-	void WaitForEditorEngineProtocolStartDrain();
 	SAILOR_SHARED_API bool TryDrainEditorEngineProtocolForShutdown(
 		const EditorEngineProtocolDependencies& dependencies = {});
-	void ResetEditorEngineProtocolLifecycle();
-	void FailEditorEngineProtocolShutdown();
 }

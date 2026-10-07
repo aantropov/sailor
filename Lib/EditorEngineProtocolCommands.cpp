@@ -145,7 +145,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		return false;
 	}
 
-	static void DispatchInitialize(const sailor::editor::v1::InitializeRequest& request, ProtocolResponse& response)
+	static void DispatchInitialize(const sailor::editor::v1::InitializeRequest& request, ProtocolResponse& response,
+		const EditorEngineProtocolDependencies& dependencies)
 	{
 		const int numArguments = request.arguments_size();
 		Sailor::TUniquePtr<const char*[]> arguments{};
@@ -158,7 +159,10 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			}
 		}
 
-		switch (Sailor::App::Initialize(arguments.GetRawPtr(), numArguments))
+		const auto result = dependencies.m_initialize ?
+			dependencies.m_initialize(dependencies.m_context, arguments.GetRawPtr(), numArguments) :
+			Sailor::App::Initialize(arguments.GetRawPtr(), numArguments);
+		switch (result)
 		{
 		case EAppInitializationResult::Ready:
 			SetEmptyResult(response);
@@ -216,7 +220,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		switch (request.command_case())
 		{
 		case ProtocolRequest::kInitialize:
-			DispatchInitialize(request.initialize(), response);
+			DispatchInitialize(request.initialize(), response, dependencies);
 			break;
 
 		case ProtocolRequest::kStart:

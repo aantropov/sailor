@@ -1,8 +1,10 @@
 #include "EditorEngineProtocolInternal.h"
+#include "EditorEngineProtocolLifecycle.h"
 #include "EditorEngineWebSocketServer.h"
 #include "Sailor.h"
 #include "Support/TempDirectory.h"
 #include "Support/EditorProtocolWire.h"
+#include "Support/ScopeExit.h"
 
 #include <ixwebsocket/IXGetFreePort.h>
 #include <ixwebsocket/IXNetSystem.h>
@@ -11,6 +13,9 @@
 #include <ixwebsocket/IXWebSocketMessage.h>
 
 #include <chrono>
+#include <atomic>
+#include <future>
+#include <thread>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
@@ -193,6 +198,190 @@ namespace
 		uint16_t m_port = 0;
 		bool m_bStarted = false;
 	};
+
+	uint16_t ReserveLocalHostPort()
+	{
+		Require(ix::initNetSystem(), "port reservation must initialize the network system");
+		const int port = ix::getFreePort();
+		Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "port reservation must complete");
+		return static_cast<uint16_t>(port);
+	}
+
+	void TestBootstrapReservesBeforePublishingServer(const std::string& token)
+	{
+		using namespace std::chrono_literals;
+		using Status = EEditorEngineWebSocketHostStatus;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::atomic<uint32_t> initializeCalls{0u};
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &initializeCalls;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_initialize = [](void* context, const char**, int32_t)
+			{
+				++*static_cast<std::atomic<uint32_t>*>(context);
+				return Sailor::EAppInitializationResult::Ready;
+			};
+		dependencies.m_stop = [](void*) {};
+		dependencies.m_shutdown = [](void*) { return true; };
+		const auto request = MakeRequest(1u, 10u);
+		const uint16_t port = ReserveLocalHostPort();
+		std::string error;
+		Require(gate.TryAcquireOperation(error, true), "bootstrap fixture must hold an earlier diagnostic operation");
+		std::future<Status> bootstrap;
+		Sailor::Tests::ScopeExit releaseOperation([&]() { gate.ReleaseOperation(); });
+		bool bStopped = false;
+		Sailor::Tests::ScopeExit cleanup([&]()
+			{
+				releaseOperation.Run();
+				if (bootstrap.valid())
+				{
+					bootstrap.wait();
+				}
+				bStopped = Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies);
+			});
+		bootstrap = std::async(std::launch::async, [&]()
+			{
+				return Sailor::Protocol::StartEditorEngineLocalHost(
+					reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+					port, token.data(), static_cast<uint32_t>(token.size()), dependencies);
+			});
+		bool bReserved = false;
+		const auto deadline = std::chrono::steady_clock::now() + 1s;
+		while (std::chrono::steady_clock::now() < deadline)
+		{
+			if (!gate.TryAcquireOperation(error, true))
+			{
+				bReserved = true;
+				break;
+			}
+			gate.ReleaseOperation();
+			std::this_thread::yield();
+		}
+		Require(bReserved && initializeCalls == 0u, "bootstrap must reserve initialization before entering App");
+		const auto probeStatus = static_cast<Status>(Sailor::Protocol::StartEditorEngineWebSocketServer(
+			port, token.data(), static_cast<uint32_t>(token.size())));
+		if (probeStatus == Status::Ok)
+		{
+			Sailor::Protocol::StopEditorEngineWebSocketServer();
+		}
+		releaseOperation.Run();
+		const auto status = bootstrap.get();
+		cleanup.Run();
+		Require(probeStatus == Status::Ok && status == Status::Ok && initializeCalls == 1u && bStopped,
+			"the host must not publish its server before initialization admission has drained earlier work");
+	}
+
+	void TestBootstrapRollbackAndRetry(const std::string& token)
+	{
+		using Status = EEditorEngineWebSocketHostStatus;
+		struct TBootstrapSource
+		{
+			Sailor::Protocol::TEditorEngineProtocolLifecycleGate m_gate;
+			Sailor::EAppInitializationResult m_result = Sailor::EAppInitializationResult::Failed;
+			uint32_t m_numInitializations = 0u;
+			uint32_t m_numShutdowns = 0u;
+			bool m_bRollbackExclusive = true;
+		} source;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_lifecycleGate = &source.m_gate;
+		dependencies.m_initialize = [](void* context, const char**, int32_t)
+			{
+				auto& state = *static_cast<TBootstrapSource*>(context);
+				++state.m_numInitializations;
+				return state.m_result;
+			};
+		dependencies.m_stop = [](void*) {};
+		dependencies.m_shutdown = [](void* context)
+			{
+				auto& state = *static_cast<TBootstrapSource*>(context);
+				std::string error;
+				state.m_bRollbackExclusive &= !state.m_gate.TryBeginInitialization(error);
+				return ++state.m_numShutdowns > 1u;
+			};
+		const auto request = MakeRequest(1u, 10u);
+		const uint16_t port = ReserveLocalHostPort();
+		auto start = [&]()
+			{
+				return Sailor::Protocol::StartEditorEngineLocalHost(
+					reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+					port, token.data(), static_cast<uint32_t>(token.size()), dependencies);
+			};
+		Sailor::Tests::ScopeExit cleanup([&]() { Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies); });
+		Require(start() == Status::ShutdownFailed && source.m_numInitializations == 1u && source.m_numShutdowns == 1u,
+			"a refused bootstrap rollback must retain the failed session");
+		Require(start() == Status::AlreadyRunning && source.m_numInitializations == 1u,
+			"a failed rollback must not admit another bootstrap");
+		Require(Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies), "bootstrap cleanup must allow an explicit retry");
+		source.m_result = Sailor::EAppInitializationResult::Ready;
+		Require(start() == Status::Ok && start() == Status::AlreadyRunning && source.m_numInitializations == 2u,
+			"a successful bootstrap must reject duplicate initialization without destroying its session");
+		Require(source.m_bRollbackExclusive, "bootstrap rollback must retain exclusive lifecycle ownership");
+	}
+
+	void TestBootstrapHandsRollbackToShutdown(const std::string& token)
+	{
+		using Status = EEditorEngineWebSocketHostStatus;
+		struct TBootstrapSource
+		{
+			Sailor::Protocol::TEditorEngineProtocolLifecycleGate m_gate;
+			uint32_t m_numShutdowns = 0u;
+		} source;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_lifecycleGate = &source.m_gate;
+		dependencies.m_initialize = [](void* context, const char**, int32_t)
+			{
+				auto& state = *static_cast<TBootstrapSource*>(context);
+				std::string error;
+				Require(state.m_gate.TryBeginShutdown(error), "shutdown must be admitted while bootstrap owns construction");
+				return Sailor::EAppInitializationResult::Failed;
+			};
+		dependencies.m_stop = [](void*) {};
+		dependencies.m_shutdown = [](void* context)
+			{
+				++static_cast<TBootstrapSource*>(context)->m_numShutdowns;
+				return true;
+			};
+		Sailor::Tests::ScopeExit cleanup([&]()
+			{
+				source.m_gate.CompleteShutdown(false);
+				Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies);
+			});
+		const auto request = MakeRequest(1u, 10u);
+		const auto status = Sailor::Protocol::StartEditorEngineLocalHost(
+			reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+			ReserveLocalHostPort(), token.data(), static_cast<uint32_t>(token.size()), dependencies);
+		source.m_gate.WaitForInitializationDrain();
+		Require(status == Status::InitializationFailed && source.m_numShutdowns == 0u,
+			"bootstrap must leave cleanup to the shutdown owner that superseded initialization");
+		cleanup.Run();
+		Require(source.m_numShutdowns == 1u, "the retained host must be cleaned exactly once");
+	}
+
+	void TestBootstrapPreservesAnExistingServer(uint16_t port, const std::string& token)
+	{
+		uint32_t appCalls = 0u;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &appCalls;
+		dependencies.m_initialize = [](void* context, const char**, int32_t)
+			{
+				++*static_cast<uint32_t*>(context);
+				return Sailor::EAppInitializationResult::Failed;
+			};
+		dependencies.m_shutdown = [](void* context)
+			{
+				++*static_cast<uint32_t*>(context);
+				return true;
+			};
+		const auto request = MakeRequest(1u, 10u);
+		Require(Sailor::Protocol::StartEditorEngineLocalHost(
+			reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+			port, token.data(), static_cast<uint32_t>(token.size()), dependencies) ==
+			EEditorEngineWebSocketHostStatus::AlreadyRunning && appCalls == 0u,
+			"a rejected bootstrap must not initialize or shut down an existing host");
+		TestValidBinaryProtobufRoundTrip(port, token);
+	}
 
 	struct TReceivedMessage
 	{
@@ -774,10 +963,14 @@ int main(const int argc, const char* const argv[])
 
 			const std::string authorizationToken =
 				"0123456789abcdef0123456789abcdef";
+			TestBootstrapReservesBeforePublishingServer(authorizationToken);
+			TestBootstrapRollbackAndRetry(authorizationToken);
+			TestBootstrapHandsRollbackToShutdown(authorizationToken);
 			TestInvalidServerArguments(authorizationToken);
 			TestFailedLocalHostInitialization(authorizationToken);
 			{
 				const TServerGuard server(authorizationToken);
+				TestBootstrapPreservesAnExistingServer(server.GetPort(), authorizationToken);
 
 				TestAlreadyRunningIsReported(
 					server.GetPort(),

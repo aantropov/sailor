@@ -55,14 +55,24 @@ namespace Sailor::Protocol
 			return true;
 		}
 
-		void CompleteInitialization(const bool bSucceeded)
+		bool CompleteInitialization(const bool bSucceeded, bool bOwnRollback = false)
 		{
+			bool bOwnsCompletion = false;
 			{
 				const std::lock_guard<std::mutex> lock(m_mutex);
 				m_bInitializationActive = false;
-				if (m_state == EState::Initializing)
+				bOwnsCompletion = m_state == EState::Initializing;
+				if (bOwnsCompletion)
 				{
-					m_state = bSucceeded ? EState::Ready : EState::InitializationFailed;
+					if (!bSucceeded && bOwnRollback)
+					{
+						m_state = EState::ShuttingDown;
+						m_bStopRequested = true;
+					}
+					else
+					{
+						m_state = bSucceeded ? EState::Ready : EState::InitializationFailed;
+					}
 				}
 				m_bStartIssued = false;
 				m_bStartActive = false;
@@ -72,6 +82,7 @@ namespace Sailor::Protocol
 				}
 			}
 			m_condition.notify_all();
+			return bOwnsCompletion;
 		}
 
 		bool TryBeginStart(std::string& outError)

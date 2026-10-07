@@ -1941,6 +1941,28 @@ namespace
 		}
 	}
 
+	void TestInitializationSupersededByShutdownIsNotAcknowledged()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &gate;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_initialize = [](void* context, const char**, int32_t)
+			{
+				auto& lifecycle = *static_cast<Sailor::Protocol::TEditorEngineProtocolLifecycleGate*>(context);
+				std::string error;
+				Require(lifecycle.TryBeginShutdown(error), "shutdown must supersede the active initialization");
+				return Sailor::EAppInitializationResult::Ready;
+			};
+		TProtocolBuffer buffer;
+		const auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 1u,
+			c_initializeCommandField), buffer, dependencies);
+		gate.WaitForInitializationDrain();
+		gate.CompleteShutdown();
+		Require(!response.m_bSuccess && !response.m_error.empty(),
+			"initialization superseded by shutdown must not acknowledge a ready session");
+	}
+
 	void TestStopWaitsForInitializationAndSkipsClosedSessions()
 	{
 		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
@@ -2702,6 +2724,7 @@ int main()
 		TestLifecycleGateDrainsStartAndOperationsBeforeShutdown();
 		TestFailedShutdownKeepsAdmissionClosedUntilRetry();
 		TestFailedInitializationRequiresRollbackBeforeRetry();
+		TestInitializationSupersededByShutdownIsNotAcknowledged();
 		TestShutdownDrainsAnAdmittedStop();
 		TestStopWaitsForInitializationAndSkipsClosedSessions();
 		TestThrowingStopReleasesItsOperation();
