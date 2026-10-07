@@ -185,6 +185,12 @@ namespace
 			m_window(window)
 		{}
 
+		void DetachWindow()
+		{
+			m_window = nullptr;
+			m_bAcceptingDrop = false;
+		}
+
 		HRESULT STDMETHODCALLTYPE QueryInterface(
 			REFIID interfaceId,
 			void** object) override
@@ -232,9 +238,11 @@ namespace
 			std::string fileId;
 			const bool bCopyAllowed =
 				effect && ((*effect & DROPEFFECT_COPY) != 0);
+			// GetData can reenter the window owner and detach this target.
 			m_bAcceptingDrop =
 				bCopyAllowed &&
-				TryReadEditorAssetFileId(dataObject, fileId);
+				TryReadEditorAssetFileId(dataObject, fileId) &&
+				m_window;
 			if (effect)
 			{
 				*effect &=
@@ -278,8 +286,8 @@ namespace
 			bool bAccepted =
 				bCopyAllowed &&
 				m_bAcceptingDrop &&
-				m_window &&
-				TryReadEditorAssetFileId(dataObject, fileId);
+				TryReadEditorAssetFileId(dataObject, fileId) &&
+				m_window;
 			if (bAccepted)
 			{
 				POINT clientPoint{ point.x, point.y };
@@ -355,6 +363,7 @@ namespace
 			SAILOR_LOG_ERROR(
 				"Failed to register the editor viewport drop target. error=0x%08lX",
 				static_cast<unsigned long>(registerResult));
+			dropTarget->DetachWindow();
 			dropTarget->Release();
 			OleUninitialize();
 			outOleInitialized = false;
@@ -371,6 +380,8 @@ namespace
 	{
 		if (dropTarget)
 		{
+			// Other COM clients may retain the target after registration is revoked.
+			static_cast<EditorViewportDropTarget*>(dropTarget)->DetachWindow();
 			const HRESULT revokeResult = RevokeDragDrop(window);
 			if (FAILED(revokeResult))
 			{
