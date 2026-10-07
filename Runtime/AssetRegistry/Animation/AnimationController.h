@@ -136,8 +136,8 @@ namespace Sailor
 
 		SAILOR_API bool Initialize(
 			const AnimationControllerAsset& asset,
-			TVector<std::string>* outErrors = nullptr);
-		SAILOR_API bool Validate(TVector<std::string>* outErrors = nullptr) const;
+			TVector<std::string>& outErrors);
+		SAILOR_API bool Validate(TVector<std::string>& outErrors) const;
 
 		SAILOR_API int32_t FindStateIndex(AnimationControllerNodeId stateId) const;
 		SAILOR_API int32_t FindParameterIndex(AnimationControllerNodeId parameterId) const;
@@ -167,7 +167,7 @@ namespace Sailor
 
 		SAILOR_API bool Initialize(
 			const AnimationSetAsset& asset,
-			TVector<std::string>* outErrors = nullptr);
+			TVector<std::string>& outErrors);
 		SAILOR_API const FileId* FindAnimation(StringHash slot) const;
 		const TVector<AnimationSetEntry>& GetEntries() const { return m_entries; }
 		uint64_t GetRevision() const { return m_revision; }

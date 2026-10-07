@@ -181,7 +181,8 @@ namespace
 			condition.m_boolValue = true;
 			transition.m_conditions.Add(condition);
 			m_asset.GetTransitions() = { transition };
-			Require(m_controller->Initialize(m_asset), "fixture controller must initialize");
+			TVector<std::string> errors;
+			Require(m_controller->Initialize(m_asset, errors), "fixture controller must initialize");
 			SetClips(idle, moving);
 			m_animator->SetController(m_controller);
 			m_animator->SetAnimationSet(m_set);
@@ -191,7 +192,8 @@ namespace
 		{
 			AnimationSetAsset asset;
 			asset.GetEntries() = { { "Idle", idle->GetFileId() }, { "Moving", moving->GetFileId() } };
-			Require(m_set->Initialize(asset), "fixture animation set must initialize");
+			TVector<std::string> errors;
+			Require(m_set->Initialize(asset, errors), "fixture animation set must initialize");
 		}
 
 		RHI::RHISceneViewPtr Tick(float delta = 0.0f)
@@ -275,7 +277,8 @@ namespace
 		transition.m_bHasExitTime = true;
 		transition.m_exitTime = 0.5f;
 		transition.m_conditions.Clear();
-		Require(fixture.m_controller->Initialize(fixture.m_asset), "reordered controller must initialize");
+		TVector<std::string> errors;
+		Require(fixture.m_controller->Initialize(fixture.m_asset, errors), "reordered controller must initialize");
 		const auto reloaded = fixture.Tick();
 		Require(Position(reloaded) == 2 && fixture.m_animator->GetData().GetControllerInstance().GetActiveStateIndex() == 1,
 			"hot reload must test exit time against the remapped ten-second clip, not the old index's one-second clip");
@@ -410,7 +413,8 @@ namespace
 			"a failed request must not be retried and republished every tick");
 		AnimationSetAsset missing;
 		missing.GetEntries() = { { "Idle", idle->GetFileId() } };
-		Require(fixture.m_set->Initialize(missing), "the fixture may intentionally leave a controller slot unmapped");
+		TVector<std::string> errors;
+		Require(fixture.m_set->Initialize(missing, errors), "the fixture may intentionally leave a controller slot unmapped");
 		fixture.Tick();
 		Require(fixture.m_animator->SetBool("Move"_h, true), "the transition parameter must remain available");
 		const auto rest = fixture.Tick();

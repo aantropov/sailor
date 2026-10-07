@@ -849,11 +849,11 @@ namespace
 			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
 		auto controller = AnimationControllerPtr::Make(allocator, FileId{});
 		TVector<std::string> errors;
-		Require(!controller->Initialize(invalidParameterAsset, &errors) && !errors.IsEmpty(),
+		Require(!controller->Initialize(invalidParameterAsset, errors) && !errors.IsEmpty(),
 			"unknown animation parameter types must fail graph validation");
-		Require(!controller->Initialize(invalidOperationAsset, &errors) && !errors.IsEmpty(),
+		Require(!controller->Initialize(invalidOperationAsset, errors) && !errors.IsEmpty(),
 			"unknown animation condition operations must fail graph validation");
-		Require(controller->Initialize(roundTrip, &errors) && errors.IsEmpty(),
+		Require(controller->Initialize(roundTrip, errors) && errors.IsEmpty(),
 			"a valid controller graph must compile without diagnostics");
 		Require(controller->FindParameterIndex("Speed"_h) == controller->FindParameterIndex(1) &&
 			controller->FindParameterIndex(StringHash::Runtime(std::string("Speed"))) >= 0 &&
@@ -861,7 +861,7 @@ namespace
 			"dynamic and literal parameter names must resolve the same compiled parameter");
 
 		roundTrip.GetStates()[1].m_id = 100;
-		Require(!controller->Initialize(roundTrip, &errors) && !errors.IsEmpty(),
+		Require(!controller->Initialize(roundTrip, errors) && !errors.IsEmpty(),
 			"duplicate state ids must produce validation diagnostics");
 
 		AnimationSetAsset setSource;
@@ -874,14 +874,14 @@ namespace
 				setSource.GetEntries()[0].m_animation,
 			"animation set YAML must retain logical slots and clip FileIds");
 		auto animationSet = AnimationSetPtr::Make(allocator, FileId{});
-		Require(animationSet->Initialize(setRoundTrip, &errors),
+		Require(animationSet->Initialize(setRoundTrip, errors),
 			"a valid animation set must compile without diagnostics");
 		Require(animationSet->FindAnimation("Idle"_h) &&
 			*animationSet->FindAnimation("Idle"_h) == setSource.GetEntries()[0].m_animation &&
 			!animationSet->FindAnimation("Missing"_h),
 			"compiled animation slot lookup must agree with the authored text and clip identity");
 		setRoundTrip.GetEntries().Add(setRoundTrip.GetEntries()[0]);
-		Require(!animationSet->Initialize(setRoundTrip, &errors) && !errors.IsEmpty(),
+		Require(!animationSet->Initialize(setRoundTrip, errors) && !errors.IsEmpty(),
 			"duplicate animation set slots must produce validation diagnostics");
 		Require(animationSet->FindAnimation("Idle"_h) &&
 			*animationSet->FindAnimation("Idle"_h) == setSource.GetEntries()[0].m_animation,
@@ -892,11 +892,12 @@ namespace
 
 	void TestAnimationControllerTransitionsAndIndependentInstances()
 	{
+		TVector<std::string> errors;
 		auto allocator = Memory::ObjectAllocatorPtr::Make(
 			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
 		auto controller = AnimationControllerPtr::Make(allocator, FileId{});
 		AnimationControllerAsset asset = MakeControllerAsset();
-		Require(controller->Initialize(asset),
+		Require(controller->Initialize(asset, errors),
 			"controller fixture must compile");
 
 		AnimationControllerInstance first;
@@ -955,7 +956,7 @@ namespace
 			}
 		};
 		asset.GetTransitions().Add(std::move(authoredLater));
-		Require(controller->Initialize(asset),
+		Require(controller->Initialize(asset, errors),
 			"equal-priority transition fixture must compile");
 		AnimationControllerInstance authoredOrder;
 		Require(authoredOrder.SetController(controller) &&
@@ -974,12 +975,13 @@ namespace
 
 	void TestAnimationControllerHotReloadPreservesStableState()
 	{
+		TVector<std::string> errors;
 		auto allocator = Memory::ObjectAllocatorPtr::Make(
 			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
 		auto controller = AnimationControllerPtr::Make(allocator, FileId{});
 		AnimationControllerAsset asset = MakeControllerAsset();
 		asset.GetTransitions()[0].m_duration = 0.0f;
-		Require(controller->Initialize(asset),
+		Require(controller->Initialize(asset, errors),
 			"controller fixture must compile before hot reload");
 
 		AnimationControllerInstance instance;
@@ -995,7 +997,7 @@ namespace
 		std::swap(asset.GetStates()[0], asset.GetStates()[1]);
 		std::swap(asset.GetParameters()[0], asset.GetParameters()[3]);
 		const uint64_t previousRevision = controller->GetRevision();
-		Require(controller->Initialize(asset) &&
+		Require(controller->Initialize(asset, errors) &&
 			controller->GetRevision() == previousRevision + 1,
 			"a valid hot reload must publish one new controller revision");
 		instance.Tick(0.0f, 1.0f);
@@ -1029,7 +1031,7 @@ namespace
 			}
 		};
 		asset.GetTransitions().Add(std::move(resetChangedType));
-		Require(controller->Initialize(asset),
+		Require(controller->Initialize(asset, errors),
 			"a compatible graph with a changed parameter type must hot reload");
 		instance.Tick(0.0f, 1.0f);
 		Require(controller->GetStates()[instance.GetActiveStateIndex()].m_id == 100 &&
@@ -1038,8 +1040,7 @@ namespace
 
 		const uint64_t lastValidRevision = controller->GetRevision();
 		asset.GetStates()[1].m_id = asset.GetStates()[0].m_id;
-		TVector<std::string> errors;
-		Require(!controller->Initialize(asset, &errors) &&
+		Require(!controller->Initialize(asset, errors) &&
 			controller->GetRevision() == lastValidRevision &&
 			controller->GetStates()[instance.GetActiveStateIndex()].m_id == 100,
 			"an invalid hot reload must retain the last valid immutable runtime graph");
@@ -1057,7 +1058,7 @@ namespace
 			.m_name = "Fallback",
 			.m_clipSlot = "Fallback"
 		});
-		Require(controller->Initialize(fallbackAsset),
+		Require(controller->Initialize(fallbackAsset, errors),
 			"a hot reload may remove the previously active state");
 		instance.Tick(0.0f, 1.0f);
 		Require(controller->GetStates()[instance.GetActiveStateIndex()].m_id == 300 &&
