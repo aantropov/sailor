@@ -296,7 +296,7 @@ void LightingECS::EndPlay()
 
 void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 	const Math::Transform& cameraTransform,
-	std::optional<RHI::RHILightProxy>& outDirectionalLight,
+	TVector<RHI::RHILightProxy>& outDirectionalLights,
 	TVector<RHI::RHILightProxy>& outSortedPointLights,
 	TVector<RHI::RHILightProxy>& outSortedSpotLights)
 {
@@ -359,7 +359,7 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 			}
 			else
 			{
-				outDirectionalLight = lightProxy;
+				outDirectionalLights.Add(lightProxy);
 			}
 		}
 	}

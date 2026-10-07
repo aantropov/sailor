@@ -85,23 +85,23 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 			camera.GetZFar());
 
 		// Sort all the lights per camera
-		std::optional<RHI::RHILightProxy> directionalLight;
+		m_shadows.m_directionalLightsScratch.Clear(false);
 		m_shadows.m_pointLightsScratch.Clear(false);
 		m_shadows.m_spotLightsScratch.Clear(false);
 
 		GetLightsInFrustum(frustum,
 			sceneView->m_cameraTransforms[i],
-			directionalLight,
+			m_shadows.m_directionalLightsScratch,
 			m_shadows.m_pointLightsScratch,
 			m_shadows.m_spotLightsScratch);
 
 		const uint32_t cameraCsmSnapshotStart = snapshotIndex;
-		if (directionalLight)
+		if (!m_shadows.m_directionalLightsScratch.IsEmpty())
 		{
 			PrepareCSMPasses(sceneView,
 				sceneView->m_cameraTransforms[i],
 				camera,
-				*directionalLight,
+				m_shadows.m_directionalLightsScratch[0],
 				flightSlot,
 				flightResources,
 				snapshotIndex,

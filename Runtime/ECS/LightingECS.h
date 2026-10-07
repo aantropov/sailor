@@ -13,7 +13,6 @@
 
 #include <bitset>
 #include <limits>
-#include <optional>
 
 namespace Sailor
 {
@@ -260,7 +259,7 @@ namespace Sailor
 
 		SAILOR_API void GetLightsInFrustum(const Math::Frustum& frustum,
 			const Math::Transform& cameraTransform,
-			std::optional<RHI::RHILightProxy>& outDirectionalLight,
+			TVector<RHI::RHILightProxy>& outDirectionalLights,
 			TVector<RHI::RHILightProxy>& outSortedPointLights,
 			TVector<RHI::RHILightProxy>& outSortedSpotLights);
 
@@ -284,6 +283,7 @@ namespace Sailor
 			TVector<uint32_t> m_mapOwners;
 			TVector<LocalLightShadowAllocation> m_localAllocations;
 			TVector<LocalShadowAtlas> m_localAtlases;
+			TVector<RHI::RHILightProxy> m_directionalLightsScratch;
 			TVector<RHI::RHILightProxy> m_pointLightsScratch;
 			TVector<RHI::RHILightProxy> m_spotLightsScratch;
 			TVector<glm::mat4> m_cascadeProjectionScratch;
