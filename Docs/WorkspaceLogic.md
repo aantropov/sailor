@@ -127,29 +127,34 @@ The engine reference, paths, and module name are creation-time inputs copied int
 
 ## Workspace Module ABI
 
-Workspace modules export a V1 API-table entry point and retain the V1 metadata entry point:
+Workspace modules export one V1 API-table entry point:
 
 ```cpp
 const Sailor::Workspace::WorkspaceModuleApiV1*
 SailorGetWorkspaceModuleApiV1() noexcept;
-
-uint32_t SailorGetWorkspaceTypeMetadataV1(
-    char* destination,
-    uint64_t destinationCapacity,
-    uint64_t* outPayloadSize) noexcept;
 ```
 
-`SailorGetWorkspaceModuleApiV1` returns a module-owned static POD table. It contains its structure size and API version, module name, exact build ABI tag, the metadata callback, and the explicit type-registration callback. The table and its strings remain valid until the module is unloaded. The ABI tag is independently compiled into the engine and game module and includes the ABI revision, architecture, compiler version, C runtime, iterator-debug mode, and build configuration; the host must require an exact match before using callbacks.
+`SailorGetWorkspaceModuleApiV1` returns a module-owned static POD table. It contains its structure size and API version, module name, exact build ABI tag and the explicit type-registration callback. The table and its strings remain valid until the module is unloaded. The ABI tag is independently compiled into the engine and game module and includes the ABI revision, architecture, compiler version, C runtime, iterator-debug mode, build configuration, and engine interface identity; the host requires an exact match before dereferencing module TypeInfo or calling registration.
 
-Registration passes a POD host table with an opaque context and collection callback. Each collected POD descriptor supplies bounded type and base names, an opaque `TypeInfo` pointer, size, alignment, an immutable canonical YAML snapshot of its default values, reflection-integrity flags, and a `noexcept` placement factory. The generated callback only collects descriptors from `WorkspaceTypes`; it does not mutate engine registries. Workspace types must be default-constructible `Sailor::Component` subclasses, and `Component` must be their zero-offset object base; the generated factory rejects unsupported multiple-inheritance layouts before returning an object. All callbacks use the C calling convention, and no STL object, exception, allocation ownership, or caller-freed string crosses the module boundary.
+CMake generates `Workspace/WorkspaceInterface.h` from the project-owned runtime headers, YAML dependency boundary, public target settings, and C++ build flags. A build dependency checks header contents on every build and rewrites the generated header only when the identity changes; header edits, additions and removals do not require a manual reconfigure. The generated header is available through `Sailor::Runtime` and is installed with the SDK. Input filenames are relative to the source root; relocating identical sources and settings preserves their identity. Private `.cpp` changes alone do not invalidate it. Header changes conservatively require a logic rebuild even when they happen to preserve ABI. This is an interface identity, not an ABI analyzer: consumers must use the SDK's dependency versions and compile settings rather than overriding packing or other ABI options. API and metadata schema versions remain 1.
 
-For metadata, the caller first passes a null destination and zero capacity to query the required UTF-8 YAML byte count. The function returns `BufferTooSmall`, writes the exact non-null-terminated size, and never transfers allocation ownership across the DLL boundary. A second call with an adequate caller-owned buffer returns `Success`. Invalid pointers/capacities and serialization failures use explicit result codes from `WorkspaceModuleApi.h`; exceptions never cross the ABI.
+Engine and workspace property schemas use the same `TypeInfo::Serialize` implementation, including inherited getter-only properties. `Transient` getters are omitted; `SkipCDO` getters remain part of the schema but not the default-object snapshot. The same reflection traversal exports referenced enums and nested value types, including list elements. Value types have editor schemas and default snapshots, but do not become registered component factories.
+
+Template-local TypeInfo and default snapshots belong to their library. Each DLL initializes and destroys its own copy; sharing an engine value record means deduplicating its schema, not sharing a static object that another DLL can destroy during unload.
+
+Registration passes a POD host table with an opaque context and collection callback. Each collected POD descriptor supplies an opaque `TypeInfo` pointer, size, alignment and a `noexcept` placement factory. Type and base names come from `TypeInfo`, not separate descriptor strings. The generated callback only collects descriptors from `WorkspaceTypes`; it does not mutate engine registries. Workspace types must be default-constructible `Sailor::Component` subclasses, and `Component` must be their zero-offset object base; the generated factory rejects unsupported multiple-inheritance layouts before returning an object. Registration callbacks use the C calling convention. The ABI-checked TypeInfo remains module-owned; it supplies the schema and lazily captures one typed default object through common reflection. Neither the host nor the editor constructs a second default object to validate a copy.
+
+The host builds the editor catalog from the collected TypeInfo objects and their captured defaults. There is no separate module metadata export or independently serialized descriptor-default payload.
 
 The YAML document uses `metadataVersion: 1`, identifies `moduleName`, and preserves the existing consumer keys `timeStamp`, `engineTypes`, `cdos`, `enums`, and `assetTypes`. The generated sample exports `moveSpeed: float` with a default value of `5.0`.
 
-Game modules compile with `SAILOR_WORKSPACE_MODULE`, which enables `SAILOR_WORKSPACE_REFLECTABLE`; every reflected game type must use that macro so it does not install a static registration helper. Engine types continue using `SAILOR_REFLECTABLE` unchanged, and `Reflection::ExportEngineTypes()` remains engine-only. The runtime lifecycle loads the DLL, validates the API and ABI before calling registration, preflights the complete collected set, and commits only accepted workspace types. Preflight requires exact unique type and CDO sets, matches the writable property schema, rejects ambiguous or shadowed reflected names, and compares every CDO to the descriptor's independently transported canonical snapshot. The snapshot and metadata share one cached default-object value, so nondeterministic constructors cannot create two different preflight views. Comparison is structural: scalar values and tags are exact, sequences preserve length and order, and maps require an exact duplicate-free key set independent of entry order. No YAML decoder is invoked during this comparison, so null object references and custom structured values remain safe. Getter-only properties participate in CDO validation, while `Transient` and `SkipCDO` properties do not.
+Game modules compile with `SAILOR_WORKSPACE_MODULE`, which enables `SAILOR_WORKSPACE_REFLECTABLE`; every reflected game type must use that macro so it does not install a static registration helper. Engine types continue using `SAILOR_REFLECTABLE` unchanged, and `Reflection::ExportEngineTypes()` remains engine-only. The runtime lifecycle loads the DLL, validates the API and ABI before calling registration, preflights the complete collected set, and commits only accepted workspace types. Preflight checks unique component identities, size/alignment, the reflected Component hierarchy, ambiguous or shadowed names and enum defaults, including nested records and lists. Registration publishes the complete accepted set atomically. Typed reflection supplies property names, types and values; the loader does not parse and compare a second schema or decode defaults into another object.
 
 Workspace placement factories run without the reflection registry mutex held, so constructors may perform reflection lookup. Each module owner has an invocation barrier: unregister first hides all of its types from new construction, waits for active factories to return, and only then permits the library to close. This barrier does not extend the lifetime of returned objects; worlds and every other workspace object must still be destroyed before module unload.
+
+The loader retains the prepared workspace catalog until unload. Editor requests merge that prepared catalog with the caller's current engine metadata; they do not parse the module payload or validate its property schemas again. Returned nodes and registry defaults own independent YAML data, so editing a returned catalog cannot change later requests. A failed merge leaves its output and the retained workspace catalog unchanged. Shared engine-owned value records and enums appear once; their schemas and defaults must agree. Component identities cannot be shared between owners.
+
+The editor type cache includes a hash of the loaded module's schema and defaults in its producer identity. The loader computes it once from the prepared metadata, excluding the export timestamp. Restarting with changed reflected types invalidates the previous catalog; restarting the same module preserves its identity. This does not change other asset-cache identities. The editor still requests and publishes the live catalog before publishing the world.
 
 ## Runtime Discovery And Lifecycle
 
@@ -239,6 +244,165 @@ For manifest version 1, the runtime resolves the module as `<resolved-logic-outp
 The dynamic library is opened before asset importers scan the resolved Workspace Content and Engine Content mounts. Asset, shader, precompiled-shader, and editor-type caches use the resolved Cache directory, including custom paths with spaces. The generated shader constants library is updated only in Engine mode; workspace startup mounts the existing Engine copy read-only. Static engine registration callbacks triggered by the platform loader are suppressed for that load operation; only the explicit V1 descriptor callback can add workspace types. The host validates the complete descriptor and metadata set before committing it under a module owner. Missing libraries, loader dependencies, entry points, incompatible API/ABI, metadata errors, and registration collisions return structured non-crashing diagnostics.
 
 Standalone startup treats a configured module or requested-world activation failure as fatal and returns a nonzero exit code. Editor startup reports the same error but remains available with an empty world so the project can be repaired. During shutdown, worlds, importers, the asset registry, scheduler, and remaining submodules are destroyed before workspace registrations are removed and the library is closed. Runtime hot reload and live workspace switching are not supported by this contract.
+
+## World And ECS Updates
+
+EngineLoop has one active world, returned by `GetWorld()`. The first attached
+world is active; additional worlds are dormant scene candidates, not parallel
+simulations. A successful editor replacement attaches its candidate before
+queuing the old world for exit. Processing exits drains rendering, clears the
+retired world and promotes the next attached world. Failed construction leaves
+the active world unchanged. `GetWorlds()` lists owned worlds, including dormant
+candidates; an empty loop returns no active world. Dependency resolution may
+visit every owned world, but only the active world receives a CPU frame.
+
+The FrameState passed to `ProcessCpuFrame` must name that active world. Its
+resource-update slot 0 belongs to this world and slot 1 to ImGui. Frame copies
+own independent input/timing storage while retaining command lists and the
+prepared ImGui task through Sailor smart pointers. Moving a frame transfers its
+storage without allocating. World retirement drains render work before clearing
+the world borrowed by a frame; a frame does not extend the world's lifetime.
+
+ECS `Tick(float)` and `PostTick()` are synchronous `void` methods. A system's
+frame-visible CPU results are complete when it returns. Local jobs such as Jolt
+stepping or mesh preparation may run in parallel, but their owner joins them
+before publishing their results. Background asset/GI preparation can remain
+pending for a later frame; queued audio/backend commands own their input values.
+Neither is represented by a task returned from ECS Tick.
+
+World updates use this order after gameplay or editor callbacks:
+
+1. Resolve authored transforms.
+2. Synchronize and step physics when simulation is enabled.
+3. Resolve transforms written by physics.
+4. Tick the remaining systems, then call PostTick.
+
+`GetOrder()` orders the remaining publication systems, such as cameras, lights,
+audio and mesh rendering. It does not move a system across the transform/physics
+boundary. A completed transform update consumes its dirty queue; a subsequent
+phase with no new edits does no transform work. `GetECS<T>()` is a lookup and
+does not register a missing system.
+
+Editor preview still resolves authored transforms and publishes render data,
+without starting gameplay or accumulating disabled physics time. Rebuild C++
+workspace modules against the current engine headers after an ECS interface
+change; old module binaries are not compatible with a changed virtual interface.
+
+### Directional Shadows
+
+Realtime rendering has one cascaded-shadow owner per world and a separate CSM
+set for each camera. The lowest registered light slot that is active, contributes
+to realtime lighting and requests directional shadows owns that set. Other
+directional lights still illuminate the scene, but their published shadow mode
+is None. Their authored settings are unchanged. Disabling or removing the owner,
+or changing it to Baked Only, transfers the cascades to the next eligible light.
+This selection does not restrict the CPU path tracer's light/shadow support.
+
+CSM matrices and textures always use the same selected light. Per-flight shadow
+resources remain owned by LightingECS's plain shadow state, separate from light
+storage and the configured memory budget. Retained scene publications keep
+their original light data, matrices and bindings when a later flight changes
+the selected owner.
+
+## Native Viewport Hosts
+
+The macOS UI transfers its CAMetalLayer through a synchronous local native
+call, before the handler may remove and dispose the layer. Connect and
+disconnect publish host changes immediately, even before a usable layout
+exists. Native object addresses are not queued through the editor's asynchronous
+protocol lane for this handoff.
+
+MacNativeHostHandle owns one Objective-C reference; copied pending and
+presentation handles retain their own reference. The viewport's serialized
+update/presentation code applies the latest host. The UI handoff does not
+create Metal resources or wait for the presentation lock. A later frame applies
+detach even without another layout update. Replacing or destroying a pending
+host releases it, while a binding already in use keeps its original layer alive.
+
+The local handoff participates in the existing protocol lifecycle gate.
+Shutdown closes admission and drains accepted operations before releasing App
+state, including pending hosts that never reached their first bind. C++ and
+managed clients must be rebuilt together for the local native export; the
+serialized protocol version remains 1.
+
+## Input Ownership
+
+The CPU-frame owner is the only writer of gameplay input and the engine ImGui
+context. Native window callbacks enqueue owned `Platform::InputEvent` values;
+`GlobalInput::ProcessPendingEvents` swaps the pending batch before applying it.
+The short queue lock does not cover ImGui, gameplay callbacks or rendering. Text
+owns its UTF-8 bytes across this handoff. Frame input remains a value snapshot.
+
+Standalone startup pumps native messages on the window's creating thread, then
+consumes the queued input before building a frame. Embedded editor mode uses
+the host's UI pump and discards events from the hidden native rendering window.
+Remote viewport events are consumed on engine Main through the same input
+handler. Session input admission remains separate from the GPU transport lock.
+
+Remote gameplay input has one active session, not a separate keyboard/mouse
+state for every viewport. A current packet can establish an idle input source;
+after that, focus gain, capture gain or a mouse press transfers ownership.
+Unfocused hover and another viewport's focus/capture loss do not take over or
+reset the active source. Losing the active source releases its keys and buttons.
+
+Queued input carries a weak reference to its originating binding as well as its
+epoch/generation. Reusing a viewport ID cannot make an old packet current. Stale
+packets are discarded without clearing accepted input. Resets share the input
+queue and affect only their owning binding; resize queues its reset before
+advancing the generation. Stamping and enqueueing are ordered together. The
+frame owner also checks its last accepted session when the queue is empty, so
+destroying or invalidating a session cannot leave held input behind. Mouse and
+modifier reconciliation uses the actual gameplay state, not duplicate caches.
+
+Pointer-button events include their client coordinates, and wheel values use
+scroll steps for both gameplay and ImGui. Native focus loss releases keys,
+buttons and press origins without resetting absolute cursor/wheel origins into
+fake next-frame deltas. Platform cursor capture remains owned by the native
+window thread. Direct `GlobalInput` setters and `ApplyEvent` are frame-owner
+operations, not APIs for UI producers.
+
+Cursor shape travels in the opposite direction as one atomic snapshot of the
+last prepared ImGui frame. Windows applies it on `WM_SETCURSOR` without reading
+the ImGui context on its UI thread. A hidden cursor differs from no override;
+`NoMouseCursorChange` and ImGui shutdown return ownership to the native host.
+
+This is an internal runtime event contract, not a new editor protocol version.
+The remote protocol still has its own supported event kinds; normalized native
+text delivery does not imply that remote text/IME producers are implemented.
+
+## ImGui Context Lifetime
+
+`ImGuiApi` owns the context created for its App session. Shutdown drains CPU/RHI
+tasks and GPU work before releasing prepared frames, texture bindings, platform
+and renderer backends, and finally the context on the CPU owner. A failed GPU
+drain retains the session for retry; it must not destroy the context early.
+
+Workspace code borrows `ImGuiApi::GetCurrentContext()` only for the active
+session. Modules that statically link ImGui must bind that context and the
+allocator functions returned by `ImGuiApi::GetAllocatorFunctions()` before UI
+work. Neither a context pointer nor a prepared frame may be retained across App
+shutdown. Rebind on the next session; a pointer from the previous run is invalid.
+The engine clears its ImGuizmo context binding during teardown. Module-private
+ImGui globals remain the module's responsibility, not engine-owned contexts.
+
+### Draw Callbacks
+
+`ImDrawList::AddCallback` runs later on an RHI worker while recording the prepared
+frame, not during the component's UI update. A callback must not read or modify
+the live ImGui context or other mutable CPU-frame state. The built-in
+`ImDrawCallback_ResetRenderState` remains supported.
+
+Pass a nonzero data size for a frame-owned copy of a plain payload. The snapshot
+copies bytes, not C++ object ownership: do not put owning smart pointers in that
+payload. Any pointed-to resources still need an external owner until the RHI
+reader finishes. With size zero, the payload itself is borrowed too; the caller
+must keep its storage alive and unchanged through that reader. Stack data from
+the UI update is not a valid borrowed payload.
+
+App shutdown drains those readers before destroying world components or
+unloading the workspace module that implements a callback. This shutdown order
+does not extend arbitrary object lifetimes during gameplay. Component removal,
+resource replacement and module unloading must respect any outstanding readers.
 
 ## Editor Type Metadata
 

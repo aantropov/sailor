@@ -8,6 +8,16 @@ The editor application is written in C# using .NET MAUI. Its source code lives i
 
 For C++ code use tabs. For C# code use spaces.
 
+For C++ string identifiers, use Sailor `StringHash` and the `_h` literal for
+constant names (for example, `"Upload mesh"_h`). Use `std::string_view` for
+read-only text parameters and keep `std::string` where text must be owned or
+modified. Do not retain views of temporary strings in objects or queued tasks.
+Check the complete call chain; do not replace a parameter with a view only to
+recreate the same temporary string in the next reader. Paths, serialized text
+and C API format strings remain text, not interned identifiers.
+See [C++ strings](Docs/CppStrings.md) for identifiers, lifetime rules and API
+boundaries. Apply this consistently to runtime code and its tests.
+
 Use branch names only in English.
 
 Until the project has its first public release, keep every project-owned asset
