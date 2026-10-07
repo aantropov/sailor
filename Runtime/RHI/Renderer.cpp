@@ -28,6 +28,7 @@
 #include "FrameGraph/EditorReadbackNode.h"
 #include "FrameGraph/CPUPathTracerNode.h"
 #include "FrameGraph/SkyNode.h"
+#include "Platform/Window.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -103,7 +104,7 @@ bool IDelayedInitialization::HasInitializationFailed() const
 	return bFailed;
 }
 
-Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
+Renderer::Renderer(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
 	m_pViewport = pViewport;
 	m_msaaSamples = msaaSamples;

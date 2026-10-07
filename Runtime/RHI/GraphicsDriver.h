@@ -51,7 +51,7 @@ namespace Sailor
 	using ShaderSetPtr = TObjectPtr<class ShaderSet>;
 }
 
-namespace Sailor::Win32
+namespace Sailor::Platform
 {
 	class Window;
 }
@@ -64,7 +64,7 @@ namespace Sailor::RHI
 		static constexpr uint32_t InvalidGpuFrameTimeRange =
 			(std::numeric_limits<uint32_t>::max)();
 
-		SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
+		SAILOR_API virtual void Initialize(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
 		SAILOR_API virtual ~IGraphicsDriver() = default;
 
 		SAILOR_API virtual bool BeginConditionalDestroy() = 0;
@@ -86,8 +86,8 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const = 0;
 
-		SAILOR_API virtual bool ShouldFixLostDevice(const Win32::Window* pViewport) = 0;
-		SAILOR_API virtual bool FixLostDevice(Win32::Window* pViewport) = 0;
+		SAILOR_API virtual bool ShouldFixLostDevice(const Platform::Window* pViewport) = 0;
+		SAILOR_API virtual bool FixLostDevice(Platform::Window* pViewport) = 0;
 
 		// Waits only the flight slot that is about to be reused. This must happen
 		// before FrameGraph preparation mutates any submission-owned resources.

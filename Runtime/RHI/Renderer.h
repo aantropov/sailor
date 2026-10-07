@@ -39,7 +39,7 @@ namespace Sailor::RHI
 
 		static constexpr uint32_t MaxFramesInQueue = 2;
 
-			SAILOR_API Renderer(class Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+			SAILOR_API Renderer(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 			SAILOR_API ~Renderer() override;
 			SAILOR_API bool IsInitialized() const { return m_bIsInitialized; }
 
@@ -111,7 +111,7 @@ namespace Sailor::RHI
 		uint64_t m_profiledFrameGraphGeneration = 0u;
 		bool m_bGpuQueriesEnabled = false;
 
-		class Win32::Window* m_pViewport;
+		Platform::Window* m_pViewport;
 
 		FrameGraphPtr m_frameGraph{};
 		TRefPtr<Framegraph::SkyNode> m_skyNode;

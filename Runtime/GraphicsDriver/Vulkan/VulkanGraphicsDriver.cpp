@@ -14,7 +14,7 @@
 #include "RHI/Types.h"
 #include "Memory.h"
 #include "Memory/MemoryBlockAllocator.hpp"
-#include "Platform/Win32/Window.h"
+#include "Platform/Window.h"
 #include "VulkanApi.h"
 #include "VulkanImageView.h"
 #include "VulkanImage.h"
@@ -36,7 +36,7 @@
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
+void VulkanGraphicsDriver::Initialize(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
 	m_bIsInitialized = false;
 	GraphicsDriver::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
@@ -708,7 +708,7 @@ uint32_t VulkanGraphicsDriver::GetNumSubmittedCommandBuffers() const
 	return m_vkInstance->GetMainDevice()->GetNumSubmittedCommandBufers();
 }
 
-bool VulkanGraphicsDriver::ShouldFixLostDevice(const Win32::Window* pViewport)
+bool VulkanGraphicsDriver::ShouldFixLostDevice(const Platform::Window* pViewport)
 {
 	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
 	{
@@ -718,7 +718,7 @@ bool VulkanGraphicsDriver::ShouldFixLostDevice(const Win32::Window* pViewport)
 	return m_vkInstance->GetMainDevice()->ShouldFixLostDevice(pViewport);
 }
 
-bool VulkanGraphicsDriver::FixLostDevice(Win32::Window* pViewport)
+bool VulkanGraphicsDriver::FixLostDevice(Platform::Window* pViewport)
 {
 	SAILOR_PROFILE_FUNCTION();
 	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
