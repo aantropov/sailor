@@ -57,7 +57,7 @@ namespace Sailor::Math
 		// Extracts TRS; shear cannot be represented by Transform.
 		SAILOR_API static Transform FromMatrix(const glm::mat4& m);
 
-		static const Transform Identity;
+		SAILOR_SHARED_API static const Transform Identity;
 
 	private:
 		glm::quat m_rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);

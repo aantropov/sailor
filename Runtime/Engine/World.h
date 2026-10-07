@@ -136,7 +136,7 @@ namespace Sailor
 		size_t GetNumPendingDependencyResolutions() const { return m_pendingDependencies.Num(); }
 		void QueuePendingDependencyResolution(ComponentPtr component, const ReflectedData& reflection);
 		void RemovePendingDependencyResolutions(ComponentPtr component);
-		void ApplyComponentReflection(ComponentPtr component, const ReflectedData& reflection, bool bImmediate);
+		SAILOR_API void ApplyComponentReflection(ComponentPtr component, const ReflectedData& reflection, bool bImmediate);
 
 		SAILOR_API GameObjectPtr NewGameObject(std::string_view name, const InstanceId& instanceId);
 		void DestroyGameObjectHierarchy(GameObjectPtr root);

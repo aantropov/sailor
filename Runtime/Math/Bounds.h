@@ -288,7 +288,7 @@ namespace Sailor::Math
 	}
 
 	// Return value is distance to AABB
-	float IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength = FLT_MAX);
+	SAILOR_API float IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength = FLT_MAX);
 }
 
 namespace std

@@ -76,7 +76,7 @@ namespace Sailor
 
 		SAILOR_API bool SaveToFile(const std::string& path) const;
 
-		static PrefabPtr FromGameObject(
+		SAILOR_API static PrefabPtr FromGameObject(
 			GameObjectPtr go,
 			const FileId& sourcePrefabId = FileId::Invalid,
 			const TSet<InstanceId>* excludedRoots = nullptr);

@@ -76,7 +76,7 @@ namespace Sailor
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API virtual void Tick(float deltaTime) override;
-		void CopySceneView(RHI::RHISceneViewPtr& outProxies);
+		SAILOR_API void CopySceneView(RHI::RHISceneViewPtr& outProxies);
 		void MarkDirty(GameObjectPtr owner);
 		const RHI::RHIScenePtr& GetRHIScene() const { return m_rhiScene; }
 		SAILOR_API uint64_t GetGlobalIlluminationContributorRevision()
