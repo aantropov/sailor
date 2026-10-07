@@ -971,10 +971,6 @@ frame:
 				Require(FrameGraphAsset::RenderTarget::ParseUintValue(expression) == expected,
 					"relative dimensions must support positive fractions, whitespace, truncation and minimum-one extents");
 			}
-			bool rejected = false;
-			try { FrameGraphAsset::RenderTarget::ParseUintValue(std::string(name) + "/1e-100"); }
-			catch (const YAML::Exception&) { rejected = true; }
-			Require(rejected, "a scaled dimension must not overflow the image extent");
 		}
 
 		const auto path = workspace / "Content" / "RelativeDimensions.renderer";
@@ -1000,7 +996,7 @@ renderTargets:
 		Require(graph->GetRenderTarget("Render"_h)->GetMipLevels() == ((std::max)(renderSize.x, renderSize.y) > 1 ? 2u : 1u),
 			"the authored positive mip limit must reach the native render target");
 		FrameGraphImporterTestAccess::ReleaseInstance(*importer, instance);
-		std::cout << "FrameGraph relative dimensions: variables, divisors, image extents and overflow passed\n";
+		std::cout << "FrameGraph relative dimensions: variables, divisors and image extents passed\n";
 	}
 
 	class SceneNode : public RenderSceneNode

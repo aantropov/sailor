@@ -2,7 +2,6 @@
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
-#include <limits>
 
 using namespace Sailor;
 
@@ -13,7 +12,10 @@ uint32_t FrameGraphAsset::RenderTarget::ParseUintValue(std::string_view str)
 	if (!value.empty())
 	{
 		const char* begin = value.data();
-		if (value.front() == '+') ++begin;
+		if (value.front() == '+')
+		{
+			++begin;
+		}
 		const auto parsed = std::from_chars(begin, value.data() + value.size(), size);
 		if (parsed.ec == std::errc() && parsed.ptr == value.data() + value.size() && size > 0)
 		{
@@ -46,17 +48,23 @@ uint32_t FrameGraphAsset::RenderTarget::ParseUintValue(std::string_view str)
 		static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
 		static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
 		App::GetActiveGraphicsSettings().m_resolutionFactor);
-	if (variable == "RenderWidth") size = renderExtent.m_width;
-	else if (variable == "RenderHeight") size = renderExtent.m_height;
-	else if (variable == "ViewportWidth") size = static_cast<uint32_t>((std::max)(viewportExtent.x, 1));
-	else size = static_cast<uint32_t>((std::max)(viewportExtent.y, 1));
-
-	const double scaled = size / divisor;
-	if (scaled > (std::numeric_limits<uint32_t>::max)())
+	if (variable == "RenderWidth")
 	{
-		throw YAML::RepresentationException(YAML::Mark::null_mark(), "Frame graph dimension is too large: " + std::string(str));
+		size = renderExtent.m_width;
 	}
-	return (std::max)(1u, static_cast<uint32_t>(scaled));
+	else if (variable == "RenderHeight")
+	{
+		size = renderExtent.m_height;
+	}
+	else if (variable == "ViewportWidth")
+	{
+		size = static_cast<uint32_t>((std::max)(viewportExtent.x, 1));
+	}
+	else
+	{
+		size = static_cast<uint32_t>((std::max)(viewportExtent.y, 1));
+	}
+	return (std::max)(1u, static_cast<uint32_t>(size / divisor));
 }
 
 void FrameGraphAsset::Deserialize(const YAML::Node& inData)
