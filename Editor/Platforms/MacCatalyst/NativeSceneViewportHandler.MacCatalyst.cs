@@ -288,7 +288,9 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         readonly SecondaryPointerDragGestureRecognizer secondaryPointerDragGesture;
         GCMouseInput? activeGameControllerInput;
         NativeSceneViewportInputModifier activeMouseModifiers = NativeSceneViewportInputModifier.None;
-        NativeSceneViewportInputModifier activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
+        NativeSceneViewportInputModifier leftKeyboardModifiers;
+        NativeSceneViewportInputModifier rightKeyboardModifiers;
+        NativeSceneViewportInputModifier ActiveKeyboardModifiers => leftKeyboardModifiers | rightKeyboardModifiers;
         NativeSceneViewportInputModifier activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
         bool hasPointerSample;
         bool hasActiveHover;
@@ -696,7 +698,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         void PublishPointer(NativeSceneViewportInputKind kind, CGPoint point, uint button, bool pressed, NativeSceneViewportInputModifier modifiers)
         {
             RecordPointerSample(point);
-            modifiers |= activeKeyboardModifiers;
+            modifiers |= ActiveKeyboardModifiers;
             var scale = ContentScaleFactor > 0 ? (double)ContentScaleFactor : UIScreen.MainScreen.Scale;
             var input = new NativeSceneViewportInputEvent(
                 kind,
@@ -1053,7 +1055,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 PointerY: (float)(lastPointerSample.Y * scale),
                 WheelDeltaX: deltaX,
                 WheelDeltaY: deltaY,
-                Modifiers: activeMouseModifiers | activeKeyboardModifiers,
+                Modifiers: activeMouseModifiers | ActiveKeyboardModifiers,
                 Focused: isInputFocused,
                 Captured: HasMouseCapture(activeMouseModifiers)));
         }
@@ -1142,7 +1144,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 NativeSceneViewportInputKind.Capture,
                 PointerX: (float)(point.X * scale),
                 PointerY: (float)(point.Y * scale),
-                Modifiers: activeKeyboardModifiers,
+                Modifiers: ActiveKeyboardModifiers,
                 Focused: isInputFocused,
                 Captured: false);
         }
@@ -1176,7 +1178,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 else
                 {
                     keyboardInput = null;
-                    activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
+                    ClearKeyboardModifiers();
                 }
 
                 if (input == null)
@@ -1208,7 +1210,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 else
                 {
                     keyboardInput = null;
-                    activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
+                    ClearKeyboardModifiers();
                 }
             }
         }
@@ -1221,7 +1223,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             }
 
             keyboardInput = null;
-            activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
+            ClearKeyboardModifiers();
         }
 
         void HandleKeyboardKeyChanged(GCKeyboardInput keyboard, GCControllerButtonInput key, nint keyCode, bool pressed)
@@ -1245,7 +1247,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 PointerX: (float)(point.X * scale),
                 PointerY: (float)(point.Y * scale),
                 KeyCode: mappedKey,
-                Modifiers: activeMouseModifiers | activeKeyboardModifiers,
+                Modifiers: activeMouseModifiers | ActiveKeyboardModifiers,
                 Pressed: pressed,
                 Focused: true,
                 Captured: HasMouseCapture(activeMouseModifiers)));
@@ -1271,7 +1273,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                     NativeSceneViewportInputKind.Key,
                     KeyCode: keyCode,
                     Modifiers: activeMouseModifiers |
-                        activeKeyboardModifiers |
+                        ActiveKeyboardModifiers |
                         MapModifiers(press.Key?.ModifierFlags ?? 0),
                     Pressed: pressed));
             }
@@ -1287,7 +1289,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             isInputFocused = focused;
             if (!focused)
             {
-                activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
+                ClearKeyboardModifiers();
             }
             Publish(new NativeSceneViewportInputEvent(NativeSceneViewportInputKind.Focus, Focused: focused));
         }
@@ -1362,14 +1364,20 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             _ => 0
         };
 
+        void ClearKeyboardModifiers()
+        {
+            leftKeyboardModifiers = NativeSceneViewportInputModifier.None;
+            rightKeyboardModifiers = NativeSceneViewportInputModifier.None;
+        }
+
         void UpdateKeyboardModifier(uint keyCode, bool pressed)
         {
             var modifier = keyCode switch
             {
-                0x10 => NativeSceneViewportInputModifier.Shift,
-                0x11 => NativeSceneViewportInputModifier.Control,
-                0x12 => NativeSceneViewportInputModifier.Alt,
-                0x5B => NativeSceneViewportInputModifier.Meta,
+                0xA0 or 0xA1 => NativeSceneViewportInputModifier.Shift,
+                0xA2 or 0xA3 => NativeSceneViewportInputModifier.Control,
+                0xA4 or 0xA5 => NativeSceneViewportInputModifier.Alt,
+                0x5B or 0x5C => NativeSceneViewportInputModifier.Meta,
                 _ => NativeSceneViewportInputModifier.None
             };
             if (modifier == NativeSceneViewportInputModifier.None)
@@ -1377,13 +1385,13 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 return;
             }
 
-            if (pressed)
+            if (keyCode is 0xA1 or 0xA3 or 0xA5 or 0x5C)
             {
-                activeKeyboardModifiers |= modifier;
+                rightKeyboardModifiers = pressed ? rightKeyboardModifiers | modifier : rightKeyboardModifiers & ~modifier;
             }
             else
             {
-                activeKeyboardModifiers &= ~modifier;
+                leftKeyboardModifiers = pressed ? leftKeyboardModifiers | modifier : leftKeyboardModifiers & ~modifier;
             }
         }
 
@@ -1406,17 +1414,21 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                     case 0x3F:
                         return 0x75;
                     case 0xE0:
+                        return 0xA2;
                     case 0xE4:
-                        return 0x11;
+                        return 0xA3;
                     case 0xE1:
+                        return 0xA0;
                     case 0xE5:
-                        return 0x10;
+                        return 0xA1;
                     case 0xE2:
+                        return 0xA4;
                     case 0xE6:
-                        return 0x12;
+                        return 0xA5;
                     case 0xE3:
-                    case 0xE7:
                         return 0x5B;
+                    case 0xE7:
+                        return 0x5C;
                 }
             }
             catch (InvalidCastException)
@@ -1468,10 +1480,14 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 var value when value == GCKeyCode.Tab => 0x09,
                 var value when value == GCKeyCode.ReturnOrEnter => 0x0D,
                 var value when value == GCKeyCode.Escape => 0x1B,
-                var value when value == GCKeyCode.LeftShift || value == GCKeyCode.RightShift => 0x10,
-                var value when value == GCKeyCode.LeftControl || value == GCKeyCode.RightControl => 0x11,
-                var value when value == GCKeyCode.LeftAlt || value == GCKeyCode.RightAlt => 0x12,
-                var value when value == GCKeyCode.LeftGui || value == GCKeyCode.RightGui => 0x5B,
+                var value when value == GCKeyCode.LeftShift => 0xA0,
+                var value when value == GCKeyCode.RightShift => 0xA1,
+                var value when value == GCKeyCode.LeftControl => 0xA2,
+                var value when value == GCKeyCode.RightControl => 0xA3,
+                var value when value == GCKeyCode.LeftAlt => 0xA4,
+                var value when value == GCKeyCode.RightAlt => 0xA5,
+                var value when value == GCKeyCode.LeftGui => 0x5B,
+                var value when value == GCKeyCode.RightGui => 0x5C,
                 var value when value == GCKeyCode.F5 => 0x74,
                 var value when value == GCKeyCode.F6 => 0x75,
                 _ => 0
