@@ -131,6 +131,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		}
 
 		static size_t Flight(const VulkanDevice& device) { return device.m_currentFrame; }
+		static bool ExchangeSwapchainOutdated(VulkanDevice& device, bool bOutdated)
+		{
+			return device.m_bIsSwapChainOutdated.exchange(bOutdated);
+		}
 		static VulkanQueuePtr PresentQueue(const VulkanDevice& device) { return device.m_presentQueue; }
 		static PFN_vkQueuePresentKHR ExchangePresent(VulkanQueue& queue, PFN_vkQueuePresentKHR present)
 		{
@@ -476,16 +480,24 @@ namespace
 		std::array<uint32_t, 64> expected;
 	};
 
-	RecordedFrame RecordFrame(uint32_t seed)
+	RecordedFrame RecordFrame(uint32_t seed, VkEvent gpuGate = VK_NULL_HANDLE)
 	{
 		RecordedFrame frame;
-		for (uint32_t i = 0; i < frame.expected.size(); ++i) frame.expected[i] = seed + 37u * i;
+		for (uint32_t i = 0; i < frame.expected.size(); ++i)
+		{
+			frame.expected[i] = seed + 37u * i;
+		}
 		frame.readback = Renderer::GetDriver()->CreateBuffer(sizeof(frame.expected), EBufferUsageBit::BufferTransferDst_Bit,
 			EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
 		std::fill_n(static_cast<uint32_t*>(frame.readback->GetPointer()), frame.expected.size(), 0xdeadbeefu);
 		frame.command = Renderer::GetDriver()->CreateCommandList(false, ECommandListQueue::Graphics);
 		auto commands = Renderer::GetDriverCommands();
 		commands->BeginCommandList(frame.command, true);
+		if (gpuGate != VK_NULL_HANDLE)
+		{
+			vkCmdWaitEvents(*frame.command->m_vulkan.m_commandBuffer, 1, &gpuGate,
+				VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, nullptr, 0, nullptr, 0, nullptr);
+		}
 		frame.command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 		commands->UpdateBuffer(frame.command, frame.readback, frame.expected.data(), sizeof(frame.expected));
 		frame.command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
@@ -1361,6 +1373,105 @@ namespace
 			});
 	}
 
+	thread_local VkFence pendingFlightFence = VK_NULL_HANDLE;
+	thread_local std::atomic<bool>* pendingFlightWaitStarted = nullptr;
+
+	VKAPI_ATTR VkResult VKAPI_CALL ObservePendingFlightWait(VkDevice device, uint32_t count, const VkFence* fences,
+		VkBool32 all, uint64_t timeout)
+	{
+		if (count == 1 && fences[0] == pendingFlightFence)
+		{
+			pendingFlightWaitStarted->store(true);
+		}
+		return vkWaitForFences(device, count, fences, all, timeout);
+	}
+
+	void TestPendingFlightReuse()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		driver->WaitIdle();
+		VkEvent gate = VK_NULL_HANDLE;
+		const VkEventCreateInfo eventInfo{ VK_STRUCTURE_TYPE_EVENT_CREATE_INFO };
+		Require(vkCreateEvent(*device, &eventInfo, nullptr, &gate) == VK_SUCCESS,
+			"pending flight test requires a host-signalled GPU event");
+		TVector<RecordedFrame> frames;
+		TVector<RHIFencePtr> completions;
+		const bool bWasOutdated = VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, true);
+		Tests::ScopeExit cleanup([&]()
+			{
+				vkSetEvent(*device, gate);
+				driver->WaitIdle();
+				VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, bWasOutdated);
+				vkDestroyEvent(*device, gate, nullptr);
+			});
+		const auto firstSlot = VulkanSubmissionTestAccess::Flight(*device);
+		for (uint32_t i = 0; i < driver->GetMaxFramesInFlight(); ++i)
+		{
+			frames.Add(RecordFrame(1200u + i, gate));
+		}
+		for (auto& frame : frames)
+		{
+			uint32_t slot = 0;
+			bool bHasImage = false;
+			Require(driver->BeginRenderSubmission(slot, bHasImage) && !bHasImage,
+				"pending flight fixture must acquire the no-present path");
+			auto completion = RHIFencePtr::Make();
+			Require(driver->SubmitFrameWithoutPresent({ frame.command }, {}, completion).m_bSubmitted,
+				"the gated GPU work must be submitted, not simulated");
+			completions.Add(completion);
+		}
+		Require(VulkanSubmissionTestAccess::Flight(*device) == firstSlot,
+			"the next acquisition must recycle the first submitted flight");
+		const auto fence = completions[0]->m_vulkan.m_fence;
+		Require(vkGetFenceStatus(*device, *fence) == VK_NOT_READY && !completions[0]->IsFinished(),
+			"the first flight must still contain pending native GPU work");
+		CheckReadback(frames[0], false);
+
+		std::atomic<bool> bWaitStarted{ false }, bAcquireReturned{ false };
+		bool bObservedPendingWait = false;
+		VkResult signalResult = VK_ERROR_UNKNOWN;
+		pendingFlightFence = *fence;
+		pendingFlightWaitStarted = &bWaitStarted;
+		PFN_vkGetFenceStatus status = vkGetFenceStatus;
+		PFN_vkWaitForFences wait = ObservePendingFlightWait;
+		VulkanSubmissionTestAccess::ExchangeFenceDispatch(*device, status, wait);
+		Tests::ScopeExit restoreDispatch([&]()
+			{
+				VulkanSubmissionTestAccess::ExchangeFenceDispatch(*device, status, wait);
+				pendingFlightFence = VK_NULL_HANDLE;
+				pendingFlightWaitStarted = nullptr;
+			});
+		std::jthread releaseGpu([&]()
+			{
+				const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+				while (!bWaitStarted.load() && std::chrono::steady_clock::now() < deadline)
+				{
+					std::this_thread::yield();
+				}
+				const VkFence nativeFence = *fence;
+				bObservedPendingWait = bWaitStarted.load() &&
+					vkWaitForFences(*device, 1, &nativeFence, VK_TRUE, 50000000ull) == VK_TIMEOUT &&
+					!bAcquireReturned.load();
+				signalResult = vkSetEvent(*device, gate);
+			});
+		uint32_t slot = 0;
+		bool bHasImage = false;
+		const bool bAcquired = driver->BeginRenderSubmission(slot, bHasImage);
+		bAcquireReturned.store(true);
+		releaseGpu.join();
+		Require(bObservedPendingWait && signalResult == VK_SUCCESS && bAcquired && !bHasImage && slot == firstSlot,
+			"flight acquisition must stay blocked until its real GPU work is released");
+		for (size_t i = 0; i < frames.Num(); ++i)
+		{
+			Require(completions[i]->Wait(5000000000ull) == EFenceStatus::Finished,
+				"every released flight must complete its original observer");
+			CheckReadback(frames[i], true);
+		}
+		std::cout << "Pending GPU flight: reuse waited for the host gate; " << frames.Num()
+			<< " native flights and all readback words completed\n";
+	}
+
 	void TestFrameCompletionReuse()
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
@@ -1397,6 +1508,7 @@ namespace
 				Require(completions[i - driver->GetMaxFramesInFlight()]->IsFinished(),
 					"resetting a reused native flight must not make an older observer pending again");
 		}
+		TestPendingFlightReuse();
 	}
 
 	void TestAcceptedUploadLoss(bool waitForLoss)
@@ -4671,7 +4783,7 @@ frame: []
 	public:
 		void ResetForSubmission() override { ++m_numResets; }
 		void InvalidateSubmission() override { ++m_numInvalidations; }
-		uint32_t m_numResets = 0, m_numInvalidations = 0;
+		std::atomic<uint32_t> m_numResets{ 0 }, m_numInvalidations{ 0 };
 	};
 
 	thread_local VkFence refusedRendererAcquire = VK_NULL_HANDLE;
@@ -4729,6 +4841,11 @@ frame: []
 			if (m_readback)
 			{
 				m_recordedCommand = command;
+				if (m_gpuGate != VK_NULL_HANDLE)
+				{
+					vkCmdWaitEvents(*command->m_vulkan.m_commandBuffer, 1, &m_gpuGate,
+						VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, nullptr, 0, nullptr, 0, nullptr);
+				}
 				command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 				Renderer::GetDriverCommands()->UpdateBuffer(command, m_readback, &m_payload, sizeof(m_payload));
 				command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
@@ -4744,6 +4861,7 @@ frame: []
 		TRefPtr<SubmissionObservedResources> m_resources;
 		TSharedPtr<const RHIMotionHistoryFrame> m_previousMotion;
 		RHIBufferPtr m_readback;
+		VkEvent m_gpuGate = VK_NULL_HANDLE;
 		RHICommandListPtr m_recordedCommand;
 		RHICommandListPtr m_transferCommand;
 		uint64_t m_generation = 0;
@@ -4803,6 +4921,119 @@ frame: []
 			!recycled->m_submissionContext,
 			"completion must clear and return the original view after its borrowers finish");
 		std::cout << "Renderer submission: held preparation, captured material revision, one record, native completion and scene-view return passed\n";
+	}
+
+	void TestRendererPendingFlightReuse()
+	{
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		auto* engine = App::GetSubmodule<EngineLoop>();
+		auto& driver = Renderer::GetDriver();
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		renderer->WaitIdle();
+		Require(renderer->EnsureFrameGraph(), "pending renderer flight requires a real graph");
+		auto graph = renderer->GetFrameGraph()->GetRHI();
+		const auto nodes = graph->GetGraph();
+		auto world = engine->GetWorld();
+		auto node = TRefPtr<SubmissionLifecycleNode>::Make();
+		node->m_material = TRefPtr<SubmissionHistoryMaterial>::Make();
+		node->m_material->SetBindings(RHIShaderBindingSetPtr::Make());
+		node->m_bReleased.store(true);
+		const VkEventCreateInfo eventInfo{ VK_STRUCTURE_TYPE_EVENT_CREATE_INFO };
+		Require(vkCreateEvent(*device, &eventInfo, nullptr, &node->m_gpuGate) == VK_SUCCESS,
+			"renderer flight test requires a host-signalled GPU event");
+		std::atomic<bool> bWaitStarted{ false }, bPushReturned{ false };
+		PFN_vkGetFenceStatus status = vkGetFenceStatus;
+		PFN_vkWaitForFences wait = ObservePendingFlightWait;
+		const bool bWasOutdated = VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, true);
+		OnRender([&]()
+			{
+				pendingFlightWaitStarted = &bWaitStarted;
+				VulkanSubmissionTestAccess::ExchangeFenceDispatch(*device, status, wait);
+			});
+		Tests::ScopeExit cleanup([&]()
+			{
+				vkSetEvent(*device, node->m_gpuGate);
+				renderer->WaitIdle();
+				OnRender([&]()
+					{
+						VulkanSubmissionTestAccess::ExchangeFenceDispatch(*device, status, wait);
+						pendingFlightFence = VK_NULL_HANDLE;
+						pendingFlightWaitStarted = nullptr;
+					});
+				VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, bWasOutdated);
+				graph->GetGraph() = nodes;
+				renderer->RemoveSceneView(world.GetRawPtr());
+				vkDestroyEvent(*device, node->m_gpuGate, nullptr);
+				node->m_gpuGate = VK_NULL_HANDLE;
+			});
+		graph->GetGraph().Clear();
+		graph->GetGraph().Add(node);
+		TVector<RHIBufferPtr> readbacks;
+		TVector<RHIFencePtr> completions;
+		TRefPtr<SubmissionObservedResources> firstResources;
+		for (uint32_t i = 0; i <= driver->GetMaxFramesInFlight(); ++i)
+		{
+			readbacks.Add(driver->CreateBuffer(sizeof(uint32_t), EBufferUsageBit::BufferTransferDst_Bit,
+				EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent));
+		}
+		for (uint32_t i = 0; i < driver->GetMaxFramesInFlight(); ++i)
+		{
+			node->m_readback = readbacks[i];
+			node->m_payload = 2200u + i;
+			FrameState frame(world.GetRawPtr(), 16, {}, { 32, 24 });
+			engine->ProcessCpuFrame(frame);
+			frame.GetDrawImGuiTask()->Wait();
+			Require(renderer->PushFrame(frame), "renderer must accept each free native flight");
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			scheduler->ProcessTasksOnMainThread();
+			completions.Add(node->m_completion);
+			if (i == 0)
+			{
+				firstResources = node->m_resources;
+			}
+		}
+		const auto firstFence = completions[0]->m_vulkan.m_fence;
+		Require(vkGetFenceStatus(*device, *firstFence) == VK_NOT_READY,
+			"renderer reuse must be checked before its actual GPU flight completes");
+		const uint32_t resetCount = firstResources->m_numResets.load();
+		OnRender([&]() { pendingFlightFence = *firstFence; });
+		node->m_readback = readbacks[readbacks.Num() - 1u];
+		node->m_payload = 2200u + driver->GetMaxFramesInFlight();
+		FrameState frame(world.GetRawPtr(), 16, {}, { 32, 24 });
+		engine->ProcessCpuFrame(frame);
+		frame.GetDrawImGuiTask()->Wait();
+		bool bPreservedResources = false;
+		VkResult signalResult = VK_ERROR_UNKNOWN;
+		std::jthread releaseGpu([&]()
+			{
+				const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+				while (!bWaitStarted.load() && std::chrono::steady_clock::now() < deadline)
+				{
+					std::this_thread::yield();
+				}
+				const VkFence nativeFence = *firstFence;
+				bPreservedResources = bWaitStarted.load() &&
+					vkWaitForFences(*device, 1, &nativeFence, VK_TRUE, 50000000ull) == VK_TIMEOUT &&
+					!bPushReturned.load() && firstResources->m_numResets.load() == resetCount;
+				signalResult = vkSetEvent(*device, node->m_gpuGate);
+			});
+		const bool bAccepted = renderer->PushFrame(frame);
+		bPushReturned.store(true);
+		releaseGpu.join();
+		Require(bPreservedResources && signalResult == VK_SUCCESS && bAccepted &&
+			node->m_resources == firstResources && firstResources->m_numResets.load() == resetCount + 1u,
+			"Renderer must reset flight resources once, only after their GPU completion");
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		scheduler->ProcessTasksOnMainThread();
+		completions.Add(node->m_completion);
+		for (size_t i = 0; i < completions.Num(); ++i)
+		{
+			Require(completions[i]->Wait(5000000000ull) == EFenceStatus::Finished &&
+				*static_cast<const uint32_t*>(readbacks[i]->GetPointer()) == 2200u + i,
+				"renderer flight reuse must retain each original completion and GPU payload");
+		}
+		std::cout << "Renderer pending GPU flight: resources retained until fence, one reset on reuse, all payloads passed\n";
 	}
 
 	enum class RendererFailure { None, Upload, MainSubmit, Present, GraphRefresh, GraphUpload };
@@ -5217,6 +5448,7 @@ frame: []
 			else if (mode == "--gpu-engine-loop")
 			{
 				TestRendererSubmissionOwnership();
+				TestRendererPendingFlightReuse();
 				TestRendererSubmissionOutcomes();
 				TestSingleActiveWorld();
 				Tests::RunAnimationShadowCommandTests();
