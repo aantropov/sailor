@@ -133,6 +133,8 @@ bool Material::IsReady() const
 		m_commonShaderBindings.IsValid() && m_commonShaderBindings->IsReady();
 	if (bReady)
 	{
+		// Mesh workers may add a vertex layout while another worker polls readiness.
+		m_rhiMaterials.LockAll();
 		for (const auto& entry : m_rhiMaterials)
 		{
 			auto material = entry.m_second;
@@ -141,6 +143,7 @@ bool Material::IsReady() const
 				material->TryPublishPendingBindings();
 			}
 		}
+		m_rhiMaterials.UnlockAll();
 	}
 	return bReady;
 }
@@ -273,8 +276,8 @@ RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDes
 
 	SAILOR_PROFILE_BLOCK("Achieve exclusive access to rhi"_h);
 	// TODO: Resolve collisions of VertexAttributeBits
-	RHI::RHIMaterialPtr& material = m_rhiMaterials.At_Lock(vertexDescription->GetVertexAttributeBits());
-	m_rhiMaterials.Unlock(vertexDescription->GetVertexAttributeBits());
+	const auto attributes = vertexDescription->GetVertexAttributeBits();
+	RHI::RHIMaterialPtr& material = m_rhiMaterials.At_Lock(attributes);
 	SAILOR_PROFILE_END_BLOCK("Achieve exclusive access to rhi"_h);
 
 	if (!material)
@@ -286,12 +289,14 @@ RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDes
 			if ((material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader)))
 			{
 				m_commonShaderBindings = material->GetBindings();
+				m_commonShaderBindings->RecalculateCompatibility();
 			}
 			else
 			{
 				SAILOR_LOG_ERROR("Cannot create RHI material %s for vertex attribute identity %llu.",
 					GetFileId().ToString().c_str(),
 					static_cast<unsigned long long>(vertexDescription->GetVertexAttributeBits()));
+				m_rhiMaterials.Unlock(attributes);
 				return nullptr;
 			}
 		}
@@ -299,11 +304,11 @@ RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDes
 		{
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader, m_commonShaderBindings);
 		}
-
-		m_commonShaderBindings->RecalculateCompatibility();
 	}
 
-	return material;
+	auto result = material;
+	m_rhiMaterials.Unlock(attributes);
+	return result;
 }
 
 void Material::UpdateRHIResource()
@@ -524,6 +529,7 @@ void Material::ForcelyUpdateUniforms()
 	RHI::Renderer::GetDriver()->SetDebugName(fence, "Forcely update uniforms"_h);
 
 	RHI::Renderer::GetDriver()->TrackDelayedInitialization(m_commonShaderBindings.GetRawPtr(), fence);
+	m_rhiMaterials.LockAll();
 	for (const auto& entry : m_rhiMaterials)
 	{
 		auto material = entry.m_second;
@@ -532,6 +538,7 @@ void Material::ForcelyUpdateUniforms()
 			material->StageBindings(m_commonShaderBindings);
 		}
 	}
+	m_rhiMaterials.UnlockAll();
 
 	// Submit cmd lists
 	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Update shader bindings set rhi"_h,
@@ -832,6 +839,10 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
 				SAILOR_LOG_ERROR("Cannot create material '%s'.", filename.c_str());
 				return MaterialPtr{};
 			}
+			for (const auto& entry : prepared.m_rhiMaterials)
+			{
+				RHI::Renderer::GetDriver()->SetDebugName(entry.m_second, filename);
+			}
 
 			// Keep the last-good values and dependencies until the replacement is built.
 			if (material->m_shader)
@@ -857,10 +868,6 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
 			for (auto& sampler : material->m_samplers)
 			{
 				sampler.m_second->AddHotReloadDependentObject(material);
-			}
-			for (const auto& entry : material->m_rhiMaterials)
-			{
-				RHI::Renderer::GetDriver()->SetDebugName(entry.m_second, filename);
 			}
 			if (bHotReload)
 			{

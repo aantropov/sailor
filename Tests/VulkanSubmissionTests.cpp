@@ -7,6 +7,8 @@
 #include "Engine/GameObject.h"
 #include "ECS/LightingECS.h"
 #include "ECS/StaticMeshRendererECS.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Support/TempDirectory.h"
 #include "Support/ScopeExit.h"
@@ -60,6 +62,7 @@
 
 #include <iostream>
 #include <iterator>
+#include <latch>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -4889,6 +4892,72 @@ frame: []
 		uint32_t m_numProcessed = 0;
 	};
 
+	void TestConcurrentMaterialLayouts()
+	{
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto& driver = Renderer::GetDriver();
+		auto allocator = App::GetSubmodule<EngineLoop>()->GetWorld()->GetAllocator();
+		ShaderSetPtr shader;
+		const auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Unlit.shader");
+		Require(info && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(info->GetFileId(), shader),
+			"concurrent material creation requires the native shader");
+		const auto layout = driver->GetOrAddVertexDescription<VertexP3N3T3B3UV2C4>();
+		const auto workers = (std::min)(4u, scheduler->GetNumWorkerThreads());
+		for (uint32_t round = 0; round < 8u; ++round)
+		{
+			auto material = MaterialPtr::Make(allocator, FileId::Invalid);
+			Tests::ScopeExit cleanup([&]() { material.DestroyObject(allocator); });
+			material->SetShader(shader);
+			material->UpdateRHIResourceAndUniforms();
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			renderer->WaitIdle();
+			driver->TrackResources_ThreadSafe();
+			Require(material->IsReady(), "the base layout must be ready before mesh workers request another layout");
+
+			bool bRemainedReady = true;
+			std::jthread reader([&](std::stop_token stop)
+				{
+					while (!stop.stop_requested())
+					{
+						bRemainedReady &= material->IsReady();
+						std::this_thread::yield();
+					}
+				});
+			std::latch prepared(workers), start(1);
+			TVector<Tasks::TaskPtr<RHIMaterialPtr>> tasks;
+			for (uint32_t worker = 0; worker < workers; ++worker)
+			{
+				auto task = Tasks::CreateTaskWithResult<RHIMaterialPtr>("Concurrent material layout"_h, [&, material, layout]() mutable
+					{
+						prepared.count_down();
+						start.wait();
+						return material->GetOrAddRHI(layout);
+					});
+				tasks.Add(task);
+				task->Run();
+			}
+			prepared.wait();
+			start.count_down();
+			for (const auto& task : tasks)
+			{
+				task->Wait();
+			}
+			reader.request_stop();
+			reader.join();
+			Require(bRemainedReady, "adding a vertex layout must not invalidate an initialized material");
+			const auto expected = material->GetOrAddRHI(layout);
+			Require(expected && expected->GetBindings() == material->GetShaderBindings(),
+				"the new layout must reuse the material's bindings");
+			for (const auto& task : tasks)
+			{
+				Require(task->GetResult() == expected,
+					"concurrent requests for one material layout must return the same RHI material");
+			}
+		}
+		std::cout << "Material layout cache: concurrent creation, readiness and shared RHI identity passed\n";
+	}
+
 	void TestRendererSubmissionOwnership()
 	{
 		auto* renderer = App::GetSubmodule<Renderer>();
@@ -5485,6 +5554,7 @@ frame: []
 			if (mode == "--gpu-submission-statistics") TestConcurrentSubmissionStatistics();
 			else if (mode == "--gpu-engine-loop")
 			{
+				TestConcurrentMaterialLayouts();
 				TestRendererSubmissionOwnership();
 				TestRendererPendingFlightReuse();
 				TestRendererSubmissionOutcomes();
