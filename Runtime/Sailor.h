@@ -20,11 +20,6 @@ namespace Sailor
 	namespace EditorViewport { struct Event; }
 	class InstanceId;
 
-	struct EditorGIProbesBakeRequest;
-	struct EditorGIProbesBakeStatus;
-	struct EditorGlobalIlluminationState;
-	struct GISettings;
-
 	namespace Workspace
 	{
 		class WorkspaceModuleManager;
@@ -86,6 +81,23 @@ namespace Sailor
 		SAILOR_API static void Stop();
 		SAILOR_API static bool Shutdown();
 		SAILOR_API static bool IsEngineMainThreadReady();
+
+		// Synchronous call; returns the fallback when lifecycle admission is closed.
+		template<typename TResult>
+		static TResult ExecuteOnEngineMainThread(TResult fallback, std::function<TResult()> command)
+		{
+			TResult result = fallback;
+			if (!command || !DispatchOnEngineMainThread([&result, &command]()
+				{
+					result = command();
+				}))
+			{
+				return fallback;
+			}
+
+			return result;
+		}
+
 		SAILOR_API static bool RequestAssetReload();
 		SAILOR_API static bool UpdateAsset(const char* strFileId, bool bReimport = false);
 		SAILOR_API static bool GetAssetReloadState(
@@ -117,31 +129,6 @@ namespace Sailor
 		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
 		SAILOR_API static bool RequestModelFingerprint(const char* strFileId);
 		SAILOR_API static uint32_t GetModelFingerprintStatus(const char* strFileId);
-		SAILOR_API static bool StartEditorGIProbesBake(
-			const EditorGIProbesBakeRequest& request,
-			std::string& outDiagnostic);
-		SAILOR_API static bool CancelEditorGIProbesBake(
-			std::string& outDiagnostic);
-		SAILOR_API static bool GetEditorGIProbesBakeStatus(
-			EditorGIProbesBakeStatus& outStatus);
-		SAILOR_API static bool SetEditorGISettings(
-			GISettings settings,
-			std::string& outDiagnostic);
-		SAILOR_API static bool GetEditorGlobalIlluminationState(
-			EditorGlobalIlluminationState& outState);
-		SAILOR_API static bool SetEditorRuntimeGIProbesPreviewEnabled(
-			bool bEnabled,
-			std::string& outDiagnostic);
-		SAILOR_API static bool SetEditorRuntimeGIProbesBudget(
-			Settings::ERuntimeGIProbesEditorBudget budget,
-			std::string& outDiagnostic);
-		SAILOR_API static bool SetEditorRuntimeGIProbesPaused(
-			bool bPaused,
-			std::string& outDiagnostic);
-		SAILOR_API static bool RestartEditorRuntimeGIProbes(
-			std::string& outDiagnostic);
-		SAILOR_API static bool RebuildEditorRuntimeGIProbesScene(
-			std::string& outDiagnostic);
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool SetEditorAnimatorParameter(
 			const char* strInstanceId,
@@ -290,24 +277,9 @@ namespace Sailor
 	private:
 		friend class Tests::TaskTestApp;
 
-		static bool DispatchOnEngineMainThread(std::function<void()> command);
+		SAILOR_API static bool DispatchOnEngineMainThread(std::function<void()> command);
 		static void QueueAssetReloadTaskLocked(Tasks::Scheduler* scheduler);
 		static void ProcessAssetReloadRequestOnEngineMainThread();
-
-		template<typename TResult>
-		static TResult ExecuteOnEngineMainThread(TResult fallback, std::function<TResult()> command)
-		{
-			TResult result = fallback;
-			if (!command || !DispatchOnEngineMainThread([&result, &command]()
-				{
-					result = command();
-				}))
-			{
-				return fallback;
-			}
-
-			return result;
-		}
 
 		TSharedPtr<Tasks::ITask> m_pendingAssetReloadTask;
 		uint64_t m_assetReloadRequestGeneration = 0;

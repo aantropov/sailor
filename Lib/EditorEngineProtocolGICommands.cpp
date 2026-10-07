@@ -1,10 +1,9 @@
 #include "EditorEngineProtocolInternal.h"
 
 #include "Editor/GlobalIlluminationBakeController.h"
-#include "Editor/GlobalIlluminationEditorState.h"
+#include "Editor/GlobalIlluminationEditor.h"
 #include "GlobalIllumination/GISettings.h"
 #include "Protocol/Generated/editor_engine.pb.h"
-#include "Sailor.h"
 #include "Settings/GraphicsSettings.h"
 
 #include <cmath>
@@ -236,7 +235,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			}
 
 			std::string diagnostic;
-			if (!Sailor::App::StartEditorGIProbesBake(nativeRequest, diagnostic))
+			if (!Sailor::EditorRuntime::StartEditorGIProbesBake(nativeRequest, diagnostic))
 			{
 				SetError(response, diagnostic.empty() ? "Failed to start the GI probe bake." : diagnostic);
 				break;
@@ -248,7 +247,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kGetGiProbesBakeStatus:
 		{
 			Sailor::EditorGIProbesBakeStatus status;
-			if (!Sailor::App::GetEditorGIProbesBakeStatus(status))
+			if (!Sailor::EditorRuntime::GetEditorGIProbesBakeStatus(status))
 			{
 				SetError(response, "The GI probe bake controller is unavailable.");
 				break;
@@ -274,7 +273,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kCancelGiProbesBake:
 		{
 			std::string diagnostic;
-			if (!Sailor::App::CancelEditorGIProbesBake(diagnostic))
+			if (!Sailor::EditorRuntime::CancelEditorGIProbesBake(diagnostic))
 			{
 				SetError(response, diagnostic.empty() ? "Failed to cancel the GI probe bake." : diagnostic);
 				break;
@@ -342,7 +341,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 					break;
 				}
 			}
-			if (!bValid || !Sailor::App::SetEditorGISettings(std::move(nativeSettings), diagnostic))
+			if (!bValid || !Sailor::EditorRuntime::SetEditorGISettings(std::move(nativeSettings), diagnostic))
 			{
 				SetError(
 					response, diagnostic.empty() ? "Failed to update Global Illumination ECS settings." : diagnostic);
@@ -355,7 +354,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kGetGlobalIlluminationState:
 		{
 			Sailor::EditorGlobalIlluminationState state;
-			if (!Sailor::App::GetEditorGlobalIlluminationState(state))
+			if (!Sailor::EditorRuntime::GetEditorGlobalIlluminationState(state))
 			{
 				SetError(response, "Global Illumination ECS is unavailable.");
 				break;
@@ -403,7 +402,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kSetRuntimeGiProbesPreview:
 		{
 			std::string diagnostic;
-			if (!Sailor::App::SetEditorRuntimeGIProbesPreviewEnabled(
+			if (!Sailor::EditorRuntime::SetEditorRuntimeGIProbesPreviewEnabled(
 					request.set_runtime_gi_probes_preview().enabled(), diagnostic))
 			{
 				SetError(response, diagnostic.empty() ? "Failed to update Runtime GI probe preview." : diagnostic);
@@ -416,7 +415,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kSetRuntimeGiProbesPaused:
 		{
 			std::string diagnostic;
-			if (!Sailor::App::SetEditorRuntimeGIProbesPaused(
+			if (!Sailor::EditorRuntime::SetEditorRuntimeGIProbesPaused(
 					request.set_runtime_gi_probes_paused().paused(), diagnostic))
 			{
 				SetError(response, diagnostic.empty() ? "Failed to update Runtime GI probe pause state." : diagnostic);
@@ -435,7 +434,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 				break;
 			}
 			std::string diagnostic;
-			if (!Sailor::App::SetEditorRuntimeGIProbesBudget(budget, diagnostic))
+			if (!Sailor::EditorRuntime::SetEditorRuntimeGIProbesBudget(budget, diagnostic))
 			{
 				SetError(response, diagnostic.empty() ? "Failed to update the Runtime GI preview budget." : diagnostic);
 				break;
@@ -447,7 +446,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kRestartRuntimeGiProbes:
 		{
 			std::string diagnostic;
-			if (!Sailor::App::RestartEditorRuntimeGIProbes(diagnostic))
+			if (!Sailor::EditorRuntime::RestartEditorRuntimeGIProbes(diagnostic))
 			{
 				SetError(response, diagnostic.empty() ? "Failed to restart Runtime GI probes." : diagnostic);
 				break;
@@ -459,7 +458,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kRebuildRuntimeGiProbesScene:
 		{
 			std::string diagnostic;
-			if (!Sailor::App::RebuildEditorRuntimeGIProbesScene(diagnostic))
+			if (!Sailor::EditorRuntime::RebuildEditorRuntimeGIProbesScene(diagnostic))
 			{
 				SetError(response, diagnostic.empty() ? "Failed to rebuild the Runtime GI probe scene." : diagnostic);
 				break;
