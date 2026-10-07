@@ -1,6 +1,7 @@
 #include "EditorEngineProtocolInternal.h"
 
 #include "Memory/UniquePtr.hpp"
+#include "Editor/EditorRuntimeBridge.h"
 #include "Engine/InstanceId.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
@@ -165,7 +166,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			selection.Emplace(instanceId);
 		}
 
-		SetBoolResult(response, Sailor::App::SetEditorSelection(std::move(selection)));
+		SetBoolResult(response, Sailor::EditorRuntime::SetEditorSelection(std::move(selection)));
 	}
 
 	static void DispatchAnimatorParameter(const sailor::editor::v1::AnimatorParameterRequest& request,

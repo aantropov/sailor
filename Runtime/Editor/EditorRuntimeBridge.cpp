@@ -43,6 +43,67 @@ namespace
 {
 	using namespace Sailor::EditorRemote;
 
+	bool TryParseViewportToolState(
+		uint32_t operationValue,
+		uint32_t spaceValue,
+		EditorViewport::ETransformOperation& outOperation,
+		EditorViewport::ETransformSpace& outSpace)
+	{
+		switch (operationValue)
+		{
+		case 1:
+			outOperation = EditorViewport::ETransformOperation::Select;
+			break;
+		case 2:
+			outOperation = EditorViewport::ETransformOperation::Translate;
+			break;
+		case 3:
+			outOperation = EditorViewport::ETransformOperation::Rotate;
+			break;
+		case 4:
+			outOperation = EditorViewport::ETransformOperation::Scale;
+			break;
+		default:
+			return false;
+		}
+
+		switch (spaceValue)
+		{
+		case 1:
+			outSpace = EditorViewport::ETransformSpace::World;
+			break;
+		case 2:
+			outSpace = EditorViewport::ETransformSpace::Local;
+			break;
+		default:
+			return false;
+		}
+
+		return true;
+	}
+
+	uint32_t ToInteropOperation(EditorViewport::ETransformOperation operation)
+	{
+		switch (operation)
+		{
+		case EditorViewport::ETransformOperation::Select: return 1;
+		case EditorViewport::ETransformOperation::Translate: return 2;
+		case EditorViewport::ETransformOperation::Rotate: return 3;
+		case EditorViewport::ETransformOperation::Scale: return 4;
+		default: return 0;
+		}
+	}
+
+	uint32_t ToInteropSpace(EditorViewport::ETransformSpace space)
+	{
+		switch (space)
+		{
+		case EditorViewport::ETransformSpace::World: return 1;
+		case EditorViewport::ETransformSpace::Local: return 2;
+		default: return 0;
+		}
+	}
+
 	constexpr ViewportId kPrimaryEditorViewportId = 1;
 	std::atomic<uint32_t> g_numVisibleRemoteViewports = 0;
 	Tasks::ITaskPtr g_viewportPumpTask; // Main owns scheduling; Editor owns the registry.
@@ -662,7 +723,153 @@ void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()
 	g_viewportPumpTask->Run();
 }
 
-void App::SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
+TVector<EditorViewport::Event> EditorRuntime::PullEditorViewportEvents(uint32_t num)
+{
+	return App::ExecuteOnEngineMainThread<TVector<EditorViewport::Event>>({}, [num]()
+		{
+			TVector<EditorViewport::Event> events;
+			auto editor = App::GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return events;
+			}
+
+			EditorViewport::Event event;
+			while (events.Num() < num && editor->PullViewportEvent(event))
+			{
+				events.Add(std::move(event));
+			}
+
+			return events;
+		});
+}
+
+bool EditorRuntime::TraceViewportRay(
+	uint64_t viewportId,
+	float normalizedX,
+	float normalizedY,
+	float& outWorldX,
+	float& outWorldY,
+	float& outWorldZ)
+{
+	outWorldX = 0.0f;
+	outWorldY = 0.0f;
+	outWorldZ = 0.0f;
+
+	return App::ExecuteOnEngineMainThread<bool>(
+		false,
+		[viewportId,
+			normalizedX,
+			normalizedY,
+			&outWorldX,
+			&outWorldY,
+			&outWorldZ]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			glm::vec3 worldPosition{};
+			if (!editor ||
+				!editor->TraceViewportRay(
+					viewportId,
+					normalizedX,
+					normalizedY,
+					worldPosition))
+			{
+				return false;
+			}
+
+			outWorldX = worldPosition.x;
+			outWorldY = worldPosition.y;
+			outWorldZ = worldPosition.z;
+			return true;
+		});
+}
+
+bool EditorRuntime::FocusEditorCamera(const char* strInstanceId)
+{
+	if (!strInstanceId)
+	{
+		return false;
+	}
+
+	const std::string instanceIdValue = strInstanceId;
+	return App::ExecuteOnEngineMainThread<bool>(
+		false,
+		[instanceIdValue]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			const InstanceId instanceId(instanceIdValue);
+			return instanceId.IsGameObjectId() &&
+				editor->FocusEditorCamera(instanceId);
+		});
+}
+
+bool EditorRuntime::SetEditorViewportToolState(uint32_t operation, uint32_t space)
+{
+	return App::ExecuteOnEngineMainThread<bool>(
+		false,
+		[operation, space]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			EditorViewport::ETransformOperation parsedOperation{};
+			EditorViewport::ETransformSpace parsedSpace{};
+			return editor &&
+				TryParseViewportToolState(
+					operation,
+					space,
+					parsedOperation,
+					parsedSpace) &&
+				editor->SetViewportToolState(parsedOperation, parsedSpace);
+		});
+}
+
+bool EditorRuntime::GetEditorViewportToolState(
+	uint32_t& outOperation,
+	uint32_t& outSpace)
+{
+	outOperation = 0;
+	outSpace = 0;
+	return App::ExecuteOnEngineMainThread<bool>(
+		false,
+		[&outOperation, &outSpace]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			EditorViewport::ETransformOperation operation{};
+			EditorViewport::ETransformSpace space{};
+			editor->GetViewportToolState(operation, space);
+			outOperation = ToInteropOperation(operation);
+			outSpace = ToInteropSpace(space);
+			return outOperation != 0 && outSpace != 0;
+		});
+}
+
+bool EditorRuntime::SetEditorSelection(TVector<InstanceId> selection)
+{
+	return App::ExecuteOnEngineMainThread<bool>(false, [selection = std::move(selection)]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			auto* world = editor ? editor->GetWorld() : nullptr;
+			if (!world)
+			{
+				return false;
+			}
+
+			world->SetEditorSelection(selection);
+			editor->NotifyManagedSelectionMutation();
+			return true;
+		});
+}
+
+void EditorRuntime::SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
 {
 	width = std::max(width, 1u);
 	height = std::max(height, 1u);
@@ -673,9 +880,9 @@ void App::SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t w
 	rect.bottom = windowPosY + height;
 	rect.top = windowPosY;
 
-	ExecuteOnEngineMainThread<bool>(false, [rect]()
+	App::ExecuteOnEngineMainThread<bool>(false, [rect]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -706,9 +913,9 @@ bool EditorRuntime::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t win
 {
 #if defined(_WIN32)
 	SetEditorRenderTargetSize(width, height);
-	App::SetEditorViewport(0, 0, width, height);
+	SetEditorViewport(0, 0, width, height);
 #elif !defined(__APPLE__)
-	App::SetEditorViewport(windowPosX, windowPosY, width, height);
+	SetEditorViewport(windowPosX, windowPosY, width, height);
 #else
 	SetEditorRenderTargetSize(width, height);
 #endif

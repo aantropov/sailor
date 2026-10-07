@@ -17,8 +17,6 @@
 namespace Sailor
 {
 	namespace Tests { class TaskTestApp; }
-	namespace EditorViewport { struct Event; }
-	class InstanceId;
 
 	namespace Workspace
 	{
@@ -107,16 +105,7 @@ namespace Sailor
 		SAILOR_API static bool IsRendererInitialized();
 		SAILOR_API static bool HasEditor();
 		SAILOR_API static bool IsEditorMode();
-		SAILOR_API static void SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height);
 		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
-		SAILOR_API static TVector<EditorViewport::Event> PullEditorViewportEvents(uint32_t num);
-		SAILOR_API static bool TraceViewportRay(
-			uint64_t viewportId,
-			float normalizedX,
-			float normalizedY,
-			float& outWorldX,
-			float& outWorldY,
-			float& outWorldZ);
 		SAILOR_API static uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId);
 		SAILOR_API static uint32_t SerializeCurrentWorld(char** yamlNode);
 		SAILOR_API static uint32_t SerializeEngineTypes(char** yamlNode);
@@ -187,14 +176,10 @@ namespace Sailor
 			const char* strParentInstanceId,
 			bool bStrictInstanceIds,
 			char** outInstanceId);
-		SAILOR_API static bool FocusEditorCamera(const char* strInstanceId);
 		SAILOR_API static bool SetEditorPrefabLink(
 			const char* strInstanceId,
 			const char* strFileId);
 		SAILOR_API static bool BreakEditorPrefabLink(const char* strInstanceId);
-		SAILOR_API static bool SetEditorViewportToolState(uint32_t operation, uint32_t space);
-		SAILOR_API static bool GetEditorViewportToolState(uint32_t& outOperation, uint32_t& outSpace);
-		SAILOR_API static bool SetEditorSelection(TVector<InstanceId> selection);
 		SAILOR_API static void ShowMainWindow(bool bShow);
 
 		static SubmoduleBase* GetSubmodule(uint32_t index)

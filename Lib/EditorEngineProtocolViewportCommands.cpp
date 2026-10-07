@@ -204,7 +204,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		const auto events = dependencies.m_pullEditorViewportEvents
 			? dependencies.m_pullEditorViewportEvents(dependencies.m_context, requestedCount)
-			: Sailor::App::PullEditorViewportEvents(requestedCount);
+			: Sailor::EditorRuntime::PullEditorViewportEvents(requestedCount);
 		SetSuccess(response);
 		auto* result = response.mutable_viewport_event_batch_result();
 		for (const auto& event : events) WriteViewportEvent(event, *result->add_events());
@@ -233,7 +233,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		float worldX = 0.0f;
 		float worldY = 0.0f;
 		float worldZ = 0.0f;
-		if (!Sailor::App::TraceViewportRay(
+		if (!Sailor::EditorRuntime::TraceViewportRay(
 				request.viewport_id(), request.normalized_x(), request.normalized_y(), worldX, worldY, worldZ))
 		{
 			SetError(response, "Failed to trace the viewport ray.");
@@ -254,7 +254,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		uint32_t operation = 0;
 		uint32_t space = 0;
-		if (!Sailor::App::GetEditorViewportToolState(operation, space))
+		if (!Sailor::EditorRuntime::GetEditorViewportToolState(operation, space))
 		{
 			SetError(response, "Failed to read the viewport tool state.");
 			return;
@@ -318,7 +318,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kSetViewport:
 		{
 			const auto& viewport = request.set_viewport();
-			Sailor::App::SetEditorViewport(
+			Sailor::EditorRuntime::SetEditorViewport(
 				viewport.window_pos_x(), viewport.window_pos_y(), viewport.width(), viewport.height());
 			SetEmptyResult(response);
 			break;
@@ -424,7 +424,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& focus = request.focus_editor_camera();
 			SetBoolResult(
-				response, focus.viewport_id() != 0 && Sailor::App::FocusEditorCamera(focus.instance_id().c_str()));
+				response, focus.viewport_id() != 0 && Sailor::EditorRuntime::FocusEditorCamera(focus.instance_id().c_str()));
 			break;
 		}
 
@@ -433,7 +433,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			const auto& state = request.set_viewport_tool_state();
 			SetBoolResult(response,
 				state.viewport_id() != 0 &&
-					Sailor::App::SetEditorViewportToolState(
+					Sailor::EditorRuntime::SetEditorViewportToolState(
 						static_cast<uint32_t>(state.operation()), static_cast<uint32_t>(state.space())));
 			break;
 		}

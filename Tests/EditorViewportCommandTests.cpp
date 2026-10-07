@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Editor/EditorRuntimeBridge.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "Components/CameraComponent.h"
 #include "Components/CollisionShapeComponent.h"
@@ -50,7 +51,7 @@ namespace
 		Require(status == static_cast<int32_t>(Protocol::EEditorEngineTransportStatus::Ok) &&
 			Tests::ProtocolWire::ParseResponse(bytes, response) && response.m_bSuccess &&
 			response.m_resultField == 11 && response.m_resultPayload == std::string("\x08\x01", 2),
-			"selection must pass through protobuf, App and the actual editor world");
+			"selection must pass through protobuf, the editor bridge and the actual editor world");
 	}
 }
 
@@ -102,29 +103,29 @@ namespace Sailor::Tests
 		SelectThroughProtocol({});
 		Require(!world->IsEditorSelected(id), "an empty protobuf selection must clear the world selection");
 		const auto selectionRevision = App::GetEditorManagedMutationRevision(1, nullptr);
-		Require(selectionRevision == 2 && App::PullEditorViewportEvents(8).IsEmpty(),
+		Require(selectionRevision == 2 && EditorRuntime::PullEditorViewportEvents(8).IsEmpty(),
 			"managed selection commands must update revisions without echo events");
-		Require(App::SetEditorViewportToolState(1, 1), "selection tool must be available");
+		Require(EditorRuntime::SetEditorViewportToolState(1, 1), "selection tool must be available");
 		frame(center, false);
 		frame(center, true);
 		frame(center, false);
-		Require(App::PullEditorViewportEvents(0).IsEmpty(), "a zero-sized pull must leave the queue intact");
-		auto events = App::PullEditorViewportEvents(1);
+		Require(EditorRuntime::PullEditorViewportEvents(0).IsEmpty(), "a zero-sized pull must leave the queue intact");
+		auto events = EditorRuntime::PullEditorViewportEvents(1);
 		Require(events.Num() == 1 && world->IsEditorSelected(id), "a real viewport click must pick the object");
 		const auto* selected = std::get_if<SelectionEvent>(&events[0].m_payload);
 		Require(selected && selected->m_instanceId == id && events[0].m_managedMutationRevision == selectionRevision,
 			"queued selection must retain the selected identity and managed revision");
 		const uint64_t selectionEventRevision = events[0].m_revision;
 
-		Require(App::SetEditorViewportToolState(2, 2), "local translation tool must be available");
+		Require(EditorRuntime::SetEditorViewportToolState(2, 2), "local translation tool must be available");
 		const auto before = object->GetTransformComponent().GetTransform();
 		const auto objectRevision = App::GetEditorManagedMutationRevision(2, id.ToString().c_str());
 		frame(center, false);
 		frame(center, true);
 		frame(center + glm::vec2(60, 20), true);
-		Require(App::PullEditorViewportEvents(8).IsEmpty(), "an active drag must not emit intermediate undo records");
+		Require(EditorRuntime::PullEditorViewportEvents(8).IsEmpty(), "an active drag must not emit intermediate undo records");
 		frame(center + glm::vec2(60, 20), false);
-		events = App::PullEditorViewportEvents(8);
+		events = EditorRuntime::PullEditorViewportEvents(8);
 		Require(events.Num() == 1, "releasing the gizmo must emit exactly one transform event");
 		const auto* transform = std::get_if<TransformEvent>(&events[0].m_payload);
 		Require(transform && transform->m_instanceId == id && transform->m_operation == ETransformOperation::Translate &&
@@ -147,12 +148,12 @@ namespace Sailor::Tests
 				"undo/redo must restore the event's before/after position");
 		}
 		Require(App::GetEditorManagedMutationRevision(2, id.ToString().c_str()) == objectRevision + 2 &&
-			App::PullEditorViewportEvents(8).IsEmpty(), "undo/redo must advance object revisions without duplicating the drag event");
-		Require(App::SetEditorViewportToolState(1, 1), "selection tool must be restored after a drag");
+			EditorRuntime::PullEditorViewportEvents(8).IsEmpty(), "undo/redo must advance object revisions without duplicating the drag event");
+		Require(EditorRuntime::SetEditorViewportToolState(1, 1), "selection tool must be restored after a drag");
 		frame({ 1, 1 }, false);
 		frame({ 1, 1 }, true);
 		frame({ 1, 1 }, false);
-		events = App::PullEditorViewportEvents(8);
+		events = EditorRuntime::PullEditorViewportEvents(8);
 		Require(events.Num() == 1 && !world->IsEditorSelected(id), "a click outside geometry must clear selection");
 		selected = std::get_if<SelectionEvent>(&events[0].m_payload);
 		Require(selected && !selected->m_instanceId && events[0].m_revision == selectionEventRevision + 2,
@@ -160,14 +161,14 @@ namespace Sailor::Tests
 		std::cout << "Viewport events: protobuf selection, real pick/drag, ordered typed queue and undo/redo passed\n";
 
 		object->GetTransformComponent().SetPosition({ 0, 0, -10 });
-		Require(App::SetEditorSelection({ id }) && App::SetEditorViewportToolState(2, 2) &&
+		Require(EditorRuntime::SetEditorSelection({ id }) && EditorRuntime::SetEditorViewportToolState(2, 2) &&
 			App::SetEditorSimulationEnabled(true), "the real drag fixture must enter simulation");
 		const auto savedPosition = object->GetTransformComponent().GetPosition();
 		frame(center, false);
 		frame(center, true);
 		frame(center + glm::vec2(60, 20), true);
 		Require(glm::distance(object->GetTransformComponent().GetPosition(), savedPosition) > 0.01f &&
-			App::PullEditorViewportEvents(8).IsEmpty(), "simulation must have an active, unpublished gizmo drag before Stop");
+			EditorRuntime::PullEditorViewportEvents(8).IsEmpty(), "simulation must have an active, unpublished gizmo drag before Stop");
 		Require(App::SetEditorSimulationEnabled(false), "Stop must replace the world while the mouse is still held");
 		Require(!object && world->GetGameObjects().IsEmpty(), "the unfinished drag must not retain live objects from the old world");
 		world = engine->GetWorld();
@@ -175,7 +176,7 @@ namespace Sailor::Tests
 		Require(object && object->GetTransformComponent().GetPosition() == savedPosition && world->IsEditorSelected(id),
 			"Stop must restore the pre-simulation transform and selection after an unfinished drag");
 		frame(center + glm::vec2(60, 20), false);
-		Require(App::PullEditorViewportEvents(8).IsEmpty() &&
+		Require(EditorRuntime::PullEditorViewportEvents(8).IsEmpty() &&
 			object->GetTransformComponent().GetPosition() == savedPosition,
 			"mouse release in the restored world must not commit a stale drag or emit a stale undo event");
 		std::cout << "Viewport simulation: active real gizmo drag is discarded on Stop; release cannot mutate the restored world\n";

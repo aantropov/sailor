@@ -11,7 +11,6 @@
 #include "Engine/GameObject.h"
 #include "Engine/InstanceId.h"
 #include "Components/AnimatorComponent.h"
-#include "Editor/EditorViewportController.h"
 #include "Submodules/Editor.h"
 #include "Workspace/WorkspaceModuleManager.h"
 #include "Workspace/WorkspaceCacheContract.h"
@@ -80,67 +79,6 @@ namespace
 		outValue[0] = result.Release();
 	}
 
-	bool TryParseViewportToolState(
-		uint32_t operationValue,
-		uint32_t spaceValue,
-		EditorViewport::ETransformOperation& outOperation,
-		EditorViewport::ETransformSpace& outSpace)
-	{
-		switch (operationValue)
-		{
-		case 1:
-			outOperation = EditorViewport::ETransformOperation::Select;
-			break;
-		case 2:
-			outOperation = EditorViewport::ETransformOperation::Translate;
-			break;
-		case 3:
-			outOperation = EditorViewport::ETransformOperation::Rotate;
-			break;
-		case 4:
-			outOperation = EditorViewport::ETransformOperation::Scale;
-			break;
-		default:
-			return false;
-		}
-
-		switch (spaceValue)
-		{
-		case 1:
-			outSpace = EditorViewport::ETransformSpace::World;
-			break;
-		case 2:
-			outSpace = EditorViewport::ETransformSpace::Local;
-			break;
-		default:
-			return false;
-		}
-
-		return true;
-	}
-
-	uint32_t ToInteropOperation(EditorViewport::ETransformOperation operation)
-	{
-		switch (operation)
-		{
-		case EditorViewport::ETransformOperation::Select: return 1;
-		case EditorViewport::ETransformOperation::Translate: return 2;
-		case EditorViewport::ETransformOperation::Rotate: return 3;
-		case EditorViewport::ETransformOperation::Scale: return 4;
-		default: return 0;
-		}
-	}
-
-	uint32_t ToInteropSpace(EditorViewport::ETransformSpace space)
-	{
-		switch (space)
-		{
-		case EditorViewport::ETransformSpace::World: return 1;
-		case EditorViewport::ETransformSpace::Local: return 2;
-		default: return 0;
-		}
-	}
-
 	AnimatorComponent* FindEditorAnimator(
 		Editor* editor,
 		const InstanceId& componentInstanceId)
@@ -201,67 +139,6 @@ uint32_t App::PullEditorMessages(char** messages, uint32_t num)
 	}
 
 	return numMsg;
-}
-
-TVector<EditorViewport::Event> App::PullEditorViewportEvents(uint32_t num)
-{
-	return ExecuteOnEngineMainThread<TVector<EditorViewport::Event>>({}, [num]()
-		{
-			TVector<EditorViewport::Event> events;
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return events;
-			}
-
-			EditorViewport::Event event;
-			while (events.Num() < num && editor->PullViewportEvent(event))
-			{
-				events.Add(std::move(event));
-			}
-
-			return events;
-		});
-}
-
-bool App::TraceViewportRay(
-	uint64_t viewportId,
-	float normalizedX,
-	float normalizedY,
-	float& outWorldX,
-	float& outWorldY,
-	float& outWorldZ)
-{
-	outWorldX = 0.0f;
-	outWorldY = 0.0f;
-	outWorldZ = 0.0f;
-
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[viewportId,
-			normalizedX,
-			normalizedY,
-			&outWorldX,
-			&outWorldY,
-			&outWorldZ]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			glm::vec3 worldPosition{};
-			if (!editor ||
-				!editor->TraceViewportRay(
-					viewportId,
-					normalizedX,
-					normalizedY,
-					worldPosition))
-			{
-				return false;
-			}
-
-			outWorldX = worldPosition.x;
-			outWorldY = worldPosition.y;
-			outWorldZ = worldPosition.z;
-			return true;
-		});
 }
 
 uint64_t App::GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId)
@@ -1229,30 +1106,6 @@ bool App::InstantiateEditorPrefabFromYaml(
 		});
 }
 
-bool App::FocusEditorCamera(const char* strInstanceId)
-{
-	if (!strInstanceId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[instanceIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return instanceId.IsGameObjectId() &&
-				editor->FocusEditorCamera(instanceId);
-		});
-}
-
 bool App::SetEditorPrefabLink(
 	const char* strInstanceId,
 	const char* strFileId)
@@ -1300,67 +1153,6 @@ bool App::BreakEditorPrefabLink(const char* strInstanceId)
 
 			const InstanceId instanceId(instanceIdValue);
 			return editor->BreakPrefabLink(instanceId);
-		});
-}
-
-bool App::SetEditorViewportToolState(uint32_t operation, uint32_t space)
-{
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[operation, space]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			EditorViewport::ETransformOperation parsedOperation{};
-			EditorViewport::ETransformSpace parsedSpace{};
-			return editor &&
-				TryParseViewportToolState(
-					operation,
-					space,
-					parsedOperation,
-					parsedSpace) &&
-				editor->SetViewportToolState(parsedOperation, parsedSpace);
-		});
-}
-
-bool App::GetEditorViewportToolState(
-	uint32_t& outOperation,
-	uint32_t& outSpace)
-{
-	outOperation = 0;
-	outSpace = 0;
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[&outOperation, &outSpace]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			EditorViewport::ETransformOperation operation{};
-			EditorViewport::ETransformSpace space{};
-			editor->GetViewportToolState(operation, space);
-			outOperation = ToInteropOperation(operation);
-			outSpace = ToInteropSpace(space);
-			return outOperation != 0 && outSpace != 0;
-		});
-}
-
-bool App::SetEditorSelection(TVector<InstanceId> selection)
-{
-	return ExecuteOnEngineMainThread<bool>(false, [selection = std::move(selection)]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			auto* world = editor ? editor->GetWorld() : nullptr;
-			if (!world)
-			{
-				return false;
-			}
-
-			world->SetEditorSelection(selection);
-			editor->NotifyManagedSelectionMutation();
-			return true;
 		});
 }
 

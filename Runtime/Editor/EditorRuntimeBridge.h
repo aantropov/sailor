@@ -1,5 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
+#include "Containers/Vector.h"
+#include "Editor/EditorViewportEvent.h"
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -8,6 +10,20 @@ namespace Sailor::EditorRemote { struct MacRendererFrameSource; }
 
 namespace Sailor::EditorRuntime
 {
+	SAILOR_API void SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height);
+	SAILOR_API TVector<EditorViewport::Event> PullEditorViewportEvents(uint32_t num);
+	SAILOR_API bool TraceViewportRay(
+		uint64_t viewportId,
+		float normalizedX,
+		float normalizedY,
+		float& outWorldX,
+		float& outWorldY,
+		float& outWorldZ);
+	SAILOR_API bool FocusEditorCamera(const char* strInstanceId);
+	SAILOR_API bool SetEditorViewportToolState(uint32_t operation, uint32_t space);
+	SAILOR_API bool GetEditorViewportToolState(uint32_t& outOperation, uint32_t& outSpace);
+	SAILOR_API bool SetEditorSelection(TVector<InstanceId> selection);
+
 	SAILOR_API void SetEditorRenderTargetSize(uint32_t width, uint32_t height);
 	// True means applied. Busy/resize-deferred updates return false and retain
 	// the latest request for the viewport pump; GetState reports actual state.

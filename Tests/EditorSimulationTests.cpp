@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Editor/EditorRuntimeBridge.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "Components/LightComponent.h"
@@ -67,7 +68,7 @@ namespace
 		{
 			const glm::vec3 position(float(cycle + 1), 2.0f, 3.0f);
 			root->GetTransformComponent().SetPosition(position);
-			Require(App::SetEditorSelection({ rootId }) && App::SetEditorSimulationEnabled(true) &&
+			Require(EditorRuntime::SetEditorSelection({ rootId }) && App::SetEditorSimulationEnabled(true) &&
 				App::IsEditorSimulationEnabled() && world->IsPhysicsSimulationEnabled(),
 				"Play must retain the active world and enable its physics");
 			Prefab::ReflectedGameObject edit;
@@ -81,7 +82,7 @@ namespace
 			world->DestroyImmediate(removed);
 			auto temporary = world->Instantiate("Created during Play");
 			const auto temporaryId = temporary->GetInstanceId();
-			Require(App::SetEditorSelection({ lightId, childId, temporaryId, InstanceId::Invalid }) &&
+			Require(EditorRuntime::SetEditorSelection({ lightId, childId, temporaryId, InstanceId::Invalid }) &&
 				App::SetEditorSimulationEnabled(true), "repeated Play must not replace the original snapshot");
 			Require(SerializeCurrentWorld().IsMap(), "serializing the live simulation must not consume its saved snapshot");
 			Require(App::GetEditorManagedMutationRevision(2, rootId.ToString().c_str()) != 0,
@@ -106,7 +107,7 @@ namespace
 			Require(!App::IsEditorSimulationEnabled() && !restored->IsPhysicsSimulationEnabled() &&
 				App::GetEditorManagedMutationRevision(1, nullptr) == 0 &&
 				App::GetEditorManagedMutationRevision(2, rootId.ToString().c_str()) == 0 &&
-				App::PullEditorViewportEvents(8).IsEmpty() && App::SetEditorSimulationEnabled(false),
+				EditorRuntime::PullEditorViewportEvents(8).IsEmpty() && App::SetEditorSimulationEnabled(false),
 				"restoration must reset editor interaction/revisions and make repeated Stop a no-op");
 			engine->ProcessPendingWorldExits();
 			Require(engine->GetWorld() == restored && engine->GetWorlds().Num() == 1,
@@ -143,7 +144,7 @@ namespace
 		const auto linkedId = linked->GetInstanceId();
 		const auto childId = linked->GetChildren()[0]->GetInstanceId();
 		linked->SetName("Saved instance override");
-		Require(App::SetEditorSelection({ linkedId }) && App::SetEditorSimulationEnabled(true), "linked scene Play must succeed");
+		Require(EditorRuntime::SetEditorSelection({ linkedId }) && App::SetEditorSimulationEnabled(true), "linked scene Play must succeed");
 		linked->SetName("Runtime override");
 		Require(SerializeCurrentWorld().IsMap(), "saving during Play must update live prefab baselines independently");
 		std::filesystem::rename(sourcePath, workspace / "Content" / "Simulation.hidden");
