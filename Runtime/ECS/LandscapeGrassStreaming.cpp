@@ -364,7 +364,6 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 		auto& component = m_components[componentIndex];
 		uint32_t componentActiveInstances = 0u;
 		GameObjectPtr owner = const_cast<ObjectPtr&>(component.GetOwner()).StaticCast<GameObject>();
-		const glm::mat4 ownerMatrix = owner ? owner->GetTransformComponent().GetCachedWorldMatrix() : glm::mat4(1.0f);
 		for (size_t chunkIndex = 0u; chunkIndex < component.m_chunks.Num(); ++chunkIndex)
 		{
 			auto& chunk = component.m_chunks[chunkIndex];
