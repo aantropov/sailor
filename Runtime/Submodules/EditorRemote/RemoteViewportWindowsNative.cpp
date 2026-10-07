@@ -8,6 +8,7 @@
 
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Core/LogMacros.h"
+#include "Core/StringHash.h"
 #include "FrameGraph/EditorReadbackNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
@@ -83,13 +84,13 @@ namespace Sailor::EditorRemote
 				}
 			}
 
-			constexpr const char* surfaceNames[] = {
-				"EditorOutput",
-				"Main",
-				"BackBuffer",
-				"Secondary"
+			const StringHash surfaceNames[] = {
+				"EditorOutput"_h,
+				"Main"_h,
+				"BackBuffer"_h,
+				"Secondary"_h
 			};
-			for (const char* surfaceName : surfaceNames)
+			for (const auto surfaceName : surfaceNames)
 			{
 				if (auto surface = rhiFrameGraph->GetSurface(surfaceName))
 				{
@@ -102,7 +103,7 @@ namespace Sailor::EditorRemote
 					{
 						WindowsRendererFrameSource source{};
 						source.m_texture = texture;
-						source.m_debugName = std::string("Surface.") + surfaceName;
+						source.m_debugName = "Surface." + surfaceName.ToString();
 						return source;
 					}
 				}
@@ -113,7 +114,7 @@ namespace Sailor::EditorRemote
 					{
 						WindowsRendererFrameSource source{};
 						source.m_texture = texture;
-						source.m_debugName = std::string("RenderTarget.") + surfaceName;
+						source.m_debugName = "RenderTarget." + surfaceName.ToString();
 						return source;
 					}
 				}
