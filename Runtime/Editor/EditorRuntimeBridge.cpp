@@ -380,6 +380,9 @@ namespace
 		case InputKind::Key:
 			GlobalInput::ApplyEvent({ Type::Key, 0.0f, 0.0f, input.m_keyCode, -1, input.m_pressed });
 			break;
+		case InputKind::Text:
+			GlobalInput::ApplyEvent({ Type::Text, 0.0f, 0.0f, 0, -1, false, input.m_text });
+			break;
 		case InputKind::PointerWheel:
 		{
 #if defined(_WIN32)
@@ -1035,7 +1038,7 @@ bool App::SetEditorRemoteViewportWindowsHost(
 #endif
 }
 
-bool App::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint32_t keyCode, uint32_t button, uint32_t modifiers, bool bPressed, bool bFocused, bool bCaptured)
+bool App::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint32_t keyCode, uint32_t button, uint32_t modifiers, bool bPressed, bool bFocused, bool bCaptured, std::string_view text)
 {
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
 	constexpr uint32_t validModifiers =
@@ -1047,7 +1050,7 @@ bool App::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, floa
 		static_cast<uint32_t>(InputModifier::MouseRight) |
 		static_cast<uint32_t>(InputModifier::MouseMiddle);
 	if (kind < static_cast<uint32_t>(InputKind::PointerMove) ||
-		kind > static_cast<uint32_t>(InputKind::Capture) ||
+		kind > static_cast<uint32_t>(InputKind::Text) ||
 		(modifiers & ~validModifiers) != 0 ||
 		!std::isfinite(pointerX) || !std::isfinite(pointerY) ||
 		!std::isfinite(wheelDeltaX) || !std::isfinite(wheelDeltaY) ||
@@ -1068,6 +1071,7 @@ bool App::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, floa
 	input.m_pressed = bPressed;
 	input.m_focused = bFocused;
 	input.m_captured = bCaptured;
+	input.m_text = text;
 
 	return ExecuteOnViewportOwner<bool>(false, [viewportId, input]() mutable
 	{

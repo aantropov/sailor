@@ -48,7 +48,8 @@ public interface ISceneViewportBackend
         RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None,
         bool pressed = false,
         bool focused = false,
-        bool captured = false);
+        bool captured = false,
+        string text = "");
 }
 
 public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend, ulong viewportId)
@@ -127,8 +128,9 @@ public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend,
         RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None,
         bool pressed = false,
         bool focused = false,
-        bool captured = false)
-        => backend.SendInput(viewportId, kind, pointerX, pointerY, wheelDeltaX, wheelDeltaY, keyCode, button, modifiers, pressed, focused, captured);
+        bool captured = false,
+        string text = "")
+        => backend.SendInput(viewportId, kind, pointerX, pointerY, wheelDeltaX, wheelDeltaY, keyCode, button, modifiers, pressed, focused, captured, text);
 }
 
 public static class SceneViewportStatusText

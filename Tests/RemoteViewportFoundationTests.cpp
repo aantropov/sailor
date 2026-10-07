@@ -72,6 +72,11 @@ namespace
 		Require(input.Validate().IsOk(), "input packet should validate");
 		Require((input.m_modifiers & InputModifier::Shift) == InputModifier::Shift, "modifier bitmask should work");
 
+		InputPacket textInput = input;
+		textInput.m_kind = InputKind::Text;
+		textInput.m_text = "sea";
+		Require(textInput.Validate().IsOk(), "committed text should be accepted as viewport input");
+
 		InputPacket invalidInput = input;
 		invalidInput.m_kind = static_cast<InputKind>(255);
 		Require(!invalidInput.Validate().IsOk(), "out-of-range input kind should be rejected");

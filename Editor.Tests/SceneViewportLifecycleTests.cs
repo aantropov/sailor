@@ -307,6 +307,6 @@ public sealed class SceneViewportLifecycleTests
         public void RetryViewport(ulong viewportId) { }
         public RemoteViewportSessionState GetViewportState(ulong viewportId) => RemoteViewportSessionState.Active;
         public string GetViewportDiagnostics(ulong viewportId) => string.Empty;
-        public bool SendInput(ulong viewportId, RemoteViewportInputKind kind, float pointerX = 0, float pointerY = 0, float wheelDeltaX = 0, float wheelDeltaY = 0, uint keyCode = 0, uint button = 0, RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None, bool pressed = false, bool focused = false, bool captured = false) => true;
+        public bool SendInput(ulong viewportId, RemoteViewportInputKind kind, float pointerX = 0, float pointerY = 0, float wheelDeltaX = 0, float wheelDeltaY = 0, uint keyCode = 0, uint button = 0, RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None, bool pressed = false, bool focused = false, bool captured = false, string text = "") => true;
     }
 }

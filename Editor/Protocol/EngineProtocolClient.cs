@@ -891,6 +891,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         bool pressed,
         bool focused,
         bool captured,
+        string text = "",
         CancellationToken cancellationToken = default)
         => ReadBool(
             await SendAsync(
@@ -910,7 +911,8 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                                 Modifiers = modifiers,
                                 Pressed = pressed,
                                 Focused = focused,
-                                Captured = captured
+                                Captured = captured,
+                                Text = text
                             }
                     },
                     cancellationToken)

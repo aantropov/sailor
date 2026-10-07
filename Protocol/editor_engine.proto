@@ -291,6 +291,7 @@ message RemoteViewportInputRequest {
 	bool pressed = 10;
 	bool focused = 11;
 	bool captured = 12;
+	string text = 13;
 }
 
 message ManagedMutationRevisionRequest {

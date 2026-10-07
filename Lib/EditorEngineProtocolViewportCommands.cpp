@@ -402,7 +402,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 					input.modifiers(),
 					input.pressed(),
 					input.focused(),
-					input.captured()));
+					input.captured(),
+					input.text()));
 			break;
 		}
 

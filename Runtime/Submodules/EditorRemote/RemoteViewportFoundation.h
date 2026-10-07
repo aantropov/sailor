@@ -139,6 +139,7 @@ namespace Sailor::EditorRemote
 		Key,
 		Focus,
 		Capture,
+		Text,
 	};
 
 	enum class InputModifier : uint16_t
@@ -414,6 +415,7 @@ namespace Sailor::EditorRemote
 		bool m_focused = false;
 		bool m_captured = false;
 		uint64_t m_timestampNs = 0;
+		std::string m_text;
 
 		Failure Validate() const
 		{
@@ -427,7 +429,7 @@ namespace Sailor::EditorRemote
 				static_cast<uint16_t>(InputModifier::MouseMiddle);
 			const auto kind = static_cast<uint8_t>(m_kind);
 			const bool bValidKind = kind >= static_cast<uint8_t>(InputKind::PointerMove) &&
-				kind <= static_cast<uint8_t>(InputKind::Capture);
+				kind <= static_cast<uint8_t>(InputKind::Text);
 			const bool bValidModifiers =
 				(static_cast<uint16_t>(m_modifiers) & ~validModifiers) == 0;
 			const bool bFiniteCoordinates =

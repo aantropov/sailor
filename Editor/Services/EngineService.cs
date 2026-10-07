@@ -47,7 +47,8 @@ namespace SailorEditor.Services
         PointerWheel = 3,
         Key = 4,
         Focus = 5,
-        Capture = 6
+        Capture = 6,
+        Text = 7
     }
 
     [Flags]
@@ -109,7 +110,8 @@ namespace SailorEditor.Services
             RemoteViewportInputModifier Modifiers,
             bool Pressed,
             bool Focused,
-            bool Captured);
+            bool Captured,
+            string Text);
 
         public const ulong SceneViewportId = 1;
 
@@ -897,7 +899,8 @@ namespace SailorEditor.Services
             RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None,
             bool pressed = false,
             bool focused = false,
-            bool captured = false)
+            bool captured = false,
+            string text = "")
         {
 #if WINDOWS || MACCATALYST
             var input = new RemoteViewportInput(
@@ -912,7 +915,8 @@ namespace SailorEditor.Services
                 modifiers,
                 pressed,
                 focused,
-                captured);
+                captured,
+                text);
             async ValueTask<bool> SendInput(RemoteViewportInput value)
                 => await protocolClient.SendRemoteViewportInputAsync(
                     value.ViewportId,
@@ -926,7 +930,8 @@ namespace SailorEditor.Services
                     (uint)value.Modifiers,
                     value.Pressed,
                     value.Focused,
-                    value.Captured).ConfigureAwait(false);
+                    value.Captured,
+                    value.Text).ConfigureAwait(false);
 
             return kind == RemoteViewportInputKind.PointerMove
                 ? pointerMoves.Enqueue(

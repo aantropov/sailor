@@ -6681,6 +6681,7 @@ class RemoteViewportInputRequest final : public ::google::protobuf::Message
 
   // accessors -------------------------------------------------------
   enum : int {
+    kTextFieldNumber = 13,
     kViewportIdFieldNumber = 1,
     kKindFieldNumber = 2,
     kPointerXFieldNumber = 3,
@@ -6694,6 +6695,22 @@ class RemoteViewportInputRequest final : public ::google::protobuf::Message
     kFocusedFieldNumber = 11,
     kCapturedFieldNumber = 12,
   };
+  // string text = 13;
+  void clear_text() ;
+  const std::string& text() const;
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_text(Arg_&& arg, Args_... args);
+  std::string* mutable_text();
+  PROTOBUF_NODISCARD std::string* release_text();
+  void set_allocated_text(std::string* value);
+
+  private:
+  const std::string& _internal_text() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_text(
+      const std::string& value);
+  std::string* _internal_mutable_text();
+
+  public:
   // uint64 viewport_id = 1;
   void clear_viewport_id() ;
   ::uint64_t viewport_id() const;
@@ -6819,8 +6836,8 @@ class RemoteViewportInputRequest final : public ::google::protobuf::Message
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      4, 12, 0,
-      0, 2>
+      4, 13, 0,
+      64, 2>
       _table_;
 
   friend class ::google::protobuf::MessageLite;
@@ -6837,6 +6854,7 @@ class RemoteViewportInputRequest final : public ::google::protobuf::Message
     inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
                           ::google::protobuf::Arena* arena, const Impl_& from,
                           const RemoteViewportInputRequest& from_msg);
+    ::google::protobuf::internal::ArenaStringPtr text_;
     ::uint64_t viewport_id_;
     ::uint32_t kind_;
     float pointer_x_;
@@ -28166,6 +28184,54 @@ inline bool RemoteViewportInputRequest::_internal_captured() const {
 inline void RemoteViewportInputRequest::_internal_set_captured(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.captured_ = value;
+}
+
+// string text = 13;
+inline void RemoteViewportInputRequest::clear_text() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.text_.ClearToEmpty();
+}
+inline const std::string& RemoteViewportInputRequest::text() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.RemoteViewportInputRequest.text)
+  return _internal_text();
+}
+template <typename Arg_, typename... Args_>
+inline PROTOBUF_ALWAYS_INLINE void RemoteViewportInputRequest::set_text(Arg_&& arg,
+                                                     Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.text_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.RemoteViewportInputRequest.text)
+}
+inline std::string* RemoteViewportInputRequest::mutable_text() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  std::string* _s = _internal_mutable_text();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.RemoteViewportInputRequest.text)
+  return _s;
+}
+inline const std::string& RemoteViewportInputRequest::_internal_text() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.text_.Get();
+}
+inline void RemoteViewportInputRequest::_internal_set_text(const std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.text_.Set(value, GetArena());
+}
+inline std::string* RemoteViewportInputRequest::_internal_mutable_text() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.text_.Mutable( GetArena());
+}
+inline std::string* RemoteViewportInputRequest::release_text() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.RemoteViewportInputRequest.text)
+  return _impl_.text_.Release();
+}
+inline void RemoteViewportInputRequest::set_allocated_text(std::string* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.text_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.text_.IsDefault()) {
+    _impl_.text_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.RemoteViewportInputRequest.text)
 }
 
 // -------------------------------------------------------------------

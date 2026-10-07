@@ -343,7 +343,8 @@ namespace SailorEditor.Views
                 remoteModifiers,
                 input.Pressed,
                 focused,
-                captured);
+                captured,
+                input.Text);
             return NativeViewportInputDispatchResult.Forwarded;
         }
 

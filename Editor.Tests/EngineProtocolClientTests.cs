@@ -926,16 +926,19 @@ public sealed class EngineProtocolClientTests
     public async Task ViewportInputAsync_UsesBoundedInteractiveTransportTimeout()
     {
         EngineProtocolInvocationKind? capturedKind = null;
+        RemoteViewportInputRequest? capturedInput = null;
+        const string text = "Море é e\u0301 🌊";
         var client = CreateClient(
-            request => Success(
-                request,
-                response => response.BoolResult =
-                    new BoolResult { Value = true }),
+            request =>
+            {
+                capturedInput = request.SendRemoteViewportInput;
+                return Success(request, response => response.BoolResult = new BoolResult { Value = true });
+            },
             kind => capturedKind = kind);
 
         Assert.True(await client.SendRemoteViewportInputAsync(
             1,
-            1,
+            7,
             0,
             0,
             0,
@@ -945,8 +948,11 @@ public sealed class EngineProtocolClientTests
             0,
             false,
             true,
-            false));
+            false,
+            text));
 
+        Assert.Equal(7u, capturedInput!.Kind);
+        Assert.Equal(text, capturedInput.Text);
         Assert.Equal(
             EngineProtocolInvocationKind.Interactive,
             capturedKind);

@@ -30,6 +30,6 @@ internal sealed class EngineSceneViewportBackend(EngineService engineService) : 
 
     public string GetViewportDiagnostics(ulong viewportId) => engineService.GetRemoteViewportDiagnostics(viewportId);
 
-    public bool SendInput(ulong viewportId, RemoteViewportInputKind kind, float pointerX = 0, float pointerY = 0, float wheelDeltaX = 0, float wheelDeltaY = 0, uint keyCode = 0, uint button = 0, RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None, bool pressed = false, bool focused = false, bool captured = false)
-        => engineService.SendRemoteViewportInput(viewportId, kind, pointerX, pointerY, wheelDeltaX, wheelDeltaY, keyCode, button, modifiers, pressed, focused, captured);
+    public bool SendInput(ulong viewportId, RemoteViewportInputKind kind, float pointerX = 0, float pointerY = 0, float wheelDeltaX = 0, float wheelDeltaY = 0, uint keyCode = 0, uint button = 0, RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None, bool pressed = false, bool focused = false, bool captured = false, string text = "")
+        => engineService.SendRemoteViewportInput(viewportId, kind, pointerX, pointerY, wheelDeltaX, wheelDeltaY, keyCode, button, modifiers, pressed, focused, captured, text);
 }
