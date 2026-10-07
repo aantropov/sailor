@@ -303,10 +303,3 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		}
 	}
 }
-
-void Sailor::Protocol::DispatchEditorEngineProtocolRequest(const sailor::editor::v1::ProtocolRequest& request,
-	sailor::editor::v1::ProtocolResponse& response,
-	const EditorEngineProtocolDependencies& dependencies)
-{
-	EditorEngineProtocolCommands::DispatchRequest(request, response, dependencies);
-}

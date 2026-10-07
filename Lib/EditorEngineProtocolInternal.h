@@ -4,6 +4,7 @@
 #include "Containers/Vector.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -43,12 +44,11 @@ namespace Sailor::Protocol
 
 	struct EditorEngineProtocolDependencies
 	{
-		using FEditorEngineProtocolOperation = void (*)(void* context);
-		// Must return only after operation has completed. The protocol caller
-		// owns operationContext and synchronously consumes its response/error.
+		using FEditorEngineProtocolOperation = std::function<void()>;
+		// Accept owned work for execution on the Editor thread. False means the
+		// operation was not retained; completion belongs to the protocol caller.
 		using FDispatchEditorEngineProtocolOperation = bool (*)(void* dispatchContext,
-			FEditorEngineProtocolOperation operation,
-			void* operationContext);
+			FEditorEngineProtocolOperation operation);
 		using FPullEditorViewportEvents = TVector<EditorViewport::Event> (*)(void* context, uint32_t capacity);
 		using FLifecycleRoutine = void (*)(void* context);
 
@@ -64,13 +64,8 @@ namespace Sailor::Protocol
 		bool m_bAllowInitialize = true;
 	};
 
-	bool DispatchEditorEngineProtocolOperationOnEditorThread(void* dispatchContext,
-		EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation,
-		void* operationContext);
-
-	void DispatchEditorEngineProtocolRequest(const sailor::editor::v1::ProtocolRequest& request,
-		sailor::editor::v1::ProtocolResponse& response,
-		const EditorEngineProtocolDependencies& dependencies);
+	SAILOR_SHARED_API bool DispatchEditorEngineProtocolOperationOnEditorThread(void* dispatchContext,
+		EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation);
 
 	namespace EditorEngineProtocolCommands
 	{

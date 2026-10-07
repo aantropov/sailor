@@ -10,6 +10,8 @@
 #include "Support/TempDirectory.h"
 #include "Support/EditorProtocolWire.h"
 #include "Support/ScopeExit.h"
+#include "Support/TaskTestApp.h"
+#include "Tasks/Tasks.h"
 #include "Workspace/WorkspacePathEncoding.h"
 
 #include <atomic>
@@ -2439,8 +2441,7 @@ namespace
 	bool DispatchBlockingEditorOperation(
 		void* context,
 		Sailor::Protocol::EditorEngineProtocolDependencies::
-			FEditorEngineProtocolOperation operation,
-		void* operationContext)
+			FEditorEngineProtocolOperation operation)
 	{
 		auto& source =
 			*static_cast<TBlockingEditorDispatchSource*>(context);
@@ -2455,7 +2456,7 @@ namespace
 				});
 		}
 
-		operation(operationContext);
+		operation();
 		{
 			const std::lock_guard<std::mutex> lock(source.m_mutex);
 			source.m_bOperationExecuted = true;
@@ -2493,15 +2494,14 @@ namespace
 	bool DispatchEditorOperationOnTestThread(
 		void* context,
 		Sailor::Protocol::EditorEngineProtocolDependencies::
-			FEditorEngineProtocolOperation operation,
-		void* operationContext)
+			FEditorEngineProtocolOperation operation)
 	{
 		auto& source = *static_cast<TEditorExceptionSource*>(context);
 		std::thread editorThread(
-			[&source, operation, operationContext]()
+			[&source, operation = std::move(operation)]()
 			{
 				source.m_dispatchThreadId = std::this_thread::get_id();
-				operation(operationContext);
+				operation();
 			});
 		editorThread.join();
 		return true;
@@ -2692,6 +2692,114 @@ namespace
 		Require(bRejected, "a Stop callback that never releases its worker must fail the ordering check");
 		std::cout << "Shutdown ordering: cleanup-assisted completion rejected after joining both workers" << std::endl;
 	}
+
+	void TestNativeStopCancelsQueuedEditorRequests(bool bQueued)
+	{
+		using namespace std::chrono_literals;
+		Sailor::Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
+		scheduler.Initialize();
+		struct TSource
+		{
+			std::promise<void> m_entered;
+			std::promise<void> m_stopEntered;
+			std::promise<void> m_release;
+			std::shared_future<void> m_resume = m_release.get_future().share();
+			std::atomic<uint32_t> m_numCalls{0u};
+			std::atomic<uint32_t> m_capacity{0u};
+			std::atomic<uint32_t> m_numShutdowns{0u};
+			bool m_bBlockOperation = false;
+		} source;
+		source.m_bBlockOperation = !bQueued;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		PrepareInitializedLifecycle(gate);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_dispatchEditorOperation = Sailor::Protocol::DispatchEditorEngineProtocolOperationOnEditorThread;
+		dependencies.m_pullEditorViewportEvents = [](void* context, uint32_t capacity)
+			{
+				auto& state = *static_cast<TSource*>(context);
+				++state.m_numCalls;
+				state.m_capacity = capacity;
+				if (state.m_bBlockOperation)
+				{
+					state.m_entered.set_value();
+					state.m_resume.wait();
+				}
+				return Sailor::TVector<Sailor::EditorViewport::Event>{};
+			};
+		dependencies.m_stop = [](void* context) { static_cast<TSource*>(context)->m_stopEntered.set_value(); };
+		dependencies.m_shutdown = [](void* context)
+			{
+				++static_cast<TSource*>(context)->m_numShutdowns;
+				return true;
+			};
+		std::future<TDecodedResponse> command;
+		std::future<bool> shutdown;
+		Sailor::Tests::ScopeExit releaseWorker([&]()
+			{
+				source.m_release.set_value();
+				scheduler.WaitIdle(Sailor::EThreadType::Editor);
+				if (command.valid())
+				{
+					command.wait();
+				}
+				if (shutdown.valid())
+				{
+					shutdown.wait();
+				}
+			});
+		if (bQueued)
+		{
+			auto holdWorker = Sailor::Tasks::CreateTask("Hold Editor worker"_h, [&]()
+				{
+					source.m_entered.set_value();
+					source.m_resume.wait();
+				}, Sailor::EThreadType::Editor);
+			scheduler.Run(holdWorker);
+		}
+		command = std::async(std::launch::async, [&]()
+			{
+				std::string payload;
+				AppendVarintField(payload, 1u, 7u);
+				TProtocolBuffer buffer;
+				return RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 71u,
+					c_pullEditorViewportEventsCommandField, payload), buffer, dependencies);
+			});
+		Require(source.m_entered.get_future().wait_for(1s) == std::future_status::ready,
+			"the actual Editor worker must reach the test barrier");
+		if (bQueued)
+		{
+			const auto deadline = std::chrono::steady_clock::now() + 1s;
+			while (scheduler.GetNumTasks(Sailor::EThreadType::Editor) == 0 && std::chrono::steady_clock::now() < deadline)
+			{
+				std::this_thread::yield();
+			}
+			Require(scheduler.GetNumTasks(Sailor::EThreadType::Editor) == 1,
+				"the protocol request must be queued behind the blocked Editor worker");
+		}
+		shutdown = std::async(std::launch::async, [&]()
+			{
+				return Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies);
+			});
+		Require(source.m_stopEntered.get_future().wait_for(1s) == std::future_status::ready,
+			"native shutdown must reach Stop before waiting for Editor commands");
+		const bool bStoppedBeforeRelease = shutdown.wait_for(bQueued ? 1s : 30ms) == std::future_status::ready;
+		const bool bCommandCompletedBeforeRelease = command.wait_for(bQueued ? 1s : 0ms) == std::future_status::ready;
+		const uint32_t numShutdownsBeforeRelease = source.m_numShutdowns;
+		releaseWorker.Run();
+		const bool bStopped = shutdown.get();
+		const auto response = command.get();
+		Require(bStoppedBeforeRelease == bQueued && bCommandCompletedBeforeRelease == bQueued,
+			"native shutdown must cancel queued requests without interrupting an executing Editor command");
+		Require(numShutdownsBeforeRelease == (bQueued ? 1u : 0u) && bStopped && source.m_numShutdowns == 1u,
+			"native teardown must wait only for commands that started executing");
+		Require(response.m_bSuccess != bQueued && source.m_numCalls == (bQueued ? 0u : 1u),
+			"a cancelled task must not enter the scene callback when its worker later resumes");
+		Require(bQueued ? !response.m_error.empty() : source.m_capacity == 7u,
+			"cancellation must report failure; completed work must receive the original request payload");
+	}
 }
 
 int main()
@@ -2736,6 +2844,8 @@ int main()
 		TestEditorWorkerExceptionIsRethrownOnInvoker();
 		TestEditorCommandDoesNotBlockLifecycleDispatch();
 		TestShutdownOrderingRejectsCleanupAssistedCompletion();
+		TestNativeStopCancelsQueuedEditorRequests(false);
+		TestNativeStopCancelsQueuedEditorRequests(true);
 	}
 	catch (const std::exception& exception)
 	{

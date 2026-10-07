@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
@@ -12,6 +13,13 @@ namespace Sailor::Protocol
 	{
 	public:
 		using FStartRoutine = void (*)(void* context);
+		enum class EEditorDispatchState : uint8_t
+		{
+			Queued,
+			Executing,
+			Completed,
+			Cancelled
+		};
 
 		~TEditorEngineProtocolLifecycleGate()
 		{
@@ -167,11 +175,13 @@ namespace Sailor::Protocol
 				// enter App::Stop concurrently. Preserve the request so a late
 				// Start for the new session is still rejected.
 				m_bStopRequested = true;
+				m_condition.notify_all();
 				return false;
 			}
 			if (m_state == EState::Ready)
 			{
 				m_bStopRequested = true;
+				m_condition.notify_all();
 				++m_numActiveOperations;
 				return true;
 			}
@@ -190,7 +200,30 @@ namespace Sailor::Protocol
 
 			m_state = EState::ShuttingDown;
 			m_bStopRequested = true;
+			m_condition.notify_all();
 			return true;
+		}
+
+		bool WaitForEditorDispatch(std::atomic<EEditorDispatchState>& state)
+		{
+			std::unique_lock<std::mutex> lock(m_mutex);
+			m_condition.wait(lock, [&]()
+				{
+					if (m_bStopRequested)
+					{
+						auto expected = EEditorDispatchState::Queued;
+						state.compare_exchange_strong(expected, EEditorDispatchState::Cancelled);
+					}
+					return state == EEditorDispatchState::Completed || state == EEditorDispatchState::Cancelled;
+				});
+			return state == EEditorDispatchState::Completed;
+		}
+
+		void CompleteEditorDispatch(std::atomic<EEditorDispatchState>& state)
+		{
+			const std::lock_guard<std::mutex> lock(m_mutex);
+			state = EEditorDispatchState::Completed;
+			m_condition.notify_all();
 		}
 
 		void WaitForInitializationDrain()

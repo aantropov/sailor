@@ -18,8 +18,7 @@
 #include <string>
 
 bool Sailor::Protocol::DispatchEditorEngineProtocolOperationOnEditorThread(void*,
-	const EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation,
-	void* operationContext)
+	EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation)
 {
 	if (!operation)
 	{
@@ -34,17 +33,16 @@ bool Sailor::Protocol::DispatchEditorEngineProtocolOperationOnEditorThread(void*
 
 	if (scheduler->IsEditorThread())
 	{
-		operation(operationContext);
+		operation();
 		return true;
 	}
 
 	auto task = Sailor::Tasks::CreateTask(
 		"Editor protocol operation"_h,
-		[operation, operationContext]() { operation(operationContext); },
+		std::move(operation),
 		Sailor::EThreadType::Editor);
 	scheduler->Run(task);
-	task->Wait();
-	return task->IsFinished();
+	return true;
 }
 
 namespace
@@ -93,31 +91,18 @@ namespace
 
 	struct TEditorProtocolDispatchContext final
 	{
-		const ProtocolRequest* m_request = nullptr;
-		ProtocolResponse* m_response = nullptr;
-		const Sailor::Protocol::EditorEngineProtocolDependencies* m_dependencies = nullptr;
+		ProtocolRequest m_request;
+		ProtocolResponse m_response;
+		Sailor::Protocol::EditorEngineProtocolDependencies m_dependencies;
 		std::exception_ptr m_exception{};
-		bool m_bExecuted = false;
+		std::atomic<Sailor::Protocol::TEditorEngineProtocolLifecycleGate::EEditorDispatchState> m_state{
+			Sailor::Protocol::TEditorEngineProtocolLifecycleGate::EEditorDispatchState::Queued};
 	};
 
-	void ExecuteDispatchedEditorProtocolRequest(void* context) noexcept
-	{
-		auto& dispatchContext = *static_cast<TEditorProtocolDispatchContext*>(context);
-		try
-		{
-			Sailor::Protocol::DispatchEditorEngineProtocolRequest(
-				*dispatchContext.m_request, *dispatchContext.m_response, *dispatchContext.m_dependencies);
-		}
-		catch (...)
-		{
-			dispatchContext.m_exception = std::current_exception();
-		}
-		dispatchContext.m_bExecuted = true;
-	}
-
-	void DispatchRequestOnEditorThread(const ProtocolRequest& request,
+	void DispatchRequestOnEditorThread(ProtocolRequest& request,
 		ProtocolResponse& response,
-		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies,
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate& gate)
 	{
 		if (!dependencies.m_dispatchEditorOperation)
 		{
@@ -125,16 +110,45 @@ namespace
 			return;
 		}
 
-		TEditorProtocolDispatchContext context{&request, &response, &dependencies, {}, false};
+		using State = Sailor::Protocol::TEditorEngineProtocolLifecycleGate::EEditorDispatchState;
+		auto context = Sailor::TSharedPtr<TEditorProtocolDispatchContext>::Make();
+		context->m_request.Swap(&request);
+		context->m_response.Swap(&response);
+		context->m_dependencies = dependencies;
 		const bool bDispatched = dependencies.m_dispatchEditorOperation(
-			dependencies.m_editorDispatchContext, ExecuteDispatchedEditorProtocolRequest, &context);
-		if (!bDispatched || !context.m_bExecuted)
+			dependencies.m_editorDispatchContext, [context, &gate]()
+			{
+				auto expected = State::Queued;
+				if (!context->m_state.compare_exchange_strong(expected, State::Executing))
+				{
+					// A cancelled task can remain queued after its caller and host
+					// session have ended. Do not enter the gate or App in that case.
+					return;
+				}
+				try
+				{
+					DispatchRequest(context->m_request, context->m_response, context->m_dependencies);
+				}
+				catch (...)
+				{
+					context->m_exception = std::current_exception();
+				}
+				gate.CompleteEditorDispatch(context->m_state);
+			});
+		const bool bCompleted = bDispatched && gate.WaitForEditorDispatch(context->m_state);
+		response.Swap(&context->m_response);
+		if (!bDispatched)
 		{
-			throw std::runtime_error("Failed to execute the Engine protocol operation on the Editor worker.");
+			throw std::runtime_error("Failed to queue the Engine protocol operation on the Editor worker.");
 		}
-		if (context.m_exception)
+		if (!bCompleted)
 		{
-			std::rethrow_exception(context.m_exception);
+			SetError(response, "Engine protocol operation was cancelled during host shutdown.");
+			return;
+		}
+		if (context->m_exception)
+		{
+			std::rethrow_exception(context->m_exception);
 		}
 	}
 
@@ -198,7 +212,7 @@ namespace
 		return true;
 	}
 
-	void DispatchRequestWithLifecycleAdmission(const ProtocolRequest& request,
+	void DispatchRequestWithLifecycleAdmission(ProtocolRequest& request,
 		ProtocolResponse& response,
 		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
 	{
@@ -303,7 +317,7 @@ namespace
 			}
 			else
 			{
-				DispatchRequestOnEditorThread(request, response, dependencies);
+				DispatchRequestOnEditorThread(request, response, dependencies, gate);
 			}
 			return;
 		}
