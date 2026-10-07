@@ -1,3 +1,4 @@
+#include "EditorScene.h"
 #include "Sailor.h"
 
 #include "AssetRegistry/AssetRegistry.h"
@@ -274,7 +275,7 @@ uint32_t App::GetModelFingerprintStatus(const char* strFileId)
 		});
 }
 
-bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform)
+bool EditorRuntime::ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform)
 {
 	if (!strInstanceId)
 	{
@@ -283,9 +284,9 @@ bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentI
 
 	const std::string instanceIdValue = strInstanceId;
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, parentInstanceIdValue, bKeepWorldTransform]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, parentInstanceIdValue, bKeepWorldTransform]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -302,7 +303,7 @@ bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentI
 		});
 }
 
-bool App::CreateEditorGameObject(
+bool EditorRuntime::CreateEditorGameObject(
 	const char* strParentInstanceId,
 	const char* strPreferredInstanceId,
 	char** outInstanceId)
@@ -315,9 +316,9 @@ bool App::CreateEditorGameObject(
 	outInstanceId[0] = nullptr;
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
 	const std::string preferredInstanceIdValue = strPreferredInstanceId ? strPreferredInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [parentInstanceIdValue, preferredInstanceIdValue, outInstanceId]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [parentInstanceIdValue, preferredInstanceIdValue, outInstanceId]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -346,7 +347,7 @@ bool App::CreateEditorGameObject(
 		});
 }
 
-bool App::CreateEditorModelInstance(
+bool EditorRuntime::CreateEditorModelInstance(
 	const char* strModelFileId,
 	const char* strName,
 	const char* strParentInstanceId,
@@ -365,7 +366,7 @@ bool App::CreateEditorModelInstance(
 
 	outInstanceId[0] = nullptr;
 	const FileId modelFileId(strModelFileId);
-	auto modelImporter = GetSubmodule<ModelImporter>();
+	auto modelImporter = App::GetSubmodule<ModelImporter>();
 	ModelPtr model;
 	if (!modelFileId ||
 		!modelImporter ||
@@ -383,7 +384,7 @@ bool App::CreateEditorModelInstance(
 	const std::string name = strName;
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
 	const std::string preferredInstanceIdValue = strPreferredInstanceId ? strPreferredInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [
+	return App::ExecuteOnEngineMainThread<bool>(false, [
 		model,
 		name,
 		parentInstanceIdValue,
@@ -395,7 +396,7 @@ bool App::CreateEditorModelInstance(
 		worldZ,
 		outInstanceId]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -432,7 +433,7 @@ bool App::CreateEditorModelInstance(
 		});
 }
 
-bool App::AddEditorComponent(
+bool EditorRuntime::AddEditorComponent(
 	const char* strInstanceId,
 	const char* strComponentTypeName,
 	const char* strPreferredInstanceId,
@@ -447,9 +448,9 @@ bool App::AddEditorComponent(
 	const std::string instanceIdValue = strInstanceId;
 	const std::string componentTypeName = strComponentTypeName;
 	const std::string preferredInstanceIdValue = strPreferredInstanceId ? strPreferredInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, componentTypeName, preferredInstanceIdValue, outInstanceId]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, componentTypeName, preferredInstanceIdValue, outInstanceId]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -474,7 +475,7 @@ bool App::AddEditorComponent(
 		});
 }
 
-bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId)
+bool EditorRuntime::InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId)
 {
 	if (!strFileId)
 	{
@@ -483,9 +484,9 @@ bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentIn
 
 	const std::string fileIdValue = strFileId;
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue, parentInstanceIdValue]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [fileIdValue, parentInstanceIdValue]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -502,7 +503,7 @@ bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentIn
 		});
 }
 
-bool App::InstantiateEditorPrefabInstance(
+bool EditorRuntime::InstantiateEditorPrefabInstance(
 	const char* strFileId,
 	const char* strParentInstanceId,
 	bool bHasWorldPosition,
@@ -520,7 +521,7 @@ bool App::InstantiateEditorPrefabInstance(
 	const std::string fileIdValue = strFileId;
 	const std::string parentInstanceIdValue =
 		strParentInstanceId ? strParentInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(
+	return App::ExecuteOnEngineMainThread<bool>(
 		false,
 		[fileIdValue,
 			parentInstanceIdValue,
@@ -530,7 +531,7 @@ bool App::InstantiateEditorPrefabInstance(
 			worldZ,
 			outInstanceId]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -566,7 +567,7 @@ bool App::InstantiateEditorPrefabInstance(
 		});
 }
 
-bool App::InstantiateEditorPrefabFromYaml(
+bool EditorRuntime::InstantiateEditorPrefabFromYaml(
 	const char* strPrefabYaml,
 	const char* strParentInstanceId)
 {
@@ -576,7 +577,7 @@ bool App::InstantiateEditorPrefabFromYaml(
 		false);
 }
 
-bool App::InstantiateEditorPrefabFromYaml(
+bool EditorRuntime::InstantiateEditorPrefabFromYaml(
 	const char* strPrefabYaml,
 	const char* strParentInstanceId,
 	bool bStrictInstanceIds)
@@ -588,7 +589,7 @@ bool App::InstantiateEditorPrefabFromYaml(
 		nullptr);
 }
 
-bool App::InstantiateEditorPrefabFromYaml(
+bool EditorRuntime::InstantiateEditorPrefabFromYaml(
 	const char* strPrefabYaml,
 	const char* strParentInstanceId,
 	bool bStrictInstanceIds,
@@ -601,12 +602,12 @@ bool App::InstantiateEditorPrefabFromYaml(
 
 	const std::string prefabYaml = strPrefabYaml;
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(
+	return App::ExecuteOnEngineMainThread<bool>(
 		false,
 		[prefabYaml, parentInstanceIdValue, bStrictInstanceIds, outInstanceId]()
 		{
-			auto editor = GetSubmodule<Editor>();
-			auto prefabImporter = GetSubmodule<PrefabImporter>();
+			auto editor = App::GetSubmodule<Editor>();
+			auto prefabImporter = App::GetSubmodule<PrefabImporter>();
 			if (!editor || !prefabImporter)
 			{
 				return false;

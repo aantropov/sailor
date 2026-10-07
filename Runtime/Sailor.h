@@ -112,41 +112,6 @@ namespace Sailor
 		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
 		SAILOR_API static bool RequestModelFingerprint(const char* strFileId);
 		SAILOR_API static uint32_t GetModelFingerprintStatus(const char* strFileId);
-		SAILOR_API static bool ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform);
-		SAILOR_API static bool CreateEditorGameObject(const char* strParentInstanceId, const char* strPreferredInstanceId, char** outInstanceId);
-		SAILOR_API static bool CreateEditorModelInstance(
-			const char* strModelFileId,
-			const char* strName,
-			const char* strParentInstanceId,
-			bool bCreateHierarchy,
-			bool bHasWorldPosition,
-			float worldX,
-			float worldY,
-			float worldZ,
-			const char* strPreferredInstanceId,
-			char** outInstanceId);
-		SAILOR_API static bool AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName, const char* strPreferredInstanceId, char** outInstanceId);
-		SAILOR_API static bool InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId);
-		SAILOR_API static bool InstantiateEditorPrefabInstance(
-			const char* strFileId,
-			const char* strParentInstanceId,
-			bool bHasWorldPosition,
-			float worldX,
-			float worldY,
-			float worldZ,
-			char** outInstanceId);
-		SAILOR_API static bool InstantiateEditorPrefabFromYaml(
-			const char* strPrefabYaml,
-			const char* strParentInstanceId);
-		SAILOR_API static bool InstantiateEditorPrefabFromYaml(
-			const char* strPrefabYaml,
-			const char* strParentInstanceId,
-			bool bStrictInstanceIds);
-		SAILOR_API static bool InstantiateEditorPrefabFromYaml(
-			const char* strPrefabYaml,
-			const char* strParentInstanceId,
-			bool bStrictInstanceIds,
-			char** outInstanceId);
 		SAILOR_API static void ShowMainWindow(bool bShow);
 
 		static SubmoduleBase* GetSubmodule(uint32_t index)

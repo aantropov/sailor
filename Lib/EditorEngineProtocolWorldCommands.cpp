@@ -76,7 +76,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		ProtocolResponse& response)
 	{
 		char* instanceId = nullptr;
-		const bool bSucceeded = Sailor::App::CreateEditorGameObject(
+		const bool bSucceeded = Sailor::EditorRuntime::CreateEditorGameObject(
 			request.parent_instance_id().c_str(), request.preferred_instance_id().c_str(), &instanceId);
 		Sailor::TUniquePtr<char[]> ownedInstanceId(instanceId);
 
@@ -103,7 +103,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		char* instanceId = nullptr;
 		const auto& worldPosition = request.world_position();
-		const bool bSucceeded = Sailor::App::CreateEditorModelInstance(request.model_file_id().c_str(),
+		const bool bSucceeded = Sailor::EditorRuntime::CreateEditorModelInstance(request.model_file_id().c_str(),
 			request.name().c_str(),
 			request.parent_instance_id().c_str(),
 			request.create_hierarchy(),
@@ -120,7 +120,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	static void DispatchAddComponent(const sailor::editor::v1::AddComponentRequest& request, ProtocolResponse& response)
 	{
 		char* instanceId = nullptr;
-		const bool bSucceeded = Sailor::App::AddEditorComponent(request.instance_id().c_str(),
+		const bool bSucceeded = Sailor::EditorRuntime::AddEditorComponent(request.instance_id().c_str(),
 			request.component_type_name().c_str(),
 			request.preferred_instance_id().c_str(),
 			&instanceId);
@@ -147,7 +147,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		char* instanceId = nullptr;
 		const Vector4& worldPosition = request.world_position();
-		const bool bSucceeded = Sailor::App::InstantiateEditorPrefabInstance(request.file_id().c_str(),
+		const bool bSucceeded = Sailor::EditorRuntime::InstantiateEditorPrefabInstance(request.file_id().c_str(),
 			request.parent_instance_id().c_str(),
 			request.apply_world_position(),
 			worldPosition.x(),
@@ -314,7 +314,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& reparent = request.reparent_object();
 			SetBoolResult(response,
-				Sailor::App::ReparentEditorObject(reparent.instance_id().c_str(),
+				Sailor::EditorRuntime::ReparentEditorObject(reparent.instance_id().c_str(),
 					reparent.parent_instance_id().c_str(),
 					reparent.keep_world_transform()));
 			break;
@@ -347,7 +347,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& instantiate = request.instantiate_prefab();
 			SetBoolResult(response,
-				Sailor::App::InstantiateEditorPrefab(
+				Sailor::EditorRuntime::InstantiateEditorPrefab(
 					instantiate.file_id().c_str(), instantiate.parent_instance_id().c_str()));
 			break;
 		}
@@ -356,7 +356,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& instantiate = request.instantiate_prefab_from_yaml();
 			char* instanceId = nullptr;
-			const bool bSucceeded = Sailor::App::InstantiateEditorPrefabFromYaml(instantiate.prefab_yaml().c_str(),
+			const bool bSucceeded = Sailor::EditorRuntime::InstantiateEditorPrefabFromYaml(instantiate.prefab_yaml().c_str(),
 				instantiate.parent_instance_id().c_str(),
 				instantiate.strict_instance_ids(),
 				&instanceId);

@@ -23,6 +23,42 @@ namespace Sailor::EditorRuntime
 		const char* strFileId);
 	SAILOR_API bool BreakEditorPrefabLink(const char* strInstanceId);
 
+	SAILOR_API bool ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform);
+	SAILOR_API bool CreateEditorGameObject(const char* strParentInstanceId, const char* strPreferredInstanceId, char** outInstanceId);
+	SAILOR_API bool CreateEditorModelInstance(
+		const char* strModelFileId,
+		const char* strName,
+		const char* strParentInstanceId,
+		bool bCreateHierarchy,
+		bool bHasWorldPosition,
+		float worldX,
+		float worldY,
+		float worldZ,
+		const char* strPreferredInstanceId,
+		char** outInstanceId);
+	SAILOR_API bool AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName, const char* strPreferredInstanceId, char** outInstanceId);
+	SAILOR_API bool InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId);
+	SAILOR_API bool InstantiateEditorPrefabInstance(
+		const char* strFileId,
+		const char* strParentInstanceId,
+		bool bHasWorldPosition,
+		float worldX,
+		float worldY,
+		float worldZ,
+		char** outInstanceId);
+	SAILOR_API bool InstantiateEditorPrefabFromYaml(
+		const char* strPrefabYaml,
+		const char* strParentInstanceId);
+	SAILOR_API bool InstantiateEditorPrefabFromYaml(
+		const char* strPrefabYaml,
+		const char* strParentInstanceId,
+		bool bStrictInstanceIds);
+	SAILOR_API bool InstantiateEditorPrefabFromYaml(
+		const char* strPrefabYaml,
+		const char* strParentInstanceId,
+		bool bStrictInstanceIds,
+		char** outInstanceId);
+
 	SAILOR_API bool SetEditorAnimatorParameter(
 		const char* strInstanceId,
 		const char* strName,
