@@ -61,7 +61,7 @@ jobs:
 
 
     - name: Configure CMake
-      run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 ${{ matrix.cmake_toolset_argument }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+      run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 ${{ matrix.cmake_toolset_argument }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DSAILOR_BUILD_TESTS=ON -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
 
     - name: Build
       run: cmake --build build --config ${{ env.BUILD_TYPE }}
