@@ -2729,7 +2729,7 @@ prefabs:
 		{
 			Tasks::Scheduler scheduler;
 			scheduler.AttachCurrentThreadAsMainThread();
-			Editor editor(nullptr, 0u, nullptr);
+			Editor editor(nullptr);
 			auto& controller = GlobalIlluminationBakeControllerTestAccess::GetController(editor);
 			auto state = GlobalIlluminationBakeControllerTestAccess::GetState(controller);
 			auto observation = TSharedPtr<BakeTaskObservation>::Make();
@@ -2838,7 +2838,7 @@ prefabs:
 		const auto path = directory.Path("complete.probes");
 		Tasks::Scheduler scheduler;
 		scheduler.AttachCurrentThreadAsMainThread();
-		Editor editor(nullptr, 0u, nullptr);
+		Editor editor(nullptr);
 		auto& controller = GlobalIlluminationBakeControllerTestAccess::GetController(editor);
 		auto state = GlobalIlluminationBakeControllerTestAccess::GetState(controller);
 		auto observation = TSharedPtr<BakeTaskObservation>::Make();

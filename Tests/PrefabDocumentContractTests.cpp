@@ -210,7 +210,7 @@ namespace
 	void TestEditorModelInstanceCreatesHierarchyOrFlatRenderer()
 	{
 		PrefabTestWorld world;
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 
 		auto model = TObjectPtr<EditorModelInstanceTestModel>::Make(
@@ -463,7 +463,7 @@ namespace
 			world,
 			edited)->Serialize()["gameObjects"][0];
 		editedYaml["mobilityType"] = "Static";
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		Require(editor.UpdateObject(
 				edited->GetInstanceId(),
@@ -933,7 +933,7 @@ namespace
 		Require(!unlinkedObject->GetParent(),
 			"unlinked game objects should reject parenting inside a linked instance");
 
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		Require(!editor.DestroyObject(child->GetInstanceId()),
 			"editor deletion should report failure for an internal linked game object");
@@ -2070,7 +2070,7 @@ namespace
 			"the detached undo snapshot should round-trip its strict restore marker: " +
 				diagnostic);
 
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		const size_t objectCountBeforeRejectedRestore =
 			world.GetGameObjects().Num();
@@ -2583,7 +2583,7 @@ namespace
 		const size_t parentChildCountBeforeReject =
 			linkedParent->GetChildren().Num();
 
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		Require(!editor.InstantiatePrefab(
 				childPrefab,

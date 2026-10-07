@@ -604,7 +604,7 @@ EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t n
 
 	if (params.m_bIsEditor)
 	{
-		s_pInstance->AddSubmodule(TSubmodule<Editor>::Make(params.m_editorHwnd, params.m_editorPort, s_pInstance->m_pMainWindow.GetRawPtr()));
+		s_pInstance->AddSubmodule(TSubmodule<Editor>::Make(s_pInstance->m_pMainWindow.GetRawPtr()));
 	}
 
 	auto scheduler = s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make());

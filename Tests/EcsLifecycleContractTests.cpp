@@ -383,7 +383,7 @@ namespace
 		parent->GetTransformComponent().SetPosition(glm::vec3(10.0f, 0.0f, 0.0f));
 		child->GetTransformComponent().SetPosition(glm::vec3(1.0f, 0.0f, 0.0f));
 
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		Require(editor.ReparentObject(child->GetInstanceId(), parent->GetInstanceId(), true),
 			"keep-world reparent should accept a live parent and child");
@@ -418,7 +418,7 @@ namespace
 		const glm::mat4 worldBefore = CalculateCurrentWorldMatrix(child);
 		const size_t ecsParentBefore = child->GetTransformComponent().GetParent();
 
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		Require(!editor.ReparentObject(child->GetInstanceId(), singularParent->GetInstanceId(), true),
 			"keep-world reparent should reject a singular parent transform");
@@ -446,7 +446,7 @@ namespace
 		child->GetTransformComponent().SetScale(glm::vec4(1.0f, 2.0f, 0.5f, 1.0f));
 		const glm::mat4 worldBefore = CalculateCurrentWorldMatrix(child);
 
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		Require(editor.ReparentObject(child->GetInstanceId(), mirroredParent->GetInstanceId(), true),
 			"keep-world reparent should accept an exactly representable mirrored transform");
@@ -476,7 +476,7 @@ namespace
 		const Math::Transform localBefore = child->GetTransformComponent().GetTransform();
 		const glm::mat4 worldBefore = CalculateCurrentWorldMatrix(child);
 
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		Require(!editor.ReparentObject(child->GetInstanceId(), parent->GetInstanceId(), true),
 			"keep-world reparent should reject a local matrix that requires shear");
@@ -1277,7 +1277,7 @@ namespace
 		Require(meshEcs->IsComponentRegistered(releasedSlot),
 			"the unresolved mesh renderer should own a live ECS slot before removal");
 
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		Require(editor.RemoveComponent(meshComponent->GetInstanceId()),
 			"removing the unresolved mesh renderer should succeed");
@@ -1550,7 +1550,7 @@ namespace
 		ModelPtr duckModel = ModelPtr::Make(world.GetAllocator(), FileId());
 		duckRenderer->SetModel(duckModel);
 
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		Require(editor.DestroyObject(duckOwner->GetInstanceId()),
 			"deleting the original duck owner should succeed");
@@ -1607,7 +1607,7 @@ namespace
 			source->GetInstanceId().ToString(),
 			updatedProperties);
 
-		Editor editor(nullptr, 0, nullptr);
+		Editor editor(nullptr);
 		editor.SetWorld(&world);
 		Require(editor.UpdateObject(source->GetInstanceId(), YAML::Dump(updateNode)),
 			"updating to a new unresolved dependency should succeed");

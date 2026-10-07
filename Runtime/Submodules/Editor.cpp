@@ -33,9 +33,7 @@ namespace
 	constexpr uint64_t c_primaryEditorViewportId = 1u;
 }
 
-Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMainWindow) :
-	m_editorPort(editorPort),
-	m_editorHwnd(editorHwnd),
+Editor::Editor(Sailor::Win32::Window* pMainWindow) :
 	m_pMainWindow(pMainWindow),
 	m_viewportController(TUniquePtr<EditorViewport::EditorViewportController>::Make()),
 	m_giProbesBakeController(TUniquePtr<GlobalIlluminationBakeController>::Make()),

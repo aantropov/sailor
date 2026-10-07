@@ -49,7 +49,7 @@ namespace Sailor
 
 	public:
 
-		SAILOR_API Editor(HWND editorHwnd, uint32_t editorPort, Win32::Window* pMainWindow);
+		SAILOR_API explicit Editor(Win32::Window* pMainWindow);
 		SAILOR_API ~Editor();
 
 		SAILOR_SHARED_API void SetWorld(class World* world);
@@ -143,8 +143,6 @@ namespace Sailor
 		std::atomic_size_t m_numMessages = 0;
 
 		RECT m_windowRect{};
-		uint32_t m_editorPort;
-		HWND m_editorHwnd;
 
 		class Win32::Window* m_pMainWindow = nullptr;
 
