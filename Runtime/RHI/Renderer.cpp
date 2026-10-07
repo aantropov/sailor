@@ -532,13 +532,16 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	submission->m_frameGraph = std::move(rhiFrameGraph);
 	submission->m_frameGraphResourceGeneration = m_frameGraphResourceGeneration;
 	submission->m_bUseDriverDepthBuffer = m_bUseDriverDepthBuffer;
-	CaptureSceneView(*submission, frame);
 
-	// This task borrows the state only until the synchronous acquire wait.
+	// Acquire does not read the scene view, so Main can capture it while Render waits.
 	auto acquire = Tasks::CreateTaskWithResult<bool>("Acquire render submission flight"_h,
 		[this, &submission]() { return AcquireSubmission(*submission); }, EThreadType::Render);
-	if (m_previousRenderFrame) acquire->Join(m_previousRenderFrame);
+	if (m_previousRenderFrame)
+	{
+		acquire->Join(m_previousRenderFrame);
+	}
 	acquire->Run();
+	CaptureSceneView(*submission, frame);
 	acquire->Wait();
 	if (!acquire->GetResult())
 	{
@@ -611,7 +614,6 @@ void Renderer::CaptureSceneView(FrameSubmission& submission, const Sailor::Frame
 
 bool Renderer::AcquireSubmission(FrameSubmission& submission)
 {
-	auto& rhiSceneView = submission.m_sceneView;
 	auto& rhiFrameGraph = submission.m_frameGraph;
 	uint32_t flightSlot = 0u;
 	const bool bAcquired =
@@ -632,24 +634,6 @@ bool Renderer::AcquireSubmission(FrameSubmission& submission)
 			flightSlot,
 			submission.m_materialRevision,
 			submission.m_frameGraphResourceGeneration);
-		for (const auto& spatialVersion : rhiSceneView->m_sceneVersions)
-		{
-			if (!spatialVersion || !spatialVersion->m_scene ||
-				!spatialVersion->m_sceneVersion)
-			{
-				continue;
-			}
-
-			auto scene = spatialVersion->m_scene;
-			auto flightState = scene->PrepareFlight(
-				flightSlot,
-				spatialVersion->m_sceneVersion);
-			context->RetainResource(scene);
-			context->RetainResource(spatialVersion->m_sceneVersion);
-			context->RetainResource(flightState);
-			scene->CollectGarbage();
-		}
-		rhiSceneView->SetSubmissionContext(context);
 		submission.m_context = std::move(context);
 	}
 	else
@@ -670,6 +654,25 @@ void Renderer::PrepareSceneView(FrameSubmission& submission, const Sailor::Frame
 	auto& rhiFrameGraph = submission.m_frameGraph;
 	auto* world = frame.GetWorld();
 	SAILOR_PROFILE_SCOPE("Prepare flight-local scene view");
+	auto& context = submission.m_context;
+	for (const auto& spatialVersion : rhiSceneView->m_sceneVersions)
+	{
+		if (!spatialVersion || !spatialVersion->m_scene ||
+			!spatialVersion->m_sceneVersion)
+		{
+			continue;
+		}
+
+		auto scene = spatialVersion->m_scene;
+		auto flightState = scene->PrepareFlight(
+			context->GetFlightSlot(),
+			spatialVersion->m_sceneVersion);
+		context->RetainResource(scene);
+		context->RetainResource(spatialVersion->m_sceneVersion);
+		context->RetainResource(flightState);
+		scene->CollectGarbage();
+	}
+	rhiSceneView->SetSubmissionContext(context);
 	world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
 	world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
 	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();

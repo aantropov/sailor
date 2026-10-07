@@ -6,6 +6,7 @@
 #include "Engine/EngineLoop.h"
 #include "Engine/GameObject.h"
 #include "ECS/LightingECS.h"
+#include "ECS/StaticMeshRendererECS.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Support/TempDirectory.h"
 #include "Support/ScopeExit.h"
@@ -183,6 +184,16 @@ namespace Sailor::RHI
 	class RendererSubmissionTestAccess
 	{
 	public:
+		static void LockSceneViews(Renderer& renderer, WorldPtr world)
+		{
+			renderer.m_cachedSceneViews.At_Lock(world);
+		}
+
+		static void UnlockSceneViews(Renderer& renderer, WorldPtr world)
+		{
+			renderer.m_cachedSceneViews.Unlock(world);
+		}
+
 		static RHISceneViewPtr View(Renderer& renderer, WorldPtr world, const RHISceneViewSnapshot& snapshot)
 		{
 			RHISceneViewPtr result;
@@ -5009,24 +5020,45 @@ frame: []
 		FrameState frame(world.GetRawPtr(), 16, {}, { 32, 24 });
 		engine->ProcessCpuFrame(frame);
 		frame.GetDrawImGuiTask()->Wait();
+		auto capturedView = RHISceneViewPtr::Make();
+		world->GetECS<StaticMeshRendererECS>()->CopySceneView(capturedView);
+		Require(!capturedView->m_virtualSceneVersions.IsEmpty(), "the world must publish a scene version");
+		const auto sceneVersion = capturedView->m_virtualSceneVersions[0];
+		capturedView.Clear();
+		const uint32_t retainedVersionRefs = sceneVersion.NumRefs();
+		std::atomic<bool> bCaptureBlocked{ false };
+		bool bCapturedWhileWaiting = false;
 		bool bPreservedResources = false;
 		VkResult signalResult = VK_ERROR_UNKNOWN;
 		std::jthread releaseGpu([&]()
 			{
+				// Hold the first capture step until acquisition has entered its real fence wait.
+				RendererSubmissionTestAccess::LockSceneViews(*renderer, world.GetRawPtr());
+				bCaptureBlocked.store(true);
+				bCaptureBlocked.notify_one();
 				const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
 				while (!bWaitStarted.load() && std::chrono::steady_clock::now() < deadline)
 				{
 					std::this_thread::yield();
 				}
+				const bool bAcquiringBeforeCapture = bWaitStarted.load();
+				RendererSubmissionTestAccess::UnlockSceneViews(*renderer, world.GetRawPtr());
+				while (sceneVersion.NumRefs() <= retainedVersionRefs && std::chrono::steady_clock::now() < deadline)
+				{
+					std::this_thread::yield();
+				}
+				bCapturedWhileWaiting = bAcquiringBeforeCapture && sceneVersion.NumRefs() > retainedVersionRefs;
 				const VkFence nativeFence = *firstFence;
 				bPreservedResources = bWaitStarted.load() &&
 					vkWaitForFences(*device, 1, &nativeFence, VK_TRUE, 50000000ull) == VK_TIMEOUT &&
 					!bPushReturned.load() && firstResources->m_numResets.load() == resetCount;
 				signalResult = vkSetEvent(*device, node->m_gpuGate);
 			});
+		bCaptureBlocked.wait(false);
 		const bool bAccepted = renderer->PushFrame(frame);
 		bPushReturned.store(true);
 		releaseGpu.join();
+		Require(bCapturedWhileWaiting, "CPU scene capture must progress while acquisition waits for its GPU fence");
 		Require(bPreservedResources && signalResult == VK_SUCCESS && bAccepted &&
 			node->m_resources == firstResources && firstResources->m_numResets.load() == resetCount + 1u,
 			"Renderer must reset flight resources once, only after their GPU completion");
@@ -5039,7 +5071,7 @@ frame: []
 				*static_cast<const uint32_t*>(readbacks[i]->GetPointer()) == 2200u + i,
 				"renderer flight reuse must retain each original completion and GPU payload");
 		}
-		std::cout << "Renderer pending GPU flight: resources retained until fence, one reset on reuse, all payloads passed\n";
+		std::cout << "Renderer pending GPU flight: overlapping CPU capture, resources retained until fence, one reset on reuse, all payloads passed\n";
 	}
 
 	enum class RendererFailure { None, Upload, MainSubmit, Present, GraphRefresh, GraphUpload };
