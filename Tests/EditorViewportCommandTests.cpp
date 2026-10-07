@@ -103,7 +103,7 @@ namespace Sailor::Tests
 		Require(world->IsEditorSelected(id), "typed selection must normalize component IDs and duplicates");
 		SelectThroughProtocol({});
 		Require(!world->IsEditorSelected(id), "an empty protobuf selection must clear the world selection");
-		const auto selectionRevision = App::GetEditorManagedMutationRevision(1, nullptr);
+		const auto selectionRevision = EditorRuntime::GetEditorManagedMutationRevision(1, nullptr);
 		Require(selectionRevision == 2 && EditorRuntime::PullEditorViewportEvents(8).IsEmpty(),
 			"managed selection commands must update revisions without echo events");
 		Require(EditorRuntime::SetEditorViewportToolState(1, 1), "selection tool must be available");
@@ -120,7 +120,7 @@ namespace Sailor::Tests
 
 		Require(EditorRuntime::SetEditorViewportToolState(2, 2), "local translation tool must be available");
 		const auto before = object->GetTransformComponent().GetTransform();
-		const auto objectRevision = App::GetEditorManagedMutationRevision(2, id.ToString().c_str());
+		const auto objectRevision = EditorRuntime::GetEditorManagedMutationRevision(2, id.ToString().c_str());
 		frame(center, false);
 		frame(center, true);
 		frame(center + glm::vec2(60, 20), true);
@@ -144,11 +144,11 @@ namespace Sailor::Tests
 			reflected.m_rotation = value.GetRotation();
 			reflected.m_scale = value.m_scale;
 			const auto yaml = YAML::Dump(reflected.Serialize());
-			Require(App::UpdateEditorObject(id.ToString().c_str(), yaml.c_str()), "undo/redo must apply through the editor object command");
+			Require(EditorRuntime::UpdateEditorObject(id.ToString().c_str(), yaml.c_str()), "undo/redo must apply through the editor object command");
 			Require(object->GetTransformComponent().GetTransform().m_position == value.m_position,
 				"undo/redo must restore the event's before/after position");
 		}
-		Require(App::GetEditorManagedMutationRevision(2, id.ToString().c_str()) == objectRevision + 2 &&
+		Require(EditorRuntime::GetEditorManagedMutationRevision(2, id.ToString().c_str()) == objectRevision + 2 &&
 			EditorRuntime::PullEditorViewportEvents(8).IsEmpty(), "undo/redo must advance object revisions without duplicating the drag event");
 		Require(EditorRuntime::SetEditorViewportToolState(1, 1), "selection tool must be restored after a drag");
 		frame({ 1, 1 }, false);

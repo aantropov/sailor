@@ -76,7 +76,7 @@ namespace
 			edit.m_name = "Changed during Play";
 			edit.m_position = glm::vec4(50, 60, 70, 1);
 			const auto yaml = YAML::Dump(edit.Serialize());
-			Require(App::UpdateEditorObject(rootId.ToString().c_str(), yaml.c_str()),
+			Require(EditorRuntime::UpdateEditorObject(rootId.ToString().c_str(), yaml.c_str()),
 				"simulation mutations must pass through the actual editor command");
 			child->SetParent({});
 			light->SetRadius(99.0f);
@@ -86,7 +86,7 @@ namespace
 			Require(EditorRuntime::SetEditorSelection({ lightId, childId, temporaryId, InstanceId::Invalid }) &&
 				EditorRuntime::SetEditorSimulationEnabled(true), "repeated Play must not replace the original snapshot");
 			Require(SerializeCurrentWorld().IsMap(), "serializing the live simulation must not consume its saved snapshot");
-			Require(App::GetEditorManagedMutationRevision(2, rootId.ToString().c_str()) != 0,
+			Require(EditorRuntime::GetEditorManagedMutationRevision(2, rootId.ToString().c_str()) != 0,
 				"the live mutation revision must advance before restoration");
 			Require(EditorRuntime::SetEditorSimulationEnabled(false), "Stop must restore the saved scene");
 			auto restored = engine->GetWorld();
@@ -106,8 +106,8 @@ namespace
 				restored->IsEditorSelected(temporaryId) && restored->GetPrimaryEditorSelection() == child,
 				"Stop must preserve stop-time selection IDs and ignore stale IDs when resolving the primary object");
 			Require(!EditorRuntime::IsEditorSimulationEnabled() && !restored->IsPhysicsSimulationEnabled() &&
-				App::GetEditorManagedMutationRevision(1, nullptr) == 0 &&
-				App::GetEditorManagedMutationRevision(2, rootId.ToString().c_str()) == 0 &&
+				EditorRuntime::GetEditorManagedMutationRevision(1, nullptr) == 0 &&
+				EditorRuntime::GetEditorManagedMutationRevision(2, rootId.ToString().c_str()) == 0 &&
 				EditorRuntime::PullEditorViewportEvents(8).IsEmpty() && EditorRuntime::SetEditorSimulationEnabled(false),
 				"restoration must reset editor interaction/revisions and make repeated Stop a no-op");
 			engine->ProcessPendingWorldExits();

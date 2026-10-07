@@ -23,9 +23,6 @@ using namespace Sailor;
 
 namespace
 {
-	constexpr uint32_t c_selectionMutationRevisionKind = 1;
-	constexpr uint32_t c_objectMutationRevisionKind = 2;
-
 	void LogEditorTypeSerializationFailure(const char* message) noexcept
 	{
 		SAILOR_LOG_ERROR("Failed to serialize editor type metadata: %s", message);
@@ -137,33 +134,6 @@ uint32_t App::PullEditorMessages(char** messages, uint32_t num)
 	}
 
 	return numMsg;
-}
-
-uint64_t App::GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId)
-{
-	const std::string instanceId = strInstanceId ? strInstanceId : std::string{};
-
-	return ExecuteOnEngineMainThread<uint64_t>(0, [kind, instanceId]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return uint64_t{ 0 };
-			}
-
-			if (kind == c_selectionMutationRevisionKind)
-			{
-				return editor->GetManagedSelectionMutationRevision();
-			}
-
-			if (kind == c_objectMutationRevisionKind && !instanceId.empty())
-			{
-				const InstanceId parsedInstanceId(instanceId);
-				return editor->GetManagedObjectMutationRevision(parsedInstanceId);
-			}
-
-			return uint64_t{ 0 };
-		});
 }
 
 uint32_t App::SerializeEngineTypes(char** yamlNode)
@@ -331,28 +301,6 @@ uint32_t App::GetModelFingerprintStatus(const char* strFileId)
 			const FileId fileId(value);
 			return static_cast<uint32_t>(importer && fileId ? importer->GetFingerprintStatus(fileId) :
 				ModelImporter::EFingerprintStatus::Unavailable);
-		});
-}
-
-bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
-{
-	if (!strInstanceId || !strYamlNode)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	const std::string yamlValue = strYamlNode;
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, yamlValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return editor->UpdateObject(instanceId, yamlValue);
 		});
 }
 
@@ -642,48 +590,6 @@ bool App::CreateEditorModelInstance(
 		});
 }
 
-bool App::DestroyEditorObject(const char* strInstanceId)
-{
-	if (!strInstanceId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return editor->DestroyObject(instanceId);
-		});
-}
-
-bool App::ResetEditorComponentToDefaults(const char* strInstanceId)
-{
-	if (!strInstanceId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return editor->ResetComponentToDefaults(instanceId);
-		});
-}
-
 bool App::AddEditorComponent(
 	const char* strInstanceId,
 	const char* strComponentTypeName,
@@ -723,27 +629,6 @@ bool App::AddEditorComponent(
 
 			SetInteropString(createdInstanceId.ToString(), outInstanceId);
 			return true;
-		});
-}
-
-bool App::RemoveEditorComponent(const char* strInstanceId)
-{
-	if (!strInstanceId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return editor->RemoveComponent(instanceId);
 		});
 }
 
@@ -970,56 +855,6 @@ bool App::InstantiateEditorPrefabFromYaml(
 			}
 
 			return bInstantiated;
-		});
-}
-
-bool App::SetEditorPrefabLink(
-	const char* strInstanceId,
-	const char* strFileId)
-{
-	if (!strInstanceId || !strFileId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	const std::string fileIdValue = strFileId;
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[instanceIdValue, fileIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			const FileId fileId(fileIdValue);
-			return editor->SetPrefabLink(instanceId, fileId);
-		});
-}
-
-bool App::BreakEditorPrefabLink(const char* strInstanceId)
-{
-	if (!strInstanceId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[instanceIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return editor->BreakPrefabLink(instanceId);
 		});
 }
 

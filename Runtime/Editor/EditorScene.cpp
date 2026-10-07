@@ -23,6 +23,9 @@ using namespace Sailor;
 
 namespace
 {
+	constexpr uint32_t c_selectionMutationRevisionKind = 1;
+	constexpr uint32_t c_objectMutationRevisionKind = 2;
+
 	bool IsDescendantOf(GameObjectPtr object, GameObjectPtr possibleParent)
 	{
 		for (auto current = object; current.IsValid(); current = current->GetParent())
@@ -993,5 +996,167 @@ bool EditorRuntime::IsEditorSimulationEnabled()
 		{
 			const auto* editor = App::GetSubmodule<Editor>();
 			return editor && editor->IsSimulationEnabled();
+		});
+}
+
+uint64_t EditorRuntime::GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId)
+{
+	const std::string instanceId = strInstanceId ? strInstanceId : std::string{};
+
+	return App::ExecuteOnEngineMainThread<uint64_t>(0, [kind, instanceId]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return uint64_t{ 0 };
+			}
+
+			if (kind == c_selectionMutationRevisionKind)
+			{
+				return editor->GetManagedSelectionMutationRevision();
+			}
+
+			if (kind == c_objectMutationRevisionKind && !instanceId.empty())
+			{
+				const InstanceId parsedInstanceId(instanceId);
+				return editor->GetManagedObjectMutationRevision(parsedInstanceId);
+			}
+
+			return uint64_t{ 0 };
+		});
+}
+
+bool EditorRuntime::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
+{
+	if (!strInstanceId || !strYamlNode)
+	{
+		return false;
+	}
+
+	const std::string instanceIdValue = strInstanceId;
+	const std::string yamlValue = strYamlNode;
+	return App::ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, yamlValue]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			const InstanceId instanceId(instanceIdValue);
+			return editor->UpdateObject(instanceId, yamlValue);
+		});
+}
+
+bool EditorRuntime::DestroyEditorObject(const char* strInstanceId)
+{
+	if (!strInstanceId)
+	{
+		return false;
+	}
+
+	const std::string instanceIdValue = strInstanceId;
+	return App::ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			const InstanceId instanceId(instanceIdValue);
+			return editor->DestroyObject(instanceId);
+		});
+}
+
+bool EditorRuntime::ResetEditorComponentToDefaults(const char* strInstanceId)
+{
+	if (!strInstanceId)
+	{
+		return false;
+	}
+
+	const std::string instanceIdValue = strInstanceId;
+	return App::ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			const InstanceId instanceId(instanceIdValue);
+			return editor->ResetComponentToDefaults(instanceId);
+		});
+}
+
+bool EditorRuntime::RemoveEditorComponent(const char* strInstanceId)
+{
+	if (!strInstanceId)
+	{
+		return false;
+	}
+
+	const std::string instanceIdValue = strInstanceId;
+	return App::ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			const InstanceId instanceId(instanceIdValue);
+			return editor->RemoveComponent(instanceId);
+		});
+}
+
+bool EditorRuntime::SetEditorPrefabLink(
+	const char* strInstanceId,
+	const char* strFileId)
+{
+	if (!strInstanceId || !strFileId)
+	{
+		return false;
+	}
+
+	const std::string instanceIdValue = strInstanceId;
+	const std::string fileIdValue = strFileId;
+	return App::ExecuteOnEngineMainThread<bool>(
+		false,
+		[instanceIdValue, fileIdValue]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			const InstanceId instanceId(instanceIdValue);
+			const FileId fileId(fileIdValue);
+			return editor->SetPrefabLink(instanceId, fileId);
+		});
+}
+
+bool EditorRuntime::BreakEditorPrefabLink(const char* strInstanceId)
+{
+	if (!strInstanceId)
+	{
+		return false;
+	}
+
+	const std::string instanceIdValue = strInstanceId;
+	return App::ExecuteOnEngineMainThread<bool>(
+		false,
+		[instanceIdValue]()
+		{
+			auto editor = App::GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			const InstanceId instanceId(instanceIdValue);
+			return editor->BreakPrefabLink(instanceId);
 		});
 }

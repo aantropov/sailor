@@ -106,14 +106,12 @@ namespace Sailor
 		SAILOR_API static bool HasEditor();
 		SAILOR_API static bool IsEditorMode();
 		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
-		SAILOR_API static uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId);
 		SAILOR_API static uint32_t SerializeEngineTypes(char** yamlNode);
 		SAILOR_API static uint32_t SerializeEditorTypes(char** yamlNode);
 		SAILOR_API static uint32_t SerializeWorkspaceCacheIdentity(char** yamlNode);
 		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
 		SAILOR_API static bool RequestModelFingerprint(const char* strFileId);
 		SAILOR_API static uint32_t GetModelFingerprintStatus(const char* strFileId);
-		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool SetEditorAnimatorParameter(
 			const char* strInstanceId,
 			const char* strName,
@@ -146,10 +144,7 @@ namespace Sailor
 			float worldZ,
 			const char* strPreferredInstanceId,
 			char** outInstanceId);
-		SAILOR_API static bool DestroyEditorObject(const char* strInstanceId);
-		SAILOR_API static bool ResetEditorComponentToDefaults(const char* strInstanceId);
 		SAILOR_API static bool AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName, const char* strPreferredInstanceId, char** outInstanceId);
-		SAILOR_API static bool RemoveEditorComponent(const char* strInstanceId);
 		SAILOR_API static bool InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId);
 		SAILOR_API static bool InstantiateEditorPrefabInstance(
 			const char* strFileId,
@@ -171,10 +166,6 @@ namespace Sailor
 			const char* strParentInstanceId,
 			bool bStrictInstanceIds,
 			char** outInstanceId);
-		SAILOR_API static bool SetEditorPrefabLink(
-			const char* strInstanceId,
-			const char* strFileId);
-		SAILOR_API static bool BreakEditorPrefabLink(const char* strInstanceId);
 		SAILOR_API static void ShowMainWindow(bool bShow);
 
 		static SubmoduleBase* GetSubmodule(uint32_t index)

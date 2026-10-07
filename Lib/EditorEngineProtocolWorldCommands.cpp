@@ -300,7 +300,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& mutation = request.get_editor_managed_mutation_revision();
 			SetUInt64Result(response,
-				Sailor::App::GetEditorManagedMutationRevision(mutation.kind(), mutation.instance_id().c_str()));
+				Sailor::EditorRuntime::GetEditorManagedMutationRevision(mutation.kind(), mutation.instance_id().c_str()));
 			break;
 		}
 
@@ -308,7 +308,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& update = request.update_object();
 			SetBoolResult(
-				response, Sailor::App::UpdateEditorObject(update.instance_id().c_str(), update.yaml_changes().c_str()));
+				response, Sailor::EditorRuntime::UpdateEditorObject(update.instance_id().c_str(), update.yaml_changes().c_str()));
 			break;
 		}
 
@@ -327,12 +327,12 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kDestroyObject:
-			SetBoolResult(response, Sailor::App::DestroyEditorObject(request.destroy_object().instance_id().c_str()));
+			SetBoolResult(response, Sailor::EditorRuntime::DestroyEditorObject(request.destroy_object().instance_id().c_str()));
 			break;
 
 		case ProtocolRequest::kResetComponentToDefaults:
 			SetBoolResult(response,
-				Sailor::App::ResetEditorComponentToDefaults(
+				Sailor::EditorRuntime::ResetEditorComponentToDefaults(
 					request.reset_component_to_defaults().instance_id().c_str()));
 			break;
 
@@ -342,7 +342,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		case ProtocolRequest::kRemoveComponent:
 			SetBoolResult(
-				response, Sailor::App::RemoveEditorComponent(request.remove_component().instance_id().c_str()));
+				response, Sailor::EditorRuntime::RemoveEditorComponent(request.remove_component().instance_id().c_str()));
 			break;
 
 		case ProtocolRequest::kInstantiatePrefab:
@@ -383,13 +383,13 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& link = request.set_prefab_link();
 			SetBoolResult(
-				response, Sailor::App::SetEditorPrefabLink(link.instance_id().c_str(), link.file_id().c_str()));
+				response, Sailor::EditorRuntime::SetEditorPrefabLink(link.instance_id().c_str(), link.file_id().c_str()));
 			break;
 		}
 
 		case ProtocolRequest::kBreakPrefabLink:
 			SetBoolResult(
-				response, Sailor::App::BreakEditorPrefabLink(request.break_prefab_link().instance_id().c_str()));
+				response, Sailor::EditorRuntime::BreakEditorPrefabLink(request.break_prefab_link().instance_id().c_str()));
 			break;
 
 		default:
