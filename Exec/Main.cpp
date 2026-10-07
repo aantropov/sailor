@@ -11,16 +11,25 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 {
 	int32_t nArgs = 0;
 	LPWSTR* wideArguments = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-	if (!wideArguments) return 1;
+	if (!wideArguments)
+	{
+		return 1;
+	}
 
 	TVector<std::string> argumentStorage;
 	argumentStorage.Reserve(static_cast<size_t>(nArgs));
-	for (int32_t i = 0; i < nArgs; ++i) argumentStorage.Add(Utils::wchar_to_UTF8(wideArguments[i]));
+	for (int32_t i = 0; i < nArgs; ++i)
+	{
+		argumentStorage.Add(Utils::wchar_to_UTF8(wideArguments[i]));
+	}
 	LocalFree(wideArguments);
 
 	TVector<const char*> arguments;
 	arguments.Reserve(static_cast<size_t>(nArgs));
-	for (const auto& argument : argumentStorage) arguments.Add(argument.c_str());
+	for (const auto& argument : argumentStorage)
+	{
+		arguments.Add(argument.c_str());
+	}
 
 	const auto initialization = App::Initialize(arguments.GetData(), nArgs);
 	if (initialization == EAppInitializationResult::Ready)
