@@ -3,6 +3,7 @@
 #include "Core/Submodule.h"
 #include "Engine/WorldPrefab.h"
 #include "Memory/UniquePtr.hpp"
+#include "Platform/NativeWindow.h"
 #include <atomic>
 #include <string_view>
 #include <glm/vec3.hpp>
@@ -38,18 +39,13 @@ namespace Sailor
 		class EditorViewportController;
 	}
 
-	namespace Win32 
-	{
-		class Window;
-	}
-
 	class Editor : public TSubmodule<Editor>
 	{
 		friend class GlobalIlluminationBakeControllerTestAccess;
 
 	public:
 
-		SAILOR_API explicit Editor(Win32::Window* pMainWindow);
+		SAILOR_API explicit Editor(Platform::NativeWindow* pMainWindow);
 		SAILOR_API ~Editor();
 
 		SAILOR_SHARED_API void SetWorld(class World* world);
@@ -144,7 +140,7 @@ namespace Sailor
 
 		RECT m_windowRect{};
 
-		class Win32::Window* m_pMainWindow = nullptr;
+		Platform::NativeWindow* m_pMainWindow = nullptr;
 
 		class World* m_world = nullptr;
 		std::string m_simulationSnapshot;

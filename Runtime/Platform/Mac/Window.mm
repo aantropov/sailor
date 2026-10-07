@@ -1,4 +1,3 @@
-#include "Platform/Win32/Window.h"
 #include "Platform/Mac/Window.h"
 #include "Platform/Win32/Input.h"
 #include "Sailor.h"
@@ -15,13 +14,9 @@
 #include <cmath>
 
 using namespace Sailor;
-using namespace Sailor::Win32;
+using Sailor::Mac::Window;
+using Sailor::Win32::GlobalInput;
 using Sailor::Platform::InputEvent;
-
-Utils::WindowSizeAndPosition Utils::GetWindowSizeAndPosition(HWND hwnd)
-{
-	return {};
-}
 
 namespace
 {
@@ -218,7 +213,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 }
 
 @interface SailorWindowDelegate : NSObject<NSWindowDelegate>
-@property(nonatomic, assign) Sailor::Win32::Window* sailorWindow;
+@property(nonatomic, assign) Sailor::Mac::Window* sailorWindow;
 @property(nonatomic, assign) BOOL terminatesApplicationOnClose;
 @end
 
@@ -227,14 +222,14 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 - (void)windowWillClose:(NSNotification*)notification
 {
 	SailorWindowDelegate* retainedSelf = [self retain];
-	Sailor::Win32::Window* sailorWindow = self.sailorWindow;
+	Sailor::Mac::Window* sailorWindow = self.sailorWindow;
 	const BOOL bTerminatesApplicationOnClose = self.terminatesApplicationOnClose;
 	self.sailorWindow = nullptr;
 
-	if (sailorWindow && Sailor::Win32::Window::IsWindowAlive(sailorWindow))
+	if (sailorWindow && Sailor::Mac::Window::IsWindowAlive(sailorWindow))
 	{
 		NSWindow* window = (NSWindow*)notification.object;
-		sailorWindow->HandleNativeWindowWillClose((HWND)(__bridge void*)window);
+		sailorWindow->HandleNativeWindowWillClose((__bridge void*)window);
 	}
 	[retainedSelf release];
 
@@ -300,7 +295,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 @end
 
 @interface SailorContentView : NSView
-@property(nonatomic, assign) Sailor::Win32::Window* sailorWindow;
+@property(nonatomic, assign) Sailor::Mac::Window* sailorWindow;
 @end
 
 @implementation SailorContentView
@@ -441,24 +436,13 @@ Window::~Window()
 
 bool Window::IsParentWindowValid() const
 {
-	if (m_parentHwnd == nullptr)
+	if (m_parentWindow == nullptr)
 	{
 		return true;
 	}
 
-	NSWindow* parent = (__bridge NSWindow*)m_parentHwnd;
+	NSWindow* parent = (__bridge NSWindow*)m_parentWindow;
 	return parent != nil;
-}
-
-void Window::SetWindowPos(const RECT& rect)
-{
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
-	if (!window)
-	{
-		return;
-	}
-
-	[window setFrame:NSMakeRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top) display:YES];
 }
 
 void Window::Show(bool bShowWindow)
@@ -472,7 +456,7 @@ void Window::Show(bool bShowWindow)
 		return;
 	}
 
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	if (window)
 	{
 		if (bShowWindow)
@@ -490,7 +474,7 @@ void Window::Show(bool bShowWindow)
 
 void Window::SetWindowTitle(const char* titleText)
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	if (!window)
 	{
 		return;
@@ -517,15 +501,9 @@ void Window::SetWindowTitle(const char* titleText)
 	}
 }
 
-void Window::TrackParentWindowPosition(const RECT& viewport)
+bool Window::Create(const char* title, const char*, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested, void* parentWindow)
 {
-	(void)viewport;
-}
-
-bool Window::Create(const char* title, const char* className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested, void* parentWindow)
-{
-	m_parentHwnd = parentWindow;
-	m_windowClassName = className;
+	m_parentWindow = parentWindow;
 	m_bIsVsyncRequested = bIsVsyncRequested;
 	m_width = inWidth;
 	m_height = inHeight;
@@ -598,7 +576,7 @@ bool Window::Create(const char* title, const char* className, int32_t inWidth, i
 			m_bIsShown = false;
 		}
 
-		m_hWnd = (HWND)(__bridge void*)window;
+		m_nativeWindow = (__bridge void*)window;
 	}
 
 	g_windows.Add(this);
@@ -608,7 +586,7 @@ bool Window::Create(const char* title, const char* className, int32_t inWidth, i
 
 void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScreen)
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	if (!window)
 	{
 		m_width = width;
@@ -637,7 +615,7 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor, bIsVsyncRequested);
 }
 
-void Sailor::Win32::Window::ProcessMacMsgs()
+void Sailor::Mac::Window::ProcessMacMsgs()
 {
 	@autoreleasepool
 	{
@@ -660,12 +638,12 @@ void Sailor::Win32::Window::ProcessMacMsgs()
 
 		for (auto* pWindow : g_windows)
 		{
-			if (!pWindow || !pWindow->m_hWnd)
+			if (!pWindow || !pWindow->m_nativeWindow)
 			{
 				continue;
 			}
 
-			NSWindow* window = (__bridge NSWindow*)pWindow->m_hWnd;
+			NSWindow* window = (__bridge NSWindow*)pWindow->m_nativeWindow;
 			pWindow->SetIsIconic(window.isMiniaturized);
 			if (!App::IsEditorMode())
 			{
@@ -686,7 +664,7 @@ void Window::UpdateMouseCapture()
 {
 	check([NSThread isMainThread]);
 
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	const bool bShouldCapture = m_bMouseCaptureRequested && !App::IsEditorMode() && m_bIsActive &&
 		window && window.isKeyWindow && NSApp.isActive && !window.isMiniaturized;
 	if (bShouldCapture == m_bMouseCaptured)
@@ -720,7 +698,7 @@ void Window::UpdateMouseCapture()
 
 glm::ivec2 Window::GetCenterPointScreen() const
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	if (!window)
 	{
 		return glm::ivec2(0);
@@ -739,7 +717,7 @@ glm::ivec2 Window::GetCenterPointClient() const
 
 void Window::RecalculateWindowSize()
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	if (!window)
 	{
 		m_width = 0;
@@ -772,8 +750,8 @@ void Window::Destroy()
 
 	RequestMouseCapture(false);
 	UpdateMouseCapture();
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
-	m_hWnd = nullptr;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
+	m_nativeWindow = nullptr;
 	g_windows.Remove(this);
 	m_bIsShown = false;
 	m_bIsActive = false;
@@ -812,17 +790,17 @@ void Window::Destroy()
 	}
 }
 
-void Window::HandleNativeWindowWillClose(HWND nativeWindow)
+void Window::HandleNativeWindowWillClose(void* nativeWindow)
 {
 	NSWindow* window = (__bridge NSWindow*)nativeWindow;
-	if (!window || (__bridge NSWindow*)m_hWnd != window)
+	if (!window || (__bridge NSWindow*)m_nativeWindow != window)
 	{
 		return;
 	}
 
 	RequestMouseCapture(false);
 	UpdateMouseCapture();
-	m_hWnd = nullptr;
+	m_nativeWindow = nullptr;
 	g_windows.Remove(this);
 	m_bIsShown = false;
 	m_bIsActive = false;
@@ -862,12 +840,12 @@ bool Window::IsIconic() const
 
 void* Window::GetMetalLayer() const
 {
-	return Mac::GetMetalLayer(m_hWnd, m_bIsVsyncRequested);
+	return Mac::GetMetalLayer(m_nativeWindow, m_bIsVsyncRequested);
 }
 
 void* Window::GetNativeView() const
 {
-	return Mac::GetNativeView(m_hWnd);
+	return Mac::GetNativeView(m_nativeWindow);
 }
 
 void* Sailor::Mac::GetMetalLayer(void* nativeWindow, bool bVsyncRequested)

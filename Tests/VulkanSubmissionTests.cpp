@@ -3037,7 +3037,7 @@ frame: []
 				"bootstrap fixture must start without an existing renderer or Vulkan instance");
 			App::AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
 			auto& window = App::GetMainWindow();
-			window = TUniquePtr<Win32::Window>::Make();
+			window = TUniquePtr<Platform::NativeWindow>::Make();
 			window->Create("VulkanBootstrapTests", "VulkanBootstrapTests", 320, 240, false, false, 0);
 			window->Show(false);
 
@@ -4083,7 +4083,7 @@ frame: []
 			{
 				// The UI loop outlives App when EngineService sends Shutdown over the socket.
 #if defined(__APPLE__)
-				Win32::Window::ProcessMacMsgs();
+				Mac::Window::ProcessMacMsgs();
 #elif defined(_WIN32)
 				Win32::Window::ProcessWin32Msgs();
 #endif

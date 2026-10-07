@@ -576,7 +576,7 @@ EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t n
 	bEnableRenderValidationLayers = false;
 #endif
 
-	s_pInstance->m_pMainWindow = TUniquePtr<Win32::Window>::Make();
+	s_pInstance->m_pMainWindow = TUniquePtr<Platform::NativeWindow>::Make();
 
 	std::string className = "SailorEngine";
 	if (params.m_editorHwnd != 0)
@@ -674,7 +674,7 @@ EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t n
 		return s_pInstance->m_initializationResult;
 	}
 
-	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
+	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make(s_pInstance->m_pMainWindow->GetNativeHandle()));
 	auto engineLoop = s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make(
 		GetActiveGraphicsSettings().m_fpsCap));
 
@@ -933,7 +933,7 @@ void App::Start()
 
 		if (trackEditor.ResultAccumulatedMs() > 1 && pMainWindow->IsShown())
 		{
-#ifdef SAILOR_EDITOR
+#if defined(SAILOR_EDITOR) && defined(_WIN32)
 			if (auto editor = App::GetSubmodule<Editor>())
 			{
 				auto rect = editor->GetViewport();
@@ -1337,7 +1337,7 @@ const std::string& App::GetLoadedWorldPath()
 	return s_pInstance ? s_pInstance->m_args.m_world : empty;
 }
 
-TUniquePtr<Sailor::Win32::Window>& App::GetMainWindow()
+TUniquePtr<Sailor::Platform::NativeWindow>& App::GetMainWindow()
 {
 	return s_pInstance->m_pMainWindow;
 }

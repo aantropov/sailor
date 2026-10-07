@@ -84,7 +84,7 @@ namespace Sailor::Win32
 	public:
 
 		SAILOR_API Window() = default;
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32)
 		SAILOR_API ~Window() override;
 #else
 		SAILOR_API ~Window() override = default;
@@ -100,9 +100,6 @@ namespace Sailor::Win32
 		SAILOR_API void SetActive(bool value) override { m_bIsActive = value; }
 		SAILOR_API void SetRunning(bool value) override { m_bIsRunning = value; }
 		SAILOR_API void SetFullscreen(bool value) override { m_bIsFullscreen = value; }
-#if defined(__APPLE__)
-		SAILOR_API void SetWindowTitle(const char* title) override;
-#else
 		SAILOR_API void SetWindowTitle(const char* title) override {
 #if defined(_WIN32)
 			SetWindowText(m_hWnd, title);
@@ -110,17 +107,11 @@ namespace Sailor::Win32
 			(void)title;
 #endif
 		}
-#endif
 
 		SAILOR_API void* GetNativeHandle() const override { return m_hWnd; }
 		SAILOR_API HWND GetHWND() const { return m_hWnd; }
 		SAILOR_API HDC GetHDC() const { return m_hDC; }
 		SAILOR_API HINSTANCE GetHINSTANCE() const { return m_hInstance; }
-#if defined(__APPLE__)
-		SAILOR_API void* GetMetalLayer() const;
-		SAILOR_API void* GetNativeView() const;
-		SAILOR_API void HandleNativeWindowWillClose(HWND nativeWindow);
-#endif
 
 		SAILOR_API int32_t GetWidth() const override { return m_width; }
 		SAILOR_API int32_t GetHeight() const override { return m_height; }
@@ -180,9 +171,6 @@ namespace Sailor::Win32
 			float& outNormalizedY);
 		void QueueEditorViewportToolShortcut(uint32_t keyCode);
 		bool PullEditorViewportToolShortcut(uint32_t& outKeyCode);
-#endif
-#if defined(__APPLE__)
-		SAILOR_API static void ProcessMacMsgs();
 #endif
 
 	private:

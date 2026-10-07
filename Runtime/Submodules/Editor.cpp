@@ -10,7 +10,6 @@
 #include "Engine/EngineLoop.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
-#include "Platform/Win32/Window.h"
 #include "YamlExceptionBoundary.h"
 
 #include <algorithm>
@@ -33,7 +32,7 @@ namespace
 	constexpr uint64_t c_primaryEditorViewportId = 1u;
 }
 
-Editor::Editor(Sailor::Win32::Window* pMainWindow) :
+Editor::Editor(Platform::NativeWindow* pMainWindow) :
 	m_pMainWindow(pMainWindow),
 	m_viewportController(TUniquePtr<EditorViewport::EditorViewportController>::Make()),
 	m_giProbesBakeController(TUniquePtr<GlobalIlluminationBakeController>::Make()),

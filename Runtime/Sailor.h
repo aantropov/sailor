@@ -6,7 +6,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "Memory/UniquePtr.hpp"
-#include "Platform/Win32/Window.h"
+#include "Platform/NativeWindow.h"
 #include "Containers/Containers.h"
 #include "Math/Math.h"
 #include "RHI/RenderDebugView.h"
@@ -280,7 +280,7 @@ namespace Sailor
 			instance->m_submodules[(uint32_t)typeId].Clear();
 		}
 
-		SAILOR_API static TUniquePtr<Win32::Window>& GetMainWindow();
+		SAILOR_API static TUniquePtr<Platform::NativeWindow>& GetMainWindow();
 		SAILOR_API static Platform::Window* GetMainWindowPlatform();
 		static const char* GetApplicationName() { return "SailorEngine"; }
 		static const char* GetEngineName() { return "SailorEngine"; }
@@ -292,7 +292,7 @@ namespace Sailor
 
 	protected:
 
-		TUniquePtr<Win32::Window> m_pMainWindow;
+		TUniquePtr<Platform::NativeWindow> m_pMainWindow;
 		TUniquePtr<Workspace::WorkspaceModuleManager> m_pWorkspaceModuleManager;
 		Workspace::WorkspaceContext m_workspaceContext;
 		EAppInitializationResult m_initializationResult = EAppInitializationResult::Failed;

@@ -1,6 +1,6 @@
 #if defined(__APPLE__)
 
-#include "Platform/Win32/Window.h"
+#include "Platform/Mac/Window.h"
 #include "Platform/Win32/Input.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/UniquePtr.hpp"
@@ -24,7 +24,7 @@
 #include <string_view>
 #include <thread>
 
-using Sailor::Win32::Window;
+using Sailor::Mac::Window;
 
 namespace
 {
@@ -151,7 +151,7 @@ namespace
 			"test should create a real macOS window");
 		window->Show(false);
 
-		NSWindow* nativeWindow = (__bridge NSWindow*)window->GetHWND();
+		NSWindow* nativeWindow = (__bridge NSWindow*)window->GetNativeHandle();
 		Require(nativeWindow != nil, "created Sailor window should expose an NSWindow");
 
 		auto state = Sailor::TSharedPtr<BackgroundWindowUpdateState>::Make();
@@ -197,7 +197,7 @@ namespace
 		Require(window.Create("Sailor title test", "SailorTitleTest", 128, 96, false, false, nullptr),
 			"title test should create a real macOS window");
 		window.Show(false);
-		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetHWND();
+		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetNativeHandle();
 		nativeWindow.delegate = nil;
 		window.SetWindowTitle(WorkerTitle);
 		Require([nativeWindow.title isEqualToString:[NSString stringWithUTF8String:WorkerTitle]],
@@ -217,7 +217,7 @@ namespace
 		Require(window->Create("Sailor queued update test", "SailorQueuedUpdateTest", 128, 96, false, true, nullptr),
 			"queued update test should create a real macOS window");
 		window->Show(false);
-		NSWindow* nativeWindow = [(__bridge NSWindow*)window->GetHWND() retain];
+		NSWindow* nativeWindow = [(__bridge NSWindow*)window->GetNativeHandle() retain];
 		nativeWindow.delegate = nil;
 
 		auto state = Sailor::TSharedPtr<BackgroundWindowUpdateState>::Make();
@@ -255,7 +255,7 @@ namespace
 
 		Require(window.Create("Sailor mouse capture test", "SailorMouseCaptureTest", 128, 96, false, false, nullptr),
 			"mouse capture test should create a real macOS window");
-		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetHWND();
+		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetNativeHandle();
 		const bool bHasFocus = PumpMainRunLoopUntil([&window]()
 		{
 			window.ProcessSystemMessages();
@@ -323,7 +323,7 @@ namespace
 		Require(window.Create("Sailor focus input test", "SailorFocusInputTest", 128, 96, false, false, nullptr),
 			"focus test should create the native input adapter");
 		window.Show(false);
-		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetHWND();
+		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetNativeHandle();
 		id<NSWindowDelegate> nativeDelegate = [nativeWindow.delegate retain];
 		nativeWindow.delegate = nil;
 		NSView* view = nativeWindow.contentView;
@@ -371,7 +371,7 @@ namespace
 		Require(window.Create("Sailor modifier input test", "SailorModifierInputTest", 128, 96, false, false, nullptr),
 			"modifier test needs the production native input adapter");
 		window.Show(false);
-		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetHWND();
+		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetNativeHandle();
 		nativeWindow.delegate = nil;
 		NSView* view = nativeWindow.contentView;
 		auto dispatch = [&](unsigned short code, NSEventModifierFlags flags)
@@ -438,7 +438,7 @@ namespace
 		Require(window.Create("Sailor input test", "SailorInputTest", 128, 96, false, false, nullptr),
 			"input test should create a real macOS content view");
 		window.Show(false);
-		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetHWND();
+		NSWindow* nativeWindow = (__bridge NSWindow*)window.GetNativeHandle();
 		// Keep failed assertions from triggering the standalone close-to-quit path.
 		nativeWindow.delegate = nil;
 		NSView* view = nativeWindow.contentView;
