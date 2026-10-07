@@ -194,7 +194,7 @@ namespace Sailor::Tests
 		{
 			if (!value) throw std::runtime_error(std::string(message));
 		};
-		App::SetEditorRenderTargetSize(64, 48);
+		EditorRuntime::SetEditorRenderTargetSize(64, 48);
 		require(EditorRuntime::ApplyPendingEditorViewportOnEngineThread(), "host lifetime fixture must apply its render area");
 		@autoreleasepool
 		{
@@ -208,7 +208,7 @@ namespace Sailor::Tests
 		}
 		auto create = std::async(std::launch::async, [=]()
 		{
-			return App::UpsertEditorRemoteViewport(viewportId, 0, 0, 64, 48, false, false);
+			return EditorRuntime::UpsertEditorRemoteViewport(viewportId, 0, 0, 64, 48, false, false);
 		});
 		bool bBindEntered;
 		{
@@ -245,7 +245,7 @@ namespace Sailor::Tests
 		require(SailorProtocolSetMacViewportHost(viewportId, 0) != 0, "final disconnect must be accepted");
 		PumpAppViewport();
 		RequireHostRelease(secondReleases, "detached host");
-		require(App::DestroyEditorRemoteViewport(viewportId), "host fixture must destroy its viewport");
+		require(EditorRuntime::DestroyEditorRemoteViewport(viewportId), "host fixture must destroy its viewport");
 		std::cout << "Mac UI host handoff, in-flight replacement and detach passed\n";
 	}
 
@@ -258,20 +258,20 @@ namespace Sailor::Tests
 			std::cout << (value ? "PASS: " : "FAIL: ") << message << '\n';
 			if (!value) ++failures;
 		};
-		auto state = [&]() { return static_cast<SessionState>(App::GetEditorRemoteViewportState(viewportId)); };
+		auto state = [&]() { return static_cast<SessionState>(EditorRuntime::GetEditorRemoteViewportState(viewportId)); };
 		auto update = [&](uint32_t width, uint32_t height, bool visible, bool focused)
 		{
-			return App::UpsertEditorRemoteViewport(viewportId, 0, 0, width, height, visible, focused);
+			return EditorRuntime::UpsertEditorRemoteViewport(viewportId, 0, 0, width, height, visible, focused);
 		};
 		auto diagnostics = [&]()
 		{
 			char* text = nullptr;
-			const auto length = App::GetEditorRemoteViewportDiagnostics(viewportId, &text);
+			const auto length = EditorRuntime::GetEditorRemoteViewportDiagnostics(viewportId, &text);
 			std::string result(text ? text : "", length);
 			delete[] text;
 			return result;
 		};
-		App::SetEditorRenderTargetSize(64, 48);
+		EditorRuntime::SetEditorRenderTargetSize(64, 48);
 		EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
 		@autoreleasepool
 		{
@@ -285,12 +285,12 @@ namespace Sailor::Tests
 				"App viewport creation must execute on its Editor owner queue");
 			verify(state() == SessionState::Lost, "native capability failure exposes Lost, not Active");
 			layer->m_queueDevice->m_failNextQueue = YES;
-			verify(!App::RetryEditorRemoteViewport(viewportId), "failed native retry must return false");
+			verify(!EditorRuntime::RetryEditorRemoteViewport(viewportId), "failed native retry must return false");
 			verify(state() == SessionState::Lost, "failed retry preserves Lost until creation succeeds");
-			verify(App::RetryEditorRemoteViewport(viewportId) && state() == SessionState::Active,
+			verify(EditorRuntime::RetryEditorRemoteViewport(viewportId) && state() == SessionState::Active,
 				"successful retry creates the previously failed viewport");
 
-			App::SetEditorRenderTargetSize(96, 64);
+			EditorRuntime::SetEditorRenderTargetSize(96, 64);
 			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
 			layer->m_queueDevice->m_failNextQueue = YES;
 			verify(!update(96, 64, true, true), "failed resize must not be acknowledged as applied");
@@ -313,19 +313,19 @@ namespace Sailor::Tests
 			PumpAppViewport();
 			verify(state() == SessionState::Paused && diagnostics().find("128x96") != std::string::npos,
 				"deferred extent and visibility apply without another UI update");
-			verify(App::DestroyEditorRemoteViewport(viewportId), "failed-import fixture releases its session");
+			verify(EditorRuntime::DestroyEditorRemoteViewport(viewportId), "failed-import fixture releases its session");
 		}
 
 		for (const bool existing : { false, true })
 		{
-			App::SetEditorRenderTargetSize(64, 48);
+			EditorRuntime::SetEditorRenderTargetSize(64, 48);
 			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
 			@autoreleasepool
 			{
 				if (existing)
 				{
 					verify(update(64, 48, true, true), "contention fixture creates a focused session");
-					verify(App::SendEditorRemoteViewportInput(viewportId, static_cast<uint32_t>(InputKind::Key),
+					verify(EditorRuntime::SendEditorRemoteViewportInput(viewportId, static_cast<uint32_t>(InputKind::Key),
 						0, 0, 0, 0, 'W', 0, 0, true, true, false), "focused session accepts a held key");
 					EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
 					verify(Win32::GlobalInput::GetInputState().IsKeyDown('W'), "held key reaches gameplay before contention");
@@ -368,14 +368,14 @@ namespace Sailor::Tests
 				EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
 				verify(state() == SessionState::Paused, "busy hide eventually applies without UI polling");
 				verify(!Win32::GlobalInput::GetInputState().IsKeyDown('W'), "busy focus loss releases gameplay input");
-				verify(App::DestroyEditorRemoteViewport(viewportId), "contention fixture releases its session");
+				verify(EditorRuntime::DestroyEditorRemoteViewport(viewportId), "contention fixture releases its session");
 			}
 		}
 		verify(!update(128, 96, false, false), "new deferred viewport waits for its render extent");
-		verify(App::DestroyEditorRemoteViewport(viewportId), "destroy cancels an unapplied viewport update");
+		verify(EditorRuntime::DestroyEditorRemoteViewport(viewportId), "destroy cancels an unapplied viewport update");
 		EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
 		PumpAppViewport();
-		verify(state() == SessionState::Created && !App::RetryEditorRemoteViewport(viewportId),
+		verify(state() == SessionState::Created && !EditorRuntime::RetryEditorRemoteViewport(viewportId),
 			"a cancelled update must not recreate its viewport on the next pump");
 		if (failures) throw std::runtime_error("native viewport acknowledgment checks failed: " + std::to_string(failures));
 		std::cout << "Native viewport acknowledgment and deferred updates passed\n";
@@ -436,7 +436,7 @@ namespace Sailor::Tests
 		const bool bStopped = stopping.get();
 		if (!bHandoffEntered || !bAdmissionClosed || !bWaitedForHandoff || accepted == 0 || !bStopped)
 		{
-			App::SetEditorRemoteViewportMacHostHandle(259, 0, 0);
+			EditorRuntime::SetEditorRemoteViewportMacHostHandle(259, 0, 0);
 			std::cerr << "Host shutdown: entered=" << bHandoffEntered << " closed=" << bAdmissionClosed
 				<< " waited=" << bWaitedForHandoff << " accepted=" << accepted << " stopped=" << bStopped << '\n';
 			throw std::runtime_error("shutdown must close native-host admission and drain the accepted UI handoff before teardown");
@@ -902,7 +902,7 @@ namespace Sailor::Tests
 					" us, capture-to-queue-completion mean " << completeUs / (frames - 1) <<
 					" us, repeated-frame pump + Editor completion mean " << repeatPumpUs / repeats << " us\n";
 				char* text = nullptr;
-				const auto length = App::GetEditorRemoteViewportDiagnostics(viewportId, &text);
+				const auto length = EditorRuntime::GetEditorRemoteViewportDiagnostics(viewportId, &text);
 				require(text != nullptr && length != 0, "actual App viewport must expose its upload accounting");
 				const std::string diagnostics(text, length);
 				delete[] text;
@@ -924,8 +924,8 @@ namespace Sailor::Tests
 			}
 			catch (...)
 			{
-				App::DestroyEditorRemoteViewport(viewportId);
-				App::SetEditorRemoteViewportMacHostHandle(viewportId, 0, 0);
+				EditorRuntime::DestroyEditorRemoteViewport(viewportId);
+				EditorRuntime::SetEditorRemoteViewportMacHostHandle(viewportId, 0, 0);
 				throw;
 			}
 		}

@@ -1,6 +1,7 @@
 #include "EditorEngineProtocolInternal.h"
 
 #include "Memory/UniquePtr.hpp"
+#include "Editor/EditorRuntimeBridge.h"
 #include "Editor/EditorViewportEvent.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
@@ -213,7 +214,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		ProtocolResponse& response)
 	{
 		char* value = nullptr;
-		const uint32_t length = Sailor::App::GetEditorRemoteViewportDiagnostics(request.viewport_id(), &value);
+		const uint32_t length = Sailor::EditorRuntime::GetEditorRemoteViewportDiagnostics(request.viewport_id(), &value);
 		Sailor::TUniquePtr<char[]> ownedValue(value);
 		SetStringResult(response, value, length);
 	}
@@ -326,7 +327,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kSetEditorRenderTargetSize:
 		{
 			const auto& size = request.set_editor_render_target_size();
-			Sailor::App::SetEditorRenderTargetSize(size.width(), size.height());
+			Sailor::EditorRuntime::SetEditorRenderTargetSize(size.width(), size.height());
 			SetEmptyResult(response);
 			break;
 		}
@@ -335,7 +336,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& viewport = request.upsert_remote_viewport();
 			SetBoolResult(response,
-				Sailor::App::UpsertEditorRemoteViewport(viewport.viewport_id(),
+				Sailor::EditorRuntime::UpsertEditorRemoteViewport(viewport.viewport_id(),
 					viewport.window_pos_x(),
 					viewport.window_pos_y(),
 					viewport.width(),
@@ -347,12 +348,12 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		case ProtocolRequest::kDestroyRemoteViewport:
 			SetBoolResult(
-				response, Sailor::App::DestroyEditorRemoteViewport(request.destroy_remote_viewport().viewport_id()));
+				response, Sailor::EditorRuntime::DestroyEditorRemoteViewport(request.destroy_remote_viewport().viewport_id()));
 			break;
 
 		case ProtocolRequest::kGetRemoteViewportState:
 			SetUInt32Result(
-				response, Sailor::App::GetEditorRemoteViewportState(request.get_remote_viewport_state().viewport_id()));
+				response, Sailor::EditorRuntime::GetEditorRemoteViewportState(request.get_remote_viewport_state().viewport_id()));
 			break;
 
 		case ProtocolRequest::kGetRemoteViewportDiagnostics:
@@ -362,7 +363,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kCaptureRemoteViewportFrameEvidence:
 		{
 			std::string diagnostic;
-			if (Sailor::App::CaptureEditorRemoteViewportFrameEvidence(request.capture_remote_viewport_frame_evidence().viewport_id(), diagnostic))
+			if (Sailor::EditorRuntime::CaptureEditorRemoteViewportFrameEvidence(request.capture_remote_viewport_frame_evidence().viewport_id(), diagnostic))
 			{
 				SetStringResult(response, diagnostic.data(), static_cast<uint32_t>(diagnostic.size()));
 			}
@@ -375,14 +376,14 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		case ProtocolRequest::kRetryRemoteViewport:
 			SetBoolResult(
-				response, Sailor::App::RetryEditorRemoteViewport(request.retry_remote_viewport().viewport_id()));
+				response, Sailor::EditorRuntime::RetryEditorRemoteViewport(request.retry_remote_viewport().viewport_id()));
 			break;
 
 		case ProtocolRequest::kSetRemoteViewportMacHostHandle:
 		{
 			const auto& host = request.set_remote_viewport_mac_host_handle();
 			SetBoolResult(response,
-				Sailor::App::SetEditorRemoteViewportMacHostHandle(
+				Sailor::EditorRuntime::SetEditorRemoteViewportMacHostHandle(
 					host.viewport_id(), host.host_handle_kind(), host.host_handle_value()));
 			break;
 		}
@@ -391,7 +392,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& input = request.send_remote_viewport_input();
 			SetBoolResult(response,
-				Sailor::App::SendEditorRemoteViewportInput(input.viewport_id(),
+				Sailor::EditorRuntime::SendEditorRemoteViewportInput(input.viewport_id(),
 					input.kind(),
 					input.pointer_x(),
 					input.pointer_y(),

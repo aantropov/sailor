@@ -3963,7 +3963,7 @@ frame: []
 					Require(probe.m_bHasPrivateContext, "the workspace must have a separate ImGui context binding before borrowing the engine's");
 					Require(module.Close() && !probe.m_bWasModuleUnloaded, "only App may retain the module during its session");
 				}
-				App::SetEditorRenderTargetSize(64, 48);
+				EditorRuntime::SetEditorRenderTargetSize(64, 48);
 				const auto start = Tests::ProtocolWire::MakeRequest(2u, 11u);
 				uint8_t* responseData = nullptr;
 				uint32_t responseSize = 0;
@@ -4154,7 +4154,7 @@ frame: []
 			const bool appViewport = scenario == 6 || scenario == 7 || scenario == 10;
 			if (appViewport)
 			{
-				App::SetEditorRenderTargetSize(extent.x, extent.y);
+				EditorRuntime::SetEditorRenderTargetSize(extent.x, extent.y);
 				Require(EditorRuntime::ApplyPendingEditorViewportOnEngineThread(), "App viewport sweep must apply each new render extent");
 			}
 			renderer->RefreshFrameGraph();
@@ -4503,20 +4503,20 @@ frame: []
 
 		TestImGuiModifierSides(*imGui);
 
-		App::SetEditorRenderTargetSize(64, 48);
+		EditorRuntime::SetEditorRenderTargetSize(64, 48);
 		EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
-		Require(App::UpsertEditorRemoteViewport(1, 0, 0, 64, 48, true, true), "remote input fixture must register its applied viewport");
+		Require(EditorRuntime::UpsertEditorRemoteViewport(1, 0, 0, 64, 48, true, true), "remote input fixture must register its applied viewport");
 		EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
 		GlobalInput::ApplyEvent({ Type::Focus, 0.0f, 0.0f, 0, -1, true });
 		const auto beforeRemote = GlobalInput::GetInputState();
 		bool bWasAccepted = false;
 		std::jthread protocol([&]
 		{
-			bWasAccepted = App::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::Key),
+			bWasAccepted = EditorRuntime::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::Key),
 				0, 0, 0, 0, 'A', 0, 0, true, true, false) &&
-				App::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::PointerButton),
+				EditorRuntime::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::PointerButton),
 				27, 19, 0, 0, 0, 0, static_cast<uint32_t>(InputModifier::MouseLeft), true, true, true) &&
-				App::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::PointerWheel),
+				EditorRuntime::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::PointerWheel),
 				27, 19, 0,
 #if defined(_WIN32)
 				240,
@@ -4539,14 +4539,14 @@ frame: []
 		Require(current.GetMouseWheelDelta() == 2.0f && io.MouseWheel == 2.0f,
 			"remote wheel units must agree in the world and ImGui frame on both platforms");
 		ImGui::EndFrame();
-		Require(App::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::Focus),
+		Require(EditorRuntime::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::Focus),
 			0, 0, 0, 0, 0, 0, 0, false, false, false), "remote focus loss must be accepted by the live session");
 		EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
 		imGui->NewFrame();
 		Require(!GlobalInput::GetInputState().IsKeyDown('A') && !ImGui::IsKeyDown(ImGuiKey_A) && !io.MouseDown[0],
 			"remote focus loss must use the same release contract as native input");
 		ImGui::EndFrame();
-		Require(App::DestroyEditorRemoteViewport(1), "input fixture must release its viewport");
+		Require(EditorRuntime::DestroyEditorRemoteViewport(1), "input fixture must release its viewport");
 		EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
 		TestPreparedCursor();
 		std::cout << "Input owner: real ImGui, owned Unicode, native/remote parity, hidden source and focus delivery passed\n";
@@ -4563,15 +4563,15 @@ frame: []
 		io.ConfigInputTrickleEventQueue = false;
 		const auto upsert = [](uint64_t id, uint32_t width = 64, bool bFocused = false)
 		{
-			App::SetEditorRenderTargetSize(width, 48);
+			EditorRuntime::SetEditorRenderTargetSize(width, 48);
 			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
-			Require(App::UpsertEditorRemoteViewport(id, 0, 0, width, 48, true, bFocused), "input fixture must register the applied viewport");
+			Require(EditorRuntime::UpsertEditorRemoteViewport(id, 0, 0, width, 48, true, bFocused), "input fixture must register the applied viewport");
 		};
 		const auto send = [](uint64_t id, InputKind kind, uint32_t key = 0, bool bPressed = false,
 			bool bFocused = false, bool bCaptured = false, InputModifier modifiers = InputModifier::None,
 			float x = 27, float y = 19)
 		{
-			Require(App::SendEditorRemoteViewportInput(id, static_cast<uint32_t>(kind), x, y, 0, 0,
+			Require(EditorRuntime::SendEditorRemoteViewportInput(id, static_cast<uint32_t>(kind), x, y, 0, 0,
 				key, 0, static_cast<uint32_t>(modifiers), bPressed, bFocused, bCaptured), "live session must accept input");
 		};
 		const auto held = [](uint32_t key, ImGuiKey guiKey)
@@ -4605,21 +4605,21 @@ frame: []
 				++failures;
 				std::cerr << "[FAIL] Remote input: " << name << ": " << error.what() << '\n';
 			}
-			App::DestroyEditorRemoteViewport(A);
-			App::DestroyEditorRemoteViewport(B);
+			EditorRuntime::DestroyEditorRemoteViewport(A);
+			EditorRuntime::DestroyEditorRemoteViewport(B);
 			EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
 			GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Reset });
 		};
 		run("inactive destroy", [&]
 		{
-			Require(App::DestroyEditorRemoteViewport(B), "inactive B must be destroyed");
+			Require(EditorRuntime::DestroyEditorRemoteViewport(B), "inactive B must be destroyed");
 			checkFrame([&] { return held('W', ImGuiKey_W) && io.MouseDown[0]; }, "destroying B must not release A");
 		});
 		run("stale packet after accepted input", [&]
 		{
 			send(A, InputKind::Key, 'D', true);
 			send(B, InputKind::Key, 'X', true);
-			Require(App::DestroyEditorRemoteViewport(B), "B must invalidate its queued packet");
+			Require(EditorRuntime::DestroyEditorRemoteViewport(B), "B must invalidate its queued packet");
 			checkFrame([&] { return held('W', ImGuiKey_W) && held('D', ImGuiKey_D) &&
 				!GlobalInput::GetInputState().IsKeyDown('X') && !ImGui::IsKeyDown(ImGuiKey_X); },
 				"a stale packet must be discarded without clearing accepted input");
@@ -4663,7 +4663,7 @@ frame: []
 		run("same-ID replacement", [&]
 		{
 			send(A, InputKind::Key, 'X', true);
-			Require(App::DestroyEditorRemoteViewport(A), "old A must be destroyed");
+			Require(EditorRuntime::DestroyEditorRemoteViewport(A), "old A must be destroyed");
 			upsert(A, 64, true);
 			send(A, InputKind::Key, 'D', true);
 			checkFrame([&] { return held('D', ImGuiKey_D) && !GlobalInput::GetInputState().IsKeyDown('X') &&
@@ -4680,7 +4680,7 @@ frame: []
 		});
 		run("owner destroy without new input", [&]
 		{
-			Require(App::DestroyEditorRemoteViewport(A), "active A must be destroyed");
+			Require(EditorRuntime::DestroyEditorRemoteViewport(A), "active A must be destroyed");
 			checkFrame([&] { return !GlobalInput::GetInputState().IsKeyDown('W') && !ImGui::IsKeyDown(ImGuiKey_W) &&
 				!GlobalInput::GetInputState().IsButtonDown(VK_LBUTTON) && !io.MouseDown[0]; }, "owner invalidation must release input even without a new packet");
 		});
@@ -4733,9 +4733,12 @@ frame: []
 					}
 					--credits;
 					bPressed = !bPressed;
-					if (App::SendEditorRemoteViewportInput(A, static_cast<uint32_t>(InputKind::Key),
-						0, 0, 0, 0, 'X', 0, 0, bPressed, false, false)) ++accepted;
-					App::SendEditorRemoteViewportInput(B, static_cast<uint32_t>(InputKind::Key),
+					if (EditorRuntime::SendEditorRemoteViewportInput(A, static_cast<uint32_t>(InputKind::Key),
+						0, 0, 0, 0, 'X', 0, 0, bPressed, false, false))
+					{
+						++accepted;
+					}
+					EditorRuntime::SendEditorRemoteViewportInput(B, static_cast<uint32_t>(InputKind::Key),
 						0, 0, 0, 0, 'Y', 0, 0, bPressed, false, false);
 					++attempts;
 					attempts.notify_one();
@@ -4747,7 +4750,10 @@ frame: []
 				const auto previousAttempts = attempts.load();
 				credits += 128;
 				attempts.wait(previousAttempts);
-				if ((iteration % 2) == 0) Require(App::DestroyEditorRemoteViewport(A), "concurrent source must release its old session");
+				if ((iteration % 2) == 0)
+				{
+					Require(EditorRuntime::DestroyEditorRemoteViewport(A), "concurrent source must release its old session");
+				}
 				upsert(A, (iteration % 2) == 0 ? 64 : 80, true);
 				send(A, InputKind::Focus, 0, false, true);
 				send(A, InputKind::Key, 'D', true);

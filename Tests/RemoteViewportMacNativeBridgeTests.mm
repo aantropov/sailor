@@ -25,6 +25,7 @@
 #include "RHI/Fence.h"
 #include "RHI/Texture.h"
 #include "Memory/SharedPtr.hpp"
+#include "Editor/EditorRuntimeBridge.h"
 #include "Sailor.h"
 #include "Support/MacViewportTestSource.h"
 #include "Support/ScopeExit.h"
@@ -782,12 +783,12 @@ namespace
 			CAMetalLayer* layer = [CAMetalLayer layer];
 			ObserveNativeRelease(layer, releases);
 			const CFIndex retainCount = CFGetRetainCount((__bridge CFTypeRef)layer);
-			Require(Sailor::App::SetEditorRemoteViewportMacHostHandle(viewportId,
+			Require(Sailor::EditorRuntime::SetEditorRemoteViewportMacHostHandle(viewportId,
 				static_cast<uint32_t>(MacNativeHostHandleKind::CAMetalLayer), reinterpret_cast<uintptr_t>(layer)),
 				"App must accept a host before the viewport has been created");
 			bWasRetained = CFGetRetainCount((__bridge CFTypeRef)layer) > retainCount;
 		}
-		Require(Sailor::App::SetEditorRemoteViewportMacHostHandle(viewportId, 0, 0),
+		Require(Sailor::EditorRuntime::SetEditorRemoteViewportMacHostHandle(viewportId, 0, 0),
 			"disconnect must cancel a pending native host");
 		app.GetScheduler().WaitIdle({ Sailor::EThreadType::Editor });
 		Require(bWasRetained, "pending App host must own the layer after its UI owner releases it");
@@ -807,16 +808,16 @@ namespace
 			CAMetalLayer* second = [CAMetalLayer layer];
 			ObserveNativeRelease(first, oldReleases);
 			ObserveNativeRelease(second, newReleases);
-			Require(Sailor::App::SetEditorRemoteViewportMacHostHandle(viewportId, 2u, reinterpret_cast<uintptr_t>(first)) &&
-				Sailor::App::SetEditorRemoteViewportMacHostHandle(viewportId, 2u, reinterpret_cast<uintptr_t>(second)),
+			Require(Sailor::EditorRuntime::SetEditorRemoteViewportMacHostHandle(viewportId, 2u, reinterpret_cast<uintptr_t>(first)) &&
+				Sailor::EditorRuntime::SetEditorRemoteViewportMacHostHandle(viewportId, 2u, reinterpret_cast<uintptr_t>(second)),
 				"a reconnect must replace the pending native host before a viewport exists");
 		}
 		app.GetScheduler().WaitIdle({ Sailor::EThreadType::Editor });
 		RequireNativeReleases(oldReleases, 1, "reconnect must release the superseded pending host");
 		Require(newReleases->load() == 0, "replacement host must survive the UI autorelease pool");
-		Require(Sailor::App::DestroyEditorRemoteViewport(viewportId), "destroy must cancel a host whose viewport is still pending");
+		Require(Sailor::EditorRuntime::DestroyEditorRemoteViewport(viewportId), "destroy must cancel a host whose viewport is still pending");
 		RequireNativeReleases(newReleases, 1, "destroy must release pending ownership without a future layout update");
-		Require(!Sailor::App::DestroyEditorRemoteViewport(viewportId), "destroyed pending host must not remain registered");
+		Require(!Sailor::EditorRuntime::DestroyEditorRemoteViewport(viewportId), "destroyed pending host must not remain registered");
 	}
 
 	void TestPresenterRetainsHostBeforeImport()

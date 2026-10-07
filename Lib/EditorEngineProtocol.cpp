@@ -1,6 +1,7 @@
 #include "EditorEngineProtocolInternal.h"
 #include "EditorEngineProtocolLifecycle.h"
 
+#include "Editor/EditorRuntimeBridge.h"
 #include "Memory/UniquePtr.hpp"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
@@ -318,7 +319,7 @@ bool Sailor::Protocol::SetMacViewportHost(uint64_t viewportId, uintptr_t layer)
 	std::string error;
 	if (!gate.TryAcquireOperation(error, false)) return false;
 	const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Operation);
-	return App::SetEditorRemoteViewportMacHostHandle(viewportId,
+	return EditorRuntime::SetEditorRemoteViewportMacHostHandle(viewportId,
 		static_cast<uint32_t>(EditorRemote::MacNativeHostHandleKind::CAMetalLayer), layer);
 }
 

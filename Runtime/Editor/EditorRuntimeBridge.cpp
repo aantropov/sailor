@@ -686,7 +686,7 @@ void App::SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t w
 		});
 }
 
-void App::SetEditorRenderTargetSize(uint32_t width, uint32_t height)
+void EditorRuntime::SetEditorRenderTargetSize(uint32_t width, uint32_t height)
 {
 	width = std::max(width, 1u);
 	height = std::max(height, 1u);
@@ -702,24 +702,24 @@ void App::SetEditorRenderTargetSize(uint32_t width, uint32_t height)
 	g_hasPendingEditorViewport = true;
 }
 
-bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused)
+bool EditorRuntime::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused)
 {
 #if defined(_WIN32)
 	SetEditorRenderTargetSize(width, height);
-	SetEditorViewport(0, 0, width, height);
+	App::SetEditorViewport(0, 0, width, height);
 #elif !defined(__APPLE__)
-	SetEditorViewport(windowPosX, windowPosY, width, height);
+	App::SetEditorViewport(windowPosX, windowPosY, width, height);
 #else
 	SetEditorRenderTargetSize(width, height);
 #endif
 
-	if (!GetInstance())
+	if (!App::GetInstance())
 	{
 		return false;
 	}
 
 #if defined(_WIN32)
-	if (!HasEditor())
+	if (!App::HasEditor())
 	{
 		return false;
 	}
@@ -750,7 +750,7 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 	});
 }
 
-bool App::DestroyEditorRemoteViewport(uint64_t viewportId)
+bool EditorRuntime::DestroyEditorRemoteViewport(uint64_t viewportId)
 {
 	return ExecuteOnViewportOwner<bool>(false, [=]() mutable
 	{
@@ -783,7 +783,7 @@ bool App::DestroyEditorRemoteViewport(uint64_t viewportId)
 	});
 }
 
-uint32_t App::GetEditorRemoteViewportState(uint64_t viewportId)
+uint32_t EditorRuntime::GetEditorRemoteViewportState(uint64_t viewportId)
 {
 	return ExecuteOnViewportOwner<uint32_t>(static_cast<uint32_t>(SessionState::Created), [=]() mutable
 	{
@@ -798,7 +798,7 @@ uint32_t App::GetEditorRemoteViewportState(uint64_t viewportId)
 	});
 }
 
-bool App::CaptureEditorRemoteViewportFrameEvidence(uint64_t viewportId, std::string& outDiagnostic)
+bool EditorRuntime::CaptureEditorRemoteViewportFrameEvidence(uint64_t viewportId, std::string& outDiagnostic)
 {
 #if defined(__APPLE__)
 	outDiagnostic = "Viewport does not exist.";
@@ -820,7 +820,7 @@ bool App::CaptureEditorRemoteViewportFrameEvidence(uint64_t viewportId, std::str
 #endif
 }
 
-uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics)
+uint32_t EditorRuntime::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics)
 {
 	if (!diagnostics)
 	{
@@ -932,7 +932,7 @@ uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** dia
 	});
 }
 
-bool App::RetryEditorRemoteViewport(uint64_t viewportId)
+bool EditorRuntime::RetryEditorRemoteViewport(uint64_t viewportId)
 {
 	return ExecuteOnViewportOwner<bool>(false, [=]() mutable
 	{
@@ -963,7 +963,7 @@ bool App::RetryEditorRemoteViewport(uint64_t viewportId)
 	});
 }
 
-bool App::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hostHandleKind, uint64_t hostHandleValue)
+bool EditorRuntime::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hostHandleKind, uint64_t hostHandleValue)
 {
 #if defined(__APPLE__)
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
@@ -1001,13 +1001,13 @@ bool App::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hos
 #endif
 }
 
-bool App::SetEditorRemoteViewportWindowsHost(
+bool EditorRuntime::SetEditorRemoteViewportWindowsHost(
 	uint64_t viewportId,
 	void* swapChainPanelInspectable,
 	float compositionScale)
 {
 #if defined(_WIN32)
-	if (!GetInstance() || !HasEditor())
+	if (!App::GetInstance() || !App::HasEditor())
 	{
 		return false;
 	}
@@ -1038,7 +1038,7 @@ bool App::SetEditorRemoteViewportWindowsHost(
 #endif
 }
 
-bool App::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint32_t keyCode, uint32_t button, uint32_t modifiers, bool bPressed, bool bFocused, bool bCaptured, std::string_view text)
+bool EditorRuntime::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint32_t keyCode, uint32_t button, uint32_t modifiers, bool bPressed, bool bFocused, bool bCaptured, std::string_view text)
 {
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
 	constexpr uint32_t validModifiers =
