@@ -31,17 +31,19 @@ namespace InvalidWorkspace
 
 REFL_AUTO(type(InvalidWorkspace::Settings), field(m_mode), field(m_modes))
 REFL_AUTO(type(InvalidWorkspace::BaseComponent, bases<Sailor::Component>), func(GetValue, property("value")))
-REFL_AUTO(
 #if SAILOR_TEST_WORKSPACE_INVALID_CASE == 10
+REFL_AUTO(
 	type(InvalidWorkspace::FixtureComponent),
-#else
+	field(m_mode), field(m_settings))
+#elif SAILOR_TEST_WORKSPACE_INVALID_CASE == 4
+REFL_AUTO(
 	type(InvalidWorkspace::FixtureComponent, bases<InvalidWorkspace::BaseComponent>),
+	field(m_mode), field(m_settings), func(GetShadowedValue, property("value")))
+#else
+REFL_AUTO(
+	type(InvalidWorkspace::FixtureComponent, bases<InvalidWorkspace::BaseComponent>),
+	field(m_mode), field(m_settings))
 #endif
-	field(m_mode), field(m_settings)
-#if SAILOR_TEST_WORKSPACE_INVALID_CASE == 4
-	, func(GetShadowedValue, property("value"))
-#endif
-)
 
 namespace
 {
