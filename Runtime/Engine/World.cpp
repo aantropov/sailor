@@ -202,7 +202,7 @@ void World::Tick(FrameState& frameState)
 			editor->TickViewportTools();
 		}
 
-		for (auto& el : m_objects)
+		for (auto& el : *m_objects)
 		{
 			if (el && IsEditorSelected(el->GetInstanceId().GameObjectId()))
 			{
@@ -386,7 +386,7 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 #if defined(SAILOR_ECS_TEST_HOOKS)
 			++m_numRemovalVisits;
 #endif
-			m_objects.Erase(go->m_worldIterator);
+			m_objects->Erase(go->m_worldIterator);
 		}
 		go.DestroyObject(m_allocator);
 	}
@@ -406,8 +406,8 @@ GameObjectPtr World::NewGameObject(std::string_view name, const InstanceId& inst
 
 	// Selection keeps world insertion order without scanning or copying every object.
 	newObject->m_worldOrder = m_nextObjectOrder++;
-	m_objects.EmplaceBack(newObject);
-	newObject->m_worldIterator = m_objects.Last();
+	m_objects->EmplaceBack(newObject);
+	newObject->m_worldIterator = m_objects->Last();
 	m_objectsMap[newObject->m_instanceId] = newObject;
 
 	return newObject;
@@ -470,8 +470,8 @@ void World::DestroyImmediate(GameObjectPtr object)
 TVector<GameObjectPtr> World::GetGameObjects()
 {
 	TVector<GameObjectPtr> objects;
-	objects.Reserve(m_objects.Num());
-	for (const auto& object : m_objects) objects.Add(object);
+	objects.Reserve(m_objects->Num());
+	for (const auto& object : *m_objects) objects.Add(object);
 	return objects;
 }
 
@@ -524,7 +524,7 @@ void World::Clear()
 		DestroyGameObjectHierarchy(go);
 	}
 
-	m_objects.Clear();
+	m_objects->Clear();
 	m_pendingDestroyObjects.Clear();
 	m_editorSelection.Clear();
 	m_pDebugContext.Clear();

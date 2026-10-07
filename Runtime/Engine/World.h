@@ -16,6 +16,9 @@
 
 namespace Sailor
 {
+	using GameObjectsList = TList<GameObjectPtr, Memory::TInlineAllocator<16'000 *
+		Memory::TInlineAllocator<>::GetAllocationSize(sizeof(TList<GameObjectPtr>::TNode), alignof(TList<GameObjectPtr>::TNode))>>;
+
 	enum class EWorldBehaviourBit : uint8_t
 	{
 		Tickable = 1 << 0,
@@ -67,7 +70,7 @@ namespace Sailor
 		}
 
 		SAILOR_API TVector<GameObjectPtr> GetGameObjects();
-		SAILOR_API const TList<GameObjectPtr>& GetGameObjects() const { return m_objects; }
+		SAILOR_API const GameObjectsList& GetGameObjects() const { return *m_objects; }
 
 		SAILOR_API void Clear();
 		SAILOR_API size_t GetCurrentFrame() const { return m_currentFrame; }
@@ -154,7 +157,7 @@ namespace Sailor
 		size_t m_currentFrame;
 		std::string m_name;
 
-		TList<GameObjectPtr> m_objects;
+		TUniquePtr<GameObjectsList> m_objects = TUniquePtr<GameObjectsList>::Make();
 		TMap<InstanceId, ObjectPtr> m_objectsMap;
 		WorldPrefabLinks m_prefabLinks;
 		TSet<InstanceId> m_editorSelection;

@@ -295,7 +295,7 @@ bool WorldPrefab::CommitLinkedInstanceUpdates(
 	}
 
 	size_t numPrefabInstanceRoots = 0;
-	for (const auto& object : world->m_objects)
+	for (const auto& object : *world->m_objects)
 	{
 		if (object && object->GetFileId())
 		{

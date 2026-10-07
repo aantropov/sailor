@@ -1319,6 +1319,36 @@ namespace
 		world.Clear();
 	}
 
+	void TestWorldObjectInlineStorage()
+	{
+		auto world = TUniquePtr<PrefabTestWorld>::Make();
+		ScopeExit cleanup([&]() { world->Clear(); });
+		const auto& objects = std::as_const(*world).GetGameObjects();
+		const auto storageBegin = reinterpret_cast<uintptr_t>(&objects);
+		const auto storageEnd = storageBegin + sizeof(objects);
+		for (uint32_t cycle = 0; cycle < 2; ++cycle)
+		{
+			for (uint32_t i = 0; i < 16'000; ++i)
+			{
+				world->Instantiate("Inline object");
+				const auto address = reinterpret_cast<uintptr_t>(&*objects.Last());
+				Require(address >= storageBegin && address + sizeof(GameObjectPtr) <= storageEnd,
+					"all 16000 world-list entries must reside in the inline buffer, including after Clear");
+			}
+			const auto* firstSlot = &*objects.begin();
+			auto overflow = world->Instantiate("Overflow");
+			const auto overflowAddress = reinterpret_cast<uintptr_t>(&*objects.Last());
+			Require(objects.Num() == 16'001 && (overflowAddress < storageBegin || overflowAddress >= storageEnd),
+				"objects beyond the inline capacity must use the fallback allocator");
+			world->DestroyImmediate(*std::next(objects.begin(), 8'000));
+			Require(objects.Num() == 16'000 && &*objects.begin() == firstSlot && *objects.Last() == overflow,
+				"removing an inline node must preserve surviving entries and the overflow node");
+			world->Clear();
+			Require(objects.IsEmpty() && !overflow, "Clear must release both inline and fallback entries");
+		}
+		std::cout << "World objects: 16000 inline entries, overflow, middle removal and full reuse after Clear passed\n";
+	}
+
 	void TestWorldRemovalWorkIsLocal()
 	{
 		enum class Removal { Component, Immediate, Deferred };
@@ -1633,6 +1663,7 @@ int main()
 		{ "RemovingComponentCancelsPendingDependencyResolution", TestRemovingComponentCancelsPendingDependencyResolution },
 		{ "ExplicitNullMeshReferenceDoesNotRemainPending", TestExplicitNullMeshReferenceDoesNotRemainPending },
 		{ "WorldRemovalWorkIsLocal", TestWorldRemovalWorkIsLocal },
+		{ "WorldObjectInlineStorage", TestWorldObjectInlineStorage },
 		{ "PendingDependenciesAreCancelledBeforeEndPlay", TestPendingDependenciesAreCancelledBeforeEndPlay },
 		{ "PrefabRollbackPreservesUnrelatedPendingRequests", TestPrefabRollbackPreservesUnrelatedPendingRequests },
 		{ "EditorUpdateReplacesStaleMeshDependencyResolution", TestEditorUpdateReplacesStaleMeshDependencyResolution },

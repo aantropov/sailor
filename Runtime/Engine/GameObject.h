@@ -160,7 +160,7 @@ namespace Sailor
 
 		size_t m_frameLastChange = 0;
 		uint64_t m_worldOrder = 0;
-		TList<GameObjectPtr>::TIterator m_worldIterator;
+		GameObjectsList::TIterator m_worldIterator;
 
 		friend GameObjectPtr;
 		friend class World;
