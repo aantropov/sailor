@@ -478,6 +478,35 @@ namespace
 		Require(reinterpret_cast<uintptr_t>(fallback) % 128 == 0, "inline fallback should preserve alignment");
 		allocator.Free(fallback);
 		Require(CountingAllocator::s_allocations == 1 && CountingAllocator::s_frees == 1, "fallback memory should be released by its allocator");
+		for (int i = 0; i < 100; ++i)
+		{
+			void* first = allocator.Allocate(17, 64);
+			void* second = allocator.Allocate(7, 32);
+			Require(first == expected, "an empty inline allocator must recover capacity after non-LIFO frees");
+			allocator.Free(first);
+			allocator.Free(second);
+		}
+		Require(CountingAllocator::s_allocations == 1, "non-LIFO clear must not exhaust inline storage across cycles");
+	}
+
+	void TestLargeInlineAllocator()
+	{
+		CountingAllocator::s_allocations = CountingAllocator::s_frees = 0;
+		auto allocator = TUniquePtr<Memory::TInlineAllocator<1024 * 1024, CountingAllocator>>::Make();
+		void* first = allocator->Allocate(256 * 1024, 64);
+		std::memset(first, 37, 256 * 1024);
+		void* second = allocator->Allocate(128 * 1024, 64);
+		Require(allocator->Reallocate(second, 256 * 1024, 64), "inline growth must support sizes and offsets above 64 KiB");
+		allocator->Free(second);
+		Require(allocator->Reallocate(first, 512 * 1024, 64), "freeing a large top block must expose the previous block");
+		for (size_t i = 0; i < 256 * 1024; ++i)
+		{
+			Require(static_cast<uint8_t*>(first)[i] == 37, "large inline growth must preserve existing data");
+		}
+		allocator->Free(first);
+		void* reused = allocator->Allocate(512 * 1024, 64);
+		Require(reused == first && CountingAllocator::s_allocations == 0, "large inline blocks must be reused without fallback allocations");
+		allocator->Free(reused);
 	}
 
 	struct alignas(128) ObjectProbe : Object
@@ -770,6 +799,7 @@ int main()
 		{ "WeakPromotionAgainstLastOwner", TestWeakPromotionAgainstLastOwner },
 		{ "AllocatorAlignmentAndGrowth", TestAllocatorAlignmentAndGrowth },
 		{ "InlineAllocatorReuse", TestInlineAllocatorReuse },
+		{ "LargeInlineAllocator", TestLargeInlineAllocator },
 		{ "ObjectPointerAllocatorAssignment", TestObjectPointerAllocatorAssignment },
 		{ "DestroyUnreadyObject", TestDestroyUnreadyObject },
 		{ "ManagedMemoryMoveOnly", TestManagedMemoryMoveOnly },

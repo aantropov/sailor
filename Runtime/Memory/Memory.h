@@ -38,19 +38,20 @@ namespace Sailor::Memory
 		allocator.Free(ptr);
 	}
 
-	template<uint16_t stackSize = 1024, typename TAllocator = DefaultGlobalAllocator>
+	template<uint32_t stackSize = 1024, typename TAllocator = DefaultGlobalAllocator>
 	class SAILOR_API TInlineAllocator final
 	{
 	protected:
 
 		struct Header
 		{
-			uint16_t m_size;
-			uint16_t m_previousIndex;
+			uint32_t m_size;
+			uint32_t m_previousIndex;
 		};
 
 		alignas(std::max_align_t) uint8_t m_stack[stackSize];
-		uint16_t m_index = 0u;
+		uint32_t m_index = 0u;
+		uint32_t m_numAllocations = 0u;
 
 		TAllocator m_allocator{};
 
@@ -69,6 +70,13 @@ namespace Sailor::Memory
 		TInlineAllocator& operator=(const TInlineAllocator&) = delete;
 		~TInlineAllocator() = default;
 
+		static constexpr size_t GetAllocationSize(size_t size, size_t alignment)
+		{
+			const size_t blockAlignment = (std::max)(alignment, alignof(Header));
+			const size_t headerSize = (sizeof(Header) + blockAlignment - 1) / blockAlignment * blockAlignment;
+			return headerSize + (size + blockAlignment - 1) / blockAlignment * blockAlignment;
+		}
+
 		void* Allocate(size_t size, size_t alignment = 8)
 		{
 			check(alignment != 0 && (alignment & (alignment - 1)) == 0);
@@ -79,8 +87,9 @@ namespace Sailor::Memory
 				if (std::align((std::max)(alignment, alignof(Header)), size, data, available))
 				{
 					auto* header = reinterpret_cast<Header*>(static_cast<uint8_t*>(data) - sizeof(Header));
-					new (header) Header{ static_cast<uint16_t>(size), m_index };
-					m_index = static_cast<uint16_t>(static_cast<uint8_t*>(data) - m_stack + size);
+					new (header) Header{ static_cast<uint32_t>(size), m_index };
+					m_index = static_cast<uint32_t>(static_cast<uint8_t*>(data) - m_stack + size);
+					++m_numAllocations;
 					return data;
 				}
 			}
@@ -99,8 +108,8 @@ namespace Sailor::Memory
 			if (offset + header->m_size == m_index && size <= stackSize - offset &&
 				reinterpret_cast<uintptr_t>(pData) % alignment == 0)
 			{
-				header->m_size = static_cast<uint16_t>(size);
-				m_index = static_cast<uint16_t>(offset + size);
+				header->m_size = static_cast<uint32_t>(size);
+				m_index = static_cast<uint32_t>(offset + size);
 				return true;
 			}
 			return false;
@@ -111,7 +120,11 @@ namespace Sailor::Memory
 			if (Contains(pData))
 			{
 				auto* header = reinterpret_cast<Header*>(static_cast<uint8_t*>(pData) - sizeof(Header));
-				if (static_cast<uint8_t*>(pData) + header->m_size == &m_stack[m_index])
+				if (--m_numAllocations == 0)
+				{
+					m_index = 0;
+				}
+				else if (static_cast<uint8_t*>(pData) + header->m_size == &m_stack[m_index])
 				{
 					m_index = header->m_previousIndex;
 				}
