@@ -167,11 +167,11 @@ namespace Sailor::Protocol
 			return false;
 		}
 
-		bool TryBeginShutdown(std::string& outError)
+		bool TryBeginShutdown(std::string& outError, bool bAllowCompleted = false)
 		{
 			const std::lock_guard<std::mutex> lock(m_mutex);
 			if (m_state == EState::ShuttingDown ||
-				m_state == EState::ShutdownComplete)
+				(m_state == EState::ShutdownComplete && !bAllowCompleted))
 			{
 				outError = "Engine shutdown has already been requested.";
 				return false;
@@ -264,23 +264,16 @@ namespace Sailor::Protocol
 
 		void Reset()
 		{
-			std::unique_lock<std::mutex> lock(m_mutex);
-			m_condition.wait(lock, [this]()
-				{
-					return m_numActiveOperations == 0 &&
-						!m_bInitializationActive &&
-						!m_bStartActive &&
-						m_state != EState::Initializing &&
-						m_state != EState::ShuttingDown;
-				});
-			if (m_startThread.joinable())
+			// The native shutdown owner has already drained work and closed the host.
+			// Publish Idle once; an intermediate state could admit another Initialize.
 			{
-				m_startThread.join();
+				const std::lock_guard<std::mutex> lock(m_mutex);
+				m_state = EState::Idle;
+				m_bStartIssued = false;
+				m_bStartActive = false;
+				m_bStopRequested = false;
 			}
-			m_state = EState::Idle;
-			m_bStartIssued = false;
-			m_bStartActive = false;
-			m_bStopRequested = false;
+			m_condition.notify_all();
 		}
 
 	private:

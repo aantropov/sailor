@@ -17,7 +17,10 @@ namespace
 			if (bShutdownEngine)
 			{
 				// Close admission before joining socket callbacks or the Start worker.
-				Sailor::Protocol::DrainEditorEngineProtocolForShutdown();
+				if (!Sailor::Protocol::TryDrainEditorEngineProtocolForShutdown())
+				{
+					return false;
+				}
 			}
 			else
 			{

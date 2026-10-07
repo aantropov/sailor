@@ -842,6 +842,8 @@ namespace
 			"an execution failure must not publish a partial response");
 		Require(SailorProtocolStopLocalHost(true) != 0,
 			"an initialization exception must be rolled back before starting another session");
+		Require(SailorProtocolStopLocalHost(true) != 0,
+			"a completed local-host shutdown must allow repeated cleanup");
 	}
 
 	void TestEnvelopeValidation()
@@ -2107,7 +2109,7 @@ namespace
 		Sailor::Tests::ScopeExit releaseOperation([&]() { source.m_gate.ReleaseOperation(); });
 		drain = std::async(std::launch::async, [&]()
 			{
-				Sailor::Protocol::DrainEditorEngineProtocolForShutdown(dependencies);
+				Sailor::Protocol::TryDrainEditorEngineProtocolForShutdown(dependencies);
 			});
 
 		const bool bStopEntered = source.m_stopEntered.get_future().wait_for(1s) == std::future_status::ready;
@@ -2121,6 +2123,65 @@ namespace
 		Require(bWaitedForStart && bWaitedForOperation && !source.m_gate.IsStartActive(),
 			"local-host drain must retain the session until Start and admitted operations finish");
 		source.m_gate.CompleteShutdown();
+	}
+
+	void TestLocalHostDrainHasOneShutdownOwner()
+	{
+		using namespace std::chrono_literals;
+		struct TShutdownSource
+		{
+			std::atomic<uint32_t> m_numStops{0u};
+			std::promise<void> m_stopEntered;
+			std::promise<void> m_releaseStop;
+			std::shared_future<void> m_stopRelease = m_releaseStop.get_future().share();
+		} source;
+
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		PrepareInitializedLifecycle(gate);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_stop = [](void* context)
+			{
+				auto& state = *static_cast<TShutdownSource*>(context);
+				if (state.m_numStops.fetch_add(1u) == 0u)
+				{
+					state.m_stopEntered.set_value();
+				}
+				state.m_stopRelease.wait();
+			};
+
+		std::future<bool> owner;
+		std::future<bool> duplicate;
+		Sailor::Tests::ScopeExit releaseStop([&]() { source.m_releaseStop.set_value(); });
+		owner = std::async(std::launch::async, [&]()
+			{
+				return Sailor::Protocol::TryDrainEditorEngineProtocolForShutdown(dependencies);
+			});
+		Require(source.m_stopEntered.get_future().wait_for(1s) == std::future_status::ready,
+			"the shutdown owner must enter Stop before the duplicate request");
+		duplicate = std::async(std::launch::async, [&]()
+			{
+				return Sailor::Protocol::TryDrainEditorEngineProtocolForShutdown(dependencies);
+			});
+		const bool bDuplicateReturned = duplicate.wait_for(1s) == std::future_status::ready;
+		const bool bOwnerStillDraining = owner.wait_for(20ms) == std::future_status::timeout;
+		releaseStop.Run();
+		const bool bOwnerAdmitted = owner.get();
+		const bool bDuplicateAdmitted = duplicate.get();
+		Require(bOwnerAdmitted && !bDuplicateAdmitted && bDuplicateReturned &&
+			bOwnerStillDraining && source.m_numStops == 1u,
+			"a duplicate native shutdown must not acquire the existing owner's teardown");
+		gate.CompleteShutdown();
+		Require(Sailor::Protocol::TryDrainEditorEngineProtocolForShutdown(dependencies) && source.m_numStops == 2u,
+			"native host cleanup must also close a session that protocol shutdown already completed");
+		std::string error;
+		Require(!gate.TryBeginInitialization(error), "host finalization must retain exclusive lifecycle ownership");
+		gate.Reset();
+		Require(gate.TryBeginInitialization(error), "only completed native cleanup may admit the next session");
+		gate.CompleteInitialization(true);
+		Require(gate.TryAcquireOperation(error, false), "the next initialized session must remain ready");
+		gate.ReleaseOperation();
 	}
 
 	TDecodedResponse InvokeStartPromptly(
@@ -2645,6 +2706,7 @@ int main()
 		TestStopWaitsForInitializationAndSkipsClosedSessions();
 		TestThrowingStopReleasesItsOperation();
 		TestLocalHostDrainStopsBeforeWaitingForStart();
+		TestLocalHostDrainHasOneShutdownOwner();
 		TestStartAcknowledgesBeforeWorkerExitAndStopJoins();
 		TestImmediateStopAfterStartAcknowledgementCannotBeLost();
 		TestShutdownStopsAndJoinsWorkerBeforeShutdownRoutine();

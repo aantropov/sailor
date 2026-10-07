@@ -409,23 +409,26 @@ void Sailor::Protocol::WaitForEditorEngineProtocolStartDrain()
 	GetEditorEngineProtocolLifecycleGate().WaitForStartDrainAndJoin();
 }
 
-void Sailor::Protocol::DrainEditorEngineProtocolForShutdown(
+bool Sailor::Protocol::TryDrainEditorEngineProtocolForShutdown(
 	const EditorEngineProtocolDependencies& dependencies)
 {
 	auto& gate = dependencies.m_lifecycleGate ? *dependencies.m_lifecycleGate : GetEditorEngineProtocolLifecycleGate();
 	std::string error;
-	gate.TryBeginShutdown(error);
+	// Protocol shutdown may finish App before the local host closes its socket.
+	if (!gate.TryBeginShutdown(error, true))
+	{
+		return false;
+	}
 	gate.WaitForInitializationDrain();
 	EditorEngineProtocolCommands::StopEngine(dependencies);
 	gate.WaitForShutdownDrain();
 	gate.WaitForStartDrainAndJoin();
+	return true;
 }
 
 void Sailor::Protocol::ResetEditorEngineProtocolLifecycle()
 {
-	auto& gate = GetEditorEngineProtocolLifecycleGate();
-	gate.CompleteShutdown();
-	gate.Reset();
+	GetEditorEngineProtocolLifecycleGate().Reset();
 }
 
 void Sailor::Protocol::FailEditorEngineProtocolShutdown()
