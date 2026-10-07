@@ -23,10 +23,6 @@ namespace Sailor::Platform
 		SAILOR_API virtual void SetWindowTitle(const char* title) = 0;
 
 		SAILOR_API virtual void* GetNativeHandle() const = 0;
-#if defined(__APPLE__)
-		SAILOR_API virtual void* GetMetalLayer() const = 0;
-		SAILOR_API virtual void* GetNativeView() const = 0;
-#endif
 
 		SAILOR_API virtual int32_t GetWidth() const = 0;
 		SAILOR_API virtual int32_t GetHeight() const = 0;

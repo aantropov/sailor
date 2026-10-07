@@ -1,4 +1,5 @@
 #include "Platform/Win32/Window.h"
+#include "Platform/Mac/Window.h"
 #include "Platform/Win32/Input.h"
 #include "Sailor.h"
 
@@ -861,7 +862,17 @@ bool Window::IsIconic() const
 
 void* Window::GetMetalLayer() const
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	return Mac::GetMetalLayer(m_hWnd, m_bIsVsyncRequested);
+}
+
+void* Window::GetNativeView() const
+{
+	return Mac::GetNativeView(m_hWnd);
+}
+
+void* Sailor::Mac::GetMetalLayer(void* nativeWindow, bool bVsyncRequested)
+{
+	NSWindow* window = (__bridge NSWindow*)nativeWindow;
 	if (!window || !window.contentView)
 	{
 		return nullptr;
@@ -877,13 +888,13 @@ void* Window::GetMetalLayer() const
 		SailorUpdateMetalDrawableSize(window);
 	}
 
-	SailorConfigureMetalLayer(metalLayer, m_bIsVsyncRequested);
+	SailorConfigureMetalLayer(metalLayer, bVsyncRequested);
 	return (__bridge void*)metalLayer;
 }
 
-void* Window::GetNativeView() const
+void* Sailor::Mac::GetNativeView(void* nativeWindow)
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)nativeWindow;
 	return window ? (__bridge void*)window.contentView : nullptr;
 }
 

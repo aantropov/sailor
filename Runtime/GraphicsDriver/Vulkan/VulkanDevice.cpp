@@ -15,6 +15,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <vulkan/vulkan_win32.h>
 #endif
 #ifdef __APPLE__
+#include "Platform/Mac/Window.h"
 #include <vulkan/vulkan_metal.h>
 #include <vulkan/vulkan_macos.h>
 #endif
@@ -84,8 +85,7 @@ VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 
 VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples requestMsaa)
 {
-	// Create Win32 surface
-	CreateWin32Surface(pViewport);
+	CreateSurface(pViewport);
 
 	// Pick & Create device
 	m_physicalDevice = VulkanApi::PickPhysicalDevice(m_surface);
@@ -679,7 +679,7 @@ bool VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	return true;
 }
 
-void VulkanDevice::CreateWin32Surface(const Platform::Window* viewport)
+void VulkanDevice::CreateSurface(const Platform::Window* viewport)
 {
 #if defined(_WIN32)
 	VkWin32SurfaceCreateInfoKHR createInfoWin32{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
@@ -695,13 +695,13 @@ void VulkanDevice::CreateWin32Surface(const Platform::Window* viewport)
 	if (pfnCreateMacOSSurfaceMVK != nullptr)
 	{
 		VkMacOSSurfaceCreateInfoMVK createInfoMacOS{ VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK };
-		createInfoMacOS.pView = viewport->GetNativeView();
+		createInfoMacOS.pView = Mac::GetNativeView(viewport->GetNativeHandle());
 		VK_CHECK(pfnCreateMacOSSurfaceMVK(VulkanApi::GetVkInstance(), &createInfoMacOS, nullptr, &surface));
 	}
 	else
 	{
 		VkMetalSurfaceCreateInfoEXT createInfoMetal{ VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT };
-		createInfoMetal.pLayer = viewport->GetMetalLayer();
+		createInfoMetal.pLayer = Mac::GetMetalLayer(viewport->GetNativeHandle(), viewport->IsVsyncRequested());
 		VK_CHECK(vkCreateMetalSurfaceEXT(VulkanApi::GetVkInstance(), &createInfoMetal, nullptr, &surface));
 	}
 #else
