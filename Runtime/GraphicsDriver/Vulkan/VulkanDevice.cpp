@@ -683,8 +683,9 @@ void VulkanDevice::CreateWin32Surface(const Platform::Window* viewport)
 {
 #if defined(_WIN32)
 	VkWin32SurfaceCreateInfoKHR createInfoWin32{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
-	createInfoWin32.hwnd = viewport->GetHWND();
-	createInfoWin32.hinstance = viewport->GetHINSTANCE();
+	createInfoWin32.hwnd = static_cast<HWND>(viewport->GetNativeHandle());
+	createInfoWin32.hinstance = reinterpret_cast<HINSTANCE>(
+		GetWindowLongPtrW(createInfoWin32.hwnd, GWLP_HINSTANCE));
 	VkSurfaceKHR surface;
 	VK_CHECK(vkCreateWin32SurfaceKHR(VulkanApi::GetVkInstance(), &createInfoWin32, nullptr, &surface));
 #elif defined(__APPLE__)

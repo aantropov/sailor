@@ -109,9 +109,10 @@ namespace Sailor::Win32
 		}
 #endif
 
-		SAILOR_API HWND GetHWND() const override { return m_hWnd; }
-		SAILOR_API HDC GetHDC() const override { return m_hDC; }
-		SAILOR_API HINSTANCE GetHINSTANCE() const override { return m_hInstance; }
+		SAILOR_API void* GetNativeHandle() const override { return m_hWnd; }
+		SAILOR_API HWND GetHWND() const { return m_hWnd; }
+		SAILOR_API HDC GetHDC() const { return m_hDC; }
+		SAILOR_API HINSTANCE GetHINSTANCE() const { return m_hInstance; }
 #if defined(__APPLE__)
 		SAILOR_API void* GetMetalLayer() const override;
 		SAILOR_API void* GetNativeView() const override;

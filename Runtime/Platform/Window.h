@@ -25,9 +25,7 @@ namespace Sailor::Platform
 		SAILOR_API virtual void SetFullscreen(bool value) = 0;
 		SAILOR_API virtual void SetWindowTitle(LPCSTR lString) = 0;
 
-		SAILOR_API virtual HWND GetHWND() const = 0;
-		SAILOR_API virtual HDC GetHDC() const = 0;
-		SAILOR_API virtual HINSTANCE GetHINSTANCE() const = 0;
+		SAILOR_API virtual void* GetNativeHandle() const = 0;
 #if defined(__APPLE__)
 		SAILOR_API virtual void* GetMetalLayer() const = 0;
 		SAILOR_API virtual void* GetNativeView() const = 0;

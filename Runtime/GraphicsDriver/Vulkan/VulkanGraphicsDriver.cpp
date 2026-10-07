@@ -105,7 +105,7 @@ void VulkanGraphicsDriver::Initialize(Platform::Window* pViewport, RHI::EMsaaSam
 
 	if (RenderDocApi* renderDocApi = App::GetSubmodule<RenderDocApi>())
 	{
-		renderDocApi->SetActiveWindow((*((void**)(m_vkInstance->GetVkInstance()))), pViewport->GetHWND());
+		renderDocApi->SetActiveWindow((*((void**)(m_vkInstance->GetVkInstance()))), pViewport->GetNativeHandle());
 	}
 
 	const uint32_t invalidColor = 0x00e567ffu;
