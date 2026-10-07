@@ -4,9 +4,7 @@
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
-#include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Core/Reflection.h"
-#include "Engine/EngineLoop.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "Engine/InstanceId.h"
@@ -168,37 +166,6 @@ uint64_t App::GetEditorManagedMutationRevision(uint32_t kind, const char* strIns
 		});
 }
 
-uint32_t App::SerializeCurrentWorld(char** yamlNode)
-{
-	if (!yamlNode)
-	{
-		return 0;
-	}
-
-	yamlNode[0] = nullptr;
-	return ExecuteOnEngineMainThread<uint32_t>(0, [yamlNode]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return 0u;
-			}
-
-			auto node = editor->SerializeWorld();
-			if (node.IsNull())
-			{
-				return 0u;
-			}
-
-			const std::string serializedNode = YAML::Dump(node);
-			const size_t length = serializedNode.length();
-			yamlNode[0] = new char[length + 1];
-			memcpy(yamlNode[0], serializedNode.c_str(), length);
-			yamlNode[0][length] = '\0';
-			return static_cast<uint32_t>(length);
-		});
-}
-
 uint32_t App::SerializeEngineTypes(char** yamlNode)
 {
 	if (!yamlNode)
@@ -320,106 +287,6 @@ uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
 
 	yamlNode[0] = nullptr;
 	return 0;
-}
-
-bool App::LoadEditorWorld(const char* strFileId)
-{
-	if (!strFileId || strFileId[0] == '\0')
-	{
-		return false;
-	}
-
-	const std::string fileIdValue = strFileId;
-	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			auto engineLoop = GetSubmodule<EngineLoop>();
-			auto assetRegistry = GetSubmodule<AssetRegistry>();
-			if (!editor || !engineLoop || !assetRegistry)
-			{
-				return false;
-			}
-
-			const FileId fileId(fileIdValue);
-			auto worldPrefab = assetRegistry->LoadAssetFromFile<WorldPrefab>(fileId);
-			if (!worldPrefab || !worldPrefab->IsReady())
-			{
-				return false;
-			}
-			if (editor->IsSimulationEnabled() &&
-				!editor->SetSimulationEnabled(false))
-			{
-				return false;
-			}
-
-			auto oldWorld = editor->GetWorld();
-			auto newWorld = engineLoop->InstantiateWorld(worldPrefab, EngineLoop::EditorWorldMask);
-			if (!newWorld)
-			{
-				return false;
-			}
-
-			editor->SetWorld(newWorld.GetRawPtr());
-			if (oldWorld)
-			{
-				engineLoop->ExitWorld(oldWorld);
-				engineLoop->ProcessPendingWorldExits();
-			}
-
-			return true;
-		});
-}
-
-bool App::CreateEditorWorld()
-{
-	return ExecuteOnEngineMainThread<bool>(false, []()
-		{
-			auto editor = GetSubmodule<Editor>();
-			auto engineLoop = GetSubmodule<EngineLoop>();
-			if (!editor || !engineLoop)
-			{
-				return false;
-			}
-			if (editor->IsSimulationEnabled() &&
-				!editor->SetSimulationEnabled(false))
-			{
-				return false;
-			}
-
-			auto oldWorld = editor->GetWorld();
-			auto newWorld = engineLoop->CreateEmptyWorld("New Scene", EngineLoop::EditorWorldMask);
-			if (!newWorld)
-			{
-				return false;
-			}
-
-			editor->SetWorld(newWorld.GetRawPtr());
-			if (oldWorld)
-			{
-				engineLoop->ExitWorld(oldWorld);
-				engineLoop->ProcessPendingWorldExits();
-			}
-
-			return true;
-		});
-}
-
-bool App::SetEditorSimulationEnabled(bool bEnabled)
-{
-	return ExecuteOnEngineMainThread<bool>(false, [bEnabled]()
-		{
-			auto* editor = GetSubmodule<Editor>();
-			return editor && editor->SetSimulationEnabled(bEnabled);
-		});
-}
-
-bool App::IsEditorSimulationEnabled()
-{
-	return ExecuteOnEngineMainThread<bool>(false, []()
-		{
-			const auto* editor = GetSubmodule<Editor>();
-			return editor && editor->IsSimulationEnabled();
-		});
 }
 
 bool App::PreviewEditorAudioAsset(const char* strFileId)

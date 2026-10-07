@@ -107,14 +107,9 @@ namespace Sailor
 		SAILOR_API static bool IsEditorMode();
 		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
 		SAILOR_API static uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId);
-		SAILOR_API static uint32_t SerializeCurrentWorld(char** yamlNode);
 		SAILOR_API static uint32_t SerializeEngineTypes(char** yamlNode);
 		SAILOR_API static uint32_t SerializeEditorTypes(char** yamlNode);
 		SAILOR_API static uint32_t SerializeWorkspaceCacheIdentity(char** yamlNode);
-		SAILOR_API static bool LoadEditorWorld(const char* strFileId);
-		SAILOR_API static bool CreateEditorWorld();
-		SAILOR_API static bool SetEditorSimulationEnabled(bool bEnabled);
-		SAILOR_API static bool IsEditorSimulationEnabled();
 		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
 		SAILOR_API static bool RequestModelFingerprint(const char* strFileId);
 		SAILOR_API static uint32_t GetModelFingerprintStatus(const char* strFileId);

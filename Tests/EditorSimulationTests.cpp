@@ -1,5 +1,6 @@
 #include "Sailor.h"
 #include "Editor/EditorRuntimeBridge.h"
+#include "Editor/EditorScene.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "Components/LightComponent.h"
@@ -40,7 +41,7 @@ namespace
 	YAML::Node SerializeCurrentWorld()
 	{
 		char* buffer = nullptr;
-		const auto size = App::SerializeCurrentWorld(&buffer);
+		const auto size = EditorRuntime::SerializeCurrentWorld(&buffer);
 		const std::string document(buffer ? buffer : "", size);
 		delete[] buffer;
 		return YAML::Load(document);
@@ -68,8 +69,8 @@ namespace
 		{
 			const glm::vec3 position(float(cycle + 1), 2.0f, 3.0f);
 			root->GetTransformComponent().SetPosition(position);
-			Require(EditorRuntime::SetEditorSelection({ rootId }) && App::SetEditorSimulationEnabled(true) &&
-				App::IsEditorSimulationEnabled() && world->IsPhysicsSimulationEnabled(),
+			Require(EditorRuntime::SetEditorSelection({ rootId }) && EditorRuntime::SetEditorSimulationEnabled(true) &&
+				EditorRuntime::IsEditorSimulationEnabled() && world->IsPhysicsSimulationEnabled(),
 				"Play must retain the active world and enable its physics");
 			Prefab::ReflectedGameObject edit;
 			edit.m_name = "Changed during Play";
@@ -83,11 +84,11 @@ namespace
 			auto temporary = world->Instantiate("Created during Play");
 			const auto temporaryId = temporary->GetInstanceId();
 			Require(EditorRuntime::SetEditorSelection({ lightId, childId, temporaryId, InstanceId::Invalid }) &&
-				App::SetEditorSimulationEnabled(true), "repeated Play must not replace the original snapshot");
+				EditorRuntime::SetEditorSimulationEnabled(true), "repeated Play must not replace the original snapshot");
 			Require(SerializeCurrentWorld().IsMap(), "serializing the live simulation must not consume its saved snapshot");
 			Require(App::GetEditorManagedMutationRevision(2, rootId.ToString().c_str()) != 0,
 				"the live mutation revision must advance before restoration");
-			Require(App::SetEditorSimulationEnabled(false), "Stop must restore the saved scene");
+			Require(EditorRuntime::SetEditorSimulationEnabled(false), "Stop must restore the saved scene");
 			auto restored = engine->GetWorld();
 			Require(restored && restored != world && restored.GetRawPtr() == editor->GetWorld() &&
 				engine->GetWorlds().Num() == 1 && world->GetGameObjects().IsEmpty() && !root && !child && !light && !temporary,
@@ -104,10 +105,10 @@ namespace
 			Require(restored->IsEditorSelected(childId) && !restored->IsEditorSelected(rootId) &&
 				restored->IsEditorSelected(temporaryId) && restored->GetPrimaryEditorSelection() == child,
 				"Stop must preserve stop-time selection IDs and ignore stale IDs when resolving the primary object");
-			Require(!App::IsEditorSimulationEnabled() && !restored->IsPhysicsSimulationEnabled() &&
+			Require(!EditorRuntime::IsEditorSimulationEnabled() && !restored->IsPhysicsSimulationEnabled() &&
 				App::GetEditorManagedMutationRevision(1, nullptr) == 0 &&
 				App::GetEditorManagedMutationRevision(2, rootId.ToString().c_str()) == 0 &&
-				EditorRuntime::PullEditorViewportEvents(8).IsEmpty() && App::SetEditorSimulationEnabled(false),
+				EditorRuntime::PullEditorViewportEvents(8).IsEmpty() && EditorRuntime::SetEditorSimulationEnabled(false),
 				"restoration must reset editor interaction/revisions and make repeated Stop a no-op");
 			engine->ProcessPendingWorldExits();
 			Require(engine->GetWorld() == restored && engine->GetWorlds().Num() == 1,
@@ -144,20 +145,20 @@ namespace
 		const auto linkedId = linked->GetInstanceId();
 		const auto childId = linked->GetChildren()[0]->GetInstanceId();
 		linked->SetName("Saved instance override");
-		Require(EditorRuntime::SetEditorSelection({ linkedId }) && App::SetEditorSimulationEnabled(true), "linked scene Play must succeed");
+		Require(EditorRuntime::SetEditorSelection({ linkedId }) && EditorRuntime::SetEditorSimulationEnabled(true), "linked scene Play must succeed");
 		linked->SetName("Runtime override");
 		Require(SerializeCurrentWorld().IsMap(), "saving during Play must update live prefab baselines independently");
 		std::filesystem::rename(sourcePath, workspace / "Content" / "Simulation.hidden");
 		for (uint32_t retry = 0; retry < 2; ++retry)
 		{
-			Require(!App::SetEditorSimulationEnabled(false) && App::IsEditorSimulationEnabled() &&
+			Require(!EditorRuntime::SetEditorSimulationEnabled(false) && EditorRuntime::IsEditorSimulationEnabled() &&
 				engine->GetWorld() == world && engine->GetWorlds().Num() == 1 && editor->GetWorld() == world.GetRawPtr() &&
 				world->IsPhysicsSimulationEnabled() && linked->GetName() == "Runtime override" && world->IsEditorSelected(linkedId),
 				"failed Stop must preserve the simulated world and snapshot for a later retry");
 		}
 		source["gameObjects"][1]["name"] = "Updated source child";
 		Write(sourcePath, source);
-		Require(App::SetEditorSimulationEnabled(false), "Stop must recover after the source asset is repaired");
+		Require(EditorRuntime::SetEditorSimulationEnabled(false), "Stop must recover after the source asset is repaired");
 		auto restored = engine->GetWorld();
 		linked = restored->GetObjectByInstanceId(linkedId).DynamicCast<GameObject>();
 		auto child = restored->GetObjectByInstanceId(childId).DynamicCast<GameObject>();
@@ -170,11 +171,11 @@ namespace
 		std::filesystem::rename(sourcePath, workspace / "Content" / "Simulation.repaired");
 		const auto info = registry->GetAssetInfoPtr<PrefabAssetInfoPtr>(sourceId);
 		importer->OnUpdateAssetInfo(info, true);
-		Require(!App::SetEditorSimulationEnabled(true) && !App::IsEditorSimulationEnabled() &&
+		Require(!EditorRuntime::SetEditorSimulationEnabled(true) && !EditorRuntime::IsEditorSimulationEnabled() &&
 			!restored->IsPhysicsSimulationEnabled() && engine->GetWorld() == restored && engine->GetWorlds().Num() == 1,
 			"a failed snapshot must not start simulation or discard the current editor scene");
 		Write(sourcePath, source);
-		Require(App::SetEditorSimulationEnabled(true) && App::SetEditorSimulationEnabled(false),
+		Require(EditorRuntime::SetEditorSimulationEnabled(true) && EditorRuntime::SetEditorSimulationEnabled(false),
 			"Play must retry after snapshot creation becomes possible again");
 		std::cout << "Simulation: failed snapshot leaves preview intact and Play succeeds after repair\n";
 	}
@@ -184,17 +185,17 @@ namespace
 		auto* engine = App::GetSubmodule<EngineLoop>();
 		auto* editor = App::GetSubmodule<Editor>();
 		auto previous = engine->GetWorld();
-		Require(App::SetEditorSimulationEnabled(true) && App::CreateEditorWorld() &&
-			!App::IsEditorSimulationEnabled() && engine->GetWorlds().Num() == 1 &&
+		Require(EditorRuntime::SetEditorSimulationEnabled(true) && EditorRuntime::CreateEditorWorld() &&
+			!EditorRuntime::IsEditorSimulationEnabled() && engine->GetWorlds().Num() == 1 &&
 			engine->GetWorld() != previous && previous->GetGameObjects().IsEmpty(),
 			"New Scene during simulation must finish the old session without retaining another world");
 		auto current = engine->GetWorld();
 		editor->SetWorld(nullptr);
 		Require(engine->ExitWorld(current.GetRawPtr()), "the empty-session fixture must retire its active world");
 		engine->ProcessPendingWorldExits();
-		Require(!App::SetEditorSimulationEnabled(true) && App::SetEditorSimulationEnabled(false) &&
-			!App::IsEditorSimulationEnabled() && engine->GetWorlds().IsEmpty(), "Play without a world must fail without creating session state");
-		Require(App::CreateEditorWorld() && App::SetEditorSimulationEnabled(true) && App::SetEditorSimulationEnabled(false),
+		Require(!EditorRuntime::SetEditorSimulationEnabled(true) && EditorRuntime::SetEditorSimulationEnabled(false) &&
+			!EditorRuntime::IsEditorSimulationEnabled() && engine->GetWorlds().IsEmpty(), "Play without a world must fail without creating session state");
+		Require(EditorRuntime::CreateEditorWorld() && EditorRuntime::SetEditorSimulationEnabled(true) && EditorRuntime::SetEditorSimulationEnabled(false),
 			"a fresh empty scene must still support a complete simulation cycle");
 		std::cout << "Simulation: new-scene replacement, absent world and fresh-session restoration passed\n";
 	}

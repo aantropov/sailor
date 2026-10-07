@@ -1,5 +1,6 @@
 #include "Sailor.h"
 #include "Editor/EditorRuntimeBridge.h"
+#include "Editor/EditorScene.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "Components/CameraComponent.h"
 #include "Components/CollisionShapeComponent.h"
@@ -162,14 +163,14 @@ namespace Sailor::Tests
 
 		object->GetTransformComponent().SetPosition({ 0, 0, -10 });
 		Require(EditorRuntime::SetEditorSelection({ id }) && EditorRuntime::SetEditorViewportToolState(2, 2) &&
-			App::SetEditorSimulationEnabled(true), "the real drag fixture must enter simulation");
+			EditorRuntime::SetEditorSimulationEnabled(true), "the real drag fixture must enter simulation");
 		const auto savedPosition = object->GetTransformComponent().GetPosition();
 		frame(center, false);
 		frame(center, true);
 		frame(center + glm::vec2(60, 20), true);
 		Require(glm::distance(object->GetTransformComponent().GetPosition(), savedPosition) > 0.01f &&
 			EditorRuntime::PullEditorViewportEvents(8).IsEmpty(), "simulation must have an active, unpublished gizmo drag before Stop");
-		Require(App::SetEditorSimulationEnabled(false), "Stop must replace the world while the mouse is still held");
+		Require(EditorRuntime::SetEditorSimulationEnabled(false), "Stop must replace the world while the mouse is still held");
 		Require(!object && world->GetGameObjects().IsEmpty(), "the unfinished drag must not retain live objects from the old world");
 		world = engine->GetWorld();
 		object = world->GetObjectByInstanceId(id).DynamicCast<GameObject>();

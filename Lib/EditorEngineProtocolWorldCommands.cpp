@@ -2,6 +2,7 @@
 
 #include "Memory/UniquePtr.hpp"
 #include "Editor/EditorRuntimeBridge.h"
+#include "Editor/EditorScene.h"
 #include "Engine/InstanceId.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
@@ -42,7 +43,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	static void DispatchSerializeCurrentWorld(ProtocolResponse& response)
 	{
 		char* value = nullptr;
-		const uint32_t length = Sailor::App::SerializeCurrentWorld(&value);
+		const uint32_t length = Sailor::EditorRuntime::SerializeCurrentWorld(&value);
 		Sailor::TUniquePtr<char[]> ownedValue(value);
 		SetStringResult(response, value, length);
 	}
@@ -280,19 +281,19 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kLoadEditorWorld:
-			SetBoolResult(response, Sailor::App::LoadEditorWorld(request.load_editor_world().file_id().c_str()));
+			SetBoolResult(response, Sailor::EditorRuntime::LoadEditorWorld(request.load_editor_world().file_id().c_str()));
 			break;
 
 		case ProtocolRequest::kCreateEditorWorld:
-			SetBoolResult(response, Sailor::App::CreateEditorWorld());
+			SetBoolResult(response, Sailor::EditorRuntime::CreateEditorWorld());
 			break;
 
 		case ProtocolRequest::kSetEditorSimulation:
-			SetBoolResult(response, Sailor::App::SetEditorSimulationEnabled(request.set_editor_simulation().enabled()));
+			SetBoolResult(response, Sailor::EditorRuntime::SetEditorSimulationEnabled(request.set_editor_simulation().enabled()));
 			break;
 
 		case ProtocolRequest::kGetEditorSimulationState:
-			SetBoolResult(response, Sailor::App::IsEditorSimulationEnabled());
+			SetBoolResult(response, Sailor::EditorRuntime::IsEditorSimulationEnabled());
 			break;
 
 		case ProtocolRequest::kGetEditorManagedMutationRevision:
