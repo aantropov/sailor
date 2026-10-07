@@ -1,8 +1,8 @@
+#if defined(__APPLE__)
+
 #include "Platform/Mac/Window.h"
 #include "Platform/Win32/Input.h"
 #include "Sailor.h"
-
-#if defined(__APPLE__)
 
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
