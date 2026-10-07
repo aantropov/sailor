@@ -516,7 +516,7 @@ bool Window::Create(const char* title, const char* className, int32_t inWidth, i
 		title,
 		style,
 		rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-		parentHwnd,
+		m_parentHwnd,
 		NULL,
 		m_hInstance,
 		NULL);
